@@ -83,6 +83,11 @@ jobs:
       - name: Test core-owned desktop operations
         run: cargo test --locked -p zork-client-core --features desktop --lib --test client_boundary
 
+      - name: Test Slack forwarding and bundled skills
+        run: |
+          python3 scripts/test-slack-forwarding.py
+          python3 scripts/test-skills.py
+
       - name: Test Gateway sync reaches idle
         run: python3 scripts/test-sync-idle.py
 

@@ -17,6 +17,7 @@ pub struct ProviderExecution {
     pub streaming: bool,
     pub image_input: bool,
     pub parallel_tool_calls: bool,
+    pub single_system_message: bool,
     pub service_tier: Option<String>,
     pub thinking: String,
     pub limits: crate::ModelLimits,
@@ -56,7 +57,15 @@ pub async fn load_selected(
         "profile changed during credential refresh; retry the request"
     );
     document = current;
-    let (api, streaming, image_input, parallel_tool_calls, service_tier, limits) = {
+    let (
+        api,
+        streaming,
+        image_input,
+        parallel_tool_calls,
+        single_system_message,
+        service_tier,
+        limits,
+    ) = {
         let selected_model = crate::app::select_model(&document, model, thinking)?;
         (
             selected_model.api.as_str().to_owned(),
@@ -67,6 +76,7 @@ pub async fn load_selected(
                 .iter()
                 .any(|kind| kind == "image"),
             selected_model.parallel_tool_calls,
+            selected_model.single_system_message,
             selected_model.service_tier.clone(),
             selected_model
                 .limits
@@ -85,6 +95,7 @@ pub async fn load_selected(
         streaming,
         image_input,
         parallel_tool_calls,
+        single_system_message,
         service_tier,
         thinking: thinking.to_owned(),
         limits,

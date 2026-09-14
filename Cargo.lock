@@ -13488,6 +13488,7 @@ dependencies = [
  "tokio",
  "ulid",
  "zork-agent",
+ "zork-slack",
  "zork-client-types",
 ]
 

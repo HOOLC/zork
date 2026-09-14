@@ -35,9 +35,9 @@ shared/
 创建 Agent 的 `POST /v1/node/agents` 可带 `skill_paths` 字符串数组。
 已有 Agent 使用以下节点管理 API，需要节点管理认证：
 
-| 接口 | 请求／响应 |
-| --- | --- |
-| `PUT /v1/node/agents/{id}/skills` | `{"paths":["/mnt/shared/team/skills"]}`；保存并返回 Agent 定义 |
+| 接口                              | 请求／响应                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `PUT /v1/node/agents/{id}/skills` | `{"paths":["/mnt/shared/team/skills"]}`；保存并返回 Agent 定义                              |
 | `GET /v1/node/agents/{id}/skills` | 返回 Agent 的 `paths`、合并后的 `sources`、发现的 `catalog.skills` 和 `catalog.diagnostics` |
 
 PUT 替换该 Agent 的额外路径列表，空数组清除额外来源，仍继承共享和设备来源。
@@ -117,13 +117,13 @@ Frontmatter 必须以 `---` 开始和结束，并提供非空 `name` 与 `descri
 
 来源配置出错时报告诊断，不从二进制内容生成虚拟 skill 候选或读取结果。
 
-| 工具 | 作用 |
-| --- | --- |
-| `skill.bundle` | `list` 查询活动／历史版本与停用项；`disable`／`enable` 加 `skill` 修改本机停用状态；`rollback` 加 `version` 切换完整旧版本 |
-| `skill.sources` | `action: "list"` 查询有效来源；`add`／`remove` 加 `path` 原子增删当前 Agent 的额外来源 |
-| `skill.validate` | 校验完整 `content`，返回 metadata 与内容哈希，不写磁盘 |
-| `skill.write` | 指定 `source`、相对 `directory`、完整 `content`；更新已有文件必须提供当前 `expected_hash` |
-| `skill.archive` | 指定 `source`、`directory`、当前 `expected_hash`，归档正文并返回 `archived_path` |
+| 工具             | 作用                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `skill.bundle`   | `list` 查询活动／历史版本与停用项；`disable`／`enable` 加 `skill` 修改本机停用状态；`rollback` 加 `version` 切换完整旧版本 |
+| `skill.sources`  | `action: "list"` 查询有效来源；`add`／`remove` 加 `path` 原子增删当前 Agent 的额外来源                                     |
+| `skill.validate` | 校验完整 `content`，返回 metadata 与内容哈希，不写磁盘                                                                     |
+| `skill.write`    | 指定 `source`、相对 `directory`、完整 `content`；更新已有文件必须提供当前 `expected_hash`                                  |
+| `skill.archive`  | 指定 `source`、`directory`、当前 `expected_hash`，归档正文并返回 `archived_path`                                           |
 
 来源管理按调用会话的实际归属定位 Agent，覆盖本地及远程 Worker；参数不能指定另一个
 Agent。节点共享／设备默认来源仍由节点配置管理。没有归属 Agent 的普通会话只能查询
@@ -160,3 +160,7 @@ python3 scripts/lib/build_env.py -- python3 scripts/test-skills.py
 测试覆盖配置兼容、同名候选保留、路径去重、设备来源范围、资源子树、符号链接、损坏／超限文件、
 通用文件分页读取、分发更新、回滚、停用、独立定制副本保留、来源撤销、动态清单、持久历史前缀和重启恢复。进程测试使用隔离数据目录、
 真实 Station 和假模型，不验证跨物理设备挂载或真实模型是否会正确遵循 skill。
+
+## Skill 与工具帮助的职责
+
+Tool manuals belong in tool.help: invocation syntax, parameters, results, identifiers, constraints, errors and required API procedures such as pagination or uploads. Skills contain reusable decision criteria, trade-offs, task organization, quality checks and domain pitfalls. Do not hide API manuals in Skill references; missing help should be fixed at the tool.

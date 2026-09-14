@@ -24,6 +24,7 @@ mod pages;
 mod realtime;
 mod shared_services;
 mod slack;
+mod slack_tools;
 mod socket;
 mod state;
 mod status_projection;

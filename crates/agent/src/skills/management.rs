@@ -14,6 +14,10 @@ pub fn provision_bundled(data_root: &Path) -> Result<()> {
         data_root,
         &[
             super::bundled::BundleFile {
+                path: "slack/SKILL.md",
+                content: include_bytes!("../../skills/slack/SKILL.md"),
+            },
+            super::bundled::BundleFile {
                 path: "skill-management/SKILL.md",
                 content: include_bytes!("../../skills/skill-management/SKILL.md"),
             },

@@ -5,6 +5,7 @@ mod mcp;
 mod namespaced;
 mod pages;
 mod service;
+mod slack;
 use serde_json::{json, Value};
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 use zork_agent::session::{
@@ -31,9 +32,6 @@ enum Kind {
     Rework,
     Notify,
     Job,
-    SlackMessage,
-    SlackFile,
-    SlackHistory,
 }
 struct GatewayTool {
     kind: Kind,
@@ -66,12 +64,7 @@ mod activity_tests {
         );
         assert_eq!(typed.labels["zh-CN"], "在页面输入");
         assert!(!serde_json::to_string(&typed).unwrap().contains("private"));
-        for tool in [
-            "chat.post_message",
-            "slack.post_message",
-            "notify",
-            "chat.notify",
-        ] {
+        for tool in ["chat.post_message", "notify", "chat.notify"] {
             assert!(registry
                 .activity(tool, &json!({"text":"private message"}))
                 .detail
@@ -133,15 +126,9 @@ impl Kind {
                 // Typed text, selectors and opaque tab IDs are not display targets.
                 ToolActivity::field(zh, en, args, "/action/url")
             }
-            Self::Message | Self::SlackMessage => {
-                ToolActivity::new("发送消息", "Sending message", "")
-            }
-            Self::File | Self::SlackFile => {
-                ToolActivity::field("上传文件", "Uploading", args, "/file_path")
-            }
-            Self::History | Self::SlackHistory => {
-                ToolActivity::new("查看聊天记录", "Reading chat history", "")
-            }
+            Self::Message => ToolActivity::new("发送消息", "Sending message", ""),
+            Self::File => ToolActivity::field("上传文件", "Uploading", args, "/file_path"),
+            Self::History => ToolActivity::new("查看聊天记录", "Reading chat history", ""),
             Self::Workers => ToolActivity::new("查看伙伴", "Checking companions", ""),
             Self::Assign => ToolActivity::new("分配任务", "Assigning task", "").target(
                 ActivityTarget::Agent(args["worker_id"].as_str().unwrap_or_default().into()),
@@ -177,9 +164,6 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
         (Kind::Notify,"notify","Send an asynchronous notification to this Agent Session, for PTC or background monitoring. The notification enters this Session mailbox and can wake it. It does not publish a Chat message or invoke OS notifications.",json!({"text":string()}),vec!["text"]),
         (Kind::Notify,"chat.notify","Compatibility alias for notify: send an asynchronous notification to the calling Agent Session mailbox. Prefer notify. This is not a Chat message.",json!({"text":string()}),vec!["text"]),
         (Kind::Job,"job.register","Register background shell work owned by this Session. Returns job id and status. restart_on_boot restores registered/running jobs after Gateway restart. Restartable jobs with kind=service have no batch-job time limit.",json!({"kind":string(),"script":string(),"cwd":{"type":"string"},"restart_on_boot":{"type":"boolean"}}),vec!["kind","script"]),
-        (Kind::SlackMessage,"slack.post_message","Deliver to an explicit Slack thread for a proactive Slack Session.",json!({"channel_id":string(),"thread_ts":string(),"text":string()}),vec!["channel_id","thread_ts","text"]),
-        (Kind::SlackFile,"slack.post_file","Upload a file to an explicit Slack thread for a proactive Slack Session.",json!({"channel_id":string(),"thread_ts":string(),"file_path":string(),"initial_comment":{"type":"string"}}),vec!["channel_id","thread_ts","file_path"]),
-        (Kind::SlackHistory,"slack.history","Read an explicit Slack thread for a proactive Slack Session.",json!({"channel_id":string(),"thread_ts":string(),"limit":{"type":"integer","minimum":1,"maximum":100}}),vec!["channel_id","thread_ts"]),
     ];
     definitions.extend(service::definitions());
     definitions.extend(pages::definitions());
@@ -193,6 +177,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
         };
         registry.register(Arc::new(ToolInstance::new(ToolContract{name:name.into(),version:ToolVersion::new(if matches!(kind,Kind::Mcp){"gateway-mcp-3"}else if matches!(kind,Kind::ServiceOp(_)){"gateway-service-3"}else{"gateway-2"})?,initial_description:description.into(),detailed_description:if matches!(kind,Kind::Service|Kind::ServiceOp(_)){format!("{description} Session identity is supplied by the runtime.")}else{format!("{description} Session identity comes from the runtime and cannot be overridden. Use tool.help for the current TypeScript parameter type.")},input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(GatewayTool{kind,base:base.clone(),http:http.clone()}),compatibility)?.with_activity(move |args| kind.activity(args)).advertise(name != "chat.notify" && !matches!(kind,Kind::Mcp|Kind::Service|Kind::Message|Kind::File|Kind::History|Kind::Workers|Kind::Assign|Kind::Tasks|Kind::Rework))));
     }
+    slack::register(registry, &base)?;
     namespaced::register(registry, &base, &http)?;
     channels::register(registry, &base, &http)?;
     Ok(())
@@ -252,26 +237,8 @@ impl GatewayTool {
         let key = binding["sessionKey"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Session binding missing"))?;
-        let explicit = matches!(
-            self.kind,
-            Kind::SlackMessage | Kind::SlackFile | Kind::SlackHistory
-        );
-        if explicit {
-            anyhow::ensure!(
-                binding["platform"] == "slack",
-                "Session is not bound to Slack"
-            )
-        }
-        let channel = if explicit {
-            args["channel_id"].clone()
-        } else {
-            binding["conversationId"].clone()
-        };
-        let thread = if explicit {
-            args["thread_ts"].clone()
-        } else {
-            binding["rootMessageId"].clone()
-        };
+        let channel = binding["conversationId"].clone();
+        let thread = binding["rootMessageId"].clone();
         let mut body = json!({"sessionKey":key,"platform":binding["platform"],"conversationId":channel,"rootMessageId":thread});
         let request = if binding["platform"] == "local_gui"
             && matches!(self.kind, Kind::Message | Kind::File)
@@ -359,17 +326,15 @@ impl GatewayTool {
             }
             Kind::Notify => self.http.post(format!("{}/notify", self.base))
                 .json(&json!({"sessionKey":key,"text":args["text"]})),
-            Kind::Message | Kind::SlackMessage => {
+            Kind::Message => {
                 body["text"] = args["text"].clone();
-                if !explicit {
-                    body["kind"] = args["kind"].clone();
-                    body["reason"] = args["reason"].clone();
-                }
+                body["kind"] = args["kind"].clone();
+                body["reason"] = args["reason"].clone();
                 self.http
                     .post(format!("{}/chat/post-message", self.base))
                     .json(&body)
             }
-            Kind::File | Kind::SlackFile => {
+            Kind::File => {
                 body["filePath"] = args["file_path"].clone();
                 body["attachmentId"] = args["attachment_id"].clone();
                 body["requestId"] = json!(context.invocation_id);
@@ -379,7 +344,7 @@ impl GatewayTool {
                     .post(format!("{}/chat/post-file", self.base))
                     .json(&body)
             }
-            Kind::History | Kind::SlackHistory => {
+            Kind::History => {
                 let mut query = vec![
                     ("session_key", key.to_owned()),
                     (

@@ -371,7 +371,8 @@ impl ProfileResolver for ProfileStore {
             },
             execution.bearer,
         )
-        .with_image_input(execution.image_input))
+        .with_image_input(execution.image_input)
+        .with_single_system_message(execution.single_system_message))
     }
 }
 
