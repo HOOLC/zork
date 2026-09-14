@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+zork-slack = { path = "../slack" }
 tokio.workspace = true
 ulid.workspace = true
 anyhow = "1"

@@ -221,6 +221,11 @@ pub fn router(state: AppState) -> Router {
         .route("/chat/post-message", post(post_message))
         .route("/chat/post-file", post(post_file))
         .route("/v1/tools/context", get(tool_context))
+        .route(
+            "/v1/slack/connections",
+            get(crate::slack_tools::connections),
+        )
+        .route("/v1/slack/forward", post(crate::slack_tools::forward))
         .route("/v1/browser/command", post(crate::browser::tool))
         .route("/v1/services", post(crate::shared_services::tool))
         .route("/v1/pages", post(crate::pages::tool))

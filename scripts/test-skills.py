@@ -70,13 +70,28 @@ def main():
                         catalog = request(node.url, "GET", endpoint)["catalog"]
                         assert len([s for s in catalog["skills"] if s["name"] == "build"]) == 3, catalog
                         assert any(s["name"] == "skill-management" for s in catalog["skills"])
+                        assert any(s["name"] == "slack" for s in catalog["skills"])
                         assert {s["description"] for s in catalog["skills"] if s["name"] == "build"} == {"Agent build", "Device build", "Shared build"}
                         assert len(catalog["diagnostics"]) == 0
-                        session_id = request(node.url, "POST", "/v1/node/agents/leader/open", {})["session_id"]
+                        opened = request(node.url, "POST", "/v1/node/agents/leader/open", {})
+                        chat_id = opened["chat_id"]
+                        session_id = opened["agent"]["session_id"]
+
+                        def history():
+                            try:
+                                return request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
+                            except HTTPError as error:
+                                if error.code == 404:
+                                    return {"items": []}
+                                raise
+
+                        def send(content):
+                            import uuid
+                            request(node.url, "POST", f"/v1/im/sessions/{chat_id}/messages", {"request_id": str(uuid.uuid4()), "content": content})
 
                         def read_skill(expected, path):
-                            request(node.agent_url, "POST", f"/sessions/{session_id}/mailbox", {"content": json.dumps({"fake_tool": {"name": "file.read", "input": {"path": str(path)}}})})
-                            fixture.wait(lambda: expected in json.dumps(request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")), "file.read result " + expected)
+                            send(json.dumps({"fake_tool": {"name": "file.read", "input": {"path": str(path)}}}))
+                            fixture.wait(lambda: expected in json.dumps(history()), "file.read result " + expected)
 
                         read_skill("AGENT_BODY", node.root / "agent-skills/build/SKILL.md")
                         request(node.url, "PUT", endpoint, {"paths": []})
@@ -84,18 +99,18 @@ def main():
                         node.config["skills"]["paths"] = []
                         config_path.write_text(json.dumps(node.config))
                         read_skill("SHARED_BODY", node.root / "skills/build/SKILL.md")
-                        history = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
-                        notices = [notice for item in history["items"] for notice in item["event"].get("notices", []) if notice.startswith("Current skill catalog")]
+                        snapshot = history()
+                        notices = [notice for item in snapshot["items"] for notice in item["event"].get("notices", []) if notice.startswith("Current skill catalog")]
                         assert len(notices) == 3, notices
                         assert "Other device" not in "\n".join(notices)
 
                         def tool(name, arguments, outcome="succeeded"):
-                            before = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
+                            before = history()
                             seen = {item["event_id"] for item in before["items"]}
-                            request(node.agent_url, "POST", f"/sessions/{session_id}/mailbox", {"content": json.dumps({"fake_tool": {"name": name, "input": arguments}})})
+                            send(json.dumps({"fake_tool": {"name": name, "input": arguments}}))
                             def result():
-                                history = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
-                                return next((item["event"]["result"] for item in history["items"] if item["event_id"] not in seen and item["event"].get("kind") == "tool_result" and item["event"]["result"]["tool"] == name), None)
+                                snapshot = history()
+                                return next((item["event"]["result"] for item in snapshot["items"] if item["event_id"] not in seen and item["event"].get("kind") == "tool_result" and item["event"]["result"]["tool"] == name), None)
                             result = fixture.wait(result, "tool result " + name)
                             assert result["outcome"] == outcome, result
                             return result["data"]
@@ -103,7 +118,9 @@ def main():
                         guide_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "skill-management")
                         assert Path(guide_path).is_file()
                         guide = tool("file.read", {"path": guide_path})
-                        assert "expected_hash" in guide["content"]
+                        assert guide["content"] == Path(guide_path).read_text()
+                        slack_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "slack")
+                        assert tool("file.read", {"path": slack_path})["content"] == Path(slack_path).read_text()
                         added = tool("skill.sources", {"action": "add", "path": "agent-skills"})
                         assert added["agent_id"] == "leader" and added["agent_paths"] == ["agent-skills"]
                         content = "---\nname: managed\ndescription: Managed skill\n---\nManaged body\n"

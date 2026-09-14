@@ -349,7 +349,7 @@ async fn format_event(
     };
     let payload = json!({
         "origin": {
-            "connection_id": connection.config.id,
+            "connect_id": connection.config.id,
             "connection_name": connection.config.name,
             "provider": connection.config.provider_name(),
         },
@@ -384,7 +384,7 @@ async fn format_proactive_event(connection: &ConnectionRuntime, event: &InboundE
     };
     let payload = json!({
         "origin": {
-            "connection_id": connection.config.id,
+            "connect_id": connection.config.id,
             "connection_name": connection.config.name,
             "provider": connection.config.provider_name(),
         },

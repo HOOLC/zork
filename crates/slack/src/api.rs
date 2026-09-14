@@ -7,9 +7,9 @@ use tracing::warn;
 /// encoding matches the Slack Web API shape.
 #[derive(Clone)]
 pub struct SlackApi {
-    http: Client,
-    bot_token: String,
-    api_base_url: String,
+    pub(super) http: Client,
+    pub(super) bot_token: String,
+    pub(super) api_base_url: String,
 }
 
 impl SlackApi {

@@ -55,6 +55,7 @@ fn aimux_failure(stage: &'static str, error: AiMuxError) -> ModelError {
     let message = error.to_string();
     let invalid_history = status_code == Some(400)
         && (message.contains("No tool output found for tool call")
+            || message.contains("System message must be at the beginning")
             || message.contains(
                 "The `reasoning_text` in the thinking mode must be passed back to the API",
             ));
@@ -802,7 +803,34 @@ fn prompt_from_transcript(
 ) -> Result<LanguageModelPrompt, ModelError> {
     let mut prompt = Vec::new();
     let mut pending_images = Vec::new();
+    // Opt-in endpoint policy; never infer chat-template behavior from model names.
+    // Merge only the immutable leading block, preserving subsequent wire prefixes.
+    let leading_systems =
+        if execution.api() == "openai-completions" && execution.single_system_message() {
+            transcript
+                .iter()
+                .take_while(|message| message.role == TranscriptRole::System)
+                .count()
+        } else {
+            0
+        };
     for (index, message) in transcript.iter().enumerate() {
+        if index < leading_systems {
+            if index == 0 {
+                prompt.push(LanguageModelPromptMessage {
+                    role: Role::System,
+                    content: vec![ContentPart::text(
+                        transcript[..leading_systems]
+                            .iter()
+                            .map(|message| message.content.as_ref())
+                            .collect::<Vec<_>>()
+                            .join("\n\n"),
+                    )],
+                    provider_options: None,
+                });
+            }
+            continue;
+        }
         let role = match message.role {
             TranscriptRole::System => Role::System,
             TranscriptRole::User => Role::User,
@@ -1148,6 +1176,72 @@ mod tests {
             panic!("tool result")
         };
         assert_eq!(result["value"][1]["source"]["data"], "aW1n");
+    }
+
+    #[test]
+    fn chat_completions_merges_only_leading_system_messages_and_keeps_prefix() {
+        let message = |role, content: &str| ProviderMessage {
+            role,
+            content: content.into(),
+            images: Vec::new(),
+            is_error: false,
+            runtime_generated: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            provider_context: None,
+        };
+        let mut transcript = vec![
+            message(TranscriptRole::System, "Session instructions"),
+            message(TranscriptRole::System, "Tool catalog"),
+            message(TranscriptRole::User, "New task"),
+        ];
+        let original = execution("openai-completions", true);
+        let unchanged = prompt_from_transcript(&transcript, &original).unwrap();
+        assert_eq!(unchanged.len(), 3);
+        assert_eq!(unchanged[0].role, Role::System);
+        assert_eq!(unchanged[1].role, Role::System);
+        let execution = original.with_single_system_message(true);
+        let first = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].role, Role::System);
+        assert!(
+            matches!(&first[0].content[0], ContentPart::Text { text, .. } if text == "Session instructions\n\nTool catalog")
+        );
+        assert_eq!(first[1].role, Role::User);
+        transcript.push(message(TranscriptRole::Assistant, "Done"));
+        transcript.push(message(TranscriptRole::User, "Next task"));
+        let second = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&second[..first.len()]).unwrap()
+        );
+        assert_eq!(transcript.len(), 5);
+        // Do not hoist a later system message into the already-sent prefix.
+        transcript.push(message(TranscriptRole::System, "Late system message"));
+        let late = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(late.last().unwrap().role, Role::System);
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&late[..first.len()]).unwrap()
+        );
+    }
+
+    #[test]
+    fn system_position_rejection_is_permanent_only_for_bad_request() {
+        for (status, retryable) in [(400, false), (502, true)] {
+            let error = AiMuxError::ApiCall(aimux_core::ApiCallError {
+                status_code: Some(status),
+                message: "System message must be at the beginning.".into(),
+                is_retryable: true,
+                ..Default::default()
+            });
+            let ModelError::ProviderFailed(failure) =
+                aimux_failure("openai.completions.stream_start", error)
+            else {
+                panic!("expected provider failure");
+            };
+            assert_eq!(failure.retryable, retryable);
+        }
     }
 
     fn execution(api: &str, streaming: bool) -> ProfileExecution {

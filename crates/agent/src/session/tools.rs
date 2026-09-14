@@ -12,8 +12,10 @@ use super::ports::{Clock, FilePage, FileSystem, ProcessRequest, ProcessSpawner, 
 
 pub mod activity;
 mod arguments;
+mod namespace;
 mod parameters;
 pub use activity::{ActivityTarget, ToolActivity};
+pub use namespace::ToolNamespace;
 
 pub const PROVIDER_CALL_NAME: &str = "call";
 
@@ -109,7 +111,9 @@ pub enum DynamicCallError {
     Invalid(String),
     #[error("dynamic call tool must not be empty")]
     EmptyTool,
-    #[error("call requires non-empty top-level action (what this invocation does), alongside tool and arguments. No tool was executed. Retry with an action description in the user's language; keep the original tool arguments inside arguments.")]
+    #[error(
+        "call requires non-empty top-level action (what this invocation does), alongside tool and arguments. No tool was executed. Retry with an action description in the user's language; keep the original tool arguments inside arguments."
+    )]
     DescriptionsRequired,
 }
 
@@ -342,16 +346,12 @@ struct RegistryEntry {
 #[derive(Default)]
 pub struct ToolRegistry {
     entries: RwLock<BTreeMap<String, RegistryEntry>>,
+    namespaces: RwLock<BTreeMap<String, namespace::NamespaceEntry>>,
 }
 
 impl ToolRegistry {
     pub fn activity(&self, name: &str, arguments: &Value) -> ToolActivity {
-        let instance = self
-            .entries
-            .read()
-            .expect("tool registry lock poisoned")
-            .get(name)
-            .and_then(|entry| entry.current.clone());
+        let instance = self.instance(name);
         instance.map_or_else(ToolActivity::default, |tool| (tool.activity)(arguments))
     }
     pub fn register(&self, instance: Arc<ToolInstance>) {
@@ -378,8 +378,7 @@ impl ToolRegistry {
     }
 
     pub fn resolve(&self, name: &str, known: Option<&ToolVersion>) -> ToolResolution {
-        let entries = self.entries.read().expect("tool registry lock poisoned");
-        let Some(instance) = entries.get(name).and_then(|entry| entry.current.as_ref()) else {
+        let Some(instance) = self.instance(name) else {
             return ToolResolution::Unavailable;
         };
         if known == Some(&instance.contract().version) {
@@ -392,24 +391,25 @@ impl ToolRegistry {
     }
 
     pub fn compatibility(&self, name: &str) -> Option<Arc<dyn ToolCompatibility>> {
-        self.entries
+        if let Some(entry) = self
+            .entries
             .read()
             .expect("tool registry lock poisoned")
             .get(name)
-            .map(|entry| entry.compatibility.clone())
+        {
+            return Some(entry.compatibility.clone());
+        }
+        self.namespace_instance(name, true)
+            .map(|tool| tool.compatibility())
     }
 
     pub fn current_contract(&self, name: &str) -> Option<ToolContract> {
-        self.entries
-            .read()
-            .expect("tool registry lock poisoned")
-            .get(name)
-            .and_then(|entry| entry.current.as_ref())
-            .map(|instance| instance.contract().clone())
+        self.instance(name).map(|tool| tool.contract().clone())
     }
 
     pub fn initial_catalog(&self) -> Vec<ToolIntroduction> {
-        self.entries
+        let mut catalog: Vec<_> = self
+            .entries
             .read()
             .expect("tool registry lock poisoned")
             .values()
@@ -420,42 +420,47 @@ impl ToolRegistry {
                 version: instance.contract().version.clone(),
                 description: instance.contract().initial_description.clone(),
             })
-            .collect()
+            .collect();
+        catalog.extend(self.namespace_introductions());
+        catalog.sort_by(|a, b| a.name.cmp(&b.name));
+        catalog
     }
 
     pub fn changes(&self, known: &BTreeMap<String, ToolVersion>) -> Vec<ToolChange> {
-        let entries = self.entries.read().expect("tool registry lock poisoned");
-        let mut changes = Vec::new();
-        for (name, entry) in entries.iter() {
-            let Some(instance) = &entry.current else {
-                if known.contains_key(name) {
-                    changes.push(ToolChange::Removed { name: name.clone() });
+        let mut current: BTreeMap<_, _> = self
+            .initial_catalog()
+            .into_iter()
+            .map(|i| (i.name, i.version))
+            .collect();
+        // Only resolve exact dynamic names the session already knows. Merely
+        // describing a namespace does not enumerate or retain its method space.
+        for name in known.keys() {
+            if !current.contains_key(name) {
+                if let Some(contract) = self.current_contract(name) {
+                    current.insert(name.clone(), contract.version);
                 }
-                continue;
-            };
-            if !instance.advertised && !known.contains_key(name) {
-                continue;
             }
+        }
+        let mut changes = Vec::new();
+        for (name, version) in &current {
             match known.get(name) {
                 None => changes.push(ToolChange::Added {
                     name: name.clone(),
-                    version: instance.contract().version.clone(),
+                    version: version.clone(),
                 }),
-                Some(version) if version != &instance.contract().version => {
-                    changes.push(ToolChange::Updated {
-                        name: name.clone(),
-                        version: instance.contract().version.clone(),
-                    });
-                }
+                Some(old) if old != version => changes.push(ToolChange::Updated {
+                    name: name.clone(),
+                    version: version.clone(),
+                }),
                 Some(_) => {}
             }
         }
         for name in known.keys() {
-            if !entries.contains_key(name) {
+            if !current.contains_key(name) {
                 changes.push(ToolChange::Removed { name: name.clone() });
             }
         }
-        changes.sort_by(|left, right| left.name().cmp(right.name()));
+        changes.sort_by(|a, b| a.name().cmp(b.name()));
         changes
     }
 }
@@ -590,6 +595,8 @@ impl ToolChange {
 pub enum ToolDefinitionError {
     #[error("tool name must not be empty")]
     EmptyName,
+    #[error("namespace prefix must end in a dot and advertise prefix.*")]
+    InvalidNamespace,
     #[error("tool version must not be empty")]
     EmptyVersion,
     #[error("tool initial description must not be empty")]

@@ -119,7 +119,6 @@ ToolResult 的文本与结构化业务数据只有一个规范 JSON 载荷 `data
 
 模型执行配置读取 capabilities.input。未启用 image 时不发送图片，并在工具文本中明确说明图片未发送；Responses/Codex 使用 function_call_output 的 input_image，Anthropic 使用 tool_result 内的 image。Chat Completions 的图片通过紧随完整 tool-result 块的 user 内容传递，这是传输适配，领域记录仍为 ToolResult。上下文预算不把 base64 当作文本 token，使用每图 8192 token 的保守估计，后续以 provider 实际 usage 校准。
 
-
 ### 4.4 持久确认（`PERSIST-03`）
 
 一个批次的全部行写入并且 `sync_data` 成功后，才能确认持久化。`write` 或 `flush` 成功不构成持久确认。
@@ -230,6 +229,8 @@ runner 可以向 ModelGateway 提供 session 或稳定 key 的资源释放建议
 
 投影通过 `ProviderMessage.runtime_generated` 明确标记合成调用，不能从调用名称、ID 前缀或缺失 provider context 推断来源。DeepSeek Responses 在思考模式下要求这类调用也携带非空 `reasoning_text`；适配器仅对带标记的调用添加固定运行时说明，不填补或覆盖真实模型 reasoning。其他供应商及关闭思考时不添加该说明。兼容说明只存在于请求中，不写入原始 provider output；旧事件重放由同一投影规则生成标记，无需改写持久记录。
 
+profile 模型的 `single_system_message` 默认关闭，只有显式开启才在 Chat Completions 中合并开头连续的系统消息。不按模型名、供应商或地址推断，不移动后续消息，不改持久记录；后续请求保持已发送前缀稳定。
+
 普通调用及结果按领域 invocation ID 在所属调用块内匹配；不得跨整个 generation 用 provider ID 回找并重排结果。已经以占位关闭的 end 也只能追加后续通知。
 
 provider wire call ID 只负责 provider 协议配对。每个 provider call 同时生成 zork-agent ToolInvocation ULID；state、ToolExecutor、ToolResult 和 fold 只使用内部 ULID。provider projection 从已匹配的调用声明中重新取得 provider 原始 ID，不依赖 ModelGateway 内存 continuation。
@@ -304,7 +305,7 @@ provider 即使违反该固定 schema，原始响应也仍按 `StepCompleted` �
 
 ### 8.2 ToolRegistry（`TOOL-02`、`TOOL-03`、`TOOL-04`、`TOOL-08`、`TOOL-09`）
 
-ToolRegistry 是进程级共享目录。每个完整逻辑工具独立注册、独立版本化，点号前缀只是命名空间。
+ToolRegistry 是进程级共享目录。完整名称独立版本化；宿主可注册纯命名空间解析器，按需生成契约和实例。精确注册项（含已移除项）优先，其次选择最长前缀。解析不得执行 I/O，也不枚举或缓存外部 API 全量表。帮助、版本检查、执行、恢复及结果解码沿既有工具链进行。
 
 一个 registry entry 统一保存：
 
@@ -375,7 +376,7 @@ provider 内部重试属于同一个 step。ModelGateway 返回最终错误后�
 
 只有百分之百确定重试无法解决的 provider 错误才不重试；其他错误默认退避重试十个完整 step。耗尽后把当前 turn 结束为 Failed，但 session 保持可用，新输入可以开启新 turn。
 
-HTTP 400 明确报告缺少工具结果，或 `reasoning_text` 必须回传时，属于不能靠重复发送修复的历史结构错误，直接结束当前 turn。此判断不扩大到所有 400；上下文溢出仍按上下文恢复规则处理，限流和服务端故障仍允许重试。
+HTTP 400 明确报告缺少工具结果、`reasoning_text` 必须回传或系统消息位置不合法时，属于不能靠重复发送修复的历史结构错误，直接结束当前 turn。此判断不扩大到所有 400；上下文溢出仍按上下文恢复规则处理，限流和服务端故障仍允许重试。
 
 ## 10. Supervisor、Deadline 与恢复
 
@@ -571,7 +572,6 @@ event ID、event/segment 编解码、query 游标、ToolRegistry、ToolExecutor 
 - 启动基准使用十万个真实 session 目录，fixture 构造不计入测量；精准恢复不超过 0.1 秒，请求优先恢复不超过 1 秒，后台完整检查不超过 10 秒，独立进程峰值 RSS 不超过 512 MiB。
 - 正式随机查询门槛使用单个 131072-event session，执行 1024 次 before/after 查询，每次返回 1024 events；串行和 8-worker 吞吐都不得低于 20 queries/s，独立进程峰值 RSS 不超过 256 MiB。
 - 极限查询压测使用 100 sessions × 每 session 100 fragments × 每 fragment 至少 16 MiB 逻辑 event 数据，执行 10000 次确定性随机访问，随机选择 session、fragment、cursor、before/after 和 1..=1000 返回上限；报告 1/2/4/8/主机最大 workers 的吞吐、p50/p95/p99，独立进程峰值 RSS 不超过 256 MiB。fixture 构造不计入查询吞吐。
-
 
 ## 2026-09-09 执行与资源补充
 
