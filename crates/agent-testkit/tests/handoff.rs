@@ -321,6 +321,14 @@ async fn token_anchor_handoff_carries_live_tools_and_delivers_their_result_as_a_
     pending_slow
         .succeed(json!({"message": "late work completed", "value": "one"}))
         .unwrap();
+    world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .values()
+                .any(|pending| pending.result.is_some())
+        })
+        .await;
     generation_two
         .respond(Ok(outcome("I received the successor context.", [], 10)))
         .unwrap();

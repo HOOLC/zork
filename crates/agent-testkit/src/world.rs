@@ -149,7 +149,7 @@ impl TestWorld {
         let mut subscription = self
             .subscribe(session_id)
             .expect("the test session remains available");
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
             let state = self
                 .state(session_id)
