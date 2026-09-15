@@ -13488,8 +13488,8 @@ dependencies = [
  "tokio",
  "ulid",
  "zork-agent",
- "zork-slack",
  "zork-client-types",
+ "zork-slack",
 ]
 
 [[package]]
@@ -13638,42 +13638,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zork-station"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "blake3",
- "chrono",
- "futures-util",
- "jsonschema",
- "libc",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "tracing-subscriber",
- "ulid",
- "zork-agent",
- "zork-agent-api",
- "zork-agent-gateway-tools",
- "zork-agent-http",
- "zork-browser",
- "zork-client-core",
- "zork-client-types",
- "zork-config",
- "zork-mesh",
- "zork-notify",
- "zork-profile",
- "zork-slack",
-]
-
-[[package]]
 name = "zork-gh"
 version = "0.1.0"
 dependencies = [
@@ -13814,6 +13778,43 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "zork-station"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "blake3",
+ "chrono",
+ "futures-util",
+ "jsonschema",
+ "libc",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "zork-agent",
+ "zork-agent-api",
+ "zork-agent-gateway-tools",
+ "zork-agent-http",
+ "zork-browser",
+ "zork-client-core",
+ "zork-client-types",
+ "zork-config",
+ "zork-mesh",
+ "zork-notify",
+ "zork-profile",
+ "zork-slack",
 ]
 
 [[package]]
