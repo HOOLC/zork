@@ -608,8 +608,18 @@ async fn exhausted_provider_retries_fail_the_turn_without_empty_handoff() {
     }
 
     let state = world
-        .wait_for_state(&session_id, |state| {
-            state.last_turn_outcome == Some(TurnOutcome::Failed)
+        // Remaining mail may immediately start another turn and clear the
+        // transient outcome. The failed turn's committed event is authoritative.
+        .wait_for_state(&session_id, |_| {
+            world.events(&session_id).iter().any(|event| {
+                matches!(
+                    event.event,
+                    SessionEvent::TurnFinished {
+                        outcome: TurnOutcome::Failed,
+                        ..
+                    }
+                )
+            })
         })
         .await;
     assert_eq!(state.generation.number, 1);
