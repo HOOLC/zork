@@ -397,6 +397,7 @@ impl ImEntryGateway {
                 self.db.realtime.notify(crate::realtime::ACTIVITY);
             }
             Some("slack") => {
+                let rendered_status = slack_rendered_status(&status_event, rendered_status);
                 if let Some(runtime) = self.connections.runtime(connection_id).await {
                     runtime
                         .status
@@ -464,6 +465,14 @@ impl ImEntryGateway {
     }
 }
 
+fn slack_rendered_status<'a>(status_event: &Value, rendered_status: &'a str) -> &'a str {
+    if status_event.get("state").and_then(Value::as_str) == Some("clear") {
+        ""
+    } else {
+        rendered_status
+    }
+}
+
 pub fn visible_message_json(message: &VisibleMessageRow) -> Value {
     json!({
         "type": "message",
@@ -499,6 +508,18 @@ fn validate_destination(
 mod tests {
     use super::*;
     use crate::db::EnsureSession;
+
+    #[test]
+    fn idle_slack_snapshot_cannot_render_as_working() {
+        assert_eq!(
+            slack_rendered_status(&json!({"state": "clear"}), "Working..."),
+            ""
+        );
+        assert_eq!(
+            slack_rendered_status(&json!({"state": "thinking"}), "Working..."),
+            "Working..."
+        );
+    }
 
     #[tokio::test]
     async fn local_gui_and_unknown_provider_use_the_same_explicit_dispatch_boundary() {
