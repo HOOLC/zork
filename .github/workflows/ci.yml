@@ -33,7 +33,6 @@ jobs:
           path: target
           key: ci-target-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
 
-
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
