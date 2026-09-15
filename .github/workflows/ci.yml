@@ -27,6 +27,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Restore CI target cache
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ci-target-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+
 
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
@@ -70,9 +76,6 @@ jobs:
           pnpm design:check
           pnpm design:test
           pnpm design:build
-
-      - name: Build
-        run: pnpm build
 
       - name: Run tests
         run: pnpm test
