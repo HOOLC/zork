@@ -5,6 +5,13 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+    inputs:
+      seed_cache:
+        description: Populate default-branch CI caches before enforcing the normal budget
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,7 +24,7 @@ jobs:
   frontend:
     name: Frontend and runtime E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -31,8 +38,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: ci-target-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
@@ -88,7 +96,7 @@ jobs:
   backend:
     name: Rust workspace
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -102,8 +110,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: ci-target-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v2-backend-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            ci-target-v2-backend-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
@@ -123,7 +132,7 @@ jobs:
   integration:
     name: Rust integration contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -137,8 +146,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: ci-target-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v2-integration-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            ci-target-v2-integration-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
