@@ -1217,6 +1217,16 @@ async fn auto_wait_timeout_projects_pending_work_then_delivers_the_late_result()
             "value": "eventual",
         }))
         .unwrap();
+    // Completing the fixture sends a result; the runner must record it before
+    // the model response is released and the next request can start.
+    world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .values()
+                .any(|pending| pending.invocation.tool == "test.late" && pending.result.is_some())
+        })
+        .await;
     after_timeout
         .respond_text("I will incorporate the late result.")
         .unwrap();

@@ -8,7 +8,7 @@ description: 为 zork 代码改动选择并执行回归验证，或诊断构建�
 以下路径均相对仓库根目录。先遵循 `AGENTS.md`，再读取 `package.json`、当前相关 workflow 和改动模块的测试入口。以当前脚本和实现核对文档，历史状态文档不是现行 CI 清单。
 
 - 使用 `package.json` 的 pnpm 版本和冻结锁文件，Cargo 使用 `--locked`。工作区依赖 feature 调整另读 `docs/rust-build-cache.md`，避免无意引入编译变体。
-- Rust 逻辑先验证受影响 package；后端集成使用 `pnpm test:rust`。JS 行为用对应测试或 `pnpm test`。需要完整 CI 验收时按 `.github/workflows/ci.yml` 执行格式、lint、build 和测试，不声称未运行的项目通过。
+- Rust 逻辑先验证受影响 package；后端集成使用 `pnpm test:rust`。JS 行为用对应测试或 `pnpm test`。完整 CI 以 `.github/workflows/ci.yml` 的事件条件为准：PR 运行行为回归，静态检查放在本地 pre-commit 与 main；删去重复或低价值检查，复用同一组运行时 fixture 构建。不声称未运行的项目通过。
 - 客户端功能或 core/UI 边界改动先运行 `python3 scripts/check-client-boundary.py`，并按 [zork-client-boundary](../zork-client-boundary/SKILL.md) 复查入口、业务操作、状态发布和 UI 订阅的完整链路，再选择相关 core 行为与平台映射验证。共享组件依赖检查或界面测试通过，不能证明应用层没有业务逻辑、网络请求或第二份业务状态；纯视觉调整不因此扩大为全套业务测试。
 - 进程测试使用构建产物。运行前先重建涉及的二进制，通常为 `cargo build --locked -p zork -p zork-station -p zork-agent-server -p zork-gh`。不要用旧产物验证新源码。
 - Station/Agent 嵌入、生命周期、更新或消息边界改动：读取 `docs/zork-agent-status.md` 最新对应段落，再选择 `test/merged-runtime.e2e.test.ts`、`test/gateway-mailbox.e2e.test.ts`、`crates/zork-gui/tests/test_gateway_entry.py`、`scripts/test-embedded-gateway.py`、`scripts/test-native-upgrade.py`、`scripts/test-gateway-upgrade.py` 中相关回归。Station 内嵌 Agent；独立 Agent binary 的存在不表示生产 supervisor 有第二个 Agent 子进程。
