@@ -1,5 +1,14 @@
 pre-commit:
-  parallel: false
+  parallel: true
   commands:
-    check:
+    js-check:
       run: vp staged
+    rust-format:
+      glob: "**/*.rs"
+      run: cargo fmt --all -- --check
+    client-boundary:
+      glob: "{crates/zork-client-core,crates/zork-ui,crates/zork-gui-web}/**/*"
+      run: python3 scripts/check-client-boundary.py
+    design-check:
+      glob: "apps/zork-design/**/*"
+      run: pnpm design:check && pnpm design:test

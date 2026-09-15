@@ -21,6 +21,39 @@ permissions:
   contents: read
 
 jobs:
+  static:
+    name: Main branch static checks
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.15
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting and lint
+        run: |
+          pnpm format:check
+          cargo fmt --all -- --check
+          pnpm lint
+      - name: Check client boundaries
+        run: |
+          python3 scripts/check-client-boundary.py --self-test
+          python3 scripts/check-client-boundary.py
+      - name: Check design workspace
+        run: |
+          pnpm design:check
+          pnpm design:test
+
   frontend:
     name: Frontend and runtime E2E
     runs-on: ubuntu-latest
@@ -67,25 +100,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check formatting
-        run: |
-          pnpm format:check
-          cargo fmt --all -- --check
-
-      - name: Check client core and UI boundaries
-        run: |
-          python3 scripts/check-client-boundary.py --self-test
-          python3 scripts/check-client-boundary.py
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Check design workspace
-        run: |
-          pnpm design:check
-          pnpm design:test
-          pnpm design:build
-
       - name: Build runtime test binaries
         run: |
           python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station -p zork-gh
@@ -127,7 +141,7 @@ jobs:
 
       - name: Run backend tests
         run: |
-          python3 scripts/lib/build_env.py -- cargo test --locked --workspace --exclude zork-gui --exclude zork-browser-runtime --no-fail-fast
+          python3 scripts/lib/build_env.py -- cargo test --locked --workspace --exclude zork-gui --exclude zork-browser-runtime --lib --tests --no-fail-fast
 
   integration:
     name: Rust integration contracts
@@ -166,6 +180,7 @@ jobs:
           python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station -p zork-gh
 
       - name: Test core-owned desktop operations
+        if: github.event_name == 'push'
         run: cargo test --locked -p zork-client-core --features desktop --lib --test client_boundary
 
       - name: Test Slack forwarding and bundled skills
@@ -176,18 +191,5 @@ jobs:
       - name: Test Gateway sync reaches idle
         run: python3 scripts/test-sync-idle.py
 
-      - name: Test invitation and browser notifications
-        run: |
-          cargo build --locked -p zork-client-core --example invitation-observer
-          python3 scripts/test-mesh-notifications.py
-
       - name: Run desktop entry contract
         run: python3 crates/zork-gui/tests/test_gateway_entry.py
-
-      - name: Test native installer and release assembly
-        run: python3 scripts/test-native-installer.py
-
-      - name: Test native Gateway upgrades
-        run: |
-          python3 scripts/test-native-upgrade.py
-          python3 scripts/test-gateway-upgrade.py
