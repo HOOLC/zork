@@ -37,6 +37,7 @@ ulid = "1.2"
 getrandom = { version = "0.3", features = ["std"] }
 futures-util = { version = "0.3.31", features = ["channel"] }
 reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring"] }
 serde = { version = "1.0.228", features = ["alloc", "derive", "rc"] }
 tokio = { version = "1.48.0", features = ["full", "test-util"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
