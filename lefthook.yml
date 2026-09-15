@@ -1,5 +1,25 @@
 pre-commit:
-  parallel: false
+  parallel: true
   commands:
-    check:
+    js-check:
       run: vp staged
+    format-check:
+      glob:
+        - "*.{json,md,yml,yaml}"
+        - "**/*.{json,md,yml,yaml}"
+      run: vp fmt --check {staged_files}
+    rust-format:
+      glob: "**/*.rs"
+      run: cargo fmt --all -- --check
+    client-boundary:
+      glob:
+        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui,crates/zork-gui-web}/*"
+        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui,crates/zork-gui-web}/**/*"
+        - "apps/android/app/src/main/java/**/*.kt"
+        - "scripts/check-client-boundary.py"
+      run: python3 scripts/check-client-boundary.py
+    design-check:
+      glob:
+        - "apps/zork-design/*"
+        - "apps/zork-design/**/*"
+      run: pnpm design:check && pnpm design:test
