@@ -535,6 +535,14 @@ async fn exhausted_handoff_document_attempts_create_a_successor_without_the_docu
             "value": "preserve",
         }))
         .unwrap();
+    world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .get(&pending_id)
+                .is_some_and(|pending| pending.result.is_some())
+        })
+        .await;
     successor
         .respond_text("I will use the recovered result.")
         .unwrap();
