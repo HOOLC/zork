@@ -69,6 +69,7 @@ jobs:
           key: ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
@@ -161,6 +162,7 @@ jobs:
             ci-target-v3-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-backend-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
