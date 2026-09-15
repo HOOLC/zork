@@ -535,6 +535,14 @@ async fn exhausted_handoff_document_attempts_create_a_successor_without_the_docu
             "value": "preserve",
         }))
         .unwrap();
+    world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .get(&pending_id)
+                .is_some_and(|pending| pending.result.is_some())
+        })
+        .await;
     successor
         .respond_text("I will use the recovered result.")
         .unwrap();
@@ -600,8 +608,18 @@ async fn exhausted_provider_retries_fail_the_turn_without_empty_handoff() {
     }
 
     let state = world
-        .wait_for_state(&session_id, |state| {
-            state.last_turn_outcome == Some(TurnOutcome::Failed)
+        // Remaining mail may immediately start another turn and clear the
+        // transient outcome. The failed turn's committed event is authoritative.
+        .wait_for_state(&session_id, |_| {
+            world.events(&session_id).iter().any(|event| {
+                matches!(
+                    event.event,
+                    SessionEvent::TurnFinished {
+                        outcome: TurnOutcome::Failed,
+                        ..
+                    }
+                )
+            })
         })
         .await;
     assert_eq!(state.generation.number, 1);

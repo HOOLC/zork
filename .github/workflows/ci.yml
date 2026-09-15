@@ -62,18 +62,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Restore CI target cache
-        uses: actions/cache@v4
+        id: target
+        uses: actions/cache/restore@v4
         with:
           path: target
           key: ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
+          manifest-key: zork-ci-runtime-${{ runner.os }}-${{ runner.arch }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
           s3-region: auto
           s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
@@ -98,12 +101,19 @@ jobs:
         run: |
           python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station -p zork-gh
 
+      - name: Record compiled dependencies
+        if: env.KACHE_CONFIGURED == 'true'
+        run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
+
+      - name: Save compiled target cache
+        if: steps.target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: target
+          key: ${{ steps.target.outputs.cache-primary-key }}
+
       - name: Run tests
         run: pnpm test
-
-      - name: Test core-owned desktop operations
-        if: github.ref == 'refs/heads/main'
-        run: cargo test --locked -p zork-client-core --features desktop --lib --test client_boundary
 
       - name: Test Slack forwarding and bundled skills
         run: |
@@ -125,7 +135,9 @@ jobs:
       matrix:
         include:
           - suite: core
-            packages: --workspace --exclude zork-gui --exclude zork-browser-runtime --exclude zork-agent-testkit --exclude zork-ui
+            packages: --workspace --exclude zork-gui --exclude zork-browser-runtime --exclude zork-agent-testkit --exclude zork-ui --exclude zork-station --exclude zork-client-core
+          - suite: station
+            packages: -p zork-station -p zork-client-core --features zork-client-core/desktop
           - suite: agent
             packages: -p zork-agent-testkit
           - suite: ui
@@ -140,25 +152,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Restore CI target cache
-        uses: actions/cache@v4
+        id: target
+        uses: actions/cache/restore@v4
         with:
           path: target
-          key: ci-target-v3-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v4-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            ci-target-v4-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v3-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-backend-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
+          manifest-key: zork-ci-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
           s3-region: auto
           s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
           s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY }}
           s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+
+      - name: Build backend tests
+        run: |
+          python3 scripts/lib/build_env.py -- cargo test --locked ${{ matrix.packages }} --lib --tests --no-fail-fast --no-run
+
+      - name: Record compiled dependencies
+        if: env.KACHE_CONFIGURED == 'true'
+        run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
+
+      - name: Save compiled target cache
+        if: steps.target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: target
+          key: ${{ steps.target.outputs.cache-primary-key }}
 
       - name: Run backend tests
         run: |
