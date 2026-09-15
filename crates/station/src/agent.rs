@@ -406,6 +406,7 @@ mod tests {
         assert!(SLACK_PROACTIVE_SYSTEM_PROMPT.contains("unless all three conditions are true"));
         assert!(SLACK_PROACTIVE_SYSTEM_PROMPT.contains("unrelated thread"));
         assert!(SLACK_PROACTIVE_SYSTEM_PROMPT.contains("pass connect_id explicitly"));
+        assert!(SLACK_PROACTIVE_SYSTEM_PROMPT.contains("you are Zork, not Codex"));
     }
 
     fn profile(
