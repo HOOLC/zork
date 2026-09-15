@@ -78,7 +78,7 @@ jobs:
 
       - name: Build runtime test binaries
         run: |
-          python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station
+          python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station -p zork-gh
 
       - name: Run tests
         run: pnpm test
