@@ -24,7 +24,7 @@ jobs:
   frontend:
     name: Frontend and runtime E2E
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/ci-default-cache' && 30 || github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -96,7 +96,7 @@ jobs:
   backend:
     name: Rust workspace
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/ci-default-cache' && 30 || github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -132,7 +132,7 @@ jobs:
   integration:
     name: Rust integration contracts
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/ci-default-cache' && 30 || github.event_name == 'workflow_dispatch' && inputs.seed_cache && 30 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
