@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::{MessageMetadata, Role};
 use crate::interactions::{
-    Content, Field, FieldKind, MessageContent, Outcome, Request, Resolution,
+    Content, Field, FieldKind, MessageContent, Outcome, Request, Resolution, AGENT_CONFIGURATION,
 };
 use zork_client_types::chat::AuthorKind;
 
@@ -13,17 +13,22 @@ fn request() -> TranscriptMessage {
             id: Some("request".into()),
             chat_id: Some("chat".into()),
             interaction: Some(Box::new(
-                serde_json::to_value(MessageContent::request(Request::Input {
-                    title: "Target".into(),
-                    fields: vec![Field {
-                        id: "target".into(),
-                        label: "Target".into(),
-                        kind: FieldKind::Text,
-                        default: "test".into(),
-                        required: true,
-                        options: vec![],
-                    }],
-                }))
+                serde_json::to_value(MessageContent::linked(
+                    "owner/request".into(),
+                    AGENT_CONFIGURATION.into(),
+                    Request::Input {
+                        title: "Target".into(),
+                        fields: vec![Field {
+                            id: "target".into(),
+                            label: "Target".into(),
+                            kind: FieldKind::Text,
+                            default: "test".into(),
+                            required: true,
+                            options: vec![],
+                        }],
+                    },
+                    None,
+                ))
                 .unwrap(),
             )),
             ..Default::default()
@@ -40,14 +45,18 @@ fn result() -> TranscriptMessage {
             chat_id: Some("chat".into()),
             author_kind: Some(AuthorKind::System),
             interaction: Some(Box::new(
-                serde_json::to_value(MessageContent::result(Resolution {
-                    request_message_id: "request".into(),
-                    response_id: "response".into(),
-                    revision: 1,
-                    outcome: Outcome::Completed,
-                    actor: "user".into(),
-                    output: serde_json::json!({"values":{"target":"test"}}),
-                }))
+                serde_json::to_value(MessageContent::linked_result(
+                    "owner/request".into(),
+                    AGENT_CONFIGURATION.into(),
+                    Resolution {
+                        request_message_id: "request".into(),
+                        response_id: "response".into(),
+                        revision: 1,
+                        outcome: Outcome::Completed,
+                        actor: "user".into(),
+                        output: serde_json::json!({"values":{"target":"test"}}),
+                    },
+                ))
                 .unwrap(),
             )),
             ..Default::default()
@@ -57,6 +66,7 @@ fn result() -> TranscriptMessage {
 
 fn source_page(items: Vec<TranscriptMessage>, older: Option<&str>) -> MessagePage {
     MessagePage {
+        source_epoch: None,
         items,
         older_cursor: older.map(str::to_owned),
     }
@@ -81,7 +91,7 @@ fn result_before_request_survives_restart_and_does_not_move_the_source_tail() {
                 .lock()
                 .unwrap()
                 .query_row(
-                    "SELECT COUNT(*) FROM pending_interaction_results",
+                    "SELECT COUNT(*) FROM pending_business_card_results",
                     [],
                     |r| r.get::<_, i64>(0)
                 )
@@ -125,7 +135,7 @@ fn result_before_request_survives_restart_and_does_not_move_the_source_tail() {
             .lock()
             .unwrap()
             .query_row(
-                "SELECT COUNT(*) FROM pending_interaction_results",
+                "SELECT COUNT(*) FROM pending_business_card_results",
                 [],
                 |r| r.get::<_, i64>(0)
             )
@@ -219,11 +229,57 @@ fn an_agent_cannot_claim_authoritative_completion_and_revocation_clears_pending_
             .lock()
             .unwrap()
             .query_row(
-                "SELECT COUNT(*) FROM pending_interaction_results",
+                "SELECT COUNT(*) FROM pending_business_card_results",
                 [],
                 |r| r.get::<_, i64>(0)
             )
             .unwrap(),
         0
     );
+}
+
+#[test]
+fn results_cannot_change_the_business_or_registration_of_a_cached_card() {
+    for field in ["handler", "request_id"] {
+        let root = tempfile::tempdir().unwrap();
+        let store = ClientStore::open(root.path()).unwrap();
+        store
+            .cache_message_page("node", "chat", &source_page(vec![request()], None), None)
+            .unwrap();
+        let mut foreign = result();
+        let TranscriptMessage::Message { metadata, .. } = &mut foreign;
+        metadata.interaction.as_mut().unwrap()[field] = serde_json::json!(if field == "handler" {
+            "provider.login"
+        } else {
+            "owner/another-request"
+        });
+        assert!(store
+            .cache_message_page("node", "chat", &source_page(vec![foreign], None), None)
+            .is_err());
+        let cached = store
+            .cached_messages("node", "chat", None, 100)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.items.len(), 1);
+        let TranscriptMessage::Message { metadata, .. } = &cached.items[0];
+        assert!(metadata.interaction_result.is_none());
+    }
+}
+
+#[test]
+fn an_early_result_retains_its_business_identity_across_reopen() {
+    let root = tempfile::tempdir().unwrap();
+    {
+        let store = ClientStore::open(root.path()).unwrap();
+        let mut foreign = result();
+        let TranscriptMessage::Message { metadata, .. } = &mut foreign;
+        metadata.interaction.as_mut().unwrap()["handler"] = serde_json::json!("provider.login");
+        store
+            .cache_message_page("node", "chat", &source_page(vec![foreign], None), None)
+            .unwrap();
+    }
+    let store = ClientStore::open(root.path()).unwrap();
+    assert!(store
+        .cache_message_page("node", "chat", &source_page(vec![request()], None), None)
+        .is_err());
 }

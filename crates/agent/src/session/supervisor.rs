@@ -1483,7 +1483,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [STARTUP-03]
+    // Contract: docs/design/agent-runtime.md [STARTUP-03]
     fn a_hundred_thousand_finished_sessions_remain_lightweight_slots() {
         const SESSION_COUNT: usize = 100_000;
         let mut slots = HashMap::with_capacity(SESSION_COUNT);
@@ -1505,7 +1505,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [SUPERVISOR-03]
+    // Contract: docs/design/agent-runtime.md [SUPERVISOR-03]
     fn a_closed_channel_returns_the_exact_unsent_command_for_retry() {
         let (closed, receiver) = tokio::sync::mpsc::channel(1);
         drop(receiver);

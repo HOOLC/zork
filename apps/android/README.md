@@ -5,6 +5,19 @@
 CLI、后台子进程或本地 gRPC 服务。共享服务页面按需建立 loopback HTTP 入口。任务继续在原 Station / Agent
 设备上执行。
 
+Compose 负责原生输入、呈现和系统生命周期，协议、业务规则及持久状态复用
+[Rust core 合同](../../docs/design/client-core.md)；当前工程和验证入口已取代早期的技术选型/连接实验计划。
+
+<a id="mesh-adb"></a>
+
+## 通过 Mesh 安装与调试
+
+在手机的「设置 → 安卓调试」开始设置。页面按实际探测结果只显示当前需要处理的步骤，命令和端口编辑在 USB 激活说明中。手机就绪后，每台已接入的 Station 都可以同时连接，各台的授权、重试和连接状态分别显示；开启期间由前台服务保持后台连接。Station 需要 Android SDK Platform-Tools；Agent 使用内置 `android-debugging` Skill 与 `android.devices` 查询该 Station 上的手机和状态。
+
+蜂窝网络调试需要先用 USB 激活页面显示的 ADB 网络端口，激活后可以拔线；手机重启后需再次激活。首次系统授权仍在手机确认。开发 Zork 时保留稳定版承载 Mesh，安装独立 `.debug` 包名的开发版。边界与连接所有权见 [设备合同](../../docs/design/devices.md#android-debugging)。
+
+协议回归可在重建 Station 后运行 `zork-client-core` 的 ignored `adb_mesh` 集成测试，通过 `ZORK_TEST_STATION_BIN` 与 `ZORK_TEST_ADB_BIN` 指定本次构建和 SDK ADB。该测试隔离 ADB server 并模拟 adbd；手机系统授权、蜂窝跨网和实际 APK 安装仍需真机验收。
+
 ## 设计真值
 
 本应用按 `apps/zork-design/mobile/design-spec.md` 与
@@ -23,6 +36,7 @@ CLI、后台子进程或本地 gRPC 服务。共享服务页面按需建立 loop
 - 查看领队和已有任务，打开对话；任务直接显示，不再提供独立展开箭头，长按查看详情。
 - Composer 与桌面采用同款暖白液态轮廓、细描边与伙伴活动胶囊；最多三行，更多内容在输入区内部滚动。伙伴展开时消息同步避让，浏览历史保持位置。
 - 查看分页消息与实时活动，发送消息和请求停止。用户消息按原文显示，助手回复支持 Markdown；两者都保留文字选择和片段评论。
+- 点击顶部成员头像或输入框上方的成员活动胶囊查看该成员的 Session 执行历史；支持常规操作分组、时间轴缩放与选区、对象跳转、翻页、重试、用量／额度概览及完整记录复制、原始 JSON 详情。执行历史只由 Rust core 按需读入内存，与聊天消息的持久缓存分开。
 - 系统文字选择中的“评论”可累积、编辑、移除，和正文一次发送。
 - 支持 UTF-8 文本附件（单个 24 KiB、最多 4 个，整条仍受 core 64 KiB 限制），
   可预览/保存；草稿和投递使用与桌面相同的兼容消息格式。
@@ -33,22 +47,23 @@ CLI、后台子进程或本地 gRPC 服务。共享服务页面按需建立 loop
 - 未开始投递的消息可原子地退回草稿，保留后来输入的内容；已尝试投递的消息
   保留到收到回执，不伪称已撤回。
 - 本地草稿、缓存和消息入队使用独立通路，不等待慢网络请求。
-- 离开前台后请求关闭连接；重新打开时恢复身份、订阅和历史。系统强制结束
-  进程后，已提交的草稿与队列仍可恢复。关闭应用不停止远端任务。
+- 设置提供工具连接、队员技能与设备服务的只读详情；手机通过扫码/粘贴加入，邀请生成和审批留在电脑端，详见 [设置范围](../../docs/design/interface.md#mobile)。
+- 通知复用 core 的事件分类、去重、隐私和免打扰规则。用户可开启后台保持连接，由 Android 远程消息前台服务承载；未开启时离开前台会暂停连接。
+- 重新打开时恢复身份、订阅、历史和未完成设置操作。授权只保存可恢复的公开元信息，API Key 和粘贴的回调不落盘。系统强制结束进程后，已提交的草稿与队列仍可恢复；关闭客户端不停止远端任务。
 
 初次接入推荐「桌面连接设备 → 连接手机 → 手机扫一扫 → 桌面允许连接」。
 邀请和授权由现有 Station 管理，无需新增云控制面。手机会自动保存获准
-的设备；无需手工交换身份或填写 IP。详见 [手机接入协议](../../docs/phone-connection.md)。
+的设备；无需手工交换身份或填写 IP。详见 [手机接入协议](../../docs/design/devices.md#invitations)。
 
 已在 Android 16 模拟器和 OPPO Find N6 上验证二维码图片解码、授权、读取
 Station 与重连。镜头光学扫码、蜂窝/Wi-Fi 切换和公网 relay 强制中继的
-验证边界见协议文档。后台推送、任务验收界面、二进制文件
+验证边界见协议文档。独立云推送、任务验收界面、二进制文件
 上传及手机执行 Agent 不在此版。
 默认中文，沿用仓库的 Zork 标志、Inter 字体和色板。
 
 ## 构建
 
-在 mini1 的主仓库运行。需要 JDK 17、Android SDK / NDK 和 Rust；依赖版本：
+在仓库根目录运行。需要 JDK 17、Android SDK / NDK 和 Rust；依赖版本：
 
 | 组件                      | 固定版本                                           |
 | ------------------------- | -------------------------------------------------- |
@@ -136,6 +151,16 @@ python3 scripts/android/test_mesh.py --serial emulator-5554
 输出日志和验证记录在 `artifacts/android`。界面截图使用隔离测试对话，部分
 可读文案由测试夹具通过真实 Station 显式投递，不是实际用户任务结果。
 
+液态控件通过 debug 的 `LiquidGalleryActivity` 检查完整控件与原生输入。
+定向 instrumentation 使用 `LiquidControlsTest`，覆盖原生输入、来源绘制交接、退场时禁用输入、快速反向与停帧；输入区回归使用
+`ComposerPresentationTest`；`LiquidPerformanceTest` 检查控件组持续切换时的
+JNI/路径解码、绘制阶段与静止停帧，`ComposerPerformanceTest` 记录实际显示的
+FrameMetrics，`require120=true` 要求真实 120 Hz 呈现及对应 CPU 预算。
+性能测量用上述 profile 构建和编译流程，固定 APK 摘要后安装，预热后单独采样。
+共享 Rust 的 `frame_budget` example 只测物理、轮廓、描边和编码，
+不能代替 JNI、Canvas/GPU 或手机功耗；持续活动与静止/后台应分别测量，
+热状态、刷新率和设备耗电比较保留在对应运行产物中。
+
 ## 代码边界
 
 - `crates/zork-client-core`：桌面与 Android 共用 Station HTTP/Mesh API、DTO、
@@ -143,11 +168,15 @@ python3 scripts/android/test_mesh.py --serial emulator-5554
   活动状态归并、任务修订合并和发送权限判断。桌面 `api`、`transcript`、
   `desktop::store` 重新导出同一实现，数据库格式保持兼容。
   两端都通过 core 的 `transport::start` 启动 client-only Mesh。
-- core 的序列化会话适配器把共享状态转为 JNI 快照；Kotlin 只轮询快照，
+- core 的序列化适配器通过独立 JNI 订阅传递快照与增量；Kotlin 消费并确认已应用批次，
   不自行重连、刷新历史、去重或发送队列。桌面仍负责其专有面板的数据装配、
   滚动位置、选择和渲染；这些 UI 行为没有移入 Rust core。
 - `crates/zork-android`：JNI、TLS 初始化和应用进程持有的 Rust runtime；网络
   命令与本地操作不共用等待锁。
+- `crates/zork-liquid`：GPUI 与 Android 共享的物理、几何、描边、视觉状态和配方。
+  可见宿主批量传入变化目标，读取同进程数值缓冲区；平台负责显示时钟、
+  生命周期、路径绘制、原生输入和焦点。液态帧不走业务 JSON 通道，
+  静止与后台停止调度，恢复不补算后台时间。
 - `crates/zork-mesh`：`start_client` 关闭 socket 执行池和本地工作区后台循环；
   默认 `server` feature 保留 Station 行为，Android 不启用桥接编译器依赖。
 - `apps/android/app`：界面、生命周期、输入、导航和安全的显式链接打开。
@@ -158,4 +187,4 @@ python3 scripts/android/test_mesh.py --serial emulator-5554
 
 设置与视觉更新记录见 [design-qa.md](design-qa.md)，新增的真实 JNI 设置回归为 `MeshIntegrationTest.settingsManageDevice`，多宽度原生截图为 `SettingsRefreshTest`。物理手机运行 `test_mesh.py` 时使用 `--host-ip` 指定开发主机现场读取的局域网地址。
 
-共享服务链接可从消息中打开应用内 WebView，关闭页面或离开前台即释放本地入口。协议、Agent 用法与边界见 [Mesh 服务共享](../../docs/service-sharing.md)。
+共享服务链接可从消息中打开应用内 WebView，关闭页面或离开前台即释放本地入口。协议、Agent 用法与边界见 [Mesh 服务共享](../../docs/design/external-capabilities.md#services)。

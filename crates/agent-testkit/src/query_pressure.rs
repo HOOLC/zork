@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
-use zork_agent::session::events::{Input, Selection, SessionEvent, EVENT_SCHEMA_VERSION};
+use zork_agent::session::events::{EVENT_SCHEMA_VERSION, Input, Selection, SessionEvent};
 use zork_agent::session::query::{FileSessionQuery, SessionQuery};
 use zork_agent::session::store::EventEnvelope;
 
@@ -66,7 +66,7 @@ pub fn prepare_query_pressure_fixture(
     {
         return Err(QueryPerformanceError::InvalidFixture);
     }
-    let sessions_root = data_root.join("sessions");
+    let sessions_root = data_root.join("shared-files/sessions");
     std::fs::create_dir_all(&sessions_root)?;
     let next = AtomicUsize::new(0);
     let finished = AtomicUsize::new(0);

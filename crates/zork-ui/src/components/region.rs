@@ -5,6 +5,9 @@ use gpui::{
 };
 use std::collections::HashMap;
 
+mod intrinsic;
+pub use intrinsic::IntrinsicCache;
+
 #[derive(Default)]
 struct Registry(HashMap<EntityId, HashMap<String, (EntityId, std::rc::Rc<std::cell::Cell<bool>>)>>);
 impl Global for Registry {}
@@ -129,6 +132,38 @@ impl<T: 'static> Regions<T> {
         });
         view.clone()
     }
+    /// Render through the same region identity without replaying its paint.
+    /// Invalidate this region before switching back to cached rendering.
+    pub fn uncached(
+        &mut self,
+        name: &str,
+        cx: &mut Context<T>,
+        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
+    ) -> gpui::AnyElement {
+        let view = self.ensure(name, cx, render);
+        RegionElement { rasterized: false,
+            measured: Some(view.read(cx).layout.clone()),
+            view,
+            style: None,
+        }
+        .into_any_element()
+    }
+    /// Lay out normally so independently cached descendants can update,
+    /// while retaining the region's pixels for subsequent paint-only frames.
+    pub fn gpu_uncached(
+        &mut self,
+        name: &str,
+        cx: &mut Context<T>,
+        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
+    ) -> gpui::AnyElement {
+        let view = self.ensure(name, cx, render);
+        RegionElement {
+            rasterized: true,
+            measured: Some(view.read(cx).layout.clone()),
+            view,
+            style: None,
+        }.into_any_element()
+    }
     pub fn element(
         &mut self,
         name: &str,
@@ -137,7 +172,24 @@ impl<T: 'static> Regions<T> {
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         let view = self.ensure(name, cx, render);
-        RegionElement {
+        RegionElement { rasterized: false,
+            measured: Some(view.read(cx).layout.clone()),
+            view,
+            style: Some(style),
+        }
+        .into_any_element()
+    }
+    /// Reuse a rendered texture on capable platforms while preserving the
+    /// ordinary retained view's layout and input invalidation.
+    pub fn gpu_element(
+        &mut self,
+        name: &str,
+        style: StyleRefinement,
+        cx: &mut Context<T>,
+        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
+    ) -> gpui::AnyElement {
+        let view = self.ensure(name, cx, render);
+        RegionElement { rasterized: true,
             measured: Some(view.read(cx).layout.clone()),
             view,
             style: Some(style),
@@ -154,6 +206,22 @@ impl<T: 'static> Regions<T> {
         cx: &mut Context<T>,
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
+        self.auto_height_inner(name, width_key, cx, render, false)
+    }
+    pub fn gpu_auto_height(
+        &mut self, name: &str, width_key: f32, cx: &mut Context<T>,
+        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
+    ) -> gpui::AnyElement {
+        self.auto_height_inner(name, width_key, cx, render, true)
+    }
+    fn auto_height_inner(
+        &mut self,
+        name: &str,
+        width_key: f32,
+        cx: &mut Context<T>,
+        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
+        rasterized: bool,
+    ) -> gpui::AnyElement {
         // Cached views lay out their content as a separate root. Own the
         // width/stretch contract here so intrinsic children keep the same
         // alignment as they have in the parent's normal flex layout.
@@ -169,14 +237,14 @@ impl<T: 'static> Regions<T> {
         let layout = view.read(cx).layout.clone();
         let width_changed = layout.width.replace(width_key) != width_key;
         if layout.dirty.get() || width_changed || layout.size.get().is_none() {
-            RegionElement {
+            RegionElement { rasterized,
                 view,
                 style: None,
                 measured: Some(layout),
             }
             .into_any_element()
         } else {
-            RegionElement {
+            RegionElement { rasterized,
                 measured: Some(layout.clone()),
                 view,
                 style: Some(
@@ -295,7 +363,7 @@ impl gpui::Element for MeasuredElement {
 /// Track a separately observed child view inside a cached region, including
 /// deferred popovers in its automation replay. The child controls its redraws.
 pub fn tracked_view<V: Render>(view: Entity<V>) -> gpui::AnyElement {
-    RegionElement {
+    RegionElement { rasterized: false,
         view,
         style: None,
         measured: None,
@@ -316,6 +384,7 @@ pub fn forget_on_release<V: 'static>(cx: &Context<V>) {
 }
 
 struct RegionElement<V: Render> {
+    rasterized: bool,
     view: Entity<V>,
     style: Option<StyleRefinement>,
     measured: Option<std::rc::Rc<Measured>>,
@@ -351,7 +420,13 @@ impl<V: Render> gpui::Element for RegionElement<V> {
             }
             carrier.child(self.view.clone()).into_any_element()
         } else if let Some(style) = &self.style {
-            self.view.clone().cached(style.clone()).into_any_element()
+            let element = self.view.clone().cached(style.clone());
+            if self.rasterized { element.rasterized().into_any_element() }
+            else { element.into_any_element() }
+        } else if self.measured.is_some() {
+            let element = self.view.clone().measure_cached();
+            if self.rasterized { element.rasterized().into_any_element() }
+            else { element.into_any_element() }
         } else {
             self.view.clone().into_any_element()
         };
@@ -585,5 +660,82 @@ mod tests {
                 .any(|e| e.id == "popover-control"),
             "closed popover left a stale target"
         );
+    }
+}
+
+#[cfg(test)]
+mod nested_cache_tests {
+    use gpui::{prelude::*, div, px, AppContext, Context, Entity, Render, StyleRefinement, TestAppContext, Window};
+    use std::{cell::Cell, rc::Rc};
+    struct Child(Rc<Cell<usize>>);
+    impl Render for Child {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.0.set(self.0.get() + 1);
+            div().size_full().children(
+                (0usize..8).map(|i| div().id(("nested-control", i)).focusable().child("control")),
+            )
+        }
+    }
+    struct Parent(Entity<Child>);
+    impl Render for Parent {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.0
+                .clone()
+                .cached(StyleRefinement::default().size_full())
+        }
+    }
+    struct Root {
+        parent: Entity<Parent>,
+        leading: bool,
+        cached: bool,
+    }
+    impl Render for Root {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .relative()
+                .children(
+                    (0usize..if self.leading { 128 } else { 0 })
+                        .map(|i| div().id(("leading", i)).absolute().size(px(1.)).focusable()),
+                )
+                .child(if self.cached {
+                    self.parent
+                        .clone()
+                        .cached(StyleRefinement::default().size_full())
+                        .into_any_element()
+                } else {
+                    self.parent.clone().into_any_element()
+                })
+        }
+    }
+    #[test]
+    fn nested_cache_rebuilds_after_ancestor_replay_changes_frame_indices() {
+        let mut cx = TestAppContext::single();
+        let count = Rc::new(Cell::new(0));
+        let window = cx.add_window(|_, cx| {
+            let child = cx.new(|_| Child(count.clone()));
+            Root {
+                parent: cx.new(|_| Parent(child)),
+                leading: true,
+                cached: true,
+            }
+        });
+        cx.run_until_parked();
+        window
+            .update(&mut cx, |root, _, cx| {
+                root.leading = false;
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let before = count.get();
+        window
+            .update(&mut cx, |root, _, cx| {
+                root.cached = false;
+                cx.notify();
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert!(count.get() > before, "stale child ranges were reused after its ancestor replayed them into different indices");
     }
 }

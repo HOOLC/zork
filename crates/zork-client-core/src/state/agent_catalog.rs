@@ -127,7 +127,7 @@ impl Agents {
             );
             self.create_agent(json!({"id":input.id,"name":name,"role":input.role,"avatar":input.avatar,
                 "profile_id":input.profile,"model":input.model,"thinking":input.thinking,"instructions":input.instructions,
-                "allowed_leaders":if input.role=="worker" {input.allowed}else{vec![]}})).await
+                "allowed_leaders":if input.role=="worker" {crate::agent_edit::grant_references(input.allowed, "")}else{vec![]}})).await
         } else {
             self.update_agent_settings(
                 &input.id,

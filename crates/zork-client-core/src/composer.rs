@@ -1,4 +1,5 @@
 //! Composer actions are product policy. Views render these capabilities.
+#[cfg(not(target_family = "wasm"))]
 use crate::api::{SessionStatus, SessionSummary};
 
 #[derive(Clone, Copy, Default, serde::Serialize)]
@@ -12,12 +13,14 @@ pub fn has_content(text: &str, attachments: usize) -> bool {
     !text.trim().is_empty() || attachments > 0
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn can_stop(session: &SessionSummary) -> bool {
     crate::conversation::can_send(session) && session.task.is_none()
 }
 
 /// The desktop's primary action interrupts a running direct conversation.
 /// Task composers submit comments to their owning Leader instead.
+#[cfg(not(target_family = "wasm"))]
 pub fn interrupting(
     session: Option<&SessionSummary>,
     text: &str,
@@ -25,8 +28,36 @@ pub fn interrupting(
     stopping: bool,
     preparing: usize,
 ) -> ComposerState {
-    let editable = session.is_some_and(crate::conversation::can_send);
-    let working = session.is_some_and(|s| can_stop(s) && s.status == SessionStatus::Working);
+    desktop_state(
+        session.map(|s| DesktopSession {
+            editable: crate::conversation::can_send(s),
+            can_stop: can_stop(s),
+            running: s.status == SessionStatus::Working,
+        }),
+        text,
+        attachments,
+        stopping,
+        preparing,
+    )
+}
+
+/// Portable input to the desktop policy. Authority and conversation type come
+/// from core projections; UI never constructs or evaluates this input.
+#[derive(Clone, Copy)]
+pub struct DesktopSession {
+    pub editable: bool,
+    pub can_stop: bool,
+    pub running: bool,
+}
+pub fn desktop_state(
+    session: Option<DesktopSession>,
+    text: &str,
+    attachments: usize,
+    stopping: bool,
+    preparing: usize,
+) -> ComposerState {
+    let editable = session.is_some_and(|s| s.editable);
+    let working = session.is_some_and(|s| s.editable && s.can_stop && s.running);
     ComposerState {
         editable,
         stop: working || stopping,
@@ -93,3 +124,6 @@ mod tests {
         assert!(!input.state().enabled);
     }
 }
+
+/// Offline presentation fixtures; uses the same product policy as desktop.
+pub mod fixture;

@@ -3,7 +3,7 @@
 use crate::state::AppState;
 use anyhow::{ensure, Context, Result};
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -19,6 +19,7 @@ use std::{
 use tokio::sync::watch;
 use zork_browser::Command;
 
+const CLIENT_SCOPE: &str = "clients";
 const LEASE: Duration = Duration::from_secs(20);
 const DEADLINE: Duration = Duration::from_secs(18);
 const MAX_RESULT: usize = 192 * 1024;
@@ -48,6 +49,8 @@ struct Request {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Poll {
+    #[serde(default)]
+    generation: u64,
     client_id: String,
     secret: String,
     name: String,
@@ -66,7 +69,7 @@ struct Reply {
 #[serde(deny_unknown_fields)]
 pub struct ToolRequest {
     pub session_id: String,
-    pub device_id: Option<String>,
+    pub client_id: String,
     pub command: Command,
 }
 fn identifier(value: &str) -> bool {
@@ -88,6 +91,15 @@ impl Hub {
     }
     fn from_connection(conn: rusqlite::Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS browser_receipts(session TEXT NOT NULL,request_id TEXT NOT NULL,device TEXT NOT NULL,command TEXT NOT NULL,result TEXT,PRIMARY KEY(session,request_id)); CREATE TABLE IF NOT EXISTS browser_clients(session TEXT NOT NULL,client TEXT NOT NULL,secret_hash TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(session,client));")?;
+        let columns = conn
+            .prepare("PRAGMA table_info(browser_clients)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if !columns.iter().any(|name| name == "generation") {
+            conn.execute_batch(
+                "ALTER TABLE browser_clients ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
         Ok(Self {
             state: Mutex::new(HubState::default()),
             wake: Default::default(),
@@ -124,20 +136,45 @@ impl Hub {
             "invalid_browser_poll"
         );
         let mut state = self.state.lock().unwrap();
-        {
+        let rotated = {
             let conn = self.receipts.lock().unwrap();
-            let stored: Option<(String, bool)> = conn.query_row("SELECT secret_hash,revoked FROM browser_clients WHERE session=?1 AND client=?2", params![session,poll.client_id], |row| Ok((row.get(0)?,row.get(1)?))).optional()?;
+            let stored: Option<(String, bool, u64)> = conn.query_row("SELECT secret_hash,revoked,generation FROM browser_clients WHERE session=?1 AND client=?2", params![session,poll.client_id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).optional()?;
             let hash = zork_mesh::content_root(poll.secret.as_bytes());
             match stored {
-                Some((expected, revoked)) => {
-                    ensure!(expected == hash, "browser_client_credential_mismatch");
+                Some((_, _, generation))
+                    if register && !poll.disconnect && poll.generation > generation =>
+                {
+                    conn.execute("UPDATE browser_clients SET secret_hash=?3,revoked=0,generation=?4 WHERE session=?1 AND client=?2", params![session,poll.client_id,hash,poll.generation])?;
+                    true
+                }
+                Some((expected, revoked, generation)) => {
+                    ensure!(
+                        generation == poll.generation && expected == hash,
+                        "browser_client_credential_mismatch"
+                    );
                     ensure!(!register || !revoked, "browser_grant_revoked");
+                    false
                 }
                 None => {
                     ensure!(register && !poll.disconnect, "browser_client_not_connected");
-                    conn.execute(
-                        "INSERT INTO browser_clients(session,client,secret_hash) VALUES(?1,?2,?3)",
-                        params![session, poll.client_id, hash],
+                    conn.execute("INSERT INTO browser_clients(session,client,secret_hash,generation) VALUES(?1,?2,?3,?4)", params![session,poll.client_id,hash,poll.generation])?;
+                    false
+                }
+            }
+        };
+        if rotated {
+            state
+                .clients
+                .remove(&(session.to_owned(), poll.client_id.clone()));
+            for ((owner, _), request) in &state.requests {
+                if owner == session
+                    && request.device == poll.client_id
+                    && request.result.borrow().is_none()
+                {
+                    self.finish(
+                        session,
+                        request,
+                        failure("浏览器控制已切换；已投递的操作状态可能不确定"),
                     )?;
                 }
             }
@@ -377,25 +414,8 @@ impl Hub {
         Ok(value)
     }
 }
-pub async fn receipts(
-    State(state): State<AppState>,
-    Path(session): Path<String>,
-    Json(poll): Json<Poll>,
-) -> Response {
-    let valid = state
-        .db
-        .get_session_by_id(&session)
-        .ok()
-        .flatten()
-        .is_some_and(|s| s.platform == crate::im_entry::LOCAL_GUI_PLATFORM);
-    if !valid {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(failure("local_im_session_not_found")),
-        )
-            .into_response();
-    }
-    match state.browser.acknowledge(&session, poll) {
+pub async fn receipts(State(state): State<AppState>, Json(poll): Json<Poll>) -> Response {
+    match state.browser.acknowledge(CLIENT_SCOPE, poll) {
         Ok(v) => Json(v).into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, Json(failure(&e.to_string()))).into_response(),
     }
@@ -408,31 +428,44 @@ pub async fn tool(State(state): State<AppState>, Json(request): Json<ToolRequest
     }
 }
 async fn tool_command(state: &AppState, request: ToolRequest) -> Result<Value> {
-    let session = state
-        .db
-        .get_session_by_id(&request.session_id)?
-        .context("browser_session_not_found")?;
-    ensure!(
-        session.platform == crate::im_entry::LOCAL_GUI_PLATFORM,
-        "browser_requires_desktop_conversation"
-    );
-    if let Some(task) = state.db.product_task_for_session(&session.key)? {
-        ensure!(!task.state.is_closed(), "browser_task_closed");
-        if let Some(link) = state.db.mesh_task_link(&task.task_id)? {
-            if link.role == "executor" {
-                return crate::mesh::browser_request(
-                    state,
-                    &link,
-                    request.device_id,
-                    request.command,
-                )
-                .await;
-            }
-        }
+    crate::node_access::subject(state, &request.session_id)?;
+    let (origin, client) = request
+        .client_id
+        .rsplit_once('/')
+        .context("invalid_client_id")?;
+    ensure!(identifier(client), "invalid_client_id");
+    if origin == "local" || origin == crate::node_access::identity(state) {
+        command_for_client(
+            state,
+            &crate::node_access::identity(state),
+            &request.session_id,
+            client,
+            request.command,
+        )
+        .await
+    } else {
+        crate::mesh::browser_request(state, origin, &request.session_id, client, request.command)
+            .await
     }
+}
+pub(crate) async fn command_for_client(
+    state: &AppState,
+    caller: &str,
+    session: &str,
+    client: &str,
+    mut command: Command,
+) -> Result<Value> {
+    ensure!(
+        identifier(client)
+            && !session.is_empty()
+            && session.len() <= 256
+            && identifier(&command.request_id),
+        "invalid_browser_request"
+    );
+    command.request_id = crate::node_access::fingerprint(&(caller, session, &command.request_id))?;
     state
         .browser
-        .command(&request.session_id, request.device_id, request.command)
+        .command(CLIENT_SCOPE, Some(client.into()), command)
         .await
 }
 
@@ -448,11 +481,29 @@ mod tests {
     fn poll_body(secret: &str) -> Poll {
         Poll {
             client_id: "client".into(),
+            generation: 0,
             secret: secret.into(),
             name: "test".into(),
             replies: vec![],
             disconnect: false,
         }
+    }
+    #[test]
+    fn client_regrant_rotates_secret_and_fences_old_receipts() {
+        let hub = Hub::default();
+        let first = poll_body(&"a".repeat(64));
+        hub.poll_once(CLIENT_SCOPE, &first).unwrap();
+        let mut replacement = poll_body(&"b".repeat(64));
+        replacement.generation = 1;
+        hub.poll_once(CLIENT_SCOPE, &replacement).unwrap();
+        assert!(hub.poll_once(CLIENT_SCOPE, &first).is_err());
+        assert!(hub.acknowledge(CLIENT_SCOPE, first).is_err());
+        replacement.disconnect = true;
+        hub.exchange(CLIENT_SCOPE, &replacement, false).unwrap();
+        replacement.disconnect = false;
+        assert!(hub.poll_once(CLIENT_SCOPE, &replacement).is_err());
+        replacement.generation = 2;
+        hub.poll_once(CLIENT_SCOPE, &replacement).unwrap();
     }
     #[tokio::test]
     async fn retries_replay_result_and_cannot_change_command_or_client() {
@@ -654,14 +705,13 @@ mod tests {
 /// idempotent receipt endpoint; reconnecting never submits a browser action.
 pub(crate) fn subscribe(
     state: AppState,
-    session: String,
     registration: Poll,
 ) -> Result<tokio::sync::mpsc::Receiver<Value>> {
+    let session = CLIENT_SCOPE.to_owned();
     ensure!(
         registration.replies.is_empty() && !registration.disconnect,
         "browser_stream_registration_only"
     );
-    valid_session(&state, &session)?;
     let key = (session.clone(), registration.client_id.clone());
     let changes = state.browser.wake.subscribe([key.clone()]).merge(
         state
@@ -702,16 +752,6 @@ pub(crate) fn subscribe(
         },
     ))
 }
-fn valid_session(state: &AppState, session: &str) -> Result<()> {
-    ensure!(
-        state
-            .db
-            .get_session_by_id(session)?
-            .is_some_and(|s| s.platform == crate::im_entry::LOCAL_GUI_PLATFORM),
-        "local_im_session_not_found"
-    );
-    Ok(())
-}
 struct BrowserSource {
     state: AppState,
     session: String,
@@ -737,7 +777,6 @@ impl zork_notify::stream::Source for BrowserSource {
     type Item = Value;
     type Error = anyhow::Error;
     fn check_access(&self) -> Result<()> {
-        valid_session(&self.state, &self.session)?;
         let state = self.state.browser.state.lock().unwrap();
         ensure!(
             state
@@ -759,12 +798,8 @@ impl zork_notify::stream::Source for BrowserSource {
     }
 }
 
-pub async fn events(
-    State(state): State<AppState>,
-    Path(session): Path<String>,
-    Json(registration): Json<Poll>,
-) -> Response {
-    match subscribe(state, session, registration) {
+pub async fn events(State(state): State<AppState>, Json(registration): Json<Poll>) -> Response {
+    match subscribe(state, registration) {
         Ok(receiver) => {
             let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
                 receiver.recv().await.map(|value| {

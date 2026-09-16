@@ -161,8 +161,8 @@ pub(super) async fn upload(
     }
 }
 
-/// Validate ownership before accepting a message, then materialize immutable
-/// snapshots for the Agent. The persisted message contains only file references.
+/// Validate ownership and expose the existing immutable body to the Agent.
+/// The persisted message contains only file references; no second copy is made.
 pub(crate) async fn agent_content(
     state: &AppState,
     session_key: &str,
@@ -174,38 +174,10 @@ pub(crate) async fn agent_content(
     anyhow::ensure!(files::valid(&references), "invalid_attachments");
     let db = state.db.clone();
     let key = session_key.to_owned();
-    let root = state.config.data_root.join("conversation-files");
     tokio::task::spawn_blocking(move || {
-        use std::io::Write;
         let mut descriptions = Vec::new();
         for file in references {
-            let bytes = db.conversation_file_bytes(&key, &file)?;
-            let directory = root.join(&file.id).join(&file.content_root);
-            std::fs::create_dir_all(&directory)?;
-            let path = directory.join(&file.name);
-            if path.try_exists()? {
-                anyhow::ensure!(
-                    !std::fs::symlink_metadata(&path)?.file_type().is_symlink()
-                        && std::fs::read(&path)? == bytes,
-                    "attachment_snapshot_changed"
-                );
-            } else {
-                let temporary = directory.join(format!(".{}.partial", ulid::Ulid::new()));
-                let result = (|| -> anyhow::Result<()> {
-                    let mut output = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create_new(true)
-                        .open(&temporary)?;
-                    output.write_all(&bytes)?;
-                    output.sync_all()?;
-                    std::fs::rename(&temporary, &path)?;
-                    Ok(())
-                })();
-                if result.is_err() {
-                    let _ = std::fs::remove_file(&temporary);
-                }
-                result?;
-            }
+            let path = db.conversation_file_path(&key,&file)?;
             descriptions.push(
                 json!({"attachment_id":file.id,"name":file.name,"bytes":file.byte_len,"path":path}),
             );

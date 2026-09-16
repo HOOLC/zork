@@ -4,6 +4,7 @@ HPLsurf/zork/android/WorkbenchKt**;->**(**)**
 HPLsurf/zork/android/WorkbenchActions**;->**(**)**
 HPLsurf/zork/android/WorkbenchState**;->**(**)**
 HPLsurf/zork/android/Composer**;->**(**)**
+HPLsurf/zork/android/Liquid**;->**(**)**
 HPLsurf/zork/android/ConversationBodySlot**;->**(**)**
 HPLsurf/zork/android/ConversationMessageState**;->**(**)**
 HPLsurf/zork/android/Message**;->**(**)**

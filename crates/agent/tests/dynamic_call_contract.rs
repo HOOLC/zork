@@ -2,7 +2,7 @@ use serde_json::json;
 use zork_agent::session::tools::{provider_call_definition, DynamicCall};
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [TOOL-01]
+// Contract: docs/design/agent-runtime.md [TOOL-01]
 fn provider_exposes_one_fixed_call_shape_for_all_logical_tools() {
     let definition = provider_call_definition();
     assert_eq!(definition.name, "call");

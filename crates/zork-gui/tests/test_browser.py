@@ -2,6 +2,7 @@
 """Bundled CEF + GPUI input + authenticated reverse browser RPC, isolated data."""
 import json
 import os
+import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -60,7 +61,12 @@ class BrowserTest(NativeAutomation):
 
 
     def tool(self, session, action, request_id):
-        body = {'session_id': session, 'device_id': None,
+        client_id = 'missing'
+        for path in self.root.rglob('browser.sqlite'):
+            with sqlite3.connect(path) as db:
+                row = db.execute("SELECT client FROM browser_clients WHERE session='clients' ORDER BY generation DESC LIMIT 1").fetchone()
+                if row: client_id = row[0]
+        body = {'session_id': session, 'client_id': 'local/' + client_id,
                 'command': {'request_id': request_id, 'action': action}}
         request = Request(self.gateway_url + '/v1/browser/command',
                           data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})

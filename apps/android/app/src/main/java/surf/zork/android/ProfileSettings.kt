@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -87,14 +88,16 @@ private fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
 internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActions, modifier: Modifier = Modifier) {
     val profile = state.profile
     val detail = state.page == "profile"
-    val profileId = profile?.text("profile_id").orEmpty()
-    var editor by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
-    var editing by remember { mutableStateOf<JSONObject?>(null) }
+    val profileId = state.selectedProfileId ?: profile?.text("profile_id").orEmpty()
+    var editor by rememberSaveable(state.device?.id, profileId) { mutableStateOf<String?>(null) }
+    var editingJson by rememberSaveable(state.device?.id, profileId) { mutableStateOf<String?>(null) }
+    val editing = editingJson?.let(::JSONObject)
     var operation by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var error by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var updateMessage by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val enabled = state.online && state.profilesReady && !state.loading && operation == null
+    val enabled = state.online && state.profilesReady && !state.loading && (operation == null || operation == "quota")
+    val refreshingQuota = profileId in state.profileRefreshing || operation == "quota"
     fun perform(name: String, work: suspend () -> Unit) {
         scope.launch {
             operation = name; error = null
@@ -104,27 +107,30 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             finally { operation = null }
         }
     }
-    fun editModel(model: JSONObject?) { editing = model; editor = "model" }
+    fun editModel(model: JSONObject?) { editingJson = model?.toString(); editor = "model" }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = actions.back)
             Text(if (detail) profile?.let(::profileName) ?: "连接详情" else "大模型", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (detail && profile != null) IconAction(R.drawable.ic_edit, "重命名连接", enabled = enabled) { editing = profile; editor = "profile-name" }
+            if (detail && profile != null) IconAction(R.drawable.ic_edit, "重命名连接", enabled = enabled) { editingJson = profile.toString(); editor = "profile-name" }
             SettingsRefreshButton(state.loading, actions.refresh)
         }
         LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item(key = "notice") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!state.online) Text("设备离线，显示已保存的设置", color = ZorkColors.Muted, fontSize = 12.sp)
+                    if (!state.online) Text(if (state.connectionState == "connecting") "正在连接设备…" else "设备离线，显示已保存的设置", color = ZorkColors.Muted, fontSize = 12.sp)
                     (error ?: state.profileMessage ?: state.message)?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
                 }
             }
             if (!detail) {
+                if (state.authorization != null) item(key = "authorization") {
+                    SettingsButton("继续连接") { editingJson = null; editor = "connection" }
+                }
                 item(key = "heading") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("${state.device?.name.orEmpty()} · ${if (state.profilesReady) state.profiles.size else "—"} 个连接", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
-                        SettingsButton("添加", enabled = enabled) { editing = null; editor = "connection" }
+                        SettingsButton("添加", enabled = enabled) { editingJson = null; editor = "connection" }
                     }
                 }
                 items(state.profiles, key = { it.text("profile_id") }) { row ->
@@ -136,6 +142,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                             trailing = { Text(if (row.optBoolean("verified")) "已验证" else "待验证", fontSize = 11.sp, color = if (row.optBoolean("verified")) ZorkColors.Online else ZorkColors.Warning) },
                             action = { actions.profile(row) })
                         val quota = remember(row) { quotaUi(row) }
+                        if (row.text("profile_id") in state.profileFailed) Text("额度刷新失败，已保留上次结果", color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(16.dp))
                         if (quota.failed || quota.windows.isNotEmpty() || quota.balance != null) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { ProfileQuota(row, true) }
                     }
                 }
@@ -155,7 +162,8 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                                 Text("${provider?.text("label") ?: profile.text("provider")} · ${if (profile.optBoolean("verified")) "已验证" else "待验证"}", fontSize = 13.sp, modifier = Modifier.weight(1f))
                             }
                             ProfileQuota(profile)
-                            SettingsButton(if (operation == "quota") "正在刷新…" else "刷新额度", enabled = enabled) {
+                            if (profileId in state.profileFailed) Text("额度刷新失败，已保留上次结果", color = ZorkColors.Danger, fontSize = 12.sp)
+                            SettingsButton(if (refreshingQuota) "正在刷新…" else "刷新额度", enabled = enabled && !refreshingQuota) {
                                 perform("quota") { actions.perform("refresh_quota", JSONObject().put("profile", profileId)) }
                             }
                         }
@@ -187,9 +195,9 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     val active = model.optBoolean("enabled", true)
                     val label = if (configured) "上下文 ${compactTokens(limits!!.optLong("context_window_tokens"))} / 输出 ${compactTokens(limits.optLong("max_output_tokens"))}" else "待配置上下文与输出上限"
                     SettingsListGroup {
-                        SettingsListRow(model.text("id"), subtext = label, action = if (enabled) ({ editModel(model) }) else null,
+                        SettingsListRow(model.text("id"), subtext = label, action = { editModel(model) },
                             trailing = {
-                                Switch(active, { on -> perform("enabled") {
+                                LiquidSwitch(active, { on -> perform("enabled") {
                                     actions.perform("enable_model", JSONObject().put("profile", profileId).put("model", model.text("id")).put("enabled", on))
                                 } }, enabled = enabled && (active || configured),
                                     modifier = Modifier.semantics { contentDescription = "模型启用 ${model.text("id")}" })
@@ -200,5 +208,9 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             }
         }
     }
-    editor?.let { kind -> SettingsEditor(kind, editing, state, actions, "", { editor = null }, { editor = null; actions.refresh() }) }
+    LiquidRetained(editor?.let { it to editing }) { (kind, source), open, closed ->
+        key(kind, source?.text("id")) {
+            SettingsEditor(kind, source, state, actions, "", { editor = null }, { editor = null; actions.refresh() }, open = open, onClosed = closed)
+        }
+    }
 }

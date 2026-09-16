@@ -75,7 +75,13 @@ def received(node, session, message):
 
 
 def settled(node, session):
-    return ok(node, 'GET', f'/sessions/{session}', agent=True)['status'] in ('idle', 'finished', 'cancelled')
+    status, value = request(node, 'GET', f'/sessions/{session}', agent=True)
+    # Assignment metadata commits before the embedded runtime opens the Session.
+    # The caller already has its ID but readiness still needs to be observed.
+    if status in (404, 503):
+        return False
+    assert status == 200, (status, value)
+    return value['status'] in ('idle', 'finished', 'cancelled')
 
 
 def start(node):
@@ -92,7 +98,6 @@ def make_caller(node, identity):
     body = {'content': 'Initialize fixture caller', 'request_id': 'initialize'}
     sent = ok(node, 'POST', path, body)['message']
     assert sent['id'] == f'client-{home}-initialize', sent
-    assert ok(node, 'POST', path, body)['message'] == sent
     assert [m for m in ok(node, 'GET', path)['items'] if m['role'] == 'user'] == [sent]
     session = fixture.wait(lambda: runtime(node, identity), 'caller allocated')
     fixture.wait(lambda: settled(node, session), 'caller initialized')
@@ -122,7 +127,12 @@ def main():
                 start(node)
             caller_a, home_a = make_caller(a, 'caller-a')
             caller_b, home_b = make_caller(b, 'caller-b')
-            passed('native send, retry and history preserve the core outbox message identity')
+            resend = ok(a, 'POST', f'/v1/im/sessions/{home_a}/messages',
+                {'content': 'Initialize fixture caller', 'request_id': 'manual-resend'})['message']
+            user_messages = [m for m in ok(a, 'GET', f'/v1/im/sessions/{home_a}/messages')['items'] if m['role'] == 'user']
+            assert len(user_messages) == 2 and user_messages[0]['id'] != resend['id']
+            assert not sql(a, "SELECT 1 FROM chat_receipts WHERE object_id GLOB 'client-*'")
+            passed('native sends have distinct source records and no separate ordinary-send receipts')
             channel = operation(a, caller_a, 'chat.create', {'title': 'Shared channel'})['chat_id']
             assert operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants'] == []
             assert not sql(a, 'SELECT 1 FROM product_tasks t JOIN chat_channels c ON c.session_key=t.session_key WHERE c.chat_id=?', (channel,))
@@ -148,7 +158,13 @@ def main():
                 'reply_to': first['message_id'], 'attachments': [{'file_path': str(path)}]}
             sent = operation(b, caller_b, 'chat.send', file_args, invocation)
             path.unlink()
-            assert operation(b, caller_b, 'chat.send', dict(reversed(list(file_args.items()))), invocation) == sent
+            resent = operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': channel,
+                'text': 'Reply with a file', 'reply_to': first['message_id'],
+                'attachments': [{'source_target': a.origin, 'source_chat_id': channel,
+                    'attachment_id': sent['attachments'][0]['id']}]}, invocation)
+            assert resent['message_id'] != sent['message_id']
+            assert resent['attachments'][0]['content_root'] == sent['attachments'][0]['content_root']
+            assert not sql(b, "SELECT 1 FROM chat_outgoing WHERE json_extract(value,'$.rpc.invocation_id')=?", (invocation,))
             read = operation(b, caller_b, 'chat.read', {'target': a.origin, 'chat_id': channel,
                 'attachment_id': sent['attachments'][0]['id']})
             assert Path(read['path']).resolve().is_relative_to(workspace_b.resolve())
@@ -156,7 +172,7 @@ def main():
             assert received(b, caller_b, sent['message_id']) == 0
             participants = operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants']
             assert next(p for p in participants if p['author']['id'] == b.origin + '/caller-b')['subscribed']
-            passed('remote file send is atomic, immutable and idempotent; sender does not receive its own output')
+            passed('remote file sends retain fixed bytes and separate messages; sender does not wake on its own output')
 
             local_copy = operation(b, caller_b, 'chat.send', {'chat_id': home_b, 'text': 'Copy from another node',
                 'attachments': [{'source_target': a.origin, 'source_chat_id': channel,
@@ -165,6 +181,42 @@ def main():
                 'attachment_id': local_copy['attachments'][0]['id']})
             assert Path(copied['path']).read_bytes() == original
             passed('explicit source_target copies a published attachment across nodes')
+
+            script_chat = operation(a, caller_a, 'chat.create', {'title': 'Android script cards'})['chat_id']
+            script = {'title': 'Open developer options', 'description': 'Run on this Android device',
+                'source': 'console.log("本机操作");\nawait android.startActivity({action: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS"});'}
+            expected_card = dict(script, kind='local_script', version=1, platform='android')
+            for tool, args in [
+                ('chat.send', {'chat_id': script_chat, 'script': script}),
+                ('chat.send.android_script', {'chat_id': script_chat, 'script': script}),
+                ('chat.send.android_script', dict(script, chat_id=script_chat, oauth={'kind': 'profile'})),
+            ]:
+                status, _ = request(a, 'POST', '/v1/channels/tools', {'session_id': caller_a,
+                    'invocation_id': 'invalid-' + uuid.uuid4().hex, 'tool': tool, 'arguments': args})
+                assert status == 400, (tool, status)
+            local_script = operation(a, caller_a, 'chat.send.android_script', dict(script, chat_id=script_chat))
+            assert local_script['status'] == 'committed' and local_script['interaction'] == expected_card
+            script_invocation = 'android-script-' + uuid.uuid4().hex
+            script_args = dict(script, target=a.origin, chat_id=script_chat,
+                reply_to=local_script['message_id'], attachments=[{'source_target': a.origin,
+                    'source_chat_id': channel, 'attachment_id': sent['attachments'][0]['id']}])
+            remote_script = operation(b, caller_b, 'chat.send.android_script', script_args, script_invocation)
+            resent_script = operation(b, caller_b, 'chat.send.android_script', script_args, script_invocation)
+            assert remote_script['interaction'] == expected_card
+            assert remote_script['attachments'][0]['content_root'] == sent['attachments'][0]['content_root']
+            assert remote_script['reply_to'] == local_script['message_id']
+            assert resent_script['message_id'] != remote_script['message_id']
+            assert not sql(b, "SELECT 1 FROM chat_outgoing WHERE json_extract(value,'$.rpc.invocation_id')=?", (script_invocation,))
+            assert not sql(a, 'SELECT 1 FROM chat_receipts WHERE object_id IN (?,?,?)',
+                (local_script['message_id'], remote_script['message_id'], resent_script['message_id']))
+            for node in nodes:
+                assert not sql(node, 'SELECT 1 FROM interaction_registrations')
+            script_messages = operation(a, caller_a, 'chat.history', {'chat_id': script_chat})['items']
+            assert {m['message_id'] for m in script_messages} == {
+                local_script['message_id'], remote_script['message_id'], resent_script['message_id']}
+            assert operation(b, caller_b, 'chat.read', {'target': a.origin, 'chat_id': script_chat,
+                'message_id': remote_script['message_id']})['interaction'] == expected_card
+            passed('dedicated Android script tool publishes locally and over Mesh without execution waits or send receipts; old script parameters are rejected')
 
             operation(b, caller_b, 'chat.update_preferences', {'target': a.origin, 'chat_id': channel,
                 'changes': {'filter': 'mentions', 'delivery': 'immediate'}})
@@ -184,15 +236,16 @@ def main():
                 # Gateway marked its delivery receipt. The source cursor stays committed.
                 db.execute("UPDATE chat_mailbox SET delivered=0 WHERE json_extract(notice,'$.message.message_id')=?",
                     (mentioned['message_id'],))
-                # Simulate a lost caller-side receipt after remote publication.
-                db.execute("UPDATE chat_receipts SET result=NULL WHERE request_key IN (SELECT request_key FROM chat_outgoing WHERE json_extract(value,'$.rpc.invocation_id')=?)",
-                    (invocation,))
             start(b)
             fixture.wait(lambda: received(b, caller_b, backlog['message_id']) == 1, 'offline replay')
             fixture.wait(lambda: not sql(b, 'SELECT 1 FROM chat_mailbox WHERE delivered=0'), 'mailbox receipts recovered')
             assert received(b, caller_b, mentioned['message_id']) == 1
-            assert operation(b, caller_b, 'chat.recover', {'operation_id': invocation}) == sent
-            passed('restart replays offline messages and recovers original receipts without duplicate Agent input')
+            history = operation(b, caller_b, 'chat.history', {'target': a.origin, 'chat_id': channel})['items']
+            assert {sent['message_id'], resent['message_id']} <= {m['message_id'] for m in history}
+            assert not sql(a, "SELECT 1 FROM visible_messages WHERE archived!=1 OR text!=''")
+            assert not sql(a, "SELECT 1 FROM sync_entities WHERE kind='message' AND json_extract(value,'$.text')!=''")
+            assert list((a.root / 'chats' / channel / 'messages').glob('*.jsonl'))
+            passed('restart catches up source records without repeating sends or committed Agent input')
 
             operation(b, caller_b, 'chat.update_preferences', {'target': a.origin, 'chat_id': channel,
                 'changes': {'subscribed': False}})
@@ -220,37 +273,36 @@ def main():
 
             subscribe = json.dumps({'fake_tool': {'name': 'chat.update_preferences', 'input': {
                 'chat_id': channel, 'changes': {'subscribed': True}}}})
-            operation(b, caller_b, 'agent.message', {'target': a.origin, 'agent_id': identity, 'text': subscribe})
+            agent_home = ok(a, 'POST', f'/v1/node/agents/{identity}/open', {})['chat_id']
+            operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': agent_home, 'text': subscribe})
             fixture.wait(lambda: sql(a, 'SELECT 1 FROM chat_preferences WHERE chat_id=? AND agent_ref=?',
                 (channel, identity)), 'new Agent subscribes through its own ToolContext')
             assert all(p['author']['id'] != identity for p in operation(a, caller_a, 'chat.inspect',
                 {'chat_id': channel})['participants'])
             reply = json.dumps({'fake_tool': {'name': 'chat.send', 'input': {
                 'chat_id': channel, 'text': 'New Agent speaks', 'reply_to': first['message_id']}}})
-            operation(b, caller_b, 'agent.message', {'target': a.origin, 'agent_id': identity, 'text': reply})
+            operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': agent_home, 'text': reply})
             fixture.wait(lambda: any(p['author']['id'] == identity for p in operation(a, caller_a,
                 'chat.inspect', {'chat_id': channel})['participants']), 'actual authored participation')
-            passed('direct Agent requests bootstrap its own subscription; only its subsequent post creates participation')
-
-            slow = json.dumps({'fake_tool': {'name': 'shell.run', 'input': {'command': 'sleep 20'}}})
-            operation(b, caller_b, 'agent.message', {'target': a.origin, 'agent_id': identity, 'text': slow})
-            active = fixture.wait(lambda: next((s for s in operation(b, caller_b, 'agent.inspect',
-                {'target': a.origin, 'agent_id': identity})['sessions'] if s['run']), None), 'observed Agent run')
-            stopped = operation(b, caller_b, 'agent.interrupt', {'target': a.origin, 'agent_id': identity,
-                'session_id': active['session_id'], 'run_id': active['run']['turn_id']})
-            assert stopped['cleanup_confirmed'], stopped
-            after = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'Channel remains writable'})
-            assert after['status'] == 'committed'
-            passed('run-specific interruption waits for cleanup and never closes the Chat')
+            passed('Chat messages continue the Agent; only its subsequent post creates participation')
 
             dynamic = json.dumps({'fake_tool': {'name': 'chat.send', 'input': {'chat_id': channel,
                 'text': 'Dynamic tool pipeline'}}})
             ok(a, 'POST', f'/v1/im/sessions/{home_a}/messages', {'content': dynamic, 'request_id': 'dynamic-channel-send'})
-            fixture.wait(lambda: operation(a, caller_a, 'chat.search', {'chat_id': channel,
-                'query': 'Dynamic tool pipeline'})['items'], 'registered dynamic channel tool')
+            fixture.wait(lambda: any(item['text'] == 'Dynamic tool pipeline' for item in operation(a, caller_a, 'chat.history', {'chat_id': channel})['items']), 'registered dynamic channel tool')
             for node in nodes:
                 assert all(s['kind'] != 'agent_control' for s in ok(node, 'GET', '/v1/im/sessions')['items'])
             passed('native ingress, registered tools and Mesh consumers share the same business transaction')
+
+            dynamic_script = json.dumps({'fake_tool': {'name': 'chat.send.android_script',
+                'input': dict(script, chat_id=script_chat, title='Registered Android script')}})
+            ok(a, 'POST', f'/v1/im/sessions/{home_a}/messages',
+                {'content': dynamic_script, 'request_id': 'dynamic-android-script'})
+            fixture.wait(lambda: any((item.get('interaction') or {}).get('title') == 'Registered Android script'
+                for item in operation(a, caller_a, 'chat.history', {'chat_id': script_chat})['items']),
+                'registered Android script tool')
+            fixture.wait(lambda: settled(a, caller_a), 'Android script publication completes without a device response')
+            passed('Agent runtime discovers and completes chat.send.android_script with flat script fields')
 
             legacy = ok(a, 'POST', '/v1/im/sessions', {'profile_id': 'fixture', 'model': 'fixture-model',
                 'thinking': 'off', 'workspace': str(a.workspace)})['session_id']

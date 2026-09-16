@@ -46,6 +46,7 @@ fn main() -> anyhow::Result<()> {
             .enumerate()
             .map(|(i, name)| ParticipantStatus {
                 subscribed: false,
+                assigned: false,
                 id: format!("presence-{i}"),
                 name: name.to_string(),
                 avatar: Some(["cat", "bunny", "bear"][i].into()),
@@ -67,7 +68,6 @@ fn main() -> anyhow::Result<()> {
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
             let rows = view.read_with(cx, |v, _| v.benchmark_frame_state(false).0);
             max_rows.set(max_rows.get().max(rows));
@@ -83,6 +83,23 @@ fn main() -> anyhow::Result<()> {
         Ok(())
     };
     pump(&mut cx, 5)?;
+    // Binding the conversation and inserting its members starts real motion.
+    // Capture the idle reference only after that initial transition settles.
+    for _ in 0..120 {
+        if !view.read_with(&cx, |v, _| v.benchmark_composer_material())["moving"]
+            .as_bool()
+            .unwrap_or(false)
+        {
+            break;
+        }
+        pump(&mut cx, 1)?;
+    }
+    anyhow::ensure!(
+        !view.read_with(&cx, |v, _| v.benchmark_composer_material())["moving"]
+            .as_bool()
+            .unwrap_or(false),
+        "initial composer motion did not settle"
+    );
     let requested_anchor = std::env::var("ZORK_BENCH_ANCHOR")
         .ok()
         .and_then(|v| v.parse::<usize>().ok());
@@ -248,6 +265,26 @@ fn main() -> anyhow::Result<()> {
         .subtract(&before_motion.draw_duration_histogram)?;
     let p95 = motion_draws.draw_duration_histogram.value_at_quantile(0.95) as f64 / 1e6;
     let p99 = motion_draws.draw_duration_histogram.value_at_quantile(0.99) as f64 / 1e6;
+    // The shared material owns settling, including residual particle motion.
+    // Wait for its explicit idle state, bounded to three additional seconds;
+    // the subsequent no-work assertions still run for a full 24 display ticks.
+    let mut settling_frames = 0;
+    while view.read_with(&cx, |v, _| {
+        v.benchmark_composer_material()["moving"] == true
+    }) && settling_frames < 180
+    {
+        pump(&mut cx, 1)?;
+        settling_frames += 1;
+    }
+    anyhow::ensure!(
+        view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"]
+            == false),
+        "composer material did not settle within the bounded transition: {}",
+        view.read_with(&cx, |v, _| v.benchmark_composer_material())
+    );
+    // Commit the retained region's final cached layout after its material
+    // reaches rest; the following display ticks must perform no more work.
+    pump(&mut cx, 1)?;
     let stable = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     #[cfg(target_os = "macos")]
     let stable_gpu = zork_ui::components::liquid_composer::gpu_stats().0;
@@ -260,7 +297,8 @@ fn main() -> anyhow::Result<()> {
     let after = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     anyhow::ensure!(
         stable == after,
-        "steady activity continuously redraws regions"
+        "steady activity continuously redraws regions: before={stable:?}, after={after:?}, material={}",
+        view.read_with(&cx, |v, _| v.benchmark_composer_material())
     );
     for (detail, expected) in [
         (
@@ -307,7 +345,9 @@ fn main() -> anyhow::Result<()> {
     pump(&mut cx, 95)?;
     anyhow::ensure!(
         (bounds("composer-member-presence-0")?.y - idle.y).abs() < 0.5,
-        "idle did not return"
+        "idle did not return: initial={idle:?}, current={:?}, material={}",
+        bounds("composer-member-presence-0")?,
+        view.read_with(&cx, |v, _| v.benchmark_composer_material())
     );
     anyhow::ensure!(
         driver
@@ -547,10 +587,14 @@ fn main() -> anyhow::Result<()> {
         "composer input lost text: {:?}",
         core.draft("render-fixture").text
     );
+    let surface = bounds("composer-surface")?;
+    let editor = bounds("composer-input")?;
+    let padding_y = (surface.y + editor.y) / 2.;
+    anyhow::ensure!(padding_y > surface.y && padding_y < editor.y, "composer has no top padding");
     for action in [
         json!({"type":"key","keystroke":"cmd-a"}),
         // Clicking top padding preserves both focus and the editor selection.
-        json!({"type":"click","target":{"x":surface.x + surface.width / 2.,"y":surface.y - 6.}}),
+        json!({"type":"click","target":{"x":surface.x + surface.width / 2.,"y":padding_y}}),
         json!({"type":"type_text","text":"替换"}),
         json!({"type":"key","keystroke":"shift-enter"}),
         json!({"type":"type_text","text":"第二行"}),
@@ -603,6 +647,50 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.id == "page-tab-history"),
         "right page panel did not close"
     );
+    let original_members = conversation.snapshot().participants.as_ref().clone();
+    let mut member_counts = Vec::new();
+    for count in [4, 7, 2, 400, 3] {
+        let mut next = conversation.snapshot().as_ref().clone();
+        next.participants = Arc::new(
+            (0..count)
+                .map(|i| {
+                    original_members
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| ParticipantStatus {
+                            subscribed: false,
+                            assigned: false,
+                            id: format!("dynamic-{i}"),
+                            name: format!("成员 {i}"),
+                            avatar: Some("cat".into()),
+                            session_id: "fixture".into(),
+                            activity: None,
+                        })
+                })
+                .collect(),
+        );
+        conversation.seed(next);
+        pump(&mut cx, 3)?;
+        let rendered = driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .filter(|e| e.id.starts_with("composer-member-"))
+            .count();
+        anyhow::ensure!(
+            conversation.snapshot().participants.len() == count,
+            "presentation changed authoritative membership"
+        );
+        if count < 20 {
+            anyhow::ensure!(
+                rendered == count,
+                "dynamic members missing: {count} -> {rendered}"
+            );
+        } else {
+            anyhow::ensure!(rendered < 64, "offscreen members built {rendered} controls");
+        }
+        member_counts.push(json!({"core": count, "rendered": rendered}));
+    }
     #[cfg(target_os = "macos")]
     let (gpu_dispatches, gpu_max_ms) = zork_ui::components::liquid_composer::gpu_stats();
     #[cfg(not(target_os = "macos"))]
@@ -622,7 +710,7 @@ fn main() -> anyhow::Result<()> {
     std::fs::write(
         output.join("checks.json"),
         serde_json::to_vec_pretty(
-            &json!({"message_count":message_count,"initial_anchor":initial_anchor,"active_anchor":active_anchor,"max_rendered_rows":max_rows.get(),"coverage":coverage,"right_padding_px":right_padding,"gpu_dispatches":gpu_dispatches,"gpu_max_ms":gpu_max_ms,"display_tick_hz":120,"moving_frame_changes":distinct_frames,"animation_p95_draw_ms":p95,"animation_p99_draw_ms":p99,"idle":idle,"intermediate":middle,"active":active,"composer":composer,"stable_regions":stable,"after_stable":after,"checks":["animated travel","fixed composer","idle grace","idle return","parallel agents","persistent waiting and failure","avatar opens history directly","member hover with history excerpt","hoverable card and dismissal","compact hover bounds","compact layout","reduced motion","no continuous redraw"]}),
+            &json!({"message_count":message_count,"initial_anchor":initial_anchor,"active_anchor":active_anchor,"max_rendered_rows":max_rows.get(),"coverage":coverage,"right_padding_px":right_padding,"gpu_dispatches":gpu_dispatches,"gpu_max_ms":gpu_max_ms,"display_tick_hz":120,"moving_frame_changes":distinct_frames,"animation_p95_draw_ms":p95,"animation_p99_draw_ms":p99,"idle":idle,"intermediate":middle,"active":active,"composer":composer,"stable_regions":stable,"after_stable":after,"settling_frames":settling_frames,"dynamic_members":member_counts,"checks":["animated travel","fixed composer","idle grace","idle return","parallel agents","persistent waiting and failure","avatar opens history directly","member hover with history excerpt","hoverable card and dismissal","compact hover bounds","compact layout","reduced motion","no continuous redraw"]}),
         )?,
     )?;
     anyhow::ensure!(

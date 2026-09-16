@@ -14,7 +14,6 @@ pub(super) struct DriveState {
     pub(super) contents: Arc<ContentCatalog>,
     tabs: HashMap<(String, ContentKind), content::ContentTabState>,
     files_session: Option<String>,
-    files_button_bounds: Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
     selected: Option<Artifact>,
     viewer: preview::PreviewState,
     preview_focused: bool,
@@ -28,6 +27,10 @@ pub(super) struct DriveState {
 }
 
 impl RootView {
+    pub(super) fn attachment_source(&self) -> zork_ui::components::liquid::overlay::SourceBinding {
+        self.drive.viewer.source.clone()
+    }
+
     pub(super) fn select_artifact(&mut self, artifact: Artifact, cx: &mut Context<Self>) {
         self.reset_preview_group(artifact.clone());
         self.load_artifact_preview(artifact, cx);
@@ -155,7 +158,7 @@ impl RootView {
         page: zork_client_core::pages::PageLink,
         cx: &mut Context<Self>,
     ) {
-        self.close_conversation_files();
+        self.close_conversation_files(cx);
         let host = self.browser_host();
         self.browser.update(cx, |browser, cx| {
             browser.set_host(host, cx);
@@ -165,203 +168,31 @@ impl RootView {
         zork_ui::components::region::invalidate_all(cx);
     }
 
-    pub(super) fn sync_conversation_files(&mut self) {
+    pub(super) fn set_conversation_files_open(&mut self, open: bool) {
+        self.drive.files_session = if open { self.selected_session.clone() } else { None };
+    }
+    pub(super) fn sync_conversation_files(&mut self, cx: &mut Context<Self>) {
         if self.drive.files_session != self.selected_session {
             self.drive.files_session = None;
+            self.files_menu.update(cx, |menu, cx| menu.close(cx));
         }
     }
 
-    pub(super) fn has_conversation_files(&self) -> bool {
-        self.drive.files_session.is_some()
-            && self.drive.files_session == self.selected_session
-            && matches!(self.shell.route(), ShellRoute::Task(_))
-    }
-
-    pub(super) fn close_conversation_files(&mut self) -> bool {
+    pub(super) fn close_conversation_files(&mut self, cx: &mut Context<Self>) -> bool {
+        self.files_menu.update(cx, |menu, cx| menu.close(cx));
         self.drive.files_session.take().is_some()
     }
 
-    pub(super) fn render_conversation_files_button(
+    pub(super) fn configure_conversation_files(
         &self,
         cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        if self.conversation_contents().is_empty() {
-            return div().into_any_element();
-        }
-        let label = self.locale.text("conversation_contents").to_owned();
-        let bounds = self.drive.files_button_bounds.clone();
-        crate::desktop::ui::quiet_button(
-            "conversation-files-button",
-            "",
-            true,
-            crate::desktop::ui::IconButtonSize::Compact,
-        )
-        .relative()
-        .bg(rgb(CUE_UI.palette.canvas))
-        .text_size(px(11.))
-        .text_color(rgb(DIM))
-        .child(crate::desktop::ui::icon("icons/file.svg", 14.))
-        .child(label.clone())
-        .child(
-            gpui::canvas(move |rect, _, _| bounds.set(Some(rect)), |_, _, _, _| {})
-                .absolute()
-                .inset_0(),
-        )
-        .on_click(cx.listener(|v, _, window, cx| {
-            v.drive.files_session = if v.has_conversation_files() {
-                None
-            } else {
-                v.selected_session.clone()
-            };
-            window.focus(&v.overlay_focus, cx);
-            zork_ui::components::region::invalidate_all(cx);
-        }))
-        .automation(AutomationRole::Button, label)
-        .into_any_element()
-    }
-
-    pub(super) fn render_conversation_files(
-        &self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) {
         let contents = self.conversation_contents();
-        let preview_rows = ((window.viewport_size().height.as_f32() - 212.) / 104.)
-            .floor()
-            .clamp(1., 3.) as usize;
-        let groups = [ContentKind::Page, ContentKind::File]
-            .into_iter()
-            .map(|kind| {
-                let entries = contents.entries(kind);
-                let title = self.locale.text(content::title_key(kind));
-                div()
-                    .id(format!("{}-preview", content::tab_id(kind)))
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .h(px(28.))
-                            .pl_3()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_size(px(12.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(format!("{title} · {}", entries.len())),
-                            )
-                            .child(
-                                crate::desktop::ui::quiet_button(
-                                    content::all_id(kind),
-                                    self.locale.text("content_view_all"),
-                                    true,
-                                    crate::desktop::ui::IconButtonSize::Compact,
-                                )
-                                .text_size(px(11.))
-                                .on_click(
-                                    cx.listener(move |v, _, _, cx| v.open_content_tab(kind, cx)),
-                                )
-                                .automation(
-                                    AutomationRole::Button,
-                                    format!("{} {title}", self.locale.text("content_view_all")),
-                                ),
-                            ),
-                    )
-                    .when(entries.is_empty(), |v| {
-                        v.child(div().h(px(36.)).px_3().flex().items_center().child(
-                            crate::desktop::ui::text_role(
-                                self.locale.text(match kind {
-                                    ContentKind::Page => "content_pages_empty",
-                                    ContentKind::File => "content_files_empty",
-                                }),
-                                zork_ui::design::TextRole::Description,
-                            ),
-                        ))
-                    })
-                    .children(entries.iter().take(preview_rows).copied().map(|entry| {
-                        div()
-                            .h(px(52.))
-                            .pb_1()
-                            .child(self.render_content_row(entry, false, cx))
-                    }))
-                    .automation(AutomationRole::Status, title)
-                    .into_any_element()
-            })
-            .collect::<Vec<_>>();
-        let title = self.locale.text("conversation_contents");
-        let panel = div()
-            .id("conversation-files-panel")
-            .w(px(384.))
-            .max_w_full()
-            .min_w_0()
-            .occlude()
-            .rounded(px(crate::desktop::ui::MENU_RADIUS))
-            .p_2()
-            .border_1()
-            .border_color(rgb(BORDER))
-            .bg(rgb(CUE_UI.palette.elevated))
-            .shadow(vec![BoxShadow::new(
-                px(0.),
-                px(8.),
-                rgba(0x24272b14).into(),
-            )
-            .blur_radius(px(24.))])
-            .flex()
-            .flex_col()
-            .on_mouse_down_out(cx.listener(|v, event: &gpui::MouseDownEvent, _, cx| {
-                if v.drive
-                    .files_button_bounds
-                    .get()
-                    .is_none_or(|bounds| !bounds.contains(&event.position))
-                {
-                    v.close_conversation_files();
-                    zork_ui::components::region::invalidate_all(cx);
-                }
-            }))
-            .child(
-                div()
-                    .h(px(40.))
-                    .pl(px(12.))
-                    .pr(px(6.))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_size(px(14.))
-                    .line_height(px(22.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(title)
-                    .child(div().flex_1())
-                    .child(
-                        crate::desktop::ui::icon_button_sized(
-                            "conversation-files-close",
-                            true,
-                            crate::desktop::ui::IconButtonSize::Compact,
-                        )
-                        .child(crate::desktop::ui::icon("icons/x.svg", 14.))
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.close_conversation_files();
-                            zork_ui::components::region::invalidate_all(cx);
-                        }))
-                        .automation(
-                            AutomationRole::Button,
-                            self.locale.text("conversation_files_close"),
-                        ),
-                    ),
-            )
-            .child(div().pt_1().flex().flex_col().gap_2().children(groups))
-            .automation(AutomationRole::Status, title);
-        // Position in the chat column and share the entry button's right inset.
-        div()
-            .absolute()
-            .top(px(56.))
-            .left(px(16.))
-            .right(px(self.panel_tools_right_inset(cx)))
-            .flex()
-            .justify_end()
-            .child(panel)
+        let pages = self.content_rows(contents.pages.clone(), cx);
+        let files = self.content_rows(contents.files.clone(), cx);
+        let locale = self.locale;
+        self.files_menu.update(cx, |menu, cx| menu.configure(pages, files,
+            zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())), 384_f32.min(self.composer_surface_width), cx));
     }
     pub(super) fn focus_artifact_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_preview_focus(window, cx);

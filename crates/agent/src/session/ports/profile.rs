@@ -27,6 +27,7 @@ pub struct ProfileExecution {
     api: String,
     streaming: bool,
     image_input: bool,
+    single_system_message: bool,
     parallel_tool_calls: bool,
     service_tier: Option<String>,
     base_url: String,
@@ -59,6 +60,7 @@ impl ProfileExecution {
             api,
             streaming,
             image_input: false,
+            single_system_message: false,
             parallel_tool_calls,
             service_tier,
             base_url,
@@ -72,6 +74,15 @@ impl ProfileExecution {
     pub fn with_image_input(mut self, enabled: bool) -> Self {
         self.image_input = enabled;
         self
+    }
+
+    pub fn with_single_system_message(mut self, enabled: bool) -> Self {
+        self.single_system_message = enabled;
+        self
+    }
+
+    pub fn single_system_message(&self) -> bool {
+        self.single_system_message
     }
 
     pub fn image_input(&self) -> bool {

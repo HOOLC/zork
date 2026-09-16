@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img">
+  <title>Zork Browser Storage</title>
+  <rect width="128" height="128" rx="28" fill="#E9643B"/>
+  <g fill="none" stroke="#F6F3EA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="64" cy="36" rx="34" ry="13"/>
+    <path d="M30 36v56c0 7 15 13 34 13s34-6 34-13V36M30 64c0 7 15 13 34 13s34-6 34-13"/>
+  </g>
+</svg>

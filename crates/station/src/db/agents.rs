@@ -29,37 +29,6 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     Ok(())
 }
 impl GatewayDb {
-    pub fn bind_managed_skill(
-        &self,
-        id: &str,
-        path: &std::path::Path,
-        enabled: bool,
-    ) -> Result<Value> {
-        let mut conn = self.conn.lock().expect("db mutex");
-        let tx = conn.transaction()?;
-        let value: String = tx
-            .query_row("SELECT value FROM node_agents WHERE id=?1", [id], |r| {
-                r.get(0)
-            })
-            .optional()?
-            .context("skill_agent_not_found")?;
-        let mut agent: NodeAgent = serde_json::from_str(&value)?;
-        if enabled {
-            if !agent.skill_paths.iter().any(|p| p == path) {
-                agent.skill_paths.push(path.to_path_buf());
-            }
-        } else {
-            agent.skill_paths.retain(|p| p != path);
-        }
-        zork_config::validate_skill_paths(&agent.skill_paths)?;
-        tx.execute(
-            "UPDATE node_agents SET value=?2 WHERE id=?1",
-            params![id, serde_json::to_string(&agent)?],
-        )?;
-        tx.commit()?;
-        Ok(json!({"id":agent.id,"skill_path":path,"enabled":enabled}))
-    }
-
     pub fn agent_id_for_session(&self, session_id: &str) -> Result<Option<String>> {
         Ok(self.conn.lock().expect("db mutex").query_row(
             "SELECT id FROM node_agents WHERE session_id=?1 UNION ALL SELECT worker_id FROM worker_tasks WHERE session_id=?1
@@ -112,6 +81,7 @@ impl GatewayDb {
             params![id, serde_json::to_string(&agent)?],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(agent)
     }
 
@@ -134,58 +104,7 @@ impl GatewayDb {
     }
 
     /// Serialize source list edits with other updates to the same Agent definition.
-    pub fn manage_skill_sources(
-        &self,
-        session_id: &str,
-        request: zork_agent::skills::SourceRequest,
-    ) -> Result<serde_json::Value> {
-        use zork_agent::skills::SourceRequest;
-        let mut conn = self.conn.lock().expect("db mutex");
-        let tx = conn.transaction()?;
-        let value: Option<String> = tx.query_row(
-            "SELECT value FROM node_agents WHERE session_id=?1
-             UNION ALL SELECT a.value FROM worker_tasks w JOIN node_agents a ON a.id=w.worker_id WHERE w.session_id=?1
-             UNION ALL SELECT a.value FROM mesh_runtime_sessions r
-             JOIN mesh_links l ON l.assignment_id=r.assignment_id
-             JOIN node_agents a ON a.id=json_extract(l.assignment_json,'$.worker.worker_id')
-             WHERE r.runtime_id=?1 AND l.role='executor' LIMIT 1",
-            [session_id], |r| r.get(0)).optional()?;
-        let Some(value) = value else {
-            anyhow::ensure!(
-                matches!(request, SourceRequest::List),
-                "This session has no owning Agent; extra source changes are unavailable"
-            );
-            return Ok(json!({"editable":false,"agent_paths":[]}));
-        };
-        let mut agent: NodeAgent = serde_json::from_str(&value)?;
-        let mutating = !matches!(&request, SourceRequest::List);
-        if let SourceRequest::Add { path } | SourceRequest::Remove { path } = &request {
-            zork_config::validate_skill_paths(std::slice::from_ref(path))?;
-        }
-        match request {
-            SourceRequest::List => {}
-            SourceRequest::Add { path } => {
-                zork_config::validate_skill_paths(std::slice::from_ref(&path))?;
-                if !agent.skill_paths.contains(&path) {
-                    agent.skill_paths.push(path);
-                }
-            }
-            SourceRequest::Remove { path } => {
-                agent.skill_paths.retain(|entry| entry != &path);
-            }
-        }
-        zork_config::validate_skill_paths(&agent.skill_paths)?;
-        if mutating && serde_json::to_string(&agent)? != value {
-            tx.execute(
-                "UPDATE node_agents SET value=?2 WHERE id=?1",
-                params![agent.id, serde_json::to_string(&agent)?],
-            )?;
-        }
-        tx.commit()?;
-        Ok(json!({"editable":true,"agent_id":agent.id,"agent_paths":agent.skill_paths}))
-    }
 
-    /// Change only future model selection, preserving identity, grants and allocation.
     pub fn update_agent_model(
         &self,
         id: &str,
@@ -217,6 +136,7 @@ impl GatewayDb {
             params![id, profile, model, thinking],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(agent)
     }
 
@@ -250,7 +170,7 @@ impl GatewayDb {
         );
         let existing: Option<(String, String)> = tx
             .query_row(
-                "SELECT session_key,text FROM visible_messages WHERE message_id=?1",
+                "SELECT session_key,text FROM visible_message_content WHERE message_id=?1",
                 [message_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -275,8 +195,9 @@ impl GatewayDb {
                 params![session.key, now],
             )?;
         }
-        let message = tx.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_messages WHERE message_id=?1", [message_id], map_visible_message_row)?;
+        let message = tx.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1", [message_id], map_visible_message_row)?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(message)
     }
 
@@ -292,8 +213,8 @@ impl GatewayDb {
                     AND EXISTS(SELECT 1 FROM worker_tasks w JOIN product_tasks t
                         ON t.session_key=w.session_key WHERE w.session_key=s.key)
                 THEN 'assistant' ELSE m.role END
-             FROM sessions s JOIN visible_messages m
-                ON m.sequence=(SELECT MAX(v.sequence) FROM visible_messages v WHERE v.session_key=s.key)
+             FROM sessions s JOIN visible_message_content m
+                ON m.sequence=(SELECT MAX(v.sequence) FROM visible_message_content v WHERE v.session_key=s.key)
              WHERE s.platform='local_gui' AND s.id IS NOT NULL",
         )?;
         let rows = stmt.query_map([], |r| Ok(json!({"session_id":r.get::<_,String>(0)?,"last_message_id":r.get::<_,String>(1)?,"created_at":r.get::<_,String>(2)?,"role":r.get::<_,String>(3)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -314,6 +235,7 @@ impl GatewayDb {
             params![id, serde_json::to_string(&agent)?],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(agent)
     }
     pub fn update_worker_grants(
@@ -343,6 +265,7 @@ impl GatewayDb {
             params![id, serde_json::to_string(&agent)?],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(agent)
     }
     pub fn node_agents(&self) -> Result<Vec<NodeAgent>> {
@@ -474,7 +397,7 @@ impl GatewayDb {
         let conn = self.conn.lock().expect("db mutex");
         let previous: Option<(String, String)> = conn
             .query_row(
-                "SELECT session_key,text FROM visible_messages WHERE message_id=?1",
+                "SELECT session_key,text FROM visible_message_content WHERE message_id=?1",
                 [id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -564,71 +487,20 @@ mod gui_contract_tests {
             db.skill_paths_for_session(&session).unwrap(),
             vec![std::path::PathBuf::from("executor-only")]
         );
-        let changed = db
-            .manage_skill_sources(
-                &session,
-                zork_agent::skills::SourceRequest::Add {
-                    path: "remote-extra".into(),
-                },
-            )
-            .unwrap();
-        assert_eq!(changed["agent_id"], "worker");
+        db.update_agent_skill_paths(
+            "worker",
+            vec!["executor-only".into(), "remote-extra".into()],
+        )
+        .unwrap();
         assert_eq!(
-            changed["agent_paths"],
-            json!(["executor-only", "remote-extra"])
+            db.skill_paths_for_session(&session).unwrap(),
+            vec![
+                std::path::PathBuf::from("executor-only"),
+                std::path::PathBuf::from("remote-extra")
+            ]
         );
         db.update_agent_skill_paths("worker", vec![]).unwrap();
         assert!(db.skill_paths_for_session(&session).unwrap().is_empty());
-    }
-
-    #[test]
-    fn skill_source_tools_edit_only_the_current_agent_and_preserve_other_settings() {
-        use zork_agent::skills::SourceRequest;
-        let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
-        let mut leader = definition("leader", AgentRole::Leader);
-        leader.session_id = Some("leader-session".into());
-        db.insert_node_agent(&leader).unwrap();
-        db.insert_node_agent(&definition("worker", AgentRole::Worker))
-            .unwrap();
-        let (_, worker_session, _) = db
-            .worker_task_allocation("leader", "r", "worker", "goal")
-            .unwrap();
-        let add = || SourceRequest::Add {
-            path: "worker-only".into(),
-        };
-        db.manage_skill_sources(&worker_session, add()).unwrap();
-        db.manage_skill_sources(&worker_session, add()).unwrap();
-        let listed = db
-            .manage_skill_sources(&worker_session, SourceRequest::List)
-            .unwrap();
-        assert_eq!(listed["agent_id"], "worker");
-        assert_eq!(listed["agent_paths"], json!(["worker-only"]));
-        assert!(db
-            .skill_paths_for_session("leader-session")
-            .unwrap()
-            .is_empty());
-        assert_eq!(
-            db.node_agent("worker").unwrap().unwrap().instructions,
-            "keep instructions"
-        );
-        assert!(db.manage_skill_sources("unknown", add()).is_err());
-        assert_eq!(
-            db.manage_skill_sources("unknown", SourceRequest::List)
-                .unwrap()["editable"],
-            false
-        );
-        db.manage_skill_sources(
-            &worker_session,
-            SourceRequest::Remove {
-                path: "worker-only".into(),
-            },
-        )
-        .unwrap();
-        assert!(db
-            .skill_paths_for_session(&worker_session)
-            .unwrap()
-            .is_empty());
     }
 
     #[test]

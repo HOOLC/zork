@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img">
+  <title>Zork Service Watch</title>
+  <rect width="128" height="128" rx="28" fill="#E9643B"/>
+  <path fill="#F6F3EA" d="M29 40 Q29 37 31 35 L42 26 Q45 23 48 25 L94 42 Q98 43.5 98 48 V102 Q98 105 95 103.5 L75 93 Q73 92 73 90 V61 Q73 58 70 57 L53 49 V90 Q53 92 51 93 L32 103.5 Q29 105 29 102 Z"/>
+  <circle cx="103" cy="104" r="20" fill="#24272B" stroke="#E9643B" stroke-width="2"/>
+  <path d="M88 104c8-12 22-12 30 0-8 12-22 12-30 0Z" fill="none" stroke="#F6F3EA" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="103" cy="104" r="4" fill="#F6F3EA"/>
+</svg>

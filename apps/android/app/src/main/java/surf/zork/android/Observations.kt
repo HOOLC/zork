@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 internal data class MessageEdit(val start: Int, val end: Int, val insert: List<ChatMessage>)
-internal data class ObservationFrame(val value: JSONObject, val messages: List<ChatMessage>?, val edits: List<MessageEdit>) {
+internal data class ObservationFrame(val value: JSONObject, val messages: List<ChatMessage>?, val edits: List<MessageEdit>, val history: HistoryFrame? = null) {
     companion object {
         // Called on IO, including JSON -> display DTO conversion.
         fun decode(value: JSONObject): ObservationFrame {
@@ -22,7 +22,7 @@ internal data class ObservationFrame(val value: JSONObject, val messages: List<C
                 state?.optJSONArray("messages")?.objects()?.map(::parseChatMessage),
                 state?.optJSONArray("message_edits").objects().map {
                     MessageEdit(it.getInt("start"), it.getInt("end"), it.optJSONArray("insert").objects().map(::parseChatMessage))
-                })
+                }, value.optJSONObject("history")?.let(HistoryFrame::decode))
         }
     }
 }
@@ -37,6 +37,7 @@ internal class Observations(private val root: String) {
     }
     private val next = AtomicLong()
     private var active: Lease? = null
+    private var activeHistory: Lease? = null
 
     private fun call(request: JSONObject): JSONObject {
         val result = JSONObject(NativeBridge.observe(root, request.toString()))
@@ -48,27 +49,41 @@ internal class Observations(private val root: String) {
 
     fun conversation(peer: String, session: String?) = frames("conversation", peer, session)
     fun settings(peer: String) = frames("settings", peer, null)
+    fun history(peer: String, session: String) = frames("history", peer, session)
     fun invitation() = frames("invitation", "", null)
+    fun notifications() = frames("notifications", "", null, frameAligned = false)
+    fun localScripts() = frames("local_scripts", "", null, JSONObject().put("projection", "local_scripts"), frameAligned = false)
+    fun adb() = frames("adb", "", null, JSONObject().put("projection", "adb"), frameAligned = false)
+    fun dataReset() = frames("data_reset", "", null, JSONObject().put("projection", "data_reset"), frameAligned = false)
+    fun sharedFiles() = frames("shared_files", "", null, JSONObject().put("projection", "shared_files"))
+    fun resources(selection: ResourceSelection) = frames("resources", selection.peer.orEmpty(), null,
+        JSONObject().put("projection", "resources").put("peer", selection.peer ?: JSONObject.NULL)
+            .put("kind", selection.kind).put("query", selection.query?.let(::JSONObject) ?: JSONObject.NULL))
 
     suspend fun older(peer: String, session: String) {
         changeWindow(peer, session, "older")
     }
     suspend fun newer(peer: String, session: String) { changeWindow(peer, session, "newer") }
     suspend fun windowAnchor(peer: String, session: String, anchor: String?) { changeWindow(peer, session, "window", anchor) }
-    private suspend fun changeWindow(peer: String, session: String, op: String, anchor: String? = null) {
-        val lease = active?.takeIf { it.peer == peer && it.session == session } ?: return
+    suspend fun historyChange(peer: String, session: String, op: String, id: String? = null) {
+        changeWindow(peer, session, op, id, history = true)
+    }
+    private suspend fun changeWindow(peer: String, session: String, op: String, anchor: String? = null, history: Boolean = false) {
+        fun current() = if (history) activeHistory else active
+        val lease = current()?.takeIf { it.peer == peer && it.session == session } ?: return
         lease.frame.withLock {
-            if (active !== lease) return@withLock
+            if (current() !== lease) return@withLock
             val result = withContext(Dispatchers.IO) { runCatching {
                 val query = request(lease, op)
                 if (op == "window") query.put("anchor", anchor ?: JSONObject.NULL)
+                if (op == "detail") query.put("id", anchor ?: JSONObject.NULL)
                 call(query)
             } }
-            if (active === lease) result.getOrThrow()
+            if (current() === lease) result.getOrThrow()
         }
     }
 
-    private fun frames(projection: String, peer: String, session: String?) = flow {
+    private fun frames(projection: String, peer: String, session: String?, keyOverride: JSONObject? = null, frameAligned: Boolean = true) = flow {
         coroutineScope {
             val lease = Lease(next.incrementAndGet(), peer, session)
             val dirty = Channel<Unit>(Channel.CONFLATED)
@@ -77,14 +92,15 @@ internal class Observations(private val root: String) {
             try {
                 withContext(Dispatchers.IO) {
                     val key = JSONObject().put("projection", projection)
-                    if (projection != "invitation") key.put("peer", peer)
-                    if (projection == "conversation") key.put("session", session ?: JSONObject.NULL)
-                    val opened = call(JSONObject().put("op", "open").put("generation", lease.generation).put("key", key))
+                    if (projection !in listOf("invitation", "notifications")) key.put("peer", peer)
+                    if (projection == "conversation" || projection == "history") key.put("session", session ?: JSONObject.NULL)
+                    val opened = call(JSONObject().put("op", "open").put("generation", lease.generation).put("key", keyOverride ?: key))
                     // Publish the handle even if cancellation wins dispatch back
                     // to Main, so finally can always close it.
                     lease.handle.set(opened.getLong("handle"))
                 }
                 if (projection == "conversation") active = lease
+                if (projection == "history") activeHistory = lease
                 val listener = object : NativeObserver {
                     override fun onReady(handle: Long, generation: Long, urgentHint: Boolean, sourceClosed: Boolean) {
                         if (closed.get() || handle != lease.handle.get() || generation != lease.generation) return
@@ -102,7 +118,7 @@ internal class Observations(private val root: String) {
                 var initial = true
                 var applied = 0L
                 for (ignored in dirty) {
-                    if (!initial && urgent.tryReceive().isFailure) {
+                    if (frameAligned && !initial && urgent.tryReceive().isFailure) {
                         val frame = async { nextFrame() }
                         try { select<Unit> { frame.onAwait { }; urgent.onReceive { } } }
                         finally { frame.cancel() }
@@ -138,6 +154,7 @@ internal class Observations(private val root: String) {
             } finally {
                 closed.set(true)
                 if (active === lease) active = null
+                if (activeHistory === lease) activeHistory = null
                 // A callback already in flight belongs to this closed lease;
                 // its identity check cannot target a later A -> B -> A observer.
                 withContext(NonCancellable + Dispatchers.IO) {

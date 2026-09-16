@@ -1,8 +1,8 @@
 //! Native component gallery and offscreen story exporter; never packaged in Zork.app.
 use gpui::{
-    div, prelude::*, px, rgb, size, AppContext, Bounds, Context, Entity, HeadlessAppContext, Window,
+    AppContext, Bounds, Context, Entity, HeadlessAppContext, Window, div, prelude::*, px, rgb, size,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -10,7 +10,7 @@ use std::{
 };
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
+    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
     design::CUE_UI,
     desktop::stories::{self, Story, StoryHost},
 };
@@ -80,10 +80,8 @@ fn export_story(story: &Story, output: &Path) -> anyhow::Result<Value> {
     let pixels = settle(&mut cx, window.into())?;
     let snapshot = driver.snapshot(false);
     let target = if story.target == "story-component"
-        && !matches!(
-            story.family.as_str(),
-            "conversation" | "connection" | "agent" | "model"
-        ) {
+        && snapshot.elements.iter().any(|e| e.id == "story-sample")
+    {
         "story-sample"
     } else {
         story.target.as_str()
@@ -269,7 +267,7 @@ impl Render for Gallery {
                             .flex()
                             .items_center()
                             .justify_between()
-                            .border_b_1()
+                            .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
                             .border_color(rgb(CUE_UI.palette.border))
                             .child(
                                 div()

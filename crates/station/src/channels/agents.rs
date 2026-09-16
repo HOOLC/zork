@@ -18,6 +18,7 @@ pub(super) async fn discover(state: &AppState, who: &Subject, args: &Value) -> R
             arguments: args.clone(),
             prepared_key: String::new(),
             files: vec![],
+            publication: None,
             interrupt: false,
         };
         async move {
@@ -49,7 +50,7 @@ pub(super) async fn discover(state: &AppState, who: &Subject, args: &Value) -> R
 
 fn summary(agent: &NodeAgent, manageable: bool) -> Result<Value> {
     Ok(
-        json!({"id":agent.id,"name":agent.name,"avatar":agent.avatar,"manageable":manageable,"revision":configuration_revision(agent)?}),
+        json!({"id":agent.id,"name":agent.name,"avatar":agent.avatar,"role":agent.role,"manageable":manageable,"revision":configuration_revision(agent)?}),
     )
 }
 pub(super) async fn execute(
@@ -104,7 +105,7 @@ pub(super) async fn execute(
             let agent = state.db.node_agent(id)?.context("agent_not_found")?;
             let mut value = summary(&agent, manageable)?;
             if manageable {
-                value["config"] = json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},"instructions":agent.instructions,"skill_paths":agent.skill_paths});
+                value["config"] = json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},"instructions":agent.instructions,"skill_paths":agent.skill_paths,"allowed_leaders":agent.allowed_leaders});
                 let mut sessions = Vec::new();
                 for session in state.db.channel_agent_sessions(id)? {
                     if state.agent.service.contains(&session) {
@@ -116,115 +117,60 @@ pub(super) async fn execute(
             }
             Ok(value)
         }
-        "agent.create" | "agent.update" => {
-            node_access::manage(state, &rpc.subject, is_local)?;
-            let creating = rpc.tool == "agent.create";
-            let id = if creating {
-                object
-            } else {
-                field(args, "agent_id")?
-            };
-            let _guard = state.entries.lock_local_task(&format!("agent:{id}")).await;
-            let mut agent = if creating {
-                NodeAgent {
-                    id: id.into(),
-                    name: String::new(),
-                    avatar: None,
-                    role: AgentRole::Leader,
-                    profile_id: String::new(),
-                    model: String::new(),
-                    thinking: String::new(),
-                    instructions: String::new(),
-                    skill_paths: vec![],
-                    allowed_leaders: vec![],
-                    session_key: None,
-                    session_id: None,
-                }
-            } else {
-                state.db.node_agent(id)?.context("agent_not_found")?
-            };
-            let fields = if creating {
-                &args["config"]
-            } else {
-                &args["changes"]
-            };
-            apply_configuration(state, &mut agent, fields).await?;
-            node_access::manage(state, &rpc.subject, is_local)?;
-            state.db.save_channel_agent(
-                key,
-                &agent,
-                if creating {
-                    None
-                } else {
-                    Some(field(args, "expected_revision")?)
-                },
+        "agent.create" | "agent.update" => mutate(state, rpc, key, object, is_local).await,
+        "agent.assign" => {
+            ensure!(is_local, "work_owner_must_be_calling_node");
+            let creator = state
+                .db
+                .node_agent(&rpc.subject.agent)?
+                .context("agent_not_found")?;
+            let value = crate::node::assign_chat(
+                state,
+                &creator,
+                object,
+                field(args, "worker_id")?,
+                field(args, "goal")?,
             )
+            .await?;
+            state.db.finish_chat_outgoing(key, &value)?;
+            Ok(value)
         }
-        "agent.interrupt" => {
-            node_access::manage(state, &rpc.subject, is_local)?;
-            let id = field(args, "agent_id")?;
-            let session = field(args, "session_id")?;
-            let run = field(args, "run_id")?;
-            ensure!(
-                state
-                    .db
-                    .channel_agent_sessions(id)?
-                    .iter()
-                    .any(|s| s == session),
-                "agent_run_not_owned"
-            );
-            let events = state
-                .agent
-                .events(
-                    session.into(),
-                    None,
-                    zork_agent_api::EventQuery { transient: false },
-                )
-                .await?;
-            futures_util::pin_mut!(events);
-            let current = state.agent.session_snapshot(session).await?;
-            if current
-                .execution
-                .active_turn
-                .as_ref()
-                .is_some_and(|t| t.turn_id == run)
-            {
-                state
-                    .agent
-                    .cancel_session_run(session.into(), run.into())
-                    .await?;
-            } else {
-                let value = json!({"state":"already_ended","run_id":run});
-                state.db.finish_chat_outgoing(key, &value)?;
-                return Ok(value);
-            }
-            let confirmed = if rpc.subject.session == session {
-                false
-            } else {
-                tokio::time::timeout(Duration::from_secs(15),async{
-                    while let Some(event)=events.next().await{
-                        use zork_agent::session::{service::LiveSessionEvent,events::SessionEvent};
-                        match event?{
-                            LiveSessionEvent::Durable(e) if matches!(&e.event,SessionEvent::TurnFinished{turn_id,..} if turn_id==run)=>return Ok::<_,anyhow::Error>(true),
-                            LiveSessionEvent::Snapshot(s) if s.execution.active_turn.as_ref().is_none_or(|t|t.turn_id!=run)=>return Ok(true),
-                            LiveSessionEvent::Overview(s) if s.execution.active_turn.as_ref().is_none_or(|t|t.turn_id!=run)=>return Ok(true),
-                            _=>{}
-                        }
-                    }Ok(false)
-                }).await.ok().transpose()?.unwrap_or(false)
-            };
-            let result = json!({"state":if confirmed{"interrupted"}else{"interruption_requested"},"cleanup_confirmed":confirmed,"run_id":run});
-            state.db.finish_chat_outgoing(key, &result)?;
-            Ok(result)
-        }
-        "agent.message" => state.db.enqueue_agent_input(
-            key,
-            field(args, "agent_id")?,
-            &rpc.subject,
-            field(args, "text")?,
-        ),
         _ => anyhow::bail!("unknown_channel_tool"),
     }
+}
+
+pub(crate) async fn ensure_chat_runtime(
+    state: &AppState,
+    id: &str,
+    target: &str,
+    notice: &crate::db::chats::Notice,
+) -> Result<String> {
+    let definition = state.db.node_agent(id)?;
+    // Long-term partners retain continuity across every channel.
+    if definition
+        .as_ref()
+        .is_some_and(|agent| agent.role == AgentRole::Leader)
+    {
+        return ensure_runtime(state, id).await;
+    }
+    if let Some(work) = &notice.work {
+        ensure!(
+            work.assignment_id == format!("worker-{}", notice.message.chat_id),
+            "chat_execution_mismatch"
+        );
+    }
+    if let Some(session) = state
+        .db
+        .chat_execution(id, target, &notice.message.chat_id)?
+    {
+        let runtime = session.id.as_deref().context("chat_execution_pending")?;
+        let definition = definition.context("agent_not_found")?;
+        let session =
+            crate::node::ensure_agent_session(state, &definition, &session.key, runtime).await?;
+        return session.id.context("chat_execution_pending");
+    }
+    ensure!(notice.work.is_none(), "chat_execution_pending");
+    ensure_runtime(state, id).await
 }
 
 pub(crate) async fn ensure_runtime(state: &AppState, id: &str) -> Result<String> {
@@ -336,6 +282,11 @@ pub(crate) async fn apply_configuration(
     }
     if let Some(allowed) = fields.get("allowed_leaders") {
         agent.allowed_leaders = serde_json::from_value(allowed.clone())?;
+        crate::node::validate_agent_grants(
+            state,
+            &state.db.node_agents()?,
+            &agent.allowed_leaders,
+        )?;
     }
     if let Some(selection) = fields.get("selection") {
         let selection: crate::agent::SessionSelection = serde_json::from_value(selection.clone())?;
@@ -366,4 +317,265 @@ pub(crate) async fn apply_configuration(
         .skills
         .sources(&state.config.data_root, &agent.skill_paths)?;
     Ok(())
+}
+
+fn configuration(agent: &NodeAgent) -> Value {
+    json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},
+        "instructions":agent.instructions,"skill_paths":agent.skill_paths,"allowed_leaders":agent.allowed_leaders,"role":agent.role})
+}
+fn merge_configuration(base: &mut Value, changes: &Value) {
+    for (key, value) in changes.as_object().into_iter().flatten() {
+        if value.is_object() && base[key].is_object() {
+            merge_configuration(&mut base[key], value);
+        } else {
+            base[key] = value.clone();
+        }
+    }
+}
+fn empty_agent(id: &str, actor: &str) -> NodeAgent {
+    NodeAgent {
+        id: id.into(),
+        name: String::new(),
+        avatar: None,
+        role: AgentRole::Worker,
+        profile_id: String::new(),
+        model: String::new(),
+        thinking: String::new(),
+        instructions: String::new(),
+        skill_paths: vec![],
+        allowed_leaders: vec![actor.into()],
+        session_key: None,
+        session_id: None,
+    }
+}
+async fn review_choices(
+    state: &AppState,
+    subject: &Subject,
+    values: &Value,
+) -> Result<zork_agent_gateway_tools::agent_configuration::ReviewChoices> {
+    use zork_agent_gateway_tools::agent_configuration::{selection_value, ReviewChoices};
+    use zork_client_types::interaction::Choice;
+    let profiles = crate::agent::list_profiles(&state.agent).await?;
+    let mut choices = ReviewChoices::default();
+    for profile in profiles.iter().filter(|p| p.auth_configured) {
+        let provider_name = zork_profile::providers::get(&profile.provider)
+            .map(|p| p.info().label)
+            .unwrap_or(&profile.provider);
+        for model in profile
+            .models
+            .iter()
+            .filter(|m| m.enabled && m.limits.is_some())
+        {
+            for thinking in &model.thinking {
+                let label = format!(
+                    "{} · {}",
+                    model.id,
+                    profile.name.as_deref().unwrap_or(provider_name)
+                );
+                choices.models.push(Choice {
+                    value: selection_value(&json!({"profile_id":profile.profile_id,"model":model.id,"thinking":thinking})),
+                    label: if thinking == "off" { label } else { format!("{label} · {thinking}") },
+                });
+            }
+        }
+    }
+    let agents = state.db.node_agents()?;
+    let requester = actor(subject);
+    for value in values["allowed_leaders"].as_array().into_iter().flatten() {
+        let Some(id) = value.as_str() else { continue };
+        let label = if id == requester {
+            "本次请求的发起者".into()
+        } else if let Some(agent) = agents.iter().find(|a| {
+            id == a.id
+                || id == format!("local/{}", a.id)
+                || id == format!("{}/{}", node_access::identity(state), a.id)
+        }) {
+            agent.name.clone()
+        } else {
+            format!("{}（名称不可用）", id.rsplit('/').next().unwrap_or(id))
+        };
+        choices.leaders.push(Choice {
+            value: id.into(),
+            label,
+        });
+    }
+    for value in values["skill_paths"].as_array().into_iter().flatten() {
+        let Some(path) = value.as_str() else { continue };
+        let file = std::path::Path::new(path);
+        let name = if file.file_name().is_some_and(|n| n == "SKILL.md") {
+            file.parent().and_then(|p| p.file_name())
+        } else {
+            file.file_name()
+        };
+        choices.skills.push(Choice {
+            value: path.into(),
+            label: name
+                .and_then(|n| n.to_str())
+                .unwrap_or("已配置的技能")
+                .into(),
+        });
+    }
+    Ok(choices)
+}
+
+async fn candidate(state: &AppState, rpc: &Rpc, id: &str, fields: &Value) -> Result<NodeAgent> {
+    let creating = rpc.tool == "agent.create";
+    let mut agent = if creating {
+        empty_agent(id, &actor(&rpc.subject))
+    } else {
+        state.db.node_agent(id)?.context("agent_not_found")?
+    };
+    let schema = zork_agent_gateway_tools::agent_configuration::schema(creating, creating);
+    ensure!(
+        jsonschema::validator_for(&schema)?.is_valid(fields),
+        "invalid_agent_configuration"
+    );
+    if creating {
+        agent.role = fields
+            .get("role")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()?
+            .unwrap_or(AgentRole::Worker);
+    }
+    let mut fields = fields.clone();
+    if !creating && fields["selection"].is_object() {
+        let mut selection = configuration(&agent)["selection"].clone();
+        merge_configuration(&mut selection, &fields["selection"]);
+        fields["selection"] = selection;
+    }
+    apply_configuration(state, &mut agent, &fields).await?;
+    ensure!(
+        !agent.profile_id.is_empty() && !agent.model.is_empty() && !agent.thinking.is_empty(),
+        "agent_selection_required"
+    );
+    Ok(agent)
+}
+async fn mutate(
+    state: &AppState,
+    rpc: &Rpc,
+    key: &str,
+    object: &str,
+    is_local: bool,
+) -> Result<Value> {
+    node_access::manage(state, &rpc.subject, is_local)?;
+    let creating = rpc.tool == "agent.create";
+    let id = if creating {
+        object
+    } else {
+        field(&rpc.arguments, "agent_id")?
+    };
+    let original = if creating {
+        &rpc.arguments["config"]
+    } else {
+        &rpc.arguments["changes"]
+    };
+    let initial = if creating {
+        empty_agent(id, &actor(&rpc.subject))
+    } else {
+        state.db.node_agent(id)?.context("agent_not_found")?
+    };
+    let needs_input = rpc.arguments["review"] == true
+        || (creating
+            && (original["name"]
+                .as_str()
+                .is_none_or(|s| s.trim().is_empty())
+                || ["profile_id", "model", "thinking"]
+                    .iter()
+                    .any(|k| original["selection"][*k].as_str().is_none_or(str::is_empty))));
+    let mut reviewed = None;
+    let result: Result<Value> = async {
+        let fields = if needs_input {
+            let request = if let Some(request) =
+                state
+                    .db
+                    .business_card_for_call(&rpc.subject, &rpc.invocation_id, "parameters")?
+            {
+                request
+            } else {
+                let mut values = configuration(&initial);
+                merge_configuration(&mut values, original);
+                let choices = review_choices(state, &rpc.subject, &values).await?;
+                let mut spec = zork_agent_gateway_tools::agent_configuration::form(
+                    creating, &values, original, choices,
+                );
+                if let zork_client_types::interaction::Request::AgentConfiguration {
+                    name, ..
+                } = &mut spec
+                {
+                    *name = initial.name.clone();
+                }
+                crate::agent_configuration::begin(state, &rpc.subject, &rpc.invocation_id, &spec)?
+            };
+            reviewed = Some(request.request_id.clone());
+            loop {
+                let submitted =
+                    crate::agent_configuration::next_submission(state, &request.request_id).await?;
+                let parsed = zork_agent_gateway_tools::agent_configuration::submitted(
+                    creating,
+                    original,
+                    &request.request,
+                    &submitted.response.values,
+                );
+                let validated = async {
+                    let fields = parsed?;
+                    candidate(state, rpc, id, &fields).await?;
+                    Ok::<_, anyhow::Error>(fields)
+                }
+                .await;
+                match validated {
+                    Ok(fields) => {
+                        state.db.acknowledge_configuration_response(
+                            &request.request_id,
+                            &submitted,
+                            json!({"values":submitted.response.values}),
+                        )?;
+                        break fields;
+                    }
+                    Err(error) => state.db.reject_configuration_response(
+                        &request.request_id,
+                        &submitted.response.response_id,
+                        &error.to_string(),
+                    )?,
+                }
+            }
+        } else {
+            original.clone()
+        };
+        // User waiting never owns the Agent resource lock or an open transaction.
+        let _guard = state.entries.lock_local_task(&format!("agent:{id}")).await;
+        node_access::manage(state, &rpc.subject, is_local)?;
+        let agent = candidate(state, rpc, id, &fields).await?;
+        state.db.save_channel_agent(
+            key,
+            &agent,
+            if creating {
+                None
+            } else {
+                Some(field(&rpc.arguments, "expected_revision")?)
+            },
+            reviewed.as_deref(),
+        )
+    }
+    .await;
+    if let (Err(error), Some(request)) = (&result, &reviewed) {
+        let record = state.db.business_card(request)?;
+        if let Some(resolution) = record.result.as_ref().filter(|r| r.outcome.terminal()) {
+            return Ok(
+                json!({"status":if resolution.outcome==zork_client_types::interaction::Outcome::Cancelled{"cancelled"}else{"rejected"},"request_id":request,"result":resolution}),
+            );
+        }
+        let attempt = record
+            .submission
+            .as_ref()
+            .map(|s| s.response.response_id.as_str())
+            .unwrap_or("operation");
+        state.db.finish_configuration_review(
+            request,
+            attempt,
+            zork_client_types::interaction::Outcome::Failed,
+            json!({"error":error.to_string()}),
+            "agent",
+        )?;
+    }
+    result
 }

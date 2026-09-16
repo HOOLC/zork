@@ -21,6 +21,18 @@ pub enum DraftAction {
     RemoveAttachment { id: String },
 }
 impl Draft {
+    pub(crate) fn submission(&self, text: &str) -> String {
+        let verbatim = comments::draft_document(text, &self.comments, &self.attachments);
+        let body = if verbatim.len() > zork_client_types::chat::MAX_MESSAGE_TEXT_BYTES
+            && !verbatim.trim().is_empty()
+        {
+            verbatim
+        } else {
+            comments::compose_document(text, &self.comments, &self.attachments)
+        };
+        zork_client_types::files::compose(&body, &self.files)
+    }
+
     pub(crate) fn decode(raw: String) -> Self {
         let (raw, files) = zork_client_types::files::decode(&raw).unwrap_or((raw, vec![]));
         let (text, comments, attachments) =

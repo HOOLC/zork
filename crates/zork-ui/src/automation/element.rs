@@ -17,22 +17,36 @@ pub struct AutomationRegistry {
     revision_tx: watch::Sender<u64>,
 }
 
+#[derive(Clone)]
+struct RetainedElement {
+    info: ElementInfo,
+    gates: Option<Arc<[gpui::InteractionGate]>>,
+}
+impl RetainedElement {
+    fn snapshot(self) -> ElementInfo {
+        let mut info=self.info;
+        if !gpui::InteractionGate::allows(self.gates.as_deref()) { info.enabled=false; }
+        if !gpui::InteractionGate::visible_in(self.gates.as_deref()) { info.visible=false; }
+        info
+    }
+}
+
 #[derive(Default)]
 struct RegistryState {
     current: UiSnapshot,
     pending: Option<PendingFrame>,
-    regions: HashMap<(gpui::WindowId, gpui::EntityId), BTreeMap<String, ElementInfo>>,
+    regions: HashMap<(gpui::WindowId, gpui::EntityId), BTreeMap<String, RetainedElement>>,
     region_parents: HashMap<(gpui::WindowId, gpui::EntityId), (gpui::WindowId, gpui::EntityId)>,
     captures: Vec<(
         (gpui::WindowId, gpui::EntityId),
-        BTreeMap<String, ElementInfo>,
+        BTreeMap<String, RetainedElement>,
     )>,
 }
 
 struct PendingFrame {
     scale_factor: f32,
     viewport: Viewport,
-    elements: BTreeMap<String, ElementInfo>,
+    elements: BTreeMap<String, RetainedElement>,
 }
 
 impl AutomationRegistry {
@@ -69,6 +83,7 @@ impl AutomationRegistry {
         metadata: &ElementMetadata,
         bounds: Bounds<Pixels>,
         visible_bounds: Bounds<Pixels>,
+        gates: Option<Arc<[gpui::InteractionGate]>>,
     ) {
         let bounds = rect(bounds);
         let visible_bounds = rect(visible_bounds);
@@ -90,15 +105,15 @@ impl AutomationRegistry {
             actions: metadata.role.actions(),
         };
 
-        Self::record_info(&mut self.lock(), info);
+        Self::record_info(&mut self.lock(), RetainedElement {info,gates});
     }
 
-    fn record_info(state: &mut RegistryState, info: ElementInfo) {
+    fn record_info(state: &mut RegistryState, info: RetainedElement) {
         for (_, capture) in &mut state.captures {
-            capture.insert(info.id.clone(), info.clone());
+            capture.insert(info.info.id.clone(), info.clone());
         }
         if let Some(pending) = state.pending.as_mut() {
-            pending.elements.insert(info.id.clone(), info);
+            pending.elements.insert(info.info.id.clone(), info);
         }
     }
     pub(crate) fn begin_region(&self, window: gpui::WindowId, region: gpui::EntityId) {
@@ -175,7 +190,7 @@ impl AutomationRegistry {
                 coordinate_space: COORDINATE_SPACE,
                 scale_factor: pending.scale_factor,
                 viewport: pending.viewport,
-                elements: pending.elements.into_values().collect(),
+                elements: pending.elements.into_values().map(RetainedElement::snapshot).collect(),
             };
             revision
         };
@@ -228,6 +243,7 @@ pub fn record_canvas_control(
             },
             bounds,
             bounds.intersect(&window.content_mask().bounds),
+            window.interaction_gates(),
         );
     }
 }
@@ -330,7 +346,7 @@ impl<E: Element> Element for AutomationElement<E> {
             if metadata.register {
                 if let Some(registry) = registry.as_ref() {
                     let visible_bounds = bounds.intersect(&window.content_mask().bounds);
-                    registry.record(metadata, bounds, visible_bounds);
+                    registry.record(metadata, bounds, visible_bounds, window.interaction_gates());
                     registry.record_deferred(window, &metadata.id);
                 }
             }
@@ -458,6 +474,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retained_input_gates_update_cached_metadata_without_losing_enabled_state() {
+        let registry=AutomationRegistry::new();
+        let gate=gpui::InteractionGate::new(true);
+        registry.lock().pending=Some(PendingFrame {scale_factor:1.,viewport:Viewport {width:100.,height:80.},elements:BTreeMap::new()});
+        let bounds=Bounds::new(gpui::point(gpui::px(0.),gpui::px(0.)),gpui::size(gpui::px(20.),gpui::px(20.)));
+        registry.record(&ElementMetadata {id:"retained".into(),role:AutomationRole::Button,label:"Retained".into(),enabled:true,register:true},bounds,bounds,Some(Arc::from([gate.clone()])));
+        let entries=registry.lock().pending.as_ref().unwrap().elements.clone();
+        for (visible,enabled) in [(true,false),(false,false),(true,true)] {
+            gate.set_state(visible,enabled);
+            registry.lock().pending=Some(PendingFrame {scale_factor:1.,viewport:Viewport {width:100.,height:80.},elements:entries.clone()});
+            registry.commit_frame();
+            let info=registry.element("retained").unwrap();
+            assert_eq!((info.visible,info.enabled),(visible,enabled));
+            assert_eq!(registry.snapshot(false).elements.len(),usize::from(visible));
+        }
+    }
+
+    #[test]
     fn registry_commits_a_stable_sorted_snapshot() {
         let registry = AutomationRegistry::new();
         {
@@ -487,6 +521,7 @@ mod tests {
                 gpui::point(gpui::px(10.0), gpui::px(10.0)),
                 gpui::size(gpui::px(20.0), gpui::px(20.0)),
             ),
+            None,
         );
         registry.record(
             &ElementMetadata {
@@ -501,6 +536,7 @@ mod tests {
                 gpui::size(gpui::px(10.0), gpui::px(10.0)),
             ),
             Bounds::default(),
+            None,
         );
         registry.commit_frame();
 

@@ -26,6 +26,18 @@ pub enum LiveEvent {
 pub struct LiveFeed {
     rx: mpsc::Receiver<LiveEvent>,
     task: tokio::task::JoinHandle<()>,
+    applied: tokio::sync::watch::Sender<Option<String>>,
+    resync: tokio::sync::watch::Sender<u64>,
+}
+impl LiveFeed {
+    /// Advance only after the consumer has committed and applied this source.
+    pub fn acknowledge_messages(&self, anchor: Option<String>) {
+        self.applied.send_replace(anchor);
+    }
+    pub fn resync_messages(&self) {
+        self.resync
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
+    }
 }
 impl Drop for LiveFeed {
     fn drop(&mut self) {
@@ -51,29 +63,24 @@ impl GatewayClient {
         self.follow_events(session, page_limit, anchor, None)
     }
     #[cfg(feature = "desktop")]
-    pub(crate) fn browser_events(
-        self: &Arc<Self>,
-        session: &str,
-        registration: serde_json::Value,
-    ) -> LiveFeed {
+    pub(crate) fn browser_events(self: &Arc<Self>, registration: serde_json::Value) -> LiveFeed {
         self.follow_events(
             None,
             0,
             None,
-            Some((
-                format!("/v1/im/sessions/{session}/browser/events"),
-                registration,
-            )),
+            Some(("/v1/client/browser/events".into(), registration)),
         )
     }
     fn follow_events(
         self: &Arc<Self>,
         session: Option<String>,
         page_limit: u32,
-        mut anchor: Option<String>,
+        anchor: Option<String>,
         browser: Option<(String, serde_json::Value)>,
     ) -> LiveFeed {
         let (mut tx, rx) = mpsc::channel(64);
+        let (applied, anchors) = tokio::sync::watch::channel(anchor);
+        let (resync, mut resyncs) = tokio::sync::watch::channel(0u64);
         let client = self.clone();
         let task = self.spawn(async move {
             let mut retry = zork_notify::retry::Retry::default();
@@ -121,12 +128,12 @@ impl GatewayClient {
                         // Execution state is initialized by the SSE snapshot
                         // before independently restoring delivered chat messages.
                         if let Some(id) = session.as_ref().filter(|_| failure.is_none()) {
+                            let anchor = anchors.borrow().clone();
                             match client
                                 .catch_up_messages(id, anchor.as_deref(), page_limit)
                                 .await
                             {
                                 Ok(page) => {
-                                    anchor = page.items.last().and_then(message_id).or(anchor);
                                     if tx.send(LiveEvent::Page(page)).await.is_err() {
                                         return;
                                     }
@@ -144,6 +151,10 @@ impl GatewayClient {
                                                 .unwrap_or_else(|_| Some(Err(ApiError::Task(std::io::Error::other("browser stream heartbeat timed out")))))
                                         } else { stream.next().await }
                                     } => match frame { Some(frame) => frame, None => break },
+                                    changed = resyncs.changed() => {
+                                        if changed.is_err() { return; }
+                                        break;
+                                    },
                                     changed = async {
                                         match &mut route {
                                             Some(receiver) => receiver.changed().await,
@@ -158,14 +169,6 @@ impl GatewayClient {
                                 }};
                                 match frame {
                                     Ok(event) => {
-                                        if let Ok(Some(
-                                            crate::conversation::DecodedSseEvent::Transcript(
-                                                message,
-                                            ),
-                                        )) = crate::conversation::decode_sse_event(&event)
-                                        {
-                                            anchor = message_id(&message).or(anchor);
-                                        }
                                         let refresh = session.is_some()
                                             && matches!(
                                                 event.name.as_str(),
@@ -183,6 +186,7 @@ impl GatewayClient {
                                             continue 'connection;
                                         }
                                         if refresh {
+                                            let anchor = anchors.borrow().clone();
                                             match client
                                                 .catch_up_messages(
                                                     session.as_deref().unwrap(),
@@ -192,11 +196,6 @@ impl GatewayClient {
                                                 .await
                                             {
                                                 Ok(page) => {
-                                                    anchor = page
-                                                        .items
-                                                        .last()
-                                                        .and_then(message_id)
-                                                        .or(anchor);
                                                     let page = if delivery {
                                                         LiveEvent::Messages(page)
                                                     } else {
@@ -241,7 +240,12 @@ impl GatewayClient {
                 retry.wait().await;
             }
         });
-        LiveFeed { rx, task }
+        LiveFeed {
+            rx,
+            task,
+            applied,
+            resync,
+        }
     }
 }
 
@@ -275,6 +279,11 @@ impl GatewayClient {
                     )));
                 }
                 let mut older = self.list_messages(session, Some(&cursor), limit).await?;
+                if older.source_epoch != page.source_epoch {
+                    return Err(ApiError::Task(std::io::Error::other(
+                        "message source changed during catch-up",
+                    )));
+                }
                 older.items.append(&mut page.items);
                 page = older;
             }

@@ -35,7 +35,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     ")?;
     // Projection migrations rebuild derived rows, never business data, local
     // identities or receipts. A new epoch invalidates old frozen exports/cursors.
-    const PROJECTION_SCHEMA: i64 = 1;
+    const PROJECTION_SCHEMA: i64 = 2;
     conn.execute_batch("CREATE TABLE IF NOT EXISTS sync_schema(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL);")?;
     let version: Option<i64> = conn
         .query_row(
@@ -50,8 +50,8 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
             "sessions",
             "visible_messages",
             "product_tasks",
-            "task_artifacts",
-            "conversation_artifacts",
+            "task_file_snapshots",
+            "conversation_file_snapshots",
         ] {
             for event in ["insert", "update", "delete"] {
                 conn.execute_batch(&format!("DROP TRIGGER IF EXISTS sync_{table}_{event}"))?;
@@ -99,7 +99,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     install_projection(conn, "node_agents", "id", "agent", catalog, "1", "json_object('id',NEW.id,'name',json_extract(NEW.value,'$.name'),'avatar',json_extract(NEW.value,'$.avatar'),'role',json_extract(NEW.value,'$.role'),'profile_id',json_extract(NEW.value,'$.profile_id'),'model',json_extract(NEW.value,'$.model'),'thinking',json_extract(NEW.value,'$.thinking'),'instructions',json_extract(NEW.value,'$.instructions'),'allowed_leaders',json(COALESCE(json_extract(NEW.value,'$.allowed_leaders'),'[]')),'session_id',COALESCE((SELECT chat_id FROM chat_agent_home WHERE agent_id=NEW.id),(SELECT chat_id FROM chat_channels WHERE session_key=NEW.session_key)))")?;
     install_projection(conn, "sessions", "id", "session", catalog, "NEW.platform='local_gui' AND NEW.id IS NOT NULL AND COALESCE(NEW.channel_type,'')!='agent_control'", "json_object('session_id',NEW.id,'kind',COALESCE(NEW.channel_type,'desktop'),'title',NEW.channel_name,'profile_id',COALESCE(NEW.profile_id,''),'model',COALESCE(NEW.model,''),'thinking',COALESCE(NEW.thinking,''),'workspace',NEW.workspace_path,'created_at',NEW.created_at,'updated_at',NEW.updated_at)")?;
     // The conversation scope is keyed by the public session id, not session_key.
-    install_projection(conn, "visible_messages", "message_id", "message", "json_object('type','conversation','id',(SELECT id FROM sessions WHERE key=NEW.session_key))", "EXISTS(SELECT 1 FROM sessions WHERE key=NEW.session_key AND platform='local_gui' AND id IS NOT NULL)", "json_object('message_id',NEW.message_id,'sequence',NEW.sequence,'role',CASE WHEN NEW.role='user' AND (NEW.message_id GLOB 'assignment-*' OR NEW.message_id GLOB 'rework-*') AND EXISTS(SELECT 1 FROM worker_tasks WHERE session_key=NEW.session_key) THEN 'assistant' ELSE NEW.role END,'text',NEW.text,'kind',NEW.kind,'created_at',NEW.created_at,'author',json((SELECT author FROM chat_message_facts WHERE message_id=NEW.message_id)),'author_agent_id',(SELECT CASE WHEN json_extract(author,'$.kind')='agent' THEN author_id END FROM chat_message_facts WHERE message_id=NEW.message_id),'author_name',(SELECT json_extract(author,'$.name') FROM chat_message_facts WHERE message_id=NEW.message_id),'mentions',json((SELECT mentions FROM chat_message_facts WHERE message_id=NEW.message_id)),'reply_to',(SELECT reply_to FROM chat_message_facts WHERE message_id=NEW.message_id))")?;
+    install_projection(conn, "visible_messages", "message_id", "message", "json_object('type','conversation','id',(SELECT id FROM sessions WHERE key=NEW.session_key))", "EXISTS(SELECT 1 FROM sessions WHERE key=NEW.session_key AND platform='local_gui' AND id IS NOT NULL)", "json_object('message_id',NEW.message_id,'sequence',NEW.sequence,'role',CASE WHEN NEW.role='user' AND (NEW.message_id GLOB 'assignment-*' OR NEW.message_id GLOB 'rework-*') AND EXISTS(SELECT 1 FROM worker_tasks WHERE session_key=NEW.session_key) THEN 'assistant' ELSE NEW.role END,'text','','kind',NEW.kind,'created_at',NEW.created_at,'author',json((SELECT author FROM chat_message_facts WHERE message_id=NEW.message_id)),'author_agent_id',(SELECT CASE WHEN json_extract(author,'$.kind')='agent' THEN author_id END FROM chat_message_facts WHERE message_id=NEW.message_id),'author_name',(SELECT json_extract(author,'$.name') FROM chat_message_facts WHERE message_id=NEW.message_id),'mentions',json((SELECT mentions FROM chat_message_facts WHERE message_id=NEW.message_id)),'reply_to',(SELECT reply_to FROM chat_message_facts WHERE message_id=NEW.message_id))")?;
     // Update only the task projection formula; its public shape and cursor
     // domain are unchanged. Do not rebuild message projections for this change.
     let task_trigger: Option<String> = conn.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='sync_product_tasks_insert'", [], |row| row.get(0)).optional()?;
@@ -121,20 +121,31 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TRIGGER IF NOT EXISTS sync_task_run_count_insert AFTER INSERT ON task_event_cursors WHEN NEW.run_count IS NOT NULL BEGIN UPDATE product_tasks SET title=title WHERE task_id=NEW.task_id; END;
         CREATE TRIGGER IF NOT EXISTS sync_task_run_count_update AFTER UPDATE OF run_count ON task_event_cursors WHEN OLD.run_count IS NOT NEW.run_count BEGIN UPDATE product_tasks SET title=title WHERE task_id=NEW.task_id; END;
         CREATE TRIGGER IF NOT EXISTS sync_task_run_count_delete AFTER DELETE ON task_event_cursors WHEN OLD.run_count IS NOT NULL BEGIN UPDATE product_tasks SET title=title WHERE task_id=OLD.task_id; END;")?;
-    for table in ["task_artifacts", "conversation_artifacts"] {
-        let task = if table == "task_artifacts" {
+    for table in ["task_file_snapshots", "conversation_file_snapshots"] {
+        let task = if table == "task_file_snapshots" {
             "NEW.task_id"
         } else {
             "NULL"
         };
-        let session = if table == "task_artifacts" {
+        let session = if table == "task_file_snapshots" {
             "(SELECT session_key FROM product_tasks WHERE task_id=NEW.task_id)"
         } else {
             "NEW.session_key"
         };
-        install_projection(conn,table,"artifact_id","artifact",catalog,"1",&format!("json_object('artifact_id',NEW.artifact_id,'task_id',{task},'session_id',(SELECT id FROM sessions WHERE key={session}),'task_title','Conversation','name',NEW.name,'source_path',NEW.source_path,'workspace',NEW.workspace,'media_type',NEW.media_type,'caption',NEW.caption,'byte_len',length(NEW.content),'version',NEW.version,'created_at',NEW.created_at)"))?;
+        install_projection(conn,table,"artifact_id","artifact",catalog,"1",&format!("json_object('artifact_id',NEW.artifact_id,'task_id',{task},'session_id',(SELECT id FROM sessions WHERE key={session}),'task_title','Conversation','name',NEW.name,'source_path',NEW.source_path,'workspace',NEW.workspace,'media_type',NEW.media_type,'caption',NEW.caption,'byte_len',json_extract(NEW.snapshot,'$.byte_len'),'version',NEW.version,'created_at',NEW.created_at)"))?;
     }
     install_markers(conn)?;
+    install_projection(conn, "chat_channels", "chat_id", "resource", catalog, "1",
+        "json_object('resource_type','chat_summary','schema_version',1,'chat_id',NEW.chat_id,'title',NEW.title,'creator',json(NEW.creator),'created_at',NEW.created_at,'last_message_at',NEW.last_message_at,'message_count',NEW.message_count)")?;
+    // A complete empty directory is distinct from an older node without this
+    // projection. Unknown Resource variants are ignored by existing clients.
+    conn.execute_batch(
+        "INSERT INTO sync_entities(scope,kind,id,value)
+        VALUES('{\"type\":\"catalog\"}','resource','zork:chat-catalog',
+          '{\"resource_type\":\"chat_catalog\",\"schema_version\":1}')
+        ON CONFLICT(scope,kind,id) DO UPDATE SET value=excluded.value
+        WHERE sync_entities.value IS NOT excluded.value;",
+    )?;
     conn.execute_batch("CREATE TRIGGER IF NOT EXISTS chat_sync_author AFTER INSERT ON chat_message_facts BEGIN UPDATE visible_messages SET role=role WHERE message_id=NEW.message_id; END;
         CREATE TRIGGER IF NOT EXISTS chat_sync_home AFTER INSERT ON chat_agent_home BEGIN UPDATE node_agents SET value=value WHERE id=NEW.agent_id; END;")?;
 
@@ -250,12 +261,16 @@ impl GatewayDb {
                     // SQLite-only backup restoration must not reuse issued
                     // revisions. Normal restart keeps the same durable epoch.
                     conn.execute_batch("UPDATE sync_meta SET epoch=lower(hex(randomblob(16))); DELETE FROM sync_exports;")?;
+                    return self.sync_record_watermark(conn);
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
-        self.sync_record_watermark(conn)
+        // Opening a database issues no cursor. Preserve the last actually
+        // published watermark; page/receipt publication persists newer values
+        // before returning them. This also avoids rewriting it on an idle boot.
+        Ok(())
     }
     fn sync_watermark_value(conn: &Connection) -> Result<Watermark> {
         Ok(conn.query_row(
@@ -290,11 +305,14 @@ impl GatewayDb {
 
     pub fn sync_bind_mesh_owner(&self, origin: &str) -> Result<()> {
         let conn = self.conn.lock().expect("db mutex");
-        conn.execute(
+        let changed = conn.execute(
             "UPDATE sync_identity SET owner=?1 WHERE singleton=1 AND owner<>?1",
             [origin],
         )?;
-        self.sync_record_watermark(&conn)
+        if changed > 0 {
+            self.sync_record_watermark(&conn)?;
+        }
+        Ok(())
     }
     pub fn sync_local_owner(&self) -> Result<String> {
         Ok(self.conn.lock().expect("db mutex").query_row(
@@ -382,7 +400,7 @@ impl GatewayDb {
 
     /// The durable high-water mark is authoritative; notifications are hints.
     pub fn sync_cursor(&self, owner: &str, scope: Scope) -> Result<Cursor> {
-        let conn = self.conn.lock().expect("db mutex");
+        let conn = self.published_messages()?;
         let (epoch, sequence) =
             conn.query_row("SELECT epoch,sequence FROM sync_meta", [], |r| {
                 Ok((r.get(0)?, r.get(1)?))
@@ -435,7 +453,7 @@ impl GatewayDb {
     pub fn sync_pull(&self, owner: &str, request: &Pull) -> Result<Reply> {
         request.scope.validate().map_err(anyhow::Error::msg)?;
         zork_client_types::sync::identifier(owner).map_err(anyhow::Error::msg)?;
-        let mut conn = self.conn.lock().expect("db mutex");
+        let mut conn = self.published_messages()?;
         let tx = conn.transaction()?;
         let (epoch, sequence, floor): (String, u64, u64) =
             tx.query_row("SELECT epoch,sequence,floor FROM sync_meta", [], |r| {
@@ -506,12 +524,26 @@ impl GatewayDb {
         let mut bytes = serde_json::to_vec(&page)?.len();
         let total = rows.len();
         for (position, kind, id, revision, value) in rows {
-            let record = Record {
+            let mut record = Record {
                 kind: serde_json::from_value(Value::String(kind))?,
                 id,
                 revision,
                 value: value.map(|v| serde_json::from_str(&v)).transpose()?,
             };
+            if record.kind == Kind::Message {
+                if let Some(value) = record.value.as_mut() {
+                    let sequence = value["sequence"]
+                        .as_i64()
+                        .context("message source position missing")?;
+                    // The export freezes metadata; source bodies are immutable and
+                    // remain readable even if the binding is later deleted.
+                    let source = self.message_log.get(sequence)?;
+                    value["text"] = Value::String(source.text());
+                    value["source_sequence"] = json!(sequence);
+                    value["source_epoch"] =
+                        json!(self.message_log.epoch(&source.message.chat_id)?);
+                }
+            }
             let size = serde_json::to_vec(&record)?.len() + 1;
             ensure!(size + 4096 <= MAX_PAGE_BYTES, "sync_entity_too_large");
             if page.records.len() == MAX_PAGE_RECORDS || bytes + size + 4096 > MAX_PAGE_BYTES {
@@ -538,6 +570,28 @@ impl GatewayDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restart_keeps_last_issued_watermark_until_new_data_is_published() {
+        let root = tempfile::tempdir().unwrap();
+        let db = open(&root);
+        let watermark = db.sync_watermark.clone();
+        assert!(!watermark.exists());
+        agent(&db.conn.lock().unwrap(), "a", "Published");
+        let first = pull(&db, None, None).through;
+        let issued = fs::read(&watermark).unwrap();
+        agent(&db.conn.lock().unwrap(), "a", "Not yet published");
+        drop(db);
+
+        let db = open(&root);
+        assert_eq!(fs::read(&watermark).unwrap(), issued);
+        let next = pull(&db, Some(first.clone()), None);
+        assert_eq!(next.through.epoch, first.epoch);
+        assert!(next.through.sequence > first.sequence);
+        assert_ne!(fs::read(&watermark).unwrap(), issued);
+        assert!(next.records.iter().any(|record| record.value.as_ref()
+            .is_some_and(|value| value["name"] == "Not yet published")));
+    }
+
     #[test]
     fn reads_and_identical_reconciliation_are_quiet() {
         let root = tempfile::tempdir().unwrap();
@@ -622,7 +676,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = open(&dir);
         let empty = pull(&db, None, None);
-        assert!(empty.last && empty.records.is_empty());
+        assert!(empty.last);
+        assert_eq!(empty.records.len(), 1);
+        assert_eq!(empty.records[0].id, "zork:chat-catalog");
+        assert_eq!(
+            empty.records[0].value.as_ref().unwrap()["resource_type"],
+            "chat_catalog"
+        );
         {
             let mut conn = db.conn.lock().unwrap();
             let tx = conn.transaction().unwrap();
@@ -653,7 +713,9 @@ mod tests {
             .unwrap();
         let deletion = pull(&db, Some(first.through), None);
         assert!(deletion.records[0].value.is_none());
-        assert!(pull(&db, None, None).records.is_empty());
+        let remaining = pull(&db, None, None);
+        assert_eq!(remaining.records.len(), 1);
+        assert_eq!(remaining.records[0].id, "zork:chat-catalog");
     }
     #[test]
     fn paginated_export_is_stable_during_writes_and_replay() {
@@ -677,11 +739,21 @@ mod tests {
         };
         let last = pull(&db, None, Some(next.clone()));
         assert!(last.last);
-        assert_eq!(last.records.len(), 88);
+        assert_eq!(last.records.len(), 89);
         assert_eq!(
-            last.records.last().unwrap().value.as_ref().unwrap()["name"],
+            last.records
+                .iter()
+                .find(|record| record.id == "a0599")
+                .unwrap()
+                .value
+                .as_ref()
+                .unwrap()["name"],
             "Before"
         );
+        assert!(last
+            .records
+            .iter()
+            .any(|record| record.id == "zork:chat-catalog"));
         assert_eq!(pull(&db, None, Some(next)), last);
         let delta = pull(&db, Some(last.through), None);
         assert_eq!(delta.records.len(), 1);
@@ -813,7 +885,9 @@ mod tests {
             .unwrap(),
             Reply::ResetRequired { .. }
         ));
-        assert!(pull(&db, None, None).records.is_empty());
+        let remaining = pull(&db, None, None);
+        assert_eq!(remaining.records.len(), 1);
+        assert_eq!(remaining.records[0].id, "zork:chat-catalog");
     }
     #[test]
     fn foreign_and_expired_cursors_require_explicit_reset() {

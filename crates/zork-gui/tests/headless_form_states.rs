@@ -67,6 +67,10 @@ fn main() -> anyhow::Result<()> {
         "Focus changed the normal field surface"
     );
     act(&mut cx, click("form-save"))?;
+    if !driver.snapshot(false).elements.iter().any(|e| e.label == "请填写名称") {
+        cx.capture_screenshot(window.into())?.save(output.join("validation-failure.png"))?;
+        std::fs::write(output.join("validation-failure.json"), serde_json::to_vec_pretty(&driver.snapshot(false))?)?;
+    }
     anyhow::ensure!(
         driver
             .snapshot(false)

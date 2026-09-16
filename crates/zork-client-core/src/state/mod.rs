@@ -5,6 +5,10 @@ mod artifacts;
 #[cfg(not(target_family = "wasm"))]
 mod device;
 #[cfg(not(target_family = "wasm"))]
+mod navigation;
+#[cfg(not(target_family = "wasm"))]
+pub use navigation::{NavigationAgent, NavigationChat, NavigationData};
+#[cfg(not(target_family = "wasm"))]
 mod upgrade;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) use upgrade::upgrade_status;
@@ -36,12 +40,13 @@ pub use conversation::{
     ConversationUpdate, DeliveryState, MessageDeliveries, MessageSplice, TranscriptLookup,
 };
 #[cfg(not(target_family = "wasm"))]
-pub use device::{Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains, NavigationData};
+pub use device::{Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains};
 #[cfg(not(target_family = "wasm"))]
 pub use drafts::{Draft, DraftAction, TEXT_ATTACHMENT_LIMIT};
 #[cfg(not(target_family = "wasm"))]
 pub use history::{
-    History, HistoryData, HistoryEntries, HistoryRuntime, HistorySubscription, HistoryUpdate,
+    History, HistoryData, HistoryEntries, HistoryLookup, HistoryRuntime, HistorySubscription,
+    HistoryUpdate,
 };
 #[cfg(not(target_family = "wasm"))]
 pub use overview::{InitialSessionSnapshot, SessionOverview, SessionSnapshot};

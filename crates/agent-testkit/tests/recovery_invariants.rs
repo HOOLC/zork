@@ -90,34 +90,25 @@ async fn repeated_wire_call_id_does_not_rewrite_a_previous_request() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn completed_end_during_cancel_does_not_rewrite_sent_prefix() {
-    let mut options = zork_agent::session::service::ServiceOptions::default();
-    options.tool_concurrency = 1;
-    let mut w = TestWorld::with_options(options);
-    let mut slow = w.install_tool(tool("test.blocker")).unwrap();
+    let mut w = TestWorld::new();
+    // Hold this invocation explicitly; global tool capacity is not a scheduling
+    // contract and must not be used to manufacture a pending built-in call.
+    let mut end = w.install_tool(tool("end")).unwrap();
     let id = session(&w).await;
     w.send_mail(&id, "start").await.unwrap();
     w.request()
         .await
-        .respond_call("blocker", "test.blocker", json!({}))
-        .unwrap();
-    let pending = slow.request().await;
-    w.send_mail(&id, "end while blocker is still running")
-        .await
-        .unwrap();
-    w.request()
-        .await
         .respond_call("pending-end", "end", json!({}))
         .unwrap();
-    w.send_mail(&id, "interrupt the queued end").await.unwrap();
+    let pending = end.request().await;
+    w.send_mail(&id, "interrupt the pending end").await.unwrap();
     let in_flight = w.request().await;
     let prefix = in_flight.transcript.clone();
     assert!(prefix
         .iter()
         .any(|m| m.tool_call_id.as_deref() == Some("pending-end")
             && m.content.contains("still unfinished")));
-    pending
-        .succeed(json!({"message": "release permit for real builtin end"}))
-        .unwrap();
+    pending.succeed(json!({"ended":true})).unwrap();
     w.wait_for_state(&id, |s| {
         s.pending_tools
             .values()

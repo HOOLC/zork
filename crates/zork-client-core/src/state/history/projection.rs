@@ -1,5 +1,5 @@
 use super::change::HistoryChange;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use zork_client_types::history::{Entry, EntryOrder, Ledger, ProjectedEntry, Record};
 use zork_observe::{List, ListEdit};
 
@@ -10,10 +10,38 @@ use zork_observe::{List, ListEdit};
 pub(super) struct Projection {
     ledger: Ledger,
     order: List<EntryOrder>,
-    by_id: HashMap<String, EntryOrder>,
+    by_id: imbl::HashMap<String, EntryOrder>,
+}
+
+/// Immutable ID lookup captured with the entries in a published history version.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HistoryLookup {
+    order: List<EntryOrder>,
+    by_id: imbl::HashMap<String, EntryOrder>,
+}
+impl HistoryLookup {
+    pub fn index_of(&self, id: &str) -> Option<usize> {
+        let key = self.by_id.get(id)?;
+        let (mut low, mut high) = (0, self.order.len());
+        while low < high {
+            let mid = low + (high - low) / 2;
+            if self.order[mid] < *key {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        (self.order.get(low) == Some(key)).then_some(low)
+    }
 }
 
 impl Projection {
+    pub(super) fn lookup(&self) -> HistoryLookup {
+        HistoryLookup {
+            order: self.order.clone(),
+            by_id: self.by_id.clone(),
+        }
+    }
     pub fn ingest(
         &mut self,
         records: &[Arc<Record>],

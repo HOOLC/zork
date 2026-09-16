@@ -1,14 +1,17 @@
 //! Bounded resumable ingress into the conversation owner's durable snapshot store.
 use super::*;
+use super::snapshots::Snapshot;
 use anyhow::ensure;
 use zork_client_types::files::{FileRef, CHUNK_BYTES};
+#[cfg(test)]
+mod large_file_tests;
 
 pub(super) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS conversation_uploads (
         id TEXT PRIMARY KEY, session_key TEXT NOT NULL REFERENCES sessions(key) ON DELETE CASCADE,
         metadata TEXT NOT NULL, received INTEGER NOT NULL, updated_at INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS conversation_upload_chunks(id TEXT NOT NULL REFERENCES conversation_uploads(id) ON DELETE CASCADE, offset INTEGER NOT NULL, content BLOB NOT NULL, PRIMARY KEY(id,offset));
-        CREATE TABLE IF NOT EXISTS conversation_file_sources(id TEXT PRIMARY KEY REFERENCES conversation_artifacts(artifact_id) ON DELETE CASCADE, source_json TEXT NOT NULL);")?;
+        CREATE TABLE IF NOT EXISTS conversation_file_origins(id TEXT PRIMARY KEY REFERENCES conversation_file_snapshots(artifact_id) ON DELETE CASCADE, source_json TEXT NOT NULL);")?;
     Ok(())
 }
 
@@ -135,14 +138,21 @@ mod tests {
 }
 
 impl GatewayDb {
+    pub fn conversation_file_path(&self, key:&str, file:&FileRef)->Result<PathBuf> {
+        ensure!(self.conversation_file_ref(key,&file.id)?==*file,"attachment_reference_mismatch");
+        let snapshot=Snapshot{root:file.content_root.clone(),name:file.name.clone(),byte_len:file.byte_len};
+        self.snapshot_range(&snapshot,0,0)?;
+        self.snapshot_path(&snapshot)
+    }
+
     pub fn conversation_file_ref(&self, key: &str, id: &str) -> Result<FileRef> {
         let conn = self.conn.lock().expect("db mutex");
-        let (name,bytes):(String,Vec<u8>)=conn.query_row("SELECT name,content FROM conversation_artifacts WHERE session_key=?1 AND artifact_id=?2 UNION ALL SELECT a.name,a.content FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id WHERE t.session_key=?1 AND a.artifact_id=?2",params![key,id],|r|Ok((r.get(0)?,r.get(1)?))).context("attachment_not_in_conversation")?;
+        let (name,snapshot):(String,Snapshot)=conn.query_row("SELECT name,snapshot FROM conversation_file_snapshots WHERE session_key=?1 AND artifact_id=?2 UNION ALL SELECT a.name,a.snapshot FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id WHERE t.session_key=?1 AND a.artifact_id=?2",params![key,id],|r|Ok((r.get(0)?,r.get(1)?))).context("attachment_not_in_conversation")?;
         let file = FileRef {
             id: id.into(),
             name,
-            byte_len: bytes.len(),
-            content_root: zork_mesh::content_root(&bytes),
+            byte_len: snapshot.byte_len,
+            content_root: snapshot.root,
         };
         ensure!(file.valid(), "invalid_attachment");
         Ok(file)
@@ -178,7 +188,7 @@ impl GatewayDb {
 
     pub fn record_file_source(&self, id: &str, source: &Value) -> Result<()> {
         self.conn.lock().expect("db mutex").execute(
-            "INSERT OR IGNORE INTO conversation_file_sources(id,source_json) VALUES(?1,?2)",
+            "INSERT OR IGNORE INTO conversation_file_origins(id,source_json) VALUES(?1,?2)",
             params![id, source.to_string()],
         )?;
         Ok(())
@@ -228,22 +238,22 @@ impl GatewayDb {
         let metadata = serde_json::to_string(file)?;
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
-        let existing: Option<(String, String, Vec<u8>)> = tx.query_row(
-            "SELECT session_key,name,content FROM conversation_artifacts WHERE artifact_id=?1 UNION ALL SELECT t.session_key,a.name,a.content FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1", [&file.id],
+        let existing: Option<(String, String, Snapshot)> = tx.query_row(
+            "SELECT session_key,name,snapshot FROM conversation_file_snapshots WHERE artifact_id=?1 UNION ALL SELECT t.session_key,a.name,a.snapshot FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1", [&file.id],
             |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-        if let Some((key, name, bytes)) = existing {
+        if let Some((key, name, snapshot)) = existing {
             ensure!(
                 key == session.key
                     && name == file.name
-                    && bytes.len() == file.byte_len
-                    && zork_mesh::content_root(&bytes) == file.content_root,
+                    && snapshot.byte_len == file.byte_len
+                    && snapshot.root == file.content_root,
                 "attachment_id_conflict"
             );
             ensure!(
-                bytes.get(offset..offset + chunk.len()) == Some(chunk),
+                self.snapshot_range(&snapshot, offset, chunk.len())? == chunk,
                 "attachment_chunk_conflict"
             );
-            return Ok(bytes.len());
+            return Ok(snapshot.byte_len);
         }
         // Abandoned partial uploads have no message references and expire after a day.
         tx.execute(
@@ -323,8 +333,9 @@ impl GatewayDb {
                 _ if std::str::from_utf8(&bytes).is_ok() && !bytes.contains(&0) => "text/plain",
                 _ => "application/octet-stream",
             };
-            tx.execute("INSERT INTO conversation_artifacts(artifact_id,session_key,name,source_path,media_type,workspace,content,version,created_at) VALUES (?1,?2,?3,?1,?4,?5,?6,1,?7)",
-                params![file.id,session.key,file.name,media_type,session.workspace_path,bytes,now_rfc3339()])?;
+            let snapshot = self.freeze_file(&file.name, &bytes)?;
+            tx.execute("INSERT INTO conversation_file_snapshots(artifact_id,session_key,name,source_path,media_type,workspace,snapshot,version,created_at) VALUES (?1,?2,?3,?1,?4,?5,?6,1,?7)",
+                params![file.id,session.key,file.name,media_type,session.workspace_path,snapshot,now_rfc3339()])?;
             tx.execute("DELETE FROM conversation_uploads WHERE id=?1", [&file.id])?;
         } else {
             tx.execute(
@@ -339,16 +350,17 @@ impl GatewayDb {
     pub fn conversation_file_bytes(&self, session_key: &str, file: &FileRef) -> Result<Vec<u8>> {
         ensure!(file.valid(), "invalid_attachment");
         let conn = self.conn.lock().expect("db mutex");
-        let (name, bytes): (String,Vec<u8>) = conn.query_row(
-            "SELECT name,content FROM conversation_artifacts WHERE session_key=?1 AND artifact_id=?2 UNION ALL SELECT a.name,a.content FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id WHERE t.session_key=?1 AND a.artifact_id=?2",
+        let (name, snapshot): (String,Snapshot) = conn.query_row(
+            "SELECT name,snapshot FROM conversation_file_snapshots WHERE session_key=?1 AND artifact_id=?2 UNION ALL SELECT a.name,a.snapshot FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id WHERE t.session_key=?1 AND a.artifact_id=?2",
             params![session_key,file.id], |r| Ok((r.get(0)?,r.get(1)?)))
             .context("attachment_not_in_conversation")?;
         ensure!(
             name == file.name
-                && bytes.len() == file.byte_len
-                && zork_mesh::content_root(&bytes) == file.content_root,
+                && snapshot.byte_len == file.byte_len
+                && snapshot.root == file.content_root,
             "attachment_reference_mismatch"
         );
-        Ok(bytes)
+        drop(conn);
+        self.read_snapshot(&snapshot)
     }
 }

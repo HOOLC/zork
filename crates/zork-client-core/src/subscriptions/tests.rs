@@ -148,7 +148,7 @@ fn wire_retries_from_applied_window_and_encodes_only_changed_rows() {
 }
 
 #[test]
-fn removing_a_receipt_cannot_promote_a_pending_wire_message() {
+fn saved_echo_updates_pending_wire_message_without_another_receive_callback() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -172,16 +172,34 @@ fn removing_a_receipt_cannot_promote_a_pending_wire_message() {
     assert_eq!(rows[0]["pending"], true);
     let id = format!("client-chat-{}", sent.request_id);
     assert_eq!(rows[0]["request_id"], sent.request_id);
+    store
+        .fail_delivery("peer", &sent.request_id, "目标设备不支持当前消息协议")
+        .unwrap();
+    device.recover_outbox();
+    consume(&mut reader, &mut rows);
+    assert_eq!(rows[0]["content"], "hello");
+    assert_eq!(rows[0]["delivery_status"], "failed");
+    assert_eq!(
+        rows[0]["delivery_error"],
+        "目标设备不支持当前消息协议"
+    );
     let authoritative = event(&id, "hello");
     let message = serde_json::from_str(&authoritative.data).unwrap();
-    store.acknowledge_transcript("peer", &[message]).unwrap();
+    store
+        .cache_message_page(
+            "peer",
+            "chat",
+            &crate::api::MessagePage {
+                source_epoch: None,
+                items: vec![message],
+                older_cursor: None,
+            },
+            None,
+        )
+        .unwrap();
     device.recover_outbox();
-    let after_receipt = reader.prepare().unwrap();
-    assert!(
-        after_receipt.is_none(),
-        "unexpected receipt frame: {after_receipt:?}"
-    );
-    assert_eq!(rows[0]["pending"], true);
+    consume(&mut reader, &mut rows);
+    assert_ne!(rows[0]["pending"], true);
     device.conversation("chat").seed_event(&authoritative);
     consume(&mut reader, &mut rows);
     assert_eq!(rows.len(), 1);

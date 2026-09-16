@@ -9,6 +9,14 @@ impl RootView {
         values: std::collections::BTreeMap<String, String>,
         cx: &mut Context<Self>,
     ) {
+        if let Some(url) = self
+            .core_device
+            .conversation(session)
+            .interaction_open_url(message, action)
+        {
+            cx.open_url(&url);
+            return;
+        }
         let result = zork_client_core::interactions::Command::from_action(message, action, values)
             .and_then(|command| {
                 self.core_device

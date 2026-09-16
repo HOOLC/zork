@@ -69,7 +69,19 @@ impl Live {
             status: directory.join(format!("status-{run_id}.json")),
             run_id,
         };
-        let mut child = Command::new(std::env::current_exe()?)
+        let executable = std::env::current_exe()?;
+        #[cfg(target_os = "macos")]
+        let executable = {
+            let watch = executable.with_file_name("zork-service-watch");
+            // The desktop bundle registers a distinct app identity for guards.
+            // Standalone node distributions keep the direct re-exec entry.
+            if watch.is_file() {
+                watch
+            } else {
+                executable
+            }
+        };
+        let mut child = Command::new(executable)
             .arg("--service-process")
             .arg(serde_json::to_string(&launch)?)
             .stdin(Stdio::piped())

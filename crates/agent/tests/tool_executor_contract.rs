@@ -90,7 +90,7 @@ fn invocation(id: &str, tool: &str) -> ToolInvocation {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-11]
+// Contract: docs/design/agent-runtime.md [TOOL-11]
 async fn successful_tool_execution_returns_its_normal_result() {
     let registry = Arc::new(ToolRegistry::default());
     register(&registry, "test.immediate", Arc::new(ImmediateTool));
@@ -113,7 +113,7 @@ async fn successful_tool_execution_returns_its_normal_result() {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-10]
+// Contract: docs/design/agent-runtime.md [TOOL-10]
 async fn original_arguments_reach_the_tools_own_parser() {
     let registry = Arc::new(ToolRegistry::default());
     registry.register(Arc::new(
@@ -170,7 +170,7 @@ async fn original_arguments_reach_the_tools_own_parser() {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-10, TOOL-11]
+// Contract: docs/design/agent-runtime.md [TOOL-10, TOOL-11]
 async fn cancelling_a_live_tool_produces_one_normal_cancelled_result() {
     let registry = Arc::new(ToolRegistry::default());
     let started = Arc::new(tokio::sync::Notify::new());
@@ -210,7 +210,7 @@ async fn cancelling_a_live_tool_produces_one_normal_cancelled_result() {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-11, DELETE-01]
+// Contract: docs/design/agent-runtime.md [TOOL-11, DELETE-01]
 async fn session_cancellation_waits_until_every_tool_has_stopped() {
     let registry = Arc::new(ToolRegistry::default());
     let started = Arc::new(tokio::sync::Notify::new());
@@ -240,7 +240,7 @@ async fn session_cancellation_waits_until_every_tool_has_stopped() {
 }
 
 #[tokio::test(start_paused = true)]
-// Contract: docs/zork-agent-architecture.md [TOOL-11, EVENT-05]
+// Contract: docs/design/agent-runtime.md [TOOL-11, EVENT-05]
 async fn completed_tools_stay_live_until_their_result_can_be_queued() {
     let registry = Arc::new(ToolRegistry::default());
     register(&registry, "test.immediate", Arc::new(ImmediateTool));
@@ -288,6 +288,101 @@ async fn completed_tools_stay_live_until_their_result_can_be_queued() {
 
 struct PanickingTool;
 
+#[tokio::test]
+async fn pending_user_work_does_not_limit_new_tool_invocations() {
+    struct Pending {
+        started: tokio::sync::mpsc::UnboundedSender<()>,
+        released: tokio::sync::watch::Receiver<bool>,
+    }
+    impl ToolImplementation for Pending {
+        fn execute<'a>(
+            &'a self,
+            _: &'a ToolContext,
+            _: &'a Value,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolExecution> + Send + 'a>>
+        {
+            Box::pin(async move {
+                let mut released = self.released.clone();
+                self.started.send(()).unwrap();
+                released.wait_for(|done| *done).await.unwrap();
+                ToolExecution::success(json!({"finished":true}))
+            })
+        }
+    }
+    let registry = Arc::new(ToolRegistry::default());
+    let (started, mut starts) = tokio::sync::mpsc::unbounded_channel();
+    let (release, released) = tokio::sync::watch::channel(false);
+    register(
+        &registry,
+        "test.user-wait",
+        Arc::new(Pending { started, released }),
+    );
+    register(&registry, "test.publish", Arc::new(ImmediateTool));
+    let executor = Arc::new(ToolExecutor::with_clock(
+        registry,
+        Arc::new(zork_agent::session::ports::SystemClock),
+        None,
+    ));
+    let (results, mut completed) = tokio::sync::mpsc::channel(128);
+    let invocations = (0..96)
+        .map(|i| invocation(&format!("waiting-{i}"), "test.user-wait"))
+        .collect();
+    executor.dispatch_batch("session", "/workspace", invocations, results.clone(), None);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        for _ in 0..96 {
+            starts.recv().await.unwrap();
+        }
+    })
+    .await
+    .expect("every independent invocation must start without a global quota");
+    executor.dispatch_batch(
+        "session",
+        "/workspace",
+        vec![invocation("publish-card", "test.publish")],
+        results,
+        None,
+    );
+    let published = tokio::time::timeout(Duration::from_secs(1), completed.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(published.invocation.invocation_id, "publish-card");
+    assert_eq!(executor.live("session").len(), 96);
+    release.send(true).unwrap();
+    for _ in 0..96 {
+        assert_eq!(
+            completed.recv().await.unwrap().execution.outcome,
+            ToolOutcome::Succeeded
+        );
+    }
+}
+
+#[tokio::test]
+async fn cancellation_before_dispatch_is_polled_does_not_start_the_tool() {
+    let registry = Arc::new(ToolRegistry::default());
+    let calls = Arc::new(AtomicUsize::new(0));
+    register(
+        &registry,
+        "test.counted",
+        Arc::new(CountedTool(calls.clone())),
+    );
+    let executor = Arc::new(ToolExecutor::new(registry, Duration::from_secs(5)));
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    executor.dispatch_batch(
+        "session",
+        "/workspace",
+        vec![invocation("cancel-first", "test.counted")],
+        tx,
+        None,
+    );
+    assert!(executor.cancel("session", "cancel-first"));
+    assert_eq!(
+        rx.recv().await.unwrap().execution.outcome,
+        ToolOutcome::Cancelled
+    );
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+}
+
 impl ToolImplementation for PanickingTool {
     fn execute<'a>(
         &'a self,
@@ -323,7 +418,7 @@ impl ToolImplementation for CountedTool {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-11]
+// Contract: docs/design/agent-runtime.md [TOOL-11]
 async fn invalid_arguments_and_panics_become_results_and_the_executor_stays_usable() {
     let registry = Arc::new(ToolRegistry::default());
     let calls = Arc::new(AtomicUsize::new(0));
@@ -366,7 +461,7 @@ async fn invalid_arguments_and_panics_become_results_and_the_executor_stays_usab
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-01, TOOL-10]
+// Contract: docs/design/agent-runtime.md [TOOL-01, TOOL-10]
 async fn a_rejected_provider_call_never_reaches_the_tool() {
     let registry = Arc::new(ToolRegistry::default());
     let calls = Arc::new(AtomicUsize::new(0));
@@ -400,7 +495,7 @@ async fn a_rejected_provider_call_never_reaches_the_tool() {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-02]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-02]
 async fn bounded_internal_result_channel_waits_and_delivers_every_result() {
     let registry = Arc::new(ToolRegistry::default());
     register(&registry, "test.bounded", Arc::new(ImmediateTool));
@@ -440,7 +535,7 @@ async fn bounded_internal_result_channel_waits_and_delivers_every_result() {
 }
 
 #[tokio::test]
-async fn cancellation_holds_capacity_and_completion_until_cleanup_finishes() {
+async fn cancellation_waits_for_cleanup_without_blocking_other_tools() {
     struct CleaningTool {
         started: tokio::sync::Notify,
         cleaning: tokio::sync::Notify,
@@ -487,7 +582,6 @@ async fn cancellation_holds_capacity_and_completion_until_cleanup_finishes() {
         registry,
         Arc::new(zork_agent::session::ports::SystemClock),
         None,
-        1,
     ));
     let (tx, mut rx) = tokio::sync::mpsc::channel(8);
     executor.dispatch_batch(
@@ -507,14 +601,16 @@ async fn cancellation_holds_capacity_and_completion_until_cleanup_finishes() {
         tx,
         None,
     );
-    assert!(tokio::time::timeout(Duration::from_millis(30), rx.recv())
+    let independent = tokio::time::timeout(Duration::from_secs(1), rx.recv())
         .await
-        .is_err());
+        .expect("cleanup must not block an independent invocation")
+        .unwrap();
+    assert_eq!(independent.invocation.invocation_id, "after");
+    assert!(rx.try_recv().is_err());
     assert!(executor.live("session").contains("cleaning"));
     tool.finish_cleanup.notify_one();
     let first = rx.recv().await.unwrap();
     assert_eq!(first.invocation.invocation_id, "cleaning");
     assert_eq!(first.execution.data, json!({"process_state":"exited"}));
     assert_eq!(first.execution.outcome, ToolOutcome::Cancelled);
-    assert_eq!(rx.recv().await.unwrap().invocation.invocation_id, "after");
 }

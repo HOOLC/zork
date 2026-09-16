@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [SEGMENT-02]
+    // Contract: docs/design/agent-runtime.md [SEGMENT-02]
     async fn worker_is_single_flight_and_retries_failed_segments() {
         let store = Arc::new(RetryStore::new(3));
         let compressor = SegmentCompressor::start(store.clone(), Duration::from_millis(5));

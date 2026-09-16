@@ -175,7 +175,7 @@ impl Render for FormStory {
             )
             .child(
                 div()
-                    .border_t_1()
+                    .border_t(gpui::px(crate::design::BORDER_WIDTH))
                     .border_color(rgb(CUE_UI.palette.border))
                     .pt_4()
                     .flex()

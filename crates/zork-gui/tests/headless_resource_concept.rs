@@ -340,9 +340,9 @@ impl Render for Concept {
                     body = body.child(self.fact(
                         "路径",
                         if id == 0 {
-                            "managed-skills/live-echo-guide"
+                            "skills/live-echo-guide"
                         } else {
-                            "managed-skills/zork-validation"
+                            "skills/zork-validation"
                         },
                     ));
                 } else if id == 2 {

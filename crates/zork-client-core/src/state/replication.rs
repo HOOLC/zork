@@ -52,6 +52,7 @@ impl Device {
             s.sessions = Default::default();
             s.sessions_loaded = false;
             s.tasks = Default::default();
+            s.chats = None;
             s.profiles = Default::default();
             s.inbox = Default::default();
             s.inbox_loaded = false;
@@ -318,6 +319,7 @@ impl Device {
             s.agents = agents.clone();
             s.profiles = profiles.clone();
             s.tasks = catalog.by_leader.clone();
+            s.chats = catalog.chats.clone();
             s.inbox = catalog.inbox.clone();
             s.inbox_loaded = true;
             s.inbox_error = None;

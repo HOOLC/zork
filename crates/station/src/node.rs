@@ -1,7 +1,12 @@
 //! Node administration. Provider credentials stay on this node and never enter
 //! a Conversation, Task, Mesh envelope, or the public login-attempt response.
-mod interactions;
+mod agent_configuration;
+pub(crate) mod auth;
+mod provider_login;
+mod work;
+pub(crate) use work::assign_chat;
 mod resources;
+mod shared_files;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -23,7 +28,6 @@ use zork_profile::{DeviceCode, DeviceCodePoll};
 #[derive(Clone)]
 struct NodeState {
     app: AppState,
-    attempts: Arc<Mutex<HashMap<String, Attempt>>>,
     http: reqwest::Client,
     local_token: String,
     catalog_ready: tokio::sync::watch::Sender<bool>,
@@ -39,15 +43,11 @@ struct Attempt {
 pub fn router(app: AppState) -> Router {
     let local_token = local_token(&app.config.data_root).expect("Gateway local control token");
     let state = NodeState {
+        http: app.provider_auth.http.clone(),
         app,
         local_token,
         catalog_ready: tokio::sync::watch::channel(false).0,
         catalog_profiles: tokio::sync::watch::channel(0).0,
-        attempts: Arc::new(Mutex::new(HashMap::new())),
-        http: reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("provider HTTP client"),
     };
     tokio::spawn(deliver_pending(state.clone()));
     tokio::spawn(reconcile_catalog(state.clone()));
@@ -58,12 +58,22 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/sync/receipt", post(sync_receipt))
         .route("/v1/node/info", get(node_info))
         .route("/v1/node/resources", get(node_resources))
+        .route("/v1/node/shared-files", get(shared_files::catalog))
+        .route(
+            "/v1/node/shared-files/directory",
+            post(shared_files::directory),
+        )
+        .route("/v1/node/shared-files/content", post(shared_files::content))
+        .route(
+            "/v1/node/shared-files/events",
+            get(shared_files::events).post(shared_files::events),
+        )
         .route("/v1/node/resources/mcp/{id}", get(resources::mcp))
         .route("/v1/node/resources/service/{id}", get(resources::service))
         .route("/v1/node/pages", get(node_pages))
         .route(
-            "/v1/node/chats/{chat_id}/messages/{message_id}/respond",
-            post(interactions::respond),
+            "/v1/node/chats/{chat_id}/messages/{message_id}/agent-configuration",
+            post(agent_configuration::respond),
         )
         .route("/v1/node/name", axum::routing::put(rename_node))
         .route("/v1/node/update", get(check_update).post(start_update))
@@ -90,6 +100,7 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/mesh/members/remove", post(remove_mesh_member))
         .route("/v1/node/mesh/clients", post(register_mesh_client))
         .route("/v1/node/agents", get(agents).post(create_agent))
+        .route("/v1/node/chats", get(node_chats))
         .route("/v1/node/agents/{id}/open", post(open_agent))
         .route(
             "/v1/node/agents/{id}/skills",
@@ -136,6 +147,12 @@ pub fn router(app: AppState) -> Router {
             get(discover_models),
         )
         .route("/v1/node/auth", post(start_auth))
+        .route(
+            "/v1/node/chats/{chat}/messages/{message}/provider-login",
+            get(provider_login::get)
+                .post(provider_login::post)
+                .delete(provider_login::cancel),
+        )
         .route("/v1/node/auth/{id}", post(poll_auth).delete(cancel_auth))
         .with_state(state)
 }
@@ -172,7 +189,7 @@ async fn sync_pull(
             return error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Node identity is unavailable",
-            )
+            );
         }
     };
     let mut ready = state.catalog_ready.subscribe();
@@ -1166,17 +1183,10 @@ async fn update_profile_models(
         Err(e) => error(e.status, "Profile models could not be updated"),
     }
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StartAuth {
-    profile_id: String,
-    provider: String,
-    billing: String,
-}
 async fn start_auth(
     State(state): State<NodeState>,
     headers: HeaderMap,
-    Json(body): Json<StartAuth>,
+    Json(body): Json<auth::Begin>,
 ) -> Response {
     if !authorized(&state, &headers) {
         return error(
@@ -1184,73 +1194,16 @@ async fn start_auth(
             "Node administrator token required",
         );
     }
-    if !valid_id(&body.profile_id) {
-        return error(StatusCode::BAD_REQUEST, "Invalid profile ID");
+    match auth::begin(&state.app, body, None).await {
+        Ok(value) => Json(value).into_response(),
+        Err(failure) => error(failure.status, failure.message),
     }
-    let Ok(provider) = zork_profile::providers::get(&body.provider) else {
-        return error(StatusCode::BAD_REQUEST, "Unknown provider");
-    };
-    if !provider.supports_device_code(&body.billing) {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "This provider and billing mode require an API key",
-        );
-    }
-    let mut attempts = state.attempts.lock().await;
-    attempts.retain(|_, a| a.expires > Instant::now());
-    if attempts.len() >= 8 {
-        return error(StatusCode::TOO_MANY_REQUESTS, "Too many pending sign-ins");
-    }
-    // A profile has one pending credential writer; a new attempt replaces it.
-    attempts.retain(|_, a| a.profile_id != body.profile_id);
-    let pending = match provider.start_device_code(&state.http).await {
-        Ok(p) => p,
-        Err(_) => {
-            return error(
-                StatusCode::BAD_GATEWAY,
-                "Provider sign-in could not start; retry later",
-            );
-        }
-    };
-    if pending.billing != body.billing {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "Provider returned an unexpected billing mode",
-        );
-    }
-    let ttl = chrono::DateTime::parse_from_rfc3339(&pending.expires_at)
-        .ok()
-        .and_then(|t| {
-            (t.with_timezone(&chrono::Utc) - chrono::Utc::now())
-                .to_std()
-                .ok()
-        })
-        .unwrap_or(Duration::from_secs(300))
-        .min(Duration::from_secs(1800));
-    let id = ulid::Ulid::new().to_string();
-    let value = json!({"id":id,"profile_id":body.profile_id,"verification_url":pending.verification_url,"user_code":pending.user_code,"interval_seconds":pending.interval_seconds,"expires_at":pending.expires_at,"flow":if pending.user_code.is_empty(){"browser_callback"}else{"device_code"}});
-    attempts.insert(
-        id,
-        Attempt {
-            profile_id: body.profile_id,
-            pending,
-            expires: Instant::now() + ttl,
-            next_poll: Instant::now(),
-            completed: false,
-        },
-    );
-    Json(value).into_response()
-}
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct PollAuth {
-    callback: Option<String>,
 }
 async fn poll_auth(
     State(state): State<NodeState>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Json(body): Json<PollAuth>,
+    Json(body): Json<auth::Poll>,
 ) -> Response {
     if !authorized(&state, &headers) {
         return error(
@@ -1258,81 +1211,9 @@ async fn poll_auth(
             "Node administrator token required",
         );
     }
-    let mut attempts = state.attempts.lock().await;
-    let Some(attempt) = attempts.get_mut(&id) else {
-        return error(StatusCode::NOT_FOUND, "Sign-in expired; start again");
-    };
-    if attempt.completed {
-        return Json(json!({"status":"completed","profile_id":attempt.profile_id})).into_response();
-    }
-    if attempt.expires <= Instant::now() {
-        attempts.remove(&id);
-        return error(StatusCode::GONE, "Sign-in expired; start again");
-    }
-    if let Some(callback) = body.callback {
-        if !matches!(
-            attempt.pending.provider.as_str(),
-            "anthropic" | "openrouter"
-        ) || callback.len() > 8192
-        {
-            return error(StatusCode::BAD_REQUEST, "Unexpected browser callback");
-        };
-        attempt.pending.user_code = callback;
-    }
-    if attempt.next_poll > Instant::now() {
-        return Json(json!({"status":"pending","retry_after_seconds":attempt.next_poll.saturating_duration_since(Instant::now()).as_secs().max(1)})).into_response();
-    }
-    let provider =
-        zork_profile::providers::get(&attempt.pending.provider).expect("validated provider");
-    match provider
-        .poll_device_code(&state.http, &attempt.pending)
-        .await
-    {
-        Ok(DeviceCodePoll::Pending {
-            retry_after_seconds,
-        }) => {
-            let retry = retry_after_seconds.clamp(1, 60);
-            attempt.next_poll = Instant::now() + Duration::from_secs(retry);
-            Json(json!({"status":"pending","retry_after_seconds":retry})).into_response()
-        }
-        Ok(DeviceCodePoll::Completed { auth }) => {
-            let Ok(template) = provider.template(&attempt.pending.billing) else {
-                return error(StatusCode::BAD_REQUEST, "Provider template unavailable");
-            };
-            let mut document = template.document(auth);
-            // Connecting an account is separate from configuring its models.
-            // Keep an existing connection's explicit models during re-login.
-            document["models"] =
-                match crate::agent::get_profile(&state.app.agent, &attempt.profile_id).await {
-                    Ok(existing)
-                        if existing["provider"] == attempt.pending.provider
-                            && existing["billing"] == attempt.pending.billing =>
-                    {
-                        existing["models"].clone()
-                    }
-                    _ => json!([]),
-                };
-            provider.decorate_document(&mut document);
-            if crate::agent::put_profile(&state.app.agent, &attempt.profile_id, &document)
-                .await
-                .is_err()
-            {
-                return error(
-                    StatusCode::BAD_GATEWAY,
-                    "Could not save authorized profile; retry sign-in",
-                );
-            }
-            attempt.completed = true;
-            attempt.pending = DeviceCode::default();
-            Json(json!({"status":"completed","profile_id":attempt.profile_id})).into_response()
-        }
-        Err(_) => {
-            attempts.remove(&id);
-            error(
-                StatusCode::BAD_GATEWAY,
-                "Authorization was rejected or expired; start again",
-            )
-        }
+    match auth::poll(&state.app, &id, body).await {
+        Ok(value) => Json(value).into_response(),
+        Err(failure) => error(failure.status, failure.message),
     }
 }
 async fn cancel_auth(
@@ -1346,7 +1227,7 @@ async fn cancel_auth(
             "Node administrator token required",
         );
     }
-    state.attempts.lock().await.remove(&id);
+    auth::cancel(&state.app, &id).await;
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -1418,7 +1299,7 @@ async fn agent_skills(
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
         let root = &state.app.config.data_root;
         let sources = zork_config::load_config(root)?.skills.sources(root, &agent.skill_paths)?;
-        Ok(json!({"paths": agent.skill_paths, "sources": sources, "catalog": zork_agent::skills::discover(&sources)}))
+        Ok(json!({"paths": agent.skill_paths, "sources": sources, "catalog": state.app.files.catalog_sources(&agent.skill_paths)?}))
     }).await;
     match result {
         Ok(Ok(catalog)) => Json(catalog).into_response(),
@@ -1583,6 +1464,18 @@ async fn agents(State(state): State<NodeState>, headers: HeaderMap) -> Response 
         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Could not read Agents"),
     }
 }
+async fn node_chats(State(state): State<NodeState>, headers: HeaderMap) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    match state.app.db.chat_navigation() {
+        Ok(items) => Json(json!({"schema_version":1,"items":items})).into_response(),
+        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Could not read Chats"),
+    }
+}
 async fn node_leader_tasks(
     State(state): State<NodeState>,
     headers: HeaderMap,
@@ -1639,7 +1532,15 @@ fn validate_grants(
     agents: &[NodeAgent],
     grants: &[String],
 ) -> anyhow::Result<()> {
-    let config = zork_config::load_config(&state.app.config.data_root)?.mesh;
+    validate_agent_grants(&state.app, agents, grants)
+}
+
+pub(crate) fn validate_agent_grants(
+    app: &AppState,
+    agents: &[NodeAgent],
+    grants: &[String],
+) -> anyhow::Result<()> {
+    let config = zork_config::load_config(&app.config.data_root)?.mesh;
     anyhow::ensure!(grants.len() <= 32, "Too many Worker grants");
     for grant in grants {
         if let Some((origin, id)) = grant.split_once('/') {
@@ -1755,15 +1656,15 @@ pub(crate) fn agent_prompt(agent: &NodeAgent) -> String {
         agent.instructions
     )
 }
-async fn ensure_agent_session(
-    state: &NodeState,
+pub(crate) async fn ensure_agent_session(
+    state: &AppState,
     agent: &NodeAgent,
     key: &str,
     runtime_id: &str,
 ) -> anyhow::Result<crate::db::SessionRow> {
     let parts = key.split(':').collect::<Vec<_>>();
     anyhow::ensure!(parts.len() == 3, "Invalid allocated session key");
-    let session = state.app.db.ensure_session(crate::db::EnsureSession {
+    let session = state.db.ensure_session(crate::db::EnsureSession {
         connection_id: "local_gui",
         platform: "local_gui",
         channel_id: parts[1],
@@ -1783,8 +1684,8 @@ async fn ensure_agent_session(
         thinking: agent.thinking.clone(),
     };
     crate::agent::ensure_allocated_session(
-        &state.app.agent,
-        &state.app.db,
+        &state.agent,
+        &state.db,
         &binding,
         runtime_id,
         &selection,
@@ -1792,7 +1693,6 @@ async fn ensure_agent_session(
     )
     .await?;
     state
-        .app
         .status_projection
         .ensure(
             key,
@@ -1803,7 +1703,6 @@ async fn ensure_agent_session(
         )
         .await;
     state
-        .app
         .db
         .get_session(key)?
         .ok_or_else(|| anyhow::anyhow!("Allocated session disappeared"))
@@ -1919,74 +1818,28 @@ async fn assign_task(
             Err(e) => return error(StatusCode::BAD_REQUEST, &e.to_string()),
         }
     }
-    if body.worker_id.contains('/') {
-        if let Some(mesh) = state.app.mesh.get() {
-            if mesh
-                .remote_worker_available(&leader.id, &body.worker_id)
-                .await
-                == Some(false)
+    match assign_chat(
+        &state.app,
+        &leader,
+        &body.request_id,
+        &body.worker_id,
+        &body.goal,
+    )
+    .await
+    {
+        Ok(value) => {
+            let chat = value["chat"]["chat_id"].as_str().unwrap_or_default();
+            match state
+                .app
+                .db
+                .chat(chat)
+                .and_then(|row| state.app.db.product_task_for_session(&row.session_key))
             {
-                return error(
-                    StatusCode::FORBIDDEN,
-                    "Remote Worker is not granted to this Leader",
-                );
+                Ok(task) => Json(json!({"task":task,"worker_id":body.worker_id,"session_id":chat}))
+                    .into_response(),
+                Err(e) => error(StatusCode::CONFLICT, &e.to_string()),
             }
         }
-        let _guard = state
-            .app
-            .entries
-            .lock_local_task(&format!("assignment:{}:{}", leader.id, body.request_id))
-            .await;
-        return match state
-            .app
-            .mesh
-            .get()
-            .ok_or_else(|| anyhow::anyhow!("Mesh is disabled"))
-            .and_then(|mesh| {
-                mesh.assign_worker(
-                    &state.app,
-                    &leader,
-                    &body.worker_id,
-                    &body.request_id,
-                    &body.goal,
-                )
-            }) {
-            Ok(value) => Json(value).into_response(),
-            Err(e) => error(StatusCode::CONFLICT, &e.to_string()),
-        };
-    }
-    let Ok(Some(worker)) = state.app.db.node_agent(&body.worker_id) else {
-        return error(StatusCode::NOT_FOUND, "Worker not found");
-    };
-    if worker.role != AgentRole::Worker
-        || !(personal_mesh(&state) || worker.allowed_leaders.contains(&leader.id))
-    {
-        return error(
-            StatusCode::FORBIDDEN,
-            "Worker is not granted to this Leader",
-        );
-    }
-    let _guard = state
-        .app
-        .entries
-        .lock_local_task(&format!("assignment:{}:{}", leader.id, body.request_id))
-        .await;
-    let result:anyhow::Result<Value>=async {
-        let (key,runtime_id,status)=state.app.db.worker_task_allocation(&leader.id,&body.request_id,&worker.id,&body.goal)?;
-        if status!="sent" {
-            let session=ensure_agent_session(&state,&worker,&key,&runtime_id).await?;
-            state.app.db.ensure_product_task(&key)?;
-            let goal=state.app.db.copy_message_files(leader.session_key.as_deref().ok_or_else(||anyhow::anyhow!("leader session missing"))?,&session,&body.goal)?;
-            let input=crate::http::conversation_files::agent_content(&state.app,&session.key,&goal).await?;
-            state.app.entries.accept_local_user_message(&session,&format!("assignment-{}-{}",leader.id,body.request_id),&goal)?;
-            state.app.db.set_worker_task_state(&key,"sending")?;
-            crate::agent::append_mailbox_id(&state.app.agent,&runtime_id,&format!("assignment-{}",body.request_id),&input).await?;
-            state.app.db.set_worker_task_state(&key,"sent")?;
-        }
-        Ok(json!({"task":state.app.db.product_task_for_session(&key)?,"worker_id":worker.id,"session_id":runtime_id}))
-    }.await;
-    match result {
-        Ok(value) => Json(value).into_response(),
         Err(e) => error(StatusCode::CONFLICT, &e.to_string()),
     }
 }
@@ -2033,23 +1886,11 @@ async fn deliver_pending(state: NodeState) {
                 let Ok(Some(leader)) = state.app.db.node_agent(&leader_id) else {
                     continue;
                 };
-                let mut headers = HeaderMap::new();
-                if let Some(key) = leader.session_key {
-                    if let Ok(value) = key.parse() {
-                        headers.insert("x-zork-session-key", value);
-                        let response = assign_task(
-                            State(state.clone()),
-                            headers,
-                            Json(AssignTask {
-                                request_id,
-                                worker_id,
-                                goal,
-                                attachment_ids: vec![],
-                            }),
-                        )
-                        .await;
-                        failed |= response.status().is_server_error();
-                    }
+                if let Err(error) =
+                    assign_chat(&state.app, &leader, &request_id, &worker_id, &goal).await
+                {
+                    failed = true;
+                    tracing::debug!(%error, "Work assignment awaits retry");
                 }
             }
         }
@@ -2069,7 +1910,7 @@ async fn deliver_pending(state: NodeState) {
                     continue;
                 };
                 let _guard = state.app.entries.lock_local_task(session).await;
-                if ensure_agent_session(&state, &leader, key, session)
+                if ensure_agent_session(&state.app, &leader, key, session)
                     .await
                     .is_ok()
                     && crate::agent::append_mailbox_id(

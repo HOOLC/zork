@@ -9,6 +9,7 @@ dependencyLocking {
 }
 
 val profileBuild = providers.gradleProperty("zorkProfile").map(String::toBoolean).getOrElse(false)
+val productVersion = (groovy.json.JsonSlurper().parse(rootProject.file("../../package.json")) as Map<*, *>)["version"] as String
 
 android {
     namespace = "surf.zork.android"
@@ -21,7 +22,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = productVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["zorkProfileable"] = profileBuild.toString()
         ndk { abiFilters += "arm64-v8a" }

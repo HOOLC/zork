@@ -1,6 +1,11 @@
 //! Serialized observation over the same controllers as native UI. Waiting is
 //! separate from preparing a batch, and neither requires the command executor.
 mod conversation;
+mod adb;
+mod history;
+mod notifications;
+mod resources;
+mod shared_files;
 mod settings;
 mod snapshot;
 #[cfg(test)]
@@ -15,10 +20,24 @@ use zork_observe::Readiness;
 #[derive(Deserialize)]
 #[serde(tag = "projection", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Key {
+    DataReset,
+    LocalScripts,
+    Adb,
+    SharedFiles,
+    Notifications,
+    Resources {
+        peer: Option<String>,
+        kind: crate::resources::ResourceKind,
+        query: Option<crate::resources::Inspection>,
+    },
     Invitation,
     Conversation {
         peer: String,
         session: Option<String>,
+    },
+    History {
+        peer: String,
+        session: String,
     },
     Settings {
         peer: String,
@@ -27,8 +46,11 @@ pub enum Key {
 impl Key {
     pub fn peer(&self) -> &str {
         match self {
-            Self::Invitation => "",
-            Self::Conversation { peer, .. } | Self::Settings { peer } => peer,
+            Self::DataReset | Self::LocalScripts | Self::Adb | Self::Invitation | Self::Notifications | Self::SharedFiles => "",
+            Self::Resources { peer, .. } => peer.as_deref().unwrap_or(""),
+            Self::Conversation { peer, .. }
+            | Self::History { peer, .. }
+            | Self::Settings { peer } => peer,
         }
     }
 }
@@ -64,8 +86,15 @@ impl Signals {
 }
 
 enum Projection {
+    DataReset(snapshot::SnapshotWire<crate::data_reset::Snapshot>),
+    LocalScripts(snapshot::SnapshotWire),
+    Adb(adb::AdbWire),
+    SharedFiles(shared_files::SharedFilesWire),
+    Notifications(notifications::NotificationsWire),
+    Resources(resources::ResourcesWire),
     Invitation(snapshot::SnapshotWire),
     Conversation(conversation::ConversationWire),
+    History(history::HistoryWire),
     Settings(settings::SettingsWire),
 }
 pub struct WireSubscription {
@@ -76,6 +105,44 @@ pub struct WireSubscription {
     applied: u64,
 }
 impl WireSubscription {
+    pub(crate) fn from_data_reset(source: &zork_observe::ValueSource<crate::data_reset::Snapshot>) -> Self {
+        Self { projection: Projection::DataReset(snapshot::SnapshotWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+    }
+    pub(crate) fn from_local_scripts(source: &zork_observe::ValueSource<Value>) -> Self {
+        Self { projection: Projection::LocalScripts(snapshot::SnapshotWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+    }
+    pub(crate) fn from_adb(source: Arc<crate::adb::Controller>) -> Self {
+        Self { projection: Projection::Adb(adb::AdbWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+    }
+    pub(crate) fn from_shared_files(source: Arc<crate::shared_files::SharedFiles>, store: Arc<ClientStore>) -> Self {
+        Self {projection:Projection::SharedFiles(shared_files::SharedFilesWire::new(source,store)),device:None,prepared:None,sequence:0,applied:0}
+    }
+    pub(crate) fn from_notifications(store: Arc<ClientStore>) -> Result<Self> {
+        Ok(Self {
+            projection: Projection::Notifications(notifications::NotificationsWire::new(store)?),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        })
+    }
+    pub(crate) fn from_resources(
+        source: Arc<crate::resources::Resources>,
+        store: Arc<ClientStore>,
+        peer: Option<String>,
+        kind: crate::resources::ResourceKind,
+        query: Option<crate::resources::Inspection>,
+    ) -> Result<Self> {
+        Ok(Self {
+            projection: Projection::Resources(resources::ResourcesWire::new(
+                source, store, peer, kind, query,
+            )?),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        })
+    }
     pub(crate) fn from_invitation(source: &zork_observe::ValueSource<Value>) -> Self {
         Self {
             projection: Projection::Invitation(snapshot::SnapshotWire::new(source)),
@@ -93,10 +160,15 @@ impl WireSubscription {
             "projection belongs to another device"
         );
         let projection = match key {
-            Key::Invitation => anyhow::bail!("invitation uses the client invitation source"),
+            Key::DataReset | Key::LocalScripts | Key::Adb | Key::Invitation | Key::Notifications | Key::SharedFiles | Key::Resources { .. } => {
+                anyhow::bail!("projection uses a client-owned source")
+            }
             Key::Conversation { peer, session } => Projection::Conversation(
                 conversation::ConversationWire::new(peer, session, device.clone(), store)?,
             ),
+            Key::History { peer, session } => {
+                Projection::History(history::HistoryWire::new(peer, session, device.clone())?)
+            }
             Key::Settings { peer } => {
                 Projection::Settings(settings::SettingsWire::new(peer, device.clone(), store)?)
             }
@@ -111,8 +183,14 @@ impl WireSubscription {
     }
     pub fn signals(&self) -> Signals {
         Signals(match &self.projection {
-            Projection::Invitation(p) => p.signals(),
+            Projection::DataReset(p) => p.signals(),
+            Projection::Adb(p) => p.wire.signals(),
+            Projection::SharedFiles(p) => p.signals(),
+            Projection::Notifications(p) => p.wire.signals(),
+            Projection::Resources(p) => p.signals(),
+            Projection::Invitation(p) | Projection::LocalScripts(p) => p.signals(),
             Projection::Conversation(p) => p.signals(),
+            Projection::History(p) => p.signals(),
             Projection::Settings(p) => p.signals(),
         })
     }
@@ -125,8 +203,14 @@ impl WireSubscription {
                         .as_ref()
                         .is_none_or(|device| !device.snapshot().revoked))
         }) && match &self.projection {
-            Projection::Invitation(p) => p.valid(),
+            Projection::DataReset(p) => p.valid(),
+            Projection::Adb(p) => p.valid(),
+            Projection::SharedFiles(p) => p.valid(),
+            Projection::Notifications(p) => p.valid(),
+            Projection::Resources(p) => p.valid(),
+            Projection::Invitation(p) | Projection::LocalScripts(p) => p.valid(),
             Projection::Conversation(p) => p.valid(),
+            Projection::History(p) => p.valid(),
             Projection::Settings(p) => p.valid(),
         }
     }
@@ -140,8 +224,14 @@ impl WireSubscription {
             return Ok(Some(value.clone()));
         }
         let value = match &mut self.projection {
-            Projection::Invitation(p) => p.prepare()?,
+            Projection::DataReset(p) => p.prepare()?,
+            Projection::Adb(p) => p.prepare()?,
+            Projection::SharedFiles(p) => p.prepare()?,
+            Projection::Notifications(p) => p.prepare()?,
+            Projection::Resources(p) => p.prepare()?,
+            Projection::Invitation(p) | Projection::LocalScripts(p) => p.prepare()?,
             Projection::Conversation(p) => p.prepare()?,
+            Projection::History(p) => p.prepare()?,
             Projection::Settings(p) => p.prepare()?,
         };
         let Some((mut value, reset, revoked)) = value else {
@@ -164,8 +254,14 @@ impl WireSubscription {
         }
         let valid = self.valid(batch);
         let accepted = match &mut self.projection {
-            Projection::Invitation(p) => p.finish(applied && valid),
+            Projection::DataReset(p) => p.finish(applied && valid),
+            Projection::Adb(p) => p.wire.finish(applied && valid),
+            Projection::Notifications(p) => p.wire.finish(applied && valid),
+            Projection::Resources(p) => p.finish(applied && valid),
+            Projection::SharedFiles(p) => p.finish(applied && valid),
+            Projection::Invitation(p) | Projection::LocalScripts(p) => p.finish(applied && valid),
             Projection::Conversation(p) => p.finish(applied && valid),
+            Projection::History(p) => p.finish(applied && valid),
             Projection::Settings(p) => p.finish(applied && valid),
         };
         if applied && valid && accepted {
@@ -184,6 +280,9 @@ impl WireSubscription {
         if let Projection::Conversation(p) = &mut self.projection {
             p.older();
         }
+        if let Projection::History(p) = &mut self.projection {
+            p.older();
+        }
         Ok(())
     }
     pub fn newer(&mut self) -> Result<()> {
@@ -192,6 +291,9 @@ impl WireSubscription {
             "finish the prepared frame before changing its range"
         );
         if let Projection::Conversation(p) = &mut self.projection {
+            p.newer();
+        }
+        if let Projection::History(p) = &mut self.projection {
             p.newer();
         }
         Ok(())
@@ -203,8 +305,32 @@ impl WireSubscription {
             self.prepared.is_none(),
             "finish the prepared frame before changing its range"
         );
-        if let Projection::Conversation(p) = &mut self.projection {
-            p.window_anchor(anchor)?;
+        match &mut self.projection {
+            Projection::Conversation(p) => p.window_anchor(anchor)?,
+            Projection::History(p) => p.window_anchor(anchor)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn detail(&mut self, id: Option<String>) -> Result<()> {
+        anyhow::ensure!(
+            self.prepared.is_none(),
+            "finish the prepared frame before selecting a record"
+        );
+        if let Projection::History(p) = &mut self.projection {
+            p.detail(id)?;
+        }
+        Ok(())
+    }
+
+    pub fn refresh(&mut self) -> Result<()> {
+        anyhow::ensure!(
+            self.prepared.is_none(),
+            "finish the prepared frame before refreshing"
+        );
+        if let Projection::History(p) = &self.projection {
+            p.refresh();
         }
         Ok(())
     }

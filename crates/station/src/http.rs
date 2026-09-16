@@ -221,28 +221,29 @@ pub fn router(state: AppState) -> Router {
         .route("/chat/post-message", post(post_message))
         .route("/chat/post-file", post(post_file))
         .route("/v1/tools/context", get(tool_context))
+        .route(
+            "/v1/slack/connections",
+            get(crate::slack_tools::connections),
+        )
+        .route("/v1/slack/forward", post(crate::slack_tools::forward))
         .route("/v1/browser/command", post(crate::browser::tool))
         .route("/v1/services", post(crate::shared_services::tool))
-        .route("/v1/pages", post(crate::pages::tool))
         .route("/v1/mcp", post(crate::mcp::tool))
         .route("/v1/node-tools", post(crate::node_tools::tool))
         .route("/v1/channels/tools", post(crate::channels::tool))
+        .route(
+            "/v1/internal/user-actions",
+            post(crate::interaction_registry::runtime),
+        )
         .route("/v1/tools/watch", post(crate::tool_stream::http))
         .route(
             "/v1/node-tools/interrupt",
             post(crate::node_tools::interrupt),
         )
         .route("/v1/mcp/interrupt", post(crate::mcp::interrupt))
+        .route("/v1/client/browser/events", post(crate::browser::events))
         .route(
-            "/v1/im/sessions/{session_id}/browser/events",
-            post(crate::browser::events),
-        )
-        .route(
-            "/v1/im/sessions/{session_id}/browser/receipts",
-            post(crate::browser::receipts),
-        )
-        .route(
-            "/v1/im/sessions/{session_id}/browser/poll",
+            "/v1/client/browser/receipts",
             post(crate::browser::receipts),
         )
         .fallback(fallback)
@@ -661,6 +662,8 @@ async fn update_local_im_selection(
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PostLocalImMessage {
+    #[serde(default)]
+    client_id: Option<String>,
     content: String,
     request_id: Option<String>,
     #[serde(default)]
@@ -700,6 +703,7 @@ async fn post_local_im_message(
         &request.content,
         request.reply_to.as_deref(),
         &request.mentions,
+        request.client_id.as_deref(),
     )
     .await
     {
@@ -733,8 +737,8 @@ async fn list_local_im_messages(
         return fail(StatusCode::BAD_REQUEST, "limit must be between 1 and 100");
     }
     let before = match query.before {
-        Some(cursor) => match cursor.parse::<i64>() {
-            Ok(cursor) if cursor > 0 => Some(cursor),
+        Some(cursor) => match state.db.parse_message_cursor(&session.key, &cursor) {
+            Ok(cursor) => Some(cursor),
             _ => return fail(StatusCode::BAD_REQUEST, "invalid message cursor"),
         },
         None => None,
@@ -747,10 +751,15 @@ async fn list_local_im_messages(
                     .has_visible_messages_before(&session.key, message.sequence)
                     .ok()
                     .filter(|has_older| *has_older)
-                    .map(|_| message.sequence.to_string())
+                    .and_then(|_| state.db.message_cursor(&session.key, message.sequence).ok())
             });
+            let epoch = match state.db.chat_source_epoch(&session.key) {
+                Ok(epoch) => epoch,
+                Err(error) => return db_error(error),
+            };
             Json(json!({
                 "items": messages.iter().map(|m| state.entries.message_json(m)).collect::<Vec<_>>(),
+                "source_epoch": epoch,
                 "older_cursor": older_cursor,
             }))
             .into_response()
@@ -767,7 +776,7 @@ async fn local_im_status(
         Ok(session) => session,
         Err(response) => return *response,
     };
-    let mut participants = match state.entries.local_participants(&session) {
+    let mut participants = match state.entries.local_members(&session) {
         Ok(items) => items,
         Err(error) => return db_error(error),
     };
@@ -2048,13 +2057,35 @@ async fn local_im_history(
     Path(session_id): Path<String>,
     query: Result<Query<zork_agent_api::HistoryQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    if let Err(response) = local_im_session(&state, &session_id) {
-        return *response;
-    }
+    let session = match local_im_session(&state, &session_id) {
+        Ok(session) => session,
+        Err(response) => return *response,
+    };
     let query = match query {
         Ok(Query(query)) => query,
         Err(_) => return fail(StatusCode::BAD_REQUEST, "invalid_history_query"),
     };
+    let remote = state
+        .db
+        .product_task_for_session(&session.key)
+        .and_then(|task| {
+            task.map(|task| state.db.mesh_task_link(&task.task_id))
+                .transpose()
+        })
+        .map(Option::flatten);
+    match remote {
+        Ok(Some(link)) if link.role == "owner" => {
+            let Some(mesh) = state.mesh.get() else {
+                return fail(StatusCode::SERVICE_UNAVAILABLE, "mesh_unavailable");
+            };
+            return match mesh.execution_history(&link, &query).await {
+                Ok(page) => Json(page).into_response(),
+                Err(error) => fail(StatusCode::BAD_GATEWAY, &error.to_string()),
+            };
+        }
+        Err(error) => return db_error(error),
+        _ => {}
+    }
     match crate::agent::session_history(&state.agent, &session_id, &query).await {
         Ok(page) => Json(page).into_response(),
         Err(error) => fail(error.status, &error.message),

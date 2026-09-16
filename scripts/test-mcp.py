@@ -167,9 +167,9 @@ def main():
         assert len(log.read_text().splitlines())==4
         config['grant']={'scope':'local'}
         server=ok(request(b,'PUT','/admin/api/mcp/'+ref['server_id'],{'expected_revision':server['config_revision'],'config':config},admin=True))
-        assert tool('inspect',server_ref=ref,tool='echo')[0]==400
-        assert tool('status',call_id=callid)[0]==400
-        checks.append('definition_changes_and_grant_revocation')
+        assert tool('inspect',server_ref=ref,tool='echo')[0]==200
+        assert tool('status',call_id=callid)[0]==200
+        checks.append('definition_changes_and_legacy_grants_do_not_override_mesh_trust')
         http=ThreadingHTTPServer(('127.0.0.1',0),HttpMcp);threading.Thread(target=http.serve_forever,daemon=True).start()
         remote=ok(request(b,'POST','/admin/api/mcp',{'name':'http','transport':{'kind':'http','url':f'http://127.0.0.1:{http.server_port}/mcp'},'grant':{'scope':'mesh'}},admin=True))
         definition=ok(tool('inspect',server_ref=remote['server_ref'],tool='echo'))['items'][0]
@@ -180,25 +180,15 @@ def main():
         assert cli(a,'disable',twin_id)['availability']=='disabled'
         assert cli(a,'enable',twin_id)['availability']=='unprobed'
         assert cli(a,'remove',twin_id)['ok']
-        # Compatibility is explicitly loaded; it is absent from new catalogs.
-        ok(request(a,'POST',f'/v1/im/sessions/{session}/messages',{'content':json.dumps({'fake_tools':[{'name':'tool.help','input':{'tool':'mcp'}}]}),'request_id':'load-mcp-compatibility'}))
-        def compatibility_loaded():
-            for segment in (a.root/'sessions'/session/'segments').glob('*.jsonl'):
-                for line in segment.read_text().splitlines():
-                    event=json.loads(line).get('event',{})
-                    if event.get('kind')=='tool_result' and event['result']['tool']=='tool.help':
-                        assert event['result']['outcome']=='succeeded',event
-                        return True
-        f.wait(compatibility_loaded,'explicit compatibility help')
         # Actual model -> dynamic tool -> Gateway path, not just HTTP handlers.
-        content=json.dumps({'fake_tools':[{'name':'mcp','input':{'op':'search','query':'http'}}]})
+        content=json.dumps({'fake_tools':[{'name':'mcp.search','input':{'query':'http'}}]})
         ok(request(a,'POST',f'/v1/im/sessions/{session}/messages',{'content':content,'request_id':'mcp-agent-fixture'}))
         def agent_result():
-            for segment in (a.root/'sessions'/session/'segments').glob('*.jsonl'):
+            for segment in (a.root/'shared-files/sessions'/session/'segments').glob('*.jsonl'):
                 for line in segment.read_text().splitlines():
                     event=json.loads(line).get('event',{})
                     result=event.get('result',{})
-                    if event.get('kind')=='tool_result' and result.get('tool')=='mcp':
+                    if event.get('kind')=='tool_result' and result.get('tool')=='mcp.search':
                         assert result['outcome']=='succeeded',result
                         assert any(v['name']=='http' for v in result['data']['items']),result
                         return True

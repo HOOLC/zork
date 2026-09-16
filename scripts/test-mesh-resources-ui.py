@@ -63,7 +63,7 @@ def main():
             node.request = lambda method, path, body=None, n=node: m.request(n, method, path, body)
             node.start(); f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'node ready')
             f.wait(lambda: node.request('GET','/v1/mesh')[1].get('origin') == node.origin, 'Mesh identity ready')
-            skill = node.root / 'managed-skills/01ARZ3NDEKTSV4RRFFQ69G5FAV'
+            skill = node.root / 'skills/01ARZ3NDEKTSV4RRFFQ69G5FAV'
             (skill / 'references').mkdir(parents=True)
             (skill / 'SKILL.md').write_text('---\nname: research-guide\ndescription: 整理研究资料，撰写有来源的报告。\n---\n# 研究手册\n\n保留证据，核对事实。\n')
             (skill / 'references/template.md').write_text('# 报告模板\n\n列出结论与引用来源。\n')
@@ -85,24 +85,20 @@ def main():
             assert next(item for item in inventory['items'] if item['kind']=='mcp' and item['id']==mcp_id)['status']=='ready'
             assert 'private-fixture-value' not in json.dumps(detail)
         checks.append('authenticated_skill_body_files_and_real_mcp_schema')
-        service = request(nodes[1], 'POST', '/v1/services', {'session_id':sessions[1],'action':'start','request_id':'resource-log','name':'报告服务','port':f.port(),'command':[sys.executable,'-u','-c','import sys; print("resource fixture diagnostic", file=sys.stderr); sys.exit(3)']})
-        service_id = service['id']
-        f.wait(lambda: 'resource fixture diagnostic' in request(nodes[1], 'GET', f'/v1/node/resources/service/{service_id}?log=stderr.log').get('document',{}).get('text',''), 'service log')
+        request(nodes[1], 'POST', '/v1/services', {'session_id':sessions[1],'action':'attach','request_id':'resource-service','name':'报告服务','port':server.server_port})
         url = f'http://127.0.0.1:{server.server_port}/redirect'
-        application_url = f'http://127.0.0.1:{server.server_port}/dashboard'
-        # The fake model executes the registered production Gateway tools.
-        request(nodes[0], 'POST', f'/v1/im/sessions/{sessions[0]}/messages', {'content':json.dumps({'fake_tools':[{'name':'chat.post_page','input':{'chat_id':sessions[0],'target':nodes[0].origin,'title':'项目研究报告','url':url}},{'name':'page.publish','input':{'title':'团队看板','url':application_url}},{'name':'chat.post_page','input':{'chat_id':sessions[1],'target':nodes[1].origin,'title':'跨设备报告','url':url+'/remote'}}]}),'request_id':'resource-pages'})
-        catalog = f.wait(lambda: (c if len((c := request(nodes[0], 'GET', '/v1/node/pages'))['references']) == 1 and len(c['applications']) == 1 else None), 'Agent page delivery and publication')
-        reference = catalog['references'][0]; app = catalog['applications'][0]
-        assert reference['session_id'] == sessions[0]
-        assert reference['page']['url'] == url and app['page']['url'] == application_url
-        remote=f.wait(lambda: (c if (c:=request(nodes[1],'GET','/v1/node/pages'))['references'] else None),'page delivery over Mesh')
-        assert remote['references'][0]['session_id']==sessions[1] and remote['references'][0]['page']['url']==url+'/remote'
-        assert not remote['applications']
-        checks.append('explicit_remote_channel_page_delivery_over_mesh')
+        request(nodes[0], 'POST', f'/v1/im/sessions/{sessions[0]}/messages', {'content':json.dumps({'fake_tools':[
+            {'name':'chat.send','input':{'chat_id':sessions[0],'text':f'[项目研究报告]({url})'}},
+            {'name':'service.attach','input':{'name':'团队看板','port':server.server_port}},
+            {'name':'chat.send','input':{'chat_id':sessions[1],'target':nodes[1].origin,'text':f'[跨设备报告]({url}/remote)'}}]}),'request_id':'resource-pages'})
+        catalog = f.wait(lambda: (c if len((c := request(nodes[0], 'GET', '/v1/node/pages'))['applications']) == 1 else None), 'service application')
+        assert catalog['applications'][0]['page']['title'] == '团队看板'
+        assert not catalog['references'], 'Markdown indexing belongs to client core'
+        f.wait(lambda: url + '/remote' in json.dumps(request(nodes[1], 'GET', f'/v1/im/sessions/{sessions[1]}/messages')), 'Markdown delivery over Mesh')
+        checks.append('ordinary_markdown_messages_and_registered_service_application')
         nodes[0].restart_gateway()
         assert request(nodes[0], 'GET', '/v1/node/pages') == catalog
-        checks.append('agent_page_tools_and_restart_persistence')
+        checks.append('service_application_survives_restart')
         with sqlite3.connect(client / 'client.db') as db:
             db.executescript('CREATE TABLE nodes(id TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE cache(node TEXT,key TEXT,value TEXT,PRIMARY KEY(node,key));')
             db.execute('INSERT INTO cache VALUES (?,?,?)', ('device','local-node-enabled','false'))

@@ -1,0 +1,2631 @@
+{
+  "details": {
+    "input": {
+      "action": "input",
+      "end": 1789200000000,
+      "id": "input",
+      "lane": 0,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"检查项目，整理报告并等待反馈。\",\n      \"received_at_ms\": 1789200000000,\n      \"request_id\": \"user-input\"\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"input\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200000000,
+      "state": "received",
+      "summary": "检查项目，整理报告并等待反馈。",
+      "usage": null
+    },
+    "model:failed-model": {
+      "action": "conversation",
+      "end": 1789200055000,
+      "id": "model:failed-model",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"error\": {\n      \"message\": \"测试提供商暂时不可用\"\n    },\n    \"failed_at_ms\": 1789200055000,\n    \"kind\": \"step_failed\",\n    \"step_id\": \"failed-model\"\n  },\n  \"event_id\": \"provider-error\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": null,
+      "state": "failed",
+      "summary": "测试提供商暂时不可用",
+      "usage": null
+    },
+    "model:step-0": {
+      "action": "",
+      "end": 1789200000900,
+      "id": "model:step-0",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200000500,\n    \"step_id\": \"step-0\"\n  },\n  \"event_id\": \"0-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200000900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"path\": \"src/main.rs\"\n        },\n        \"invocation_id\": \"call-0\",\n        \"started_at_ms\": 1789200000950,\n        \"tool\": \"file.read\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-0\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"0-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200000500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-1": {
+      "action": "",
+      "end": 1789200002900,
+      "id": "model:step-1",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200002500,\n    \"step_id\": \"step-1\"\n  },\n  \"event_id\": \"1-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200002900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"path\": \"src/main.rs\"\n        },\n        \"invocation_id\": \"call-1\",\n        \"started_at_ms\": 1789200002950,\n        \"tool\": \"file.read\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-1\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"1-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200002500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-10": {
+      "action": "",
+      "end": 1789200020900,
+      "id": "model:step-10",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200020500,\n    \"step_id\": \"step-10\"\n  },\n  \"event_id\": \"10-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200020900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"file_path\": \"notes.md\",\n          \"initial_comment\": \"执行报告\"\n        },\n        \"invocation_id\": \"call-10\",\n        \"started_at_ms\": 1789200020950,\n        \"tool\": \"chat.post_file\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-10\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"10-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200020500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-11": {
+      "action": "",
+      "end": 1789200022900,
+      "id": "model:step-11",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200022500,\n    \"step_id\": \"step-11\"\n  },\n  \"event_id\": \"11-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200022900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"text\": \"需要确认一项输入\"\n        },\n        \"invocation_id\": \"call-11\",\n        \"started_at_ms\": 1789200022950,\n        \"tool\": \"chat.notify\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-11\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"11-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200022500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-12": {
+      "action": "",
+      "end": 1789200024900,
+      "id": "model:step-12",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200024500,\n    \"step_id\": \"step-12\"\n  },\n  \"event_id\": \"12-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200024900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"goal\": \"复查边界条件\",\n          \"worker_id\": \"worker-1\"\n        },\n        \"invocation_id\": \"call-12\",\n        \"started_at_ms\": 1789200024950,\n        \"tool\": \"agent.assign\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-12\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"12-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200024500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-13": {
+      "action": "",
+      "end": 1789200026900,
+      "id": "model:step-13",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200026500,\n    \"step_id\": \"step-13\"\n  },\n  \"event_id\": \"13-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200026900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"goal\": \"补充窄屏截图\",\n          \"task_id\": \"unknown-task\"\n        },\n        \"invocation_id\": \"call-13\",\n        \"started_at_ms\": 1789200026950,\n        \"tool\": \"agent.rework\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-13\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"13-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200026500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-14": {
+      "action": "",
+      "end": 1789200028900,
+      "id": "model:step-14",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200028500,\n    \"step_id\": \"step-14\"\n  },\n  \"event_id\": \"14-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200028900,\n    \"invocations\": [\n      {\n        \"arguments\": {},\n        \"invocation_id\": \"call-14\",\n        \"started_at_ms\": 1789200028950,\n        \"tool\": \"agent.workers\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-14\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"14-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200028500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-15": {
+      "action": "",
+      "end": 1789200030900,
+      "id": "model:step-15",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200030500,\n    \"step_id\": \"step-15\"\n  },\n  \"event_id\": \"15-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200030900,\n    \"invocations\": [\n      {\n        \"arguments\": {},\n        \"invocation_id\": \"call-15\",\n        \"started_at_ms\": 1789200030950,\n        \"tool\": \"agent.tasks\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-15\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"15-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200030500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-16": {
+      "action": "",
+      "end": 1789200032900,
+      "id": "model:step-16",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200032500,\n    \"step_id\": \"step-16\"\n  },\n  \"event_id\": \"16-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200032900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"tool\": \"file.read\"\n        },\n        \"invocation_id\": \"call-16\",\n        \"started_at_ms\": 1789200032950,\n        \"tool\": \"tool.help\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-16\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"16-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200032500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-17": {
+      "action": "",
+      "end": 1789200034900,
+      "id": "model:step-17",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200034500,\n    \"step_id\": \"step-17\"\n  },\n  \"event_id\": \"17-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200034900,\n    \"invocations\": [\n      {\n        \"arguments\": {},\n        \"invocation_id\": \"call-17\",\n        \"started_at_ms\": 1789200034950,\n        \"tool\": \"chat.history\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-17\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"17-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200034500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-18": {
+      "action": "",
+      "end": 1789200036900,
+      "id": "model:step-18",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200036500,\n    \"step_id\": \"step-18\"\n  },\n  \"event_id\": \"18-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200036900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"action\": {\n            \"op\": \"navigate\",\n            \"url\": \"https://example.test\"\n          }\n        },\n        \"invocation_id\": \"call-18\",\n        \"started_at_ms\": 1789200036950,\n        \"tool\": \"browser\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-18\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"18-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200036500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-19": {
+      "action": "",
+      "end": 1789200038900,
+      "id": "model:step-19",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200038500,\n    \"step_id\": \"step-19\"\n  },\n  \"event_id\": \"19-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200038900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"kind\": \"script\",\n          \"script\": \"prepare_report\"\n        },\n        \"invocation_id\": \"call-19\",\n        \"started_at_ms\": 1789200038950,\n        \"tool\": \"job.register\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-19\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"19-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200038500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-2": {
+      "action": "",
+      "end": 1789200004900,
+      "id": "model:step-2",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200004500,\n    \"step_id\": \"step-2\"\n  },\n  \"event_id\": \"2-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200004900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"content\": \"# 检查结果\\n保留源内容 👋\",\n          \"path\": \"notes.md\"\n        },\n        \"invocation_id\": \"call-2\",\n        \"started_at_ms\": 1789200004950,\n        \"tool\": \"file.write\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-2\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"2-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200004500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-20": {
+      "action": "",
+      "end": 1789200040900,
+      "id": "model:step-20",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200040500,\n    \"step_id\": \"step-20\"\n  },\n  \"event_id\": \"20-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200040900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"invocation_id\": \"background-1\"\n        },\n        \"invocation_id\": \"call-20\",\n        \"started_at_ms\": 1789200040950,\n        \"tool\": \"tool.cancel\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-20\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"20-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200040500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-21": {
+      "action": "",
+      "end": 1789200042900,
+      "id": "model:step-21",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200042500,\n    \"step_id\": \"step-21\"\n  },\n  \"event_id\": \"21-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200042900,\n    \"invocations\": [\n      {\n        \"arguments\": {},\n        \"invocation_id\": \"call-21\",\n        \"started_at_ms\": 1789200042950,\n        \"tool\": \"end\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-21\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"21-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200042500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-22": {
+      "action": "",
+      "end": 1789200044900,
+      "id": "model:step-22",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200044500,\n    \"step_id\": \"step-22\"\n  },\n  \"event_id\": \"22-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200044900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"value\": \"unknown tools stay visible\"\n        },\n        \"invocation_id\": \"call-22\",\n        \"started_at_ms\": 1789200044950,\n        \"tool\": \"custom.inspection\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-22\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"22-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200044500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-23": {
+      "action": "",
+      "end": 1789200046900,
+      "id": "model:step-23",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200046500,\n    \"step_id\": \"step-23\"\n  },\n  \"event_id\": \"23-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200046900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"reason\": \"等待外部反馈\",\n          \"seconds\": 60\n        },\n        \"invocation_id\": \"call-23\",\n        \"started_at_ms\": 1789200046950,\n        \"tool\": \"wait\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-23\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"23-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200046500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-3": {
+      "action": "",
+      "end": 1789200006900,
+      "id": "model:step-3",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200006500,\n    \"step_id\": \"step-3\"\n  },\n  \"event_id\": \"3-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200006900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"path\": \"notes.md\"\n        },\n        \"invocation_id\": \"call-3\",\n        \"started_at_ms\": 1789200006950,\n        \"tool\": \"file.edit\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-3\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"3-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200006500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-4": {
+      "action": "",
+      "end": 1789200008900,
+      "id": "model:step-4",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200008500,\n    \"step_id\": \"step-4\"\n  },\n  \"event_id\": \"4-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200008900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"command\": \"pwd\"\n        },\n        \"invocation_id\": \"call-4\",\n        \"started_at_ms\": 1789200008950,\n        \"tool\": \"shell.run\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-4\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"4-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200008500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-5": {
+      "action": "",
+      "end": 1789200010900,
+      "id": "model:step-5",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200010500,\n    \"step_id\": \"step-5\"\n  },\n  \"event_id\": \"5-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200010900,\n    \"invocations\": [\n      {\n        \"arguments\": {},\n        \"invocation_id\": \"call-5\",\n        \"started_at_ms\": 1789200010950,\n        \"tool\": \"history.list\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-5\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"5-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200010500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-6": {
+      "action": "",
+      "end": 1789200012900,
+      "id": "model:step-6",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200012500,\n    \"step_id\": \"step-6\"\n  },\n  \"event_id\": \"6-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200012900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"reason\": \"等待检查完成\",\n          \"seconds\": 5\n        },\n        \"invocation_id\": \"call-6\",\n        \"started_at_ms\": 1789200012950,\n        \"tool\": \"wait\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-6\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"6-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200012500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-7": {
+      "action": "",
+      "end": 1789200014900,
+      "id": "model:step-7",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [\n      \"wake-input\"\n    ],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200014500,\n    \"step_id\": \"step-7\"\n  },\n  \"event_id\": \"7-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200014900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"command\": \"cargo test --locked\"\n        },\n        \"invocation_id\": \"call-7\",\n        \"started_at_ms\": 1789200014950,\n        \"tool\": \"shell.run\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-7\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"7-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200014500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-8": {
+      "action": "",
+      "end": 1789200016900,
+      "id": "model:step-8",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200016500,\n    \"step_id\": \"step-8\"\n  },\n  \"event_id\": \"8-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200016900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"path\": \"missing.txt\"\n        },\n        \"invocation_id\": \"call-8\",\n        \"started_at_ms\": 1789200016950,\n        \"tool\": \"file.read\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-8\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"8-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200016500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "model:step-9": {
+      "action": "",
+      "end": 1789200018900,
+      "id": "model:step-9",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200018500,\n    \"step_id\": \"step-9\"\n  },\n  \"event_id\": \"9-model-start\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200018900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"text\": \"检查完成，结果可供审阅。\"\n        },\n        \"invocation_id\": \"call-9\",\n        \"started_at_ms\": 1789200018950,\n        \"tool\": \"chat.post_message\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-9\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"9-model-end\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1789200018500,
+      "state": "succeeded",
+      "summary": "模型内部推理仅在执行详情中查看。",
+      "usage": {
+        "cached_input_tokens": 600,
+        "input_tokens": 1200,
+        "output_tokens": 100
+      }
+    },
+    "tool:call-0": {
+      "action": "file.read",
+      "end": 1789200001600,
+      "id": "tool:call-0",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 0",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"path\": \"src/main.rs\"\n  },\n  \"invocation_id\": \"call-0\",\n  \"started_at_ms\": 1789200000950,\n  \"tool\": \"file.read\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 0\"\n      },\n      \"finished_at_ms\": 1789200001600,\n      \"invocation_id\": \"call-0\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"file.read\"\n    }\n  },\n  \"event_id\": \"0-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200000950,
+      "state": "succeeded",
+      "summary": "src/main.rs",
+      "usage": null
+    },
+    "tool:call-1": {
+      "action": "file.read",
+      "end": 1789200003600,
+      "id": "tool:call-1",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 1",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"path\": \"src/main.rs\"\n  },\n  \"invocation_id\": \"call-1\",\n  \"started_at_ms\": 1789200002950,\n  \"tool\": \"file.read\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 1\"\n      },\n      \"finished_at_ms\": 1789200003600,\n      \"invocation_id\": \"call-1\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"file.read\"\n    }\n  },\n  \"event_id\": \"1-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200002950,
+      "state": "succeeded",
+      "summary": "src/main.rs",
+      "usage": null
+    },
+    "tool:call-10": {
+      "action": "chat.post_file",
+      "end": 1789200021600,
+      "id": "tool:call-10",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 10",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"file_path\": \"notes.md\",\n    \"initial_comment\": \"执行报告\"\n  },\n  \"invocation_id\": \"call-10\",\n  \"started_at_ms\": 1789200020950,\n  \"tool\": \"chat.post_file\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 10\"\n      },\n      \"finished_at_ms\": 1789200021600,\n      \"invocation_id\": \"call-10\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"chat.post_file\"\n    }\n  },\n  \"event_id\": \"10-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200020950,
+      "state": "succeeded",
+      "summary": "{\"file_path\":\"notes.md\",\"initial_comment\":\"执行报告\"}",
+      "usage": null
+    },
+    "tool:call-11": {
+      "action": "chat.notify",
+      "end": 1789200023600,
+      "id": "tool:call-11",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 11",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"text\": \"需要确认一项输入\"\n  },\n  \"invocation_id\": \"call-11\",\n  \"started_at_ms\": 1789200022950,\n  \"tool\": \"chat.notify\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 11\"\n      },\n      \"finished_at_ms\": 1789200023600,\n      \"invocation_id\": \"call-11\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"chat.notify\"\n    }\n  },\n  \"event_id\": \"11-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200022950,
+      "state": "succeeded",
+      "summary": "需要确认一项输入",
+      "usage": null
+    },
+    "tool:call-12": {
+      "action": "agent.assign",
+      "end": 1789200025600,
+      "id": "tool:call-12",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 12",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"goal\": \"复查边界条件\",\n    \"worker_id\": \"worker-1\"\n  },\n  \"invocation_id\": \"call-12\",\n  \"started_at_ms\": 1789200024950,\n  \"tool\": \"agent.assign\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 12\"\n      },\n      \"finished_at_ms\": 1789200025600,\n      \"invocation_id\": \"call-12\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"agent.assign\"\n    }\n  },\n  \"event_id\": \"12-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200024950,
+      "state": "succeeded",
+      "summary": "{\"goal\":\"复查边界条件\",\"worker_id\":\"worker-1\"}",
+      "usage": null
+    },
+    "tool:call-13": {
+      "action": "agent.rework",
+      "end": 1789200027600,
+      "id": "tool:call-13",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 13",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"goal\": \"补充窄屏截图\",\n    \"task_id\": \"unknown-task\"\n  },\n  \"invocation_id\": \"call-13\",\n  \"started_at_ms\": 1789200026950,\n  \"tool\": \"agent.rework\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 13\"\n      },\n      \"finished_at_ms\": 1789200027600,\n      \"invocation_id\": \"call-13\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"agent.rework\"\n    }\n  },\n  \"event_id\": \"13-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200026950,
+      "state": "succeeded",
+      "summary": "unknown-task",
+      "usage": null
+    },
+    "tool:call-14": {
+      "action": "agent.workers",
+      "end": 1789200029600,
+      "id": "tool:call-14",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 14",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {},\n  \"invocation_id\": \"call-14\",\n  \"started_at_ms\": 1789200028950,\n  \"tool\": \"agent.workers\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 14\"\n      },\n      \"finished_at_ms\": 1789200029600,\n      \"invocation_id\": \"call-14\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"agent.workers\"\n    }\n  },\n  \"event_id\": \"14-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200028950,
+      "state": "succeeded",
+      "summary": "{}",
+      "usage": null
+    },
+    "tool:call-15": {
+      "action": "agent.tasks",
+      "end": 1789200031600,
+      "id": "tool:call-15",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 15",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {},\n  \"invocation_id\": \"call-15\",\n  \"started_at_ms\": 1789200030950,\n  \"tool\": \"agent.tasks\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 15\"\n      },\n      \"finished_at_ms\": 1789200031600,\n      \"invocation_id\": \"call-15\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"agent.tasks\"\n    }\n  },\n  \"event_id\": \"15-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200030950,
+      "state": "succeeded",
+      "summary": "{}",
+      "usage": null
+    },
+    "tool:call-16": {
+      "action": "tool.help",
+      "end": 1789200033600,
+      "id": "tool:call-16",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 16",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"tool\": \"file.read\"\n  },\n  \"invocation_id\": \"call-16\",\n  \"started_at_ms\": 1789200032950,\n  \"tool\": \"tool.help\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 16\"\n      },\n      \"finished_at_ms\": 1789200033600,\n      \"invocation_id\": \"call-16\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"tool.help\"\n    }\n  },\n  \"event_id\": \"16-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200032950,
+      "state": "succeeded",
+      "summary": "{\"tool\":\"file.read\"}",
+      "usage": null
+    },
+    "tool:call-17": {
+      "action": "chat.history",
+      "end": 1789200035600,
+      "id": "tool:call-17",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 17",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {},\n  \"invocation_id\": \"call-17\",\n  \"started_at_ms\": 1789200034950,\n  \"tool\": \"chat.history\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 17\"\n      },\n      \"finished_at_ms\": 1789200035600,\n      \"invocation_id\": \"call-17\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"chat.history\"\n    }\n  },\n  \"event_id\": \"17-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200034950,
+      "state": "succeeded",
+      "summary": "{}",
+      "usage": null
+    },
+    "tool:call-18": {
+      "action": "browser",
+      "end": 1789200037600,
+      "id": "tool:call-18",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 18",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"action\": {\n      \"op\": \"navigate\",\n      \"url\": \"https://example.test\"\n    }\n  },\n  \"invocation_id\": \"call-18\",\n  \"started_at_ms\": 1789200036950,\n  \"tool\": \"browser\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 18\"\n      },\n      \"finished_at_ms\": 1789200037600,\n      \"invocation_id\": \"call-18\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"browser\"\n    }\n  },\n  \"event_id\": \"18-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200036950,
+      "state": "succeeded",
+      "summary": "{\"action\":{\"op\":\"navigate\",\"url\":\"https://example.test\"}}",
+      "usage": null
+    },
+    "tool:call-19": {
+      "action": "job.register",
+      "end": 1789200039600,
+      "id": "tool:call-19",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 19",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"kind\": \"script\",\n    \"script\": \"prepare_report\"\n  },\n  \"invocation_id\": \"call-19\",\n  \"started_at_ms\": 1789200038950,\n  \"tool\": \"job.register\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 19\"\n      },\n      \"finished_at_ms\": 1789200039600,\n      \"invocation_id\": \"call-19\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"job.register\"\n    }\n  },\n  \"event_id\": \"19-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200038950,
+      "state": "succeeded",
+      "summary": "{\"kind\":\"script\",\"script\":\"prepare_report\"}",
+      "usage": null
+    },
+    "tool:call-2": {
+      "action": "file.write",
+      "end": 1789200005600,
+      "id": "tool:call-2",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 2",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"content\": \"# 检查结果\\n保留源内容 👋\",\n    \"path\": \"notes.md\"\n  },\n  \"invocation_id\": \"call-2\",\n  \"started_at_ms\": 1789200004950,\n  \"tool\": \"file.write\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 2\"\n      },\n      \"finished_at_ms\": 1789200005600,\n      \"invocation_id\": \"call-2\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"file.write\"\n    }\n  },\n  \"event_id\": \"2-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200004950,
+      "state": "succeeded",
+      "summary": "notes.md",
+      "usage": null
+    },
+    "tool:call-20": {
+      "action": "tool.cancel",
+      "end": 1789200041600,
+      "id": "tool:call-20",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 20",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"invocation_id\": \"background-1\"\n  },\n  \"invocation_id\": \"call-20\",\n  \"started_at_ms\": 1789200040950,\n  \"tool\": \"tool.cancel\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 20\"\n      },\n      \"finished_at_ms\": 1789200041600,\n      \"invocation_id\": \"call-20\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"tool.cancel\"\n    }\n  },\n  \"event_id\": \"20-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200040950,
+      "state": "succeeded",
+      "summary": "{\"invocation_id\":\"background-1\"}",
+      "usage": null
+    },
+    "tool:call-21": {
+      "action": "end",
+      "end": 1789200043600,
+      "id": "tool:call-21",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 21",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {},\n  \"invocation_id\": \"call-21\",\n  \"started_at_ms\": 1789200042950,\n  \"tool\": \"end\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 21\"\n      },\n      \"finished_at_ms\": 1789200043600,\n      \"invocation_id\": \"call-21\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"end\"\n    }\n  },\n  \"event_id\": \"21-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200042950,
+      "state": "succeeded",
+      "summary": "{}",
+      "usage": null
+    },
+    "tool:call-22": {
+      "action": "custom.inspection",
+      "end": 1789200045600,
+      "id": "tool:call-22",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 22",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"value\": \"unknown tools stay visible\"\n  },\n  \"invocation_id\": \"call-22\",\n  \"started_at_ms\": 1789200044950,\n  \"tool\": \"custom.inspection\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 22\"\n      },\n      \"finished_at_ms\": 1789200045600,\n      \"invocation_id\": \"call-22\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"custom.inspection\"\n    }\n  },\n  \"event_id\": \"22-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200044950,
+      "state": "succeeded",
+      "summary": "{\"value\":\"unknown tools stay visible\"}",
+      "usage": null
+    },
+    "tool:call-23": {
+      "action": "wait",
+      "end": null,
+      "id": "tool:call-23",
+      "lane": 2,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"reason\": \"等待外部反馈\",\n    \"seconds\": 60\n  },\n  \"invocation_id\": \"call-23\",\n  \"started_at_ms\": 1789200046950,\n  \"tool\": \"wait\"\n}",
+          "kind": "request"
+        }
+      ],
+      "start": 1789200046950,
+      "state": "running",
+      "summary": "{\"reason\":\"等待外部反馈\",\"seconds\":60}",
+      "usage": null
+    },
+    "tool:call-3": {
+      "action": "file.edit",
+      "end": 1789200007600,
+      "id": "tool:call-3",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 3",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"path\": \"notes.md\"\n  },\n  \"invocation_id\": \"call-3\",\n  \"started_at_ms\": 1789200006950,\n  \"tool\": \"file.edit\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 3\"\n      },\n      \"finished_at_ms\": 1789200007600,\n      \"invocation_id\": \"call-3\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"file.edit\"\n    }\n  },\n  \"event_id\": \"3-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200006950,
+      "state": "succeeded",
+      "summary": "notes.md",
+      "usage": null
+    },
+    "tool:call-4": {
+      "action": "shell.run",
+      "end": 1789200009600,
+      "id": "tool:call-4",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 4",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"command\": \"pwd\"\n  },\n  \"invocation_id\": \"call-4\",\n  \"started_at_ms\": 1789200008950,\n  \"tool\": \"shell.run\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 4\"\n      },\n      \"finished_at_ms\": 1789200009600,\n      \"invocation_id\": \"call-4\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"shell.run\"\n    }\n  },\n  \"event_id\": \"4-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200008950,
+      "state": "succeeded",
+      "summary": "pwd",
+      "usage": null
+    },
+    "tool:call-5": {
+      "action": "history.list",
+      "end": 1789200011600,
+      "id": "tool:call-5",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 5",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {},\n  \"invocation_id\": \"call-5\",\n  \"started_at_ms\": 1789200010950,\n  \"tool\": \"history.list\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 5\"\n      },\n      \"finished_at_ms\": 1789200011600,\n      \"invocation_id\": \"call-5\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"history.list\"\n    }\n  },\n  \"event_id\": \"5-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200010950,
+      "state": "succeeded",
+      "summary": "{}",
+      "usage": null
+    },
+    "tool:call-6": {
+      "action": "wait",
+      "end": 1789200014500,
+      "id": "tool:call-6",
+      "lane": 2,
+      "model": null,
+      "outcome": "{\"until_ms\":1789200017950}",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"reason\": \"等待检查完成\",\n    \"seconds\": 5\n  },\n  \"invocation_id\": \"call-6\",\n  \"started_at_ms\": 1789200012950,\n  \"tool\": \"wait\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"until_ms\": 1789200017950\n      },\n      \"finished_at_ms\": 1789200013600,\n      \"invocation_id\": \"call-6\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"wait\"\n    }\n  },\n  \"event_id\": \"6-result\"\n}",
+          "kind": "event"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [\n      \"wake-input\"\n    ],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1789200014500,\n    \"step_id\": \"step-7\"\n  },\n  \"event_id\": \"7-model-start\"\n}",
+          "kind": "start"
+        }
+      ],
+      "start": 1789200013600,
+      "state": "succeeded",
+      "summary": "{\"reason\":\"等待检查完成\",\"seconds\":5}",
+      "usage": null
+    },
+    "tool:call-7": {
+      "action": "shell.run",
+      "end": 1789200015600,
+      "id": "tool:call-7",
+      "lane": 2,
+      "model": null,
+      "outcome": "通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n通过：中英文、长文本与 emoji 👋\n",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"command\": \"cargo test --locked\"\n  },\n  \"invocation_id\": \"call-7\",\n  \"started_at_ms\": 1789200014950,\n  \"tool\": \"shell.run\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n通过：中英文、长文本与 emoji 👋\\n\"\n      },\n      \"finished_at_ms\": 1789200015600,\n      \"invocation_id\": \"call-7\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"shell.run\"\n    }\n  },\n  \"event_id\": \"7-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200014950,
+      "state": "succeeded",
+      "summary": "cargo test --locked",
+      "usage": null
+    },
+    "tool:call-8": {
+      "action": "file.read",
+      "end": 1789200017600,
+      "id": "tool:call-8",
+      "lane": 2,
+      "model": null,
+      "outcome": "文件不存在：missing.txt",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"path\": \"missing.txt\"\n  },\n  \"invocation_id\": \"call-8\",\n  \"started_at_ms\": 1789200016950,\n  \"tool\": \"file.read\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"error\": \"文件不存在：missing.txt\"\n      },\n      \"finished_at_ms\": 1789200017600,\n      \"invocation_id\": \"call-8\",\n      \"outcome\": \"failed\",\n      \"tool\": \"file.read\"\n    }\n  },\n  \"event_id\": \"8-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200016950,
+      "state": "failed",
+      "summary": "missing.txt",
+      "usage": null
+    },
+    "tool:call-9": {
+      "action": "chat.post_message",
+      "end": 1789200019600,
+      "id": "tool:call-9",
+      "lane": 2,
+      "model": null,
+      "outcome": "完成操作 9",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"text\": \"检查完成，结果可供审阅。\"\n  },\n  \"invocation_id\": \"call-9\",\n  \"started_at_ms\": 1789200018950,\n  \"tool\": \"chat.post_message\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"完成操作 9\"\n      },\n      \"finished_at_ms\": 1789200019600,\n      \"invocation_id\": \"call-9\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"chat.post_message\"\n    }\n  },\n  \"event_id\": \"9-result\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200018950,
+      "state": "succeeded",
+      "summary": "检查完成，结果可供审阅。",
+      "usage": null
+    },
+    "wake-input": {
+      "action": "input",
+      "end": 1789200014400,
+      "id": "wake-input",
+      "lane": 0,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"检查完成，继续整理报告。\",\n      \"input_id\": \"wake-input\",\n      \"received_at_ms\": 1789200014400\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"wake-input\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1789200014400,
+      "state": "received",
+      "summary": "检查完成，继续整理报告。",
+      "usage": null
+    }
+  },
+  "history": {
+    "blocks": [
+      {
+        "end": 1789200000000,
+        "grouped": false,
+        "id": "input",
+        "members": [
+          "input"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200000000,
+        "summary": "检查项目，整理报告并等待反馈。",
+        "written": 0
+      },
+      {
+        "end": 1789200011600,
+        "grouped": true,
+        "id": "tool:call-0",
+        "members": [
+          "tool:call-0",
+          "tool:call-1",
+          "tool:call-2",
+          "tool:call-3",
+          "tool:call-4",
+          "tool:call-5"
+        ],
+        "queries": 1,
+        "read": 1,
+        "shell": 1,
+        "start": 1789200000950,
+        "summary": "src/main.rs · src/main.rs · notes.md",
+        "written": 1
+      },
+      {
+        "end": 1789200014500,
+        "grouped": false,
+        "id": "tool:call-6",
+        "members": [
+          "tool:call-6"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200013600,
+        "summary": "等待检查完成",
+        "written": 0
+      },
+      {
+        "end": 1789200014400,
+        "grouped": false,
+        "id": "wake-input",
+        "members": [
+          "wake-input"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200014400,
+        "summary": "检查完成，继续整理报告。",
+        "written": 0
+      },
+      {
+        "end": 1789200015600,
+        "grouped": false,
+        "id": "tool:call-7",
+        "members": [
+          "tool:call-7"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200014950,
+        "summary": "cargo test --locked",
+        "written": 0
+      },
+      {
+        "end": 1789200017600,
+        "grouped": false,
+        "id": "tool:call-8",
+        "members": [
+          "tool:call-8"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200016950,
+        "summary": "文件不存在：missing.txt",
+        "written": 0
+      },
+      {
+        "end": 1789200019600,
+        "grouped": false,
+        "id": "tool:call-9",
+        "members": [
+          "tool:call-9"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200018950,
+        "summary": "检查完成，结果可供审阅。",
+        "written": 0
+      },
+      {
+        "end": 1789200021600,
+        "grouped": false,
+        "id": "tool:call-10",
+        "members": [
+          "tool:call-10"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200020950,
+        "summary": "notes.md · 执行报告",
+        "written": 0
+      },
+      {
+        "end": 1789200023600,
+        "grouped": false,
+        "id": "tool:call-11",
+        "members": [
+          "tool:call-11"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200022950,
+        "summary": "需要确认一项输入",
+        "written": 0
+      },
+      {
+        "end": 1789200025600,
+        "grouped": false,
+        "id": "tool:call-12",
+        "members": [
+          "tool:call-12"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200024950,
+        "summary": "复查边界条件",
+        "written": 0
+      },
+      {
+        "end": 1789200027600,
+        "grouped": false,
+        "id": "tool:call-13",
+        "members": [
+          "tool:call-13"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200026950,
+        "summary": "补充窄屏截图",
+        "written": 0
+      },
+      {
+        "end": 1789200035600,
+        "grouped": true,
+        "id": "tool:call-14",
+        "members": [
+          "tool:call-14",
+          "tool:call-15",
+          "tool:call-16",
+          "tool:call-17"
+        ],
+        "queries": 4,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200028950,
+        "summary": "file.read",
+        "written": 0
+      },
+      {
+        "end": 1789200037600,
+        "grouped": false,
+        "id": "tool:call-18",
+        "members": [
+          "tool:call-18"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200036950,
+        "summary": "navigate · https://example.test",
+        "written": 0
+      },
+      {
+        "end": 1789200039600,
+        "grouped": false,
+        "id": "tool:call-19",
+        "members": [
+          "tool:call-19"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200038950,
+        "summary": "script · prepare_report",
+        "written": 0
+      },
+      {
+        "end": 1789200041600,
+        "grouped": false,
+        "id": "tool:call-20",
+        "members": [
+          "tool:call-20"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200040950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200043600,
+        "grouped": false,
+        "id": "tool:call-21",
+        "members": [
+          "tool:call-21"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200042950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200045600,
+        "grouped": false,
+        "id": "tool:call-22",
+        "members": [
+          "tool:call-22"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200044950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200046950,
+        "grouped": false,
+        "id": "tool:call-23",
+        "members": [
+          "tool:call-23"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200046950,
+        "summary": "等待外部反馈",
+        "written": 0
+      },
+      {
+        "end": 1789200055000,
+        "grouped": false,
+        "id": "model:failed-model",
+        "members": [
+          "model:failed-model"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200055000,
+        "summary": "测试提供商暂时不可用",
+        "written": 0
+      }
+    ],
+    "clock_offset_ms": -8359878,
+    "detail": null,
+    "entries": [
+      {
+        "action": "input",
+        "end": 1789200000000,
+        "id": "input",
+        "kind": "received",
+        "lane": 0,
+        "model": null,
+        "preview": "检查项目，整理报告并等待反馈。",
+        "requested_wait_ms": null,
+        "start": 1789200000000,
+        "state": "received",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200000900,
+        "id": "model:step-0",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200000500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.read",
+        "end": 1789200001600,
+        "id": "tool:call-0",
+        "kind": "read",
+        "lane": 2,
+        "model": null,
+        "preview": "src/main.rs",
+        "requested_wait_ms": null,
+        "start": 1789200000950,
+        "state": "succeeded",
+        "subject": {
+          "label": "src/main.rs"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200002900,
+        "id": "model:step-1",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200002500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.read",
+        "end": 1789200003600,
+        "id": "tool:call-1",
+        "kind": "read",
+        "lane": 2,
+        "model": null,
+        "preview": "src/main.rs",
+        "requested_wait_ms": null,
+        "start": 1789200002950,
+        "state": "succeeded",
+        "subject": {
+          "label": "src/main.rs"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200004900,
+        "id": "model:step-2",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200004500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.write",
+        "end": 1789200005600,
+        "id": "tool:call-2",
+        "kind": "write",
+        "lane": 2,
+        "model": null,
+        "preview": "notes.md",
+        "requested_wait_ms": null,
+        "start": 1789200004950,
+        "state": "succeeded",
+        "subject": {
+          "label": "notes.md"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200006900,
+        "id": "model:step-3",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200006500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.edit",
+        "end": 1789200007600,
+        "id": "tool:call-3",
+        "kind": "edit",
+        "lane": 2,
+        "model": null,
+        "preview": "notes.md",
+        "requested_wait_ms": null,
+        "start": 1789200006950,
+        "state": "succeeded",
+        "subject": {
+          "label": "notes.md"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200008900,
+        "id": "model:step-4",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200008500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "shell.run",
+        "end": 1789200009600,
+        "id": "tool:call-4",
+        "kind": "shell",
+        "lane": 2,
+        "model": null,
+        "preview": "pwd",
+        "requested_wait_ms": null,
+        "start": 1789200008950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200010900,
+        "id": "model:step-5",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200010500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "history.list",
+        "end": 1789200011600,
+        "id": "tool:call-5",
+        "kind": "history",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200010950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200012900,
+        "id": "model:step-6",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200012500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "wait",
+        "end": 1789200014500,
+        "id": "tool:call-6",
+        "kind": "wait",
+        "lane": 2,
+        "model": null,
+        "preview": "等待检查完成",
+        "requested_wait_ms": 5000,
+        "start": 1789200013600,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "input",
+        "end": 1789200014400,
+        "id": "wake-input",
+        "kind": "received",
+        "lane": 0,
+        "model": null,
+        "preview": "检查完成，继续整理报告。",
+        "requested_wait_ms": null,
+        "start": 1789200014400,
+        "state": "received",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200014900,
+        "id": "model:step-7",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200014500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "shell.run",
+        "end": 1789200015600,
+        "id": "tool:call-7",
+        "kind": "shell",
+        "lane": 2,
+        "model": null,
+        "preview": "cargo test --locked",
+        "requested_wait_ms": null,
+        "start": 1789200014950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200016900,
+        "id": "model:step-8",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200016500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.read",
+        "end": 1789200017600,
+        "id": "tool:call-8",
+        "kind": "read",
+        "lane": 2,
+        "model": null,
+        "preview": "文件不存在：missing.txt",
+        "requested_wait_ms": null,
+        "start": 1789200016950,
+        "state": "failed",
+        "subject": {
+          "label": "missing.txt"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200018900,
+        "id": "model:step-9",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200018500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "chat.post_message",
+        "end": 1789200019600,
+        "id": "tool:call-9",
+        "kind": "send_message",
+        "lane": 2,
+        "model": null,
+        "preview": "检查完成，结果可供审阅。",
+        "requested_wait_ms": null,
+        "start": 1789200018950,
+        "state": "succeeded",
+        "subject": {
+          "conversation": {
+            "can_send": true,
+            "can_stop": true,
+            "id": "session-a",
+            "title": "工作对话"
+          },
+          "label": "工作对话"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200020900,
+        "id": "model:step-10",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200020500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "chat.post_file",
+        "end": 1789200021600,
+        "id": "tool:call-10",
+        "kind": "send_file",
+        "lane": 2,
+        "model": null,
+        "preview": "notes.md · 执行报告",
+        "requested_wait_ms": null,
+        "start": 1789200020950,
+        "state": "succeeded",
+        "subject": {
+          "conversation": {
+            "can_send": true,
+            "can_stop": true,
+            "id": "session-a",
+            "title": "工作对话"
+          },
+          "label": "工作对话"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200022900,
+        "id": "model:step-11",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200022500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "chat.notify",
+        "end": 1789200023600,
+        "id": "tool:call-11",
+        "kind": "notify",
+        "lane": 2,
+        "model": null,
+        "preview": "需要确认一项输入",
+        "requested_wait_ms": null,
+        "start": 1789200022950,
+        "state": "succeeded",
+        "subject": {
+          "conversation": {
+            "can_send": true,
+            "can_stop": true,
+            "id": "session-a",
+            "title": "工作对话"
+          },
+          "label": "工作对话"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200024900,
+        "id": "model:step-12",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200024500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "agent.assign",
+        "end": 1789200025600,
+        "id": "tool:call-12",
+        "kind": "assign",
+        "lane": 2,
+        "model": null,
+        "preview": "复查边界条件",
+        "requested_wait_ms": null,
+        "start": 1789200024950,
+        "state": "succeeded",
+        "subject": {
+          "agent": {
+            "avatar": "bear",
+            "id": "worker-1",
+            "model": "fixture-model",
+            "name": "小熊",
+            "profile": "fixture",
+            "role": "worker",
+            "thinking": "high"
+          },
+          "label": "小熊"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200026900,
+        "id": "model:step-13",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200026500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "agent.rework",
+        "end": 1789200027600,
+        "id": "tool:call-13",
+        "kind": "rework",
+        "lane": 2,
+        "model": null,
+        "preview": "补充窄屏截图",
+        "requested_wait_ms": null,
+        "start": 1789200026950,
+        "state": "succeeded",
+        "subject": {
+          "label": "unknown-task"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200028900,
+        "id": "model:step-14",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200028500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "agent.workers",
+        "end": 1789200029600,
+        "id": "tool:call-14",
+        "kind": "workers",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200028950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200030900,
+        "id": "model:step-15",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200030500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "agent.tasks",
+        "end": 1789200031600,
+        "id": "tool:call-15",
+        "kind": "tasks",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200030950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200032900,
+        "id": "model:step-16",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200032500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "tool.help",
+        "end": 1789200033600,
+        "id": "tool:call-16",
+        "kind": "help",
+        "lane": 2,
+        "model": null,
+        "preview": "file.read",
+        "requested_wait_ms": null,
+        "start": 1789200032950,
+        "state": "succeeded",
+        "subject": {
+          "label": "file.read"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200034900,
+        "id": "model:step-17",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200034500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "chat.history",
+        "end": 1789200035600,
+        "id": "tool:call-17",
+        "kind": "chat_history",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200034950,
+        "state": "succeeded",
+        "subject": {
+          "conversation": {
+            "can_send": true,
+            "can_stop": true,
+            "id": "session-a",
+            "title": "工作对话"
+          },
+          "label": "工作对话"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200036900,
+        "id": "model:step-18",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200036500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "browser",
+        "end": 1789200037600,
+        "id": "tool:call-18",
+        "kind": "browser",
+        "lane": 2,
+        "model": null,
+        "preview": "navigate · https://example.test",
+        "requested_wait_ms": null,
+        "start": 1789200036950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200038900,
+        "id": "model:step-19",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200038500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "job.register",
+        "end": 1789200039600,
+        "id": "tool:call-19",
+        "kind": "job",
+        "lane": 2,
+        "model": null,
+        "preview": "script · prepare_report",
+        "requested_wait_ms": null,
+        "start": 1789200038950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200040900,
+        "id": "model:step-20",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200040500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "tool.cancel",
+        "end": 1789200041600,
+        "id": "tool:call-20",
+        "kind": "cancel",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200040950,
+        "state": "succeeded",
+        "subject": {
+          "label": "background-1"
+        },
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200042900,
+        "id": "model:step-21",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200042500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "end",
+        "end": 1789200043600,
+        "id": "tool:call-21",
+        "kind": "end",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200042950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200044900,
+        "id": "model:step-22",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200044500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "custom.inspection",
+        "end": 1789200045600,
+        "id": "tool:call-22",
+        "kind": "unknown_tool",
+        "lane": 2,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1789200044950,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1789200046900,
+        "id": "model:step-23",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "模型内部推理仅在执行详情中查看。",
+        "requested_wait_ms": null,
+        "start": 1789200046500,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "wait",
+        "end": null,
+        "id": "tool:call-23",
+        "kind": "wait",
+        "lane": 2,
+        "model": null,
+        "preview": "等待外部反馈",
+        "requested_wait_ms": 60000,
+        "start": 1789200046950,
+        "state": "running",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "conversation",
+        "end": 1789200055000,
+        "id": "model:failed-model",
+        "kind": "error",
+        "lane": 1,
+        "model": null,
+        "preview": "测试提供商暂时不可用",
+        "requested_wait_ms": null,
+        "start": null,
+        "state": "failed",
+        "subject": null,
+        "visible": true
+      }
+    ],
+    "error": null,
+    "loaded": true,
+    "loading": false,
+    "newer": false,
+    "older": false,
+    "overview": {
+      "cache_hit_rate": 0.5,
+      "cached": 14400,
+      "context_limit": 32768,
+      "context_tokens": 2048,
+      "input": 28800,
+      "model": "fixture-model",
+      "output": 2400,
+      "partial_cache": false,
+      "profile": {
+        "checked_at": "2026-09-12T08:00:00Z",
+        "name": "测试连接",
+        "provider": "openai",
+        "quota": {
+          "balance": null,
+          "failed": false,
+          "windows": [
+            {
+              "minutes": 300,
+              "name": "",
+              "remaining": 75.0,
+              "resets_at": null
+            }
+          ]
+        }
+      },
+      "thinking": "high",
+      "total": 31200
+    },
+    "peer": "peer",
+    "session": "session-a",
+    "total": 51,
+    "window_start": 0
+  },
+  "now_ms": 1789200060000,
+  "prepended": {
+    "blocks": [
+      {
+        "end": 1789200000000,
+        "grouped": false,
+        "id": "input",
+        "members": [
+          "input"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200000000,
+        "summary": "检查项目，整理报告并等待反馈。",
+        "written": 0
+      },
+      {
+        "end": 1789200011600,
+        "grouped": true,
+        "id": "tool:earlier-read",
+        "members": [
+          "tool:earlier-read",
+          "tool:call-0",
+          "tool:call-1",
+          "tool:call-2",
+          "tool:call-3",
+          "tool:call-4",
+          "tool:call-5"
+        ],
+        "queries": 1,
+        "read": 2,
+        "shell": 1,
+        "start": 1789200000700,
+        "summary": "src/extra.rs · src/main.rs · src/main.rs",
+        "written": 1
+      },
+      {
+        "end": 1789200014500,
+        "grouped": false,
+        "id": "tool:call-6",
+        "members": [
+          "tool:call-6"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200013600,
+        "summary": "等待检查完成",
+        "written": 0
+      },
+      {
+        "end": 1789200014400,
+        "grouped": false,
+        "id": "wake-input",
+        "members": [
+          "wake-input"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200014400,
+        "summary": "检查完成，继续整理报告。",
+        "written": 0
+      },
+      {
+        "end": 1789200015600,
+        "grouped": false,
+        "id": "tool:call-7",
+        "members": [
+          "tool:call-7"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200014950,
+        "summary": "cargo test --locked",
+        "written": 0
+      },
+      {
+        "end": 1789200017600,
+        "grouped": false,
+        "id": "tool:call-8",
+        "members": [
+          "tool:call-8"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200016950,
+        "summary": "文件不存在：missing.txt",
+        "written": 0
+      },
+      {
+        "end": 1789200019600,
+        "grouped": false,
+        "id": "tool:call-9",
+        "members": [
+          "tool:call-9"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200018950,
+        "summary": "检查完成，结果可供审阅。",
+        "written": 0
+      },
+      {
+        "end": 1789200021600,
+        "grouped": false,
+        "id": "tool:call-10",
+        "members": [
+          "tool:call-10"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200020950,
+        "summary": "notes.md · 执行报告",
+        "written": 0
+      },
+      {
+        "end": 1789200023600,
+        "grouped": false,
+        "id": "tool:call-11",
+        "members": [
+          "tool:call-11"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200022950,
+        "summary": "需要确认一项输入",
+        "written": 0
+      },
+      {
+        "end": 1789200025600,
+        "grouped": false,
+        "id": "tool:call-12",
+        "members": [
+          "tool:call-12"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200024950,
+        "summary": "复查边界条件",
+        "written": 0
+      },
+      {
+        "end": 1789200027600,
+        "grouped": false,
+        "id": "tool:call-13",
+        "members": [
+          "tool:call-13"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200026950,
+        "summary": "补充窄屏截图",
+        "written": 0
+      },
+      {
+        "end": 1789200035600,
+        "grouped": true,
+        "id": "tool:call-14",
+        "members": [
+          "tool:call-14",
+          "tool:call-15",
+          "tool:call-16",
+          "tool:call-17"
+        ],
+        "queries": 4,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200028950,
+        "summary": "file.read",
+        "written": 0
+      },
+      {
+        "end": 1789200037600,
+        "grouped": false,
+        "id": "tool:call-18",
+        "members": [
+          "tool:call-18"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200036950,
+        "summary": "navigate · https://example.test",
+        "written": 0
+      },
+      {
+        "end": 1789200039600,
+        "grouped": false,
+        "id": "tool:call-19",
+        "members": [
+          "tool:call-19"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200038950,
+        "summary": "script · prepare_report",
+        "written": 0
+      },
+      {
+        "end": 1789200041600,
+        "grouped": false,
+        "id": "tool:call-20",
+        "members": [
+          "tool:call-20"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200040950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200043600,
+        "grouped": false,
+        "id": "tool:call-21",
+        "members": [
+          "tool:call-21"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200042950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200045600,
+        "grouped": false,
+        "id": "tool:call-22",
+        "members": [
+          "tool:call-22"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200044950,
+        "summary": "",
+        "written": 0
+      },
+      {
+        "end": 1789200046950,
+        "grouped": false,
+        "id": "tool:call-23",
+        "members": [
+          "tool:call-23"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200046950,
+        "summary": "等待外部反馈",
+        "written": 0
+      },
+      {
+        "end": 1789200055000,
+        "grouped": false,
+        "id": "model:failed-model",
+        "members": [
+          "model:failed-model"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1789200055000,
+        "summary": "测试提供商暂时不可用",
+        "written": 0
+      }
+    ],
+    "clock_offset_ms": -8359878,
+    "entry_edits": [
+      {
+        "end": 2,
+        "insert": [
+          {
+            "action": "",
+            "end": 1789200000650,
+            "id": "model:earlier-step",
+            "kind": null,
+            "lane": 1,
+            "model": null,
+            "preview": "",
+            "requested_wait_ms": null,
+            "start": null,
+            "state": "succeeded",
+            "subject": null,
+            "visible": false
+          },
+          {
+            "action": "file.read",
+            "end": 1789200000900,
+            "id": "tool:earlier-read",
+            "kind": "read",
+            "lane": 2,
+            "model": null,
+            "preview": "src/extra.rs",
+            "requested_wait_ms": null,
+            "start": 1789200000700,
+            "state": "succeeded",
+            "subject": {
+              "label": "src/extra.rs"
+            },
+            "visible": true
+          }
+        ],
+        "start": 2
+      }
+    ],
+    "error": null,
+    "loaded": true,
+    "loading": false,
+    "newer": false,
+    "older": false,
+    "peer": "peer",
+    "session": "session-a",
+    "total": 53,
+    "window_start": 0
+  }
+}

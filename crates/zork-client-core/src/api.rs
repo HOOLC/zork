@@ -5,6 +5,10 @@
 //! Durable execution records are available through the separate `/history`
 //! inspector endpoint; they never become delivered conversation messages.
 
+#[cfg(feature = "headless-bench")]
+#[path = "api/offline.rs"]
+mod offline;
+
 use bytes::Bytes;
 use futures_channel::mpsc;
 use futures_util::{SinkExt, Stream, StreamExt};
@@ -188,6 +192,12 @@ pub enum TaskAction {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_epoch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sequence: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
@@ -236,6 +246,8 @@ pub enum TranscriptMessage {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessagePage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_epoch: Option<String>,
     pub items: Vec<TranscriptMessage>,
     pub older_cursor: Option<String>,
 }
@@ -341,12 +353,16 @@ pub enum AgentStatus {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Read-only composer membership. `assigned` is a work allocation fact;
+/// it does not assert that the Agent has authored a message.
 pub struct ParticipantStatus {
     pub id: String,
     pub name: String,
     pub avatar: Option<String>,
     #[serde(default)]
     pub subscribed: bool,
+    #[serde(default)]
+    pub assigned: bool,
     #[serde(default)]
     pub session_id: String,
     pub activity: Option<AgentStatus>,
@@ -363,6 +379,10 @@ struct Transport {
     mesh: Option<(zork_mesh::node::MeshNode, String)>,
 }
 pub struct GatewayClient {
+    #[cfg(feature = "headless-bench")]
+    fixture: Option<std::sync::Arc<offline::Fixture>>,
+    client_id: String,
+    browser_generation: std::sync::atomic::AtomicU64,
     service_mesh: Option<zork_mesh::node::MeshNode>,
     http: Transport,
     sse_http: Transport,
@@ -494,6 +514,13 @@ async fn send_request(
 pub(crate) type ClientTask = tokio::task::JoinHandle<()>;
 
 impl GatewayClient {
+    #[cfg(feature = "headless-bench")]
+    pub fn fixture(data: serde_json::Value, providers: serde_json::Value) -> Self {
+        let mut client = Self::new(format!("fixture://{}", ulid::Ulid::new()), None);
+        client.fixture = Some(std::sync::Arc::new(offline::Fixture::new(data, providers)));
+        client
+    }
+
     pub(crate) async fn wait(&self, duration: std::time::Duration) {
         let _ = self
             .spawn(async move { tokio::time::sleep(duration).await })
@@ -503,6 +530,15 @@ impl GatewayClient {
         self.base_url == other.base_url
             && self.token == other.token
             && self.is_mesh() == other.is_mesh()
+    }
+    pub(crate) fn client_id(&self) -> &str {
+        &self.client_id
+    }
+    #[cfg(feature = "desktop")]
+    pub(crate) fn next_browser_generation(&self) -> u64 {
+        self.browser_generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            + 1
     }
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
         let http = reqwest::Client::builder()
@@ -526,6 +562,10 @@ impl GatewayClient {
                 .expect("failed to build tokio runtime"),
         ));
         Self {
+            #[cfg(feature = "headless-bench")]
+            fixture: None,
+            client_id: ulid::Ulid::new().to_string(),
+            browser_generation: std::sync::atomic::AtomicU64::new(0),
             service_mesh: None,
             http: Transport { http, mesh: None },
             sse_http: Transport {
@@ -554,6 +594,10 @@ impl GatewayClient {
         let http = reqwest::Client::new();
         let mesh = Some((control, origin.clone()));
         Self {
+            #[cfg(feature = "headless-bench")]
+            fixture: None,
+            client_id: ulid::Ulid::new().to_string(),
+            browser_generation: std::sync::atomic::AtomicU64::new(0),
             service_mesh: None,
             http: Transport {
                 http: http.clone(),
@@ -569,6 +613,11 @@ impl GatewayClient {
     pub fn with_service_mesh(mut self, node: zork_mesh::node::MeshNode) -> Self {
         self.service_mesh = Some(node);
         self
+    }
+    pub(crate) fn file_tree(&self) -> Option<zork_mesh::node::MeshNode> {
+        self.service_mesh
+            .clone()
+            .or_else(|| self.http.mesh.as_ref().map(|(node, _)| node.clone()))
     }
     pub async fn open_shared_service(
         &self,
@@ -616,6 +665,10 @@ impl GatewayClient {
         path: String,
         body: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, ApiError> {
+        #[cfg(feature = "headless-bench")]
+        if let Some(fixture) = &self.fixture {
+            return fixture.node_request(method, path, body).map_err(|error| ApiError::Api { status: 400, message: error.to_string() });
+        }
         let http = self.http.clone();
         let base_url = self.base_url.clone();
         let token = self.token.clone();
@@ -934,7 +987,7 @@ impl GatewayClient {
         content: &str,
         request_id: &str,
     ) -> Result<(), ApiError> {
-        let body = serde_json::json!({ "content": content, "request_id":request_id });
+        let body = serde_json::json!({ "content": content, "request_id":request_id, "client_id":self.client_id });
         let path = format!("/v1/im/sessions/{session_id}/messages");
         let http = self.http.clone();
         let base_url = self.base_url.clone();
@@ -990,6 +1043,10 @@ impl GatewayClient {
     }
 
     pub async fn list_profiles(&self) -> Result<Vec<ProfileInfo>, ApiError> {
+        #[cfg(feature = "headless-bench")]
+        if let Some(fixture) = &self.fixture {
+            return fixture.list_profiles().map_err(|error| ApiError::Api { status: 400, message: error.to_string() });
+        }
         let http = self.http.clone();
         let base_url = self.base_url.clone();
         let token = self.token.clone();

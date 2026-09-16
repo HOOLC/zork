@@ -773,7 +773,7 @@ fn render_block<'a>(
         }
         MessageBlock::BlockQuote(children) => div()
             .w_full()
-            .border_l_1()
+            .border_l(gpui::px(crate::design::BORDER_WIDTH))
             .border_color(rgb(BORDER))
             .pl_3()
             .text_color(rgb(MUTED))
@@ -805,7 +805,8 @@ fn render_block<'a>(
                                 .px_2()
                                 .py_1()
                                 .when(cell_index + 1 < row.len(), |cell| {
-                                    cell.border_r_1().border_color(rgb(BORDER))
+                                    cell.border_r(gpui::px(crate::design::BORDER_WIDTH))
+                                        .border_color(rgb(BORDER))
                                 })
                                 .child(render_inline(
                                     &format!("{id}-row-{row_index}-cell-{cell_index}"),
@@ -818,14 +819,15 @@ fn render_block<'a>(
                         .w_full()
                         .flex()
                         .when(row_index + 1 < rows.len(), |row| {
-                            row.border_b_1().border_color(rgb(BORDER))
+                            row.border_b(gpui::px(crate::design::BORDER_WIDTH))
+                                .border_color(rgb(BORDER))
                         })
                         .children(cells)
                 })
                 .collect::<Vec<_>>();
             div()
                 .w_full()
-                .border_1()
+                .border(gpui::px(crate::design::BORDER_WIDTH))
                 .border_color(rgb(BORDER))
                 .rounded_lg()
                 .children(rendered_rows)
@@ -1023,7 +1025,7 @@ fn render_code(
         .min_w_0()
         .rounded(px(8.))
         .overflow_hidden()
-        .border_1()
+        .border(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(BORDER))
         .bg(rgb(CODE_FILL))
         .when_some(language.filter(|s| !s.is_empty()), |block, language| {
@@ -1031,7 +1033,7 @@ fn render_code(
                 div()
                     .px_3()
                     .py_1()
-                    .border_b_1()
+                    .border_b(gpui::px(crate::design::BORDER_WIDTH))
                     .border_color(rgb(BORDER))
                     .text_size(px(11.))
                     .line_height(px(18.))

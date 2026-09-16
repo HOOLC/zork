@@ -6,7 +6,7 @@ use zork_agent::session::wire::{SessionSelection, TranscriptRole};
 use zork_agent_testkit::TestWorld;
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TESTKIT-01, EVENT-05, WAIT-01]
+// Contract: docs/design/agent-runtime.md [TESTKIT-01, EVENT-05, WAIT-01]
 async fn virtual_world_can_pause_assert_and_continue_at_effect_boundaries() {
     let mut world = TestWorld::new();
     let mut echo = world
@@ -118,7 +118,7 @@ async fn virtual_world_can_pause_assert_and_continue_at_effect_boundaries() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TESTKIT-01, TOOL-13]
+// Contract: docs/design/agent-runtime.md [TESTKIT-01, TOOL-13]
 async fn virtual_builtins_share_vfs_with_the_controlled_process() {
     let mut world = TestWorld::new();
     let workspace = "/virtual/workspace";
@@ -207,7 +207,7 @@ async fn virtual_builtins_share_vfs_with_the_controlled_process() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TESTKIT-01, TOOL-11]
+// Contract: docs/design/agent-runtime.md [TESTKIT-01, TOOL-11]
 async fn default_shell_survives_a_day_of_virtual_time_until_explicit_cancellation() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -259,7 +259,7 @@ async fn default_shell_survives_a_day_of_virtual_time_until_explicit_cancellatio
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [STATE-01, RECOVERY-02]
+// Contract: docs/design/agent-runtime.md [STATE-01, RECOVERY-02]
 async fn virtual_world_restarts_from_the_same_in_memory_event_stream() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -309,7 +309,7 @@ async fn virtual_world_restarts_from_the_same_in_memory_event_stream() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [QUERY-02]
+// Contract: docs/design/agent-runtime.md [QUERY-02]
 async fn history_list_and_file_read_share_the_same_session_query_event() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -376,7 +376,7 @@ async fn history_list_and_file_read_share_the_same_session_query_event() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-13, PROJECTION-01]
+// Contract: docs/design/agent-runtime.md [TOOL-13, PROJECTION-01]
 async fn file_read_projects_one_bounded_canonical_payload() {
     let mut world = TestWorld::new();
     let workspace = "/virtual/workspace";

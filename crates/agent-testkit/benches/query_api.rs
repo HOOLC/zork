@@ -6,7 +6,7 @@ use zork_agent_testkit::{measure_history_fragment_queries, measure_query_apis};
 const MAX_HISTORY_PEAK_RSS_BYTES: u64 = 256 * 1024 * 1024;
 const MIN_HISTORY_QUERIES_PER_SECOND: f64 = 20.0;
 
-// Contract: docs/zork-agent-architecture.md [QUERY-01, PERF-04]
+// Contract: docs/design/agent-runtime.md [QUERY-01, PERF-04]
 fn main() {
     let arguments = std::env::args()
         .skip(1)

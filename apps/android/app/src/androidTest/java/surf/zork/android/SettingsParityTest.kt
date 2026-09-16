@@ -14,6 +14,41 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SettingsParityTest {
+    @Test fun clearingDataRequiresConfirmationAndCancellationKeepsData() {
+        launch("home").use { scenario ->
+            settle(); click("清空数据"); await("清空客户端数据？")
+            scenario.onActivity { assertEquals("", it.lastAction) }
+            click("取消")
+            scenario.onActivity { assertEquals("", it.lastAction) }
+            click("清空数据"); await("确认清空")
+            capture("clear-data-confirmation")
+            click("确认清空")
+            scenario.onActivity { assertEquals("clear-data", it.lastAction) }
+        }
+    }
+    @Test fun resourceSettingsExposeToolsParametersSkillsAndServiceLogs() {
+        launch("connections").use {
+            settle(); click("资料搜索"); click("search_docs"); await("search_docs · 参数")
+            capture("tool-parameters"); click("返回"); click("详细信息"); await("接入方式：stdio")
+        }
+        launch("skills").use {
+            settle(); click("界面规范"); await("guide.md"); click("guide.md")
+            capture("skill-file"); click("返回"); await("详细信息")
+        }
+        launch("services").use {
+            settle(); click("设计预览"); click("stdout.log"); await("preview server ready")
+            capture("service-log")
+        }
+    }
+    @Test fun modelDraftSurvivesActivityRecreation() {
+        launch("profile").use { scenario ->
+            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); field("上下文 token 上限","256K")
+            scenario.recreate(); settle(); await("添加模型")
+            assertEquals("saved-draft-model", editable("模型 ID")!!.text.toString())
+            assertEquals("256K", editable("上下文 token 上限")!!.text.toString())
+            capture("model-recreated")
+        }
+    }
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val automation get() = instrumentation.uiAutomation
     private fun settle() { instrumentation.waitForIdleSync(); Thread.sleep(250) }

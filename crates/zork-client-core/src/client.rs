@@ -22,6 +22,48 @@ pub struct Network {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    LocalScript {
+        operation: local_scripts::Action,
+    },
+    Adb {
+        operation: adb::Action,
+    },
+    AdbBackgroundService {
+        running: bool,
+        instance: String,
+    },
+    SharedFiles {
+        operation: shared_files::Action,
+    },
+    NotificationSettings {
+        operation: Option<notifications::mobile::Action>,
+    },
+    NotificationReceipt {
+        peer: String,
+        id: String,
+    },
+    TestNotification,
+    OpenNotification {
+        tag: String,
+    },
+    ReportView {
+        peer: Option<String>,
+        session: Option<String>,
+        visible: bool,
+    },
+    HostVisibility {
+        visible: bool,
+        #[serde(default)]
+        generation: u64,
+    },
+    BackgroundService {
+        running: bool,
+        instance: String,
+    },
+    Resources {
+        peer: Option<String>,
+        query: Option<resources::Inspection>,
+    },
     DiagnoseConnections,
     SelectPeer {
         peer: Option<String>,
@@ -51,6 +93,8 @@ pub enum Command {
     SettingsAction {
         peer: String,
         operation: settings_actions::SettingsAction,
+        #[serde(default)]
+        request_id: Option<String>,
     },
     OpenService {
         view_id: String,
@@ -148,7 +192,14 @@ impl Command {
     pub fn is_local(&self) -> bool {
         matches!(
             self,
-            Self::SelectPeer { .. }
+            Self::LocalScript { .. } | Self::Adb { .. }
+                | Self::NotificationSettings { .. }
+                | Self::SharedFiles { .. }
+                | Self::TestNotification
+                | Self::NotificationReceipt { .. }
+                | Self::OpenNotification { .. }
+                | Self::ReportView { .. }
+                | Self::SelectPeer { .. }
                 | Self::RestoreNavigation { .. }
                 | Self::DraftAction { .. }
                 | Self::SubmitDraft { .. }
@@ -178,14 +229,55 @@ impl Command {
 /// An independent store handle: no Tokio/transport lock is held during edits.
 #[derive(Clone)]
 pub struct LocalClient {
+    data_reset: Arc<data_reset::Controller>,
+    local_scripts: Arc<local_scripts::Controller>,
+    adb: Arc<adb::Controller>,
+    shared_files: Arc<shared_files::SharedFiles>,
+    resources: Arc<resources::Resources>,
     invitation: Arc<enrollment::InvitationState>,
     services: Arc<services::Views>,
     store: Arc<ClientStore>,
 }
 impl LocalClient {
+    pub fn data_reset(&self) -> Arc<data_reset::Controller> {
+        self.data_reset.clone()
+    }
+    pub fn shared_files(&self) -> Arc<shared_files::SharedFiles> {
+        self.shared_files.clone()
+    }
     /// Independent observation lane. Opening/reading/waiting never takes the
     /// command executor lock or starts a second device controller.
     pub fn observe(&self, key: subscriptions::Key) -> Result<subscriptions::WireSubscription> {
+        if matches!(key, subscriptions::Key::DataReset) {
+            return Ok(subscriptions::WireSubscription::from_data_reset(&self.data_reset.source));
+        }
+        if matches!(key, subscriptions::Key::LocalScripts) {
+            return Ok(subscriptions::WireSubscription::from_local_scripts(&self.local_scripts.source));
+        }
+        if matches!(key, subscriptions::Key::Adb) {
+            return Ok(subscriptions::WireSubscription::from_adb(self.adb.clone()));
+        }
+        if matches!(key, subscriptions::Key::SharedFiles) {
+            return Ok(subscriptions::WireSubscription::from_shared_files(
+                self.shared_files.clone(),
+                self.store.clone(),
+            ));
+        }
+        if matches!(key, subscriptions::Key::Notifications) {
+            return subscriptions::WireSubscription::from_notifications(self.store.clone());
+        }
+        if let subscriptions::Key::Resources { peer, kind, query } = key {
+            if let Some(peer) = &peer {
+                self.peer(peer)?;
+            }
+            return subscriptions::WireSubscription::from_resources(
+                self.resources.clone(),
+                self.store.clone(),
+                peer,
+                kind,
+                query,
+            );
+        }
         if matches!(key, subscriptions::Key::Invitation) {
             return Ok(subscriptions::WireSubscription::from_invitation(
                 &self.invitation.source,
@@ -199,13 +291,15 @@ impl LocalClient {
             subscriptions::Key::Conversation {
                 session: Some(session),
                 ..
-            } => {
+            }
+            | subscriptions::Key::History { session, .. } => {
                 valid_session(session)?;
                 Some(device.conversation(session))
             }
             _ => None,
         };
         let delivery = matches!(key, subscriptions::Key::Conversation { .. });
+        let history = matches!(key, subscriptions::Key::History { .. });
         let observer =
             subscriptions::WireSubscription::from_device(key, device.clone(), self.store.clone())?;
         if delivery {
@@ -213,6 +307,9 @@ impl LocalClient {
         }
         if let Some(conversation) = conversation {
             conversation.start();
+            if history {
+                conversation.history().load(false);
+            }
         }
         Ok(observer)
     }
@@ -230,6 +327,72 @@ impl LocalClient {
     }
     pub fn execute(&self, command: Command) -> Result<Value> {
         match command {
+            Command::LocalScript { operation } => self.local_scripts.apply(operation),
+            Command::Adb { operation } => self.adb.execute(operation),
+            Command::SharedFiles { operation } => {
+                let runtime = tokio::runtime::Handle::try_current()
+                    .context("共享文件操作需要客户端运行环境")?;
+                let source = self.shared_files.clone();
+                runtime.spawn(async move {
+                    let _ = source.dispatch(operation).await;
+                });
+                Ok(json!({}))
+            }
+            Command::NotificationSettings { operation } => {
+                notifications::mobile::apply(&self.store, operation)
+            }
+            Command::TestNotification => notifications::mobile::test(&self.store),
+            Command::OpenNotification { tag } => notifications::mobile::resolve(&self.store, &tag),
+            Command::ReportView {
+                peer,
+                session,
+                visible,
+            } => {
+                if let Some(peer) = &peer {
+                    self.peer(peer)?;
+                }
+                if let Some(session) = &session {
+                    valid_session(session)?;
+                }
+                let devices = self
+                    .store
+                    .1
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|(id, source)| source.upgrade().map(|d| (id.clone(), d)))
+                    .collect::<Vec<_>>();
+                for (id, device) in devices {
+                    let selected = peer.as_ref() == Some(&id);
+                    device.report_view(
+                        if selected { session.clone() } else { None },
+                        selected && visible,
+                        false,
+                    );
+                }
+                Ok(json!({}))
+            }
+            Command::NotificationReceipt { peer, id } => {
+                self.peer(&peer)?;
+                anyhow::ensure!(!self.store.replica_revoked(&peer)?, "设备访问权限已撤销");
+                if let Some(device) = self.device_state(&peer) {
+                    device.acknowledge_notification(&id)?;
+                } else {
+                    let mut ledger = self
+                        .store
+                        .get::<notifications::Ledger>(&peer, notifications::KEY)?
+                        .unwrap_or_default();
+                    ledger.filter(
+                        &peer,
+                        None,
+                        &notifications::preferences(&self.store)?,
+                        store::delivery_now_ms(),
+                    );
+                    ledger.acknowledge(&id);
+                    self.store.put(&peer, notifications::KEY, &ledger)?;
+                }
+                Ok(json!({}))
+            }
             Command::SelectPeer { peer } => {
                 if let Some(peer) = &peer {
                     self.peer(peer)?;
@@ -283,12 +446,30 @@ impl LocalClient {
                     json!({"snapshot":cached_message_snapshot(&self.store, &peer, &session)?,"cached":true}),
                 )
             }
-            Command::RespondToInteraction { peer, session, operation } => {
+            Command::RespondToInteraction {
+                peer,
+                session,
+                operation,
+            } => {
                 self.peer(&peer)?;
                 valid_session(&session)?;
-                let device = self.store.1.lock().unwrap().get(&peer).and_then(std::sync::Weak::upgrade)
+                if let crate::interactions::Command::Activate { message_id, choice, values } = &operation {
+                    if choice == "run_local_script" {
+                        ensure!(values.is_empty(), "Script activation does not accept parameters");
+                        return self.local_scripts.start_message(&peer, &session, message_id);
+                    }
+                }
+                let device = self
+                    .store
+                    .1
+                    .lock()
+                    .unwrap()
+                    .get(&peer)
+                    .and_then(std::sync::Weak::upgrade)
                     .context("Open the conversation before responding")?;
-                device.conversation(&session).respond_to_interaction(operation)?;
+                device
+                    .conversation(&session)
+                    .respond_to_interaction(operation)?;
                 Ok(json!({}))
             }
             Command::CloseService { view_id } => {
@@ -325,14 +506,19 @@ impl LocalClient {
             } => {
                 self.peer(&peer)?;
                 valid_session(&session)?;
-                let payload = if send {
-                    comments::compose_document(&content, &comments, &attachments)
-                } else {
-                    comments::draft_document(&content, &comments, &attachments)
+                let draft = state::Draft {
+                    text: content,
+                    comments,
+                    attachments,
+                    files,
                 };
-                let payload = zork_client_types::files::compose(&payload, &files);
+                let payload = if send {
+                    draft.submission(&draft.text)
+                } else {
+                    draft.encoded()
+                };
                 ensure!(
-                    zork_client_types::files::valid(&files),
+                    zork_client_types::files::valid(&draft.files),
                     "invalid attachments"
                 );
                 valid_content(&payload, !send)?;
@@ -348,19 +534,11 @@ impl LocalClient {
                         sent_at_ms: crate::store::delivery_now_ms(),
                         ..Default::default()
                     };
-                    self.store.enqueue_and_clear_draft(&peer, &queued)?;
+                    let queued = self.store.enqueue_and_clear_draft(&peer, &queued)?;
                     Ok(serde_json::to_value(queued)?)
                 } else {
                     if let Some(device) = self.device_state(&peer) {
-                        device.edit_document(
-                            &session,
-                            state::Draft {
-                                text: content,
-                                comments,
-                                attachments,
-                                files,
-                            },
-                        )?;
+                        device.edit_document(&session, draft)?;
                         return Ok(json!({}));
                     }
                     self.store
@@ -413,7 +591,7 @@ impl LocalClient {
                     sent_at_ms: crate::store::delivery_now_ms(),
                     ..Default::default()
                 };
-                self.store.enqueue_and_clear_draft(&peer, &queued)?;
+                let queued = self.store.enqueue_and_clear_draft(&peer, &queued)?;
                 Ok(serde_json::to_value(queued)?)
             }
             Command::Retry { peer, request_id } => {
@@ -448,7 +626,7 @@ impl LocalClient {
                 cached_only: true,
             } => {
                 self.peer(&peer)?;
-                settings::cached(&self.store, &peer)
+                settings::snapshot(&self.store, &peer)
             }
             Command::Read {
                 peer,
@@ -481,6 +659,16 @@ fn find_peer(store: &ClientStore, peer: &str) -> Result<SavedNode> {
 }
 
 pub struct Client {
+    data_reset: Arc<data_reset::Controller>,
+    local_scripts: Arc<local_scripts::Controller>,
+    adb: Arc<adb::Controller>,
+    adb_background_service: Option<String>,
+    shared_files: Arc<shared_files::SharedFiles>,
+    foreground: bool,
+    host_generation: u64,
+    background_service: Option<String>,
+    resources: Arc<resources::Resources>,
+    resource_watchers: std::collections::HashMap<String, zork_notify::Task<()>>,
     invitation: Arc<enrollment::InvitationState>,
     invitation_job: Option<zork_notify::Task<()>>,
     services: Arc<services::Views>,
@@ -491,9 +679,20 @@ pub struct Client {
     devices: std::collections::HashMap<String, Arc<state::Device>>,
 }
 
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.adb.pause();
+    }
+}
+
 impl Client {
     pub fn local(&self) -> LocalClient {
         LocalClient {
+            data_reset: self.data_reset.clone(),
+            local_scripts: self.local_scripts.clone(),
+            adb: self.adb.clone(),
+            shared_files: self.shared_files.clone(),
+            resources: self.resources.clone(),
             invitation: self.invitation.clone(),
             services: self.services.clone(),
             store: self.store.clone(),
@@ -504,6 +703,16 @@ impl Client {
         let store = Arc::new(ClientStore::open(root)?);
         settings_actions::recover_operations(&store)?;
         Ok(Self {
+            data_reset: Arc::new(data_reset::Controller::default()),
+            local_scripts: local_scripts::Controller::new(store.clone()),
+            adb: adb::Controller::new(store.clone())?,
+            adb_background_service: None,
+            shared_files: shared_files::SharedFiles::new(store.clone()),
+            foreground: false,
+            host_generation: 0,
+            background_service: None,
+            resources: resources::Resources::new(vec![]),
+            resource_watchers: Default::default(),
             invitation: Arc::new(enrollment::InvitationState::new(
                 enrollment::public_snapshot(&store, false)?,
             )),
@@ -546,6 +755,18 @@ impl Client {
         Ok(config)
     }
 
+    async fn reconcile_host(&mut self) -> Result<()> {
+        let requested = notifications::mobile::settings(&self.store)?["service_requested"] == true;
+        if self.foreground
+            || (requested && self.background_service.is_some())
+            || (self.adb.requested() && self.adb_background_service.is_some())
+        {
+            self.resume().await
+        } else {
+            self.pause().await
+        }
+    }
+
     async fn resume(&mut self) -> Result<()> {
         if self.runtime.as_ref().is_some_and(|r| r.is_finished()) {
             self.pause().await?;
@@ -559,6 +780,7 @@ impl Client {
         }
         self.watch_devices()?;
         self.watch_invitation()?;
+        self.adb.start(self.node()?);
         Ok(())
     }
 
@@ -570,23 +792,87 @@ impl Client {
             if self.devices.contains_key(&peer.id) {
                 continue;
             }
+            let client = self.gateway(&peer.id)?;
             let device = state::Device::open(
-                self.gateway(&peer.id)?,
+                client.clone(),
                 Some((self.store.clone(), peer.id.clone())),
                 true,
             );
             device.start();
+            device.profiles().restore_authorization()?;
+            let source = self.resources.clone();
+            let shared_files = self.shared_files.clone();
+            let adb = self.adb.clone();
+            let id = peer.id.clone();
+            let mut changes =
+                device.subscribe_domains(state::Domains::CONNECTION | state::Domains::MESH);
+            self.resource_watchers.insert(
+                id.clone(),
+                zork_notify::Task(tokio::spawn(async move {
+                    loop {
+                        let state = changes.snapshot().state;
+                        shared_files.update_device(&id, &client, &state);
+                        if state.revoked {
+                            adb.peer_revoked(&id);
+                            source.revoke(&id);
+                            return;
+                        }
+                        if changes.changed().await.is_none() {
+                            return;
+                        }
+                    }
+                })),
+            );
             self.devices.insert(peer.id, device);
         }
+        self.sync_resources()?;
+        Ok(())
+    }
+
+    fn sync_resources(&self) -> Result<()> {
+        let clients = self
+            .store
+            .nodes()?
+            .into_iter()
+            .filter_map(|peer| {
+                let device = self.devices.get(&peer.id)?;
+                if device.snapshot().revoked {
+                    return None;
+                }
+                Some(
+                    self.gateway(&peer.id)
+                        .map(|client| (peer.id, peer.name, client)),
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.shared_files.replace_devices(
+            clients
+                .iter()
+                .map(|(id, name, client)| (id.clone(), name.clone(), false, client.clone()))
+                .collect(),
+        );
+        for (id, _, client) in &clients {
+            if let Some(device) = self.devices.get(id) {
+                self.shared_files
+                    .update_device(id, client, &device.snapshot());
+            }
+        }
+        self.resources.replace_devices(clients);
+        self.adb.devices_changed();
         Ok(())
     }
 
     pub async fn pause(&mut self) -> Result<()> {
+        self.adb.pause();
+        self.resource_watchers.clear();
+        self.resources.replace_devices(vec![]);
+        self.shared_files.pause();
         self.invitation_job.take();
         self.invitation
             .replace(enrollment::public_snapshot(&self.store, false)?);
         self.services.clear();
         for device in self.devices.values() {
+            device.profiles().suspend_authorization();
             device.stop_sync();
         }
         self.devices.clear();
@@ -613,7 +899,7 @@ impl Client {
             "identity": self.store.get::<String>("device", "identity")?,
             "running": self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
             "nodes": self.store.nodes()?,
-            "selected_peer": self.store.get::<String>("device","last-node").ok().flatten(),
+            "selected_peer": self.store.get::<Option<String>>("device","last-node")?.flatten(),
             "network": self.store.get::<Network>("device", "network")?.unwrap_or_default(),
         }))
     }
@@ -663,8 +949,11 @@ impl Client {
     }
 
     fn gateway(&self, peer: &str) -> Result<Arc<api::GatewayClient>> {
-        let node = self.node()?;
         let mut clients = self.gateways.lock().expect("Gateway clients");
+        if let Some(client) = clients.get(peer) {
+            return Ok(client.clone());
+        }
+        let node = self.node()?;
         Ok(clients
             .entry(peer.into())
             .or_insert_with(|| {
@@ -681,6 +970,76 @@ impl Client {
     /// before network I/O and never acquire a new ID merely because of a retry.
     pub async fn execute(&mut self, command: Command) -> Result<Value> {
         match command {
+            Command::LocalScript { operation } => self.local_scripts.apply(operation),
+            Command::Adb { operation } => self.adb.execute(operation),
+            Command::AdbBackgroundService { running, instance } => {
+                crate::model_edit::valid_id(&instance)?;
+                if running {
+                    self.adb_background_service = Some(instance);
+                } else if self.adb_background_service.as_ref() == Some(&instance) {
+                    self.adb_background_service = None;
+                }
+                self.reconcile_host().await?;
+                let mut value = self.adb.snapshot();
+                value["network_active"] = json!(self.runtime.is_some());
+                Ok(value)
+            }
+            Command::HostVisibility {
+                visible,
+                generation,
+            } => {
+                if generation >= self.host_generation {
+                    self.host_generation = generation;
+                    self.foreground = visible;
+                    if !visible {
+                        for device in self.devices.values() {
+                            device.report_view(None, false, false);
+                        }
+                    }
+                    self.reconcile_host().await?;
+                }
+                let mut value = self.snapshot()?;
+                value["network_active"] = json!(self.runtime.is_some());
+                value["host_generation"] = json!(self.host_generation);
+                value["host_visible"] = json!(self.foreground);
+                Ok(value)
+            }
+            Command::BackgroundService { running, instance } => {
+                crate::model_edit::valid_id(&instance)?;
+                if running {
+                    self.background_service = Some(instance);
+                } else if self.background_service.as_ref() == Some(&instance) {
+                    self.background_service = None;
+                }
+                self.reconcile_host().await?;
+                let mut value = notifications::mobile::settings(&self.store)?;
+                value["network_active"] = json!(self.runtime.is_some());
+                Ok(value)
+            }
+            Command::Resources { peer, query } => {
+                if let Some(peer) = &peer {
+                    self.peer(peer)?;
+                }
+                anyhow::ensure!(query.is_none() || peer.is_some(), "请选择所属设备");
+                self.sync_resources()?;
+                let resources = self.resources.clone();
+                tokio::spawn(async move {
+                    if let Some(query) = query {
+                        resources.inspect(peer.as_deref().unwrap(), query).await;
+                    } else {
+                        resources.refresh_scope(peer.as_deref()).await;
+                    }
+                });
+                Ok(json!({}))
+            }
+            Command::SharedFiles { operation } => {
+                self.sync_resources()?;
+                let source = self.shared_files.clone();
+                tokio::spawn(async move {
+                    let _ = source.dispatch(operation).await;
+                });
+                Ok(json!({}))
+            }
             Command::DiagnoseConnections => {
                 let connections = self
                     .store
@@ -706,8 +1065,13 @@ impl Client {
                 .await;
                 Ok(json!({"items":items}))
             }
-            Command::SettingsAction { peer, operation } => {
-                self.settings_action(peer, operation).await
+            Command::SettingsAction {
+                peer,
+                operation,
+                request_id,
+            } => {
+                self.tracked_settings_action(peer, operation, request_id)
+                    .await
             }
             Command::OpenService { view_id, url } => self.open_service(view_id, url).await,
             Command::CloseService { view_id } => {
@@ -801,13 +1165,16 @@ impl Client {
                     self.store.revoke_replica(&peer)?;
                 }
                 self.store.remove_node(&peer)?;
+                self.adb.peer_revoked(&peer);
                 self.gateways.lock().expect("Gateway clients").remove(&peer);
+                self.resource_watchers.remove(&peer);
+                self.sync_resources()?;
                 self.snapshot()
             }
             Command::Settings { peer, cached_only } => {
                 self.peer(&peer)?;
                 if cached_only {
-                    return settings::cached(&self.store, &peer);
+                    return settings::snapshot(&self.store, &peer);
                 }
                 settings::refresh(self.gateway(&peer)?, self.store.clone(), &peer).await
             }
@@ -826,7 +1193,14 @@ impl Client {
                                 let api::TranscriptMessage::Message { metadata, .. } = message;
                                 metadata.id.clone()
                             });
-                    let cached = page.map(message_snapshot).transpose()?;
+                    let submissions = self.store.configuration_submissions(
+                        &peer,
+                        session,
+                        self.store.replica_generation(&peer)?,
+                    )?;
+                    let cached = page
+                        .map(|page| message_snapshot(page, &submissions))
+                        .transpose()?;
                     if cached_only {
                         return Ok(json!({"snapshot":cached,"cached":true}));
                     }
@@ -910,6 +1284,11 @@ impl Client {
             | Command::RespondToInteraction { .. }
             | Command::CachedMessages { .. }
             | Command::Preferences { .. }
+            | Command::NotificationSettings { .. }
+            | Command::TestNotification
+            | Command::NotificationReceipt { .. }
+            | Command::OpenNotification { .. }
+            | Command::ReportView { .. }
             | Command::Compose { .. }
             | Command::Draft { .. }
             | Command::Conversation { .. }
@@ -937,12 +1316,32 @@ fn message_session(path: &str) -> Option<&str> {
     Some(session)
 }
 
-fn message_snapshot(page: api::MessagePage) -> Result<Value> {
-    let mut body = serde_json::to_value(page)?;
-    for message in body["items"].as_array_mut().unwrap() {
-        conversation::project_payload(message);
+fn message_snapshot(
+    page: api::MessagePage,
+    submissions: &std::collections::HashMap<String, interactions::Submission>,
+) -> Result<Value> {
+    let tail = page.items.last().and_then(|item| {
+        let api::TranscriptMessage::Message { metadata, .. } = item;
+        metadata.id.clone()
+    });
+    let mut items = Vec::new();
+    for item in &page.items {
+        let api::TranscriptMessage::Message { metadata, .. } = item;
+        if interactions::result(metadata).is_some() {
+            continue;
+        }
+        let mut message = serde_json::to_value(item)?;
+        conversation::project_payload(&mut message);
+        if let Some(card) = interactions::view(
+            metadata,
+            metadata.id.as_ref().and_then(|id| submissions.get(id)),
+            &Default::default(),
+        ) {
+            message["interaction_card"] = json!(card);
+        }
+        items.push(message);
     }
-    Ok(json!({"body":body}))
+    Ok(json!({"body":{"items":items,"older_cursor":page.older_cursor,"source_tail":tail}}))
 }
 
 fn cached_message_snapshot(
@@ -950,9 +1349,11 @@ fn cached_message_snapshot(
     peer: &str,
     session: &str,
 ) -> Result<Option<Value>> {
+    let generation = store.replica_generation(peer)?;
+    let submissions = store.configuration_submissions(peer, session, generation)?;
     store
-        .cached_messages(peer, session, None, 100)?
-        .map(message_snapshot)
+        .cached_messages_at(peer, session, None, 100, generation)?
+        .map(|page| message_snapshot(page, &submissions))
         .transpose()
 }
 
@@ -968,7 +1369,12 @@ fn valid_session(id: &str) -> Result<()> {
     Ok(())
 }
 fn valid_content(content: &str, empty: bool) -> Result<()> {
-    ensure!(content.len() <= 64 * 1024, "消息超过 64 KiB，请拆分发送");
+    let decoded = zork_client_types::files::decode(content);
+    let text = decoded.as_ref().map_or(content, |(text, _)| text.as_str());
+    ensure!(
+        text.len() <= zork_client_types::files::MAX_FILE_BYTES,
+        "消息正文超过 300 MiB，无法作为单个文件发送"
+    );
     ensure!(empty || !content.trim().is_empty(), "消息不能为空");
     Ok(())
 }
@@ -1001,6 +1407,61 @@ mod tests {
             })
             .unwrap();
         peer
+    }
+
+    #[tokio::test]
+    async fn every_unobserved_send_entry_returns_the_persisted_text_file() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut client = Client::open(root.path())?;
+        let peer = add_peer(&client);
+        let text = format!("  {}\n", "正文 🐈\n".repeat(6000));
+        for entry in 0..3 {
+            client
+                .execute(Command::Draft {
+                    peer: peer.clone(),
+                    session: "chat".into(),
+                    content: text.clone(),
+                })
+                .await?;
+            let command = match entry {
+                0 => Command::SubmitDraft {
+                    peer: peer.clone(),
+                    session: "chat".into(),
+                    text: text.clone(),
+                },
+                1 => Command::Enqueue {
+                    peer: peer.clone(),
+                    session: "chat".into(),
+                    content: text.clone(),
+                },
+                _ => Command::Compose {
+                    peer: peer.clone(),
+                    session: "chat".into(),
+                    content: text.clone(),
+                    comments: vec![],
+                    attachments: vec![],
+                    files: vec![],
+                    send: true,
+                },
+            };
+            let queued: QueuedMessage = serde_json::from_value(client.execute(command).await?)?;
+            let (body, files) = zork_client_types::files::decode(&queued.content).unwrap();
+            assert!(body.is_empty());
+            assert_eq!(files.len(), 1);
+            assert_eq!(
+                client
+                    .store
+                    .blob(&peer, &format!("upload:{}", files[0].id))?
+                    .unwrap(),
+                text.as_bytes()
+            );
+            assert_eq!(client.store.outbox(&peer)?.last(), Some(&queued));
+            assert_eq!(
+                client.store.get::<String>(&peer, "draft:chat")?.as_deref(),
+                Some("")
+            );
+        }
+        Ok(())
     }
 
     #[tokio::test]

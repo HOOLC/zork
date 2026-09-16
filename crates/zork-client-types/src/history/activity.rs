@@ -6,7 +6,8 @@ use super::Entry;
 use serde_json::Value;
 use std::collections::{BTreeSet, HashSet};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Kind {
     Received,
     SendMessage,

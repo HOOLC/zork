@@ -373,6 +373,7 @@ impl Registry {
                     Some(record.port) == request.port,
                     "service_configuration_conflict"
                 );
+                record.shared = true;
             }
             "restart" => {
                 ensure!(
@@ -652,19 +653,17 @@ fn check_port(state: &AppState, port: u16) -> Result<()> {
     );
     Ok(())
 }
-pub async fn tool(State(state): State<AppState>, Json(mut request): Json<ToolRequest>) -> Response {
+pub async fn tool(State(state): State<AppState>, Json(request): Json<ToolRequest>) -> Response {
     let result = async {
-        let binding = state
+        state
             .db
             .get_binding_by_id(&request.session_id)?
             .context("unknown_session")?;
         let mesh = state.mesh.get().context("mesh_not_ready")?;
-        if matches!(request.action.as_str(), "list" | "legacy_list") {
-            let services = mesh.services.list(
-                &request.session_id,
-                mesh.origin(),
-                request.action == "legacy_list",
-            )?;
+        if request.action == "list" {
+            let services = mesh
+                .services
+                .list(&request.session_id, mesh.origin(), false)?;
             return Ok(json!({"services": services}));
         }
         if request.action == "inspect" {
@@ -680,23 +679,7 @@ pub async fn tool(State(state): State<AppState>, Json(mut request): Json<ToolReq
         if let Some(port) = request.port {
             check_port(&state, port)?;
         }
-        if matches!(request.action.as_str(), "share" | "restart") {
-            if let Some(id) = request.id.as_deref() {
-                check_port(&state, mesh.services.record(&request.session_id, id)?.port)?;
-            }
-        }
-        if request.action == "start" {
-            let cwd = request
-                .cwd
-                .take()
-                .unwrap_or_else(|| PathBuf::from(binding.workspace_path()));
-            let cwd = if cwd.is_absolute() {
-                cwd
-            } else {
-                Path::new(binding.workspace_path()).join(cwd)
-            };
-            request.cwd = Some(cwd.canonicalize()?);
-        }
+        ensure!(request.action == "attach", "invalid_service_action");
         let _gate = mesh.services.gate.lock().await;
         let (id, replayed) = mesh.services.mutate(&request)?;
         mesh.services.reconcile(&id).await?;
@@ -704,6 +687,23 @@ pub async fn tool(State(state): State<AppState>, Json(mut request): Json<ToolReq
             .services
             .inspect(&request.session_id, &id, mesh.origin())
             .await?;
+        let session = state
+            .db
+            .get_session_by_id(&request.session_id)?
+            .context("unknown_session")?;
+        let page = crate::db::pages::page_link(
+            value["name"].as_str().context("service_name_missing")?,
+            value["url"].as_str().context("service_url_missing")?,
+            "",
+        )?;
+        state.db.publish_page(
+            &session,
+            request
+                .request_id
+                .as_deref()
+                .context("service_request_id_required")?,
+            &page,
+        )?;
         value["replayed"] = json!(replayed);
         Ok::<_, anyhow::Error>(value)
     }
@@ -721,7 +721,7 @@ pub async fn tool(State(state): State<AppState>, Json(mut request): Json<ToolReq
 fn allowed(state: &AppState, origin: &str) -> bool {
     zork_config::load_config(&state.config.data_root)
         .ok()
-        .is_some_and(|c| c.mesh.peers.iter().any(|p| p.origin == origin && p.client))
+        .is_some_and(|c| c.mesh.peers.iter().any(|p| p.origin == origin))
 }
 pub async fn tunnel(
     state: AppState,
@@ -778,6 +778,7 @@ pub async fn tunnel(
     Ok(zork_mesh::bridge::Reply::Tunnel {
         upstream,
         cancelled,
+        guard: None,
     })
 }
 

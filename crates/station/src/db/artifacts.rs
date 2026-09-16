@@ -1,9 +1,10 @@
-//! Immutable local file submissions. Bytes and metadata commit together in SQLite.
+//! Immutable local file submissions backed by the Station file tree.
 use super::*;
+use super::snapshots::Snapshot;
 use serde::Serialize;
 use std::io::Read;
 
-pub const MAX_ARTIFACT_BYTES: u64 = 10 * 1024 * 1024;
+pub const MAX_ARTIFACT_BYTES: u64 = zork_client_types::files::MAX_FILE_BYTES as u64;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Artifact {
@@ -20,7 +21,7 @@ pub struct Artifact {
     pub version: i64,
     pub created_at: String,
 }
-const SELECT: &str = "SELECT a.artifact_id, a.task_id, a.session_id, a.title, a.workspace, a.name, a.source_path, a.media_type, a.byte_len, a.version, a.created_at, a.caption FROM artifact_catalog a";
+const SELECT: &str = "SELECT a.artifact_id, a.task_id, a.session_id, a.title, a.workspace, a.name, a.source_path, a.media_type, a.byte_len, a.version, a.created_at, a.caption FROM artifact_file_catalog a";
 fn map_artifact(row: &rusqlite::Row<'_>) -> rusqlite::Result<Artifact> {
     Ok(Artifact {
         artifact_id: row.get(0)?,
@@ -41,25 +42,25 @@ fn map_artifact(row: &rusqlite::Row<'_>) -> rusqlite::Result<Artifact> {
 pub(super) fn initialize(conn: &Connection) -> Result<()> {
     super::conversation_files::initialize(conn)?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS task_artifacts (
+        "CREATE TABLE IF NOT EXISTS task_file_snapshots (
         artifact_id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES product_tasks(task_id) ON DELETE CASCADE,
         name TEXT NOT NULL, source_path TEXT NOT NULL, media_type TEXT NOT NULL, workspace TEXT NOT NULL,
-        content BLOB NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, caption TEXT,
+        snapshot TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, caption TEXT,
         UNIQUE(task_id, source_path, version)
     );
-    CREATE TABLE IF NOT EXISTS conversation_artifacts (
+    CREATE TABLE IF NOT EXISTS conversation_file_snapshots (
         artifact_id TEXT PRIMARY KEY, session_key TEXT NOT NULL REFERENCES sessions(key) ON DELETE CASCADE,
         name TEXT NOT NULL, source_path TEXT NOT NULL, media_type TEXT NOT NULL, workspace TEXT NOT NULL,
-        content BLOB NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, caption TEXT,
+        snapshot TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, caption TEXT,
         UNIQUE(session_key, source_path, version)
     );
-    CREATE VIEW IF NOT EXISTS artifact_catalog AS
-        SELECT a.artifact_id, a.task_id, s.id AS session_id, t.title, a.workspace, a.name, a.source_path, a.media_type, length(a.content) AS byte_len, a.version, a.created_at, a.caption
-        FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id JOIN sessions s ON s.key=t.session_key
+    CREATE VIEW IF NOT EXISTS artifact_file_catalog AS
+        SELECT a.artifact_id, a.task_id, s.id AS session_id, t.title, a.workspace, a.name, a.source_path, a.media_type, json_extract(a.snapshot,'$.byte_len') AS byte_len, a.version, a.created_at, a.caption
+        FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id JOIN sessions s ON s.key=t.session_key
         UNION ALL
-        SELECT a.artifact_id, NULL, s.id, COALESCE(json_extract(n.value,'$.name'),'Conversation'), a.workspace, a.name, a.source_path, a.media_type, length(a.content), a.version, a.created_at, a.caption
-        FROM conversation_artifacts a JOIN sessions s ON s.key=a.session_key LEFT JOIN node_agents n ON n.session_key=s.key;",
+        SELECT a.artifact_id, NULL, s.id, COALESCE(json_extract(n.value,'$.name'),'Conversation'), a.workspace, a.name, a.source_path, a.media_type, json_extract(a.snapshot,'$.byte_len'), a.version, a.created_at, a.caption
+        FROM conversation_file_snapshots a JOIN sessions s ON s.key=a.session_key LEFT JOIN node_agents n ON n.session_key=s.key;",
     )?;
     Ok(())
 }
@@ -76,13 +77,15 @@ impl GatewayDb {
 
     pub fn artifact_content(&self, artifact_id: &str) -> Result<Option<Vec<u8>>> {
         let conn = self.conn.lock().expect("db mutex");
-        Ok(conn
+        let snapshot: Option<Snapshot> = conn
             .query_row(
-                "SELECT content FROM task_artifacts WHERE artifact_id = ?1 UNION ALL SELECT content FROM conversation_artifacts WHERE artifact_id = ?1",
+                "SELECT snapshot FROM task_file_snapshots WHERE artifact_id = ?1 UNION ALL SELECT snapshot FROM conversation_file_snapshots WHERE artifact_id = ?1",
                 [artifact_id],
                 |r| r.get(0),
             )
-            .optional()?)
+            .optional()?;
+        drop(conn);
+        snapshot.map(|snapshot| self.read_snapshot(&snapshot)).transpose()
     }
 
     pub fn register_artifact(
@@ -100,11 +103,12 @@ impl GatewayDb {
         }
         let (source_path, name, media_type, content) =
             prepare_file(Path::new(&task.workspace), file_path)?;
+        let snapshot = self.freeze_file(&name, &content)?;
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
         let latest: Option<(String, i64, bool)> = tx.query_row(
-            "SELECT artifact_id, version, content = ?3 AND caption IS ?4 AND workspace = ?5 FROM task_artifacts WHERE task_id = ?1 AND source_path = ?2 ORDER BY version DESC LIMIT 1",
-            params![task_id, source_path, content, caption, task.workspace], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional()?;
+            "SELECT artifact_id, version, snapshot = ?3 AND caption IS ?4 AND workspace = ?5 FROM task_file_snapshots WHERE task_id = ?1 AND source_path = ?2 ORDER BY version DESC LIMIT 1",
+            params![task_id, source_path, snapshot, caption, task.workspace], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional()?;
         if let Some((id, _, true)) = latest.as_ref() {
             return Ok(tx.query_row(
                 &format!("{SELECT} WHERE a.artifact_id = ?1"),
@@ -114,7 +118,7 @@ impl GatewayDb {
         }
         if task.mesh.is_some() {
             let count: i64 = tx.query_row(
-                "SELECT COUNT(*) FROM task_artifacts WHERE task_id=?1",
+                "SELECT COUNT(*) FROM task_file_snapshots WHERE task_id=?1",
                 [task_id],
                 |r| r.get(0),
             )?;
@@ -133,7 +137,7 @@ impl GatewayDb {
         let id = format!("artifact-{}", ulid::Ulid::new());
         let version = latest.map_or(1, |(_, version, _)| version + 1);
         let now = now_rfc3339();
-        tx.execute("INSERT INTO task_artifacts(artifact_id, task_id, name, source_path, media_type, content, version, created_at, caption, workspace) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![id, task_id, name, source_path, media_type, content, version, now, caption, task.workspace])?;
+        tx.execute("INSERT INTO task_file_snapshots(artifact_id, task_id, name, source_path, media_type, snapshot, version, created_at, caption, workspace) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![id, task_id, name, source_path, media_type, snapshot, version, now, caption, task.workspace])?;
         // New evidence invalidates an older review page; byte-identical retries above do not.
         tx.execute(
             "UPDATE product_tasks SET revision = revision + 1, updated_at = ?2 WHERE task_id = ?1",
@@ -231,9 +235,10 @@ impl GatewayDb {
         );
         let (source_path, name, media_type, content) =
             prepare_file(Path::new(&session.workspace_path), file_path)?;
+        let snapshot = self.freeze_file(&name, &content)?;
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
-        let latest:Option<(String,i64,bool)>=tx.query_row("SELECT artifact_id,version,content=?3 AND caption IS ?4 FROM conversation_artifacts WHERE session_key=?1 AND source_path=?2 ORDER BY version DESC LIMIT 1",params![session_key,source_path,content,caption],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+        let latest:Option<(String,i64,bool)>=tx.query_row("SELECT artifact_id,version,snapshot=?3 AND caption IS ?4 FROM conversation_file_snapshots WHERE session_key=?1 AND source_path=?2 ORDER BY version DESC LIMIT 1",params![session_key,source_path,snapshot,caption],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
         if let Some((id, _, true)) = &latest {
             return Ok(tx.query_row(
                 &format!("{SELECT} WHERE a.artifact_id=?1"),
@@ -244,7 +249,7 @@ impl GatewayDb {
         let id = format!("artifact-{}", ulid::Ulid::new());
         let version = latest.map_or(1, |(_, v, _)| v + 1);
         let now = now_rfc3339();
-        tx.execute("INSERT INTO conversation_artifacts(artifact_id,session_key,name,source_path,media_type,workspace,content,version,created_at,caption) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![id,session_key,name,source_path,media_type,session.workspace_path,content,version,now,caption])?;
+        tx.execute("INSERT INTO conversation_file_snapshots(artifact_id,session_key,name,source_path,media_type,workspace,snapshot,version,created_at,caption) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![id,session_key,name,source_path,media_type,session.workspace_path,snapshot,version,now,caption])?;
         let artifact = tx.query_row(
             &format!("{SELECT} WHERE a.artifact_id=?1"),
             [&id],

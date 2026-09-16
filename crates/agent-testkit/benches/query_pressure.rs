@@ -11,7 +11,7 @@ use zork_agent_testkit::{
 const MIB: usize = 1024 * 1024;
 const MAX_PEAK_RSS_BYTES: u64 = 256 * MIB as u64;
 
-// Contract: docs/zork-agent-architecture.md [QUERY-01, PERF-04]
+// Contract: docs/design/agent-runtime.md [QUERY-01, PERF-04]
 fn main() {
     let arguments = std::env::args()
         .skip(1)

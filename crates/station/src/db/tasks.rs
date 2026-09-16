@@ -101,7 +101,7 @@ SELECT t.task_id, s.id, s.channel_id, t.title, s.workspace_path, t.state,
           'owner_origin',json_extract(assignment_json,'$.owner_origin'),
           'executor_origin',json_extract(assignment_json,'$.executor_origin')) FROM mesh_links WHERE local_task_id=t.task_id)
 FROM product_tasks t JOIN sessions s ON s.key = t.session_key
-LEFT JOIN visible_messages m ON m.sequence = t.result_sequence
+LEFT JOIN visible_message_content m ON m.sequence = t.result_sequence
 "#;
 fn map_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductTask> {
     Ok(ProductTask {
@@ -196,7 +196,7 @@ pub(super) fn ensure_task(conn: &Connection, session_key: &str) -> Result<()> {
     let inserted = conn.execute(
         r#"
         INSERT OR IGNORE INTO product_tasks(task_id, session_key, goal, created_at, updated_at)
-        SELECT ?1, key, COALESCE((SELECT text FROM visible_messages
+        SELECT ?1, key, COALESCE((SELECT text FROM visible_message_content
           WHERE session_key = sessions.key AND role = 'user' ORDER BY sequence LIMIT 1), ''),
           created_at, updated_at FROM sessions WHERE key = ?2 AND platform = 'local_gui'
           AND COALESCE(channel_type,'') NOT IN ('channel','agent_control')
@@ -666,7 +666,7 @@ mod tests {
     }
 
     fn historical_review(db: &GatewayDb, session: &SessionRow, message: &str) {
-        db.conn.lock().unwrap().execute("UPDATE product_tasks SET state='review',result_sequence=(SELECT sequence FROM visible_messages WHERE message_id=?2),revision=revision+1 WHERE session_key=?1",params![session.key,message]).unwrap();
+        db.conn.lock().unwrap().execute("UPDATE product_tasks SET state='review',result_sequence=(SELECT sequence FROM visible_message_content WHERE message_id=?2),revision=revision+1 WHERE session_key=?1",params![session.key,message]).unwrap();
     }
 
     #[test]

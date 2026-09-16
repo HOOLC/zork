@@ -10,10 +10,7 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -46,20 +43,24 @@ class MainActivity : ComponentActivity() {
     private val model: ClientViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-        )
+        model.localScripts.attach(this)
+        intent.getStringExtra("notification_tag")?.let { model.openNotification(it); intent.removeExtra("notification_tag") }
+        configureZorkSystemBars()
         setContent { ZorkTheme {
             val lightPage = model.conversation != null || model.settings != null
-            val chrome = animateColorAsState(if (lightPage) ZorkColors.Canvas else ZorkColors.Paper,
-                animationSpec = PageSlideMotion.spec(lightPage), label = "system-bar-background")
             CompositionLocalProvider(LocalMessagePreviewHeight provides model.messagePreviewHeight) {
-                Box(Modifier.fillMaxSize().drawBehind { drawRect(chrome.value) }) { ClientScreen(model) }
+                ZorkPageBackground(lightPage) { ClientScreen(model) }
+                LocalScriptPanel(model.localScripts)
             }
         } }
     }
+    override fun onDestroy() { model.localScripts.detach(this); super.onDestroy() }
     override fun onStart() { super.onStart(); model.foreground(true) }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra("notification_tag")?.let { model.openNotification(it); intent.removeExtra("notification_tag") }
+    }
     override fun onStop() {
         if (!isChangingConfigurations) model.foreground(false)
         super.onStop()
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ClientScreen(model: ClientViewModel) {
+    LaunchedEffect(model.ready, model.activePeer?.id, model.conversation?.id, model.settings != null, model.sharedFiles != null) { model.reportVisibleConversation() }
     var addDevice by rememberSaveable { mutableStateOf(false) }
     var hadInvitation by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(model.invitation?.text("id")) {
@@ -87,8 +89,23 @@ private fun ClientScreen(model: ClientViewModel) {
         val file = exporting; if (uri != null && file != null) model.exportTextAttachment(uri, file)
         exporting = null
     }
-    BackHandler(enabled = model.settings != null || model.conversation != null) {
-        if (fullMessage != null) fullMessage = null else if (model.settings != null) model.backSettings() else model.back()
+    var sharedSaveTicket by rememberSaveable { mutableStateOf<String?>(null) }
+    val sharedSaveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        sharedSaveTicket?.let { model.saveSharedFile(uri, it) }
+        sharedSaveTicket = null
+    }
+    LaunchedEffect(model.sharedFiles?.save?.ticket) {
+        val save = model.sharedFiles?.save
+        if (save?.ticket != null && sharedSaveTicket != save.ticket) {
+            sharedSaveTicket = save.ticket
+            sharedSaveFile.launch(save.name)
+        }
+    }
+    BackHandler(enabled = model.sharedFiles != null || model.sessionHistory != null || model.settings != null || model.conversation != null) {
+        if (model.sharedFiles != null) model.sharedFileAction("back")
+        else if (model.sessionHistory != null) {
+            if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
+        } else if (fullMessage != null) fullMessage = null else if (model.settings != null) model.backSettings() else model.back()
     }
     val retained = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val currentSettings = model.settings
@@ -96,11 +113,26 @@ private fun ClientScreen(model: ClientViewModel) {
             model.tasksByLeader, model.messages, model.pending, model.draft, model.olderCursor != null,
             model.busy || model.loadingOlder, model.ready, model.connected, model.notice, model.activity, model.running,
             model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer)
-    val routeKey = fullMessage?.let { "message:${it.id}" } ?: settingsRouteKey(currentSettings)
-    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage), routeKey, if (fullMessage != null) 2 else settingsRouteDepth(currentSettings),
+    val history = model.sessionHistory
+    val shared = model.sharedFiles
+    val routeKey = shared?.let { "shared:${it.space.orEmpty()}/${it.path}/${it.preview?.path.orEmpty()}" } ?: history?.let { "history:${it.peer}:${it.session}" } ?: fullMessage?.let { "message:${it.id}" } ?: settingsRouteKey(currentSettings)
+    val sharedDepth = shared?.let { 1 + (if (it.space == null) 0 else 1) + it.path.count { c -> c == '/' } + (if (it.path.isBlank()) 0 else 1) + (if (it.preview == null) 0 else 1) }
+    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage, history, shared), routeKey, sharedDepth ?: if (history != null || fullMessage != null) 2 else settingsRouteDepth(currentSettings),
         if (currentSettings != null || model.conversation != null) ZorkColors.Canvas else ZorkColors.Paper,
         Modifier.safeDrawingPadding().imePadding()) { shown, active ->
-    if (shown.message != null) {
+    if (shown.shared != null) {
+        val savedKey = sharedFilesSavedKey(shown.shared)
+        retained.SaveableStateProvider(savedKey) {
+        SharedFilesPage(shown.shared, model.sharedFileImage.takeIf { model.sharedFiles?.preview?.selected == shown.shared.preview?.selected }, if (!active) SharedFilesActions() else SharedFilesActions(
+            back = { model.sharedFileAction("back") }, space = { model.sharedFileAction("open_space", "space" to it) }, entry = { model.sharedFileAction("open_entry", "id" to it) },
+            source = { model.sharedFileAction("source", "peer" to it) }, search = { model.sharedFileAction("search", "query" to it) },
+            refresh = { model.sharedFileAction("refresh") }, more = { model.sharedFileAction("more") }, layout = { model.sharedFileAction("layout", "layout" to it) },
+            sort = { model.sharedFileAction("sort", "sort" to it) }, version = { model.sharedFileAction("select_version", "root" to it) }, save = { model.sharedFileAction("prepare_save") }))
+        }
+    } else if (shown.history != null) {
+        SessionHistoryPage(shown.history, if (!active) HistoryActions() else HistoryActions(
+            model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory, model::retryHistory, model::historyDetail, model::historyAnchor, model::historyNavigate))
+    } else if (shown.message != null) {
         FullMessagePage(shown.message, { fullMessage = null }) { quote ->
             model.conversation?.let { conversation ->
                 val row = shown.message
@@ -112,8 +144,15 @@ private fun ClientScreen(model: ClientViewModel) {
         retained.SaveableStateProvider(settingsRouteKey(shown.settings)) {
             MobileSettings(shown.settings, shown.workbench.peers, if (!active) SettingsActions() else SettingsActions(model::backSettings, { model.showDevice(it) },
                 model::settingsPage, model::settingsProfile, model::assistSettings, model::checkUpdate,
-                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction, diagnose = model::diagnoseConnections,
-                messagePreviewHeight = model.messagePreviewHeight, saveMessagePreviewHeight = model::saveMessagePreviewHeight))
+                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction,
+                messagePreviewHeight = model.messagePreviewHeight, saveMessagePreviewHeight = model::saveMessagePreviewHeight,
+                resource = model::inspectResource, skills = model::agentSkills,
+                notifications = model.notificationSettings, notificationError = model.notificationError,
+                notificationTarget = model.activePeer?.id?.let { peer -> model.conversation?.id?.let { peer to it } },
+                notificationAction = model::notificationAction, testNotification = model::testNotification,
+                notificationRefresh = model::refreshNotificationDelivery,
+                adb = model.adbSettings, adbError = model.adbError, adbAction = model::adbAction, adbRefresh = model::refreshAdb,
+                dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData))
         }
     } else retained.SaveableStateProvider("workbench") { Workbench(
         shown.workbench,
@@ -128,16 +167,21 @@ private fun ClientScreen(model: ClientViewModel) {
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles),
     ) }
     }
-    editingComment?.let { comment ->
-        CommentDialog(comment, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
+    LiquidRetained(editingComment) { comment, open, closed ->
+        CommentDialog(comment, open, closed, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
     }
-    if (addDevice) AddDeviceDialog(model, onDismiss = { addDevice = false })
+    LiquidRetained(Unit.takeIf { addDevice }) { _, open, closed ->
+        SettingsSheet("连接设备", dismiss = { addDevice = false }, open = open, onClosed = closed) {
+            if (model.invitation != null) PhoneInvitationStatus(model) else PhoneConnectActions(model)
+        }
+    }
 }
 
-private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState, val message: ChatMessage? = null)
+private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState, val message: ChatMessage? = null,
+    val history: SessionHistoryState? = null, val shared: SharedFilesUi? = null)
 
 @Composable
 internal fun PlainMessage(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, onComment: ((String) -> Unit)? = null) {
@@ -181,42 +225,15 @@ internal fun PlainMessage(content: String, modifier: Modifier = Modifier, previe
 }
 
 @Composable
-private fun AddDeviceDialog(model: ClientViewModel, onDismiss: () -> Unit) {
-    FormDialog("连接设备", onDismiss) {
-        if (model.invitation != null) PhoneInvitationStatus(model) else PhoneConnectActions(model)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FormDialog(title: String, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp
-    ModalBottomSheet(onDismissRequest = dismiss, sheetState = state, dragHandle = null,
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp), containerColor = ZorkColors.Canvas) {
-        Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).imePadding().verticalScroll(rememberScrollState()).padding(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = dismiss, modifier = Modifier.size(44.dp)) { Icon(painterResource(R.drawable.ic_x), "关闭", Modifier.size(22.dp), tint = ZorkColors.Ink) }
-            }
-            content()
-        }
-    }
-}
-
-@Composable
-private fun CommentDialog(comment: DraftCommentUi, dismiss: () -> Unit, save: (String) -> Unit) {
+private fun CommentDialog(comment: DraftCommentUi, open: Boolean, closed: () -> Unit, dismiss: () -> Unit, save: (String) -> Unit) {
     var text by remember(comment.id) { mutableStateOf(comment.text) }
-    FormDialog(if (comment.text.isBlank()) "评论所选片段" else "编辑评论", dismiss) {
+    SettingsSheet(if (comment.text.isBlank()) "评论所选片段" else "编辑评论", dismiss = dismiss, open = open, onClosed = closed) {
         Text(comment.quote, fontSize = 13.sp, lineHeight = 21.sp, modifier = Modifier.fillMaxWidth()
             .background(ZorkColors.Paper, RoundedCornerShape(8.dp)).padding(12.dp))
         Text("你的评论", fontSize = 12.sp, color = ZorkColors.Muted)
         FormField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3,
             placeholder = { Text("对这段内容有什么想法？", fontSize = 16.sp) })
-        Button(onClick = { save(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) {
-            Text("加入待发送评论", fontSize = 14.sp)
-        }
+        LiquidButton("加入待发送评论", primary = true, onClick = { save(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth())
         Text("可以继续添加其他评论，最后和消息一起发送。", color = ZorkColors.Muted, fontSize = 12.sp)
     }
 }

@@ -224,9 +224,8 @@ mod macos {
     }
 }
 
-use super::{ui, DesktopRoot};
-use crate::automation::{AutomationElementExt, AutomationRole};
-use gpui::{div, prelude::*, px, rgb, Context, Div};
+use super::DesktopRoot;
+use gpui::{div, prelude::*, Context, Div};
 
 impl DesktopRoot {
     pub(super) fn open_notification(&mut self, tag: String, cx: &mut Context<Self>) {
@@ -354,158 +353,41 @@ impl DesktopRoot {
         cx.notify();
     }
     pub(super) fn render_notification_settings(&self, cx: &mut Context<Self>) -> Div {
+        use zork_ui::settings::{NotificationAction as Action, NotificationData};
         let locale = self.client_settings.locale;
-        let t = |key| locale.text(key);
-        let p = crate::design::CUE_UI.palette;
         let prefs = match zork_client_core::notifications::preferences(&self.store) {
             Ok(value) => value,
             Err(error) => return div().child(error.to_string()),
         };
-        let mut content = div().flex().flex_col().gap_3();
-        for (index, (id, title, detail, selected)) in [
-            (
-                "notifications-toggle",
-                "notification_enabled",
-                "notification_enabled_detail",
-                prefs.enabled,
-            ),
-            (
-                "notifications-preview",
-                "notification_preview",
-                "notification_preview_detail",
-                prefs.preview,
-            ),
-            (
-                "notifications-sound",
-                "notification_sound",
-                "notification_sound_detail",
-                prefs.sound,
-            ),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            content = content.child(zork_ui::settings::row(
-                t(title),
-                t(detail),
-                ui::switch(
-                    id,
-                    t(title),
-                    selected,
-                    true,
-                    &self.notification_switch_focus[index],
-                    cx,
-                    move |view, on, cx| {
-                        view.save_notification_preference(
-                            |prefs| match id {
-                                "notifications-toggle" => prefs.enabled = on,
-                                "notifications-preview" => prefs.preview = on,
-                                _ => prefs.sound = on,
-                            },
-                            cx,
-                        )
-                    },
-                ),
-            ));
-        }
-        if let Some((node, session)) = self.active_node_id.as_ref().and_then(|node| {
-            self.active.as_ref().and_then(|root| {
-                root.read(cx)
-                    .navigation_selection()
-                    .0
-                    .selected_session
-                    .map(|session| (node.clone(), session))
+        let current = self.active_node_id.as_ref().and_then(|node| {
+            self.active.as_ref().and_then(|root| root.read(cx).navigation_selection().0.selected_session
+                .map(|session| (node.clone(), session)))
+        });
+        let data = NotificationData {
+            enabled: prefs.enabled, preview: prefs.preview, sound: prefs.sound,
+            current_muted: current.as_ref().map(|current| prefs.muted.contains(current)),
+            permission_label: locale.text(self.client_settings.notification_permission.label()).into(),
+            busy: self.client_settings.notification_busy, system_settings: cfg!(target_os = "macos"),
+            error: self.client_settings.notification_error.clone(),
+        };
+        zork_ui::settings::notifications(data, &self.notification_switch_focus, |key| locale.text(key).into(), cx,
+            move |view, action, cx| match action {
+                Action::Enabled(on) => view.save_notification_preference(|prefs| prefs.enabled = on, cx),
+                Action::Preview(on) => view.save_notification_preference(|prefs| prefs.preview = on, cx),
+                Action::Sound(on) => view.save_notification_preference(|prefs| prefs.sound = on, cx),
+                Action::Mute(on) => {
+                    if let Some(current) = current.clone() {
+                        view.save_notification_preference(move |prefs| {
+                            if on { prefs.muted.insert(current.clone()); } else { prefs.muted.remove(&current); }
+                        }, cx);
+                    }
+                }
+                Action::RefreshPermission => view.refresh_notification_permission(cx),
+                Action::Test => view.test_notification(cx),
+                Action::SystemSettings => cx.open_url("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
             })
-        }) {
-            let muted = prefs.muted.contains(&(node.clone(), session.clone()));
-            content = content.child(zork_ui::settings::row(
-                t("notification_mute"),
-                t("notification_mute_detail"),
-                ui::switch(
-                    "notification-mute-current",
-                    t("notification_mute"),
-                    muted,
-                    true,
-                    &self.notification_switch_focus[3],
-                    cx,
-                    move |view, on, cx| {
-                        view.save_notification_preference(
-                            |prefs| {
-                                if on {
-                                    prefs.muted.insert((node.clone(), session.clone()));
-                                } else {
-                                    prefs.muted.remove(&(node.clone(), session.clone()));
-                                }
-                            },
-                            cx,
-                        )
-                    },
-                ),
-            ));
-        }
-        content = content
-            .child(
-                zork_ui::settings::row(
-                    t("notification_system_permission"),
-                    t(self.client_settings.notification_permission.label()),
-                    ui::button(
-                        "notifications-permission-refresh",
-                        t("notification_check_permission"),
-                        false,
-                        true,
-                    )
-                    .on_click(
-                        cx.listener(|view, _, _, cx| view.refresh_notification_permission(cx)),
-                    )
-                    .automation(AutomationRole::Button, t("notification_check_permission")),
-                )
-                .id("notifications-permission-status")
-                .automation(
-                    AutomationRole::Status,
-                    t(self.client_settings.notification_permission.label()),
-                ),
-            )
-            .child(
-                ui::button(
-                    "notifications-test",
-                    t("notification_test"),
-                    false,
-                    prefs.enabled && !self.client_settings.notification_busy,
-                )
-                .on_click(cx.listener(|view, _, _, cx| view.test_notification(cx)))
-                .automation_enabled(
-                    prefs.enabled && !self.client_settings.notification_busy,
-                    AutomationRole::Button,
-                    t("notification_test"),
-                ),
-            )
-            .when(cfg!(target_os = "macos"), |content| {
-                content.child(
-                    ui::button(
-                        "notifications-system-settings",
-                        t("notification_system_settings"),
-                        false,
-                        true,
-                    )
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.open_url(
-                            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
-                        )
-                    }))
-                    .automation(AutomationRole::Button, t("notification_system_settings")),
-                )
-            })
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(p.muted))
-                    .child(t("notification_permission_detail")),
-            );
-        if let Some(error) = &self.client_settings.notification_error {
-            content = content.child(div().text_color(rgb(p.danger)).child(error.clone()));
-        }
-        content
     }
+
 }
 
 fn destination(notice: &zork_client_core::notifications::Notice) -> super::navigation::Destination {

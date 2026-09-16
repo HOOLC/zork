@@ -1,0 +1,61 @@
+{
+  "message_id": "preview",
+  "title": "安排执行任务",
+  "localized_title": false,
+  "status_key": "interaction_completed",
+  "description_key": "interaction_public_input",
+  "fields": [
+    {
+      "field": {
+        "id": "title",
+        "label": "任务名称",
+        "kind": "text",
+        "required": true,
+        "default": "",
+        "options": []
+      },
+      "localized_label": false,
+      "value": "实现消息卡片 ✓",
+      "error_key": null
+    },
+    {
+      "field": {
+        "id": "target",
+        "label": "执行环境",
+        "kind": "choice",
+        "required": true,
+        "default": "test",
+        "options": [
+          {
+            "value": "test",
+            "label": "测试环境"
+          },
+          {
+            "value": "preview",
+            "label": "预览环境"
+          }
+        ]
+      },
+      "localized_label": false,
+      "value": "preview",
+      "error_key": null
+    },
+    {
+      "field": {
+        "id": "notes",
+        "label": "补充说明",
+        "kind": "multiline",
+        "required": false,
+        "default": "保留现有工作。",
+        "options": []
+      },
+      "localized_label": false,
+      "value": "保留现有工作。",
+      "error_key": null
+    }
+  ],
+  "details": [],
+  "actions": [],
+  "editable": false,
+  "error": null
+}

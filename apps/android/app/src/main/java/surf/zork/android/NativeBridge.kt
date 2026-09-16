@@ -26,12 +26,16 @@ internal object NativeBridge {
     external fun connectionChoices(catalog: String, subscription: Boolean, provider: String, billing: String): String
     external fun composerState(input: String): String
     external fun initialize(context: Context)
+    external fun clearData(root: String, confirmed: Boolean, context: Context): String
     external fun call(root: String, request: String): String
     external fun observe(root: String, request: String): String
+    external fun sharedFileBytes(root: String, content: String): ByteArray
+    external fun saveSharedFile(root: String, ticket: String, descriptor: Int): String
     external fun watch(root: String, handle: Long, generation: Long, observer: NativeObserver): String
 }
 
 internal class ClientRepository(context: Context, dataDirectory: File = context.noBackupFilesDir.resolve("client")) {
+    private val applicationContext = context.applicationContext
     private val resolver = context.applicationContext.contentResolver
     private val root = dataDirectory.absolutePath
     private val legacyPeer = context.getSharedPreferences("navigation", 0).getString("peer", null)
@@ -66,8 +70,46 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
         requireNotNull(resolver.openOutputStream(uri)).use { it.write(content.toByteArray(Charsets.UTF_8)) }
     }
 
+    // Script core validates the selected URI and supplies the byte bound.
+    suspend fun localDocumentBytes(uri: android.net.Uri, max: Int): ByteArray = withContext(Dispatchers.IO) {
+        val buffer = ByteArray(max + 1); var used = 0
+        requireNotNull(resolver.openInputStream(uri)).use { stream ->
+            while (used < buffer.size) { val count = stream.read(buffer, used, buffer.size - used); if (count < 0) break; if (count > 0) used += count }
+        }
+        check(used <= max) { "Document too large" }
+        buffer.copyOf(used)
+    }
+    suspend fun writeLocalDocument(uri: android.net.Uri, bytes: ByteArray): Int = withContext(Dispatchers.IO) {
+        requireNotNull(resolver.openOutputStream(uri, "wt")).use { it.write(bytes) }
+        bytes.size
+    }
+
     fun events(peer: String, session: String?) = observations.conversation(peer, session)
     fun settingsEvents(peer: String) = observations.settings(peer)
+    fun notificationEvents() = observations.notifications()
+    fun adbEvents() = observations.adb()
+    fun dataResetEvents() = observations.dataReset()
+    suspend fun clearData() = withContext(Dispatchers.IO) {
+        val response = JSONObject(NativeBridge.clearData(root, true, applicationContext))
+        check(response.optBoolean("ok")) { response.optString("error", "无法清空数据") }
+    }
+    fun localScriptEvents() = observations.localScripts()
+    fun resourceEvents(selection: ResourceSelection) = observations.resources(selection)
+    fun sharedFileEvents() = observations.sharedFiles()
+    suspend fun sharedPreviewBytes(content: String): ByteArray = withContext(Dispatchers.IO) { NativeBridge.sharedFileBytes(root, content) }
+    suspend fun saveSharedFile(uri: android.net.Uri, ticket: String) = withContext(Dispatchers.IO) {
+        requireNotNull(resolver.openFileDescriptor(uri, "w")).use { destination ->
+            val result = JSONObject(NativeBridge.saveSharedFile(root, ticket, destination.fd))
+            check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
+        }
+    }
+    fun historyEvents(peer: String, session: String) = observations.history(peer, session)
+    suspend fun historyOlder(peer: String, session: String) = observations.historyChange(peer, session, "older")
+    suspend fun historyNewer(peer: String, session: String) = observations.historyChange(peer, session, "newer")
+    suspend fun historyLatest(peer: String, session: String) = observations.historyChange(peer, session, "window")
+    suspend fun historyAnchor(peer: String, session: String, id: String?) = observations.historyChange(peer, session, "window", id)
+    suspend fun historyDetail(peer: String, session: String, id: String?) = observations.historyChange(peer, session, "detail", id)
+    suspend fun historyRefresh(peer: String, session: String) = observations.historyChange(peer, session, "refresh")
     suspend fun older(peer: String, session: String) = observations.older(peer, session)
     suspend fun newer(peer: String, session: String) = observations.newer(peer, session)
     suspend fun windowAnchor(peer: String, session: String, anchor: String?) = observations.windowAnchor(peer, session, anchor)
@@ -96,13 +138,20 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
         val local = NativeBridge.isLocal(request.toString())
         return (if (local) localGate else networkGate).withLock {
             withContext(Dispatchers.IO) {
-                if (op == "resume") org.rustls.platformverifier.CertificateVerifier.clearFailures()
-                if (op == "resume" && multicast?.isHeld == false) multicast.acquire()
+                val activate = op == "resume" || (op == "host_visibility" && request.optBoolean("visible")) || (op in listOf("background_service", "adb_background_service") && request.optBoolean("running"))
+                if (activate) org.rustls.platformverifier.CertificateVerifier.clearFailures()
+                if (activate && multicast?.isHeld == false) multicast.acquire()
                 val response = try { JSONObject(NativeBridge.call(root, request.toString())) }
-                    finally { if (op == "pause" && multicast?.isHeld == true) multicast.release() }
-                if (op == "resume" && !response.optBoolean("ok") && multicast?.isHeld == true) multicast.release()
+                    finally {
+                        val release = op == "pause" || (op in listOf("background_service", "adb_background_service") && !request.optBoolean("running"))
+                        if (release && multicast?.isHeld == true) multicast.release()
+                    }
+                if (activate && !response.optBoolean("ok") && multicast?.isHeld == true) multicast.release()
                 check(response.optBoolean("ok")) { response.optString("error", "操作未完成") }
-                response.optJSONObject("data") ?: JSONObject()
+                val data = response.optJSONObject("data") ?: JSONObject()
+                if (op == "host_visibility" && !data.optBoolean("host_visible") && multicast?.isHeld == true) multicast.release()
+                if (data.has("network_active") && !data.optBoolean("network_active") && multicast?.isHeld == true) multicast.release()
+                data
             }
         }
     }

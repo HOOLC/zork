@@ -189,7 +189,7 @@ mod shutdown_tests {
     use super::*;
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [EMBED-02]
+    // Contract: docs/design/agent-runtime.md [EMBED-02]
     async fn shutdown_joins_scheduler_and_closes_wakes() {
         let clock = Arc::new(crate::session::ports::SystemClock);
         let (scheduler, mut wakes) = DeadlineScheduler::start(clock.clone(), 1, 1);

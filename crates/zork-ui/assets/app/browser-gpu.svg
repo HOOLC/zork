@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img">
+  <title>Zork Browser GPU</title>
+  <rect width="128" height="128" rx="28" fill="#E9643B"/>
+  <g fill="none" stroke="#F6F3EA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="35" y="35" width="58" height="58" rx="9"/>
+    <path d="M49 23v12m15-12v12m15-12v12M49 93v12m15-12v12m15-12v12M23 49h12M23 64h12M23 79h12M93 49h12M93 64h12M93 79h12"/>
+    <rect x="52" y="52" width="24" height="24" rx="3" fill="#F6F3EA" stroke="none"/>
+  </g>
+</svg>

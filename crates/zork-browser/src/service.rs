@@ -46,6 +46,7 @@ struct Running {
 /// authenticated conversation binding, never by page content or model arguments.
 pub struct Browser {
     profile: PathBuf,
+    lifecycle: Mutex<()>,
     running: Mutex<Option<Running>>,
     state: Arc<Mutex<State>>,
     changes: zork_notify::Hub<String>,
@@ -54,6 +55,7 @@ impl Browser {
     pub fn new(profile: PathBuf) -> Self {
         Self {
             profile,
+            lifecycle: Mutex::new(()),
             running: Mutex::new(None),
             state: Arc::new(Mutex::new(State::default())),
             changes: Default::default(),
@@ -63,9 +65,20 @@ impl Browser {
         self.changes.subscribe([host.to_owned()])
     }
     pub fn shutdown(&self) {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.stop();
+    }
+    // The lifecycle lock prevents a new tab from entering this runtime while
+    // its last tab is being closed. Never hold it while waiting on navigation.
+    fn stop(&self) {
         let running = self.running.lock().unwrap().take();
         if let Some(running) = running {
             running.cdp.close();
+        }
+    }
+    fn stop_if_idle(&self) {
+        if self.state.lock().unwrap().tabs.is_empty() {
+            self.stop();
         }
     }
     fn start(&self) -> Result<()> {
@@ -102,19 +115,13 @@ impl Browser {
         Ok((r.cdp.clone(), self.state.clone()))
     }
     pub fn tabs(&self, host: &str) -> Vec<Tab> {
-        if self.state.lock().unwrap().disconnected {
-            return vec![];
-        }
-        let mut tabs: Vec<_> = self
-            .state
-            .lock()
-            .unwrap()
-            .tabs
-            .values()
-            .filter(|t| t.info.host == host)
-            .map(|t| t.info.clone())
-            .collect();
-        tabs.sort_by(|a, b| a.id.cmp(&b.id));
+        self.all_tabs().into_iter().filter(|tab| tab.host == host).collect()
+    }
+    pub fn all_tabs(&self) -> Vec<Tab> {
+        let state = self.state.lock().unwrap();
+        if state.disconnected { return vec![]; }
+        let mut tabs: Vec<_> = state.tabs.values().map(|tab| tab.info.clone()).collect();
+        tabs.sort_by(|a,b| a.id.cmp(&b.id));
         tabs
     }
     pub fn frame(&self, host: &str, id: &str) -> Option<Frame> {
@@ -139,6 +146,12 @@ impl Browser {
         );
         if matches!(action, Action::List) {
             return Ok(json!({"tabs":self.tabs(host)}));
+        }
+        let mut lifecycle = matches!(action, Action::Open { .. } | Action::Close { .. })
+            .then(|| self.lifecycle.lock().unwrap());
+        if let Action::Open { url } = &action {
+            // Rejected input must not start an otherwise unused engine.
+            normalize_url(url)?;
         }
         if matches!(action, Action::Open { .. }) {
             self.start()?;
@@ -180,14 +193,18 @@ impl Browser {
                     },
                 );
                 self.changes.publish([host.to_owned()]);
+                drop(lifecycle.take());
                 cdp.call("Page.enable", json!({}), Some(&session))?;
                 navigate(&cdp, &session, &url)?;
                 Ok(())
             })();
+            drop(lifecycle.take());
             if let Err(error) = setup {
+                let _lifecycle = self.lifecycle.lock().unwrap();
                 state.lock().unwrap().tabs.remove(&id);
                 self.changes.publish([host.to_owned()]);
                 let _ = cdp.call("Target.closeTarget", json!({"targetId":id}), None);
+                self.stop_if_idle();
                 return Err(error);
             }
             return Ok(json!({"tab":Self::target(&state, host, &id)?.0}));
@@ -209,7 +226,9 @@ impl Browser {
         };
         let (tab, session) = Self::target(&state, host, &id)?;
         // 浏览器 internal/file pages may be reached manually; never expose them to Agents.
-        normalize_url(&tab.url)?;
+        if !matches!(action, Action::Close { .. }) {
+            normalize_url(&tab.url)?;
+        }
         match action {
             Action::Navigate { url, .. } => {
                 navigate(&cdp, &session, &normalize_url(&url)?)?;
@@ -247,6 +266,9 @@ impl Browser {
                 cdp.call("Target.closeTarget", json!({"targetId":id}), None)?;
                 state.lock().unwrap().tabs.remove(&id);
                 self.changes.publish([host.to_owned()]);
+                // This is global across conversation hosts: closing one chat's
+                // last page must not stop another chat's browser or Agent tab.
+                self.stop_if_idle();
             }
             Action::Read { .. } => {
                 let page = evaluate(&cdp, &session, "({url:location.href,title:document.title,viewport:{width:innerWidth,height:innerHeight},text:(document.body?.innerText||'').slice(0,32000),elements:Array.from(document.querySelectorAll('a,button,input,textarea,select,[role=button]')).slice(0,100).map(e=>({tag:e.tagName.toLowerCase(),id:e.id,role:e.getAttribute('role'),name:e.getAttribute('name'),label:e.getAttribute('aria-label'),text:(e.innerText||'').slice(0,200),type:e.getAttribute('type')}))})")?;

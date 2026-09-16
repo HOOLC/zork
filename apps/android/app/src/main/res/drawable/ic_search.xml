@@ -1,0 +1,4 @@
+<!-- Shared source: crates/zork-ui/assets/icons/search.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+  <path android:fillColor="#00000000" android:strokeColor="#646970" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M16.9,10.35A6.55,6.55 0,1 1,3.8 10.35A6.55,6.55 0,1 1,16.9 10.35M15.25,15.25l5.15,5.15" />
+</vector>

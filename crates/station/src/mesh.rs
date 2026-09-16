@@ -24,6 +24,8 @@ use zork_mesh::{
 };
 
 pub struct MeshService {
+    pub adb: Arc<crate::adb::Registry>,
+    pub shared_files: std::sync::OnceLock<Arc<crate::shared_files::SharedFiles>>,
     pub services: Arc<crate::shared_services::Registry>,
     node: MeshNode,
     runtime: tokio::sync::Mutex<Option<managed::Runtime>>,
@@ -71,15 +73,21 @@ enum RpcRequest {
     ChannelTool {
         body: crate::channels::Rpc,
     },
+    InteractionRegistration {
+        body: crate::interaction_registry::Remote,
+    },
+    BusinessCard {
+        body: crate::business_cards::Remote,
+    },
     ChannelFile {
         body: crate::channels::FileRequest,
     },
     Mcp {
         body: crate::mcp::Rpc,
     },
-    Browser {
-        assignment_id: String,
-        device_id: Option<String>,
+    ClientBrowser {
+        session_id: String,
+        client_id: String,
         command: zork_browser::Command,
     },
     Hello,
@@ -114,6 +122,10 @@ enum RpcRequest {
         assignment_id: String,
         file_id: String,
     },
+    ExecutionHistory {
+        assignment_id: String,
+        query: zork_agent_api::HistoryQuery,
+    },
     Rework {
         assignment_id: String,
         request_id: String,
@@ -134,8 +146,94 @@ enum RpcRequest {
 type WatchTopic = zork_mesh::feed::Watch;
 
 impl MeshService {
+    pub async fn execution_history(
+        &self,
+        link: &Link,
+        query: &zork_agent_api::HistoryQuery,
+    ) -> Result<Value> {
+        ensure!(link.role == "owner", "mesh_history_requires_owner");
+        let response = self
+            .call(
+                &link.assignment.executor_origin,
+                RpcRequest::ExecutionHistory {
+                    assignment_id: link.assignment.assignment_id.clone(),
+                    query: query.clone(),
+                },
+            )
+            .await?;
+        if response["object"].is_object() {
+            let object: zork_mesh::node::ObjectRef =
+                serde_json::from_value(response["object"].clone())?;
+            ensure!(
+                object.origin == link.assignment.executor_origin && object.space == "zork-client",
+                "history_wrong_source"
+            );
+            Ok(serde_json::from_slice(&self.node.read(&object).await?)?)
+        } else {
+            ensure!(response["page"].is_object(), "invalid_history_response");
+            Ok(response["page"].clone())
+        }
+    }
+
     pub async fn channel_call(&self, origin: &str, body: crate::channels::Rpc) -> Result<Value> {
+        if zork_agent_gateway_tools::channels::participating(&body.tool, &body.arguments) {
+            self.peer(origin)?;
+            let reply = self
+                .node
+                .subscribe(
+                    origin,
+                    &json!({"v":1,"request":{"kind":"channel_tool","body":body}}),
+                )
+                .await?
+                .next()
+                .await?
+                .context("mesh_channel_transport_closed")?;
+            ensure!(
+                reply["v"] == 1 && reply["ok"] == true,
+                "{}",
+                reply["error"].as_str().unwrap_or("mesh_channel_failed")
+            );
+            return Ok(reply["data"].clone());
+        }
         self.call(origin, RpcRequest::ChannelTool { body }).await
+    }
+    pub(crate) async fn business_card_call(
+        &self,
+        origin: &str,
+        body: crate::business_cards::Remote,
+    ) -> Result<Value> {
+        self.participation_call(origin, RpcRequest::BusinessCard { body })
+            .await
+    }
+    pub(crate) async fn registration_call(
+        &self,
+        origin: &str,
+        body: crate::interaction_registry::Remote,
+    ) -> Result<Value> {
+        self.participation_call(origin, RpcRequest::InteractionRegistration { body })
+            .await
+    }
+    async fn participation_call(&self, origin: &str, request: RpcRequest) -> Result<Value> {
+        self.peer(origin)?;
+        // Connection setup is bounded; waiting for user participation is not.
+        let reply = self
+            .node
+            .subscribe(origin, &json!({"v":1,"request":request}))
+            .await?
+            .next()
+            .await?
+            .context("mesh_interaction_transport_closed")?;
+        ensure!(
+            reply["error"] != "invalid_mesh_request",
+            "interaction_unsupported"
+        );
+        ensure!(reply["v"] == 1, "mesh_protocol_version");
+        ensure!(
+            reply["ok"] == true,
+            "{}",
+            reply["error"].as_str().unwrap_or("mesh_interaction_failed")
+        );
+        Ok(reply["data"].clone())
     }
     pub async fn channel_file(
         &self,
@@ -287,6 +385,7 @@ impl MeshService {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
+        self.adb.shutdown();
         self.services.disconnect().await;
         let tasks = std::mem::take(&mut *self.tasks.lock().expect("Mesh tasks"));
         for task in &tasks {
@@ -317,6 +416,9 @@ impl MeshService {
     pub fn origin(&self) -> &str {
         &self.origin
     }
+    pub(crate) fn file_tree(&self) -> MeshNode {
+        self.node.clone()
+    }
     pub async fn prepare(root: &Path) -> Result<Option<Prepared>> {
         let config = zork_config::load_config(root)?.mesh;
         if !config.enabled {
@@ -331,8 +433,27 @@ impl MeshService {
             "Zork Mesh currently requires a key origin"
         );
         managed::configure(root, &config, &node).await?;
+        let files = zork_config::files_root(root);
+        std::fs::create_dir_all(&files)?;
+        node.retire_source("zork").await?;
+        node.add_filesystem_source(zork_config::tree::STATION_FILES_SPACE, &files)
+            .await?;
+        let shared = zork_config::shared_files_root(root);
+        std::fs::create_dir_all(&shared)?;
+        node.add_filesystem_source(zork_config::tree::SHARED_FILES_SPACE, &shared)
+            .await?;
+        let skills = zork_config::skill_bundles::skills_root(root);
+        std::fs::create_dir_all(&skills)?;
+        node.add_filesystem_source(zork_config::tree::SKILLS_SPACE, &skills)
+            .await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let token = managed::deploy_bridge(root, &node, listener.local_addr()?.port()).await?;
+        node.schedule_source_scan(zork_config::tree::STATION_FILES_SPACE)
+            .await?;
+        node.schedule_source_scan(zork_config::tree::SHARED_FILES_SPACE)
+            .await?;
+        node.schedule_source_scan(zork_config::tree::SKILLS_SPACE)
+            .await?;
         let peer_cache = root.join("mesh/peer-capabilities.json");
         let cached: std::collections::BTreeMap<String, Vec<String>> = std::fs::read(&peer_cache)
             .ok()
@@ -359,6 +480,7 @@ impl MeshService {
         Ok(Some(Prepared {
             service: Arc::new(Self {
                 services: Arc::new(crate::shared_services::Registry::open(root)?),
+                adb: Arc::new(crate::adb::Registry::default()),
                 node,
                 runtime: tokio::sync::Mutex::new(Some(runtime)),
                 tasks: Default::default(),
@@ -370,6 +492,7 @@ impl MeshService {
                 peer_cache,
                 peers: std::sync::Mutex::new(peers),
                 owner_subscriptions: Default::default(),
+                shared_files: Default::default(),
             }),
             listener,
             auth: Arc::new(BridgeAuth::new(token)?),
@@ -385,11 +508,7 @@ impl MeshService {
             .context("mesh_peer_not_paired")
     }
     fn execution_workspace(&self, origin: &str, id: &str) -> Result<zork_config::MeshWorkspace> {
-        let peer = self.peer(origin)?;
-        ensure!(
-            peer.collaborate || peer.execute.iter().any(|grant| grant == id),
-            "mesh_workspace_not_granted"
-        );
+        self.peer(origin)?;
         self.config()?
             .workspaces
             .iter()
@@ -404,7 +523,7 @@ impl MeshService {
     ) -> Result<crate::db::agents::NodeAgent> {
         let target = assignment.worker.as_ref().context("mesh_worker_required")?;
         let config = zork_config::load_config(&state.config.data_root)?.mesh;
-        let paired = config
+        config
             .peers
             .iter()
             .find(|p| p.origin == assignment.owner_origin)
@@ -414,11 +533,7 @@ impl MeshService {
             .node_agent(&target.worker_id)?
             .context("mesh_worker_not_found")?;
         ensure!(
-            worker.role == crate::db::agents::AgentRole::Worker
-                && (paired.collaborate
-                    || worker
-                        .allowed_leaders
-                        .contains(&format!("{}/{}", assignment.owner_origin, target.leader_id))),
+            worker.role == crate::db::agents::AgentRole::Worker,
             "mesh_worker_not_granted"
         );
         Ok(worker)
@@ -786,6 +901,8 @@ async fn watch_peer(service: Arc<MeshService>, state: AppState, peer: zork_confi
 
 pub fn start(prepared: Prepared, state: AppState) {
     let service = prepared.service;
+    let shared_files = crate::shared_files::SharedFiles::new(service.node.clone());
+    let _ = service.shared_files.set(shared_files.clone());
     let owner = service.clone();
     let services = service.services.clone();
     let service_task = tokio::spawn(services.run());
@@ -804,6 +921,17 @@ pub fn start(prepared: Prepared, state: AppState) {
             bridge::serve_subscriptions(prepared.listener, prepared.auth, move |peer, request| {
                 let state = ingress_state.clone();
                 async move {
+                    if matches!(
+                        request.pointer("/request/kind").and_then(Value::as_str),
+                        Some("adb_register" | "adb_stream")
+                    ) {
+                        return Ok(match crate::adb::handle(state, peer, request).await {
+                            Ok(reply) => reply,
+                            Err(error) => bridge::Reply::Once(
+                                json!({"v":1,"ok":false,"error":error.to_string()}),
+                            ),
+                        });
+                    }
                     if request.pointer("/request/kind").and_then(Value::as_str)
                         == Some("watch_tool")
                     {
@@ -839,11 +967,28 @@ pub fn start(prepared: Prepared, state: AppState) {
                     }
                     if matches!(
                         request.pointer("/request/kind").and_then(Value::as_str),
-                        Some("node_tool" | "mcp")
-                    ) {
-                        // A queued tool may wait indefinitely for capacity. Open
-                        // the stream before that wait; handshake deadlines apply
-                        // only to connection setup.
+                        Some(
+                            "node_tool"
+                                | "mcp"
+                                | "business_card"
+                                | "interaction_registration"
+                                | "client_browser"
+                        )
+                    ) || (request.pointer("/request/kind").and_then(Value::as_str)
+                        == Some("channel_tool")
+                        && request
+                            .pointer("/request/body/tool")
+                            .and_then(Value::as_str)
+                            .is_some_and(|tool| {
+                                zork_agent_gateway_tools::channels::participating(
+                                    tool,
+                                    &request["request"]["body"]["arguments"],
+                                )
+                            }))
+                    {
+                        // These asynchronous operations may wait for resources
+                        // or user participation. Complete the stream handshake
+                        // before waiting; setup deadlines do not bound execution.
                         let (tx, rx) = tokio::sync::mpsc::channel(1);
                         tokio::spawn(async move {
                             let result = tokio::select! {
@@ -919,7 +1064,7 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         return membership_request(state, &peer.origin, action, body.clone()).await;
     }
     let live_config = zork_config::load_config(&state.config.data_root)?.mesh;
-    let paired = live_config
+    let _paired = live_config
         .peers
         .iter()
         .find(|p| p.origin == peer.origin)
@@ -928,6 +1073,12 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         RpcRequest::NodeTool { body } => crate::node_tools::remote(state, &peer.origin, body).await,
         RpcRequest::ChannelTool { body } => {
             crate::channels::remote(state, &peer.origin, body).await
+        }
+        RpcRequest::InteractionRegistration { body } => {
+            crate::interaction_registry::remote(state, &peer.origin, body).await
+        }
+        RpcRequest::BusinessCard { body } => {
+            crate::business_cards::remote(state, &peer.origin, body).await
         }
         RpcRequest::ChannelFile { body } => {
             crate::channels::remote_file(state, &peer.origin, body).await
@@ -939,37 +1090,21 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         | RpcRequest::WatchPeer
         | RpcRequest::WatchAssignment { .. } => anyhow::bail!("subscription_requires_stream"),
         RpcRequest::Client { method, path, body } => {
-            ensure!(paired.client, "mesh_client_not_granted");
             client_request(state, &method, &path, body).await
         }
-        RpcRequest::Browser {
-            assignment_id,
-            device_id,
+        RpcRequest::ClientBrowser {
+            session_id,
+            client_id,
             command,
         } => {
-            let link = state
-                .db
-                .mesh_link(&assignment_id)?
-                .context("unknown_mesh_assignment")?;
-            ensure!(
-                link.role == "owner" && link.assignment.executor_origin == peer.origin,
-                "browser_assignment_unauthorized"
-            );
-            let key = link
-                .session_key
-                .as_deref()
-                .context("browser_assignment_not_bound")?;
-            let task = state
-                .db
-                .product_task_for_session(key)?
-                .context("browser_task_not_found")?;
-            ensure!(!task.state.is_closed(), "browser_task_closed");
-            let session = state
-                .db
-                .get_session(key)?
-                .and_then(|s| s.id)
-                .context("browser_session_not_found")?;
-            state.browser.command(&session, device_id, command).await
+            crate::browser::command_for_client(
+                state,
+                &peer.origin,
+                &session_id,
+                &client_id,
+                command,
+            )
+            .await
         }
         RpcRequest::InputFile {
             assignment_id,
@@ -1006,6 +1141,42 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
                 )
                 .await?;
             Ok(json!({"object":object}))
+        }
+        RpcRequest::ExecutionHistory {
+            assignment_id,
+            query,
+        } => {
+            let link = authorized_assignment(state, &peer.origin, &assignment_id)?;
+            let session = state
+                .db
+                .get_session(
+                    link.session_key
+                        .as_deref()
+                        .context("assignment_not_bound")?,
+                )?
+                .context("assignment_not_bound")?;
+            let runtime = session.id.as_deref().context("assignment_not_bound")?;
+            // Reading history never allocates or prepares an execution context.
+            let page = crate::agent::session_history(&state.agent, runtime, &query).await?;
+            let bytes = serde_json::to_vec(&page)?;
+            ensure!(
+                bytes.len() <= zork_mesh::MAX_ARTIFACT,
+                "history_response_too_large"
+            );
+            if bytes.len() > 128 * 1024 {
+                service.node.add_api_source("zork-client").await?;
+                let object = service
+                    .node
+                    .put(
+                        "zork-client",
+                        &format!("history/{}", zork_mesh::content_root(&bytes)),
+                        &bytes,
+                    )
+                    .await?;
+                Ok(json!({"object":object}))
+            } else {
+                Ok(json!({"page":page}))
+            }
         }
         RpcRequest::Rework {
             assignment_id,
@@ -1049,22 +1220,18 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
             crate::agent::append_mailbox_id(&state.agent, id, &receipt, &goal).await?;
             Ok(json!({"durable":true}))
         }
-        RpcRequest::Workers { leader_id } => {
-            let reference = format!("{}/{}", peer.origin, leader_id);
+        RpcRequest::Workers { .. } => {
             let items = state
                 .db
                 .node_agents()?
                 .into_iter()
-                .filter(|a| {
-                    a.role == crate::db::agents::AgentRole::Worker
-                        && (paired.collaborate || a.allowed_leaders.contains(&reference))
-                })
+                .filter(|a| a.role == crate::db::agents::AgentRole::Worker)
                 .map(|a| json!({"id":a.id,"name":a.name}))
                 .collect::<Vec<_>>();
             Ok(json!({"items":items}))
         }
         RpcRequest::Hello => Ok(
-            json!({"origin":service.origin,"authenticated_peer":peer.origin,"execute_workspaces":if paired.collaborate {live_config.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>()}else{paired.execute.clone()},"protocol":1,"mcp_protocol":1}),
+            json!({"origin":service.origin,"authenticated_peer":peer.origin,"execute_workspaces":live_config.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>(),"protocol":1,"mcp_protocol":1}),
         ),
         RpcRequest::Delegate { assignment } => {
             ensure!(
@@ -1122,6 +1289,10 @@ fn client_route(method: &str, path: &str) -> bool {
     }
     match (method, parts.as_slice()) {
         (
+            "GET" | "POST" | "DELETE",
+            ["v1", "node", "chats", _, "messages", _, "provider-login"],
+        ) => true,
+        (
             "GET",
             ["readyz"]
             | ["v1", "im", "profiles"]
@@ -1144,7 +1315,7 @@ fn client_route(method: &str, path: &str) -> bool {
             "POST",
             ["v1", "im", "sessions", _, "messages"]
             | ["v1", "im", "sessions", _, "files"]
-            | ["v1", "im", "sessions", _, "browser", "poll" | "receipts"]
+            | ["v1", "client", "browser", "receipts"]
             | ["v1", "im", "sessions", _, "cancel"]
             | ["v1", "tasks", _, "transitions"]
             | ["v1", "tasks", _, "artifacts"],
@@ -1154,10 +1325,12 @@ fn client_route(method: &str, path: &str) -> bool {
             "GET",
             ["v1", "node", "providers"]
             | ["v1", "node", "agents"]
+            | ["v1", "node", "chats"]
             | ["v1", "node", "mesh"]
             | ["v1", "node", "status"]
             | ["v1", "node", "info"]
             | ["v1", "node", "resources"]
+            | ["v1", "node", "shared-files"]
             | ["v1", "node", "pages"]
             | ["v1", "node", "resources", "mcp", _]
             | ["v1", "node", "resources", "service", _]
@@ -1176,9 +1349,10 @@ fn client_route(method: &str, path: &str) -> bool {
             | ["v1", "node", "sync"]
             | ["v1", "node", "sync", "commands"]
             | ["v1", "node", "sync", "receipt"]
+            | ["v1", "node", "shared-files", "directory" | "content"]
             | ["v1", "node", "update"]
             | ["v1", "node", "agents", _, "open"]
-            | ["v1", "node", "chats", _, "messages", _, "respond"]
+            | ["v1", "node", "chats", _, "messages", _, "agent-configuration"]
             | ["v1", "node", "auth"]
             | ["v1", "node", "profiles", _, "refresh"]
             | ["v1", "node", "profiles", _, "models", "refresh"]
@@ -1261,24 +1435,20 @@ async fn client_request(
 
 pub(crate) async fn browser_request(
     state: &AppState,
-    link: &Link,
-    device_id: Option<String>,
+    origin: &str,
+    session_id: &str,
+    client_id: &str,
     command: zork_browser::Command,
 ) -> Result<Value> {
-    ensure!(link.role == "executor", "browser_executor_required");
     let service = state.mesh.get().context("mesh_disabled")?;
     service
-        .node
-        .exchange(
-            &link.assignment.owner_origin,
-            &serde_json::to_value(Envelope {
-                v: 1,
-                request: RpcRequest::Browser {
-                    assignment_id: link.assignment.assignment_id.clone(),
-                    device_id,
-                    command,
-                },
-            })?,
+        .participation_call(
+            origin,
+            RpcRequest::ClientBrowser {
+                session_id: session_id.into(),
+                client_id: client_id.into(),
+                command,
+            },
         )
         .await
 }
@@ -1373,6 +1543,14 @@ async fn prepare_executor(service: &MeshService, state: &AppState, link: &Link) 
         let agent_input =
             crate::http::conversation_files::agent_content(state, &session.key, &assignment.goal)
                 .await?;
+        let agent_input = if let Some(chat) = assignment.assignment_id.strip_prefix("worker-") {
+            state
+                .db
+                .record_chat_source(&worker.id, &assignment.owner_origin)?;
+            json!({"source":"assignment","target":assignment.owner_origin,"chat_id":chat,"text":agent_input}).to_string()
+        } else {
+            agent_input
+        };
         state
             .db
             .mesh_state(&assignment.assignment_id, "dispatching", None)?;
@@ -1667,6 +1845,16 @@ async fn apply_remote_batch(
                 .import_remote_activity(key, reply["activity"].clone());
         }
     }
+    if reply["execution"].is_object() {
+        if let Some(key) = link.session_key.as_deref() {
+            if let Some(session) = state.db.get_session(key)? {
+                let mut snapshot: zork_agent_api::SessionSnapshot =
+                    serde_json::from_value(reply["execution"].clone())?;
+                snapshot.session_id = session.id.context("owner_session_unavailable")?;
+                state.entries.store_execution_snapshot(key, &snapshot)?;
+            }
+        }
+    }
     let events: Vec<MeshEvent> = serde_json::from_value(reply["events"].clone())?;
     let mut previous = link.cursor;
     for event in events {
@@ -1863,29 +2051,30 @@ async fn client_subscription(
         anyhow::bail!("invalid subscription")
     };
     let session = match path.split('/').collect::<Vec<_>>().as_slice() {
+        ["", "v1", "node", "shared-files", "events"] => None,
         ["", "v1", "im", "events"] => None,
         ["", "v1", "im", "sessions", id, "events"] if !id.is_empty() => Some((*id).to_owned()),
-        ["", "v1", "im", "sessions", id, "browser", "events"] if !id.is_empty() => {
-            Some((*id).to_owned())
-        }
+        ["", "v1", "client", "browser", "events"] => None,
         _ => anyhow::bail!("mesh_subscription_not_allowed"),
     };
     let granted = |state: &AppState| -> bool {
         zork_config::load_config(&state.config.data_root)
             .ok()
-            .is_some_and(|c| {
-                c.mesh
-                    .peers
-                    .iter()
-                    .any(|p| p.origin == peer.origin && p.client)
-            })
+            .is_some_and(|c| c.mesh.peers.iter().any(|p| p.origin == peer.origin))
     };
     ensure!(granted(state), "mesh_client_not_granted");
     let policy = state.db.realtime.listen(crate::realtime::MESH);
-    let source = if path.ends_with("/browser/events") {
+    let source = if path == "/v1/node/shared-files/events" {
+        state
+            .mesh
+            .get()
+            .and_then(|m| m.shared_files.get())
+            .context("shared_files_unavailable")?
+            .subscribe(body.map(serde_json::from_value).transpose()?)
+            .await?
+    } else if path.ends_with("/browser/events") {
         crate::browser::subscribe(
             state.clone(),
-            session.context("browser_session_required")?,
             serde_json::from_value(body.context("browser_registration_required")?)?,
         )?
     } else {
@@ -1899,13 +2088,7 @@ async fn client_subscription(
         move || {
             zork_config::load_config(&state.config.data_root)
                 .ok()
-                .is_some_and(|config| {
-                    config
-                        .mesh
-                        .peers
-                        .iter()
-                        .any(|p| p.origin == peer.origin && p.client)
-                })
+                .is_some_and(|config| config.mesh.peers.iter().any(|p| p.origin == peer.origin))
         },
         16,
     );
@@ -2064,7 +2247,7 @@ impl zork_notify::stream::Source for MeshWatch {
         use zork_notify::stream::Page;
         let config = zork_config::load_config(&self.state.config.data_root)?;
         let link = self.authorize(&config)?;
-        let paired = config
+        let _paired = config
             .mesh
             .peers
             .iter()
@@ -2072,9 +2255,9 @@ impl zork_notify::stream::Source for MeshWatch {
             .context("mesh_peer_not_paired")?;
         Ok(match &self.topic {
             WatchTopic::Invitation { .. } | WatchTopic::AgentMessages { .. } => unreachable!(),
-            WatchTopic::Peer => Page::snapshot(json!({"execute_workspaces":if paired.collaborate {
-                config.mesh.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>()
-            } else { paired.execute.clone() }})),
+            WatchTopic::Peer => Page::snapshot(
+                json!({"execute_workspaces":config.mesh.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>()}),
+            ),
             WatchTopic::Membership => {
                 let group = config.mesh.group.context("mesh_membership_missing")?;
                 Page::snapshot(
@@ -2099,8 +2282,26 @@ impl zork_notify::stream::Source for MeshWatch {
                         activity["actor_avatar"] = json!(worker.avatar);
                     }
                 }
+                let execution = if let Some(key) = link.session_key.as_deref() {
+                    if self.state.entries.execution_snapshot(key).is_none() {
+                        if let Some(session) = self.state.db.get_session(key)? {
+                            if let Some(runtime) = session.id.as_deref() {
+                                if self.state.agent.service.contains(runtime) {
+                                    let snapshot =
+                                        self.state.agent.session_snapshot(runtime).await?;
+                                    self.state
+                                        .entries
+                                        .store_execution_snapshot(key, &snapshot)?;
+                                }
+                            }
+                        }
+                    }
+                    self.state.entries.execution_snapshot(key)
+                } else {
+                    None
+                };
                 let more = !events.is_empty();
-                let value = json!({"events":events,"activity":activity});
+                let value = json!({"events":events,"activity":activity,"execution":execution});
                 if more {
                     Page::chunk(value, true, false)
                 } else {
@@ -2138,7 +2339,10 @@ mod native_routes_tests {
             ("PUT", "/v1/node/profiles/p/name"),
             ("POST", "/v1/node/profiles/p/refresh"),
             ("PATCH", "/v1/node/agents/a/model"),
-            ("POST", "/v1/node/chats/c/messages/m/respond"),
+            ("POST", "/v1/node/chats/c/messages/m/agent-configuration"),
+            ("GET", "/v1/node/chats/c/messages/m/provider-login"),
+            ("POST", "/v1/node/chats/c/messages/m/provider-login"),
+            ("DELETE", "/v1/node/chats/c/messages/m/provider-login"),
         ] {
             assert!(super::client_route(method, path), "{method} {path}");
         }
@@ -2156,9 +2360,14 @@ mod native_routes_tests {
             ("PUT", "/v1/node/profiles/../models"),
             ("POST", "/v1/node/profiles/p/name"),
             ("PUT", "/v1/node/profiles/../name"),
-            ("GET", "/v1/node/chats/c/messages/m/respond"),
-            ("POST", "/v1/node/chats/c/messages/m/respond/extra"),
-            ("POST", "/v1/node/chats/../messages/m/respond"),
+            ("GET", "/v1/node/chats/c/messages/m/agent-configuration"),
+            ("POST", "/v1/node/chats/c/messages/m/respond"),
+            ("GET", "/v1/node/chats/c/messages/m/private"),
+            (
+                "POST",
+                "/v1/node/chats/c/messages/m/agent-configuration/extra",
+            ),
+            ("POST", "/v1/node/chats/../messages/m/agent-configuration"),
         ] {
             assert!(!super::client_route(method, path), "{method} {path}");
         }

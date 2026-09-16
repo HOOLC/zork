@@ -625,7 +625,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    // Contract: docs/zork-agent-architecture.md [QUERY-01, SEGMENT-01]
+    // Contract: docs/design/agent-runtime.md [QUERY-01, SEGMENT-01]
     fn repeated_history_scans_keep_the_open_segment_after_path_replacement() {
         let root = tempfile::tempdir().unwrap();
         let session = ulid::Ulid::new();
@@ -678,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [EVENT-02, QUERY-01]
+    // Contract: docs/design/agent-runtime.md [EVENT-02, QUERY-01]
     fn reverse_lines_cross_blocks_and_ignore_a_torn_tail() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("segment.jsonl");

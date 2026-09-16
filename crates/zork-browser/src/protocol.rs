@@ -61,6 +61,18 @@ pub enum Action {
     },
 }
 
+impl Action {
+    pub fn tab_id(&self) -> Option<&str> {
+        match self {
+            Self::List | Self::Open { .. } => None,
+            Self::Navigate { tab_id, .. } | Self::Back { tab_id } | Self::Forward { tab_id } |
+            Self::Reload { tab_id } | Self::Stop { tab_id } | Self::Close { tab_id } | Self::Read { tab_id } |
+            Self::Click { tab_id, .. } | Self::Type { tab_id, .. } | Self::Key { tab_id, .. } |
+            Self::Scroll { tab_id, .. } | Self::Screenshot { tab_id } => Some(tab_id),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Inspection {
     pub tab_id: String,

@@ -2,6 +2,7 @@ package surf.zork.android
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.activity.compose.setContent
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -235,6 +236,81 @@ class MeshIntegrationTest {
             .put("peer", peer).put("method", "GET").put("path", "/v1/node/agents").put("body", JSONObject.NULL).toString()))
         assertFalse("Revoked device retained access", result.getBoolean("ok"))
         call("pause")
+    }
+
+    @Test fun prepareExecutionHistoryFixture() {
+        initialize()
+        call("resume")
+        val peer = requireNotNull(args.getString("origin"))
+        call("save_peer", "origin" to peer, "name" to "执行历史测试设备", "address" to args.getString("address"))
+        val session = requireNotNull(args.getString("session"))
+        File(context.filesDir, "android-history-lab.json").writeText(JSONObject().put("peer", peer).put("session", session).toString())
+        call("pause")
+    }
+
+    @Test fun sessionExecutionHistoryUsesNativeObservation() = runBlocking<Unit> {
+        val saved = JSONObject(File(context.filesDir, "android-history-lab.json").readText())
+        val peer = saved.getString("peer")
+        val session = saved.getString("session")
+        val repository = ClientRepository(context, File(root))
+        val models = androidx.lifecycle.ViewModelStore()
+        androidx.test.core.app.ActivityScenario.launch(Nav7PreviewActivity::class.java).use { scenario ->
+            lateinit var model: ClientViewModel
+            scenario.onActivity { activity ->
+                model = ClientViewModel(context.applicationContext as android.app.Application, repository)
+                models.put("history", model)
+                activity.setContent { ZorkTheme {
+                    model.sessionHistory?.let { state -> SessionHistoryPage(state, HistoryActions(
+                        model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory,
+                        model::retryHistory, model::historyDetail)) }
+                } }
+                model.foreground(true)
+            }
+            suspend fun awaitState(predicate: (ClientViewModel) -> Boolean) = withTimeout(20000) {
+                while (true) {
+                    var satisfied = false
+                    scenario.onActivity { satisfied = predicate(model) }
+                    if (satisfied) break
+                    delay(20)
+                }
+            }
+            try {
+                awaitState { it.ready }
+                scenario.onActivity {
+                    model.selectPeer(Peer(peer, "历史测试设备", ""))
+                    model.openHistory(session, "Android Leader")
+                }
+                awaitState { it.sessionHistory?.let { history -> history.status.loaded && !history.status.loading && history.entries.any { row -> row.title == "执行命令" } } == true }
+                scenario.onActivity {
+                    val history = model.sessionHistory!!
+                    assertNull(history.status.error)
+                    assertTrue(history.entries.size <= 100)
+                    val entry = history.entries.first { it.title == "执行命令" }
+                    model.historyDetail(entry.id)
+                }
+                awaitState { it.sessionHistory?.detail != null }
+                scenario.onActivity {
+                    val history = model.sessionHistory!!
+                    assertTrue(history.detail!!.sections.any { it.code && it.chunks.any { chunk -> chunk.contains("shell.run") } })
+                    history.detail = null
+                    model.foreground(false)
+                }
+                withTimeout(20000) { while (repository.command("snapshot").optBoolean("running")) delay(20) }
+                scenario.onActivity { model.foreground(true) }
+                awaitState { it.sessionHistory?.detail != null }
+                scenario.onActivity {
+                    assertNull(model.sessionHistory!!.status.error)
+                    model.historyDetail(null)
+                    model.closeHistory()
+                    assertNull(model.sessionHistory)
+                }
+                File(context.filesDir, "session-history-native.json").writeText(JSONObject()
+                    .put("session", session).put("jni_history", true).put("record_detail", true).put("foreground_restores_detail", true).toString())
+            } finally {
+                scenario.onActivity { model.foreground(false); models.clear() }
+                repository.command("pause")
+            }
+        }
     }
 
     @Test fun localEditsDuringStalledConnection() = runBlocking<Unit> {

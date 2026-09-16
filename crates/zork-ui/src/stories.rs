@@ -51,6 +51,16 @@ fn click(id: &str) -> Value {
 }
 pub fn catalog() -> Vec<Story> {
     let mut items = vec![];
+    let mut liquid = Story::new(
+        "liquid",
+        "液态控件",
+        "gallery",
+        "crates/zork-ui/src/liquid_story",
+        "liquid",
+    );
+    liquid.width = 1180.;
+    liquid.height = 900.;
+    items.push(liquid);
     for (family, title, states, source, reference) in [
         (
             "interaction",
@@ -302,6 +312,11 @@ impl PrimitiveStory {
     }
 
     pub fn inspect(&self, cx: &gpui::App) -> Value {
+        if let Some(extra) = &self.extra {
+            if let Ok(view) = extra.clone().downcast::<crate::liquid_story::Gallery>() {
+                return view.read(cx).inspect(cx);
+            }
+        }
         json!({"id":self.story.id,"state":self.story.state,"brand_progress":self.brand.read(cx).morph_progress(),"selected":self.selected,"open":self.open,"clicks":self.clicks,"checked":self.selected==1,"quote":self.quote,"text":if self.story.state=="secret" { "[redacted]" } else {self.input.read(cx).value()}})
     }
 
@@ -330,7 +345,9 @@ impl PrimitiveStory {
         } else {
             usize::from(matches!(story.state.as_str(), "on" | "disabled-on"))
         };
-        let extra = if story.family == "interaction" {
+        let extra = if story.family == "liquid" {
+            Some(cx.new(crate::liquid_story::Gallery::new).into())
+        } else if story.family == "interaction" {
             if story.state == "form" {
                 Some(cx.new(crate::form_story::FormStory::new).into())
             } else {
@@ -350,6 +367,9 @@ impl PrimitiveStory {
                 })
                 .into(),
             )
+        } else if story.family == "attachment" {
+            let text = cx.try_global::<crate::history_page::stories::StoryText>().map(|text| text.0.clone()).unwrap_or_else(|| crate::resources::Text(std::rc::Rc::new(str::to_owned)));
+            Some(cx.new(|cx| crate::attachment_viewer::stories::Story::thumbnail(&story.state, text, cx)).into())
         } else if story.family == "comments" {
             Some(
                 cx.new(|cx| {
@@ -383,6 +403,13 @@ impl PrimitiveStory {
 }
 impl Render for PrimitiveStory {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.story.family == "liquid" {
+            return div()
+                .id(self.id("story-sample"))
+                .size_full()
+                .child(self.extra.clone().unwrap())
+                .into_any_element();
+        }
         if self.focus_pending && !self.grouped {
             self.focus_pending = false;
             window.focus(&self.focus, cx);
@@ -474,34 +501,15 @@ impl Render for PrimitiveStory {
             .id(self.id("story-field-surface"))
             .automation(AutomationRole::Status, "输入框示例")
             .into_any_element(),
-            "choice" => ui::choice_group(self.id("choice-active"), self.selected, 2)
-                .children(
-                    ["订阅账号", "API 接入"]
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, label)| {
-                            ui::segment(
-                                self.id(&format!("story-choice-{i}")),
-                                label,
-                                self.selected == i,
-                                state != "disabled",
-                            )
-                            .flex_1()
-                            .justify_center()
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                if v.story.state != "disabled" {
-                                    v.selected = i;
-                                    cx.notify();
-                                }
-                            }))
-                            .automation_enabled(
-                                state != "disabled",
-                                AutomationRole::Option,
-                                label,
-                            )
-                        }),
-                )
-                .into_any_element(),
+            "choice" => crate::components::liquid::controls::deferred_segmented(
+                self.id("choice-active"),
+                ["订阅账号", "API 接入"].into_iter().enumerate().map(|(index, label)| crate::components::liquid::controls::Segment {
+                    id: self.id(&format!("story-choice-{index}")), label: label.into(), disabled: false,
+                }).collect(),
+                vec![], Some(self.selected), crate::components::liquid::controls::SegmentKind::Choice,
+                state != "disabled", CUE_UI.palette.canvas,
+                cx.listener(|v, index: &usize, _, cx| { v.selected = *index; cx.notify(); }),
+            ).into_any_element(),
             "dropdown" => ui::dropdown_with_icons(
                 self.id("story-select"),
                 if state == "empty" {
@@ -599,7 +607,7 @@ impl Render for PrimitiveStory {
                             v.children((1..=12).map(|i| {
                                 div()
                                     .py_2()
-                                    .border_b_1()
+                                    .border_b(gpui::px(crate::design::BORDER_WIDTH))
                                     .border_color(rgb(p.border))
                                     .child(format!("设置项目 {i}"))
                             }))
@@ -905,69 +913,7 @@ impl Render for PrimitiveStory {
                 false,
             )
             .into_any_element(),
-            "attachment" => div()
-                .w_full()
-                .flex()
-                .flex_col()
-                .items_start()
-                .gap_3()
-                .child(if state == "message-image" {
-                    static IMAGE: std::sync::LazyLock<std::sync::Arc<gpui::Image>> = std::sync::LazyLock::new(|| {
-                        std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Svg, include_bytes!("../assets/avatars/portraits/fox.svg").to_vec()))
-                    });
-                    crate::components::attachments::message_image(self.id("story-attachment"), IMAGE.clone().use_render_image(window, cx), 144.)
-                        .on_click(cx.listener(|v, _, _, cx| {v.open = !v.open;cx.notify();}))
-                        .automation(AutomationRole::Button, "狐狸.svg").into_any_element()
-                } else if state == "message-document" {
-                    crate::components::attachments::message_document(self.id("story-attachment"), "使用说明.md".into(), "Markdown".into(), 300.)
-                        .on_click(cx.listener(|v, _, _, cx| {v.open = !v.open;cx.notify();}))
-                        .automation(AutomationRole::Button, "使用说明.md").into_any_element()
-                } else if state == "row" {
-                    crate::components::attachments::row(self.id("story-attachment"), "组件规范.md".into(), "3.2 KB".into(), cx, |v, cx| { v.open = !v.open; cx.notify(); }).into_any_element()
-                } else { crate::components::attachments::card(
-                    self.id("story-attachment"),
-                    if state == "image" {
-                        "agent-avatar.svg"
-                    } else {
-                        "组件规范.md"
-                    }
-                    .into(),
-                    match state {
-                        "loading" => "正在加载…",
-                        "error" if !self.open => "加载失败，点击重试",
-                        "unavailable" => "此设备暂时离线",
-                        _ => "3.2 KB · v1",
-                    }
-                    .into(),
-                    !matches!(state, "loading" | "unavailable"),
-                    cx,
-                    |v, cx| {
-                        v.open = !v.open;
-                        cx.notify();
-                    },
-                ).into_any_element() })
-                .when(self.open, |v| {
-                    v.child(if matches!(state, "image" | "message-image") {
-                        div()
-                            .p_4()
-                            .child(ui::agent_avatar(Some("fox"), 96.))
-                            .into_any_element()
-                    } else {
-                        message::render_markdown(
-                            &self.id("attachment-preview"),
-                            "## 组件规范\n\n按钮使用 32 px 高度，供应商选择带图标。",
-                        )
-                    })
-                    .child(
-                        ui::button(self.id("attachment-close"), "收起预览", false, true)
-                            .on_click(cx.listener(|v, _, _, cx| {
-                                v.open = false;
-                                cx.notify();
-                            }))
-                            .automation(AutomationRole::Button, "收起预览"),
-                    )
-                })
-                .into_any_element(),
+            "attachment" => self.extra.clone().unwrap().into_any_element(),
             "feedback" => ui::status_notice(
                 match state {
                     "success" => "连接已保存，可以继续配置模型。",
@@ -1017,6 +963,7 @@ impl Render for PrimitiveStory {
                     .child(component)
                     .automation(AutomationRole::Status, self.story.title.clone()),
             )
+            .into_any_element()
     }
 }
 
@@ -1057,6 +1004,12 @@ impl FamilyStories {
 }
 impl Render for FamilyStories {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        if self.family == "liquid" {
+            return div()
+                .size_full()
+                .children(self.items.first().map(|(_, child)| child.clone()))
+                .into_any_element();
+        }
         if let Some(focus) = self.pending_focus.take() {
             window.on_next_frame(move |window, cx| {
                 window.blur();
@@ -1173,7 +1126,7 @@ impl Render for FamilyStories {
                             .w(px(card_width))
                             .flex_shrink_0()
                             .rounded(px(ui::CARD_RADIUS))
-                            .border_1()
+                            .border(gpui::px(crate::design::BORDER_WIDTH))
                             .border_color(rgb(p.border))
                             .overflow_hidden()
                             .child(
@@ -1192,5 +1145,6 @@ impl Render for FamilyStories {
                     })),
             )
             .automation(AutomationRole::Status, "组件的全部状态")
+            .into_any_element()
     }
 }

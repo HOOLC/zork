@@ -79,6 +79,19 @@ def sign(path, identity=None, *, deep=False):
             raise RuntimeError((root/'err').read_text() if (root/'err').exists() else 'Signing helper did not complete')
 
 
+def copy_framework(source: Path, destination: Path):
+    # Clone data on APFS, with ditto's normal copy fallback on other volumes.
+    # Cloning also copies xattrs even with --noextattr, so omit ordinary copied
+    # metadata explicitly. Quarantine and OS-managed provenance remain intact.
+    subprocess.run(['ditto', '--clone', '--norsrc', '--noextattr',
+                    str(source), str(destination)], check=True)
+    for path in [destination, *destination.rglob('*')]:
+        attributes = subprocess.check_output(['xattr', '-s', str(path)], text=True).splitlines()
+        for name in attributes:
+            if name not in {'com.apple.quarantine', 'com.apple.provenance'}:
+                subprocess.run(['xattr', '-s', '-d', name, str(path)], check=True)
+
+
 def stage_runtime(binaries: Path, destination: Path):
     executable = binaries / 'zork-browser-runtime'
     helper = binaries / 'zork-browser-helper'
@@ -92,26 +105,44 @@ def stage_runtime(binaries: Path, destination: Path):
     contents = app / 'Contents'
     frameworks = contents / 'Frameworks'
     frameworks.mkdir(parents=True)
-    # ditto preserves the framework's versioned layout, permissions and links.
-    subprocess.run(['ditto', '--norsrc', '--noextattr', str(framework), str(frameworks / framework.name)], check=True)
+    copy_framework(framework, frameworks / framework.name)
 
-    def bundle(path, name, source, identifier):
+    assets = Path(__file__).resolve().parents[2] / 'crates/zork-ui/assets/app'
+
+    def bundle(path, name, source, identifier, display_name, icon, runtime=None):
         mac = path / 'Contents/MacOS'
         mac.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, mac / name)
         (mac / name).chmod(0o755)
+        if runtime:
+            shutil.copyfile(runtime, mac / 'ZorkBrowserHelperRuntime')
+            (mac / 'ZorkBrowserHelperRuntime').chmod(0o755)
+        resources = path / 'Contents/Resources'
+        resources.mkdir(exist_ok=True)
+        shutil.copyfile(assets / icon, resources / icon)
         with (path / 'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'CFBundleExecutable': name, 'CFBundleName': name,
+            plistlib.dump({'CFBundleExecutable': name, 'CFBundleName': display_name,
+                          'CFBundleDisplayName': display_name, 'CFBundleIconFile': icon,
                           'CFBundleIdentifier': identifier, 'CFBundlePackageType': 'APPL',
                           'CFBundleShortVersionString': '1.0.0', 'CFBundleVersion': '1',
+                          **({'ZorkRuntimeExecutable': 'ZorkBrowserHelperRuntime'} if runtime else {}),
                           'LSUIElement': True, 'LSMinimumSystemVersion': '11.0',
                           'NSSupportsAutomaticGraphicsSwitching': True,
                           'LSEnvironment': {'MallocNanoZone': '0'}}, output)
 
-    bundle(app, 'ZorkBrowser', executable, 'surf.zork.desktop.browser')
-    for index, suffix in enumerate(['', ' (Alerts)', ' (GPU)', ' (Plugin)', ' (Renderer)']):
-        name = 'ZorkBrowser Helper' + suffix
-        bundle(frameworks / (name + '.app'), name, helper, f'surf.zork.desktop.browser.helper{index}')
+    bundle(app, 'ZorkBrowser', executable, 'surf.zork.desktop.browser', 'Zork-Browser', 'ZorkBrowser.icns')
+    # Like Station, register each helper's app identity before exec. PID, CEF
+    # arguments and inherited sandbox/IPC descriptors survive that exec.
+    with tempfile.TemporaryDirectory(prefix='zork-browser-launcher-') as scratch:
+        launcher = Path(scratch) / 'launcher'
+        subprocess.run(['clang', '-arch', 'arm64', '-mmacosx-version-min=11.0',
+                        str(Path(__file__).resolve().parents[1] / 'build/macos-helper-launcher.m'),
+                        '-framework', 'AppKit', '-framework', 'ApplicationServices', '-o', str(launcher)], check=True)
+        # Keep CEF's executable/bundle layout and existing identifiers stable.
+        for index, role in enumerate(['Helper', 'Alerts', 'GPU', 'Plugin', 'Renderer', 'Network', 'Storage']):
+            name = 'ZorkBrowser Helper' + ('' if role == 'Helper' else f' ({role})')
+            bundle(frameworks / (name + '.app'), name, launcher, f'surf.zork.desktop.browser.helper{index}',
+                   'Zork-Browser-' + role, 'ZorkBrowser' + role + '.icns', helper)
     resources = contents / 'Resources'
     resources.mkdir(exist_ok=True)
     license = cef / 'LICENSE.txt'
@@ -124,6 +155,7 @@ def stage_runtime(binaries: Path, destination: Path):
     # indirectly through its parent can fail in the Code Signing subsystem.
     sign(frameworks / framework.name, deep=True)
     for helper_app in sorted(frameworks.glob('*.app')):
+        sign(helper_app / 'Contents/MacOS/ZorkBrowserHelperRuntime')
         sign(helper_app)
     sign(app)
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)

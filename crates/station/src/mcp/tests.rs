@@ -10,85 +10,52 @@ fn who() -> Subject {
     }
 }
 #[test]
-fn authorization_precedes_disabled_and_tool_policy_diagnostics() {
+fn legacy_grants_do_not_restrict_members_but_disabled_and_tool_policy_still_apply() {
     let mut server = Server {
         id: "server".into(),
         revision: "revision".into(),
         config: config(),
     };
-    server.config.grant = Grant::Selected {
-        subjects: vec![Principal {
-            origin: who().origin,
-            agent: who().agent,
-        }],
-    };
-    let mut stranger = who();
-    stranger.agent = "other".into();
-    assert!(server.access(&stranger, true, Some("echo")).is_ok());
-    assert_eq!(
-        server
-            .access(&stranger, false, Some("echo"))
-            .unwrap_err()
-            .to_string(),
-        "mcp_access_denied"
-    );
+    server.config._grant = json!({"scope":"selected","subjects":[]});
+    let mut other = who();
+    other.agent = "another-agent".into();
+    for local in [true, false] {
+        assert!(server.access(&other, local, Some("echo")).is_ok());
+    }
     server.config.enabled = false;
-    assert!(!server.allows(&who(), false, None));
+    for local in [true, false] {
+        assert_eq!(
+            server
+                .access(&other, local, Some("echo"))
+                .unwrap_err()
+                .to_string(),
+            "mcp_disabled"
+        );
+    }
+    server.config.enabled = true;
+    server.config.tool_allowlist = Some(vec!["echo".into()]);
+    assert!(server.access(&other, false, Some("echo")).is_ok());
     assert_eq!(
         server
-            .access(&who(), false, Some("echo"))
-            .unwrap_err()
-            .to_string(),
-        "mcp_disabled"
-    );
-    assert_eq!(
-        server
-            .access(&stranger, false, Some("echo"))
-            .unwrap_err()
-            .to_string(),
-        "mcp_access_denied"
-    );
-    server.config.tool_allowlist = Some(vec![]);
-    assert_eq!(
-        server
-            .access(&who(), false, Some("echo"))
-            .unwrap_err()
-            .to_string(),
-        "mcp_tool_not_allowed"
-    );
-    assert_eq!(
-        server
-            .access(&stranger, false, Some("echo"))
-            .unwrap_err()
-            .to_string(),
-        "mcp_access_denied"
-    );
-    assert_eq!(
-        server
-            .access(&stranger, true, Some("echo"))
+            .access(&other, false, Some("delete"))
             .unwrap_err()
             .to_string(),
         "mcp_tool_not_allowed"
     );
 }
 #[test]
-fn persistent_ids_grants_and_compare_and_swap() {
+fn persistent_ids_configuration_and_compare_and_swap() {
     let dir = tempfile::tempdir().unwrap();
     let store = store::Store::open(dir.path()).unwrap();
     let server = store.save(config(), None, None).unwrap();
     valid_id(&server.id).unwrap();
     assert!(server.allows(&who(), true, Some("echo")));
-    assert!(!server.allows(&who(), false, None));
+    assert!(server.allows(&who(), false, None));
     assert!(store
         .save(config(), Some(&server.id), Some("stale"))
         .is_err());
     let mut input = config();
-    input.grant = Grant::Selected {
-        subjects: vec![Principal {
-            origin: who().origin,
-            agent: who().agent,
-        }],
-    };
+    input._grant = json!({"scope":"local"});
     input.tool_allowlist = Some(vec!["echo".into()]);
     let server = store
         .save(input, Some(&server.id), Some(&server.revision))

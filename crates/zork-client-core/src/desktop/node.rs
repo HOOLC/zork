@@ -112,20 +112,31 @@ impl LocalNode {
         Ok(())
     }
     pub fn start(&self) -> Result<SavedNode> {
+        super::trace_startup("client.local_start_begin");
         self.stopping.store(false, Ordering::Release);
         let mut process = self.process.lock().expect("local node");
         ensure!(!self.quitting.load(Ordering::Acquire), "客户端正在退出");
         let binary = node_binary()?;
         let fresh = !zork_config::config_path(&self.root).exists();
         let mut config = zork_config::ensure_layout(&self.root)?;
+        super::trace_startup("client.local_layout_ready");
         let already_running = self.await_supervisor()?;
+        super::trace_startup("client.supervisor_checked");
         let previous_gateway = if already_running {
             None
         } else {
             zork_config::read_ready_pid(&self.root, "zork-station")?
         };
         let mut events = manager::Events::new(&self.root)?;
-        let mut changes = events.subscribe().merge(self.wake.subscribe());
+        // Readiness is an exact file source. macOS directory events can batch
+        // delivery; vnode notifications announce the committed PID immediately.
+        let readiness = zork_notify::files::Source::new([
+            zork_config::ready_pid_path(&self.root, "zork-station"),
+        ])?;
+        let mut changes = events
+            .subscribe()
+            .merge(readiness.subscribe())
+            .merge(self.wake.subscribe());
         if !already_running {
             let services = super::load_services()?;
             services.apply_network(&mut config.mesh)?;
@@ -203,7 +214,9 @@ impl LocalNode {
                     command.process_group(0);
                 }
                 manager::prepare_child(&mut command);
+                super::trace_startup("client.before_supervisor_spawn");
                 *process = Some(command.spawn().context("start local node")?);
+                super::trace_startup("client.supervisor_spawned");
             }
         }
         let _child_exit = process
@@ -249,6 +262,7 @@ impl LocalNode {
                     )?)?);
                 }
                 self.known_running.store(true, Ordering::Release);
+                super::trace_startup("client.local_ready");
                 return Ok(node);
             }
             // A declared-ready server can still fail a request; retry that IO
@@ -373,7 +387,7 @@ pub(super) fn node_binary() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("ZORK_NODE_BINARY") {
         let path = PathBuf::from(path);
         ensure!(path.is_file(), "ZORK_NODE_BINARY is not a file");
-        return Ok(path);
+        return Ok(manager::launch_path(&path));
     }
     let current = std::env::current_exe()?;
     let sibling = current
@@ -381,7 +395,7 @@ pub(super) fn node_binary() -> Result<PathBuf> {
         .context("application directory")?
         .join("zork");
     ensure!(sibling.is_file(), "此安装缺少本机设备组件，请更新客户端");
-    Ok(sibling)
+    Ok(manager::launch_path(&sibling))
 }
 
 #[cfg(test)]

@@ -273,7 +273,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-03]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-03]
     async fn changed_limits_reject_the_request_before_the_provider_adapter() {
         let root = tempfile::tempdir().unwrap();
         let profiles = Arc::new(ProfileStore::open(root.path().to_owned(), true, false));

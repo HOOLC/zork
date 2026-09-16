@@ -5,135 +5,51 @@ use zork_client_core::state::HistoryData;
 use zork_client_core::state::{ConversationTopics, SessionOverview};
 use zork_ui::components::tooltip::DetailsTooltip;
 
-/// One presentation for the dock; changing members replaces only its live source.
+/// Core subscription adapter; the shared overlay owns presentation and hover.
 #[derive(Default)]
 pub(super) struct Overlay {
-    active: Option<Entity<Preview>>,
-    anchor: gpui::Bounds<gpui::Pixels>,
-    anchors: HashMap<String, gpui::Bounds<gpui::Pixels>>,
-    revision: u64,
-    observation: Option<gpui::Subscription>,
-    trigger_hover: bool,
-    panel_hover: bool,
-    close: Option<Task<()>>,
+    active: Option<Entity<Preview>>, observation: Option<gpui::Subscription>,
+    shared: Option<Entity<zork_ui::member_activity::Overlay>>,
 }
-
 impl Overlay {
-    pub(super) fn show(
-        &mut self,
-        id: &str,
-        anchor: gpui::Bounds<gpui::Pixels>,
-        create: impl FnOnce(&mut gpui::App) -> Entity<Preview>,
-        cx: &mut Context<Self>,
-    ) {
-        self.close.take();
-        self.trigger_hover = true;
-        self.panel_hover = false;
-        self.anchor = anchor;
-        if !self.is_target(id, cx) {
+    fn shared(&mut self, cx: &mut Context<Self>) -> Entity<zork_ui::member_activity::Overlay> {
+        if let Some(shared) = &self.shared { return shared.clone(); }
+        let shared = cx.new(|_| Default::default());
+        cx.subscribe(&shared, |v, _, event: &zork_ui::member_activity::Closed, cx| {
+            if v.active.as_ref().is_some_and(|active| active.read(cx).member.id == event.0) { v.active = None; v.observation = None; }
+        }).detach();
+        self.shared = Some(shared.clone()); shared
+    }
+    pub(super) fn show(&mut self, id: &str, anchor: gpui::Bounds<gpui::Pixels>, create: impl FnOnce(&mut gpui::App) -> Entity<Preview>, cx: &mut Context<Self>) {
+        if !self.active.as_ref().is_some_and(|active| active.read(cx).member.id == id) {
             let content = create(cx);
-            self.observation = Some(cx.observe(&content, |v, _, cx| {
-                v.revision = v.revision.wrapping_add(1);
-                cx.notify();
-            }));
+            self.observation = Some(cx.observe(&content, |v, _, cx| v.update_shared(cx)));
             self.active = Some(content);
-            self.revision = self.revision.wrapping_add(1);
         }
-        cx.notify();
+        let shared = self.shared(cx);
+        let content = self.active.as_ref().unwrap().read(cx);
+        let details = content.details.clone(); let footer = content.locale.text("presence_history_hint").into();
+        shared.update(cx, |view, cx| view.show(id.into(), details, footer, anchor, cx)); cx.notify();
     }
-
-    fn is_target(&self, id: &str, cx: &gpui::App) -> bool {
-        self.active
-            .as_ref()
-            .is_some_and(|v| v.read(cx).member.id == id)
-    }
-
-    pub(super) fn anchor(
-        &mut self,
-        id: &str,
-        bounds: gpui::Bounds<gpui::Pixels>,
-        cx: &mut Context<Self>,
-    ) {
-        if self.anchors.insert(id.to_owned(), bounds) != Some(bounds) {
-            if self.is_target(id, cx) {
-                self.anchor = bounds;
-            }
-            if self.active.is_some() {
-                cx.notify();
-            }
+    fn update_shared(&mut self, cx: &mut Context<Self>) {
+        if let Some(content) = &self.active {
+            let content = content.read(cx); let id = content.member.id.clone(); let details = content.details.clone(); let footer = content.locale.text("presence_history_hint").into();
+            self.shared(cx).update(cx, |view, cx| view.update(&id, details, footer, cx));
         }
     }
-
-    pub(super) fn retain(
-        &mut self,
-        ids: impl Iterator<Item = impl AsRef<str>>,
-        cx: &mut Context<Self>,
-    ) {
-        let ids = ids
-            .map(|id| id.as_ref().to_owned())
-            .collect::<std::collections::HashSet<_>>();
-        self.anchors.retain(|id, _| ids.contains(id));
-        if let Some(active) = &self.active {
-            let id = &active.read(cx).member.id;
-            if !ids.contains(id) {
-                self.active = None;
-                self.observation = None;
-                self.close = None;
-                cx.notify();
-            }
-        }
+    pub(super) fn anchor(&mut self, id: &str, bounds: gpui::Bounds<gpui::Pixels>, cx: &mut Context<Self>) {
+        self.shared(cx).update(cx, |view, cx| view.anchor(id, bounds, cx));
     }
-
+    pub(super) fn retain(&mut self, ids: impl Iterator<Item = impl AsRef<str>>, cx: &mut Context<Self>) {
+        let ids: Vec<_> = ids.map(|id| id.as_ref().to_owned()).collect();
+        self.shared(cx).update(cx, |view, cx| view.retain(&ids, cx));
+    }
     pub(super) fn leave(&mut self, id: &str, cx: &mut Context<Self>) {
-        if self.is_target(id, cx) {
-            self.trigger_hover = false;
-            self.schedule_close(cx);
-        }
-    }
-
-    fn schedule_close(&mut self, cx: &mut Context<Self>) {
-        self.close.take();
-        if self.trigger_hover || self.panel_hover {
-            return;
-        }
-        self.close = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(80))
-                .await;
-            let _ = this.update(cx, |v, cx| {
-                v.active = None;
-                v.observation = None;
-                v.close = None;
-                cx.notify();
-            });
-        }));
+        self.shared(cx).update(cx, |view, cx| view.leave(id, cx));
     }
 }
-
 impl Render for Overlay {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(content) = self.active.clone() else {
-            return gpui::Empty.into_any_element();
-        };
-        let mut anchor = self.anchor;
-        // Active teammates form a vertical stack. Keep every avatar available
-        // as a target instead of covering the next one with the floating card.
-        for bounds in self.anchors.values() {
-            anchor.origin.y = anchor.origin.y.min(bounds.top());
-        }
-        zork_ui::components::tooltip::sliding_popup(
-            "composer-member-popup",
-            format!("{}-{}", content.read(cx).member.id, self.revision),
-            anchor,
-            320.,
-            move |_, cx| content.read(cx).content().into_any_element(),
-        )
-        .on_hover(cx.listener(|v, hovered, _, cx| {
-            v.panel_hover = *hovered;
-            v.schedule_close(cx);
-        }))
-        .into_any_element()
-    }
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement { self.shared(cx) }
 }
 
 pub(super) struct Preview {
@@ -246,25 +162,6 @@ impl Preview {
             _activity: activity,
         }
     }
-    fn content(&self) -> impl IntoElement {
-        div()
-            .id(format!("detail-tooltip-{}", self.details.key))
-            .w_full()
-            .p(px(16.))
-            .text_color(rgb(TEXT))
-            .child(self.details.content())
-            .child(
-                div()
-                    .mt(px(12.))
-                    .text_size(px(10.))
-                    .text_color(rgb(DIM))
-                    .child(self.locale.text("presence_history_hint")),
-            )
-            .automation(
-                AutomationRole::Status,
-                format!("{}详情：{}", self.details.kind, self.details.title),
-            )
-    }
 }
 
 fn details(member: &ParticipantStatus, locale: Locale, state: &SessionOverview) -> DetailsTooltip {
@@ -347,6 +244,12 @@ fn details(member: &ParticipantStatus, locale: Locale, state: &SessionOverview) 
             }
         }
     }
+    if member.assigned {
+        rows.push((
+            locale.text("presence_work_relation").into(),
+            locale.text("presence_assigned_executor").into(),
+        ));
+    }
     rows.push((
         locale.text("chat_receiving").into(),
         locale
@@ -391,6 +294,7 @@ mod tests {
         };
         let member = ParticipantStatus {
             subscribed: false,
+            assigned: false,
             id: "a".into(),
             name: "Atlas".into(),
             avatar: None,

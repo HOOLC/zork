@@ -21,7 +21,7 @@ with sync_playwright() as p:
    e=wait(id);page.mouse.click(e['center']['x'],e['center']['y']);page.wait_for_timeout(100)
   ime=page.context.new_cdp_session(page)
   def fill(id,text):
-   click(id);page.keyboard.press('Control+A');page.keyboard.press('Backspace')
+   click(id);page.keyboard.press('ControlOrMeta+A');page.keyboard.press('Backspace')
    if text:
     end=len(text.encode('utf-16-le'))//2
     ime.send('Input.imeSetComposition',{'text':text,'selectionStart':end,'selectionEnd':end})

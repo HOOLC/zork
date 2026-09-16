@@ -1,27 +1,37 @@
 //! Bounded product operations on an owned Synch engine node. No daemon, local
 //! control protocol, command interpreter or control socket is involved.
+mod folders;
+mod tree;
 use crate::{MAX_ARTIFACT, MAX_FRAME};
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, RwLock,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use synch_core::{NodeId, OriginId, SockStatus};
 use synch_engine::{EngineError, Node, VersionPolicy};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+pub use tree::{
+    TreeCatalog, TreeChunk, TreeCursor, TreeEntry, TreePage, TreeQuery, TreeSpace, TreeVersion,
+};
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn artifact_timeout(bytes: u64) -> Duration {
+    CALL_TIMEOUT + Duration::from_secs(bytes.div_ceil(256 * 1024))
+}
 
 #[derive(Debug)]
 pub(crate) struct StartupPublication {
     pub space: String,
+    pub flush: bool,
     pub done: tokio::sync::oneshot::Sender<Result<()>>,
 }
 
@@ -100,6 +110,9 @@ impl MeshNode {
     }
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+    pub fn is_running(&self) -> bool {
+        self.engine().is_ok()
     }
     fn engine(&self) -> Result<Node> {
         let guard = self.active.read().expect("Mesh node");
@@ -218,6 +231,40 @@ impl MeshNode {
         self.blocking(move |node| Ok(node.add_filesystem_source(&space, path)?))
             .await
     }
+    /// Retire a publication role without touching the source's files.
+    pub async fn retire_source(&self, space: &str) -> Result<()> {
+        let space = space.to_owned();
+        self.blocking(move |node| {
+            if node.store().source(&space)?.is_some() {
+                let changes = node.source_removal(&space)?;
+                node.publish(&changes)?;
+                node.finish_source_removal(&space)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+    /// Queue the initial filesystem scan in the owned runtime. Adding a source
+    /// only arms Synch's watcher; an unchanged directory may produce no hint.
+    pub async fn schedule_source_scan(&self, space: &str) -> Result<()> {
+        let sender = self
+            .active
+            .read()
+            .expect("Mesh node")
+            .as_ref()
+            .context("Mesh node is not running")?
+            .startup_publish
+            .clone();
+        let (done, _) = tokio::sync::oneshot::channel();
+        sender
+            .send(StartupPublication {
+                space: space.into(),
+                flush: false,
+                done,
+            })
+            .await
+            .context("Mesh publisher stopped")
+    }
     pub async fn activate_bridge(&self, token: String, max_streams: u32) -> Result<()> {
         self.blocking(move |node| {
             Ok(node.socket_activate(&synch_store::SocketActivation {
@@ -266,6 +313,7 @@ impl MeshNode {
             sender
                 .send(StartupPublication {
                     space: space.clone(),
+                    flush: true,
                     done,
                 })
                 .await
@@ -302,7 +350,7 @@ impl MeshNode {
     pub async fn pin(&self, object: &ObjectRef) -> Result<()> {
         ensure!(
             object.size <= MAX_ARTIFACT as u64,
-            "artifact exceeds 10 MiB"
+            "artifact exceeds 300 MiB"
         );
         self.engine()?
             .pin_object(&object.root.parse()?, Some(object.size))
@@ -310,9 +358,9 @@ impl MeshNode {
         Ok(())
     }
     pub async fn put(&self, space: &str, path: &str, bytes: &[u8]) -> Result<ObjectRef> {
-        ensure!(bytes.len() <= MAX_ARTIFACT, "artifact exceeds 10 MiB");
+        ensure!(bytes.len() <= MAX_ARTIFACT, "artifact exceeds 300 MiB");
         let node = self.engine()?;
-        tokio::time::timeout(CALL_TIMEOUT, async {
+        tokio::time::timeout(artifact_timeout(bytes.len() as u64), async {
             // Scratch lives with the node and is removed even on cancellation.
             let scratch = tempfile::Builder::new()
                 .prefix("zork-put-")
@@ -338,18 +386,25 @@ impl MeshNode {
     pub async fn read(&self, object: &ObjectRef) -> Result<Vec<u8>> {
         ensure!(
             object.size <= MAX_ARTIFACT as u64,
-            "artifact exceeds 10 MiB"
+            "artifact exceeds 300 MiB"
         );
         let expected: synch_core::Hash = object.root.parse()?;
         let node = self.engine()?;
         let policy = VersionPolicy::Origin(object.origin.parse()?);
-        tokio::time::timeout(CALL_TIMEOUT, async {
+        tokio::time::timeout(artifact_timeout(object.size), async {
             let range = node
                 .prepare_range(&object.space, &object.path, &policy, 0, Some(object.size))
                 .await;
             let range = match range {
                 Err(EngineError::NotFound(_)) => {
-                    node.anti_entropy_round().await?;
+                    // An authenticated RPC can name its newly published object
+                    // before the background tree sync arrives. Catch up with
+                    // that owner; a general round may choose a different peer.
+                    if let Some(key) = object.origin.strip_prefix("key:") {
+                        node.sync_with_peer(&NodeId::from_z32(key)?).await?;
+                    } else {
+                        node.anti_entropy_round().await?;
+                    }
                     node.prepare_range(&object.space, &object.path, &policy, 0, Some(object.size))
                         .await?
                 }
@@ -443,6 +498,11 @@ impl MeshNode {
     }
     /// One authenticated control handshake, followed by an unframed service stream.
     pub async fn connect_service(&self, origin: &str, id: &str) -> Result<ServiceStream> {
+        self.connect_tunnel(origin, &serde_json::json!({"v":1,"request":{"kind":"service","id":id}})).await
+    }
+
+    /// Open a typed, peer-authorized tunnel; the remote handler selects its endpoint.
+    pub async fn connect_tunnel(&self, origin: &str, payload: &serde_json::Value) -> Result<ServiceStream> {
         self.refresh_peer_route(origin).await?;
         let connection = tokio::time::timeout(
             Duration::from_secs(10),
@@ -452,9 +512,8 @@ impl MeshNode {
         .await??;
         let mut socket = Subscription::new(connection);
         tokio::time::timeout(Duration::from_secs(25), async {
-            let request = serde_json::to_vec(
-                &serde_json::json!({"v":1,"request":{"kind":"service","id":id}}),
-            )?;
+            let request = serde_json::to_vec(payload)?;
+            ensure!(!request.is_empty() && request.len() <= MAX_FRAME, "mesh request too large");
             socket.send.write_u32(request.len() as u32).await?;
             socket.send.write_all(&request).await?;
             let reply = crate::bridge::read_frame(&mut socket.recv).await?;

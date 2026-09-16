@@ -34,7 +34,8 @@ def ok(response):
 
 def events(node, session):
     result = []
-    for path in sorted((node.root / "sessions" / session / "segments").glob("*.jsonl")):
+    execution = getattr(node, "executions", {}).get(session, session)
+    for path in sorted((node.root / "shared-files/sessions" / execution / "segments").glob("*.jsonl")):
         for line in path.read_text().splitlines():
             try:
                 result.append(json.loads(line)["event"])
@@ -73,7 +74,7 @@ def main():
     # original account's refresh token from an isolated test profile.
     if profile.get("auth", {}).get("type") == "oauth":
         expiry = profile["auth"].get("expires", 0)
-        assert expiry > time.time() * 1000 + args.phase_timeout * 3000 + 300000, "subscription access expires too soon"
+        assert expiry > time.time() * 1000 + args.phase_timeout * 4000 + 300000, "subscription access expires too soon"
         profile["auth"].pop("refresh", None)
     redactions = [str(v) for k, v in profile.get("auth", {}).items()
                   if k in ("access", "refresh", "key", "email") and v]
@@ -131,7 +132,9 @@ def main():
         (old / "SKILL.md").write_text("---\nname: existing-guide\ndescription: Existing skill that must survive management operations\n---\nPreserve this source.\n")
         ok(b.request("POST", "/v1/node/agents", {"id": "research", "name": "Research", "role": "leader",
             "profile_id": "live", "model": args.model, "thinking": thinking, "skill_paths": [str(old)]}))
-        researcher = ok(b.request("POST", "/v1/node/agents/research/open", {}))["session_id"]
+        opened = ok(b.request("POST", "/v1/node/agents/research/open", {}))
+        researcher = opened["chat_id"]
+        b.executions = {researcher: opened["agent"]["session_id"]}
         sessions.append((b, researcher))
 
         def run_phase(label, node, sid, prompt):
@@ -160,22 +163,23 @@ def main():
                     phase["outcome"] = terminal["outcome"]
                     phase["duration_seconds"] = round(time.monotonic() - phase_start, 2)
                     phase["tools"] = [e["result"]["tool"] for e in current if e["kind"] == "tool_result"]
-                    forbidden={"device.jobs","mcp","mcp.setup","mcp.status","mcp.read","mcp.cancel","mcp.recover","device.status","device.read","device.cancel","device.recover"}
+                    forbidden={"device.jobs","mcp","mcp.setup","mcp.installed","mcp.configure","mcp.probe","mcp.enable","mcp.disable","mcp.status","mcp.read","mcp.cancel","mcp.recover","device.status","device.read","device.cancel","device.recover","device.exec","mcp.share","skill.list","skill.sources","skill.write","skill.archive","skill.bundle","skill.install","skill.import","skill.export","skill.bind","skill.unbind","skill.uninstall"}
                     assert not forbidden.intersection(phase["tools"]), phase["tools"]
                     phase["failures"] = [e["result"] for e in current if e["kind"] == "tool_result" and e["result"]["outcome"] != "succeeded"]
                     assert terminal["outcome"] == "finished", terminal
                     phase["outstanding"] = terminal.get("outstanding", [])
                     assert not phase["outstanding"], terminal
                     invocations = [i for e in current if e["kind"] == "step_completed" for i in e.get("invocations", [])]
-                    finals = [i for i in invocations if i["tool"] == "chat.post_message" and i["arguments"].get("kind") == "final"]
-                    assert len(finals) == 1, "expected one conclusive user-visible final, without repeated closure"
-                    phase["final_messages"] = len(finals)
+                    sent = [e for e in current if e["kind"] == "tool_result" and e["result"]["tool"] == "chat.send" and e["result"]["outcome"] == "succeeded"]
+                    assert sent, "expected a user-visible Chat reply"
+                    phase["chat_sends"] = len(sent)
                     for e in current:
-                        if e["kind"] == "tool_result" and e["result"]["tool"] in ("mcp", "mcp.inspect"):
+                        if e["kind"] == "tool_result" and e["result"]["tool"] == "mcp.inspect":
                             for item in e["result"]["data"].get("items", []):
-                                if "definition" not in item:
+                                definition = item.get("definition")
+                                if definition is None:
                                     continue
-                                definition = item["definition"]
+                                assert isinstance(definition, dict), definition
                                 assert "inputSchema" not in definition and "type Arguments" in definition["parameters"], definition
                     assert any(e["kind"] == "step_completed" and e.get("usage") for e in current), "missing real provider usage"
                     return current
@@ -198,23 +202,20 @@ def main():
             "请实际完成这个测试环境的能力安装。先发现设备，目标名称是 test-device，确认它的系统和 Python。"
             f"它的测试工作区是 {b.workspace}。其中 seed/echo-server.py 是现成的 stdio MCP 程序，运行方式为 python3 <程序绝对路径> <调用日志绝对路径>。"
             "请在目标设备新建 prepared 目录，复制程序到 prepared/echo-server.py，写入 prepared/ready.txt 内容 READY，并把 MCP 调用日志设为 prepared/calls.jsonl。"
-            "安装名为 live-echo 的 MCP，授权 Mesh 使用，实际 probe 确认 echo 工具可用。"
-            f"然后把 {guide} 的 skill（包括 scripts/helper.py 资源）导入托管包，并绑定到该设备已有的 Research Agent。"
+            "安装名为 live-echo 的 MCP，检查连接并确认 echo 工具可用。"
+            f"然后把 {guide} 的完整 skill（包括 scripts/helper.py）复制到 {b.root / 'skills'} 的新目录 live-echo-guide，并把这个来源加入已有 Research Agent 的配置。"
             "保留它已有的 skill 来源。检查最终安装和绑定结果，向聊天提交简短结果后结束。"
             "这是已授权的隔离测试，只操作这些测试目录；不要读取 profiles 或凭据，不要手工编辑 Zork 数据库或配置文件来绕过管理工具。")
         prepared = b.workspace / "prepared"
         assert (prepared / "ready.txt").read_text().strip() == "READY"
-        servers = mcp_tool("installed", owner=b.origin)["items"]
+        servers = mcp_tool("list", owner=b.origin)["items"]
         server = next(v["server"] for v in servers if v["server"].get("name") == "live-echo")
         assert re.fullmatch(r"[0-7][0-9A-HJKMNP-TV-Z]{25}", server["server_ref"]["server_id"]), server
-        installed = node_tool("skill.installed", {"target": b.origin})["items"]
-        skill = next(v for v in installed if v.get("name") == "live-echo-guide")
-        skill_id = skill["skill_id"]
-        assert re.fullmatch(r"[0-7][0-9A-HJKMNP-TV-Z]{25}", skill_id), skill
-        assert (b.root / "managed-skills" / skill_id / "scripts/helper.py").read_text() == (guide / "scripts/helper.py").read_text()
-        bindings = node_tool("skill.bindings", {"target": b.origin, "skill_id": skill_id})
-        assert "research" in json.dumps(bindings), bindings
-        checks.append("real_model_prepares_remote_device_installs_mcp_and_binds_resource_skill")
+        skill_directory = b.root / "skills/live-echo-guide"
+        assert (skill_directory / "scripts/helper.py").read_text() == (guide / "scripts/helper.py").read_text()
+        configuration = ok(b.request("GET", "/v1/node/agents/research/skills"))
+        assert str(skill_directory) in configuration["paths"] and str(old) in configuration["paths"], configuration
+        checks.append("real_model_prepares_remote_node_installs_mcp_and_configures_ordinary_skill_source")
 
         user_input = "grok-live-" + secrets.token_hex(6)
         run_phase("research_uses_bound_skill", b, researcher,
@@ -227,38 +228,40 @@ def main():
         assert expected in json.dumps(messages, ensure_ascii=False), "exact MCP proof not delivered to user"
         checks.append("real_research_agent_loads_resource_helper_calls_mcp_and_delivers_verified_result")
 
+        initial_config = mcp_tool("inspect", server_ref=server["server_ref"])["config"]
+        update_events = run_phase("mcp_disable_and_enable", a, coordinator,
+            "请暂时停用 test-device 上的 live-echo MCP，确认它仍在已安装清单中但暂时不能调用。"
+            "然后重新启用并确认连接正常。保留服务名称、描述、启动命令、参数、环境和其它原有配置，向聊天报告结果。")
+        toggles = [i["arguments"].get("config", {}).get("enabled") for event in update_events
+                   if event["kind"] == "step_completed" for i in event.get("invocations", []) if i["tool"] == "mcp.update"]
+        assert False in toggles and True in toggles, toggles
+        restored_config = mcp_tool("inspect", server_ref=server["server_ref"])["config"]
+        assert restored_config == initial_config, "toggling MCP changed unrelated configuration"
+        checks.append("real_model_uses_update_for_mcp_enable_state_and_preserves_configuration")
+
         cleanup_events = run_phase("cancel_copy_and_cleanup", a, coordinator,
             "继续验收刚才的环境。先在 test-device 执行一个打印 LIVE-CANCEL-READY 后等待 120 秒的前台命令。"
-            "用 file.read 读取普通工具的 live 日志，看到标记后用 tool.cancel 取消该 invocation，并等待它的普通工具完成结果确认进程终止，不要等待 120 秒自然结束。"
-            "然后把刚才的 live-echo-guide 托管 skill 复制到 coordinator 设备，确认副本带有 scripts/helper.py。"
-            "从 test-device 的 Research Agent 解绑原 skill，然后归档卸载原包；保留原有 existing-guide 来源和 coordinator 上的副本。"
-            "最后卸载 test-device 上的 live-echo MCP。检查最终安装状态，向聊天提交实际结果后结束。"
-            "仍然只使用正式工具，不手工编辑内部数据库或配置文件。确认终止不代表撤销已经发生的副作用，不要重跑被取消的命令。")
-        copied = node_tool("skill.installed", {"target": a.origin})["items"]
-        assert len(copied) == 1, copied
-        assert (a.root / "managed-skills" / copied[0]["skill_id"] / "scripts/helper.py").read_text() == (guide / "scripts/helper.py").read_text()
-        assert not node_tool("skill.installed", {"target": b.origin})["items"]
-        assert (b.root / "managed-skills/.archive" / skill_id / "scripts/helper.py").exists()
-        archived_bindings = node_tool("skill.bindings", {"target": b.origin, "skill_id": skill_id})
-        assert archived_bindings["package_state"] == "archived" and not archived_bindings["agents"], archived_bindings
-        report["archived_binding_query"] = archived_bindings["package_state"]
-        assert not mcp_tool("installed", owner=b.origin)["items"]
-        assert (old / "SKILL.md").exists()
-        with sqlite3.connect(b.root / "state/gateway.sqlite") as db:
-            agent = json.loads(db.execute("SELECT value FROM node_agents WHERE id='research'").fetchone()[0])
-        remaining = {Path(p).resolve() for p in agent["skill_paths"]}
-        assert old.resolve() in remaining, "existing skill lost its Agent binding"
-        assert (b.root / "managed-skills" / skill_id).resolve() not in remaining, "archived skill still bound"
+            "用 file.read 读取普通工具的 live 日志，看到标记后用 tool.cancel 取消该 invocation，并等待原工具结果确认进程终止。"
+            f"然后把 {skill_directory} 的完整 skill 复制到 coordinator 的 {a.root / 'skills/live-echo-guide'}。"
+            f"从 Research Agent 的 skill_paths 中移除 {skill_directory}，保留其它来源。把原目录移动到 {b.workspace / 'archived-guide'}，保留所有资源。"
+            "最后卸载 test-device 上的 live-echo MCP，向聊天提交实际结果。普通文件操作用现有文件或 shell 工具；Agent 配置用 agent.update。"
+            "不要读取账户凭据或编辑内部数据库，不要重跑已经取消的命令。")
+        assert (a.root / "skills/live-echo-guide/scripts/helper.py").read_text() == (guide / "scripts/helper.py").read_text()
+        assert not skill_directory.exists()
+        assert (b.workspace / "archived-guide/scripts/helper.py").exists()
+        assert not mcp_tool("list", owner=b.origin)["items"]
+        configuration = ok(b.request("GET", "/v1/node/agents/research/skills"))
+        assert str(old) in configuration["paths"] and str(skill_directory) not in configuration["paths"]
         report["existing_skill_binding_preserved"] = True
-        cancellations = [e["result"] for e in cleanup_events if e["kind"] == "tool_result" and e["result"]["tool"] == "device.exec" and e["result"]["outcome"] == "cancelled"]
+        cancellations = [e["result"] for e in cleanup_events if e["kind"] == "tool_result" and e["result"]["tool"] == "shell.run" and e["result"]["outcome"] == "cancelled"]
         assert cancellations and "tool.cancel" in phases[-1]["tools"], "model did not cancel an active invocation"
         cancelled=cancellations[0]["data"]
         assert cancelled["state"] == "cancelled" and cancelled["result"]["process_state"] == "exited", cancelled
         pid=cancelled["result"]["pid"]
-        assert subprocess.run(["ps","-p",str(pid),"-o","pid="],capture_output=True).returncode != 0, "completion preceded process cleanup"
+        assert subprocess.run(["ps","-p",str(pid),"-o","pid="],capture_output=True).returncode != 0
         assert cancelled["result"]["effects_may_have_occurred"] is True
         report["cancellation"] = {"process_exited": True, "receipt_state": cancelled["state"]}
-        checks.append("real_model_cancels_device_process_copies_skill_unbinds_archives_and_removes_mcp")
+        checks.append("real_model_cancels_remote_process_and_manages_skill_with_ordinary_files")
         report["outcome"] = "passed"
     except BaseException as error:
         failure = error
@@ -280,6 +283,9 @@ def main():
         usage = [e["usage"] for e in all_events if e["kind"] == "step_completed" and e.get("usage")]
         report["usage"] = {key: sum(v.get(key) or 0 for v in usage) for key in
                            ("input_tokens", "output_tokens", "cached_input_tokens", "output_reasoning_tokens")}
+        catalog = next((event["tools"] for event in all_events if event["kind"] == "session_created"), [])
+        report["tool_catalog"] = sorted(tool["name"] for tool in catalog)
+        report["tool_count"] = len(catalog)
         report["model_steps"] = len(usage)
         report["duration_seconds"] = round(time.monotonic() - started, 2)
         report["binaries"] = {p.name: subprocess.check_output(["shasum", "-a", "256", str(p)], text=True).split()[0]

@@ -41,7 +41,7 @@ impl Render for InteractionStory {
                         .w_full()
                         .p_4()
                         .rounded(px(20.))
-                        .border_1()
+                        .border(gpui::px(crate::design::BORDER_WIDTH))
                         .border_color(rgb(p.border_strong))
                         .bg(rgb(color))
                         .flex()

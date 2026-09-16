@@ -1,12 +1,5 @@
 //! Shared history record presentation; event collection and paging belong to the host.
-#[cfg(feature = "stories")]
-use crate::controls as ui;
 use crate::history::activity::Kind;
-#[cfg(feature = "stories")]
-use crate::history::{
-    self,
-    activity::{Projection, Row},
-};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::CUE_UI,
@@ -42,6 +35,19 @@ pub fn activity_header<V: 'static>(
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
+    activity_header_sources(id, header, (None, None), cx, open, navigate)
+}
+
+pub fn activity_header_sources<V: 'static>(
+    id: impl Into<gpui::ElementId>,
+    header: ActivityHeader,
+    sources: (Option<crate::components::liquid::overlay::SourceBinding>, Option<crate::components::liquid::overlay::SourceBinding>),
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
+    navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
+) -> impl IntoElement {
+    let face = header.action.clone();
+    let icon = header.icon;
     let open = std::rc::Rc::new(open);
     let keyboard_open = open.clone();
     let navigate = std::rc::Rc::new(navigate);
@@ -161,8 +167,10 @@ pub fn activity_header<V: 'static>(
                                             }
                                         },
                                     ))
-                                    .automation(AutomationRole::Button, subject_label)
-                                    .into_any_element(),
+                                    .map(|subject| match sources.1 {
+                                        Some(source) => source.bind(subject, subject_label.clone(), crate::controls::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, subject_label).into_any_element(),
+                                        None => subject.automation(AutomationRole::Button, subject_label).into_any_element(),
+                                    }),
                             )
                         })
                         .child(div().flex_1())
@@ -195,7 +203,10 @@ pub fn activity_header<V: 'static>(
                     )
                 }),
         )
-        .automation(AutomationRole::Button, accessible)
+         .map(|header| match sources.0 {
+            Some(source) => source.bind(header, face, crate::controls::ActionStyle { quiet: true, icon: Some(icon), ..Default::default() }).automation(AutomationRole::Button, accessible).into_any_element(),
+            None => header.automation(AutomationRole::Button, accessible).into_any_element(),
+        })
 }
 pub fn color(entry: &Entry) -> u32 {
     if matches!(entry.state.as_str(), "failed" | "timed_out") {
@@ -301,168 +312,4 @@ pub fn kind_icon(kind: Kind) -> &'static str {
 }
 
 #[cfg(feature = "stories")]
-pub struct HistoryStory {
-    prefix: String,
-    entries: Vec<Entry>,
-    projection: Projection,
-    rows: Vec<Row>,
-    expanded: std::collections::HashSet<String>,
-    selected: Option<usize>,
-    now: i64,
-    failed: bool,
-}
-#[cfg(feature = "stories")]
-impl HistoryStory {
-    pub fn new(prefix: String, state: &str, _: &mut Context<Self>) -> Self {
-        let f = crate::stories::page_fixture();
-        let records: Vec<history::Record> =
-            serde_json::from_value(f["history"]["records"].clone()).unwrap();
-        let entries = if state == "empty" {
-            vec![]
-        } else {
-            history::entries(&records)
-        };
-        let projection = Projection::new(&entries);
-        let mut expanded = std::collections::HashSet::new();
-        if state == "expanded" {
-            if let Some(block) = projection.blocks.iter().find(|b| b.is_group()) {
-                expanded.insert(entries[projection.activities[block.start].entry].id.clone());
-            }
-        }
-        let rows = projection.rows(&entries, &expanded);
-        let selected =
-            (state == "expanded" && expanded.is_empty() && !projection.activities.is_empty())
-                .then_some(0);
-        Self {
-            prefix,
-            entries,
-            projection,
-            rows,
-            expanded,
-            selected,
-            now: f["history"]["now"].as_i64().unwrap(),
-            failed: state == "error",
-        }
-    }
-}
-#[cfg(feature = "stories")]
-impl gpui::Render for HistoryStory {
-    fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .id(format!("{}-list", self.prefix))
-            .w_full()
-            .h_full()
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .when(self.failed, |v| {
-                v.child(ui::feedback("暂时无法读取历史记录。".into()))
-                    .child(
-                        ui::button(format!("{}-retry", self.prefix), "重试", false, true).on_click(
-                            cx.listener(|v, _, _, cx| {
-                                v.failed = false;
-                                cx.notify();
-                            }),
-                        ),
-                    )
-            })
-            .when(!self.failed && self.rows.is_empty(), |v| {
-                v.child(
-                    div()
-                        .p_6()
-                        .text_size(px(12.))
-                        .text_color(rgb(CUE_UI.palette.muted))
-                        .child("还没有执行记录。"),
-                )
-            })
-            .when(!self.failed, |v| {
-                v.children(self.rows.iter().enumerate().map(|(index, row)| {
-                    let block = &self.projection.blocks[row.block];
-                    let ai = row.activity.unwrap_or(block.start);
-                    let a = &self.projection.activities[ai];
-                    let entry = &self.entries[a.entry];
-                    let group = row.activity.is_none();
-                    let group_id = self.entries[self.projection.activities[block.start].entry]
-                        .id
-                        .clone();
-                    let action = if group {
-                        format!(
-                            "读取 {} 个文件 · 写入 {} 个文件 · 命令 {} 次",
-                            block.counts.read, block.counts.written, block.counts.shell
-                        )
-                    } else {
-                        match a.kind {
-                            Kind::Received => "收到消息".into(),
-                            Kind::SendMessage => "发送消息".into(),
-                            Kind::Wait => "等待".into(),
-                            _ => entry.action.clone(),
-                        }
-                    };
-                    div().child(activity_header(
-                        format!("{}-row-{index}", self.prefix),
-                        ActivityHeader {
-                            icon: if group {
-                                "history/operations.svg"
-                            } else {
-                                kind_icon(a.kind)
-                            },
-                            color: if group {
-                                CUE_UI.palette.muted
-                            } else {
-                                activity_color(a.kind, &entry.state)
-                            },
-                            action,
-                            connector: None,
-                            subject: None,
-                            clickable_subject: false,
-                            summary: if group {
-                                block.summary.clone()
-                            } else {
-                                a.summary.clone()
-                            },
-                            time: entry
-                                .start
-                                .or(entry.end)
-                                .map(|at| format!("{} 秒前", (self.now - at).max(0) / 1000))
-                                .unwrap_or("时间未知".into()),
-                            status: (entry.state == "failed").then(|| "失败".into()),
-                            nested: row.activity.is_some() && block.is_group(),
-                            group,
-                        },
-                        cx,
-                        move |v, _, cx| {
-                            if group {
-                                if !v.expanded.remove(&group_id) {
-                                    v.expanded.insert(group_id.clone());
-                                }
-                                v.rows = v.projection.rows(&v.entries, &v.expanded);
-                            } else {
-                                v.selected = if v.selected == Some(ai) {
-                                    None
-                                } else {
-                                    Some(ai)
-                                };
-                            }
-                            cx.notify();
-                        },
-                        |_, _, _| {},
-                    ))
-                }))
-            })
-            .when_some(self.selected, |v, index| {
-                v.child(
-                    div()
-                        .m_3()
-                        .p_3()
-                        .rounded(px(8.))
-                        .bg(rgb(CUE_UI.palette.prompt))
-                        .text_size(px(12.))
-                        .child(
-                            self.entries[self.projection.activities[index].entry]
-                                .summary
-                                .clone(),
-                        ),
-                )
-            })
-    }
-}
+pub use crate::history_page::stories::Story as HistoryStory;

@@ -1,0 +1,5 @@
+<!-- Generated from crates/zork-ui/assets/history/agents.svg; do not redraw. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+  <path android:pathData="M7.0 8.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M4 19v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M17 5a3 3 0 0 1 0 6M18 14a4 4 0 0 1 2 4v1" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

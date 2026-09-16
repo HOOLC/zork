@@ -65,7 +65,28 @@ fn print_help() {
     );
 }
 
+#[cfg(target_os = "macos")]
+fn prepare_app_environment() -> anyhow::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    if objc2_foundation::NSBundle::mainBundle()
+        .bundleIdentifier()
+        .is_some()
+    {
+        let log = zork_client_core::desktop::prepare_app_environment()?;
+        for target in [libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+            // The open file remains owned here while dup2 installs independent
+            // process-wide descriptors, before GPUI or background workers start.
+            if unsafe { libc::dup2(log.as_raw_fd(), target) } == -1 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() {
+    zork_client_core::desktop::trace_startup("gui.main");
     let options = parse_args_from(std::env::args().skip(1)).unwrap_or_else(|error| {
         eprintln!("{error}\nTry zork-gui --help");
         std::process::exit(2);
@@ -74,6 +95,25 @@ fn main() {
         print_help();
         return;
     }
+    gpui::set_startup_observer(zork_client_core::desktop::trace_startup);
+    #[cfg(target_os = "macos")]
+    gpui_apple::metal_renderer::prepare_renderer();
+    zork_client_core::desktop::trace_startup("gui.renderer_preparation_dispatched");
+    let _data_lease = zork_client_core::desktop::data_reset::initialize().unwrap_or_else(|error| {
+        eprintln!("无法打开或清空客户端数据：{error:#}");
+        std::process::exit(1);
+    });
+    zork_client_core::desktop::trace_startup("gui.data_lease_ready");
+    #[cfg(target_os = "macos")]
+    prepare_app_environment().unwrap_or_else(|error| {
+        eprintln!("failed to prepare Zork app: {error}");
+        std::process::exit(1);
+    });
+    zork_client_core::desktop::trace_startup("gui.environment_ready");
+    let startup = zork_client_core::desktop::startup::Startup::prepare().unwrap_or_else(|error| {
+        eprintln!("无法打开客户端运行时：{error:#}");
+        std::process::exit(1);
+    });
     let initial_size = options
         .dev
         .then(|| std::env::var("ZORK_GUI_TEST_WINDOW_SIZE").ok())
@@ -102,11 +142,22 @@ fn main() {
         );
     }
 
-    application()
+    zork_client_core::desktop::trace_startup("gui.before_application");
+    let app = application();
+    zork_client_core::desktop::trace_startup("gui.application_created");
+    app
         .with_assets(EmbeddedAssets)
         .run(move |cx: &mut App| {
+            let startup = startup.finish().unwrap_or_else(|error| {
+                eprintln!("无法打开客户端运行时：{error:#}");
+                std::process::exit(1);
+            });
+            DesktopRoot::install_startup(startup, cx);
+            zork_client_core::desktop::trace_startup("gui.run_callback");
             zork_gui::assets::init_fonts(cx);
+            zork_client_core::desktop::trace_startup("gui.fonts_ready");
             components::init(cx);
+            zork_client_core::desktop::trace_startup("gui.components_ready");
             cx.set_window_appearance(Some(WindowAppearance::Light));
             let window_options = gpui::WindowOptions {
                 window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
@@ -121,6 +172,7 @@ fn main() {
             if let Some(dev) = automation.as_ref() {
                 dev.install(cx);
             }
+            zork_client_core::desktop::trace_startup("gui.before_window");
             let window: AnyWindowHandle = if automation.is_some() {
                 cx.open_window(window_options, |window, cx| {
                     window.on_window_should_close(cx, |_, cx| {
@@ -143,10 +195,12 @@ fn main() {
                 .expect("failed to open window")
                 .into()
             };
+            zork_client_core::desktop::trace_startup("gui.window_opened");
             if let Some(dev) = automation.take() {
                 dev.attach(window, cx);
             }
             cx.activate(true);
+            zork_client_core::desktop::trace_startup("gui.activated");
         });
 }
 

@@ -18,3 +18,31 @@ mod form_story;
 mod interaction_story;
 #[cfg(feature = "stories")]
 pub mod stories;
+#[cfg(feature = "stories")]
+pub mod liquid_story;
+
+pub mod resources;
+
+pub mod shared_files;
+
+pub mod chat_navigation;
+
+pub mod conversation_contents;
+
+pub mod attachment_viewer;
+
+pub mod browser_chrome;
+
+pub mod history_details;
+
+pub mod member_activity;
+
+pub mod history_timeline;
+
+pub mod history_page;
+
+pub mod welcome;
+
+pub mod node_directory;
+
+pub mod conversation_toolbar;

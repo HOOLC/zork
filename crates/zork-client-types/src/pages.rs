@@ -52,3 +52,11 @@ pub struct ConversationFile {
 pub struct DeliveredPage {
     pub page: PageLink,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApplicationEntry {
+    pub page: PageLink,
+    pub device_id: String,
+    pub device_name: String,
+    pub offline: bool,
+}

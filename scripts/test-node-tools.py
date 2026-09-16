@@ -39,16 +39,19 @@ def main():
             assert result[0] in (200,201,202),result
             return result[1]
         session=a.new_task()['session_id'];counter=0
+        executions={}
         def events(node,sid):
             out=[]
-            for segment in (node.root/'sessions'/sid/'segments').glob('*.jsonl'):
+            execution=executions.get((node.root,sid),sid)
+            for segment in (node.root/'shared-files/sessions'/execution/'segments').glob('*.jsonl'):
                 for line in segment.read_text().splitlines():
                     event=json.loads(line).get('event',{})
                     if event.get('kind')=='tool_result':out.append(event['result'])
             return out
         def all_events(node,sid):
             out=[]
-            for segment in (node.root/'sessions'/sid/'segments').glob('*.jsonl'):
+            execution=executions.get((node.root,sid),sid)
+            for segment in (node.root/'shared-files/sessions'/execution/'segments').glob('*.jsonl'):
                 for line in segment.read_text().splitlines():
                     try:out.append(json.loads(line).get('event',{}))
                     except json.JSONDecodeError:pass
@@ -87,17 +90,23 @@ def main():
                 row=db.execute('SELECT id FROM outbox WHERE invocation=?',(invocation['invocation_id'],)).fetchone()
             return {'operation_id':row[0]} if row and row[0] else None
 
+        local_dir=a.workspace/'cwd-probe';local_dir.mkdir()
+        agent('shell.run',{'command':'printf %s "$ZORK_TOOL_PROBE" > value.txt','cwd':'cwd-probe','env':{'ZORK_TOOL_PROBE':'local-env'}})
+        assert (local_dir/'value.txt').read_text()=='local-env'
+        invalid=agent('shell.run',{'command':'touch invalid-target-ran','target':42},failed=True)
+        assert not (a.workspace/'invalid-target-ran').exists()
+        checks.append('local_shell_cwd_environment_and_invalid_target_validation')
         listed=agent('device.list',{})['data'];assert len(listed['targets'])==2,listed
         attached=ok(m.request(a,'POST','/v1/services',{'session_id':session,'action':'attach','name':'Inventory-only external service','port':9,'request_id':'inventory-attach'}))
         service_inventory=ok(m.request(a,'GET','/v1/node/resources'))
         service=next(v for v in service_inventory['items'] if v['kind']=='service' and v['name']=='Inventory-only external service')
-        assert service['status']=='external' and service['scope']=='private' and service['owner_session']==session and service['url'] is None,service
+        assert service['status']=='external' and service['scope']=='shared' and service['owner_session']==session and service['url'].startswith('zork://service/'),service
         assert agent('device.inspect',{'target':b.origin})['data']['commands']['python3']
         skill_content='---\nname: echo-guide\ndescription: Use the shared echo MCP for the requested task\n---\nUse mcp.search, mcp.inspect and mcp.call. Read scripts/helper.py when needed.\n'
         prep="from pathlib import Path\nimport os\np=Path.cwd()\n(p/'mcp-server.py').write_text("+repr(m.FIXTURE)+")\n(p/'guide/scripts').mkdir(parents=True,exist_ok=True)\n(p/'guide/SKILL.md').write_text("+repr(skill_content)+")\n(p/'guide/scripts/helper.py').write_text('print(42)\\n')\nwith (p/'prep-count').open('a') as f:f.write('once\\n')\nprint('REMOTE-PREPARED')"
         command=shlex.quote(sys.executable)+' -c '+shlex.quote(prep)
         exec_args={'target':b.origin,'command':command}
-        executed=agent('device.exec',exec_args);prepared=settle(executed);cwd=Path(prepared['cwd']);assert str(b.root) in str(cwd),prepared
+        executed=agent('shell.run',exec_args);prepared=settle(executed);cwd=Path(prepared['cwd']);assert str(b.root) in str(cwd),prepared
         assert (cwd/'prep-count').read_text()=='once\n'
         retry=ok(raw('device.exec',exec_args,iid=executed['invocation_id']));assert retry['operation_id']==receipt_for(executed)['operation_id']
         assert (cwd/'prep-count').read_text()=='once\n'
@@ -112,7 +121,7 @@ def main():
               "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)']);"
               f"Path({str(cancel_pid_file)!r}).write_text(str(child.pid));"
               "print('CANCEL-READY',flush=True);time.sleep(120)")
-        running=dispatch('device.exec',{'target':b.origin,'command':shlex.quote(sys.executable)+' -u -c '+shlex.quote(code)})
+        running=dispatch('shell.run',{'target':b.origin,'command':shlex.quote(sys.executable)+' -u -c '+shlex.quote(code)})
         f.wait(lambda:cancel_pid_file.exists(),'child process starts')
         assert not any(r['invocation_id']==running['invocation_id'] for r in events(a,session)), 'exec completed before process exit'
         log_path=a.workspace/'.zork'/f"live-{running['invocation_id']}.log"
@@ -128,10 +137,10 @@ def main():
         for pid in [terminal_cancel['result']['pid'],int(cancel_pid_file.read_text())]:
             assert subprocess.run(['ps','-p',str(pid),'-o','pid='],capture_output=True).returncode!=0,'completion preceded process cleanup'
         assert 'CANCEL-READY' in terminal_cancel['output']
-        failure=agent('device.exec',{'target':b.origin,'command':'echo FAILURE-OUTPUT; exit 7'},failed=True)['data']
+        failure=agent('shell.run',{'target':b.origin,'command':'echo FAILURE-OUTPUT; exit 7'},failed=True)['data']
         assert failure['state']=='failed' and failure['result']['exit_code']==7,failure
         assert 'FAILURE-OUTPUT' in failure['output']
-        noisy=agent('device.exec',{'target':b.origin,'command':"python3 -c \"print('x'*100000);print('END-OF-OUTPUT')\"; exit 9"},failed=True)['data']
+        noisy=agent('shell.run',{'target':b.origin,'command':"python3 -c \"print('x'*100000);print('END-OF-OUTPUT')\"; exit 9"},failed=True)['data']
         assert noisy['result']['exit_code']==9 and noisy['result']['process_state']=='exited',noisy
         assert noisy['output'].endswith('END-OF-OUTPUT\n') and len(noisy['output'])<=65536
         assert (a.workspace/noisy['output_path']).stat().st_size>100000
@@ -145,9 +154,9 @@ def main():
         assert restored['state']=='cancelled' and restored['result']['process_state']=='exited',restored
         checks.append('graceful_gateway_shutdown_waits_for_device_process_termination')
 
-        config={'name':'echo-mcp','transport':{'kind':'stdio','command':'python3','args':[str(cwd/'mcp-server.py'),str(cwd/'calls')]},'grant':{'scope':'mesh'}}
+        config={'name':'echo-mcp','transport':{'kind':'stdio','command':'python3','args':[str(cwd/'mcp-server.py'),str(cwd/'calls')]}}
         installed=agent('mcp.install',{'target':b.origin,'config':config})['data'];server_id=installed['server_id'];assert installed['target']==b.origin
-        listed_servers=agent('mcp.installed',{'target':b.origin})['data']['items']
+        listed_servers=agent('mcp.list',{'target':b.origin})['data']['items']
         assert any(v['server'].get('server_id')==server_id and v['server'].get('target')==b.origin for v in listed_servers),listed_servers
         assert all('server_ref' not in v['server'] for v in listed_servers),listed_servers
         inventory=ok(m.request(b,'GET','/v1/node/resources'))
@@ -162,7 +171,7 @@ def main():
         assert invalid['state']=='not_dispatched' and 'server_ref' not in invalid['error'],invalid
         invalid_type=agent('mcp.inspect',{'target':b.origin,'server_id':42},failed=True)['data']
         assert invalid_type['state']=='not_dispatched' and 'Allowed fields:' in invalid_type['error'] and 'server_ref' not in invalid_type['error'],invalid_type
-        assert agent('mcp.probe',{'target':b.origin,'server_id':server_id})['data']['items'][0]['name']=='echo'
+        assert agent('mcp.inspect',{'target':b.origin,'server_id':server_id})['data']['items'][0]['name']=='echo'
         definition=agent('mcp.inspect',{'target':b.origin,'server_id':server_id,'tool':'echo'})['data']['items'][0]
         called=agent('mcp.call',{'target':b.origin,'server_id':server_id,'tool':'echo','binding_revision':definition['binding_revision'],'arguments':{'text':'workflow'}})['data']
         assert called['state']=='succeeded' and called['result']['content'][0]['text']=='workflow',called
@@ -181,30 +190,27 @@ def main():
         assert 'call_id' not in stopped_mcp and 'operation_id' not in stopped_mcp
         policy_call=dispatch('mcp.call',{'target':b.origin,'server_id':server_id,'tool':'echo','binding_revision':definition['binding_revision'],'arguments':{'text':'POLICY-DISABLE','delay':120}})
         f.wait(lambda:'POLICY-DISABLE' in (cwd/'calls').read_text(),'MCP dispatch before disable')
-        current=agent('mcp.configure',{'target':b.origin,'server_id':server_id})['data']
-        disabled=agent('mcp.disable',{'target':b.origin,'server_id':server_id,'expected_revision':current['config_revision']})['data']
+        current=agent('mcp.inspect',{'target':b.origin,'server_id':server_id})['data']
+        disabled=agent('mcp.update',{'target':b.origin,'server_id':server_id,'expected_revision':current['config_revision'],'config':{'enabled':False}})['data']
         interrupted=result_for(policy_call,outcome='failed')['data']
         assert interrupted['state']=='outcome_unknown' and interrupted['result']['error']=='mcp_disabled' and interrupted['result']['process_state']=='exited',interrupted
-        denied=agent('mcp.inspect',{'target':b.origin,'server_id':server_id,'tool':'echo'},failed=True)['data']
-        assert 'mcp_disabled' in denied['error'],denied
+        disabled_details=agent('mcp.inspect',{'target':b.origin,'server_id':server_id})['data']
+        assert disabled_details['availability']=='disabled' and disabled_details['config']['enabled'] is False,disabled_details
+        assert disabled_details['config']['transport']==current['config']['transport'],disabled_details
         rejected=agent('mcp.call',{'target':b.origin,'server_id':server_id,'tool':'echo','binding_revision':definition['binding_revision'],'arguments':{'text':'MUST-NOT-DISPATCH'}},failed=True)['data']
         assert rejected['state']=='not_dispatched' and 'mcp_disabled' in rejected['error'],rejected
         assert 'MUST-NOT-DISPATCH' not in (cwd/'calls').read_text()
-        private=agent('mcp.share',{'target':b.origin,'server_id':server_id,'expected_revision':disabled['config_revision'],'grant':{'scope':'local'}})['data']
-        unauthorized=agent('mcp.inspect',{'target':b.origin,'server_id':server_id,'tool':'echo'},failed=True)['data']
-        assert 'mcp_access_denied' in unauthorized['error'] and 'mcp_disabled' not in unauthorized['error'],unauthorized
-        enabled=agent('mcp.enable',{'target':b.origin,'server_id':server_id,'expected_revision':private['config_revision']})['data']
-        agent('mcp.share',{'target':b.origin,'server_id':server_id,'expected_revision':enabled['config_revision'],'grant':{'scope':'mesh'}})
+        enabled=agent('mcp.update',{'target':b.origin,'server_id':server_id,'expected_revision':disabled['config_revision'],'config':{'enabled':True}})['data']
         definition=agent('mcp.inspect',{'target':b.origin,'server_id':server_id,'tool':'echo'})['data']['items'][0]
         changing=dispatch('mcp.call',{'target':b.origin,'server_id':server_id,'tool':'echo','binding_revision':definition['binding_revision'],'arguments':{'text':'POLICY-REVISION','delay':120}})
         f.wait(lambda:'POLICY-REVISION' in (cwd/'calls').read_text(),'MCP dispatch before revision update')
-        current=agent('mcp.configure',{'target':b.origin,'server_id':server_id})['data']
-        changed_config=current['config'];changed_config['description']='Revised while running'
+        current=agent('mcp.inspect',{'target':b.origin,'server_id':server_id})['data']
+        changed_config={'description':'Revised while running'}
         agent('mcp.update',{'target':b.origin,'server_id':server_id,'expected_revision':current['config_revision'],'config':changed_config})
         changed=result_for(changing,outcome='failed')['data']
         assert changed['state']=='outcome_unknown' and changed['result']['error']=='mcp_definition_changed' and changed['result']['process_state']=='exited',changed
-        current=agent('mcp.configure',{'target':b.origin,'server_id':server_id})['data']
-        restricted=current['config'];restricted['tool_allowlist']=[]
+        current=agent('mcp.inspect',{'target':b.origin,'server_id':server_id})['data']
+        restricted={'tool_allowlist':[]}
         restricted_result=agent('mcp.update',{'target':b.origin,'server_id':server_id,'expected_revision':current['config_revision'],'config':restricted})['data']
         excluded=agent('mcp.call',{'target':b.origin,'server_id':server_id,'tool':'echo','binding_revision':definition['binding_revision'],'arguments':{'text':'EXCLUDED-NO-DISPATCH'}},failed=True)['data']
         assert excluded['state']=='not_dispatched' and 'mcp_tool_not_allowed' in excluded['error'],excluded
@@ -215,55 +221,22 @@ def main():
 
         old=b.root/'existing-skill';old.mkdir();(old/'SKILL.md').write_text('---\nname: existing-guide\ndescription: Preserve this existing skill\n---\nKeep this skill.\n')
         ok(m.request(b,'POST','/v1/node/agents',{'id':'research','name':'Research','role':'leader','profile_id':'fixture','model':'fixture-model','thinking':'off','skill_paths':[str(old)]}))
-        research=ok(m.request(b,'POST','/v1/node/agents/research/open',{}))['session_id']
-        agents=agent('device.agents',{'target':b.origin})['data']['agents'];assert any(v['id']=='research' for v in agents)
-        imported=settle(agent('skill.import',{'target':b.origin,'path':str(cwd/'guide')}));skill=imported['skill_id'];revision=imported['revision'];assert imported['resource_count']==1
-        bound=settle(agent('skill.bind',{'target':b.origin,'skill_id':skill,'expected_revision':revision,'agent_id':'research'}));assert bound['agent']['id']=='research'
-        inventory=ok(m.request(b,'GET','/v1/node/resources'))
-        visible_skill=next(v for v in inventory['items'] if v['kind']=='skill' and v['id']==skill)
-        assert visible_skill['scope']=='bound' and visible_skill['subjects'][0]['id']=='research' and visible_skill['resource_count']==1,visible_skill
-        catalog=agent('skill.list',{},node=b,sid=research)['data'];names={v['name'] for v in catalog['skills']};assert {'echo-guide','existing-guide'}<=names,catalog
-        exported=agent('skill.export',{'target':b.origin,'skill_id':skill,'expected_revision':revision})['data'];assert base64.b64decode(exported['package']['resources'][0]['base64'])==b'print(42)\n'
-        shared_event=agent('skill.share',{'target':b.origin,'skill_id':skill,'expected_revision':revision,'destination':a.origin});shared=settle(shared_event)
-        assert shared_event['data']['tool']=='skill.share',shared_event
-        assert shared['target']==a.origin and shared['skill_id']!=skill
-        assert agent('skill.export',{'target':a.origin,'skill_id':shared['skill_id']})['data']['package']==exported['package']
-        checks.append('skill_resource_import_binding_and_cross_node_copy')
-
-        settle(agent('skill.uninstall',{'target':b.origin,'skill_id':skill,'expected_revision':revision},failed=True),expected='failed')
-        settle(agent('skill.unbind',{'target':b.origin,'skill_id':skill,'expected_revision':revision,'agent_id':'research'}))
-        settle(agent('skill.uninstall',{'target':b.origin,'skill_id':skill,'expected_revision':revision}))
-        names={v['name'] for v in agent('skill.list',{},node=b,sid=research)['data']['skills']};assert 'existing-guide' in names and 'echo-guide' not in names
-        assert (b.root/'managed-skills/.archive'/skill/'scripts/helper.py').exists()
-        archived=agent('skill.bindings',{'target':b.origin,'skill_id':skill})['data']
-        assert archived['package_state']=='archived' and not archived['agents'],archived
-        checks.append('unbind_preserves_other_sources_and_uninstall_archives_resources')
-        # A lost share receipt must recover its saved package, even after removal
-        # of the original source package; no duplicate destination is installed.
-        shared_receipt=receipt_for(shared_event)
-        with sqlite3.connect(a.root/'state/node-tools.sqlite') as db:
-            db.execute("UPDATE outbox SET id=NULL,status='pending' WHERE invocation=?",(shared_event['invocation_id'],))
-        a.restart_gateway();f.wait(lambda:a.get('/v1/mesh').get('origin')==a.origin,'caller Mesh restored')
-        recovered=ok(raw('device.recover',{}))
-        assert recovered['operations'][0]['operation_id']==shared_receipt['operation_id'],recovered
-        assert len(ok(raw('skill.installed',{'target':a.origin}))['items'])==1
-        checks.append('share_receipt_recovers_snapshot_after_source_removal')
-
-
-        bad={'content':skill_content,'resources':[{'path':'../escape','base64':base64.b64encode(b'bad').decode()}]}
-        settle(agent('skill.install',{'target':b.origin,'package':bad},failed=True),expected='failed')
-        assert not (b.root/'managed-skills/escape').exists()
-        b.config['mesh']['peers'][0]['client']=False;(b.root/'config.json').write_text(json.dumps(b.config))
-        assert raw('device.inspect',{'target':b.origin})[0]==400
-        assert raw('device.exec',{'target':b.origin,'command':'touch should-not-run'})[0]==400
-        rejected=agent('device.exec',{'target':b.origin,'command':'touch should-not-run'},failed=True)['data']
-        assert rejected['state']=='not_dispatched' and rejected['effects_may_have_occurred'] is False,rejected
-        assert not ok(raw('device.recover',{}))['pending_delivery']
-        assert raw('skill.installed',{'target':b.origin})[0]==400
+        opened=ok(m.request(b,'POST','/v1/node/agents/research/open',{}));research=opened['chat_id']
+        executions[(b.root,research)]=opened['agent']['session_id']
+        agents=agent('agent.list',{'target':b.origin})['data']['items'];assert any(v['id']=='research' for v in agents),agents
+        current=agent('agent.inspect',{'target':b.origin,'agent_id':'research'})['data']
+        agent('agent.update',{'target':b.origin,'agent_id':'research','expected_revision':current['revision'],'changes':{'skill_paths':[str(old),str(cwd/'guide')]}})
+        catalog=ok(m.request(b,'GET','/v1/node/agents/research/skills'))['catalog']
+        assert {'echo-guide','existing-guide'} <= {v['name'] for v in catalog['skills']},catalog
+        assert 'echo-guide' in agent('file.read',{'path':str(cwd/'guide/SKILL.md')},node=b,sid=research)['data']['content']
+        assert (cwd/'guide/scripts/helper.py').read_text() == 'print(42)\n'
+        checks.append('ordinary_skill_files_and_agent_configuration_preserve_existing_sources')
+        b.config['mesh']['peers'][0].update(client=False,collaborate=False,execute=[])
+        (b.root/'config.json').write_text(json.dumps(b.config))
+        assert agent('device.inspect',{'target':b.origin})['data']['commands']['python3']
+        assert 'TRUSTED-MEMBER' in agent('shell.run',{'target':b.origin,'command':'echo TRUSTED-MEMBER'})['data']['output']
         assert agent('mcp.inspect',{'target':b.origin,'server_id':server_id,'tool':'echo'})['data']['items']
-        checks.append('package_path_guards_and_shared_management_permissions')
-        b.config['mesh']['peers'][0]['client']=True;(b.root/'config.json').write_text(json.dumps(b.config))
-        assert not (cwd/'should-not-run').exists()
+        checks.append('mesh_members_need_no_additional_client_or_collaboration_grants')
         occupied=[ok(raw('device.exec',{'target':b.origin,'command':'sleep 120'},iid=f'occupied-{i}')) for i in range(8)]
         queue_args={'target':b.origin,'command':'touch queued-must-not-run'}
         queued=[]

@@ -4,7 +4,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HTTP-01]
+// Contract: docs/design/agent-runtime.md [HTTP-01]
 async fn binary_serves_readyz_and_shuts_down_cleanly() {
     let root = tempfile::tempdir().unwrap();
     let data_root = root.path().join("data");

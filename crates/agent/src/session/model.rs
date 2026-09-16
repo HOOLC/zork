@@ -109,10 +109,8 @@ impl ProviderFailure {
         }
     }
 
-    /// "输入超出上下文窗口"类拒收（§2.6 规则 4'：API 是窗口的唯一裁判）。
-    /// 按错误码精确匹配 + 400 状态下的消息措辞兜底——溢出错误是恢复动作
-    ///（handoff）的触发器，宁缺毋滥：认错的错误只会像今天一样失败回合，
-    /// 可观察、可补词表；把无关 400 认成溢出才会静默丢上下文。
+    /// Identify context overflow without deciding whether recovery is allowed.
+    /// HTTP 400 retains this diagnostic but always ends the current turn.
     pub fn is_context_overflow(&self) -> bool {
         super::events::provider_error_is_context_overflow(
             self.status_code,
@@ -156,11 +154,9 @@ mod tests {
         }
     }
 
-    /// §2.6 规则 4'：只有上下文超限类拒收才允许触发硬 reset——认错方向的
-    /// 错误代价不对称（漏认 = 像今天一样失败回合，可观察；错认 = 静默丢
-    /// 上下文）。
+    /// Error classification remains independent of HTTP 400's no-retry policy.
     #[test]
-    // Contract: docs/zork-agent-architecture.md [RETRY-02, HANDOFF-01]
+    // Contract: docs/design/agent-runtime.md [RETRY-02, HANDOFF-01]
     fn context_overflow_classification() {
         assert!(failure(Some("context_length_exceeded"), None, "").is_context_overflow());
         assert!(failure(Some("Prompt_Too_Long"), None, "").is_context_overflow());

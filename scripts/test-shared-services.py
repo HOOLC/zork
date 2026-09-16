@@ -145,7 +145,8 @@ def main():
         assert status in (200,201), (status,leader)
         status, opened = node.request("POST", "/v1/node/agents/preview-leader/open", {})
         assert status == 200, (status,opened)
-        session = opened["session_id"]
+        chat = opened["chat_id"]
+        session = opened["agent"]["session_id"]
         request_ids={}
         def api(action, **fields):
             if fields.get("request_id") in request_ids: fields["request_id"]=request_ids[fields["request_id"]]
@@ -162,10 +163,10 @@ def main():
             args=dict(args);alias=args.pop("request_id",None)
             before=set(request_ids.values())
             content=json.dumps({"fake_tools":[{"name":name,"input":args}]})
-            status, body=node.request("POST",f"/v1/im/sessions/{session}/messages",{"content":content,"request_id":key})
+            status, body=node.request("POST",f"/v1/im/sessions/{chat}/messages",{"content":content,"request_id":key})
             assert status in (200,202), (status,body)
             def completed():
-                for segment in (node.root/'sessions'/session/'segments').glob('*.jsonl'):
+                for segment in (node.root/'shared-files/sessions'/session/'segments').glob('*.jsonl'):
                     for line in segment.read_text().splitlines():
                         event=json.loads(line).get('event',{})
                         result=event.get('result',{})
@@ -174,16 +175,19 @@ def main():
                             return result['invocation_id']
             invocation=f.wait(completed,'Agent '+name)
             if alias:request_ids[alias]=invocation
+        f.wait(lambda: node.get("/v1/mesh").get("origin") == node.origin, "Mesh service registry ready")
         page=ThreadingHTTPServer(("127.0.0.1",0),Page)
         threading.Thread(target=page.serve_forever,daemon=True).start()
         fake_tool("service.attach", {"name":"preview","port":page.server_port,"request_id":"attach-preview"}, "attach-message")
         preview=f.wait(lambda:named("preview"),"Agent attaches external service")
-        assert preview["mode"]=="external" and not preview["shared"] and preview["logs"] is None
-        fake_tool("service.share", {"id":preview["id"],"request_id":"share-preview"}, "share-message")
-        shared=f.wait(lambda:(v if (v:=named("preview")) and v["shared"] else None),"Agent shares service")
-        checks.append("named_agent_tools_attach_and_share")
-        replay=success("share",id=shared["id"],request_id="share-preview")
+        assert preview["mode"]=="external" and preview["shared"] and preview["logs"] is None
+        shared=preview
+        replay=success("attach",name="preview",port=page.server_port,request_id="attach-preview")
         assert replay["replayed"] and replay["url"]==shared["url"]
+        status, inventory = node.request("GET", "/v1/node/pages")
+        assert status == 200
+        assert any(item["page"]["url"] == shared["url"] for item in inventory["applications"]), inventory
+        checks.append("attach_exposes_mesh_link_and_application_without_separate_publication")
         assert api("attach",name="reserved",port=int(node.config["bind"]["runtime"].rsplit(":",1)[1]),request_id="reserved")[0]==400
         assert api("restart",id=shared["id"],request_id="external-restart")[0]==400
         other=node.new_task()["session_id"]
@@ -205,110 +209,39 @@ def main():
             return json.loads(process.stdout.readline())["url"]
         if os.environ.get("ZORK_SERVICE_CHROMIUM"):
             second=success("attach",name="second",port=page.server_port,request_id="second")
-            second=success("share",id=second["id"],request_id="second-share")
             second_url=open_link(second["url"])
             subprocess.run(["node",str(ROOT/"scripts/test-shared-service-browser.mjs"),local,second_url,str(root/"browser.png")],env=env,check=True,timeout=60)
             checks.append("chromium_page_websocket_cookie_storage_isolation")
         stream=websocket(local)
-        success("unshare",id=shared["id"],request_id="unshare-preview")
-        assert stream.recv(1)==b"";stream.close()
-        assert request(local,"/api")[0]==502
-        assert success("share",id=shared["id"],request_id="share-preview")["replayed"]
-        assert not inspect(shared["id"])["shared"]
-        assert success("share",id=shared["id"],request_id="reshare-preview")["url"]==shared["url"]
+        member=node.config["mesh"]["peers"][0]
+        member["client"]=False
+        (node.root/"config.json").write_text(json.dumps(node.config))
         assert request(local,"/api")[0]==200
-        checks.append("unshare_and_reshare_keep_identity_and_replay_cannot_undo")
-        stream=websocket(local)
-        node.config["mesh"]["peers"][0]["client"]=False
+        node.config["mesh"]["peers"]=[]
         (node.root/"config.json").write_text(json.dumps(node.config))
         assert stream.recv(1)==b"";stream.close()
         assert request(local,"/api")[0]==502
-        node.config["mesh"]["peers"][0]["client"]=True
+        node.config["mesh"]["peers"]=[member]
         (node.root/"config.json").write_text(json.dumps(node.config))
-        checks.append("revocation_closes_existing_and_new_streams")
+        f.wait(lambda: request(local,"/api")[0]==200,"member rejoins service")
+        checks.append("members_need_no_client_grant_and_removal_closes_streams")
 
-        managed_port=f.port()
-        managed_script=node.workspace/"managed-preview.py"
-        child_file=node.workspace/"children.txt"
-        managed_script.write_text("""from http.server import BaseHTTPRequestHandler,HTTPServer
-import os,sys,subprocess
-child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(3600)',sys.argv[2]])
-with open(sys.argv[3],'a') as output: output.write(str(child.pid)+'\\n')
-print('stdout-started',flush=True)
-print('stderr-started',file=sys.stderr,flush=True)
-class Handler(BaseHTTPRequestHandler):
- def do_GET(self):
-  body=str(os.getpid()).encode(); self.send_response(200); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
- def log_message(self,*args): pass
-HTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
-""")
-        command=[sys.executable,"-u",str(managed_script),str(managed_port),marker,str(child_file)]
-        start_args={"name":"managed","port":managed_port,"command":command,"cwd":str(node.workspace),"request_id":"start-managed"}
-        fake_tool("service.start",start_args,"managed-message")
-        managed=f.wait(lambda:named("managed"),"Agent registers managed service")
-        def running():
-            value=inspect(managed["id"])
-            return value if value["ready"] and value.get("pid") else None
-        live=f.wait(running,"managed service ready")
-        first_pid=live["pid"]
-        assert live["logs"]["node"]==node.origin
-        def logs_ready():
-            return b"stdout-started" in Path(live["logs"]["stdout"]).read_bytes() and b"stderr-started" in Path(live["logs"]["stderr"]).read_bytes()
-        f.wait(logs_ready,"stdout/stderr files flushed")
-        assert success("start",**start_args)["replayed"]
-        assert inspect(managed["id"])["pid"]==first_pid
-        managed_url=success("share",id=managed["id"],request_id="share-managed")["url"]
-        managed_local=open_link(managed_url)
-        assert int(request(managed_local,"/")[1])==first_pid
-        checks.append("managed_start_identity_readiness_and_filesystem_logs")
-        success("restart",id=managed["id"],request_id="restart-managed")
-        restarted=f.wait(lambda:(v if (v:=running()) and v["pid"]!=first_pid else None),"managed restart")
-        assert success("restart",id=managed["id"],request_id="restart-managed")["replayed"]
-        assert inspect(managed["id"])["pid"]==restarted["pid"]
-        success("stop",id=managed["id"],request_id="stop-managed")
-        assert not inspect(managed["id"])["desired_running"] and not inspect(managed["id"])["ready"]
-        assert success("restart",id=managed["id"],request_id="restart-managed")["replayed"]
-        assert not inspect(managed["id"])["desired_running"]
-        checks.append("restart_and_stop_retries_do_not_repeat_or_resurrect")
         def registry_ready():
             status,body=api("list")
             return body if status==200 else None
         node.stop();node.start()
-        f.wait(registry_ready,"registry after graceful restart")
-        assert not inspect(managed["id"])["desired_running"] and not inspect(managed["id"])["ready"]
-        assert inspect(managed["id"])["url"]==managed_url
+        f.wait(registry_ready,"registry after restart")
+        assert inspect(shared["id"])["url"]==shared["url"]
         assert request(local,"/api")[0]==200
-        checks.append("stopped_intent_and_shared_links_survive_restart")
-        success("restart",id=managed["id"],request_id="resume-managed")
-        before_crash=f.wait(running,"managed resumed")
-        node.restart_gateway()
-        f.wait(registry_ready,"registry after Gateway crash")
-        restored=f.wait(lambda:(v if (v:=running()) and v["pid"]!=before_crash["pid"] else None),"service restored after Gateway crash")
-        assert restored["url"]==managed_url
-        assert int(request(managed_local,"/")[1])==restored["pid"]
-        checks.append("crash_guard_and_automatic_service_restore")
+        checks.append("external_process_and_mesh_link_survive_station_restart")
         service_port=page.server_port;page.shutdown();page.server_close();page=None
         assert request(local,"/api")[0]==502
         page=ThreadingHTTPServer(("127.0.0.1",service_port),Page)
         threading.Thread(target=page.serve_forever,daemon=True).start()
         assert request(local,"/api")[0]==200
         checks.append("external_backend_offline_recovery_on_same_link")
-        success("unshare",id=managed["id"],request_id="unshare-managed")
-        success("stop",id=managed["id"],request_id="stop-managed-final")
-        node.stop();node.start();f.wait(registry_ready,"final restore")
-        final=inspect(managed["id"])
-        assert not final["shared"] and not final["desired_running"] and final["logs"]==live["logs"]
-        checks.append("unshare_stop_and_log_paths_persist")
-        broken=success("start",name="broken",port=f.port(),command=[str(root/"missing-program")],cwd=str(node.workspace),request_id="broken")
-        failed=f.wait(lambda:(v if (v:=inspect(broken["id"]))["state"] in ("failed","exited") else None),"startup error captured")
-        assert failed["last_exit_code"]==127 and "service_spawn_failed" in failed["last_error"]
-        checks.append("inspect_reports_startup_failure_without_parsing_logs")
         process.stdin.close();assert process.wait(timeout=15)==0;process=None;log.close()
-        children.update(int(pid) for pid in child_file.read_text().splitlines())
-        def no_children():
-            return all(marker not in subprocess.run(["ps","-p",str(pid),"-o","command="],capture_output=True,text=True).stdout for pid in children)
-        f.wait(no_children,"service process groups reaped")
-        checks.append("process_groups_and_client_listeners_cleaned_up")
+        checks.append("client_listeners_cleaned_up")
         print(json.dumps({"checks":checks,"evidence":str(root)},indent=2))
         (root/"result.json").write_text(json.dumps({"checks":checks},indent=2))
     finally:

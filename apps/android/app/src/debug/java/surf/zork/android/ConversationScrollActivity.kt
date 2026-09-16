@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -20,7 +22,11 @@ import androidx.compose.ui.unit.dp
 class ConversationScrollActivity : ComponentActivity() {
     data class DrawnPosition(val messages: Int, val first: Int, val canScrollForward: Boolean)
     val drawnPositions = mutableListOf<DrawnPosition>()
+    val messageBounds = android.graphics.Rect()
     var loading by mutableStateOf(false)
+    private var older by mutableStateOf(false)
+    var olderLoads = 0
+        private set
     private var members by mutableStateOf(emptyList<org.json.JSONObject>())
     fun completeMembers() { members = listOf(org.json.JSONObject().put("id","leader").put("name","滚动验证").put("avatar","cat")) }
     fun completeMetadata() { rows = rows.map { it.copy(author="同一个小伙伴",createdAt="2026-09-07T18:00:00+08:00") } }
@@ -36,18 +42,23 @@ class ConversationScrollActivity : ComponentActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.addOnFrameMetricsAvailableListener({_,m,_-> synchronized(initialFrames) { initialFrames.add((m.getMetric(android.view.FrameMetrics.LAYOUT_MEASURE_DURATION)+m.getMetric(android.view.FrameMetrics.DRAW_DURATION))/1_000_000.0) } },android.os.Handler(android.os.Looper.getMainLooper()))
         loading = intent.getBooleanExtra("loading",false)
+        older = intent.getBooleanExtra("older",false)
         if (!intent.getBooleanExtra("empty",false)) load(80)
         setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f,1f)) {
                 ZorkTheme {
                     scroll = rememberLazyListState()
-                    val state = WorkbenchState(conversation=Conversation("scroll","滚动验证",avatar="cat"),messages=rows,participants=members,historyLoading=loading)
+                    val state = WorkbenchState(conversation=Conversation("scroll","滚动验证",avatar="cat"),messages=rows,participants=members,historyLoading=loading,older=older)
+                    val actions = WorkbenchActions(older = { olderLoads++; older = false; load(1) })
                     Column(Modifier.requiredSize(390.dp,844.dp)) {
                         if (intent.getBooleanExtra("header",false)) ConversationHeader(state,WorkbenchActions(),true)
-                        Box(Modifier.weight(1f).drawWithContent {
+                        Box(Modifier.weight(1f).onGloballyPositioned {
+                            val bounds = it.boundsInWindow()
+                            messageBounds.set(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt())
+                        }.drawWithContent {
                             drawContent()
                             if (rows.isNotEmpty()) drawnPositions.add(DrawnPosition(rows.size,scroll.firstVisibleItemIndex,scroll.canScrollForward))
-                        }) { ConversationBody(state,WorkbenchActions(),scroll) }
+                        }) { ConversationBody(state,actions,scroll) }
                     }
                 }
             }

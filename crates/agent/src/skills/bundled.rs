@@ -3,6 +3,9 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use zork_config::skill_bundles::{valid_component, BundleSelection, BundleState};
+mod publication;
+#[cfg(target_os = "macos")]
+mod initial;
 
 const MANIFEST: &str = ".bundle-manifest.json";
 pub struct BundleFile<'a> {
@@ -117,7 +120,10 @@ fn inventory(
 ) -> Result<()> {
     for entry in fs::read_dir(directory.join(relative))? {
         let entry = entry?;
-        if relative.as_os_str().is_empty() && entry.file_name() == MANIFEST {
+        if relative.as_os_str().is_empty()
+            && (entry.file_name() == MANIFEST
+                || entry.file_name() == zork_config::skill_bundles::METADATA_DIRECTORY)
+        {
             continue;
         }
         let path = relative.join(entry.file_name());
@@ -158,6 +164,11 @@ fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
     result
 }
 fn save(root: &Path, state: &BundleState) -> Result<()> {
+    if fs::read(root.join(".state.json")).ok().as_deref()
+        == Some(serde_json::to_vec_pretty(state)?.as_slice())
+    {
+        return Ok(());
+    }
     atomic_json(&root.join(".state.json"), state)
 }
 fn lock(root: &Path) -> Result<fs::File> {
@@ -218,14 +229,193 @@ fn remove_stage(directory: &Path) {
         let _ = fs::remove_dir(directory);
     }
 }
+/// Prepare disjoint built-in distributions together on a new installation.
+pub(super) fn install_initial(
+    data_root: &Path,
+    groups: &BTreeMap<&str, Vec<BundleFile<'_>>>,
+) -> Result<bool> {
+    let _lock = lock(&data_root.join("state/skill-management"))?;
+    let public = zork_config::skill_bundles::skills_root(data_root);
+    fs::create_dir_all(&public)?;
+    if fs::read_dir(&public)?.next().transpose()?.is_some() {
+        // Existing selections, user directories and recovery use the ordinary
+        // serialized upgrade path. Only a new installation has disjoint owners.
+        return Ok(false);
+    }
+    for (id, files) in groups {
+        ensure!(manifest(files)?.skills == [*id], "invalid initial Skill group");
+    }
+    #[cfg(target_os = "macos")]
+    initial::install(&public, groups)?;
+    // Keep the admission lock until every independent publication has completed.
+    #[cfg(not(target_os = "macos"))]
+    std::thread::scope(|scope| {
+        let workers = groups.iter().map(|(id, files)| {
+            let directory = public.join(id);
+            (*id, std::thread::Builder::new().name(format!("zork-skill-{id}"))
+                .spawn_scoped(scope, move || -> Result<String> {
+                    // A user-created directory racing setup must never be adopted.
+                    fs::create_dir(&directory)?;
+                    install_one(data_root, &directory.join(".zork"), files)
+                }))
+        }).collect::<Vec<_>>();
+        for (skill, worker) in workers {
+            let result = match worker {
+                Ok(worker) => worker.join().unwrap_or_else(|_| Err(anyhow::anyhow!("Skill provisioning worker failed"))),
+                Err(error) => Err(error.into()),
+            };
+            if let Err(error) = result {
+                tracing::warn!(skill, %error, "Skill provisioning failed; other skills remain available");
+            }
+        }
+    });
+    Ok(true)
+}
+
 /// Prepare and verify a complete immutable directory, then atomically publish
 /// its selection. Previous releases remain readable for rollback and old paths.
 pub fn install(data_root: &Path, files: &[BundleFile<'_>]) -> Result<String> {
     let incoming = manifest(files)?;
-    let root = data_root.join("bundled-skills");
-    let custom = data_root.join("custom-skills");
+    // Validate the full input first, then update each Skill independently.
+    let mut selected = Vec::new();
+    let _lock = lock(&data_root.join("state/skill-management"))?;
+    for id in &incoming.skills {
+        let subset = files
+            .iter()
+            .filter(|file| file.path.starts_with(&format!("{id}/")))
+            .map(|file| BundleFile {
+                path: file.path,
+                content: file.content,
+            })
+            .collect::<Vec<_>>();
+        let public = zork_config::skill_bundles::skills_root(data_root);
+        fs::create_dir_all(&public)?;
+        let managed = zork_config::skill_bundles::inspect_managed(data_root)?;
+        ensure!(
+            !managed.unavailable.iter().any(|directory| {
+                directory == &public.join(id)
+                    || fs::read_dir(directory.join(".zork/.versions"))
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .any(|entry| {
+                            read_manifest(&entry.path())
+                                .is_ok_and(|manifest| manifest.skills.contains(id))
+                        })
+            }),
+            "Skill management metadata needs repair; refusing to reset its selection"
+        );
+        let mut prior = managed
+            .entries
+            .into_iter()
+            .find(|(_, state)| state.published.contains_key(id));
+        let mut directory = prior
+            .as_ref()
+            .and_then(|(root, _)| root.parent())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| public.join(id));
+        if prior.is_none() && directory.join(".zork/.state.json").is_file() {
+            zork_config::skill_bundles::load(&directory.join(".zork")).context(
+                "Skill management metadata needs repair; refusing to reset its selection",
+            )?;
+        }
+        if directory.exists()
+            && (prior.is_none() || !publication::owned(&directory.join(".zork"), id, &directory))
+        {
+            let pending = prior
+                .as_ref()
+                .and_then(|(_, state)| state.successor.as_ref())
+                .map(|name| public.join(name))
+                .filter(|path| publication::owned(&path.join(".zork"), id, path));
+            directory = if let Some(pending) = pending {
+                pending
+            } else {
+                loop {
+                    directory = public.join(format!("{id}-{}", ulid::Ulid::new()));
+                    if !directory.exists() {
+                        break directory;
+                    }
+                }
+            };
+            if let Some((root, state)) = &mut prior {
+                state.successor = Some(directory.file_name().unwrap().to_string_lossy().into());
+                save(root, state)?;
+                inherit_selection(data_root, root, &directory.join(".zork"), state)?;
+            }
+        }
+        fs::create_dir_all(&directory)?;
+        selected.push(install_one(data_root, &directory.join(".zork"), &subset)?);
+        if let Some((root, mut state)) =
+            prior.filter(|(root, _)| root.parent() != Some(directory.as_path()))
+        {
+            // Until this point the old selection remains authoritative. A
+            // successor's atomic state commit also resolves an interrupted
+            // handoff for readers, before this final bookkeeping write.
+            state.published.clear();
+            save(&root, &state)?;
+        }
+    }
+    Ok(if selected.len() == 1 {
+        selected.remove(0)
+    } else {
+        hash(&serde_json::to_vec(&selected)?)
+    })
+}
+fn inherit_selection(
+    data_root: &Path,
+    previous: &Path,
+    root: &Path,
+    state: &BundleState,
+) -> Result<()> {
+    fs::create_dir_all(root.join(".versions"))?;
+    atomic_json(&root.join(".publication.json"), &state.active)?;
+    for entry in fs::read_dir(previous.join(".versions"))? {
+        let entry = entry?;
+        let Ok(manifest) = read_manifest(&entry.path()) else {
+            continue;
+        };
+        if !intact(&entry.path(), &manifest) {
+            continue;
+        }
+        let target = root.join(".versions").join(entry.file_name());
+        if target.exists() {
+            ensure!(
+                read_manifest(&target).is_ok_and(|m| m == manifest && intact(&target, &m)),
+                "replacement Skill history is incomplete"
+            );
+            continue;
+        }
+        let staging = data_root
+            .join("state/skill-staging")
+            .join(format!("history-{}", ulid::Ulid::new()));
+        let result = (|| -> Result<()> {
+            fs::create_dir_all(&staging)?;
+            for relative in manifest.files.keys() {
+                let output = staging.join(relative);
+                fs::create_dir_all(output.parent().unwrap())?;
+                fs::copy(entry.path().join(relative), &output)?;
+                fs::File::open(output)?.sync_all()?;
+            }
+            atomic_json(&staging.join(MANIFEST), &manifest)?;
+            ensure!(
+                intact(&staging, &manifest),
+                "Skill history copy failed verification"
+            );
+            freeze(&staging)?;
+            fs::rename(&staging, &target)?;
+            sync_directory(&root.join(".versions"))
+        })();
+        remove_stage(&staging);
+        result?;
+    }
+    let mut inherited = state.clone();
+    inherited.successor = None;
+    inherited.published.clear();
+    save(root, &inherited)
+}
+fn install_one(data_root: &Path, root: &Path, files: &[BundleFile<'_>]) -> Result<String> {
+    let incoming = manifest(files)?;
     let _lock = lock(&root)?;
-    fs::create_dir_all(&custom)?;
     fs::create_dir_all(root.join(".versions"))?;
     let mut state = zork_config::skill_bundles::load(&root)?;
     if let Some(active) = &state.active {
@@ -239,8 +429,8 @@ pub fn install(data_root: &Path, files: &[BundleFile<'_>]) -> Result<String> {
                 if state.distribution_revision.as_deref() != Some(&incoming.revision) {
                     state.distribution_revision = Some(incoming.revision.clone());
                     state.rollback = false;
-                    save(&root, &state)?;
                 }
+                publication::activate(data_root, &root, &mut state)?;
                 return Ok(selected);
             }
         }
@@ -257,7 +447,9 @@ pub fn install(data_root: &Path, files: &[BundleFile<'_>]) -> Result<String> {
         Some(id) => id,
         None => {
             let id = format!("{}-{}", &incoming.revision[..12], ulid::Ulid::new());
-            let stage = root.join(format!(".stage-{}", ulid::Ulid::new()));
+            let staging = data_root.join("state/skill-staging");
+            fs::create_dir_all(&staging)?;
+            let stage = staging.join(format!("bundle-{}", ulid::Ulid::new()));
             let result = (|| -> Result<()> {
                 fs::create_dir(&stage)?;
                 for file in files {
@@ -289,13 +481,15 @@ pub fn install(data_root: &Path, files: &[BundleFile<'_>]) -> Result<String> {
     });
     state.distribution_revision = Some(incoming.revision);
     state.rollback = false;
-    save(&root, &state)?;
+    publication::activate(data_root, &root, &mut state)?;
     Ok(selected)
 }
 
 pub fn is_managed(path: &Path) -> bool {
-    path.ancestors()
-        .any(|directory| directory.join(MANIFEST).is_file())
+    path.ancestors().any(|directory| {
+        directory.join(MANIFEST).is_file()
+            || zork_config::skill_bundles::published_directory(directory).unwrap_or(true)
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -304,13 +498,28 @@ pub enum Request {
     List,
     Disable { skill: String },
     Enable { skill: String },
-    Rollback { version: String },
+    Rollback { skill: String, version: String },
 }
 
 pub fn manage(data_root: &Path, request: Request) -> Result<serde_json::Value> {
-    let root = data_root.join("bundled-skills");
-    let _lock = lock(&root)?;
-    let mut state = zork_config::skill_bundles::load(&root)?;
+    let _lock = lock(&data_root.join("state/skill-management"))?;
+    let catalog = zork_config::skill_bundles::inspect_managed(data_root)?;
+    let managed = catalog.entries;
+    if matches!(request, Request::List) {
+        return Ok(
+            json!({"skills": managed.iter().map(|(root,state)|status(root,state)).collect::<Result<Vec<_>>>()?, "diagnostics": catalog.diagnostics}),
+        );
+    }
+    let skill = match &request {
+        Request::Disable { skill }
+        | Request::Enable { skill }
+        | Request::Rollback { skill, .. } => skill,
+        _ => unreachable!(),
+    };
+    let (root, mut state) = managed
+        .into_iter()
+        .find(|(_, state)| state.published.contains_key(skill))
+        .context("unknown bundled skill ID")?;
     match request {
         Request::List => {}
         Request::Disable { skill } => {
@@ -336,10 +545,26 @@ pub fn manage(data_root: &Path, request: Request) -> Result<serde_json::Value> {
             state.disabled.remove(&skill);
             save(&root, &state)?;
         }
-        Request::Rollback { version } => {
+        Request::Rollback { version, .. } => {
+            let id = state
+                .published
+                .keys()
+                .next()
+                .context("Skill identity missing")?;
+            ensure!(
+                publication::owned(&root, id, root.parent().context("Skill directory missing")?),
+                "Skill files have external changes; preserve or restore them before rollback"
+            );
             ensure!(valid_component(&version), "invalid bundle version");
             let directory = root.join(".versions").join(&version);
             let manifest = read_manifest(&directory)?;
+            ensure!(
+                manifest
+                    .skills
+                    .iter()
+                    .all(|id| state.published.contains_key(id)),
+                "version belongs to another Skill"
+            );
             ensure!(
                 intact(&directory, &manifest),
                 "rollback version failed integrity verification"
@@ -349,7 +574,7 @@ pub fn manage(data_root: &Path, request: Request) -> Result<serde_json::Value> {
                 skills: manifest.skills,
             });
             state.rollback = true;
-            save(&root, &state)?;
+            publication::activate(data_root, &root, &mut state)?;
         }
     }
     status(&root, &state)
@@ -366,53 +591,8 @@ fn status(root: &Path, state: &BundleState) -> Result<serde_json::Value> {
     }
     versions.sort_by(|a, b| a["version"].as_str().cmp(&b["version"].as_str()));
     Ok(
-        json!({"active":state.active,"disabled":state.disabled,"rollback":state.rollback,"versions":versions}),
+        json!({"skill":state.published.keys().next(),"directory":root.parent(),"active":state.active,"disabled":state.disabled,"rollback":state.rollback,"versions":versions}),
     )
-}
-
-pub fn register(registry: &crate::session::tools::ToolRegistry, data_root: PathBuf) -> Result<()> {
-    use crate::session::tools::{NoToolState, ToolContract, ToolInstance, ToolVersion};
-    let description = "Manage this node's release-provided skill files. action=list shows versions and disabled IDs; disable/enable with skill changes visibility for all agents on this node without deleting files; rollback with version selects a complete saved release. Custom copies are unchanged. A rollback persists across restart until a different distribution revision is shipped.";
-    registry.register(Arc::new(ToolInstance::new(ToolContract {
-        name:"skill.bundle".into(),version:ToolVersion::new("1")?,initial_description:description.into(),detailed_description:description.into(),
-        input_schema:json!({"type":"object","properties":{"action":{"type":"string","enum":["list","disable","enable","rollback"]},"skill":{"type":"string"},"version":{"type":"string"}},"required":["action"],"additionalProperties":false}),
-    },Arc::new(BundleTool {data_root}),Arc::new(NoToolState))?));
-    Ok(())
-}
-struct BundleTool {
-    data_root: PathBuf,
-}
-impl crate::session::tools::ToolImplementation for BundleTool {
-    fn execute<'a>(
-        &'a self,
-        _context: &'a crate::session::tools::ToolContext,
-        arguments: &'a serde_json::Value,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = crate::session::tools::ToolExecution> + Send + 'a>,
-    > {
-        let root = self.data_root.clone();
-        let arguments = arguments.clone();
-        Box::pin(async move {
-            let result = tokio::task::spawn_blocking(move || {
-                manage(&root, serde_json::from_value(arguments)?)
-            })
-            .await;
-            match result {
-                Ok(Ok(value)) => crate::session::tools::ToolExecution::success(value),
-                error => {
-                    let message = match error {
-                        Ok(Err(e)) => e.to_string(),
-                        Err(e) => e.to_string(),
-                        _ => unreachable!(),
-                    };
-                    let mut result =
-                        crate::session::tools::ToolExecution::success(json!({"error":message}));
-                    result.outcome = crate::session::events::ToolOutcome::Failed;
-                    result
-                }
-            }
-        })
-    }
 }
 
 #[cfg(all(test, unix))]

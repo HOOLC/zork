@@ -96,7 +96,7 @@ fn counter_contract() -> ToolContract {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-03, TOOL-04, TURN-01]
+// Contract: docs/design/agent-runtime.md [TOOL-03, TOOL-04, TURN-01]
 async fn tool_owned_migrations_fold_outstanding_snapshot_and_restart_share_one_state_contract() {
     let mut world = TestWorld::new();
     let compatibility = Arc::new(CounterCompatibility::default());
@@ -169,7 +169,7 @@ async fn tool_owned_migrations_fold_outstanding_snapshot_and_restart_share_one_s
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [EVENT-06, RECOVERY-01]
+// Contract: docs/design/agent-runtime.md [EVENT-06, RECOVERY-01]
 async fn an_unmatched_durable_tool_result_is_folded_and_reported_as_new_information() {
     let mut world = TestWorld::new();
     let compatibility = Arc::new(CounterCompatibility::default());

@@ -101,6 +101,8 @@ impl RootView {
         self.file_ui.draft = Default::default();
         self.file_ui.messages.borrow_mut().clear();
         self.comment_popover = None;
+        self.comment_editor.update(cx, |editor, cx| editor.reset(cx));
+        self.presence.scene = Default::default();
         self.close_conversation_artifact();
         self.transcript_selection.borrow_mut().clear();
         self.draft_task = None;
@@ -115,7 +117,7 @@ impl RootView {
         self.file_ui.draft_files.reset(&self.draft_state.files);
         let text = self.draft_state.text.clone();
         self.composer_input
-            .update(cx, |input, cx| input.set_value(text, cx));
+            .update(cx, |input, cx| input.reset_value(text, cx));
         if let (Some(id), Some(mut changes)) = (self.selected_session.clone(), changes) {
             self.draft_task = Some(cx.spawn(async move |this, cx| {
                 while let Some(draft) = changes.changed().await {
@@ -151,10 +153,12 @@ impl RootView {
         &mut self,
         session_id: String,
         text: String,
+        origin: zork_ui::components::liquid::departure::Origin,
         cx: &mut Context<Self>,
     ) {
         match self.core_device.submit_draft(&session_id, &text) {
             Ok(_) => {
+                self.presence.scene.accepted(origin, &text);
                 // The core draft subscription publishes the cleared text and
                 // attachments together. Do not race it with a second UI write.
                 self.refresh_queued();

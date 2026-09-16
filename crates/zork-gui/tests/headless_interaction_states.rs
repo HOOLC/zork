@@ -10,8 +10,12 @@ use zork_gui::{
     desktop::stories::{self, StoryHost},
 };
 fn main() -> anyhow::Result<()> {
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../artifacts/interaction-preview/interaction-checks");
+    let output = std::env::var_os("ZORK_INTERACTION_OUTPUT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../artifacts/interaction-preview/interaction-checks")
+        });
     std::fs::create_dir_all(&output)?;
     let mut cx = HeadlessAppContext::with_platform(
         gpui_platform::current_platform(true).text_system(),
@@ -128,8 +132,17 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.label == "已触发 6 次操作"),
         "Action dispatch was lost or duplicated"
     );
+    let edge_target = driver.snapshot(false).elements.into_iter()
+        .find(|element| element.id == "interaction-overview-canvas-chat").unwrap();
+    for y in [edge_target.bounds.y + 3., edge_target.bounds.y + edge_target.bounds.height - 3.] {
+        let action = serde_json::from_value(json!({"type":"click","target":{"x":edge_target.center.x,"y":y}}))?;
+        cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
+        pump(&mut cx)?;
+    }
+    anyhow::ensure!(driver.snapshot(false).elements.iter().any(|element| element.label == "已触发 8 次操作"),
+        "the full control must respond outside the label's ink band");
     cx.capture_screenshot(window.into())?
         .save(output.join("overview.png"))?;
-    println!("PASS: six real controls, two surfaces, hover/pressed colors, stable bounds, one action per click");
+    println!("PASS: six real controls, two surfaces, hover/pressed colors, stable bounds, one action per center/edge click");
     Ok(())
 }

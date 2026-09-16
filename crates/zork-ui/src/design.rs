@@ -1,33 +1,11 @@
-//! Cue-inspired native shell. Source mapping: docs/local-first-cue.md.
+//! Shared desktop design. Contract: docs/design/interface.md.
 //! Hallmark · Workbench · modern-minimal · Cue reference · native GPUI tokens.
 //!
 //! Rendering stays in `views`, but the durable palette, hierarchy, and default
 //! geometry live here so regressions do not silently turn the app back into a
 //! generic dashboard.
 
-/// Brand emphasis from apps/zork-design/tokens/design-tokens.json (brand.accent).
-/// Keep identity emphasis separate from status colors and neutral surfaces.
-pub const BRAND_ACCENT: u32 = 0xE9643B;
-
-/// Shared action feedback, independent of the page containing the control.
-pub struct InteractionPalette {
-    pub neutral_hover: u32,
-    pub neutral_pressed: u32,
-    pub primary_hover: u32,
-    pub primary_pressed: u32,
-    pub accent_hover: u32,
-    pub accent_pressed: u32,
-    pub focus_border: u32,
-}
-pub const INTERACTION: InteractionPalette = InteractionPalette {
-    neutral_hover: 0xEFEEEA,
-    neutral_pressed: 0xEAE7E1,
-    primary_hover: 0x41464C,
-    primary_pressed: 0x1B1E21,
-    accent_hover: 0xDB572F,
-    accent_pressed: 0xC84A27,
-    focus_border: 0x646970,
-};
+pub use zork_liquid::tokens::{BRAND_ACCENT, LIQUID_OUTLINE, BORDER_WIDTH, InteractionPalette, INTERACTION};
 
 /// Form and feedback colors extend the existing approved warm-white palette.
 pub struct FormPalette {

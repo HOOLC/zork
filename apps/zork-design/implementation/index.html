@@ -1,48 +1,31 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>原生接入记录 · Zork Design</title><link rel="icon" href="../assets/brand/mark.svg"><link rel="stylesheet" href="../handbook.css"></head><body><header><a class="home" href="../index.html"><img src="../assets/brand/mark.svg" alt=""><svg class="home-wordmark" xmlns="http://www.w3.org/2000/svg" width="136" height="44" viewBox="0 0 136 44" role="img" aria-label="Zork"><title>Zork · 折角 / Fold · 字标探索 v2</title><g fill="#24272B"><path class="wordmark-letter letter-z" fill-rule="evenodd" d="M3 4H31V10L11 33H31V40H18L21 35L10 40H0V33L21 11H0V7Z"/><path class="wordmark-letter letter-o" fill-rule="evenodd" d="M46 14H54L64 24V30Q64 40 54 40H46Q36 40 36 30V24Q36 14 46 14ZM47 21Q43 21 43 26V29Q43 33 47 33H53Q57 33 57 29V27L51 21Z"/><path class="wordmark-letter letter-r" fill-rule="evenodd" d="M71 40V15H78V20Q81 15 87 15H94L89 22H86Q78 22 78 30V40Z"/><path class="wordmark-letter letter-k" fill-rule="evenodd" d="M99 4H106V25L118 15H128L113 28L132 40H120L106 31V40H99Z"/></g></svg><span>Design</span></a><nav><a href="../index.html#identity">品牌</a><a href="../index.html#product">产品</a><a href="../assets/index.html">素材</a><a href="../mobile/index.html">移动端</a><a href="../prototype/gui.html">交互样稿 ↗</a></nav></header><div class="reading-layout"><aside><a href="../docs/01-concepts.html">01 产品概念</a><a href="../docs/02-principles.html">02 设计原则</a><a href="../docs/03-visual-system.html">03 视觉规范</a><a href="../docs/04-components.html">04 组件与交互</a><a href="../docs/05-assets.html">05 图形与素材</a><a href="../docs/06-states-and-copy.html">06 状态与文案</a><a href="../docs/07-motion.html">07 动效规范</a><a href="../docs/08-decisions.html">08 决策与待定项</a><a href="../docs/09-handoff.html">09 维护与交付</a><a href="../docs/10-mobile.html">10 移动端规范</a><a href="../docs/11-avatars.html">11 动物头像生成规范</a><a href="../docs/12-icons-and-scenes.html">12 功能图标与 SVG 状态</a><a href="../docs/13-design-coverage.html">13 PC 设计覆盖与验证</a><a href="../README.md">Markdown 目录 ↗</a></aside><main class="article"><h1>原生接入记录</h1>
-<p>当前设计已接入 mini1 主代码目录 <code>.</code>。原生窗口使用隔离测试数据验证；MBA 的正式安装已通过更新脚本替换为 0.1.30，新界面已启动，本机节点就绪。</p>
-<p>本轮完成的是新版主工作流。历史记录页仍沿用旧设计；旧版全局收件箱、任务看板、独立 Drive 和人工任务操作仍未统一到新版入口。详见 <a href="migration-status.md">迁移范围与遗留项</a>。</p>
-<h2>实际挂载位置</h2>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>原生资源接入与对照 · Zork Design</title><link rel="icon" href="../assets/brand/mark.svg"><link rel="stylesheet" href="../handbook.css"></head><body><header><a class="home" href="../index.html"><img src="../assets/brand/mark.svg" alt=""><svg class="home-wordmark" xmlns="http://www.w3.org/2000/svg" width="136" height="44" viewBox="0 0 136 44" role="img" aria-label="Zork"><title>Zork · 折角 / Fold · 字标探索 v2</title><g fill="#24272B"><path class="wordmark-letter letter-z" fill-rule="evenodd" d="M3 4H31V10L11 33H31V40H18L21 35L10 40H0V33L21 11H0V7Z"/><path class="wordmark-letter letter-o" fill-rule="evenodd" d="M46 14H54L64 24V30Q64 40 54 40H46Q36 40 36 30V24Q36 14 46 14ZM47 21Q43 21 43 26V29Q43 33 47 33H53Q57 33 57 29V27L51 21Z"/><path class="wordmark-letter letter-r" fill-rule="evenodd" d="M71 40V15H78V20Q81 15 87 15H94L89 22H86Q78 22 78 30V40Z"/><path class="wordmark-letter letter-k" fill-rule="evenodd" d="M99 4H106V25L118 15H128L113 28L132 40H120L106 31V40H99Z"/></g></svg><span>Design</span></a><nav><a href="../index.html#identity">品牌</a><a href="../index.html#product">产品</a><a href="../assets/index.html">素材</a><a href="../mobile/index.html">移动端</a><a href="../prototype/gui.html">交互样稿 ↗</a></nav></header><div class="reading-layout"><aside><a href="../docs/01-concepts.html">01 产品概念</a><a href="../docs/02-principles.html">02 设计原则</a><a href="../docs/03-visual-system.html">03 视觉规范</a><a href="../docs/04-components.html">04 组件与交互</a><a href="../docs/05-assets.html">05 图形与素材</a><a href="../docs/06-states-and-copy.html">06 状态与文案</a><a href="../docs/07-motion.html">07 动效规范</a><a href="../docs/08-decisions.html">08 决策与待定项</a><a href="../docs/09-handoff.html">09 维护与交付</a><a href="../docs/10-mobile.html">10 移动端规范</a><a href="../docs/11-avatars.html">11 动物头像生成规范</a><a href="../docs/12-icons-and-scenes.html">12 功能图标与 SVG 状态</a><a href="../docs/13-design-coverage.html">13 PC 设计覆盖与验证</a><a href="../README.md">Markdown 目录 ↗</a></aside><main class="article"><h1>原生资源接入与对照</h1>
+<p>本目录保存图形资源接入映射和固定截图基线。当前应用入口为 <code>DesktopRoot</code>；功能状态以 <a href="../../../docs/design/devices.md#lifecycle">桌面节点</a>、<a href="../../../docs/design/chat.md#navigation">Chat 导航</a> 和 <a href="../../../docs/design/execution-history.md">执行历史</a> 为准。旧直接 Station 入口、全局 Inbox/看板和独立 Drive 已退役，不再维护两份迁移清单。</p>
+<h2>资源映射</h2>
+<p>共享图标、字标与控件由 <code>crates/zork-ui</code> 提供，应用视图负责组合；当前视觉合同见 <a href="../docs/gui-approved-design.md">已确认设计</a>。资源的来源与许可证继续随资产保存。</p>
 <table>
 <thead>
 <tr>
-<th>动效</th>
-<th>原生位置</th>
+<th>基线中的动效</th>
+<th>接入位置</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>图标</td>
-<td>选择第一位 Leader 的对话引导</td>
+<td>图标与联动</td>
+<td>首位伙伴的对话引导、主会话品牌位</td>
 </tr>
 <tr>
 <td>Zork 字标</td>
 <td>设置侧栏页脚</td>
 </tr>
 <tr>
-<td>联动</td>
-<td>主会话侧栏品牌位</td>
-</tr>
-<tr>
-<td>圆润弹开与跳落、下半蠕动成 Z、展开 ork</td>
-<td>首位 Leader 创建引导</td>
+<td>圆润弹开/跳落、变形字标</td>
+<td>首位伙伴创建引导</td>
 </tr>
 </tbody>
 </table>
-<p>52 个功能图标已嵌入。大幅场景插画已移除，设备、文件、收件箱和任务状态直接复用 20–32 px 功能 SVG；对话首页不再叠加重复插图。详情见 <a href="native/usage-v2.json">资源挂载清单</a>。不为了覆盖素材数量而制造不存在的界面或工作状态。</p>
-<p>实际界面代码中的旧 <code>cue/</code>、<code>phosphor</code> 图标路径已迁移到 <code>icons/&lt;语义名称&gt;.svg</code>。历史源文件保留来源；真实外部服务身份与 Zork 产品品牌分开。</p>
-<h2>验证</h2>
-<p>默认安装检查已切换为 GPUI 无窗口渲染测试：固定种子与虚拟时钟、两次一致回放、每帧绘制行数与 120 Hz CPU 预算。基准使用新版桌面入口。安装结果记录见 mini1 的 <code>artifacts/mba-install/2026-09-06-modal-selection-fix/verification.json</code>。</p>
-<ul>
-<li>68 项 GUI 单元/集成测试通过，2 项既有外部 fixture 忽略；本轮去除粘连后，5 项动效定向测试另行复验通过。</li>
-<li>1280×800、900×600 完整窗口流程通过：导航、评论、模型绑定、附件、离线投递、重连和重启恢复。</li>
-<li>四种动效的首/早/中/晚/末帧验证通过（变形增加收拢帧）；前三种回到静止起点，变形到达字标终点。</li>
-<li>减少动态效果使用 macOS NSWorkspace 偏好；隔离调试开关验证静态端点，未修改系统偏好。</li>
-<li>主目录 Agent / Gateway / GUI 编译检查与隔离 HTTP 业务回归通过。</li>
-</ul>
-<p><a href="native/brand-motion/frames.json">正常动效帧哈希</a> · <a href="native/brand-reduced/frames.json">减少动态帧哈希</a></p>
-<h2>表格与弹窗修复</h2>
-<p>MBA 已于 2026-09-06 19:14 更新：模型连接、模型编辑和 Agent 创建/编辑使用真实模态弹窗。表格点击越界已修复，同一 GPUI 单击测试恢复旧代码会复现崩溃，修复版通过；同时覆盖跨列、反向中文拖选。较慢的本机节点冷启动现在允许等待 60 秒，安装检查继续验证就绪、失败回滚。</p>
-<h2>实际窗口截图</h2>
-<p><a href="native/conversation-comments-1280x800.png">宽窗口会话与评论</a> · <a href="native/conversation-comments-900x600.png">较窄窗口</a> · <a href="native/conversation-file-preview-900x600.png">文件预览</a></p>
-<p><a href="native/brand-motion/brand-morph-start.png">变形起点</a> · <a href="native/brand-motion/brand-morph-mid.png">变形中段</a> · <a href="native/brand-motion/brand-morph-end.png">变形终点</a></p>
-<p>客户端上传与完整安装自升级仍没有对应实现，界面明确提示未支持。这些限制与图形资源替换分开记录。</p></main></div><footer>2026.09.06 · 本地设计资料 · 未定稿内容均标记为提案</footer></body></html>
+<p><a href="native/usage-v2.json">资源挂载清单</a>记录这批固定基线中的资源与位置，不代表后续版本的完整使用清单。</p>
+<h2>固定对照材料</h2>
+<p><a href="native/brand-motion/frames.json">正常动效帧</a> · <a href="native/brand-reduced/frames.json">减少动态帧</a></p>
+<p><a href="native/conversation-comments-1280x800.png">宽窗口会话</a> · <a href="native/conversation-comments-900x600.png">窄窗口会话</a> · <a href="native/conversation-file-preview-900x600.png">文件预览</a></p>
+<p>这些材料保留历史视觉依据，不证明当前安装版本、源码测试或设备性能。新改动按 <a href="../../../.agents/skills/zork-ui-parity/SKILL.md">UI parity</a> 选择对照与验证，实际测试报告放入本地 artifacts。</p></main></div><footer>2026.09.06 · 本地设计资料 · 未定稿内容均标记为提案</footer></body></html>

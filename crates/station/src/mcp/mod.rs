@@ -66,22 +66,6 @@ fn digest(value: &impl Serialize) -> Result<String> {
 }
 
 pub use crate::node_access::Subject;
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(tag = "scope", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Grant {
-    #[default]
-    Local,
-    Mesh,
-    Selected {
-        subjects: Vec<Principal>,
-    },
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Principal {
-    origin: String,
-    agent: String,
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerInput {
@@ -89,8 +73,8 @@ pub struct ServerInput {
     #[serde(default)]
     description: String,
     transport: runtime::Transport,
-    #[serde(default)]
-    grant: Grant,
+    #[serde(default, rename = "grant", skip_serializing)]
+    _grant: Value,
     /// None grants all tools; an empty list grants none.
     #[serde(default)]
     tool_allowlist: Option<Vec<String>>,
@@ -121,19 +105,7 @@ pub struct Server {
     config: ServerInput,
 }
 impl Server {
-    fn permission(&self, who: &Subject, local: bool, tool: Option<&str>) -> Result<()> {
-        // Check authorization before exposing service state or tool policy.
-        ensure!(
-            local
-                || match &self.config.grant {
-                    Grant::Local => false,
-                    Grant::Mesh => true,
-                    Grant::Selected { subjects } => subjects
-                        .iter()
-                        .any(|p| p.origin == who.origin && p.agent == who.agent),
-                },
-            "mcp_access_denied"
-        );
+    fn permission(&self, _who: &Subject, _local: bool, tool: Option<&str>) -> Result<()> {
         ensure!(
             tool.is_none_or(|t| self
                 .config
@@ -185,11 +157,11 @@ pub struct Operation {
     #[serde(default)]
     offset: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    config: Option<ServerInput>,
+    config: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     expected_revision: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    grant: Option<Grant>,
+    grant: Option<Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -526,7 +498,7 @@ pub(crate) fn changes(state: &AppState) -> zork_notify::Changes {
 pub(crate) fn client_resources(
     state: &AppState,
 ) -> Result<Vec<zork_client_types::resources::Resource>> {
-    use zork_client_types::resources::{Resource, ResourceKind, ResourceSubject};
+    use zork_client_types::resources::{Resource, ResourceKind};
     state
         .mcp
         .store
@@ -534,21 +506,6 @@ pub(crate) fn client_resources(
         .into_iter()
         .map(|server| {
             let descriptor = state.mcp.descriptor(&server, &own_origin(state));
-            let (scope, subjects) = match &server.config.grant {
-                Grant::Local => ("local", vec![]),
-                Grant::Mesh => ("mesh", vec![]),
-                Grant::Selected { subjects } => (
-                    "selected",
-                    subjects
-                        .iter()
-                        .map(|subject| ResourceSubject {
-                            id: subject.agent.clone(),
-                            name: subject.agent.clone(),
-                            origin: Some(subject.origin.clone()),
-                        })
-                        .collect(),
-                ),
-            };
             let mut item = Resource::new(
                 ResourceKind::Mcp,
                 server.id,
@@ -557,11 +514,10 @@ pub(crate) fn client_resources(
                     .as_str()
                     .unwrap_or("unprobed")
                     .into(),
-                scope.into(),
+                "mesh".into(),
             );
             item.description = server.config.description;
             item.revision = Some(server.revision);
-            item.subjects = subjects;
             item.tool_allowlist = server.config.tool_allowlist;
             Ok(item)
         })
@@ -679,7 +635,7 @@ pub(crate) async fn snapshot(
     let (server, status, result) = state.mcp.store.call(id, who)?;
     let tool = state.mcp.store.call_tool(id)?;
     // Disabling prevents new work, not delivery of the original caller's
-    // completion. Service grants and invocation ownership still apply.
+    // completion. Membership and invocation ownership still apply.
     check_permission(state, who, local, &server, Some(&tool))?;
     Ok(
         json!({"operation_id":id,"call_id":id,"state":status,"result":result.map(|text|serde_json::from_str::<Value>(&text)).transpose()?}),

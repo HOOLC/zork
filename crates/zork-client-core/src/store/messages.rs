@@ -9,19 +9,53 @@ const LOCAL_CURSOR: &str = "zork-cache:";
 #[cfg(test)]
 mod interaction_tests;
 
-pub(super) fn initialize(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
+pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    tx.execute_batch(
         "CREATE TABLE IF NOT EXISTS message_history(
             node TEXT NOT NULL, session TEXT NOT NULL, older_cursor TEXT,
             PRIMARY KEY(node,session));
-         CREATE TABLE IF NOT EXISTS delivered_messages(
+         CREATE TABLE IF NOT EXISTS messages(
             node TEXT NOT NULL, session TEXT NOT NULL, id TEXT NOT NULL,
-            position INTEGER NOT NULL, value TEXT NOT NULL,
-            PRIMARY KEY(node,session,id), UNIQUE(node,session,position));
-         CREATE TABLE IF NOT EXISTS pending_interaction_results(
+            position INTEGER, value TEXT NOT NULL,
+            request_id TEXT, status TEXT NOT NULL DEFAULT 'sent'
+                CHECK(status IN ('sending','sent','failed')),
+            attempted INTEGER NOT NULL DEFAULT 1, sent_at_ms INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            PRIMARY KEY(node,session,id), UNIQUE(node,session,position), UNIQUE(node,request_id),
+            CHECK((status='sent')=(position IS NOT NULL)));
+         CREATE INDEX IF NOT EXISTS messages_dispatch ON messages(node,status,attempted);
+         CREATE TABLE IF NOT EXISTS pending_business_card_results(
             node TEXT NOT NULL, session TEXT NOT NULL, request_id TEXT NOT NULL,
             value TEXT NOT NULL, PRIMARY KEY(node,session,request_id));",
     )?;
+    let columns = tx
+        .prepare("PRAGMA table_info(messages)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if !columns.iter().any(|name| name == "links") {
+        tx.execute_batch("ALTER TABLE messages ADD COLUMN links TEXT;")?;
+    }
+    tx.execute_batch("CREATE INDEX IF NOT EXISTS messages_links ON messages(node,session,position) WHERE links IS NOT NULL AND links!='[]';")?;
+    let has_epoch = tx
+        .prepare("PRAGMA table_info(message_history)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .iter()
+        .any(|name| name == "source_epoch");
+    if !has_epoch {
+        tx.execute_batch("ALTER TABLE message_history ADD COLUMN source_epoch TEXT;")?;
+    }
+    let legacy: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='delivered_messages')",
+        [], |row| row.get(0),
+    )?;
+    if legacy {
+        tx.execute_batch(
+            "INSERT INTO messages(node,session,id,position,value)
+            SELECT node,session,id,position,value FROM delivered_messages;
+            DROP TABLE delivered_messages;",
+        )?;
+    }
     Ok(())
 }
 
@@ -51,8 +85,8 @@ pub(super) fn authorized(conn: &Connection, node: &str, generation: u64) -> Resu
 fn bounds(conn: &Connection, node: &str, session: &str) -> Result<(Option<i64>, Option<i64>)> {
     Ok(conn.query_row(
         "SELECT
-            (SELECT position FROM delivered_messages WHERE node=?1 AND session=?2 ORDER BY position LIMIT 1),
-            (SELECT position FROM delivered_messages WHERE node=?1 AND session=?2 ORDER BY position DESC LIMIT 1)",
+            (SELECT position FROM messages WHERE node=?1 AND session=?2 AND position IS NOT NULL ORDER BY position LIMIT 1),
+            (SELECT position FROM messages WHERE node=?1 AND session=?2 AND position IS NOT NULL ORDER BY position DESC LIMIT 1)",
         params![node,session], |r| Ok((r.get(0)?,r.get(1)?)),
     )?)
 }
@@ -65,21 +99,57 @@ fn insert_page(
     session: &str,
     page: &MessagePage,
     older: bool,
-) -> Result<bool> {
+) -> Result<(bool, bool, Vec<crate::pages::ConversationPage>)> {
+    let mut reset = false;
+    let mut links = Vec::new();
+    if let Some(epoch) = &page.source_epoch {
+        ensure!(!epoch.is_empty(), "message source epoch missing");
+        if let Some(previous) = source_epoch(tx, node, session)? {
+            if previous != *epoch {
+                ensure!(!older, "message source changed during pagination");
+                tx.execute(
+                    "DELETE FROM messages WHERE node=?1 AND session=?2 AND status='sent'",
+                    params![node, session],
+                )?;
+                tx.execute(
+                    "DELETE FROM pending_business_card_results WHERE node=?1 AND session=?2",
+                    params![node, session],
+                )?;
+                tx.execute(
+                    "DELETE FROM message_history WHERE node=?1 AND session=?2",
+                    params![node, session],
+                )?;
+                reset = true;
+            }
+        }
+        tx.execute("INSERT INTO message_history(node,session,source_epoch) VALUES(?1,?2,?3) ON CONFLICT(node,session) DO UPDATE SET source_epoch=excluded.source_epoch WHERE message_history.source_epoch IS NOT excluded.source_epoch",params![node,session,epoch])?;
+    }
     let (min, max) = bounds(tx, node, session)?;
-    let mut lookup = tx.prepare_cached(
-        "SELECT position FROM delivered_messages WHERE node=?1 AND session=?2 AND id=?3",
-    )?;
+    let mut lookup =
+        tx.prepare_cached("SELECT position FROM messages WHERE node=?1 AND session=?2 AND id=?3")?;
     let mut seen = std::collections::HashSet::new();
     let mut rows = Vec::new();
+    let mut previous_source = None;
     for message in &page.items {
         let id = identity(message)?;
+        let TranscriptMessage::Message { metadata, .. } = message;
+        if let Some(sequence) = metadata.source_sequence {
+            ensure!(
+                sequence > 0 && previous_source.is_none_or(|previous| sequence > previous),
+                "message source page order changed"
+            );
+            previous_source = Some(sequence);
+        }
+        if let (Some(epoch), Some(source)) = (&page.source_epoch, &metadata.source_epoch) {
+            ensure!(epoch == source, "mixed message source epochs");
+        }
         if !seen.insert(id) {
             continue;
         }
         let position: Option<i64> = lookup
-            .query_row(params![node, session, id], |r| r.get(0))
-            .optional()?;
+            .query_row(params![node, session, id], |r| r.get::<_, Option<i64>>(0))
+            .optional()?
+            .flatten();
         rows.push((id, message, position));
     }
     let first = rows.iter().position(|(_, _, pos)| pos.is_some());
@@ -105,9 +175,12 @@ fn insert_page(
         .context("message position overflow")?;
     let mut tail = max.unwrap_or(-1);
     let mut insert = tx.prepare_cached(
-        "INSERT INTO delivered_messages(node,session,id,position,value) VALUES(?1,?2,?3,?4,?5)",
+        "INSERT INTO messages(node,session,id,position,value) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(node,session,id) DO UPDATE SET position=excluded.position,value=excluded.value,
+            status='sent',attempted=1,error=NULL WHERE messages.position IS NULL",
     )?;
     let mut first_position = None;
+    let mut received = false;
     for (index, (id, message, position)) in rows.iter().enumerate() {
         let position = match position {
             Some(position) => *position,
@@ -120,16 +193,18 @@ fn insert_page(
                     tail = tail.checked_add(1).context("message position overflow")?;
                     tail
                 };
-                insert.execute(params![
+                received |= insert.execute(params![
                     node,
                     session,
                     id,
                     position,
                     serde_json::to_string(message)?
-                ])?;
+                ])? > 0;
                 position
             }
         };
+        enrich_source(tx, node, session, message)?;
+        links.extend(index_links(tx, node, session, message)?);
         first_position.get_or_insert(position);
     }
     let interaction_changed = merge_interactions(tx, node, session, &page.items)?;
@@ -141,7 +216,7 @@ fn insert_page(
         tx.execute("INSERT INTO message_history(node,session,older_cursor) VALUES(?1,?2,?3) ON CONFLICT(node,session) DO UPDATE SET older_cursor=excluded.older_cursor WHERE older_cursor IS NOT excluded.older_cursor",
             params![node,session,page.older_cursor])?;
     }
-    Ok(interaction_changed)
+    Ok((interaction_changed || received || reset, reset, links))
 }
 
 fn migrate(tx: &Transaction<'_>, node: &str, session: &str) -> Result<()> {
@@ -187,7 +262,7 @@ fn migrate(tx: &Transaction<'_>, node: &str, session: &str) -> Result<()> {
             identity(message)?;
         }
         let mut statement = tx.prepare(
-            "SELECT request_id FROM outbox WHERE node=?1 AND json_extract(value,'$.session_id')=?2",
+            "SELECT request_id FROM messages WHERE node=?1 AND session=?2 AND status!='sent'",
         )?;
         let pending = statement
             .query_map(params![node, session], |r| r.get::<_, String>(0))?
@@ -242,9 +317,10 @@ impl ClientStore {
                 return Ok(());
             }
         }
-        let changed = insert_page(&tx, node, session, page, before.is_some())?;
+        let (changed, reset, links) = insert_page(&tx, node, session, page, before.is_some())?;
         tx.commit()?;
         drop(conn);
+        self.publish_message_links(node, session, reset, links);
         if changed {
             self.delivery_changed();
         }
@@ -263,13 +339,27 @@ impl ClientStore {
         authorized(&tx, node, generation)?;
         migrate(&tx, node, session)?;
         let id = identity(message)?;
+        let TranscriptMessage::Message { metadata, .. } = message;
+        if let Some(epoch) = &metadata.source_epoch {
+            ensure!(
+                source_epoch(&tx, node, session)?.is_none_or(|saved| saved == *epoch),
+                "message source changed"
+            );
+            tx.execute("INSERT INTO message_history(node,session,source_epoch) VALUES(?1,?2,?3) ON CONFLICT(node,session) DO UPDATE SET source_epoch=excluded.source_epoch WHERE message_history.source_epoch IS NOT excluded.source_epoch",params![node,session,epoch])?;
+        }
         // A replay cannot replace an already merged card with its initial request.
-        tx.execute("INSERT INTO delivered_messages(node,session,id,position,value)
-            SELECT ?1,?2,?3,COALESCE(MAX(position),-1)+1,?4 FROM delivered_messages WHERE node=?1 AND session=?2
-            ON CONFLICT(node,session,id) DO NOTHING",params![node,session,id,serde_json::to_string(message)?])?;
-        let changed = merge_interactions(&tx, node, session, std::slice::from_ref(message))?;
+        let received = tx.execute("INSERT INTO messages(node,session,id,position,value)
+            SELECT ?1,?2,?3,COALESCE(MAX(position),-1)+1,?4 FROM messages WHERE node=?1 AND session=?2
+            ON CONFLICT(node,session,id) DO UPDATE SET position=excluded.position,value=excluded.value,
+                status='sent',attempted=1,error=NULL WHERE messages.position IS NULL",
+            params![node,session,id,serde_json::to_string(message)?])? > 0;
+        enrich_source(&tx, node, session, message)?;
+        let links = index_links(&tx, node, session, message)?;
+        let changed =
+            merge_interactions(&tx, node, session, std::slice::from_ref(message))? || received;
         tx.commit()?;
         drop(conn);
+        self.publish_message_links(node, session, false, links);
         if changed {
             self.delivery_changed();
         }
@@ -335,9 +425,18 @@ impl ClientStore {
             limit > 0 && limit < i64::MAX as usize,
             "invalid cached message limit"
         );
+        let mut cursor_epoch = None;
         let position = match before {
             Some(cursor) => match cursor.strip_prefix(LOCAL_CURSOR) {
-                Some(position) => Some(position.parse::<i64>()?),
+                Some(position) => {
+                    let position = if let Some((epoch, position)) = position.rsplit_once(':') {
+                        cursor_epoch = Some(epoch);
+                        position
+                    } else {
+                        position
+                    };
+                    Some(position.parse::<i64>()?)
+                }
                 None => return Ok(None),
             },
             None => None,
@@ -356,7 +455,12 @@ impl ClientStore {
         let Some(remote_cursor) = cursor else {
             return Ok(None);
         };
-        let mut statement = tx.prepare_cached("SELECT position,value FROM delivered_messages WHERE node=?1 AND session=?2 AND position < ?3 ORDER BY position DESC LIMIT ?4")?;
+        let source_epoch = source_epoch(&tx, node, session)?;
+        ensure!(
+            cursor_epoch.is_none() || cursor_epoch == source_epoch.as_deref(),
+            "cached message source changed"
+        );
+        let mut statement = tx.prepare_cached("SELECT position,value FROM messages WHERE node=?1 AND session=?2 AND position < ?3 ORDER BY position DESC LIMIT ?4")?;
         let mut rows = statement
             .query_map(
                 params![
@@ -370,46 +474,83 @@ impl ClientStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let older_cursor = if rows.len() > limit {
             rows.pop();
-            Some(format!("{LOCAL_CURSOR}{}", rows.last().unwrap().0))
+            Some(local_cursor(
+                source_epoch.as_deref(),
+                rows.last().unwrap().0,
+            ))
         } else {
             remote_cursor
         };
-        let items = rows
+        let items: Vec<TranscriptMessage> = rows
             .into_iter()
             .rev()
             .map(|(_, value)| serde_json::from_str(&value))
             .collect::<serde_json::Result<_>>()?;
         drop(statement);
+        let mut links = Vec::new();
+        for message in &items {
+            index_links(&tx, node, session, message)?;
+            let saved: String = tx.query_row(
+                "SELECT links FROM messages WHERE node=?1 AND session=?2 AND id=?3",
+                params![node, session, identity(message)?],
+                |row| row.get(0),
+            )?;
+            links.extend(serde_json::from_str::<Vec<crate::pages::ConversationPage>>(
+                &saved,
+            )?);
+        }
         tx.commit()?;
+        drop(conn);
+        self.publish_message_links(node, session, false, links);
         Ok(Some(MessagePage {
+            source_epoch,
             items,
             older_cursor,
         }))
     }
 
-    pub(crate) fn cached_cursor_before(
+    /// Extend a reader's consumed source range without moving its head forward
+    /// when an older page and a live refresh finish in a different order.
+    pub(crate) fn cached_history_boundary(
         &self,
         node: &str,
         session: &str,
-        id: &str,
+        head: Option<&str>,
+        candidate: Option<&str>,
         generation: u64,
-    ) -> Result<Option<String>> {
+    ) -> Result<(Option<String>, Option<String>)> {
         let conn = self.0.lock().expect("client database");
         authorized(&conn, node, generation)?;
-        let position: i64 = conn.query_row(
-            "SELECT position FROM delivered_messages WHERE node=?1 AND session=?2 AND id=?3",
-            params![node, session, id],
-            |r| r.get(0),
-        )?;
-        let older: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM delivered_messages WHERE node=?1 AND session=?2 AND position<?3)",params![node,session,position],|r|r.get(0))?;
-        if older {
-            return Ok(Some(format!("{LOCAL_CURSOR}{position}")));
+        let oldest: Option<(String, i64)> = conn.query_row(
+            "SELECT id,position FROM messages WHERE node=?1 AND session=?2 AND position IS NOT NULL AND id IN (?3,?4) ORDER BY position LIMIT 1",
+            params![node, session, head, candidate],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).optional()?;
+        ensure!(
+            oldest.is_some() || (head.is_none() && candidate.is_none()),
+            "message history head missing"
+        );
+        if let Some((id, position)) = &oldest {
+            let older: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM messages WHERE node=?1 AND session=?2 AND position<?3)",params![node,session,position],|r|r.get(0))?;
+            if older {
+                return Ok((
+                    Some(id.clone()),
+                    Some(local_cursor(
+                        source_epoch(&conn, node, session)?.as_deref(),
+                        *position,
+                    )),
+                ));
+            }
         }
-        Ok(conn.query_row(
-            "SELECT older_cursor FROM message_history WHERE node=?1 AND session=?2",
-            params![node, session],
-            |r| r.get(0),
-        )?)
+        let cursor = conn
+            .query_row(
+                "SELECT older_cursor FROM message_history WHERE node=?1 AND session=?2",
+                params![node, session],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok((oldest.map(|(id, _)| id), cursor))
     }
 }
 
@@ -421,7 +562,7 @@ fn cached_message(
 ) -> Result<Option<TranscriptMessage>> {
     let value: Option<String> = conn
         .query_row(
-            "SELECT value FROM delivered_messages WHERE node=?1 AND session=?2 AND id=?3",
+            "SELECT value FROM messages WHERE node=?1 AND session=?2 AND id=?3",
             params![node, session, id],
             |r| r.get(0),
         )
@@ -455,38 +596,52 @@ fn merge_interactions(
     let mut changed = false;
     for message in items {
         let TranscriptMessage::Message { metadata, .. } = message;
-        if let Some(incoming) = interactions::result(metadata) {
+        if let Some(incoming) = interactions::result_event(metadata) {
             if let Some(mut target) =
-                cached_message(tx, node, session, &incoming.request_message_id)?
+                cached_message(tx, node, session, &incoming.result.request_message_id)?
             {
                 let TranscriptMessage::Message { metadata, .. } = &mut target;
                 if interactions::merge_result(metadata, &incoming)? {
-                    tx.execute("UPDATE delivered_messages SET value=?4 WHERE node=?1 AND session=?2 AND id=?3", params![node, session, incoming.request_message_id, serde_json::to_string(&target)?])?;
+                    tx.execute(
+                        "UPDATE messages SET value=?4 WHERE node=?1 AND session=?2 AND id=?3",
+                        params![
+                            node,
+                            session,
+                            incoming.result.request_message_id,
+                            serde_json::to_string(&target)?
+                        ],
+                    )?;
                     changed = true;
                 }
-                tx.execute("DELETE FROM pending_interaction_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, incoming.request_message_id])?;
+                tx.execute("DELETE FROM pending_business_card_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, incoming.result.request_message_id])?;
             } else {
-                let old: Option<String> = tx.query_row("SELECT value FROM pending_interaction_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, incoming.request_message_id], |r| r.get(0)).optional()?;
+                let old: Option<String> = tx.query_row("SELECT value FROM pending_business_card_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, incoming.result.request_message_id], |r| r.get(0)).optional()?;
                 let old = old
-                    .map(|s| serde_json::from_str::<interactions::Resolution>(&s))
+                    .map(|s| serde_json::from_str::<interactions::ResultEvent>(&s))
                     .transpose()?;
                 if let Some(old) = &old {
-                    if old.revision == incoming.revision {
+                    ensure!(
+                        old.handler == incoming.handler && old.request_id == incoming.request_id,
+                        "interaction_business_mismatch"
+                    );
+                    if old.result.revision == incoming.result.revision {
                         ensure!(old == &incoming, "interaction_result_conflict");
                     }
                 }
                 if old
                     .as_ref()
-                    .is_none_or(|old| old.revision < incoming.revision)
+                    .is_none_or(|old| old.result.revision < incoming.result.revision)
                 {
-                    tx.execute("INSERT INTO pending_interaction_results VALUES(?1,?2,?3,?4) ON CONFLICT(node,session,request_id) DO UPDATE SET value=excluded.value", params![node, session, incoming.request_message_id, serde_json::to_string(&incoming)?])?;
+                    tx.execute("INSERT INTO pending_business_card_results VALUES(?1,?2,?3,?4) ON CONFLICT(node,session,request_id) DO UPDATE SET value=excluded.value", params![node, session, incoming.result.request_message_id, serde_json::to_string(&incoming)?])?;
                     changed = true;
                 }
             }
-            changed |= tx.execute(
-                "DELETE FROM interaction_outbox WHERE node=?1 AND session=?2 AND message_id=?3",
-                params![node, session, incoming.request_message_id],
+            if incoming.handler == interactions::AGENT_CONFIGURATION {
+                changed |= tx.execute(
+                "DELETE FROM agent_configuration_outbox WHERE node=?1 AND session=?2 AND message_id=?3",
+                params![node, session, incoming.result.request_message_id],
             )? > 0;
+            }
         }
     }
     for message in items {
@@ -495,7 +650,7 @@ fn merge_interactions(
             continue;
         }
         let id = identity(message)?;
-        let pending: Option<String> = tx.query_row("SELECT value FROM pending_interaction_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, id], |r| r.get(0)).optional()?;
+        let pending: Option<String> = tx.query_row("SELECT value FROM pending_business_card_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, id], |r| r.get(0)).optional()?;
         if let Some(pending) = pending {
             let result = serde_json::from_str(&pending)?;
             let mut target =
@@ -503,12 +658,12 @@ fn merge_interactions(
             let TranscriptMessage::Message { metadata, .. } = &mut target;
             if interactions::merge_result(metadata, &result)? {
                 tx.execute(
-                    "UPDATE delivered_messages SET value=?4 WHERE node=?1 AND session=?2 AND id=?3",
+                    "UPDATE messages SET value=?4 WHERE node=?1 AND session=?2 AND id=?3",
                     params![node, session, id, serde_json::to_string(&target)?],
                 )?;
                 changed = true;
             }
-            tx.execute("DELETE FROM pending_interaction_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, id])?;
+            tx.execute("DELETE FROM pending_business_card_results WHERE node=?1 AND session=?2 AND request_id=?3", params![node, session, id])?;
         }
     }
     Ok(changed)
@@ -517,10 +672,118 @@ fn merge_interactions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_epoch_reset_preserves_pending_messages_and_rejects_old_source_frames() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ClientStore::open(root.path()).unwrap();
+        let source = |epoch: &str, id: &str, sequence: i64| {
+            serde_json::from_value(serde_json::json!({
+            "type":"message","id":id,"role":"user","content":"body","source_epoch":epoch,"source_sequence":sequence,
+        })).unwrap()
+        };
+        let page = MessagePage {
+            source_epoch: Some("first-source".into()),
+            items: vec![
+                source("first-source", "one", 1),
+                source("first-source", "four", 4),
+            ],
+            older_cursor: None,
+        };
+        store
+            .cache_message_page("node", "chat", &page, None)
+            .unwrap();
+        let observer = Connection::open(root.path().join("client.db")).unwrap();
+        let version: u64 = observer
+            .query_row("PRAGMA data_version", [], |row| row.get(0))
+            .unwrap();
+        store
+            .cache_message_page("node", "chat", &page, None)
+            .unwrap();
+        store
+            .cache_delivered_message("node", "chat", &page.items[1], 0)
+            .unwrap();
+        assert_eq!(
+            observer
+                .query_row("PRAGMA data_version", [], |row| row.get::<_, u64>(0))
+                .unwrap(),
+            version
+        );
+        let old_cursor = store
+            .cached_messages("node", "chat", None, 1)
+            .unwrap()
+            .unwrap()
+            .older_cursor
+            .unwrap();
+        store
+            .enqueue(
+                "node",
+                &super::super::QueuedMessage {
+                    request_id: "pending".into(),
+                    session_id: "chat".into(),
+                    content: "still local".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store
+            .cache_message_page(
+                "node",
+                "chat",
+                &MessagePage {
+                    source_epoch: Some("restored-source".into()),
+                    items: vec![],
+                    older_cursor: None,
+                },
+                None,
+            )
+            .unwrap();
+        let saved = store
+            .cached_messages("node", "chat", None, 100)
+            .unwrap()
+            .unwrap();
+        assert!(saved.items.is_empty());
+        assert_eq!(saved.source_epoch.as_deref(), Some("restored-source"));
+        assert_eq!(store.outbox("node").unwrap().len(), 1);
+        assert!(store
+            .cached_messages("node", "chat", Some(&old_cursor), 100)
+            .is_err());
+        assert!(store
+            .cache_delivered_message(
+                "node",
+                "chat",
+                &source("first-source", "client-chat-pending", 5),
+                0
+            )
+            .is_err());
+        assert_eq!(
+            store.outbox("node").unwrap()[0].delivery_status(),
+            "sending"
+        );
+        store
+            .cache_delivered_message(
+                "node",
+                "chat",
+                &source("restored-source", "client-chat-pending", 1),
+                0,
+            )
+            .unwrap();
+        assert!(store.outbox("node").unwrap().is_empty());
+        assert_eq!(
+            store
+                .cached_messages("node", "chat", None, 100)
+                .unwrap()
+                .unwrap()
+                .items
+                .len(),
+            1
+        );
+    }
     use crate::api::{MessageMetadata, Role};
 
     fn page(ids: &[&str], cursor: Option<&str>) -> MessagePage {
         MessagePage {
+            source_epoch: None,
             items: ids
                 .iter()
                 .map(|id| TranscriptMessage::Message {
@@ -665,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_is_atomic_and_keeps_pending_rows_in_the_outbox() {
+    fn migration_preserves_pending_rows_in_the_message_table() {
         let directory = tempfile::tempdir().unwrap();
         let store = ClientStore::open(directory.path()).unwrap();
         let pending = super::super::QueuedMessage {
@@ -676,15 +939,7 @@ mod tests {
             sent_at_ms: 0,
             error: None,
         };
-        store
-            .0
-            .lock()
-            .unwrap()
-            .execute(
-                "INSERT INTO outbox(node,request_id,value) VALUES('node','request',?1)",
-                [serde_json::to_string(&pending).unwrap()],
-            )
-            .unwrap();
+        store.enqueue("node", &pending).unwrap();
         store
             .put(
                 "node",
@@ -801,5 +1056,94 @@ mod tests {
                 .unwrap(),
             initial
         );
+    }
+}
+
+fn source_epoch(conn: &Connection, node: &str, session: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT source_epoch FROM message_history WHERE node=?1 AND session=?2",
+            params![node, session],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten())
+}
+fn local_cursor(epoch: Option<&str>, position: i64) -> String {
+    match epoch {
+        Some(epoch) => format!("{LOCAL_CURSOR}{epoch}:{position}"),
+        None => format!("{LOCAL_CURSOR}{position}"),
+    }
+}
+
+fn enrich_source(
+    conn: &Connection,
+    node: &str,
+    session: &str,
+    message: &TranscriptMessage,
+) -> Result<()> {
+    let TranscriptMessage::Message { metadata, .. } = message;
+    if let (Some(epoch), Some(sequence)) = (&metadata.source_epoch, metadata.source_sequence) {
+        ensure!(sequence > 0, "invalid message source position");
+        conn.execute("UPDATE messages SET value=json_set(value,'$.source_epoch',?4,'$.source_sequence',?5)
+            WHERE node=?1 AND session=?2 AND id=?3 AND json_extract(value,'$.source_sequence') IS NULL",
+            params![node,session,identity(message)?,epoch,sequence])?;
+    }
+    Ok(())
+}
+
+fn index_links(
+    conn: &Connection,
+    node: &str,
+    session: &str,
+    message: &TranscriptMessage,
+) -> Result<Vec<crate::pages::ConversationPage>> {
+    let id = identity(message)?;
+    let needed: bool = conn.query_row(
+        "SELECT links IS NULL FROM messages WHERE node=?1 AND session=?2 AND id=?3",
+        params![node, session, id],
+        |row| row.get(0),
+    )?;
+    if needed {
+        let links = crate::pages::message_links(session, message);
+        conn.execute(
+            "UPDATE messages SET links=?4 WHERE node=?1 AND session=?2 AND id=?3 AND links IS NULL",
+            params![node, session, id, serde_json::to_string(&links)?],
+        )?;
+        return Ok(links);
+    }
+    Ok(Vec::new())
+}
+impl ClientStore {
+    fn publish_message_links(
+        &self,
+        node: &str,
+        session: &str,
+        reset: bool,
+        links: Vec<crate::pages::ConversationPage>,
+    ) {
+        if !reset && links.is_empty() {
+            return;
+        }
+        let device = self
+            .1
+            .lock()
+            .unwrap()
+            .get(node)
+            .and_then(std::sync::Weak::upgrade);
+        if let Some(device) = device {
+            device.apply_message_links(session, reset, links);
+        }
+    }
+    pub(crate) fn message_links(&self, node: &str) -> Result<Vec<crate::pages::ConversationPage>> {
+        let conn = self.0.lock().expect("client database");
+        let mut query = conn.prepare("SELECT links FROM messages WHERE node=?1 AND status='sent' AND links IS NOT NULL AND links!='[]' ORDER BY session,position")?;
+        let mut links = std::collections::BTreeMap::new();
+        for raw in query.query_map([node], |row| row.get::<_, String>(0))? {
+            for page in serde_json::from_str::<Vec<crate::pages::ConversationPage>>(&raw?)? {
+                links.insert(page.id.clone(), page);
+            }
+        }
+        Ok(links.into_values().collect())
     }
 }

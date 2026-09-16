@@ -80,9 +80,9 @@ fn fixture() -> Vec<Record> {
     rows
 }
 fn run(width: f32, height: f32) -> anyhow::Result<()> {
-    if std::env::var_os("ZORK_HISTORY_HOVER_CHECK").is_some() {
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
-    }
+    // Brand reads the platform preference on render. Keep these endpoint
+    // assertions reduced; the hover phases below explicitly enable motion.
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../artifacts/history-ux/validation/native-{}",
         width as u32
@@ -131,12 +131,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
         }
         Ok(())
     };
     let action = |cx: &mut HeadlessAppContext, value: Value| -> anyhow::Result<()> {
+        eprintln!("history {width}: action {value}");
         let action: UserAction = serde_json::from_value(value)?;
         cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
         pump(cx)
@@ -190,7 +190,6 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             let start = std::time::Instant::now();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
             Ok(start.elapsed().as_secs_f64() * 1000.)
         };
@@ -471,13 +470,18 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     cx.capture_screenshot(window.into())?
         .save(out.join("details.png"))?;
     action(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
+    let modal_state = cx.update_window(window.into(), |_, w, cx| root_view.read(cx).benchmark_history_modal(w, cx))?;
+    if driver.snapshot(false).elements.iter().any(|e| e.id == "history-detail-dialog") {
+        cx.capture_screenshot(window.into())?.save(out.join("failed-detail-escape.png"))?;
+        std::fs::write(out.join("failed-detail-escape.json"), serde_json::to_vec_pretty(&modal_state)?)?;
+    }
     anyhow::ensure!(
         !driver
             .snapshot(false)
             .elements
             .iter()
             .any(|e| e.id == "history-detail-dialog"),
-        "Escape did not close details"
+        "Escape did not close details: {modal_state}"
     );
     // Collapse first so the target stays in the compact viewport.
     action(
@@ -608,13 +612,16 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             "invocations":[{"invocation_id":"live-tool","tool":"shell.run","arguments":{"command":"live-render-source"},"started_at_ms":NOW-7000}]}),
         ),
     ];
+    eprintln!("history {width}: begin live subscription");
     let source = root_view.update(&mut cx, |v, cx| {
         v.benchmark_story_history(live_records.clone(), NOW, cx);
         v.benchmark_observe_history(cx)
     });
     pump(&mut cx)?;
+    eprintln!("history {width}: begin live clock");
     root_view.update(&mut cx, |v, cx| v.benchmark_history_live_clock(cx));
     pump(&mut cx)?;
+    eprintln!("history {width}: live clock ready");
     let live_bar = driver
         .snapshot(false)
         .elements

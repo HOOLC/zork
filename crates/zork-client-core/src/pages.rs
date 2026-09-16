@@ -1,4 +1,4 @@
-//! Content membership is a core projection of explicit owner records.
+//! Content membership comes from delivered messages and registered services.
 use crate::api::Artifact;
 use std::{
     collections::{HashMap, HashSet},
@@ -65,19 +65,127 @@ pub fn filter_contents(
     )
 }
 
+/// Parse actual Markdown links once when delivered content enters the cache.
+/// Code, image sources and executable/credential-bearing URLs are excluded.
+pub(crate) fn message_links(
+    session: &str,
+    message: &crate::api::TranscriptMessage,
+) -> Vec<ConversationPage> {
+    use markdown::mdast::Node;
+    let crate::api::TranscriptMessage::Message {
+        content, metadata, ..
+    } = message;
+    let Some(message_id) = metadata.id.as_deref() else {
+        return vec![];
+    };
+    if !content.contains("://") {
+        return vec![];
+    }
+    let source = zork_client_types::files::decode(content)
+        .map(|(text, _)| text)
+        .unwrap_or_else(|| content.clone());
+    let Ok(root) = markdown::to_mdast(&source, &markdown::ParseOptions::gfm()) else {
+        return vec![];
+    };
+    let mut stack = vec![&root];
+    let mut definitions = HashMap::new();
+    let mut links = Vec::new();
+    while let Some(node) = stack.pop() {
+        if let Node::Definition(definition) = node {
+            definitions.insert(
+                definition.identifier.clone(),
+                (&definition.url, definition.title.as_deref()),
+            );
+        }
+        if let Some(children) = node.children() {
+            stack.extend(children.iter().rev());
+        }
+    }
+    let mut stack = vec![&root];
+    let mut seen = HashSet::new();
+    while let Some(node) = stack.pop() {
+        let link = match node {
+            Node::Link(link) => Some((&link.url, link.title.as_deref())),
+            Node::LinkReference(link) => definitions.get(&link.identifier).copied(),
+            _ => None,
+        };
+        if let Some((url, description)) = link {
+            if let Some(url) = page_url(url) {
+                if seen.insert(url.clone()) {
+                    let title = node
+                        .to_string()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let id = format!("page-{}", zork_mesh::content_root(url.as_bytes()));
+                    links.push(ConversationPage {
+                        id: format!(
+                            "markdown-{}",
+                            zork_mesh::content_root(format!("{session}\0{url}").as_bytes())
+                        ),
+                        session_id: session.into(),
+                        message_id: message_id.into(),
+                        source_session_id: None,
+                        created_at: metadata.created_at.clone().unwrap_or_default(),
+                        page: PageLink {
+                            id,
+                            title: if title.is_empty() {
+                                url.clone()
+                            } else {
+                                title.chars().take(160).collect()
+                            },
+                            url,
+                            description: description
+                                .unwrap_or_default()
+                                .chars()
+                                .take(2048)
+                                .collect(),
+                        },
+                    });
+                }
+            }
+        }
+        if let Some(children) = node.children() {
+            stack.extend(children.iter().rev());
+        }
+    }
+    links
+}
+fn page_url(input: &str) -> Option<String> {
+    let url = reqwest::Url::parse(input).ok()?;
+    if input.len() > 8192 || !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    match url.scheme() {
+        "http" | "https" if url.host_str().is_some() => Some(url.to_string()),
+        "zork" if zork_mesh::services::ServiceLink::parse(input).is_ok() => Some(url.to_string()),
+        _ => None,
+    }
+}
+pub(crate) fn merge_message_links(catalog: &mut PageCatalog, links: Vec<ConversationPage>) {
+    catalog
+        .references
+        .retain(|page| !page.id.starts_with("markdown-"));
+    let mut seen: HashSet<_> = catalog
+        .references
+        .iter()
+        .map(|reference| (reference.session_id.clone(), reference.page.url.clone()))
+        .collect();
+    catalog.references.extend(
+        links
+            .into_iter()
+            .filter(|page| seen.insert((page.session_id.clone(), page.page.url.clone()))),
+    );
+}
+
 pub enum LinkAction {
     Embedded(String),
     External(String),
 }
 impl crate::state::Device {
     pub fn link_action(&self, session: Option<&str>, url: &str) -> LinkAction {
-        let state = self.snapshot();
-        let delivered = state
-            .pages
-            .references
-            .iter()
-            .any(|p| Some(p.session_id.as_str()) == session && p.page.url == url);
-        if delivered || zork_mesh::services::ServiceLink::parse(url).is_ok() {
+        let _ = session;
+        if page_url(url).is_some() {
             LinkAction::Embedded(url.into())
         } else {
             LinkAction::External(url.into())
@@ -153,13 +261,6 @@ pub fn content_indices(files: &[Artifact], pages: &PageCatalog) -> ContentCatalo
         .collect()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ApplicationEntry {
-    pub page: PageLink,
-    pub device_id: String,
-    pub device_name: String,
-    pub offline: bool,
-}
 
 #[derive(Clone, Default)]
 pub(crate) struct ApplicationSource {
@@ -337,5 +438,94 @@ mod tests {
             "public HTTP page does not depend on its publisher being online"
         );
         assert!(applications(&[], &sources).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod markdown_tests {
+    use super::*;
+    use crate::api::{MessageMetadata, Role, TranscriptMessage};
+    fn message(content: &str) -> TranscriptMessage {
+        TranscriptMessage::Message {
+            role: Role::User,
+            content: content.into(),
+            metadata: MessageMetadata {
+                id: Some("message".into()),
+                ..Default::default()
+            },
+        }
+    }
+    #[test]
+    fn markdown_content_index_resolves_references_and_excludes_nonlinks() {
+        let body = "[Report **one**](https://example.com/report)\n<https://example.com/report>\n[Reference][report]\n\n[report]: https://example.com/other \"Details\"\n\n`https://ignored.example/code`\n\n![Image](https://ignored.example/image.png)\n[Private](https://user:password@example.com/)\n[Executable](javascript:alert(1))";
+        let links = message_links("chat-a", &message(body));
+        assert_eq!(links.len(), 2, "{links:?}");
+        assert_eq!(links[0].page.title, "Report one");
+        assert_eq!(links[1].page.description, "Details");
+        assert_eq!(links[0].message_id, "message");
+        assert_ne!(message_links("chat-b", &message(body))[0].id, links[0].id);
+    }
+    #[test]
+    fn cached_links_follow_replay_pagination_and_source_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
+        let device = crate::state::Device::open(
+            Arc::new(crate::api::GatewayClient::new("http://127.0.0.1:9", None)),
+            Some((store.clone(), "node".into())),
+            false,
+        );
+        let page = crate::api::MessagePage {
+            source_epoch: Some("epoch-a".into()),
+            items: vec![message("[Report](https://example.com/report)")],
+            older_cursor: Some("older".into()),
+        };
+        store
+            .cache_message_page("node", "chat", &page, None)
+            .unwrap();
+        assert_eq!(device.snapshot().pages.references.len(), 1);
+        let original = device.snapshot().pages.clone();
+        store
+            .cache_message_page("node", "chat", &page, None)
+            .unwrap();
+        assert!(Arc::ptr_eq(&original, &device.snapshot().pages));
+        assert_eq!(store.message_links("node").unwrap().len(), 1);
+        let mut old_message = message("[Earlier](https://example.com/older)");
+        let TranscriptMessage::Message { metadata, .. } = &mut old_message;
+        metadata.id = Some("old-message".into());
+        let older = crate::api::MessagePage {
+            source_epoch: Some("epoch-a".into()),
+            items: vec![old_message],
+            older_cursor: None,
+        };
+        store
+            .cache_message_page("node", "chat", &older, Some("older"))
+            .unwrap();
+        assert_eq!(device.snapshot().pages.references.len(), 2);
+        let cached = device.snapshot().pages.clone();
+        store.cached_messages("node", "chat", None, 100).unwrap();
+        assert!(Arc::ptr_eq(&cached, &device.snapshot().pages));
+        let replacement = crate::api::MessagePage {
+            source_epoch: Some("epoch-b".into()),
+            items: page.items.clone(),
+            older_cursor: None,
+        };
+        store
+            .cache_message_page("node", "chat", &replacement, None)
+            .unwrap();
+        assert_eq!(device.snapshot().pages.references.len(), 1);
+        assert_eq!(
+            device.snapshot().pages.references[0].page.url,
+            "https://example.com/report"
+        );
+        let empty = crate::api::MessagePage {
+            source_epoch: Some("epoch-c".into()),
+            items: vec![],
+            older_cursor: None,
+        };
+        store
+            .cache_message_page("node", "chat", &empty, None)
+            .unwrap();
+        assert!(device.snapshot().pages.references.is_empty());
+        assert!(store.message_links("node").unwrap().is_empty());
     }
 }

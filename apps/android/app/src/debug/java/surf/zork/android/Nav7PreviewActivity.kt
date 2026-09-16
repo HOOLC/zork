@@ -4,7 +4,6 @@ import android.graphics.Rect
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,22 +24,32 @@ class Nav7PreviewActivity : ComponentActivity() {
     var previewHeight by mutableIntStateOf(0)
     var failNextRequest = false
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState); enableEdgeToEdge()
+        super.onCreate(savedInstanceState); configureZorkSystemBars()
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val route = intent.getStringExtra("screen") ?: "navigation"
         val width = intent.getIntExtra("width",390)
         setContent {
             CompositionLocalProvider(LocalDensity provides if(width>0) Density(1f, 1f) else LocalDensity.current) {
                 ZorkTheme {
-                    Box(Modifier.fillMaxSize()) {
+                    ZorkPageBackground(lightPage = route != "navigation") {
                         Box((if(width>0) Modifier.requiredSize(width.dp, 844.dp) else Modifier.fillMaxSize().safeDrawingPadding()).onGloballyPositioned {
                             val b = it.boundsInWindow(); contentBounds = Rect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt())
                         }) {
-                            if (route in listOf("home","appearance","diagnostics","about","device","agents","models","profile")) {
-                                var settings by remember { mutableStateOf(fixtureSettings().copy(page=route)) }
-                                MobileSettings(settings,fixturePeers(),SettingsActions(back={settings=settings.copy(page=if(settings.page=="profile")"models" else "home")}, diagnose={listOf(DeviceDiagnosis("工作室电脑",true),DeviceDiagnosis("离线电脑",false))},
+                            if (route in listOf("home","appearance","device","agents","models","profile","connections","services","skills","notifications")) {
+                                var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
+                                val resourceTrail = remember { mutableListOf<ResourceSelection>() }
+                                MobileSettings(settings,fixturePeers(),SettingsActions(back={
+                                    if(resourceTrail.isNotEmpty()) {
+                                        val selected=resourceTrail.removeAt(resourceTrail.lastIndex)
+                                        settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))
+                                    } else settings=settings.copy(page=if(settings.page=="profile")"models" else "home",resource=null,resourceData=null)
+                                }, device={settings=settings.copy(page="device",device=it,resource=null,resourceData=null)},
                                     messagePreviewHeight=previewHeight, saveMessagePreviewHeight={previewHeight=it},
-                                    page={settings=settings.copy(page=it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->
+                                    clearData={lastAction="clear-data"},
+                                    notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
+                                    resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
+                                    skills={agent->val selected=ResourceSelection(settings.device?.id,"skill",JSONObject().put("agent_skills",agent.text("id")).toString(),"技能");settings=settings.copy(page="skills",resource=selected,resourceData=settingsResourceFixture(selected))},
+                                    page={settings=settingsFixturePage(settings,it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->
                                     if(failNextRequest){failNextRequest=false;error("fixture request failed")}
                                     lastAction=action;lastBody=JSONObject(body.toString())
                                     fun updateProfile(change:(JSONObject)->Unit):JSONObject {
@@ -64,7 +73,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     else -> JSONObject()
                                 }}))
                             }
-                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, leader = { lastAction = "leader:${it.text("id")}" }, session = { lastAction = "session:${it.text("session_id")}" }))
+                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, leader = { lastAction = "leader:${it.text("id")}" }, session = { lastAction = "session:${it.text("chat_id")}" }))
                         }
                     }
                 }
@@ -73,8 +82,8 @@ class Nav7PreviewActivity : ComponentActivity() {
     }
 }
 private fun obj(vararg pairs: Pair<String, Any?>) = JSONObject().apply { pairs.forEach { put(it.first, it.second ?: JSONObject.NULL) } }
-private fun leader(id: String, name: String, avatar: String) = obj("id" to id,"name" to name,"avatar" to avatar,"role" to "leader")
-private fun task(id: String, title: String, unread: Int = 0) = obj("task_id" to id,"conversation_id" to id,"title" to title,"unread" to unread)
+private fun leader(id: String, name: String, avatar: String) = obj("id" to id,"name" to name,"avatar" to avatar,"can_open" to true)
+private fun task(id: String, title: String, unread: Int = 0) = obj("chat_id" to id,"title" to title,"unread" to (unread > 0),"in_preview" to true)
 private fun fixturePeers() = listOf(Peer("mini1","mini1",""), Peer("mini2","mini2",""))
 private fun fixture(route: String): WorkbenchState {
     val peers = fixturePeers()
@@ -87,8 +96,12 @@ private fun fixture(route: String): WorkbenchState {
             ChatMessage("literal-assistant","小伙伴","**助手仍用 Markdown**",false,avatar="fox")))
     if (route == "delivery") return WorkbenchState(peers=peers,activePeer=peers[0],connected=true,
         conversation=Conversation("delivery","消息发送状态",canSend=true),
-        pending=listOf(ChatMessage("failed","你","这条消息发送失败，可以手动重发或删除。",true,pending=true,attempted=true,deliveryStatus="failed"),
+        pending=listOf(ChatMessage("failed","你","这条消息发送失败。",true,pending=true,attempted=true,deliveryStatus="failed"),
             ChatMessage("slow","你","超过一秒还没有回执，显示发送中。",true,pending=true,attempted=true,deliveryStatus="sending")))
+    if (route == "delivery-error") return WorkbenchState(peers=peers,activePeer=peers[0],connected=true,
+        conversation=Conversation("delivery-error","版本不兼容",canSend=true),
+        pending=listOf(ChatMessage("incompatible","你","原消息正文",true,pending=true,attempted=true,deliveryStatus="failed",
+            deliveryError="目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。")))
     return WorkbenchState(peers=peers, activePeer=peers[0], leaders=listOf(product,engineering), tasksByLeader=tasks, connected=true,
         deviceTrees=mapOf("mini1" to DeviceTree(listOf(product,engineering),emptyList(),tasks,true), "mini2" to DeviceTree(listOf(research),emptyList(),mapOf("research" to listOf(task("mobile","移动端交互调研"))),true)),
         conversation=if(route=="navigation") null else Conversation("brand","品牌资源接入",avatar="fox"), participants=members,

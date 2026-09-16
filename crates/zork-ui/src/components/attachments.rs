@@ -41,7 +41,7 @@ pub fn message_image(
     id: impl Into<gpui::ElementId>,
     image: Option<std::sync::Arc<gpui::RenderImage>>,
     width: f32,
-) -> gpui::Stateful<gpui::Div> {
+) -> ui::Action {
     message_image_with_padding(id, image, width, 0.)
 }
 
@@ -52,7 +52,7 @@ pub fn message_image_with_padding(
     image: Option<std::sync::Arc<gpui::RenderImage>>,
     width: f32,
     padding: f32,
-) -> gpui::Stateful<gpui::Div> {
+) -> ui::Action {
     let p = CUE_UI.palette;
     let ratio = image
         .as_ref()
@@ -65,19 +65,15 @@ pub fn message_image_with_padding(
         .clamp(1. / 3., 3.);
     let height = (width / ratio).min(300.);
     let width = height * ratio;
-    div()
-        .id(id)
+    ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
+        .radius(ui::CARD_RADIUS)
+        .p_0()
         .w(px(width))
         .h(px(height))
         .flex_shrink_0()
-        .focusable()
-        .tab_stop(true)
-        .cursor_pointer()
-        .rounded(px(ui::CARD_RADIUS))
         // Only the loading placeholder has a background. Painting a second
         // rounded surface under the image leaves a grey antialiased rim.
-        .when(image.is_none(), |v| v.bg(rgb(p.sidebar)))
-        .focus_visible(|v| v.opacity(0.82))
+        .when(image.is_none(), |v| v.child(div().size_full().bg(rgb(p.sidebar))))
         .when_some(image, |v, image| {
             v.child(
                 gpui::canvas(
@@ -96,7 +92,7 @@ pub fn message_image_with_padding(
                             bounds.center() - gpui::point(size.width / 2., size.height / 2.), size,
                         );
                         let _ = window.paint_image(bounds, image_bounds,
-                            gpui::Corners::all(px(ui::CARD_RADIUS)), image.clone(), 0, false);
+                            gpui::Corners::default(), image.clone(), 0, false);
                     },
                 ).size_full(),
             )
@@ -110,7 +106,7 @@ pub fn message_document(
     name: String,
     kind: String,
     width: f32,
-) -> gpui::Stateful<gpui::Div> {
+) -> ui::Action {
     message_document_with_preview(id, name, kind, width, None)
 }
 
@@ -120,10 +116,10 @@ pub fn message_document_with_preview(
     kind: String,
     width: f32,
     preview: Option<std::sync::Arc<gpui::RenderImage>>,
-) -> gpui::Stateful<gpui::Div> {
-    let p = CUE_UI.palette;
-    div()
-        .id(id)
+) -> ui::Action {
+    ui::button(id, "", false, true)
+        .radius(ui::COMPACT_CARD_RADIUS)
+        .font_weight(gpui::FontWeight::NORMAL)
         .w(px(width))
         .max_w_full()
         .h(px(if preview.is_some() { 72. } else { 48. }))
@@ -131,15 +127,7 @@ pub fn message_document_with_preview(
         .flex()
         .items_center()
         .gap_3()
-        .rounded(px(ui::CARD_RADIUS))
-        .border_1()
-        .border_color(rgb(p.border))
-        .focusable()
-        .tab_stop(true)
-        .cursor_pointer()
-        .hover(|v| v.bg(rgb(crate::design::INTERACTION.neutral_hover)))
-        .active(|v| v.bg(rgb(crate::design::INTERACTION.neutral_pressed)))
-        .focus_visible(|v| v.bg(rgb(p.sidebar_hover)))
+
         .when(preview.is_none(), |v| {
             v.child(ui::icon("icons/file.svg", 20.))
         })
@@ -202,10 +190,22 @@ pub fn row<V: 'static>(
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
+    row_source(id, name, meta, None, cx, open)
+}
+
+pub fn row_source<V: 'static>(
+    id: impl Into<gpui::ElementId>,
+    name: String,
+    meta: String,
+    source: Option<crate::components::liquid::overlay::SourceBinding>,
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
     let label = format!("{name}, {meta}");
     let p = CUE_UI.palette;
-    div()
-        .id(id)
+    ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
+        .radius(ui::FIELD_RADIUS)
+        .font_weight(gpui::FontWeight::NORMAL)
         .w_full()
         .min_w_0()
         .h(px(48.))
@@ -213,12 +213,7 @@ pub fn row<V: 'static>(
         .flex()
         .items_center()
         .gap(px(10.))
-        .rounded(px(6.))
-        .focusable()
-        .tab_stop(true)
-        .cursor_pointer()
-        .hover(|v| v.bg(rgb(p.sidebar_hover)))
-        .focus_visible(|v| v.bg(rgb(p.sidebar_hover)))
+
         .child(ui::icon("icons/file.svg", 18.))
         .child(
             div()
@@ -242,7 +237,10 @@ pub fn row<V: 'static>(
                 ),
         )
         .on_click(cx.listener(move |v, _, _, cx| open(v, cx)))
-        .automation(AutomationRole::Button, label)
+        .map(|control| match source {
+            Some(source) => source.bind(control, label.clone(), ui::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, label).into_any_element(),
+            None => control.automation(AutomationRole::Button, label).into_any_element(),
+        })
 }
 
 /// A compact content-menu row shared by conversation files and delivered pages.
@@ -254,10 +252,37 @@ pub fn content_row<V: 'static>(
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
+    content_row_source(id, icon_path, name, meta, None, cx, open)
+}
+
+pub fn content_row_source<V: 'static>(
+    id: impl Into<gpui::ElementId>,
+    icon_path: &'static str,
+    name: String,
+    meta: String,
+    source: Option<crate::components::liquid::overlay::SourceBinding>,
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> impl IntoElement {
+    content_row_control(id, icon_path, name, meta, source, true, cx, open)
+}
+
+pub fn content_row_enabled<V: 'static>(
+    id: impl Into<gpui::ElementId>, icon_path: &'static str, name: String, meta: String,
+    enabled: bool, cx: &Context<V>, open: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> impl IntoElement {
+    content_row_control(id, icon_path, name, meta, None, enabled, cx, open)
+}
+
+fn content_row_control<V: 'static>(
+    id: impl Into<gpui::ElementId>, icon_path: &'static str, name: String, meta: String,
+    source: Option<crate::components::liquid::overlay::SourceBinding>, enabled: bool,
+    cx: &Context<V>, open: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> impl IntoElement {
+    ui::quiet_button(id, "", enabled, ui::IconButtonSize::Standard)
         .w_full()
         .h(px(48.))
-        .rounded(px(ui::FIELD_RADIUS))
+        .radius(ui::FIELD_RADIUS)
         .px(px(12.))
         .gap(px(10.))
         .justify_start()
@@ -271,8 +296,11 @@ pub fn content_row<V: 'static>(
                 .child(ui::text_role(name.clone(), crate::design::TextRole::Body).truncate())
                 .child(ui::text_role(meta, crate::design::TextRole::Metadata).truncate()),
         )
-        .on_click(cx.listener(move |view, _, _, cx| open(view, cx)))
-        .automation(AutomationRole::Button, name)
+        .on_click(cx.listener(move |view, _, _, cx| { if enabled { open(view, cx); } }))
+        .map(|row| match source {
+            Some(source) => source.bind(row, name.clone(), ui::ActionStyle { quiet: true, icon: Some(icon_path), ..Default::default() }).automation_enabled(enabled, AutomationRole::Button, name).into_any_element(),
+            None => row.automation_enabled(enabled, AutomationRole::Button, name).into_any_element(),
+        })
 }
 
 pub fn card<V: 'static>(
@@ -283,10 +311,23 @@ pub fn card<V: 'static>(
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
+    card_source(id, name, meta, enabled, None, cx, open)
+}
+
+pub fn card_source<V: 'static>(
+    id: impl Into<gpui::ElementId>,
+    name: String,
+    meta: String,
+    enabled: bool,
+    source: Option<crate::components::liquid::overlay::SourceBinding>,
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
     let label = format!("查看附件 {name}");
     let p = CUE_UI.palette;
-    div()
-        .id(id)
+    ui::button(id, "", false, enabled)
+        .radius(ui::COMPACT_CARD_RADIUS)
+        .font_weight(gpui::FontWeight::NORMAL)
         .w(px(236.))
         .max_w_full()
         .h(px(48.))
@@ -294,18 +335,7 @@ pub fn card<V: 'static>(
         .flex()
         .items_center()
         .gap(px(10.))
-        .rounded(px(ui::CARD_RADIUS))
-        .border_1()
-        .border_color(rgb(p.border))
-        .bg(rgb(p.canvas))
-        .when(enabled, |v| {
-            v.focusable()
-                .tab_stop(true)
-                .cursor_pointer()
-                .hover(|v| v.bg(rgb(p.sidebar_hover)))
-                .focus_visible(|v| v.bg(rgb(p.sidebar_hover)))
-        })
-        .when(!enabled, |v| v.opacity(0.4).cursor_default())
+
         .child(ui::icon("icons/file.svg", 18.))
         .child(
             div()
@@ -334,5 +364,8 @@ pub fn card<V: 'static>(
                 open(v, cx);
             }
         }))
-        .automation_enabled(enabled, AutomationRole::Button, label)
+        .map(|control| match source {
+            Some(source) => source.bind(control, label.clone(), ui::ActionStyle { disabled: !enabled, ..Default::default() }).automation_enabled(enabled, AutomationRole::Button, label).into_any_element(),
+            None => control.automation_enabled(enabled, AutomationRole::Button, label).into_any_element(),
+        })
 }

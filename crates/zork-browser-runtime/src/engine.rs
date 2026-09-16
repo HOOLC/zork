@@ -224,7 +224,11 @@ wrap_app! {
     impl App {
         fn browser_process_handler(&self) -> Option<BrowserProcessHandler> { Some(RuntimeProcess::new()) }
         fn on_before_command_line_processing(&self, _process_type: Option<&CefString>, command_line: Option<&mut CommandLine>) {
-            if let Some(line)=command_line { line.append_switch(Some(&"no-startup-window".into())); }
+            if let Some(line)=command_line {
+                line.append_switch(Some(&"no-startup-window".into()));
+                #[cfg(target_os = "macos")]
+                super::mac::configure_runtime(line);
+            }
         }
     }
 }
@@ -232,6 +236,12 @@ wrap_browser_process_handler! {
     struct RuntimeProcess;
     impl BrowserProcessHandler {
         fn on_context_initialized(&self) { output::control(json!({"method":"Zork.ready"})); }
+        fn on_before_child_process_launch(&self, command_line: Option<&mut CommandLine>) {
+            #[cfg(target_os = "macos")]
+            if let Some(command_line) = command_line { super::mac::select_helper(command_line); }
+            #[cfg(not(target_os = "macos"))]
+            let _ = command_line;
+        }
     }
 }
 wrap_client! {

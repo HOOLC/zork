@@ -34,6 +34,7 @@ pub enum NetworkAction {
 pub fn network<V: 'static>(
     data: NetworkData,
     focus: &FocusHandle,
+    source: crate::components::liquid::overlay::SourceBinding,
     cx: &Context<V>,
     action: impl Fn(&mut V, NetworkAction, &mut Context<V>) + 'static,
 ) -> Div {
@@ -56,6 +57,16 @@ pub fn network<V: 'static>(
                 .child(
                     ui::page_action("mesh-new-peer", "手动连接")
                         .on_click(cx.listener(move |v, _, _, cx| add(v, NetworkAction::Add, cx)))
+                        .map(|button| {
+                            source.bind(
+                                button,
+                                "手动连接",
+                                ui::ActionStyle {
+                                    icon: Some("icons/plus.svg"),
+                                    ..Default::default()
+                                },
+                            )
+                        })
                         .automation(AutomationRole::Button, "手动连接设备"),
                 ),
         )
@@ -188,9 +199,7 @@ pub fn enrollment<V: 'static>(
     let copy = action.clone();
     let revoke = action.clone();
     let select_client = action.clone();
-    let select_gateway = action.clone();
     let approve = action.clone();
-    let keyboard = action.clone();
     let active = matches!(
         data.status.as_str(),
         "waiting" | "connecting" | "awaiting_approval"
@@ -199,64 +208,28 @@ pub fn enrollment<V: 'static>(
         .flex()
         .flex_col()
         .gap_4()
-        .child(
-            ui::choice_group("mesh-connect-mode", if data.client { 0 } else { 1 }, 2)
-                .on_key_down(cx.listener(move |v, event: &gpui::KeyDownEvent, _, cx| {
-                    let phone = match event.keystroke.key.as_str() {
-                        "left" | "home" => Some(true),
-                        "right" | "end" => Some(false),
-                        _ => None,
-                    };
-                    if let Some(phone) = phone.filter(|_| !data.busy) {
-                        keyboard(v, EnrollmentAction::Select(phone), cx);
-                        cx.stop_propagation();
-                    }
-                }))
-                .child(
-                    ui::segment(
-                        "mesh-connect-phone-tab",
-                        "连接手机",
-                        data.client,
-                        !data.busy,
-                    )
-                    .flex_1()
-                    .justify_center()
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        select_client(v, EnrollmentAction::Select(true), cx)
-                    }))
-                    .automation_enabled(
-                        !data.busy,
-                        AutomationRole::Button,
-                        if data.client {
-                            "连接手机 · 已选中"
-                        } else {
-                            "连接手机"
-                        },
-                    ),
-                )
-                .child(
-                    ui::segment(
-                        "mesh-connect-device-tab",
-                        "连接其它设备",
-                        !data.client,
-                        !data.busy,
-                    )
-                    .flex_1()
-                    .justify_center()
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        select_gateway(v, EnrollmentAction::Select(false), cx)
-                    }))
-                    .automation_enabled(
-                        !data.busy,
-                        AutomationRole::Button,
-                        if !data.client {
-                            "连接其它设备 · 已选中"
-                        } else {
-                            "连接其它设备"
-                        },
-                    ),
-                ),
-        )
+        .child(crate::components::liquid::controls::deferred_segmented(
+            "mesh-connect-mode",
+            [
+                ("mesh-connect-phone-tab", "连接手机"),
+                ("mesh-connect-device-tab", "连接其它设备"),
+            ]
+            .into_iter()
+            .map(|(id, label)| crate::components::liquid::controls::Segment {
+                id: id.into(),
+                label: label.into(),
+                disabled: false,
+            })
+            .collect(),
+            vec![],
+            Some(usize::from(!data.client)),
+            crate::components::liquid::controls::SegmentKind::Choice,
+            !data.busy,
+            CUE_UI.palette.canvas,
+            cx.listener(move |v, index: &usize, _, cx| {
+                select_client(v, EnrollmentAction::Select(*index == 0), cx)
+            }),
+        ))
         .child(
             div()
                 .text_size(px(11.))
@@ -437,7 +410,7 @@ pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl In
         .min_h(px(84.))
         .p_3()
         .bg(rgb(CUE_UI.palette.sidebar))
-        .border_1()
+        .border(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(CUE_UI.palette.border))
         .rounded(px(ui::FIELD_RADIUS))
         .overflow_x_scroll()
@@ -450,6 +423,7 @@ pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl In
 
 #[cfg(feature = "stories")]
 pub struct NetworkStory {
+    validate_peer: fn(&str, &str, &str) -> Result<zork_client_types::device::PeerInput, String>,
     family: String,
     data: NetworkData,
     enrollment: EnrollmentData,
@@ -463,7 +437,12 @@ pub struct NetworkStory {
 }
 #[cfg(feature = "stories")]
 impl NetworkStory {
-    pub fn new(family: String, state: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        family: String,
+        state: String,
+        validate_peer: fn(&str, &str, &str) -> Result<zork_client_types::device::PeerInput, String>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let f = crate::stories::page_fixture();
         let mut field = |placeholder| {
             let input =
@@ -483,6 +462,7 @@ impl NetworkStory {
             ""
         };
         Self {
+            validate_peer,
             open: family == "enrollment" || state == "manual",
             family,
             data: NetworkData {
@@ -581,32 +561,41 @@ impl gpui::Render for NetworkStory {
             window,
             cx,
         );
-        let invite = || {
-            enrollment(self.enrollment.clone(), cx, |v, event, cx| {
-                v.enrollment_action(event, cx)
-            })
-        };
+        let visible = self
+            .modal
+            .retain(
+                if enrollment_only {
+                    "add-device-dialog"
+                } else {
+                    "mesh-peer-dialog"
+                },
+                self.open.then_some(()),
+                cx,
+            )
+            .is_some();
         if enrollment_only {
             return div()
-                .child(
+                .child(self.modal.source("add-device-dialog").bind(
                     ui::page_action("storybook-add-device", "连接设备").on_click(cx.listener(
                         |v, _, _, cx| {
                             v.open = true;
                             cx.notify();
                         },
                     )),
-                )
-                .when(self.open, |v| {
-                    v.child(ui::detail_modal(
-                        "add-device-dialog",
-                        "连接设备",
-                        invite(),
-                        None,
-                        &self.modal.focus,
+                    "连接设备",
+                    ui::ActionStyle {
+                        icon: Some("icons/plus.svg"),
+                        ..Default::default()
+                    },
+                ))
+                .when(visible, |v| {
+                    v.child(enrollment_dialog(
+                        self.enrollment.clone(),
+                        &self.modal,
                         window,
                         cx,
-                        true,
-                        |v, _, cx| {
+                        |v, event, cx| v.enrollment_action(event, cx),
+                        |v, cx| {
                             v.open = false;
                             cx.notify();
                         },
@@ -614,128 +603,153 @@ impl gpui::Render for NetworkStory {
                 })
                 .into_any_element();
         }
-        div()
-            .flex()
-            .flex_col()
-            .child(network(
-                self.data.clone(),
-                &self.focus[0],
-                cx,
-                |v, event, cx| {
-                    match event {
+        page(
+            Page {
+                data: self.data.clone(),
+                invitation: self.enrollment.clone(),
+                focus: &self.focus[0],
+                source: self.modal.source("mesh-peer-dialog"),
+                modal: &self.modal,
+                peer: visible.then(|| peer::Fields {
+                    name: &self.name,
+                    origin: &self.origin,
+                    address: &self.addr,
+                    grant: self.grant,
+                    focus: &self.focus[1],
+                    busy: self.data.busy,
+                    notice: self.data.notice.clone(),
+                }),
+            },
+            window,
+            cx,
+            |v, event, cx| {
+                match event {
+                    PageAction::Enrollment(event) => v.enrollment_action(event, cx),
+                    PageAction::Network(event) => match event {
                         NetworkAction::Toggle(on) => v.data.enabled = on,
-                        NetworkAction::Refresh => {
-                            v.data.busy = false;
-                            v.data.notice = Some("连接信息已刷新。".into())
-                        }
+                        NetworkAction::Refresh => v.data.notice = Some("连接信息已刷新。".into()),
                         NetworkAction::CopyIdentity => {
                             cx.write_to_clipboard(gpui::ClipboardItem::new_string(
                                 v.data.identity.clone().unwrap_or_default(),
                             ));
-                            v.data.notice = Some("节点身份已复制。".into());
+                            v.data.notice = Some("设备身份已复制。".into());
                         }
                         NetworkAction::Add => {
                             v.open = true;
-                            v.data.notice = None
+                            v.data.notice = None;
                         }
                         NetworkAction::Remove(id) => v.data.peers.retain(|p| p.id != id),
-                    }
-                    cx.notify();
-                },
-            ))
-            .child(
-                div()
-                    .mt_6()
-                    .pt_5()
-                    .border_t_1()
-                    .border_color(rgb(CUE_UI.palette.border))
-                    .child(invite()),
-            )
-            .when(self.open, |v| {
-                v.child(ui::modal(
-                    "mesh-peer-dialog",
-                    "手动连接设备",
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_4()
-                        .child(ui::field("mesh-peer-name", "设备名称", &self.name, cx))
-                        .child(ui::field("mesh-peer-origin", "设备身份", &self.origin, cx))
-                        .child(ui::field(
-                            "mesh-peer-addr",
-                            "局域网地址 · 可选",
-                            &self.addr,
-                            cx,
-                        ))
-                        .child(row(
-                            "允许作为客户端管理",
-                            "可管理此设备的模型连接、Agent 和任务。",
-                            ui::switch(
-                                "mesh-client-grant",
-                                "客户端权限",
-                                self.grant,
-                                true,
-                                &self.focus[1],
-                                cx,
-                                |v, on, cx| {
-                                    v.grant = on;
-                                    cx.notify();
-                                },
-                            ),
-                        )),
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            ui::button("mesh-cancel-peer", "取消", false, true).on_click(
-                                cx.listener(|v, _, _, cx| {
-                                    v.open = false;
-                                    v.data.notice = None;
-                                    cx.notify();
-                                }),
-                            ),
-                        )
-                        .child(
-                            ui::button("mesh-add-peer", "保存配对", true, true).on_click(
-                                cx.listener(|v, _, _, cx| {
-                                    let name = v.name.read(cx).value().trim().to_owned();
-                                    let origin = v.origin.read(cx).value().trim().to_owned();
-                                    if name.is_empty() {
-                                        v.data.notice = Some("请填写设备名称".into())
-                                    } else if origin.is_empty() {
-                                        v.data.notice = Some("请填写设备身份".into())
-                                    } else {
-                                        v.data.peers.push(Peer {
-                                            id: origin,
-                                            name,
-                                            status: "已连接".into(),
-                                            permission: if v.grant {
-                                                "客户端 · 可管理此节点"
-                                            } else {
-                                                "节点 · 按 Worker 授权协作"
-                                            }
-                                            .into(),
-                                        });
-                                        v.open = false;
-                                        v.data.notice = None;
-                                    }
-                                    cx.notify();
-                                }),
-                            ),
-                        ),
-                    self.data.notice.clone(),
-                    &self.modal.focus,
-                    window,
-                    cx,
-                    true,
-                    |v, _, cx| {
-                        v.open = false;
-                        v.data.notice = None;
-                        cx.notify();
                     },
-                ))
-            })
-            .into_any_element()
+                    PageAction::Peer(event) => match event {
+                        peer::Action::Grant(on) => v.grant = on,
+                        peer::Action::Cancel => {
+                            v.open = false;
+                            v.data.notice = None;
+                        }
+                        peer::Action::Save => match (v.validate_peer)(
+                            v.name.read(cx).value(),
+                            v.origin.read(cx).value(),
+                            v.addr.read(cx).value(),
+                        ) {
+                            Ok(input) => {
+                                v.data.peers.push(Peer {
+                                    id: input.origin,
+                                    name: input.name,
+                                    status: "已连接".into(),
+                                    permission: if v.grant {
+                                        "客户端 · 可管理此设备"
+                                    } else {
+                                        "设备 · 按小伙伴授权协作"
+                                    }
+                                    .into(),
+                                });
+                                v.open = false;
+                                v.data.notice = None;
+                            }
+                            Err(error) => v.data.notice = Some(error),
+                        },
+                    },
+                }
+                cx.notify();
+            },
+        )
     }
+}
+
+pub mod peer;
+
+pub struct Page<'a> {
+    pub data: NetworkData,
+    pub invitation: EnrollmentData,
+    pub focus: &'a FocusHandle,
+    pub source: crate::components::liquid::overlay::SourceBinding,
+    pub peer: Option<peer::Fields<'a>>,
+    pub modal: &'a crate::modal::ModalState,
+}
+pub enum PageAction {
+    Network(NetworkAction),
+    Enrollment(EnrollmentAction),
+    Peer(peer::Action),
+}
+pub fn page<V: 'static>(
+    props: Page<'_>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
+    action: impl Fn(&mut V, PageAction, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
+    let action = Rc::new(action);
+    let network_action = action.clone();
+    let enrollment_action = action.clone();
+    div()
+        .flex()
+        .flex_col()
+        .child(network(
+            props.data,
+            props.focus,
+            props.source,
+            cx,
+            move |v, event, cx| network_action(v, PageAction::Network(event), cx),
+        ))
+        .child(
+            div()
+                .mt_6()
+                .pt_5()
+                .border_t(px(crate::design::BORDER_WIDTH))
+                .border_color(rgb(CUE_UI.palette.border))
+                .child(enrollment(props.invitation, cx, move |v, event, cx| {
+                    enrollment_action(v, PageAction::Enrollment(event), cx)
+                })),
+        )
+        .when_some(props.peer, |v, fields| {
+            v.child(peer::render(
+                fields,
+                props.modal,
+                window,
+                cx,
+                move |v, event, cx| action(v, PageAction::Peer(event), cx),
+            ))
+        })
+        .into_any_element()
+}
+pub fn enrollment_dialog<V: 'static>(
+    data: EnrollmentData,
+    modal: &crate::modal::ModalState,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
+    event: impl Fn(&mut V, EnrollmentAction, &mut Context<V>) + 'static,
+    close: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
+    let content = enrollment(data, cx, event);
+    ui::detail_modal(
+        "add-device-dialog",
+        "连接设备",
+        content,
+        None,
+        modal,
+        window,
+        cx,
+        true,
+        move |v, _, cx| close(v, cx),
+    )
+    .into_any_element()
 }

@@ -325,7 +325,12 @@ async fn deliver(state: &AppState, agent: &str, target: &str, notice: &Notice) -
     if !state.db.accepts_chat_input(agent, target, notice)? {
         return Ok(());
     }
-    let session = agents::ensure_runtime(state, agent).await?;
+    // The initial work request is durably delivered by the assignment path.
+    // A channel notice must never enqueue the same goal as a second turn.
+    if notice.work.as_ref().is_some_and(|work| work.initial) {
+        return Ok(());
+    }
+    let session = agents::ensure_chat_runtime(state, agent, target, notice).await?;
     if !state.db.accepts_chat_input(agent, target, notice)? {
         return Ok(());
     }

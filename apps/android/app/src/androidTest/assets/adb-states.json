@@ -1,0 +1,460 @@
+{
+  "activation": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "activation_required",
+    "message": "首次使用或手机重启后，需要通过 USB 激活一次。激活完成后就可以拔线。",
+    "notification_title": "Mesh 调试需要操作",
+    "page": {
+      "activation_help": {
+        "command": "adb -s <USB_SERIAL> tcpip 5555",
+        "kind": "activation",
+        "note": "执行后会自动检测，无需手动确认。",
+        "paragraphs": [
+          "把手机连到一台装有 ADB 的电脑，并在手机上允许 USB 调试。",
+          "在电脑上用 adb devices -l 找到这部手机的 USB 序列号，替换下方的 <USB_SERIAL> 后执行："
+        ],
+        "title": "通过 USB 激活"
+      },
+      "empty_message": "等待 Station 连接",
+      "message": "首次使用或手机重启后，需要通过 USB 激活一次。激活完成后就可以拔线。",
+      "note": "激活后会自动继续",
+      "primary_action": {
+        "kind": "activation_help",
+        "label": "查看激活方法"
+      },
+      "secondary_action": {
+        "kind": "disable",
+        "label": "取消设置"
+      },
+      "show_connections": false,
+      "show_details": false,
+      "status": "等待 USB 激活",
+      "step": "activation",
+      "title": "用 USB 连接一台电脑",
+      "tone": "neutral"
+    },
+    "revision": 4,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      },
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      }
+    ]
+  },
+  "checking": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "checking",
+    "message": "已完成的设置会自动跳过。",
+    "notification_title": "正在检测手机调试状态",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "已完成的设置会自动跳过。",
+      "note": null,
+      "primary_action": null,
+      "secondary_action": {
+        "kind": "disable",
+        "label": "取消设置"
+      },
+      "show_connections": false,
+      "show_details": false,
+      "status": "正在检测",
+      "step": "checking",
+      "title": "检查这部手机的状态",
+      "tone": "neutral"
+    },
+    "revision": 4,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      },
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      }
+    ]
+  },
+  "developer": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "developer_disabled",
+    "message": "在系统的「关于手机」中连续点按版本号，直到开启开发者选项，再返回 Zork。",
+    "notification_title": "Mesh 调试需要操作",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "在系统的「关于手机」中连续点按版本号，直到开启开发者选项，再返回 Zork。",
+      "note": null,
+      "primary_action": {
+        "kind": "open_device_info",
+        "label": "打开系统设置"
+      },
+      "secondary_action": {
+        "kind": "disable",
+        "label": "取消设置"
+      },
+      "show_connections": false,
+      "show_details": false,
+      "status": "需要开启系统设置",
+      "step": "developer",
+      "title": "先开启开发者选项",
+      "tone": "neutral"
+    },
+    "revision": 4,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      },
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      }
+    ]
+  },
+  "disabled": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "checking",
+    "message": "完成一次 USB 激活后，每台 Station 都可以通过 Zork 跨网络安装应用、查看日志。",
+    "notification_title": "Mesh 调试已关闭",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "完成一次 USB 激活后，每台 Station 都可以通过 Zork 跨网络安装应用、查看日志。",
+      "note": null,
+      "primary_action": {
+        "kind": "enable",
+        "label": "开始设置"
+      },
+      "secondary_action": null,
+      "show_connections": false,
+      "show_details": false,
+      "status": "尚未开启",
+      "step": "disabled",
+      "title": "让 Station 连接这部手机",
+      "tone": "neutral"
+    },
+    "revision": 4,
+    "service_requested": false,
+    "settings": {
+      "enabled": false,
+      "port": 5555
+    },
+    "stations": []
+  },
+  "mixed": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "ready",
+    "message": "MacBook Air：等待手机授权",
+    "notification_title": "已连接 1 台 Station",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "每台 Station 都可以连接这部手机。",
+      "note": "可拔掉 USB 线，连接会在后台保持。",
+      "primary_action": null,
+      "secondary_action": {
+        "kind": "disable",
+        "label": "关闭调试"
+      },
+      "show_connections": true,
+      "show_details": true,
+      "status": "手机已就绪",
+      "step": "ready",
+      "title": "远程调试已开启",
+      "tone": "positive"
+    },
+    "revision": 5,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": "127.0.0.1:41001",
+        "state": "ready",
+        "state_label": "已连接",
+        "tone": "positive"
+      },
+      {
+        "help": {
+          "kind": "station",
+          "paragraphs": [
+            "MacBook Air 正在等待 Android 的调试授权。请解锁手机，在系统弹窗中点「允许」。"
+          ],
+          "title": "在手机上允许调试"
+        },
+        "help_label": "查看提示",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": "127.0.0.1:41002",
+        "state": "unauthorized",
+        "state_label": "等待手机授权",
+        "tone": "warning"
+      }
+    ]
+  },
+  "ready": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "ready",
+    "message": "可以安装应用、查看日志和操作设备。",
+    "notification_title": "已连接 2 台 Station",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "每台 Station 都可以连接这部手机。",
+      "note": "可拔掉 USB 线，连接会在后台保持。",
+      "primary_action": null,
+      "secondary_action": {
+        "kind": "disable",
+        "label": "关闭调试"
+      },
+      "show_connections": true,
+      "show_details": true,
+      "status": "手机已就绪",
+      "step": "ready",
+      "title": "远程调试已开启",
+      "tone": "positive"
+    },
+    "revision": 5,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": "127.0.0.1:41001",
+        "state": "ready",
+        "state_label": "已连接",
+        "tone": "positive"
+      },
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": "127.0.0.1:41002",
+        "state": "ready",
+        "state_label": "已连接",
+        "tone": "positive"
+      }
+    ]
+  },
+  "usb": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "usb_disabled",
+    "message": "在开发者选项中开启「USB 调试」，然后返回 Zork。",
+    "notification_title": "Mesh 调试需要操作",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "在开发者选项中开启「USB 调试」，然后返回 Zork。",
+      "note": null,
+      "primary_action": {
+        "kind": "open_developer_options",
+        "label": "打开开发者选项"
+      },
+      "secondary_action": {
+        "kind": "disable",
+        "label": "取消设置"
+      },
+      "show_connections": false,
+      "show_details": false,
+      "status": "需要开启系统设置",
+      "step": "usb",
+      "title": "开启 USB 调试",
+      "tone": "neutral"
+    },
+    "revision": 4,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": [
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "Mac mini",
+        "origin": "station-a",
+        "peer": "station-a",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      },
+      {
+        "help": null,
+        "help_label": "查看说明",
+        "name": "MacBook Air",
+        "origin": "station-b",
+        "peer": "station-b",
+        "serial": null,
+        "state": "connecting",
+        "state_label": "正在连接",
+        "tone": "neutral"
+      }
+    ]
+  },
+  "waiting": {
+    "facts": {
+      "application_id": "fixture.phone",
+      "developer_enabled": true,
+      "name": "Phone",
+      "supported": true,
+      "usb_enabled": true,
+      "wireless_enabled": false
+    },
+    "local_state": "ready",
+    "message": "手机已就绪，等待 Station 连接。",
+    "notification_title": "Mesh 调试已开启",
+    "page": {
+      "activation_help": null,
+      "empty_message": "等待 Station 连接",
+      "message": "每台 Station 都可以连接这部手机。",
+      "note": "可拔掉 USB 线，连接会在后台保持。",
+      "primary_action": null,
+      "secondary_action": {
+        "kind": "disable",
+        "label": "关闭调试"
+      },
+      "show_connections": true,
+      "show_details": true,
+      "status": "手机已就绪",
+      "step": "ready",
+      "title": "远程调试已开启",
+      "tone": "positive"
+    },
+    "revision": 4,
+    "service_requested": true,
+    "settings": {
+      "enabled": true,
+      "port": 5555
+    },
+    "stations": []
+  }
+}

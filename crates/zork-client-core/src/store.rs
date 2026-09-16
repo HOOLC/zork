@@ -1,8 +1,10 @@
 //! Device-local state exists independently of any running Gateway.
-mod interaction_commands;
+mod configuration_submissions;
+mod message_delivery;
 mod messages;
-pub(crate) use interaction_commands::InteractionDelivery;
+pub(crate) use configuration_submissions::ConfigurationDelivery;
 mod operations;
+mod outgoing;
 mod replica;
 use anyhow::Result;
 pub use replica::{ReplicaApply, ReplicaState};
@@ -45,10 +47,8 @@ impl QueuedMessage {
     pub fn delivery_status(&self) -> &'static str {
         if self.error.is_some() {
             "failed"
-        } else if self.sent_at_ms > 0 && delivery_now_ms().saturating_sub(self.sent_at_ms) >= 1000 {
-            "sending"
         } else {
-            ""
+            "sending"
         }
     }
 }
@@ -93,11 +93,7 @@ impl ClientStore {
             .unwrap_or_default();
         let mut draft = crate::state::Draft::decode(raw);
         draft.text = text;
-        let content = zork_client_types::files::compose(
-            &crate::comments::compose_document(&draft.text, &draft.comments, &draft.attachments),
-            &draft.files,
-        );
-        crate::valid_content(&content, false)?;
+        let content = draft.submission(&draft.text);
         let message = QueuedMessage {
             request_id: ulid::Ulid::new().to_string(),
             session_id: session.into(),
@@ -106,13 +102,7 @@ impl ClientStore {
             sent_at_ms: delivery_now_ms(),
             ..Default::default()
         };
-        tx.execute(
-            "INSERT INTO outbox(node,request_id,value) VALUES(?1,?2,?3)",
-            params![peer, message.request_id, serde_json::to_string(&message)?],
-        )?;
-        for (key, value) in [(key, "\"\""), (format!("draft-comments:{session}"), "[]")] {
-            tx.execute("INSERT INTO cache(node,key,value) VALUES(?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",params![peer,key,value])?;
-        }
+        let message = outgoing::insert_and_clear_draft(&tx, peer, &message)?;
         tx.commit()?;
         drop(conn);
         self.delivery_changed();
@@ -161,18 +151,21 @@ impl ClientStore {
             std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))?;
         }
         let path = root.join("client.db");
-        let conn = Connection::open(&path)?;
+        let mut conn = Connection::open(&path)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         }
-        conn.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS cache(node TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(node,key)); CREATE TABLE IF NOT EXISTS outbox(node TEXT NOT NULL,request_id TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(node,request_id)); CREATE TABLE IF NOT EXISTS blobs(node TEXT NOT NULL,key TEXT NOT NULL,value BLOB NOT NULL,PRIMARY KEY(node,key));")?;
-        conn.execute("UPDATE outbox SET value=json_set(value, '$.attempted', json('true'), '$.error', '发送中断，请手动重发') WHERE json_extract(value, '$.error') IS NULL", [])?;
-        replica::initialize(&conn)?;
-        operations::initialize(&conn)?;
-        messages::initialize(&conn)?;
-        interaction_commands::initialize(&conn)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS cache(node TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(node,key)); CREATE TABLE IF NOT EXISTS blobs(node TEXT NOT NULL,key TEXT NOT NULL,value BLOB NOT NULL,PRIMARY KEY(node,key));")?;
+        replica::initialize(&tx)?;
+        operations::initialize(&tx)?;
+        messages::initialize(&tx)?;
+        message_delivery::initialize(&tx)?;
+        configuration_submissions::initialize(&tx)?;
+        tx.commit()?;
         Ok(Self(
             Mutex::new(conn),
             Mutex::new(Default::default()),
@@ -209,189 +202,24 @@ impl ClientStore {
             )
             .optional()?)
     }
-    /// Commit one pending send and clear its source draft in the same database
-    /// transaction, so a crash cannot leave both an outbox item and a sendable copy.
-    pub fn enqueue_and_clear_draft(&self, node: &str, message: &QueuedMessage) -> Result<()> {
+    /// Save the local message as sending and clear its draft in one transaction.
+    pub fn enqueue_and_clear_draft(
+        &self,
+        node: &str,
+        message: &QueuedMessage,
+    ) -> Result<QueuedMessage> {
         let mut conn = self.0.lock().expect("client database");
         let transaction = conn.transaction()?;
-        transaction.execute(
-            "INSERT INTO outbox(node,request_id,value) VALUES (?1,?2,?3)",
-            params![node, message.request_id, serde_json::to_string(message)?],
-        )?;
-        for (key, value) in [
-            (format!("draft:{}", message.session_id), "\"\""),
-            (format!("draft-comments:{}", message.session_id), "[]"),
-        ] {
-            transaction.execute("INSERT INTO cache(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",params![node,key,value])?;
-        }
+        let message = outgoing::insert_and_clear_draft(&transaction, node, message)?;
         transaction.commit()?;
+        drop(conn);
         self.delivery_changed();
-        Ok(())
+        Ok(message)
     }
     pub fn enqueue(&self, node: &str, message: &QueuedMessage) -> Result<()> {
-        self.0.lock().expect("client database").execute(
-            "INSERT INTO outbox(node,request_id,value) VALUES (?1,?2,?3)",
-            params![node, message.request_id, serde_json::to_string(message)?],
-        )?;
+        message_delivery::insert(&self.0.lock().expect("client database"), node, message)?;
         self.delivery_changed();
         Ok(())
-    }
-    pub fn outbox(&self, node: &str) -> Result<Vec<QueuedMessage>> {
-        let conn = self.0.lock().expect("client database");
-        let rows = conn
-            .prepare("SELECT value FROM outbox WHERE node=?1 ORDER BY rowid")?
-            .query_map([node], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows.into_iter()
-            .map(|r| Ok(serde_json::from_str(&r)?))
-            .collect()
-    }
-    pub fn acknowledge(&self, node: &str, id: &str) -> Result<()> {
-        self.0.lock().expect("client database").execute(
-            "DELETE FROM outbox WHERE node=?1 AND request_id=?2",
-            params![node, id],
-        )?;
-        self.delivery_changed();
-        Ok(())
-    }
-    /// A delivered Gateway message is also an authoritative acknowledgement,
-    /// including when the POST response was lost.
-    pub fn acknowledge_transcript(
-        &self,
-        node: &str,
-        items: &[crate::api::TranscriptMessage],
-    ) -> Result<()> {
-        let ids: std::collections::HashSet<_> = items
-            .iter()
-            .filter_map(|m| {
-                let crate::api::TranscriptMessage::Message { metadata, .. } = m;
-                metadata.id.as_deref()
-            })
-            .collect();
-        for pending in self.outbox(node)? {
-            if ids
-                .contains(format!("client-{}-{}", pending.session_id, pending.request_id).as_str())
-            {
-                self.acknowledge(node, &pending.request_id)?;
-            }
-        }
-        Ok(())
-    }
-    pub fn begin_delivery(&self, node: &str, id: &str) -> Result<Option<QueuedMessage>> {
-        let conn = self.0.lock().expect("client database");
-        let value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        let mut message: QueuedMessage = serde_json::from_str(&value)?;
-        if message.attempted || message.error.is_some() {
-            return Ok(None);
-        }
-        message.attempted = true;
-        conn.execute(
-            "UPDATE outbox SET value=?3 WHERE node=?1 AND request_id=?2",
-            params![node, id, serde_json::to_string(&message)?],
-        )?;
-        self.delivery_changed();
-        Ok(Some(message))
-    }
-    pub fn fail_delivery(&self, node: &str, id: &str, error: &str) -> Result<()> {
-        self.edit_delivery(node, id, |message| {
-            message.error = Some(error.to_owned());
-            Ok(())
-        })
-    }
-    pub fn retry_delivery(&self, node: &str, id: &str) -> Result<()> {
-        self.edit_delivery(node, id, |message| {
-            anyhow::ensure!(
-                message.error.is_some(),
-                "Only failed messages can be resent"
-            );
-            message.error = None;
-            message.attempted = false;
-            message.sent_at_ms = delivery_now_ms();
-            Ok(())
-        })
-    }
-    pub fn delete_failed(&self, node: &str, id: &str) -> Result<()> {
-        let conn = self.0.lock().expect("client database");
-        let value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if let Some(value) = value {
-            let message: QueuedMessage = serde_json::from_str(&value)?;
-            anyhow::ensure!(
-                message.error.is_some(),
-                "Only failed messages can be deleted"
-            );
-            conn.execute(
-                "DELETE FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-            )?;
-        }
-        self.delivery_changed();
-        Ok(())
-    }
-    fn edit_delivery(
-        &self,
-        node: &str,
-        id: &str,
-        edit: impl FnOnce(&mut QueuedMessage) -> Result<()>,
-    ) -> Result<()> {
-        let conn = self.0.lock().expect("client database");
-        let value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if let Some(value) = value {
-            let mut message: QueuedMessage = serde_json::from_str(&value)?;
-            edit(&mut message)?;
-            conn.execute(
-                "UPDATE outbox SET value=?3 WHERE node=?1 AND request_id=?2",
-                params![node, id, serde_json::to_string(&message)?],
-            )?;
-        }
-        self.delivery_changed();
-        Ok(())
-    }
-    /// Delivery and cancellation serialize on the same database lock. Once a
-    /// request may have reached Gateway, only its stable receipt can settle it.
-    pub fn cancel_pending(&self, node: &str, id: &str) -> Result<Option<QueuedMessage>> {
-        let conn = self.0.lock().expect("client database");
-        let value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        let message: QueuedMessage = serde_json::from_str(&value)?;
-        anyhow::ensure!(
-            !message.attempted,
-            "消息已尝试发送，需等待送达确认，不能将它视为已撤回"
-        );
-        conn.execute(
-            "DELETE FROM outbox WHERE node=?1 AND request_id=?2",
-            params![node, id],
-        )?;
-        self.delivery_changed();
-        Ok(Some(message))
     }
     pub fn nodes(&self) -> Result<Vec<SavedNode>> {
         let conn = self.0.lock().expect("client database");
@@ -407,49 +235,6 @@ impl ClientStore {
         }).collect()
     }
 
-    /// Withdraw a definitely-unsent message without losing it (or a newer draft)
-    /// if the process dies. The transaction also serializes against delivery.
-    pub fn withdraw_to_draft(&self, node: &str, id: &str) -> Result<Option<QueuedMessage>> {
-        let mut conn = self.0.lock().expect("client database");
-        let tx = conn.transaction()?;
-        let value: Option<String> = tx
-            .query_row(
-                "SELECT value FROM outbox WHERE node=?1 AND request_id=?2",
-                params![node, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        let message: QueuedMessage = serde_json::from_str(&value)?;
-        anyhow::ensure!(
-            !message.attempted,
-            "消息已尝试发送，需等待送达确认，不能将它视为已撤回"
-        );
-        let key = format!("draft:{}", message.session_id);
-        let previous: Option<String> = tx
-            .query_row(
-                "SELECT value FROM cache WHERE node=?1 AND key=?2",
-                params![node, key],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let previous: String = previous
-            .map(|v| serde_json::from_str(&v))
-            .transpose()?
-            .unwrap_or_default();
-        let restored = crate::comments::merge_drafts(&previous, &message.content);
-        tx.execute("INSERT INTO cache(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",
-            params![node, key, serde_json::to_string(&restored)?])?;
-        tx.execute(
-            "DELETE FROM outbox WHERE node=?1 AND request_id=?2",
-            params![node, id],
-        )?;
-        tx.commit()?;
-        self.delivery_changed();
-        Ok(Some(message))
-    }
     /// Commit accepted peers, network and removal of the invitation together.
     pub fn accept_invitation(&self, nodes: &[SavedNode], network: &crate::Network) -> Result<()> {
         self.commit_invitation(None, nodes, network)
@@ -507,7 +292,10 @@ impl ClientStore {
         Ok(())
     }
     pub fn save_node(&self, node: &SavedNode) -> Result<()> {
-        self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value",params![node.id,serde_json::to_string(node)?])?;
+        let changed = self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(node)?])?;
+        if changed > 0 {
+            self.notifications_changed();
+        }
         Ok(())
     }
     /// Removing a connection preserves its local history, files and drafts.
@@ -516,14 +304,64 @@ impl ClientStore {
             .lock()
             .expect("client database")
             .execute("DELETE FROM nodes WHERE id=?1", [id])?;
+        self.notifications_changed();
         Ok(())
     }
     pub fn put<T: Serialize>(&self, node: &str, key: &str, value: &T) -> Result<()> {
         let changed = self.0.lock().expect("client database").execute("INSERT INTO cache(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value WHERE cache.value != excluded.value",params![node,key,serde_json::to_string(value)?])?;
-        if changed > 0 && matches!(key, "public-settings" | "node-operation") {
+        if changed > 0
+            && matches!(
+                key,
+                "public-settings"
+                    | "node-operation"
+                    | "node-update-check"
+                    | "settings-command"
+                    | "profile-authorization"
+            )
+        {
+            self.settings_changed(node);
+        }
+        if changed > 0
+            && matches!(
+                key,
+                crate::notifications::KEY
+                    | crate::notifications::PREFERENCES
+                    | crate::notifications::mobile::BACKGROUND
+            )
+        {
+            self.notifications_changed();
+        }
+        Ok(())
+    }
+    pub(crate) fn notification_events(&self) -> zork_observe::ValueSubscription<()> {
+        self.settings_events("\0notifications")
+    }
+    /// Fence late authorization/invitation results against a committed revocation.
+    pub(crate) fn put_authorized_settings<T: Serialize>(
+        &self,
+        node: &str,
+        key: &str,
+        value: &T,
+    ) -> Result<()> {
+        let conn = self.0.lock().expect("client database");
+        let revoked = conn
+            .query_row(
+                "SELECT revoked FROM replica_bindings WHERE peer=?1",
+                [node],
+                |r| r.get::<_, bool>(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        anyhow::ensure!(!revoked, "设备访问权限已撤销");
+        let changed = conn.execute("INSERT INTO cache(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value WHERE cache.value != excluded.value",params![node,key,serde_json::to_string(value)?])?;
+        drop(conn);
+        if changed > 0 {
             self.settings_changed(node);
         }
         Ok(())
+    }
+    pub(crate) fn notifications_changed(&self) {
+        self.settings_changed("\0notifications");
     }
     pub(crate) fn settings_events(&self, node: &str) -> zork_observe::ValueSubscription<()> {
         self.3
@@ -552,6 +390,33 @@ impl ClientStore {
             .optional()?;
         data.map(|data| Ok(serde_json::from_str(&data)?))
             .transpose()
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_legacy_migration_rolls_back_the_entire_schema_change() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("client.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE cache(node TEXT,key TEXT,value TEXT NOT NULL,PRIMARY KEY(node,key));
+            INSERT INTO cache VALUES('device','local-node-enabled','true');
+            CREATE TABLE outbox(node TEXT,value TEXT);
+            INSERT INTO outbox VALUES('peer','invalid queued message');").unwrap();
+        drop(conn);
+        assert!(ClientStore::open(root.path()).is_err());
+        let conn = Connection::open(&path).unwrap();
+        assert_eq!(conn.query_row("SELECT value FROM outbox", [], |row| row.get::<_, String>(0))
+            .unwrap(), "invalid queued message");
+        assert!(!conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='messages')", [],
+            |row| row.get::<_, bool>(0)).unwrap());
+        // Repair only this malformed fixture, then prove a normal retry works.
+        conn.execute("DELETE FROM outbox", []).unwrap();
+        drop(conn);
+        assert!(ClientStore::open(root.path()).unwrap().local_node_enabled().unwrap());
     }
 }
 

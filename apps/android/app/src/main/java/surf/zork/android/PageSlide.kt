@@ -13,7 +13,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.clearAndSetSemantics
 
 internal fun settingsRouteKey(state: MobileSettingsState?): String = state?.let {
-    "settings:${it.device?.id.orEmpty()}:${it.page}:${if (it.page == "profile") it.profile?.text("profile_id").orEmpty() else ""}"
+    "settings:${it.device?.id.orEmpty()}:${it.page}:${if (it.page == "profile") it.selectedProfileId ?: it.profile?.text("profile_id").orEmpty() else ""}:${it.resource?.query.orEmpty()}"
 } ?: "workbench"
 
 internal fun settingsRouteDepth(state: MobileSettingsState?): Int {
@@ -21,11 +21,12 @@ internal fun settingsRouteDepth(state: MobileSettingsState?): Int {
     val deviceDepth = if (state.fromChat) 1 else 2
     return when (state.page) {
         "home" -> 1
-        "about", "diagnostics", "display" -> 2
+        "display", "appearance", "connections", "notifications" -> 2
         "device" -> deviceDepth
         "profile" -> deviceDepth + 2
+        "skills" -> deviceDepth + 2
         else -> deviceDepth + 1
-    }
+    } + state.resourceDepth
 }
 
 private class PageSlideEntry<T>(val key: String, var state: T, val depth: Int, val background: Color)

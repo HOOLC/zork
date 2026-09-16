@@ -480,7 +480,7 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
         let elements = driver.snapshot(false).elements;
         let panel = elements
             .iter()
-            .find(|e| e.id == "conversation-files-panel")
+            .find(|e| e.id == "conversation-files-flyout-material-content")
             .unwrap();
         let close = elements
             .iter()
@@ -544,7 +544,7 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
             let composer_before = rect("composer-surface")?;
             click(&mut cx, "conversation-files-button")?;
             let after = geometry(&cx);
-            let panel = rect("conversation-files-panel")?;
+            let panel = rect("conversation-files-flyout-material-content")?;
             let button = rect("conversation-files-button")?;
             let transcript = rect("conversation-transcript")?;
             let composer = rect("composer-surface")?;

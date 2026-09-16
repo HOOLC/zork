@@ -6,12 +6,12 @@ use zork_agent::session::compression::SegmentCompressor;
 use zork_agent::session::events::{Input, Selection, SessionEvent};
 use zork_agent::session::query::{FileSessionQuery, SessionQuery};
 use zork_agent::session::recovery::recover;
-use zork_agent::session::state::{snapshot_value, STATE_SCHEMA_VERSION};
+use zork_agent::session::state::{STATE_SCHEMA_VERSION, snapshot_value};
 use zork_agent::session::store::{SessionStore, StoreOptions, StreamStore};
 use zork_agent::session::tools::ToolRegistry;
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [SEGMENT-01, SEGMENT-02, SNAPSHOT-01, QUERY-01, SSE-02]
+// Contract: docs/design/agent-runtime.md [SEGMENT-01, SEGMENT-02, SNAPSHOT-01, QUERY-01, SSE-02]
 fn snapshot_starts_a_new_segment_and_sealed_history_remains_recoverable() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -67,7 +67,7 @@ fn snapshot_starts_a_new_segment_and_sealed_history_remains_recoverable() {
     );
     let new_segment = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments")
         .join(format!("{}.jsonl", snapshot.envelope.event_id));
@@ -105,7 +105,7 @@ fn snapshot_starts_a_new_segment_and_sealed_history_remains_recoverable() {
         .unwrap();
     let compressed = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments")
         .join(format!("{}.jsonl.zst", initial[0].event_id));
@@ -128,7 +128,7 @@ fn snapshot_starts_a_new_segment_and_sealed_history_remains_recoverable() {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [SEGMENT-02]
+// Contract: docs/design/agent-runtime.md [SEGMENT-02]
 async fn background_compression_resumes_existing_sealed_segments_and_stale_temp_files() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -177,7 +177,7 @@ async fn background_compression_resumes_existing_sealed_segments_and_stale_temp_
 
     let segments = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments");
     let first_event_id = &initial[0].event_id;
@@ -201,7 +201,7 @@ async fn background_compression_resumes_existing_sealed_segments_and_stale_temp_
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [SNAPSHOT-03, RECOVERY-01, QUERY-01]
+// Contract: docs/design/agent-runtime.md [SNAPSHOT-03, RECOVERY-01, QUERY-01]
 fn recovery_uses_an_older_snapshot_without_losing_the_newer_suffix() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -271,8 +271,10 @@ fn recovery_uses_an_older_snapshot_without_losing_the_newer_suffix() {
 
     let recovered = recover(&query, &session_text, None, &registry).unwrap();
     assert_eq!(recovered.state.selection.unwrap().model, "model-c");
-    assert!(recovered
-        .diagnostics
-        .iter()
-        .any(|message| message.contains("was not usable")));
+    assert!(
+        recovered
+            .diagnostics
+            .iter()
+            .any(|message| message.contains("was not usable"))
+    );
 }

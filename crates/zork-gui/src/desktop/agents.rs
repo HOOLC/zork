@@ -222,6 +222,10 @@ impl AgentsView {
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(cx: &mut Context<Self>) -> Self {
+        #[cfg(not(target_family = "wasm"))]
+        let client = Arc::new(GatewayClient::fixture(zork_ui::stories::page_fixture(),
+            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
+        #[cfg(target_family = "wasm")]
         let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
         let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
         let mut view = Self::new_inner(source, cx);
@@ -259,18 +263,10 @@ impl AgentsView {
         .detach();
     }
     fn current_grants(&self, cx: &Context<Self>) -> Vec<String> {
-        let mut grants = self.grants.clone();
-        grants.extend(
-            self.remote_grants
-                .read(cx)
-                .value()
-                .split(|c: char| c.is_whitespace() || c == ',')
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned),
-        );
-        let mut grants = grants.into_iter().collect::<Vec<_>>();
-        grants.sort();
-        grants
+        zork_client_core::agent_edit::grant_references(
+            self.grants.iter().cloned().collect(),
+            self.remote_grants.read(cx).value(),
+        )
     }
     fn models(&self) -> &[crate::api::ProfileModel] {
         self.profiles
@@ -677,6 +673,7 @@ impl AgentsView {
                         v.message = None;
                         zork_ui::components::region::invalidate(cx, &["form"]);
                     }))
+                    .map(|button| self.modal.source("agent-create-dialog").bind(button, "添加小伙伴", ui::ActionStyle { icon: Some("icons/plus.svg"), ..Default::default() }))
                     .automation(AutomationRole::Button, "创建小伙伴"),
             )
     }
@@ -739,8 +736,11 @@ impl AgentsView {
                                             let id =
                                                 agent["id"].as_str().unwrap_or_default().to_owned();
                                             let edit = agent.clone();
-                                            div()
-                                                .id(format!("agent-settings-{id}"))
+                                            ui::quiet_button(format!("agent-settings-{id}"), "", true, ui::IconButtonSize::Standard)
+                                                .radius(ui::FIELD_RADIUS)
+                                                .justify_start()
+                                                .font_weight(FontWeight::NORMAL)
+                                                .w_full()
                                                 .h(px(64.))
                                                 .when(index > 0, |v| v.mt(px(2.)))
                                                 .px_2()
@@ -748,9 +748,7 @@ impl AgentsView {
                                                 .flex()
                                                 .items_center()
                                                 .gap(px(9.))
-                                                .rounded(px(ui::FIELD_RADIUS))
-                                                .cursor_pointer()
-                                                .hover(|v| v.bg(rgb(p.sidebar_hover)))
+
                                                 .child(ui::agent_avatar(
                                                     agent["avatar"].as_str(),
                                                     36.,
@@ -830,6 +828,7 @@ impl AgentsView {
                                                         );
                                                     }
                                                 }))
+                                                .map(|row| self.modal.source("agent-editor-dialog").bind(row, agent["name"].as_str().unwrap_or("小伙伴").to_owned(), ui::ActionStyle { disabled: self.busy, ..Default::default() }))
                                                 .automation(
                                                     AutomationRole::Button,
                                                     format!(
@@ -859,6 +858,9 @@ impl Render for AgentsView {
             None
         };
         self.modal.sync(modal_key, window, cx);
+        let avatar_visible = self.modal.retain("agent-editor-dialog", self.editing_avatar.clone(), cx);
+        let create_visible = self.modal.retain("agent-create-dialog", show.then(|| self.editing.clone()), cx);
+        let displayed_editing = create_visible.clone().flatten();
         div()
             .flex()
             .flex_col()
@@ -875,7 +877,7 @@ impl Render for AgentsView {
                 cx,
                 |v, _, cx| v.render_list(cx).into_any_element(),
             ))
-            .when_some(self.editing_avatar.clone(), |v, agent| {
+            .when_some(avatar_visible, |v, agent| {
                 v.child(ui::modal(
                     "agent-editor-dialog",
                     "编辑小伙伴",
@@ -907,7 +909,8 @@ impl Render for AgentsView {
                                     .on_click(cx.listener(move |v, _, _, cx| {
                                         v.editing_avatar = None;
                                         v.edit_grants(grant_agent.clone(), cx);
-                                    })),
+                                    }))
+                                    .map(|button| self.modal.source("agent-create-dialog").bind(button, "管理授权", ui::ActionStyle { disabled: self.busy, ..Default::default() })),
                             )
                         }),
                     div()
@@ -945,7 +948,7 @@ impl Render for AgentsView {
                             ),
                         ),
                     self.message.clone(),
-                    &self.modal.focus,
+                    &self.modal,
                     window,
                     cx,
                     !self.busy,
@@ -954,10 +957,10 @@ impl Render for AgentsView {
                     },
                 ))
             })
-            .when(show, |v| {
+            .when(create_visible.is_some(), |v| {
                 v.child(ui::modal(
                     "agent-create-dialog",
-                    if self.editing.is_some() {
+                    if displayed_editing.is_some() {
                         "管理领队授权"
                     } else {
                         "添加小伙伴"
@@ -965,40 +968,30 @@ impl Render for AgentsView {
                     ui::section()
                         .border_t_0()
                         .py_0()
-                        .when_some(self.editing.clone(), |v, agent| {
+                        .when_some(displayed_editing.clone(), |v, agent| {
                             v.child(ui::label(format!(
                                 "{} ·领队授权",
                                 agent["name"].as_str().unwrap_or_default()
                             )))
                         })
-                        .when(self.editing.is_none(), |v| {
+                        .when(displayed_editing.is_none(), |v| {
                             v.child(div().flex().gap_3().children([false, true].into_iter().map(
                                 |worker| {
                                     let label = if worker { "队员" } else { "领队" };
-                                    div()
-                                        .id(if worker {
-                                            "agent-role-worker"
-                                        } else {
-                                            "agent-role-leader"
-                                        })
+                                    ui::choice(
+                                        if worker { "agent-role-worker" } else { "agent-role-leader" },
+                                        "", self.worker == worker, !self.busy,
+                                    )
+                                        .radius(10.)
+                                        .h_auto()
                                         .flex_1()
                                         .min_w_0()
+                                        .flex_col()
+                                        .items_stretch()
+                                        .gap_0()
+                                        .whitespace_normal()
                                         .px_4()
                                         .py_3()
-                                        .rounded(px(10.))
-                                        .border_1()
-                                        .border_color(rgb(if self.worker == worker {
-                                            p.border_strong
-                                        } else {
-                                            p.border
-                                        }))
-                                        .bg(rgb(if self.worker == worker {
-                                            p.selected
-                                        } else {
-                                            p.elevated
-                                        }))
-                                        .cursor_pointer()
-                                        .hover(|v| v.border_color(rgb(p.border_strong)))
                                         .child(
                                             div()
                                                 .flex()
@@ -1152,7 +1145,7 @@ impl Render for AgentsView {
                         .flex()
                         .justify_end()
                         .gap_2()
-                        .when(self.editing.is_some(), |v| {
+                        .when(displayed_editing.is_some(), |v| {
                             v.child(
                                 ui::button("cancel-edit-grants", "取消", false, !self.busy)
                                     .on_click(cx.listener(|v, _, _, cx| {
@@ -1168,7 +1161,7 @@ impl Render for AgentsView {
                                     ),
                             )
                         })
-                        .when(self.editing.is_none(), |v| {
+                        .when(displayed_editing.is_none(), |v| {
                             v.child(
                                 ui::button("agent-close-form", "取消", false, !self.busy)
                                     .on_click(cx.listener(|v, _, _, cx| {
@@ -1186,20 +1179,20 @@ impl Render for AgentsView {
                         })
                         .child(
                             ui::busy_button(
-                                if self.editing.is_some() {
+                                if displayed_editing.is_some() {
                                     "agent-save-grants"
                                 } else {
                                     "agent-create"
                                 },
                                 if self.busy {
                                     "正在保存…"
-                                } else if self.editing.is_some() {
+                                } else if displayed_editing.is_some() {
                                     "保存授权"
                                 } else {
                                     "创建小伙伴"
                                 },
                                 true,
-                                !self.busy && (self.editing.is_some() || self.valid_selection()),
+                                !self.busy && (displayed_editing.is_some() || self.valid_selection()),
                                 self.busy,
                             )
                             .on_click(cx.listener(|v, _, _, cx| {
@@ -1210,9 +1203,9 @@ impl Render for AgentsView {
                                 }
                             }))
                             .automation_enabled(
-                                !self.busy && (self.editing.is_some() || self.valid_selection()),
+                                !self.busy && (displayed_editing.is_some() || self.valid_selection()),
                                 AutomationRole::Button,
-                                if self.editing.is_some() {
+                                if displayed_editing.is_some() {
                                     "保存授权"
                                 } else {
                                     "创建小伙伴"
@@ -1220,7 +1213,7 @@ impl Render for AgentsView {
                             ),
                         ),
                     self.message.clone(),
-                    &self.modal.focus,
+                    &self.modal,
                     window,
                     cx,
                     !self.busy,

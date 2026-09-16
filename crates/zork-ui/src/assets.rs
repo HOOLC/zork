@@ -6,6 +6,7 @@ pub struct EmbeddedAssets;
 impl AssetSource for EmbeddedAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         let bytes: Option<&'static [u8]> = match path {
+            "icons/more-horizontal.svg" => Some(include_bytes!("../assets/icons/more-horizontal.svg")),
             "icons/copy.svg" => Some(include_bytes!("../assets/icons/copy.svg")),
             "icons/message-square.svg" => {
                 Some(include_bytes!("../assets/icons/message-square.svg"))
@@ -207,6 +208,7 @@ impl AssetSource for EmbeddedAssets {
             "icons/stop.svg" => Some(include_bytes!("../assets/icons/stop.svg")),
             "icons/cube.svg" => Some(include_bytes!("../assets/icons/cube.svg")),
             "icons/plus.svg" => Some(include_bytes!("../assets/icons/plus.svg")),
+            "icons/minus.svg" => Some(include_bytes!("../assets/icons/minus.svg")),
             "icons/check.svg" => Some(include_bytes!("../assets/icons/check.svg")),
             "icons/loader.svg" => Some(include_bytes!("../assets/icons/loader.svg")),
             "icons/reload.svg" => Some(include_bytes!("../assets/icons/reload.svg")),
@@ -306,6 +308,7 @@ impl AssetSource for EmbeddedAssets {
         }
         if path == "icons" {
             return Ok(vec![
+                "more-horizontal.svg".into(),
                 "arrow-left.svg".into(),
                 "arrow-right.svg".into(),
                 "arrow-up.svg".into(),
@@ -333,6 +336,7 @@ impl AssetSource for EmbeddedAssets {
                 "mention.svg".into(),
                 "mesh.svg".into(),
                 "microphone.svg".into(),
+                "minus.svg".into(),
                 "node.svg".into(),
                 "offline.svg".into(),
                 "open.svg".into(),
@@ -472,4 +476,40 @@ pub fn init_fonts(cx: &gpui::App) {
             Cow::Borrowed(CODE_FONT),
         ])
         .expect("failed to load embedded UI fonts");
+    #[cfg(target_os = "macos")]
+    {
+        let text_system = cx.text_system().clone();
+        cx.background_executor().spawn(async move {
+            gpui::observe_startup("gpui.text_prepare_begin");
+            // CoreText family selection and the Latin/CJK fallback shaper are
+            // shared by all windows. Initialize them while AppKit builds the
+            // native window; no frame or view is created by this worker.
+            let text_system = gpui::WindowTextSystem::new(text_system);
+            let sample: gpui::SharedString = "Aa中".into();
+            for family in [".SystemUIFont", "Inter Variable"] {
+                for weight in [
+                    gpui::FontWeight::NORMAL,
+                    gpui::FontWeight::MEDIUM,
+                    gpui::FontWeight::SEMIBOLD,
+                ] {
+                    let mut font = gpui::font(family);
+                    font.weight = weight;
+                    let _ = text_system.shape_line(
+                        sample.clone(),
+                        gpui::px(13.),
+                        &[gpui::TextRun {
+                            len: sample.len(),
+                            font,
+                            color: gpui::Hsla::black(),
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }],
+                        None,
+                    );
+                }
+            }
+            gpui::observe_startup("gpui.text_prepare_ready");
+        }).detach();
+    }
 }

@@ -39,6 +39,7 @@ fn message(index: usize) -> TranscriptMessage {
 
 fn page(start: usize, count: usize) -> MessagePage {
     MessagePage {
+        source_epoch: None,
         items: (start..start + count).map(message).collect(),
         older_cursor: None,
     }
@@ -93,22 +94,21 @@ fn main() -> Result<()> {
     eprintln!("distributed import: {MESSAGES} messages across {CHATS} chats");
 
     let conn = Connection::open(directory.path().join("client.db"))?;
-    let count: usize =
-        conn.query_row("SELECT COUNT(*) FROM delivered_messages", [], |r| r.get(0))?;
+    let count: usize = conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
     assert_eq!(count, MESSAGES * 2);
     report["verified_rows"] = json!(count);
-    let plan = conn.prepare("EXPLAIN QUERY PLAN SELECT position,value FROM delivered_messages WHERE node=?1 AND session=?2 AND position<?3 ORDER BY position DESC LIMIT ?4")?
+    let plan = conn.prepare("EXPLAIN QUERY PLAN SELECT position,value FROM messages WHERE node=?1 AND session=?2 AND position<?3 ORDER BY position DESC LIMIT ?4")?
         .query_map(params!["node", "single", MESSAGES / 2, PAGE + 1], |r| r.get::<_, String>(3))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     assert!(
         plan.iter()
-            .any(|line| line.contains("SEARCH delivered_messages USING INDEX")),
+            .any(|line| line.contains("SEARCH messages USING INDEX")),
         "{plan:?}"
     );
     assert!(
         !plan
             .iter()
-            .any(|line| line.contains("SCAN delivered_messages") || line.contains("TEMP B-TREE")),
+            .any(|line| line.contains("SCAN messages") || line.contains("TEMP B-TREE")),
         "{plan:?}"
     );
     report["query_plan"] = json!(plan);

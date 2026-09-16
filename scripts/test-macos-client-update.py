@@ -17,6 +17,29 @@ spec.loader.exec_module(installer)
 
 
 class HelperBundleTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'darwin', 'APFS staging is macOS-only')
+    def test_framework_staging_preserves_links_and_isolates_signing_writes(self):
+        spec = importlib.util.spec_from_file_location('browser_runtime', Path(__file__).parent / 'lib/browser-runtime.py')
+        runtime = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runtime)
+        with tempfile.TemporaryDirectory(prefix='zork-framework-clone-') as folder:
+            root = Path(folder)
+            source = root / 'Source.framework'
+            source.mkdir()
+            binary = source / 'runtime'
+            binary.write_bytes(b'original')
+            binary.chmod(0o755)
+            subprocess.run(['xattr', '-w', 'zork.fixture', 'metadata', str(binary)], check=True)
+            (source / 'Current').symlink_to('runtime')
+            target = root / 'Copy.framework'
+            runtime.copy_framework(source, target)
+            self.assertEqual((target / 'Current').readlink(), Path('runtime'))
+            self.assertEqual((target / 'runtime').stat().st_mode & 0o777, 0o755)
+            self.assertNotEqual((target / 'runtime').stat().st_ino, binary.stat().st_ino)
+            self.assertNotIn('zork.fixture', subprocess.check_output(['xattr', str(target / 'runtime')], text=True))
+            (target / 'runtime').write_bytes(b'resigned copy')
+            self.assertEqual(binary.read_bytes(), b'original')
+
     def test_bundle_entry_points_and_sibling_discovery(self):
         spec = importlib.util.spec_from_file_location('packager', Path(__file__).parent / 'package-macos-client.py')
         packager = importlib.util.module_from_spec(spec)
@@ -39,21 +62,27 @@ class HelperBundleTests(unittest.TestCase):
                 with (helper / 'Contents/Info.plist').open('rb') as file:
                     info = plistlib.load(file)
                 self.assertTrue(info['LSBackgroundOnly'])
-                self.assertEqual(info['CFBundleExecutable'], 'ZorkHelperLauncher')
-                self.assertEqual(info['ZorkRuntimeExecutable'], name)
+                wrapped = name in packager.RUNTIME_ALIASES
+                self.assertEqual(info['CFBundleExecutable'], 'ZorkHelperLauncher' if wrapped else name)
+                self.assertEqual(info.get('ZorkRuntimeExecutable'), name if wrapped else None)
                 self.assertEqual(info['CFBundleIdentifier'], 'surf.zork.desktop.' + role)
                 if name == 'zork-station':
                     self.assertEqual(info['CFBundleDisplayName'], 'Zork-Station')
                     self.assertEqual(info['CFBundleIdentifier'], 'surf.zork.desktop.gateway')
+                if name == 'zork-service-watch':
+                    self.assertEqual(info['CFBundleDisplayName'], 'Zork-Service-Watch')
+                    self.assertTrue((helper / 'Contents/MacOS' / name).is_symlink())
+                    self.assertEqual((helper / 'Contents/MacOS' / name).read_bytes(), b'zork-station')
                 self.assertEqual((helper / 'Contents/Resources' / info['CFBundleIconFile']).read_bytes()[:4], b'icns')
                 executable = (mac / name).resolve(strict=True)
-                self.assertEqual(executable, (helper / 'Contents/MacOS/ZorkHelperLauncher').resolve())
-                for sibling in packager.COMPONENTS:
-                    expected = b'launcher' if sibling != name and sibling in {'zork', 'zork-station'} else sibling.encode()
+                self.assertEqual(executable, (helper / 'Contents/MacOS' / info['CFBundleExecutable']).resolve())
+                for sibling in [*packager.COMPONENTS, *packager.RUNTIME_ALIASES]:
+                    expected = (b'launcher' if sibling != name and sibling in packager.RUNTIME_ALIASES
+                                else packager.RUNTIME_ALIASES.get(sibling, sibling).encode())
                     self.assertEqual((executable.parent / sibling).read_bytes(), expected)
 
     @unittest.skipUnless(sys.platform == 'darwin', 'AppKit helper launch is macOS-only')
-    def test_compatibility_symlinks_launch_the_correct_bundle_and_preserve_arguments(self):
+    def test_compatibility_symlinks_preserve_arguments(self):
         spec = importlib.util.spec_from_file_location('packager', Path(__file__).parent / 'package-macos-client.py')
         packager = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(packager)
@@ -67,19 +96,26 @@ class HelperBundleTests(unittest.TestCase):
                 (binaries / name).chmod(0o755)
             launcher = root / 'launcher'
             subprocess.run(['clang', str(repo / 'scripts/build/macos-helper-launcher.m'),
-                            '-framework', 'AppKit', '-o', str(launcher)], check=True)
+                            '-framework', 'AppKit', '-framework', 'ApplicationServices', '-o', str(launcher)], check=True)
             app = root / 'Zork.app'
             mac = app / 'Contents/MacOS'
             mac.mkdir(parents=True)
             helpers = packager.stage_binaries(app, binaries, repo / 'crates/zork-ui/assets/app', '1.2.3', launcher)
             for helper, (name, _, _) in zip(helpers, packager.HELPERS):
                 for target in [helper / 'Contents/MacOS' / name, helper]:
+                    if target.is_symlink():
+                        continue
                     subprocess.run(['codesign', '--force', '--sign', '-', str(target)],
                                    check=True, capture_output=True)
-            for name in ['zork', 'zork-station']:
-                result = subprocess.run([str(mac / name), '--data', 'path with spaces', '--fake-agent'],
-                                        capture_output=True, text=True, check=True, timeout=15)
-                self.assertEqual(result.stdout.strip(), '--data path with spaces --fake-agent')
+            try:
+                for name in ['zork', 'zork-station', 'zork-service-watch']:
+                    result = subprocess.run([str(mac / name), '--data', 'path with spaces', '--fake-agent'],
+                                            capture_output=True, text=True, check=True, timeout=15)
+                    self.assertEqual(result.stdout.strip(), '--data path with spaces --fake-agent')
+            finally:
+                tool = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+                for helper in helpers:
+                    subprocess.run([tool, '-u', str(helper)], capture_output=True)
 
     def test_installer_tracks_nested_helpers_but_not_other_apps(self):
         app = Path('/Applications/Zork.app')

@@ -8,6 +8,8 @@ on:
       - "crates/zork-gui/assets/**"
       - "crates/zork-gui/Cargo.toml"
       - "crates/zork-config/**"
+      - "crates/zork-ui/**"
+      - "vendor/gpui-*/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/desktop.yml"
@@ -19,6 +21,8 @@ on:
       - "crates/zork-gui/assets/**"
       - "crates/zork-gui/Cargo.toml"
       - "crates/zork-config/**"
+      - "crates/zork-ui/**"
+      - "vendor/gpui-*/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/desktop.yml"
@@ -43,6 +47,13 @@ jobs:
       KACHE_CONFIGURED: ${{ vars.KACHE_S3_ENDPOINT != '' && secrets.KACHE_S3_ACCESS_KEY != '' && secrets.KACHE_S3_SECRET_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare Metal shader compiler
+        run: |
+          if ! xcrun --sdk macosx metal --version >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          xcrun --sdk macosx metal --version
+          xcrun --sdk macosx --find metallib
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1

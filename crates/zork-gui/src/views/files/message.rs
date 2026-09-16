@@ -172,6 +172,7 @@ pub(in crate::views) fn render(
     width: f32,
     user: bool,
     root: gpui::WeakEntity<RootView>,
+    source: zork_ui::components::liquid::overlay::SourceBinding,
     index: usize,
     cache: Rc<RefCell<PreviewCache>>,
     cx: &mut gpui::App,
@@ -223,12 +224,12 @@ pub(in crate::views) fn render(
             };
             let (root, group, session) = (root.clone(), files.clone(), session.to_owned());
             row = row.child(
-                item.on_click(move |_, window, cx| {
+                source.bind(item.on_click(move |_, window, cx| {
                     cx.stop_propagation();
                     let _ = root.update(cx, |v, cx| {
                         v.open_message_files(group.clone(), selected, &session, window, cx)
                     });
-                })
+                }), file.name.clone(), zork_ui::controls::ActionStyle::default())
                 .automation(AutomationRole::Button, file.name.clone()),
             );
         }

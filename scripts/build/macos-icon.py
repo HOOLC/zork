@@ -39,7 +39,11 @@ def generate(source, destination):
 def main():
     assets = Path(__file__).resolve().parents[2] / 'crates/zork-ui/assets/app'
     for source, output in [('icon.png', 'Zork.icns'), ('station.svg', 'ZorkStation.icns'),
-                           ('supervisor.svg', 'ZorkSupervisor.icns')]:
+                           ('supervisor.svg', 'ZorkSupervisor.icns'),
+                           ('service-watch.svg', 'ZorkServiceWatch.icns'),
+                           ('browser.svg', 'ZorkBrowser.icns'),
+                           *[(f'browser-{role.lower()}.svg', f'ZorkBrowser{role}.icns')
+                             for role in ('Helper', 'Alerts', 'GPU', 'Plugin', 'Renderer', 'Network', 'Storage')]]:
         generate(assets / source, assets / output)
 
 

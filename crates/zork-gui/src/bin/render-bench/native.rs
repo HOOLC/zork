@@ -1,5 +1,5 @@
 //! Native presentation over the same disconnected desktop fixtures as headless.
-use gpui::{prelude::*, px, size, AnyWindowHandle, Bounds, WindowAppearance};
+use gpui::{AnyWindowHandle, Bounds, WindowAppearance, prelude::*, px, size};
 use std::{
     cell::{Cell, RefCell},
     path::Path,
@@ -9,7 +9,7 @@ use std::{
 };
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
+    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
     views::RootView,
 };
 
@@ -113,6 +113,15 @@ pub fn run(name: &str, output: &Path) -> anyhow::Result<()> {
                     driver.dispatch(action, window, cx)
                 });
                 cx.background_executor().timer(Duration::from_millis(150)).await;
+                let result = window.update(cx, |_, window, cx| {
+                    let action: UserAction = serde_json::from_value(serde_json::json!({"type":"click","target":{"element_id":"conversation-files-all"}})).unwrap();
+                    driver.dispatch(action, window, cx)
+                });
+                if let Err(error) = result.and_then(|result| result) {
+                    eprintln!("native file-list setup: {error:#}");
+                    std::process::exit(1);
+                }
+                cx.background_executor().timer(Duration::from_millis(150)).await;
             }
             let result=window.update(cx,|_,window,cx| {
                 cold_capture.set(window.frame_duration_snapshot().draw_duration_histogram.value_at_quantile(1.) as f64/1e6);
@@ -129,7 +138,7 @@ pub fn run(name: &str, output: &Path) -> anyhow::Result<()> {
                 }
                 if files {
                     file_scroll_samples.push(driver.snapshot(false).elements.into_iter()
-                        .filter(|e| e.visible && e.id.starts_with("conversation-artifact-"))
+                        .filter(|e| e.visible && (e.id.starts_with("conversation-artifact-") || e.id.starts_with("content-file-")))
                         .map(|e| e.id).collect::<Vec<_>>());
                 }
             }
@@ -177,7 +186,11 @@ fn finish(
     result["anchor"] = anchor.into();
     result["pixels_per_second"] = speed.into();
     std::fs::write(&frames, serde_json::to_vec_pretty(&result)?)?;
-    anyhow::ensure!(result["present_interval_coverage"].as_f64().unwrap_or(0.)>0.95,"native presentation unavailable; keep the desktop unlocked and benchmark window active: {}",frames.display());
+    anyhow::ensure!(
+        result["present_interval_coverage"].as_f64().unwrap_or(0.) > 0.95,
+        "native presentation unavailable; keep the desktop unlocked and benchmark window active: {}",
+        frames.display()
+    );
     anyhow::ensure!(
         result["p95_draw_ms"].as_f64().unwrap_or(f64::INFINITY) <= 1000. / super::FPS as f64,
         "native CPU frame budget exceeded: {}",

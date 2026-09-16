@@ -52,8 +52,7 @@ impl ToolImplementation for Cleanup {
     }
 }
 async fn setup(unknown: bool) -> (TestWorld, String, Arc<Cleanup>, String) {
-    let mut options = ServiceOptions::default();
-    options.tool_concurrency = 1;
+    let options = ServiceOptions::default();
     let mut world = TestWorld::with_options(options);
     let tool = Arc::new(Cleanup {
         started: Default::default(),
@@ -231,10 +230,19 @@ async fn unknown_target_does_not_claim_cancellation_or_create_a_false_request() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn slow_cleanup_does_not_block_cancelling_another_queued_invocation() {
+async fn slow_cleanup_does_not_block_cancelling_another_running_invocation() {
     let (mut world, session, tool, first) = setup(false).await;
+    let mut independent = world
+        .install_tool(ToolContract {
+            name: "test.independent".into(),
+            version: ToolVersion::new("v1").unwrap(),
+            initial_description: "Independent pending work".into(),
+            detailed_description: "Independent pending work".into(),
+            input_schema: json!({"type":"object","properties":{},"additionalProperties":false}),
+        })
+        .unwrap();
     world
-        .send_mail(&session, "queue another operation")
+        .send_mail(&session, "start another operation")
         .await
         .unwrap();
     world
@@ -245,13 +253,14 @@ async fn slow_cleanup_does_not_block_cancelling_another_queued_invocation() {
             tool_calls: vec![ProviderToolCall {
                 tool_call_id: "second".into(),
                 tool_name: "call".into(),
-                arguments: json!({"tool":"test.cleanup","action":"queue","arguments":{},"wait":0}),
+                arguments: json!({"tool":"test.independent","action":"start","arguments":{},"wait":0}),
             }],
             provider_context: None,
             usage: None,
             provider_input: None,
         }))
         .unwrap();
+    let _pending_second = independent.request().await;
     let next = world.request().await;
     let second = world
         .state(&session)
@@ -259,7 +268,7 @@ async fn slow_cleanup_does_not_block_cancelling_another_queued_invocation() {
         .unwrap()
         .pending_tools
         .values()
-        .find(|p| p.invocation.tool == "test.cleanup" && p.invocation.invocation_id != first)
+        .find(|p| p.invocation.tool == "test.independent" && p.invocation.invocation_id != first)
         .unwrap()
         .invocation
         .invocation_id

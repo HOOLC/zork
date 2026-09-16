@@ -1,6 +1,8 @@
 //! JNI is only an adapter; all durable behavior lives in zork-client-core.
 #[cfg(all(target_os = "android", debug_assertions))]
 mod diagnostics;
+#[cfg(all(target_os = "android", debug_assertions))]
+mod local_script_fixture;
 mod observations;
 use anyhow::{ensure, Result};
 use serde_json::{json, Value};
@@ -52,6 +54,7 @@ pub fn call(root: &Path, request: &str) -> Result<Value> {
     let command: Command = serde_json::from_str(request)?;
     let host = host(root)?;
     if command.is_local() {
+        let _runtime = host.executor.enter();
         host.local.execute(command)
     } else {
         // Java callers have small stacks. Construct and poll the business
@@ -202,6 +205,9 @@ mod tests {
 }
 
 #[cfg(target_os = "android")]
+mod liquid;
+
+#[cfg(target_os = "android")]
 mod android {
     use jni::{
         jni_sig, jni_str,
@@ -324,6 +330,20 @@ mod android {
             JString::from_str(env, value.to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[cfg(debug_assertions)]
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_surf_zork_android_LocalScriptFixtureBridge_seed<'a>(
+        mut env: EnvUnowned<'a>, _this: JObject<'a>, root: JString<'a>, input: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = match super::local_script_fixture::seed(std::path::Path::new(&root.to_string()), &input.to_string()) {
+                Ok(value) => serde_json::json!({"ok":true,"data":value}),
+                Err(error) => serde_json::json!({"ok":false,"error":error.to_string()}),
+            };
+            JString::from_str(env, value.to_string())
+        }).resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }
 
     #[cfg(debug_assertions)]
@@ -461,6 +481,40 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "system" fn Java_surf_zork_android_NativeBridge_clearData<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        root: JString<'a>,
+        confirmed: jni::sys::jboolean,
+        context: JObject<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let result = (|| -> anyhow::Result<()> {
+                let directory = env.call_method(&context, jni_str!("getNoBackupFilesDir"), jni_sig!(() -> java.io.File), &[])?.l()?;
+                let path = env.call_method(directory, jni_str!("getAbsolutePath"), jni_sig!(() -> java.lang.String), &[])?.l()?;
+                let path = JString::cast_local(env, path)?.to_string();
+                let root = std::path::PathBuf::from(root.to_string());
+                anyhow::ensure!(root == std::path::Path::new(&path).join("client"), "只能清空当前应用的数据");
+                let host = super::host(&root)?;
+                host.local.data_reset().clear(confirmed, || {
+                    let service = JString::from_str(env, "activity")?;
+                    let manager = env.call_method(&context, jni_str!("getSystemService"), jni_sig!((java.lang.String) -> java.lang.Object), &[JValue::Object(service.as_ref())])?.l()?;
+                    // The OS terminates every process belonging to this package
+                    // and clears preferences, files, databases and caches together.
+                    let accepted = env.call_method(manager, jni_str!("clearApplicationUserData"), jni_sig!(() -> boolean), &[])?.z()?;
+                    anyhow::ensure!(accepted, "系统未接受清空数据请求，请重试");
+                    Ok(())
+                })
+            })();
+            let reply = match result {
+                Ok(()) => serde_json::json!({"ok":true}),
+                Err(error) => serde_json::json!({"ok":false,"error":error.to_string()}),
+            };
+            JString::from_str(env, reply.to_string())
+        }).resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "system" fn Java_surf_zork_android_NativeBridge_call<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
@@ -473,6 +527,56 @@ mod android {
                 &request.to_string(),
             );
             JString::from_str(env, reply)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_surf_zork_android_NativeBridge_sharedFileBytes<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        root: JString<'a>,
+        content: JString<'a>,
+    ) -> jni::objects::JByteArray<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let bytes = super::host(std::path::Path::new(&root.to_string()))
+                .ok()
+                .and_then(|host| {
+                    host.local
+                        .shared_files()
+                        .preview_bytes(&content.to_string())
+                });
+            env.byte_array_from_slice(bytes.as_deref().map(Vec::as_slice).unwrap_or_default())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_surf_zork_android_NativeBridge_saveSharedFile<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        root: JString<'a>,
+        ticket: JString<'a>,
+        descriptor: jni::sys::jint,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let result = (|| -> anyhow::Result<()> {
+                use std::os::fd::BorrowedFd;
+                anyhow::ensure!(descriptor >= 0, "无效的保存位置");
+                // Android retains its ParcelFileDescriptor; this adapter owns a
+                // duplicate for the duration of the core-controlled write.
+                let owned = unsafe { BorrowedFd::borrow_raw(descriptor) }.try_clone_to_owned()?;
+                let mut file = std::fs::File::from(owned);
+                super::host(std::path::Path::new(&root.to_string()))?
+                    .local
+                    .shared_files()
+                    .write_copy(&ticket.to_string(), &mut file)
+            })();
+            let reply = match result {
+                Ok(()) => serde_json::json!({"ok":true}),
+                Err(e) => serde_json::json!({"ok":false,"error":e.to_string()}),
+            };
+            JString::from_str(env, reply.to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }

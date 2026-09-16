@@ -37,6 +37,8 @@ pub struct DirectoryData {
 }
 
 pub struct Directory {
+    pub data_reset: Arc<crate::data_reset::Controller>,
+    data_lease: Arc<super::data_reset::Lease>,
     pub store: Arc<ClientStore>,
     pub local: Arc<LocalNode>,
     pub transport: Arc<ClientMesh>,
@@ -53,6 +55,7 @@ pub struct Directory {
     account_attempt: Mutex<Option<Arc<zork_notify::io::Cancellation>>>,
     application_sources: Mutex<HashMap<String, crate::pages::ApplicationSource>>,
     resources: std::sync::OnceLock<Arc<crate::resources::Resources>>,
+    shared_files: std::sync::OnceLock<Arc<crate::shared_files::SharedFiles>>,
 }
 struct HostConnection(std::os::unix::net::UnixStream);
 struct Connection {
@@ -67,6 +70,7 @@ impl Drop for HostConnection {
 }
 impl Directory {
     pub fn open(root: &Path) -> Result<Arc<Self>> {
+        let data_lease = super::data_reset::acquire(root)?;
         let store = Arc::new(ClientStore::open(root)?);
         let (local_enabled, error) = match store.local_node_enabled() {
             Ok(value) => (value, None),
@@ -89,6 +93,8 @@ impl Directory {
             ..Default::default()
         };
         let directory = Arc::new(Self {
+            data_reset: Arc::new(crate::data_reset::Controller::default()),
+            data_lease,
             transport: Arc::new(ClientMesh::with_store(
                 root.join("transport"),
                 store.clone(),
@@ -108,6 +114,7 @@ impl Directory {
             next_binding: std::sync::atomic::AtomicU64::new(1),
             application_sources: Default::default(),
             resources: Default::default(),
+            shared_files: Default::default(),
         });
         let node_root = directory.local.root().to_owned();
         let socket = zork_config::zork_sock_path(&node_root);
@@ -202,6 +209,16 @@ impl Directory {
     pub fn snapshot(&self) -> Arc<DirectoryData> {
         self.state.read()
     }
+    pub fn clear_data(self: &Arc<Self>, confirmed: bool) {
+        let source = self.clone();
+        std::thread::spawn(move || {
+            let _ = source.data_reset.clear(confirmed, || {
+                source.cancel_account();
+                source.local.stop()?;
+                super::data_reset::restart(&source.data_lease)
+            });
+        });
+    }
     pub fn subscribe(&self) -> Subscription<DirectoryData> {
         self.state.subscribe()
     }
@@ -219,6 +236,9 @@ impl Directory {
             if let Some(resources) = self.resources.get() {
                 resources.replace_devices(self.resource_clients());
             }
+            if let Some(source) = self.shared_files.get() {
+                self.refresh_shared_files(source);
+            }
         }
         Ok(())
     }
@@ -232,6 +252,28 @@ impl Directory {
                     .map(|(_, client)| (node.id.clone(), node.name.clone(), client))
             })
             .collect()
+    }
+    fn shared_file_clients(&self) -> Vec<(String,String,bool,Arc<GatewayClient>)> {
+        self.snapshot().nodes.iter().filter(|node| !self.store.replica_revoked(&node.id).unwrap_or(true)).filter_map(|node| {
+            self.connection(&node.id).ok().map(|(_,client)|(node.id.clone(),node.name.clone(),node.local,client))
+        }).collect()
+    }
+    pub fn shared_files(&self) -> Arc<crate::shared_files::SharedFiles> {
+        self.shared_files.get_or_init(|| {
+            let source=crate::shared_files::SharedFiles::new(self.store.clone());
+            self.refresh_shared_files(&source);
+            source
+        }).clone()
+    }
+    fn refresh_shared_files(&self, source: &Arc<crate::shared_files::SharedFiles>) {
+        source.replace_devices(self.shared_file_clients());
+        let states = self.devices.lock().unwrap().iter()
+            .map(|(id, (device, _))| (id.clone(), device.snapshot())).collect::<Vec<_>>();
+        for (id, state) in states {
+            if let Ok((_, client)) = self.connection(&id) {
+                source.update_device(&id, &client, &state);
+            }
+        }
     }
     pub fn inspection_node(
         &self,
@@ -368,6 +410,7 @@ impl Directory {
         let mut updates = device.subscribe();
         let weak = Arc::downgrade(self);
         let anchor = id.clone();
+        let observation_client = client.clone();
         let task = client.spawn(async move {
             let mut retry = zork_notify::retry::Retry::default();
             let mut previous_online = None;
@@ -377,6 +420,9 @@ impl Directory {
                 if let Some(directory) = weak.upgrade() {
                     if binding.is_some_and(|binding|directory.ensure_connection(&anchor,binding).is_err()){return;}
                     directory.accept_applications(&anchor,&update.state);
+                    if let Some(source) = directory.shared_files.get() {
+                        source.update_device(&anchor, &observation_client, &update.state);
+                    }
                     if update.state.online != previous_online {
                         previous_online = update.state.online;
                         if directory.snapshot().nodes.iter().any(|node| node.id == anchor && node.local) {
@@ -530,6 +576,7 @@ impl Directory {
         Ok(())
     }
     pub fn restore(&self) -> Result<Option<SavedNode>> {
+        super::trace_startup("client.restore_begin");
         let mut selected = self
             .selected()
             .and_then(|id| self.snapshot().nodes.iter().find(|n| n.id == id).cloned());
@@ -555,6 +602,7 @@ impl Directory {
         if let Some(node) = selected.as_ref().filter(|n| n.mesh.is_some()) {
             self.pair(Some(node.clone()))?;
         }
+        super::trace_startup("client.restore_complete");
         Ok(selected)
     }
     pub async fn refresh_info(&self, node: &SavedNode) -> Result<()> {
@@ -782,10 +830,15 @@ impl Directory {
             .unwrap()
             .insert(group.authority, group.revision);
         self.commit(|s| {
-            s.nodes = Arc::new(nodes);
             s.mesh_identity = Some(identity);
             s.error = None;
         });
+        self.publish_nodes()?;
+        // The same saved connection can become usable when its embedded
+        // transport starts. Wake the file reader even without a node-list edit.
+        if let Some(source) = self.shared_files.get() {
+            self.refresh_shared_files(source);
+        }
         Ok(())
     }
 }

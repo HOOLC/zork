@@ -9,7 +9,6 @@ pub(in crate::views) struct FanState {
     pub hovered: bool,
     pub pinned: bool,
     pub active: Option<usize>,
-    remove_active: Option<usize>,
     pub progress: f32,
     row: Option<usize>,
     from: f32,
@@ -66,7 +65,7 @@ struct PreviewEntry {
     used: u64,
 }
 pub(in crate::views) struct PreviewCache {
-    placeholder: super::preview::Images,
+    placeholder: HashMap<usize, Arc<gpui::RenderImage>>,
     entries: HashMap<String, PreviewEntry>,
     clock: u64,
     loading: usize,
@@ -75,7 +74,7 @@ pub(in crate::views) struct PreviewCache {
 impl Default for PreviewCache {
     fn default() -> Self {
         Self {
-            placeholder: super::preview::placeholder(),
+            placeholder: HashMap::new(),
             entries: HashMap::new(),
             clock: 0,
             loading: 0,
@@ -119,23 +118,22 @@ impl PreviewCache {
         );
         true
     }
-    fn image(
-        &mut self,
-        file: &FileRef,
-        angle: usize,
-    ) -> (Arc<gpui::RenderImage>, Arc<gpui::RenderImage>) {
+    fn image(&mut self, file: &FileRef, angle: usize) -> Arc<gpui::RenderImage> {
         self.clock += 1;
         if let Some(entry) = self.entries.get_mut(&key(file)) {
             entry.used = self.clock;
-            if let Some((index, image)) = entry
+            if let Some((_, image)) = entry
                 .images
                 .iter()
                 .min_by_key(|(index, _)| index.abs_diff(angle))
             {
-                return (image.clone(), self.placeholder.0[*index].1.clone());
+                return image.clone();
             }
         }
-        self.placeholder.0[angle].clone()
+        self.placeholder
+            .entry(angle)
+            .or_insert_with(|| super::preview::placeholder(angle))
+            .clone()
     }
     #[cfg(feature = "headless-bench")]
     pub(in crate::views) fn image_count(&self) -> usize {
@@ -329,9 +327,8 @@ impl RootView {
                 cx.drop_image(image, None);
             }
         }
-        for (paper, shadow) in &cache.placeholder.0 {
-            cx.drop_image(paper.clone(), None);
-            cx.drop_image(shadow.clone(), None);
+        for paper in cache.placeholder.drain().map(|(_, image)| image) {
+            cx.drop_image(paper, None);
         }
         for image in cache.retired.drain(..) {
             cx.drop_image(image, None);
@@ -367,6 +364,7 @@ impl RootView {
             true,
             self.selected_session.clone().unwrap_or_default(),
             self.locale,
+            self.attachment_source(),
         )
         .absolute()
         .right(px(self.composer_surface_width
@@ -462,403 +460,55 @@ impl RootView {
 }
 
 fn render(
-    frame: Frame,
-    state: FanState,
-    cache: Rc<RefCell<PreviewCache>>,
-    root: gpui::WeakEntity<RootView>,
-    message: Option<(String, usize)>,
-    draft: bool,
-    session: String,
-    locale: Locale,
+    frame: Frame, state: FanState, cache: Rc<RefCell<PreviewCache>>,
+    root: gpui::WeakEntity<RootView>, message: Option<(String, usize)>,
+    draft: bool, session: String, locale: Locale,
+    source: zork_ui::components::liquid::overlay::SourceBinding,
 ) -> gpui::Stateful<Div> {
-    #[cfg(feature = "headless-bench")]
-    let opacity = if std::env::var_os("ZORK_FILES_CONTOUR_ONLY").is_some() {
-        0.
-    } else {
-        1.
-    };
-    #[cfg(not(feature = "headless-bench"))]
-    let opacity = 1.;
+    use zork_ui::components::liquid::composer::fan as component;
+    let files: HashMap<_, _> = frame.files.iter().map(|visual| (visual.file.id.clone(), visual.file.clone())).collect();
+    let indices: HashMap<_, _> = frame.files.iter().enumerate().map(|(index, visual)| (visual.file.id.clone(), index)).collect();
     let open = state.open();
-    let width = frame.width;
-    let height = frame.height;
-    let opening = Opening::new(frame.shape, frame.expanded);
-    let release = 0.;
-    let below = geometry::clip_below(&opening, frame.expanded);
-    let hover_root = root.clone();
-    let hover_message = message.clone();
-    let pin_root = root.clone();
-    let pin_message = message.clone();
-    let mut order = (0..frame.files.len()).collect::<Vec<_>>();
-    order.sort_by_key(|i| (frame.expanded > 0.98 && state.active == Some(*i), *i));
-    let toggle_id = if draft {
-        "draft-file-fan-toggle".to_owned()
-    } else {
-        format!("file-fan-toggle-{}", message.as_ref().unwrap().0)
+    let key = message.as_ref().map(|m| m.0.clone()).unwrap_or_default();
+    let ids = component::Ids {
+        root: if draft { "draft-file-fan".into() } else { format!("file-fan-{key}") },
+        toggle: if draft { "draft-file-fan-toggle".into() } else { format!("file-fan-toggle-{key}") },
+        file_prefix: if draft { "draft-preview-".into() } else { format!("message-file-{}-", message.as_ref().unwrap().1) },
+        remove_prefix: "remove-".into(),
     };
-    div()
-        .id(if draft {
-            "draft-file-fan".into()
-        } else {
-            format!("file-fan-{}", message.as_ref().unwrap().0)
-        })
-        .relative()
-        .w(px(width))
-        .h(px(height + below))
-        .overflow_hidden()
-        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_hover(move |hover, _, cx| {
-            let _ = hover_root.update(cx, |v, cx| {
-                v.change_fan(hover_message.clone(), Some(*hover), false, cx)
-            });
-        })
-        .on_click(move |_, window, cx| {
-            cx.stop_propagation();
-            let _ = pin_root.update(cx, |v, cx| {
-                v.change_fan(pin_message.clone(), None, true, cx);
+    let component_frame = component::Frame {
+        files: frame.files.iter().enumerate().map(|(i, visual)| component::File {
+            id: visual.file.id.clone(), name: visual.file.name.clone(), pose: visual.pose,
+            image: Some(cache.borrow_mut().image(&visual.file, ((visual.pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize)),
+            visible: visual.visible, departing: visual.departing, active: state.active == Some(i),
+            removable: draft && open && state.progress > 0.98 && !visual.departing,
+        }).collect(),
+        width: frame.width, height: frame.height,
+        opening: Opening::new(frame.shape, frame.expanded), expanded: frame.expanded, rim: draft,
+    };
+    let handler = Rc::new(move |action, window: &mut Window, cx: &mut gpui::App| {
+        let _ = root.update(cx, |v, cx| match action {
+            component::Action::Hover(hover) => v.change_fan(message.clone(), Some(hover), false, cx),
+            component::Action::Toggle => {
+                v.change_fan(message.clone(), None, true, cx);
                 v.focus_composer(window, cx);
-            });
-        })
-        .child(
-            div()
-                .id(toggle_id)
-                .absolute()
-                .top_0()
-                .w_full()
-                .h(px(12.))
-                .automation(AutomationRole::Button, locale.text("conversation_files")),
-        )
-        .children(
-            order
-                .into_iter()
-                .filter(|i| frame.files[*i].visible)
-                .map(|i| {
-                    let visual = &frame.files[i];
-                    let pose = visual.pose;
-                    let angle = ((pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize;
-                    let (image, shadow) = cache.borrow_mut().image(&visual.file, angle);
-                    let file = visual.file.clone();
-                    let root = root.clone();
-                    let pin_message = message.clone();
-                    let label = file.name.clone();
-                    let session = session.clone();
-                    let active_root = root.clone();
-                    let active_message = message.clone();
-                    let extent = pose.half_extent();
-                    let image_width = pose.width / (216. / 384.);
-                    let image_height = pose.height / (304. / 384.);
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .child(
-                            clipped_image(
-                                shadow,
-                                pose,
-                                opening,
-                                release,
-                                height,
-                                image_width,
-                                image_height,
-                            )
-                            .absolute()
-                            .size_full()
-                            .opacity(opacity),
-                        )
-                        .child(
-                            clipped_image(
-                                image,
-                                pose,
-                                opening,
-                                release,
-                                height,
-                                image_width,
-                                image_height,
-                            )
-                            .absolute()
-                            .size_full()
-                            .opacity(opacity),
-                        )
-                        .child(
-                            div()
-                                .absolute()
-                                .left(px(width * 0.5 + pose.center.x - extent.x))
-                                .top(px(height + pose.center.y - extent.y))
-                                .w(px(extent.x * 2.))
-                                .h(px(extent.y * 2.))
-                                .id(if draft {
-                                    format!("draft-preview-{}", file.id)
-                                } else {
-                                    format!(
-                                        "message-file-{}-{}",
-                                        message.as_ref().unwrap().1,
-                                        file.id
-                                    )
-                                })
-                                .cursor_pointer()
-                                .when(
-                                    draft && open && state.progress > 0.98 && !visual.departing,
-                                    |paper| {
-                                        paper.child(remove_button(
-                                            file.clone(),
-                                            root.clone(),
-                                            session.clone(),
-                                            locale,
-                                            i,
-                                            state.active == Some(i)
-                                                || state.remove_active == Some(i),
-                                        ))
-                                    },
-                                )
-                                .on_hover(move |hovered, _, cx| {
-                                    let _ = active_root.update(cx, |v, cx| {
-                                        v.highlight_file(active_message.clone(), i, *hovered, cx)
-                                    });
-                                })
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    let _ = root.update(cx, |v, cx| {
-                                        if v.file_ui.draft_files.changing() && draft {
-                                            return;
-                                        }
-                                        if !open || (draft && !state.pinned) {
-                                            v.change_fan(pin_message.clone(), None, true, cx);
-                                        } else {
-                                            v.open_message_file(&file, &session, cx);
-                                        }
-                                    });
-                                })
-                                .automation(AutomationRole::Button, label),
-                        )
-                }),
-        )
-        .when(draft, |fan| {
-            fan.child(
-                gpui::canvas(
-                    |_, _, _| (),
-                    move |bounds, _, window, _| {
-                        use zork_ui::components::liquid_composer::{
-                            BORDER_COLOR, SLOT_BORDER_WIDTH,
-                        };
-                        let rim = opening.translated(gpui::point(
-                            bounds.center().x.as_f32(),
-                            bounds.top().as_f32() + height,
-                        ));
-                        let lower = &rim.hole[2..6];
-                        let point = |p: gpui::Point<f32>| gpui::point(px(p.x), px(p.y));
-                        let mut path = gpui::PathBuilder::stroke(px(SLOT_BORDER_WIDTH));
-                        path.move_to(point(lower[0][0]));
-                        for curve in lower {
-                            path.cubic_bezier_to(point(curve[3]), point(curve[1]), point(curve[2]));
-                        }
-                        if let Ok(path) = path.build() {
-                            window.paint_path(path, rgb(BORDER_COLOR));
-                        }
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-        })
-}
-
-fn remove_button(
-    file: FileRef,
-    root: gpui::WeakEntity<RootView>,
-    session: String,
-    locale: Locale,
-    index: usize,
-    visible: bool,
-) -> impl IntoElement {
-    let hover_root = root.clone();
-    let hover_id = format!("file-remove-fill-{}", file.id);
-    div()
-        .id(format!("remove-{}", file.id))
-        .absolute()
-        .right(px(-geometry::REMOVE_SIZE * 0.5))
-        .top(px(-geometry::REMOVE_SIZE * 0.5))
-        .size(px(geometry::REMOVE_SIZE))
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .opacity(if visible { 1. } else { 0. })
-        .child(
-            div()
-                .relative()
-                .size(px(16.))
-                .rounded_full()
-                .bg(rgba(0xfffffff2))
-                .child(zork_ui::components::motion::HoverFill {
-                    id: hover_id.into(),
-                    color: zork_ui::design::INTERACTION.neutral_hover,
-                    radius: 8.,
-                    pressed: None,
-                })
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    svg()
-                        .path("icons/x.svg")
-                        .size(px(geometry::REMOVE_GLYPH))
-                        .text_color(rgb(0x757b82)),
-                ),
-        )
-        .on_hover(move |hovered, _, cx| {
-            let _ = hover_root.update(cx, |v, cx| {
-                if *hovered {
-                    v.file_ui.draft.remove_active = Some(index);
-                } else if v.file_ui.draft.remove_active == Some(index) {
-                    v.file_ui.draft.remove_active = None;
-                }
-                zork_ui::components::region::invalidate(cx, &["composer"]);
-            });
-        })
-        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(move |_, _, cx| {
-            cx.stop_propagation();
-            let _ = root.update(cx, |v, cx| {
-                if v.selected_session.as_deref() == Some(&session) {
-                    if let Err(error) = v.core_device.remove_file(&session, &file.id) {
-                        v.error = Some(error.to_string());
-                    }
-                }
-                zork_ui::components::region::invalidate(cx, &["composer"]);
-            });
-        })
-        .automation(AutomationRole::Button, locale.text("remove_attachment"))
-}
-
-// Clip only image pixels. Painting an opaque front patch here would erase
-// the lower half of the aperture border even where there is no paper.
-fn clipped_image(
-    image: Arc<gpui::RenderImage>,
-    pose: geometry::Pose,
-    opening: Opening,
-    release: f32,
-    fan_height: f32,
-    image_width: f32,
-    image_height: f32,
-) -> impl IntoElement + gpui::Styled {
-    gpui::canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            // Derive both the image and clipping rim from one stable layout
-            // origin. Nested rounded layout bounds jump at the final upright pose.
-            let origin = gpui::point(
-                bounds.center().x.as_f32(),
-                bounds.top().as_f32() + fan_height,
-            );
-            let bounds = gpui::Bounds::new(
-                gpui::point(
-                    px(origin.x + pose.center.x - image_width * 0.5),
-                    px(origin.y + pose.center.y - image_height * 0.5),
-                ),
-                gpui::size(px(image_width), px(image_height)),
-            );
-            let origin = gpui::point(origin.x, origin.y + release);
-            let opening = opening.translated(origin);
-            let lower = &opening.hole[2..6];
-            let edge = |x: f32| {
-                if x >= lower[0][0].x {
-                    return lower[0][0].y;
-                }
-                if x <= lower[3][3].x {
-                    return lower[3][3].y;
-                }
-                for curve in lower {
-                    if x <= curve[0].x && x >= curve[3].x {
-                        let (mut lo, mut hi) = (0., 1.);
-                        for _ in 0..12 {
-                            let mid = (lo + hi) * 0.5;
-                            if geometry::sample(*curve, mid).x > x {
-                                lo = mid;
-                            } else {
-                                hi = mid;
-                            }
-                        }
-                        return geometry::sample(*curve, (lo + hi) * 0.5).y;
-                    }
-                }
-                lower[0][0].y
-            };
-            let scale = window.scale_factor();
-            let min_y = lower.iter().flatten().map(|p| p.y).fold(f32::MAX, f32::min);
-            let max_y = lower.iter().flatten().map(|p| p.y).fold(f32::MIN, f32::max);
-            if bounds.top().as_f32() >= max_y {
-                return;
             }
-            let paint = |window: &mut Window| {
-                // The rotated thumbnail has transparent padding. Exclude its
-                // outer texel so linear atlas sampling cannot pick up a
-                // neighbouring tile along the quad's edge.
-                window.with_content_mask(
-                    Some(gpui::ContentMask {
-                        bounds: bounds.inset(px(1.)),
-                    }),
-                    |window| {
-                        let _ = window.paint_image(
-                            bounds,
-                            bounds,
-                            gpui::Corners::all(px(0.)),
-                            image.clone(),
-                            0,
-                            false,
-                        );
-                    },
-                );
-            };
-            if bounds.bottom().as_f32() <= min_y {
-                paint(window);
-                return;
+            component::Action::Highlight(id, hover) => {
+                if let Some(index) = indices.get(&id) { v.highlight_file(message.clone(), *index, hover, cx); }
             }
-            let top = (min_y * scale).floor() / scale;
-            if top > bounds.top().as_f32() {
-                window.with_content_mask(
-                    Some(gpui::ContentMask {
-                        bounds: gpui::Bounds::new(
-                            bounds.origin,
-                            gpui::size(bounds.size.width, px(top) - bounds.top()),
-                        ),
-                    }),
-                    |window| paint(window),
-                );
+            component::Action::Open(id) => {
+                if draft && v.file_ui.draft_files.changing() { return; }
+                if !open || (draft && !state.pinned) { v.change_fan(message.clone(), None, true, cx); }
+                else if let Some(file) = files.get(&id) { v.open_message_file(file, &session, cx); }
             }
-            let band_top = top.max(bounds.top().as_f32());
-            let first = (bounds.left().as_f32() * scale).floor() as i32;
-            let last = (bounds.right().as_f32() * scale).ceil() as i32;
-            let cutoff = |column: i32| {
-                (edge((column as f32 + 0.5) / scale).min(bounds.bottom().as_f32()) * scale * 8.)
-                    .round()
-                    / (scale * 8.)
-            };
-            let mut start = first;
-            let mut y = cutoff(first);
-            for column in first + 1..=last {
-                let next = if column == last {
-                    f32::NAN
-                } else {
-                    cutoff(column)
-                };
-                if next != y {
-                    if y > band_top {
-                        window.with_content_mask(
-                            Some(gpui::ContentMask {
-                                bounds: gpui::Bounds::new(
-                                    gpui::point(px(start as f32 / scale), px(band_top)),
-                                    gpui::size(
-                                        px((column - start) as f32 / scale),
-                                        px(y - band_top),
-                                    ),
-                                ),
-                            }),
-                            |window| paint(window),
-                        );
-                    }
-                    start = column;
-                    y = next;
+            component::Action::Remove(id) => {
+                if draft && v.selected_session.as_deref() == Some(&session) {
+                    if let Err(error) = v.core_device.remove_file(&session, &id) { v.error = Some(error.to_string()); }
+                    zork_ui::components::region::invalidate(cx, &["composer"]);
                 }
             }
-        },
-    )
+        });
+    });
+    component::render_with_source(ids, component_frame, locale.text("conversation_files").into(),
+        locale.text("remove_attachment").into(), handler, Some(source))
 }

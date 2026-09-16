@@ -10,6 +10,7 @@ use zork_observe::{
 mod change;
 mod projection;
 use change::HistoryChange;
+pub use projection::HistoryLookup;
 use projection::Projection;
 
 #[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
@@ -26,6 +27,7 @@ pub struct HistoryData {
     pub runtime: Option<HistoryRuntime>,
     pub records: List<Record>,
     pub entries: List<Entry>,
+    pub lookup: HistoryLookup,
     pub older: Option<String>,
     pub latest: Option<String>,
     pub loading: bool,
@@ -128,6 +130,13 @@ pub struct HistorySubscription {
     prepared: Option<(BatchId, Option<String>)>,
 }
 impl HistorySubscription {
+    pub fn valid(&self, batch: BatchId) -> bool {
+        self.source.valid(batch)
+    }
+    pub fn reset(&mut self) {
+        self.prepared = None;
+        self.source.reset();
+    }
     pub fn readiness(&self) -> Readiness {
         self.source.readiness()
     }
@@ -228,6 +237,7 @@ impl Pending {
         self.changes = self
             .projection
             .ingest(&incoming, older, &mut self.state.entries);
+        self.state.lookup = self.projection.lookup();
         let records = List::from_shared(incoming);
         if older {
             self.state.records.splice(0..0, records);
@@ -252,14 +262,14 @@ impl Drop for History {
 }
 impl History {
     /// Exercise the production page reducer without starting network IO.
-    #[cfg(feature = "headless-bench")]
+    #[cfg(any(test, feature = "headless-bench"))]
     pub fn seed_records(&self, records: Vec<Record>, older: bool) {
         let mut owned = self.owned.lock().unwrap();
         owned.ingest(records, older);
         self.publish(&mut owned);
     }
 
-    #[cfg(feature = "headless-bench")]
+    #[cfg(any(test, feature = "headless-bench"))]
     pub fn seed(&self, mut state: HistoryData) {
         let mut owned = self.owned.lock().unwrap();
         owned.seen = state
@@ -273,6 +283,7 @@ impl History {
             .collect::<Vec<_>>();
         state.entries.clear();
         owned.projection.ingest(&records, false, &mut state.entries);
+        state.lookup = owned.projection.lookup();
         owned.state = state.clone();
         owned.changes = HistoryChange::default();
         self.state.replace(state);

@@ -32,8 +32,16 @@ update  drains and restarts zork-station, including its embedded Agent
 "
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    zork_config::startup::mark("supervisor.main");
+    let identity = zork_config::service::prepare_process_identity()?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run(identity))
+}
+
+async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env().add_directive("info".parse()?),
@@ -47,9 +55,14 @@ async fn main() -> Result<()> {
         "start".into()
     };
     if argv.iter().any(|arg| arg == "--help" || arg == "-h") {
+        identity.register()?;
         print!("{}", usage());
         return Ok(());
     }
+    if command == "start" {
+        return run_supervisor(argv, identity).await;
+    }
+    identity.register()?;
     match command.as_str() {
         "install" => {
             argv.insert(0, "install".into());
@@ -57,7 +70,6 @@ async fn main() -> Result<()> {
         }
         "update" => send_reload(argv).await,
         "upgrade" => upgrade::run(argv).await,
-        "start" => run_supervisor(argv).await,
         "mesh" => mesh::run(argv).await,
         "mcp" => mcp::run(argv).await,
         "service" => service::command(argv).await,
@@ -103,9 +115,18 @@ async fn send_reload(argv: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-async fn run_supervisor(argv: Vec<String>) -> Result<()> {
+async fn run_supervisor(
+    argv: Vec<String>,
+    identity: zork_config::service::ProcessIdentity,
+) -> Result<()> {
+    // Arm signals before launching any child, including while macOS registers
+    // this process identity. Early shutdown must not leave an orphaned Station.
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
+    let mut hangup = Box::pin(sighup());
     let args = zork_config::parse_process_args_from(argv)?;
     let mut file = zork_config::ensure_layout(&args.data_root)?;
+    zork_config::startup::mark("supervisor.layout_ready");
     let _instance = zork_config::service::supervisor_lock(&args.data_root)?;
     zork_config::service::register(&args.data_root)?;
     if let Some(host) = &args.listen_host {
@@ -131,7 +152,19 @@ async fn run_supervisor(argv: Vec<String>) -> Result<()> {
     let sock_path = zork_config::zork_sock_path(&args.data_root);
     let _ = fs::remove_file(&sock_path);
 
+    zork_config::startup::mark("supervisor.before_station_spawn");
     let mut station = spawn_named("zork-station", &args)?;
+    zork_config::startup::mark("supervisor.station_spawned");
+    // Station can initialize while Launch Services checks in its supervisor.
+    // Publish the control socket only after that registration succeeds.
+    if let Err(error) = identity.register() {
+        terminate_child(&mut station);
+        if wait_for_exit(&mut station, Duration::from_secs(8)).await.is_err() {
+            let _ = station.kill().await;
+        }
+        let _ = fs::remove_file(&pid_path);
+        return Err(error);
+    }
 
     let (reload_tx, mut reload_rx) = mpsc::channel::<SupervisorCommand>(16);
     let sock_for_listen = sock_path.clone();
@@ -145,8 +178,6 @@ async fn run_supervisor(argv: Vec<String>) -> Result<()> {
     info!("zork started");
     let mut parent_closed: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
         Box::pin(wait_parent_pipe());
-    let shutdown = shutdown_signal();
-    tokio::pin!(shutdown);
     loop {
         tokio::select! {
             biased;
@@ -211,7 +242,8 @@ async fn run_supervisor(argv: Vec<String>) -> Result<()> {
                     parent_closed=Box::pin(std::future::pending());
                 } else {break;}
             }
-            _ = sighup() => {
+            _ = &mut hangup => {
+                hangup = Box::pin(sighup());
                 info!("zork update starting");
                 if let Err(error) = controlled_restart(
                     &args,
@@ -414,7 +446,7 @@ fn log_exit(name: &str, status: std::result::Result<std::process::ExitStatus, st
 fn spawn_named(name: &str, args: &zork_config::ProcessArgs) -> Result<Child> {
     let bin = zork_config::find_bin(name, &args.data_root)
         .with_context(|| format!("{name} not found next to zork or on PATH"))?;
-    let mut command = Command::new(&bin);
+    let mut command = Command::new(zork_config::service::launch_path(&bin));
     command
         .arg("--data")
         .arg(&args.data_root)
@@ -453,32 +485,34 @@ fn terminate_child(child: &mut Child) {
     }
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = tokio::signal::ctrl_c();
+fn shutdown_signal() -> impl std::future::Future<Output = ()> {
     #[cfg(unix)]
-    {
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("listen for SIGTERM");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("listen for SIGTERM");
+    #[cfg(unix)]
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .expect("listen for SIGINT");
+    async move {
+        #[cfg(unix)]
         tokio::select! {
-            _ = ctrl_c => {}
+            _ = sigint.recv() => {}
             _ = sigterm.recv() => {}
         }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = ctrl_c.await;
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
     }
 }
 
-async fn sighup() {
+fn sighup() -> impl std::future::Future<Output = ()> {
     #[cfg(unix)]
-    {
-        let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
-            .expect("listen for SIGHUP");
-        hangup.recv().await;
-    }
-    #[cfg(not(unix))]
-    {
-        std::future::pending::<()>().await;
+    let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+        .expect("listen for SIGHUP");
+    async move {
+        #[cfg(unix)]
+        { hangup.recv().await; }
+        #[cfg(not(unix))]
+        { std::future::pending::<()>().await; }
     }
 }

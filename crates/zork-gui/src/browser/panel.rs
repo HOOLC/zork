@@ -27,12 +27,7 @@ pub struct BrowserSelection {
     pub inspection: Inspection,
 }
 /// Native application pages share the browser tab strip and panel geometry.
-#[derive(Clone)]
-pub struct NativePage {
-    pub id: String,
-    pub title: String,
-    pub icon: &'static str,
-}
+pub use zork_ui::browser_chrome::NativePage;
 pub struct NativePageClosed(pub String);
 pub struct BrowserVisibility;
 pub struct BrowserResized;
@@ -112,8 +107,7 @@ pub struct BrowserPanel {
     panel_resizing: bool,
     resize_offset: f32,
     resize_max_width: f32,
-    menu_open: bool,
-    menu_focus: FocusHandle,
+    chrome: zork_ui::browser_chrome::Chrome,
     connection: Option<(Arc<crate::api::GatewayClient>, String)>,
     grants: HashMap<String, super::bridge::Grant>,
     grant_connected: bool,
@@ -163,6 +157,8 @@ impl BrowserPanel {
             panel.submit_address(cx);
         })
         .detach();
+        cx.on_release(|panel, cx| panel.set_frame(None, cx))
+            .detach();
         let wake = Arc::new(tokio::sync::Notify::new());
         let changed = wake.clone();
         let source = worker.clone();
@@ -219,8 +215,7 @@ impl BrowserPanel {
             panel_resizing: false,
             resize_offset: 0.,
             resize_max_width: f32::MAX,
-            menu_open: false,
-            menu_focus: cx.focus_handle(),
+            chrome: zork_ui::browser_chrome::Chrome::new(address.clone(), zork_ui::resources::Text(Rc::new(|key| Locale::default().text(key).into())), cx),
             connection: None,
             grants: HashMap::new(),
             grant_connected: false,
@@ -297,7 +292,7 @@ impl BrowserPanel {
     }
     fn select_native_page(&mut self, id: String, cx: &mut Context<Self>) {
         self.active_native = Some(id);
-        self.menu_open = false;
+        self.chrome.menu.dismiss();
         self.inspecting = false;
         self.stop_viewport();
         self.wake.notify_one();
@@ -456,11 +451,11 @@ impl BrowserPanel {
             self.generation += 1;
             self.tabs = self.worker.browser.tabs(&self.host);
             self.error = None;
-            self.frame = None;
+            self.set_frame(None, cx);
             self.decoding = false;
             self.sequence = 0;
             self.inspecting = false;
-            self.menu_open = false;
+            self.chrome.menu.dismiss();
             self.sync_address(cx);
             cx.notify();
         }
@@ -483,7 +478,7 @@ impl BrowserPanel {
         self.visible = self.open;
         if !self.open {
             self.stop_viewport();
-            self.menu_open = false;
+            self.chrome.menu.dismiss();
         }
         cx.emit(BrowserVisibility);
         cx.notify();
@@ -540,7 +535,7 @@ impl BrowserPanel {
         }
         match zork_client_core::desktop::browser_engine::address_url(&input) {
             Ok(url) => {
-                self.menu_open = false;
+                self.chrome.menu.dismiss();
                 let action = match self.active_id() {
                     Some(tab_id) => Action::Navigate { tab_id, url },
                     None => Action::Open { url },
@@ -599,7 +594,7 @@ impl BrowserPanel {
             self.generation += 1;
             self.decoding = false;
             self.inspecting = false;
-            self.frame = None;
+            self.set_frame(None, cx);
             self.sequence = 0;
             self.error = None;
             changed = true;
@@ -719,13 +714,21 @@ impl BrowserPanel {
                         panel.core_dirty = true;
                         if let Some(image) = decoded {
                             panel.page_size = (frame.width, frame.height);
-                            panel.frame = Some(image);
+                            panel.set_frame(Some(image), cx);
                             cx.notify();
                         }
                     });
                 })
                 .detach();
             }
+        }
+    }
+    fn set_frame(&mut self, frame: Option<Arc<gpui::RenderImage>>, cx: &mut gpui::App) {
+        if let Some(previous) = std::mem::replace(&mut self.frame, frame) {
+            // Dropping RenderImage frees its pixels, but not GPUI's atlas entry.
+            // Defer until the current window is back in App.windows, including
+            // when tab reconciliation or panel release runs during its update.
+            cx.defer(move |cx| cx.drop_image(previous, None));
         }
     }
     fn sync_address(&mut self, cx: &mut Context<Self>) {
@@ -806,12 +809,12 @@ impl BrowserPanel {
     }
     fn select(&mut self, id: String, cx: &mut Context<Self>) {
         self.show_web_page(cx);
-        self.menu_open = false;
+        self.chrome.menu.dismiss();
         self.blank.remove(&self.host);
         self.worker.select(&self.host, &id);
         self.stop_viewport();
         self.selected.insert(self.host.clone(), id);
-        self.frame = None;
+        self.set_frame(None, cx);
         self.decoding = false;
         self.sequence = 0;
         self.inspecting = false;
@@ -820,7 +823,7 @@ impl BrowserPanel {
         cx.notify();
     }
     fn nav(&mut self, op: &str, cx: &mut Context<Self>) {
-        self.menu_open = false;
+        self.chrome.menu.dismiss();
         let Some(tab_id) = self.active_id() else {
             return;
         };
@@ -969,6 +972,7 @@ impl Render for BrowserPanel {
             self.core_dirty = false;
             self.refresh_presentation(cx);
         }
+        self.sync_chrome();
         let width = self.content_width();
         if self.active_native.is_some() {
             return div()
@@ -996,29 +1000,8 @@ impl Render for BrowserPanel {
             .text_size(px(13.))
             .text_color(rgb(palette.text))
             .child(self.render_tabs(cx))
-            .child(self.render_navigation(cx))
-            .when_some(self.error.clone(), |v, error| {
-                v.child(
-                    div()
-                        .id("browser-error")
-                        .max_h(px(96.))
-                        .overflow_y_scroll()
-                        .px_3()
-                        .py_2()
-                        .flex()
-                        .items_start()
-                        .gap_2()
-                        .text_size(px(12.))
-                        .line_height(px(18.))
-                        .text_color(rgb(palette.danger))
-                        .child(
-                            crate::desktop::ui::icon("icons/attention.svg", 16.)
-                                .text_color(rgb(palette.danger)),
-                        )
-                        .child(div().flex_1().min_w_0().child(error.clone()))
-                        .automation(AutomationRole::Status, error),
-                )
-            })
+            .child(self.render_navigation(window, cx))
+            .children(self.chrome.render_error())
             .child(
                 div()
                     .id("browser-page")
@@ -1144,7 +1127,7 @@ impl Render for BrowserPanel {
                         .px_3()
                         .py_2()
                         .rounded(px(crate::desktop::ui::FIELD_RADIUS))
-                        .border_1()
+                        .border(gpui::px(zork_ui::design::BORDER_WIDTH))
                         .border_color(rgb(palette.border_strong))
                         .bg(rgb(palette.canvas))
                         .text_size(px(12.))
@@ -1157,12 +1140,14 @@ impl Render for BrowserPanel {
                         ),
                 )
             })
-            .when(self.menu_open, |v| {
-                v.child(gpui::deferred(self.render_menu(cx)).with_priority(2))
-            })
+            .children(self.render_menu(window, cx))
             .into_any_element()
     }
 }
+
+#[cfg(test)]
+#[path = "frame_tests.rs"]
+mod frame_tests;
 
 #[cfg(test)]
 mod tests {

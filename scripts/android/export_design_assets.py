@@ -46,20 +46,39 @@ def export(source, name):
     visit(svg,vector,{})
     ET.indent(vector)
     (OUT/(name+'.xml')).write_text('<!-- Generated from '+str(source.relative_to(ROOT))+'; do not redraw. -->\n'+ET.tostring(vector,encoding='unicode')+'\n')
-MOBILE = ROOT / 'apps/zork-design/mobile/prototype/assets'
-for source in (MOBILE/'avatars').glob('*.svg'): export(source,'avatar_'+source.stem)
-for name in ['node','arrow-left','arrow-up','plus','settings','paperclip','chevron-down','mesh','x','result','download']:
-    export(MOBILE/f'icons/{name}.svg','ic_'+name.replace('-','_'))
-export(ROOT/'crates/zork-ui/assets/icons/phosphor-stop-fill.svg','ic_phosphor_stop_fill')
-export(MOBILE/'brand/zork-wordmark.svg','zork_wordmark')
-export(MOBILE/'mark.svg','ic_zork')
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--icons", nargs="+", help="export only these shared functional icons")
+    args = parser.parse_args()
+    if args.icons:
+        for name in args.icons:
+            if not re.fullmatch(r"[a-z0-9-]+", name):
+                parser.error("icon names must use lowercase letters, digits and hyphens")
+            export(ROOT / f"crates/zork-ui/assets/icons/{name}.svg", "ic_" + name.replace("-", "_"))
+        return
+    MOBILE = ROOT / 'apps/zork-design/mobile/prototype/assets'
+    for source in (MOBILE/'avatars').glob('*.svg'): export(source,'avatar_'+source.stem)
+    for name in ['node','arrow-left','arrow-up','plus','settings','paperclip','chevron-down','mesh','x','result','download']:
+        export(MOBILE/f'icons/{name}.svg','ic_'+name.replace('-','_'))
+    export(ROOT/'crates/zork-ui/assets/icons/phosphor-stop-fill.svg','ic_phosphor_stop_fill')
+    export(MOBILE/'brand/zork-wordmark.svg','zork_wordmark')
+    export(MOBILE/'mark.svg','ic_zork')
 
-# Shared current settings assets.
-for name in ["edit", "reload", "attention", "arrow-right"]:
-    export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-","_"))
-for source in (ROOT/"crates/zork-ui/assets/providers").glob("*.svg"):
-    export(source,"provider_"+source.stem)
+    # Shared current settings assets.
+    for name in ["edit", "reload", "attention", "arrow-right"]:
+        export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-","_"))
+    for source in (ROOT/"crates/zork-ui/assets/providers").glob("*.svg"):
+        export(source,"provider_"+source.stem)
 
-# Composer portraits share the desktop silhouettes without the original avatar disc.
-for source in (ROOT/"crates/zork-ui/assets/avatars/portraits").glob("*.svg"):
-    export(source,"portrait_"+source.stem)
+    # Composer portraits share the desktop silhouettes without the original avatar disc.
+    for source in (ROOT/"crates/zork-ui/assets/avatars/portraits").glob("*.svg"):
+        export(source,"portrait_"+source.stem)
+
+    # Execution history uses the same semantic paths as the native history reader.
+    for source in (ROOT/"crates/zork-ui/assets/history").glob("*.svg"):
+        export(source, "history_"+source.stem.replace("-", "_"))
+    export(ROOT/"crates/zork-ui/assets/icons/copy.svg", "ic_copy")
+
+if __name__ == "__main__":
+    main()

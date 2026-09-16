@@ -30,6 +30,7 @@ pub(crate) struct Catalog {
     pub raw_profiles: Arc<Vec<Value>>,
     pub providers: Arc<Vec<Value>>,
     pub sessions: Arc<Vec<SessionSummary>>,
+    pub chats: Option<Arc<Vec<zork_client_types::chat::Channel>>>,
     pub by_leader: Arc<HashMap<String, Vec<ProductTask>>>,
     pub all_tasks: Arc<Vec<ProductTask>>,
     pub inbox: Arc<Vec<ProductTask>>,
@@ -49,6 +50,8 @@ impl Catalog {
         let mut profile_state = ResourceState::default();
         let mut providers = vec![];
         let mut sessions = vec![];
+        let mut chats: Vec<zork_client_types::chat::Channel> = vec![];
+        let mut chat_catalog = false;
         let mut tasks: Vec<(Option<String>, ProductTask)> = vec![];
         let mut artifacts = vec![];
         let mut pages = crate::pages::PageCatalog::default();
@@ -67,6 +70,14 @@ impl Catalog {
                     profile_state = serde_json::from_value(value)?
                 }
                 Kind::Resource => match value["resource_type"].as_str() {
+                    Some("chat_catalog") => {
+                        anyhow::ensure!(value["schema_version"] == 1, "unsupported_chat_catalog");
+                        chat_catalog = true;
+                    }
+                    Some("chat_summary") => {
+                        anyhow::ensure!(value["schema_version"] == 1, "unsupported_chat_catalog");
+                        chats.push(serde_json::from_value(value)?);
+                    }
                     Some("conversation_page") => {
                         pages.references.push(serde_json::from_value(value)?)
                     }
@@ -91,6 +102,7 @@ impl Catalog {
                 _ => {}
             }
         }
+        crate::pages::merge_message_links(&mut pages, store.message_links(peer)?);
         tasks.sort_by(|a, b| {
             b.1.updated_at
                 .cmp(&a.1.updated_at)
@@ -101,7 +113,14 @@ impl Catalog {
             .iter()
             .filter_map(|(_, t)| t.session_id.as_ref().map(|id| (id, t)))
             .collect();
+        let chat_titles: HashMap<_, _> = chats
+            .iter()
+            .map(|chat| (&chat.chat_id, &chat.title))
+            .collect();
         for session in &mut sessions {
+            if let Some(title) = chat_titles.get(&session.session_id) {
+                session.title = Some((*title).clone());
+            }
             session.task = by_session.get(&session.session_id).map(|t| (*t).clone());
         }
         for (leader, task) in &tasks {
@@ -163,6 +182,7 @@ impl Catalog {
             raw_profiles: Arc::new(raw_profiles),
             providers: Arc::new(providers),
             sessions: Arc::new(sessions),
+            chats: chat_catalog.then(|| Arc::new(chats)),
             by_leader: Arc::new(by_leader),
             all_tasks: Arc::new(all_tasks),
             inbox: Arc::new(inbox),
@@ -177,6 +197,7 @@ impl Catalog {
             raw,
             "/v1/node/info"
                 | "/v1/node/agents"
+                | "/v1/node/chats"
                 | "/v1/im/profiles"
                 | "/v1/node/providers"
                 | "/v1/im/sessions"
@@ -198,6 +219,10 @@ impl Catalog {
         let value = match raw {
             "/v1/node/info" => self.info.clone(),
             "/v1/node/agents" => json!({"items":self.agents}),
+            "/v1/node/chats" => match &self.chats {
+                Some(chats) => json!({"schema_version":1,"items":chats}),
+                None => return Ok(None),
+            },
             "/v1/im/profiles" => json!({"items":self.raw_profiles}),
             "/v1/node/providers" => json!({"providers":self.providers}),
             "/v1/im/sessions" => json!({"items":self.sessions}),

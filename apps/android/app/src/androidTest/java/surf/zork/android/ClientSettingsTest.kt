@@ -13,7 +13,7 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class ClientSettingsTest {
-    @Test fun diagnosticsAreRedactedAndAppearanceIsAvailable() {
+    @Test fun clientSettingsAndDeviceNavigationAreAvailable() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val folder = File(context.filesDir, "client-settings").apply { mkdirs() }
@@ -36,29 +36,46 @@ class ClientSettingsTest {
             assertTrue(text, node!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             instrumentation.waitForIdleSync(); Thread.sleep(300)
         }
+        var barInsets = androidx.core.graphics.Insets.NONE
         fun capture(name: String) {
             val image = instrumentation.uiAutomation.takeScreenshot()
             assertNotNull(image)
+            if (name != "home-failure") {
+                assertTrue("status bar inset", barInsets.top > 0)
+                assertTrue("navigation bar inset", barInsets.bottom > 0)
+                assertEquals("$name status bar background", android.graphics.Color.WHITE,
+                    image.getPixel(image.width / 4, barInsets.top / 2))
+                assertEquals("$name navigation bar background", android.graphics.Color.WHITE,
+                    image.getPixel(image.width / 4, image.height - barInsets.bottom / 2))
+            }
             File(folder, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
             image.recycle()
         }
+        fun await(text: String) {
+            val until = System.currentTimeMillis() + 5000
+            while (find(text) == null && System.currentTimeMillis() < until) Thread.sleep(80)
+            if (find(text) == null) capture("home-failure")
+            assertNotNull(text, find(text))
+        }
         run {
             ActivityScenario.launch<Nav7PreviewActivity>(Intent(context, Nav7PreviewActivity::class.java).putExtra("screen", "home").putExtra("width", 0)).use { scenario ->
-                instrumentation.waitForIdleSync(); Thread.sleep(600)
-                assertNull(find("这台手机")); assertNull(find("查看连接身份")); assertNull(find("通知"))
+                instrumentation.waitForIdleSync(); await("工具连接")
+                scenario.onActivity { activity ->
+                    barInsets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)!!
+                        .getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                }
+                assertNull(find("这台手机")); assertNull(find("查看连接身份")); assertNotNull(find("通知")); assertNotNull(find("工具连接"))
                 capture("home")
                 assertNotNull(find("外观")); assertNull(find("文字大小"))
-                scenario.recreate(); instrumentation.waitForIdleSync(); Thread.sleep(500)
+                scenario.recreate(); instrumentation.waitForIdleSync(); await("外观")
                 assertNotNull(find("外观"))
-                click("帮助与诊断"); click("检查连接")
-                Thread.sleep(700); capture("diagnostics")
-                assertNotNull("reachable result", find("可连接")); assertNotNull("unreachable result", find("未连通"))
-                click("复制诊断信息"); assertNotNull(find("已复制诊断信息"))
-                click("返回设置"); click("关于 Zork"); capture("about")
-                click("Zork 开源许可"); assertNotNull(find("MIT License"))
+                assertNull(find("帮助与诊断")); assertNull(find("关于 Zork"))
+                click("mini1")
+                assertNotNull(find("服务")); assertNull(find("连接其他设备"))
+                capture("device")
+                click("返回对话"); await("工具连接")
             }
-            val report = ConnectionDiagnosis("now", "Wi-Fi", listOf(DeviceDiagnosis("secret-device-192.168.1.2", false))).report("0.1")
-            assertFalse(report.contains("secret-device")); assertFalse(report.contains("192.168")); assertTrue(report.contains("设备 1：未连通"))
+
         }
     }
 }

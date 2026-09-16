@@ -16,20 +16,52 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
 
-LOCAL_LAUNCHER = r'''#!/bin/zsh
-set -eu
-base="${0:A:h}"
-state="$HOME/Library/Application Support/Zork"
-mkdir -p "$state/logs"
-chmod 700 "$state"
-export ZORK_GUI_PREFERENCES_PATH="$state/preferences.json"
-exec "$base/zork-gui" "$@" >>"$state/logs/client.log" 2>&1
-'''
-
-
 # Keep the installed helper's bundle identifier stable across the product rename.
-HELPERS = [('zork', 'ZorkSupervisor', 'supervisor'), ('zork-station', 'ZorkStation', 'gateway')]
+HELPERS = [('zork', 'ZorkSupervisor', 'supervisor'), ('zork-station', 'ZorkStation', 'gateway'),
+           ('zork-service-watch', 'ZorkServiceWatch', 'service-watch')]
 COMPONENTS = ['zork-gui', 'zork', 'zork-station', 'zork-agent', 'zork-gh']
+RUNTIME_ALIASES = {'zork-service-watch': 'zork-station'}
+
+
+def copy_binary(source, destination):
+    if sys.platform == 'darwin':
+        # A clone is an independent inode; signing never mutates the build input.
+        subprocess.run(['cp', '-c', '-p', str(source.resolve()), str(destination)], check=True)
+    else:
+        shutil.copy2(source, destination)
+
+
+def app_info(version):
+    return {'CFBundleIdentifier': 'surf.zork.desktop', 'CFBundleName': 'Zork',
+            'CFBundleDisplayName': 'Zork', 'CFBundleIconFile': 'Zork.icns',
+            'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
+            'CFBundleShortVersionString': version, 'CFBundleVersion': version,
+            'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
+            'NSPrincipalClass': 'NSApplication',
+            'NSLocalNetworkUsageDescription': '用于发现并连接同一网络中的已配对设备，同步消息和任务。',
+            'NSBonjourServices': ['_zork-mesh-v1._udp']}
+
+
+def verify_app(app):
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+    info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+    if info['CFBundleExecutable'] != 'zork-gui':
+        raise RuntimeError('The GUI must be the signed main executable for macOS notifications')
+    signature = subprocess.run(['codesign', '-dvv', str(app / 'Contents/MacOS/zork-gui')],
+                               check=True, capture_output=True, text=True).stderr
+    if ('Identifier=' + info['CFBundleIdentifier']) not in signature.splitlines() or 'Info.plist=not bound' in signature:
+        raise RuntimeError('The GUI code signature must bind the application bundle identifier and Info.plist')
+
+
+def sign_app(app, signer, identity):
+    # Signing the bundle binds Info.plist and the product identity to the GUI.
+    # A script that execs a separately signed GUI leaves UserNotifications seeing
+    # two different application identities, even when --verify --deep succeeds.
+    for binary in (app / 'Contents/MacOS').iterdir():
+        if binary.name != 'zork-gui' and not binary.is_symlink():
+            signer(binary, identity)
+    signer(app, identity)
+    verify_app(app)
 
 
 def stage_binaries(app, binaries, assets, version, launcher):
@@ -37,29 +69,37 @@ def stage_binaries(app, binaries, assets, version, launcher):
     helpers = []
     for name in COMPONENTS:
         if name not in {item[0] for item in HELPERS}:
-            shutil.copy2(binaries / name, mac / name)
+            copy_binary(binaries / name, mac / name)
     for name, bundle_name, role in HELPERS:
-        display_name = bundle_name.replace('Zork', 'Zork-', 1)
+        display_name = 'Zork-Service-Watch' if name == 'zork-service-watch' else bundle_name.replace('Zork', 'Zork-', 1)
         bundle = app / 'Contents/Helpers' / (bundle_name + '.app')
         executable_dir = bundle / 'Contents/MacOS'
         resources = bundle / 'Contents/Resources'
         executable_dir.mkdir(parents=True)
         resources.mkdir()
-        shutil.copy2(binaries / name, executable_dir / name)
-        shutil.copy2(launcher, executable_dir / 'ZorkHelperLauncher')
+        if name in RUNTIME_ALIASES:
+            # Reuse Station's guard entry without duplicating the large binary.
+            runtime = app / 'Contents/Helpers/ZorkStation.app/Contents/MacOS' / RUNTIME_ALIASES[name]
+            (executable_dir / name).symlink_to(os.path.relpath(runtime, executable_dir))
+        else:
+            copy_binary(binaries / name, executable_dir / name)
+        entry = 'ZorkHelperLauncher' if name in RUNTIME_ALIASES else name
+        if entry == 'ZorkHelperLauncher':
+            shutil.copy2(launcher, executable_dir / entry)
         shutil.copy2(assets / (bundle_name + '.icns'), resources / (bundle_name + '.icns'))
         with (bundle / 'Contents/Info.plist').open('wb') as output:
             plistlib.dump({'CFBundleIdentifier': 'surf.zork.desktop.' + role,
                           'CFBundleName': display_name,
                           'CFBundleDisplayName': display_name,
-                          'CFBundleExecutable': 'ZorkHelperLauncher', 'ZorkRuntimeExecutable': name,
+                          'CFBundleExecutable': entry,
+                          **({'ZorkRuntimeExecutable': name} if entry == 'ZorkHelperLauncher' else {}),
                           'CFBundlePackageType': 'APPL',
                           'CFBundleIconFile': bundle_name + '.icns',
                           'CFBundleShortVersionString': version, 'CFBundleVersion': version,
                           'LSBackgroundOnly': True, 'LSMinimumSystemVersion': '26.0'}, output)
         # Keep the CLI entry points and sibling discovery used by the runtime.
-        (mac / name).symlink_to(os.path.relpath(executable_dir / 'ZorkHelperLauncher', mac))
-        for sibling in COMPONENTS:
+        (mac / name).symlink_to(os.path.relpath(executable_dir / entry, mac))
+        for sibling in [*COMPONENTS, *RUNTIME_ALIASES]:
             if sibling != name:
                 (executable_dir / sibling).symlink_to(os.path.relpath(mac / sibling, executable_dir))
         helpers.append(bundle)
@@ -79,7 +119,7 @@ def build_app(args, repo, app):
         helper_launcher = Path(scratch) / 'ZorkHelperLauncher'
         subprocess.run(['clang', '-arch', 'arm64', '-mmacosx-version-min=26.0',
                         str(repo/'scripts/build/macos-helper-launcher.m'),
-                        '-framework', 'AppKit', '-o', str(helper_launcher)], check=True)
+                        '-framework', 'AppKit', '-framework', 'ApplicationServices', '-o', str(helper_launcher)], check=True)
         helpers = stage_binaries(app, binaries, repo/'crates/zork-ui/assets/app', version, helper_launcher)
     spec = importlib.util.spec_from_file_location('browser_runtime', repo / 'scripts/lib/browser-runtime.py')
     browser_runtime = importlib.util.module_from_spec(spec)
@@ -92,17 +132,14 @@ def build_app(args, repo, app):
         if services.get('cue') is not None:
             assert not set(services['cue'])-{'issuer','client_id','redirect_uri'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
-    launcher=mac/'ZorkLauncher';launcher.write_text(LOCAL_LAUNCHER);launcher.chmod(0o755)
     with (app/'Contents/Info.plist').open('wb') as f:
-        plistlib.dump({'CFBundleIdentifier':'surf.zork.desktop','CFBundleName':'Zork','CFBundleDisplayName':'Zork','CFBundleIconFile':'Zork.icns','CFBundleExecutable':'ZorkLauncher','CFBundlePackageType':'APPL','CFBundleShortVersionString':version,'CFBundleVersion':version,'LSMinimumSystemVersion':'26.0','NSHighResolutionCapable':True,'NSPrincipalClass':'NSApplication','NSLocalNetworkUsageDescription':'用于发现并连接同一网络中的已配对设备，同步消息和任务。','NSBonjourServices':['_zork-mesh-v1._udp']},f)
+        plistlib.dump(app_info(version), f)
     (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Gateway running after quitting is available in Node settings; independently installed Gateways outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
-    for helper, (name, _, _) in zip(helpers, HELPERS):
-        browser_runtime.sign(helper/'Contents/MacOS'/name, signing_identity)
+    for helper in helpers:
+        # Native entries are the helper's main executable and are signed with
+        # its Info.plist here. Service-watch reuses the already signed Station.
         browser_runtime.sign(helper, signing_identity)
-    for binary in mac.iterdir():
-        if binary.name!='ZorkLauncher' and not binary.is_symlink():browser_runtime.sign(binary, signing_identity)
-    browser_runtime.sign(app, signing_identity)
-    subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
+    sign_app(app, browser_runtime.sign, signing_identity)
 
 
 def main():

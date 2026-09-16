@@ -92,7 +92,9 @@ pub(super) fn record_pages(
             );
             conn.execute("INSERT INTO conversation_pages(id,session_key,message_id,page,source_session_id,created_at) VALUES(?1,?2,?3,?4,?5,?6)
                 ON CONFLICT(id) DO UPDATE SET page=excluded.page,message_id=excluded.message_id,source_session_id=excluded.source_session_id
-                WHERE conversation_pages.page IS NOT excluded.page OR conversation_pages.message_id IS NOT excluded.message_id OR conversation_pages.source_session_id IS NOT excluded.source_session_id",
+                WHERE COALESCE((SELECT sequence FROM visible_messages WHERE message_id=excluded.message_id),0)
+                    >= COALESCE((SELECT sequence FROM visible_messages WHERE message_id=conversation_pages.message_id),0)
+                  AND (conversation_pages.page IS NOT excluded.page OR conversation_pages.message_id IS NOT excluded.message_id OR conversation_pages.source_session_id IS NOT excluded.source_session_id)",
                 params![id,target,message,encoded,source,now])?;
         }
     }
@@ -135,7 +137,7 @@ pub(super) fn record_file_handoff(conn: &Connection, message: &VisibleMessageRow
         |r| r.get(0),
     )?;
     for file in files {
-        let exists:bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM conversation_artifacts WHERE artifact_id=?1 AND session_key=?2 UNION ALL SELECT 1 FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1 AND t.session_key=?2)",params![file.id,message.session_key],|r|r.get(0))?;
+        let exists:bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM conversation_file_snapshots WHERE artifact_id=?1 AND session_key=?2 UNION ALL SELECT 1 FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1 AND t.session_key=?2)",params![file.id,message.session_key],|r|r.get(0))?;
         ensure!(exists, "attachment_not_in_conversation");
         let id = format!(
             "file-ref-{}",
@@ -148,7 +150,7 @@ pub(super) fn record_file_handoff(conn: &Connection, message: &VisibleMessageRow
 
 impl GatewayDb {
     pub fn page_catalog(&self) -> Result<PageCatalog> {
-        let conn = self.conn.lock().expect("db mutex");
+        let conn = self.published_messages()?;
         let mut catalog = PageCatalog::default();
         let mut query=conn.prepare("SELECT value FROM sync_entities WHERE kind='resource' AND value IS NOT NULL AND (id LIKE 'page-ref-%' OR id LIKE 'app-%' OR id LIKE 'file-ref-%') ORDER BY id")?;
         for value in query.query_map([], |r| r.get::<_, String>(0))? {
@@ -224,9 +226,11 @@ impl GatewayDb {
             ],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(result)
     }
 
+    #[cfg(test)]
     pub fn unpublish_page(&self, session: &SessionRow, request: &str, page_id: &str) -> Result<()> {
         ensure!(page_id.len() <= 128, "invalid_page_id");
         let mut guard = self.conn.lock().expect("db mutex");
@@ -255,6 +259,7 @@ impl GatewayDb {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn deliver_page(
         &self,
         session: &SessionRow,
@@ -275,7 +280,7 @@ impl GatewayDb {
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
         let inserted=tx.execute("INSERT INTO visible_messages(message_id,session_key,connection_id,conversation_id,root_message_id,role,text,kind,created_at) VALUES(?1,?2,?3,?4,?5,'assistant',?6,'page',?7) ON CONFLICT(message_id) DO NOTHING",params![id,session.key,session.connection_id,session.channel_id,session.root_thread_ts,text,now])?;
-        let message=tx.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_messages WHERE message_id=?1",[&id],map_visible_message_row)?;
+        let message=tx.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1",[&id],map_visible_message_row)?;
         ensure!(
             message.session_key == session.key
                 && message.text == text
@@ -299,11 +304,13 @@ impl GatewayDb {
             )?;
         }
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(message)
     }
 }
 
+#[cfg(test)]
 pub(crate) fn page_text(page: &PageLink) -> String {
     let title = page
         .title

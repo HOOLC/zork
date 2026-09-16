@@ -7,21 +7,21 @@ use std::time::Duration;
 use super::compression::SegmentCompressor;
 use super::context::summary_transcript;
 use super::deadline::DeadlineScheduler;
-use super::decision::{decide, handoff_document, Decision, DecisionWorld};
+use super::decision::{Decision, DecisionWorld, decide, handoff_document};
 use super::events::{
     DeadlineKind, Input, ProviderErrorRecord, Purpose, RuntimeFailure, Selection, SessionEvent,
     ToolInvocation, ToolOutcome, ToolResultData, Usage,
 };
-use super::executor::{rejected_execution, CompletedTool, ToolExecutor};
+use super::executor::{CompletedTool, ToolExecutor, rejected_execution};
 use super::model::{
     ModelError, ModelGateway, ModelOutcome, ModelReleaseSuggestion, ModelRequest,
     ModelStreamObserver, TOOL_INTERRUPTED_MESSAGE,
 };
 use super::ports::{CancelToolRequest, Clock, IdGenerator, ToolCancellation, ToolControl};
 use super::projection::provider_transcript;
-use super::state::{snapshot_value, GenerationEntry, SessionState, STATE_SCHEMA_VERSION};
+use super::state::{GenerationEntry, STATE_SCHEMA_VERSION, SessionState, snapshot_value};
 use super::store::{EventEnvelope, SessionStore, StoreError};
-use super::tools::{provider_call_definition, DynamicCall, ToolExecution, ToolRegistry};
+use super::tools::{DynamicCall, ToolExecution, ToolRegistry, provider_call_definition};
 
 pub type InputBudget = Arc<dyn Fn(&SessionState) -> Option<u64> + Send + Sync>;
 pub type MaxOutputTokens = Arc<dyn Fn(&SessionState) -> Option<u32> + Send + Sync>;
@@ -52,6 +52,7 @@ pub struct RunnerOptions {
     pub configuration_source: Option<ConfigurationSource>,
     pub selection_source: Option<SelectionSource>,
     pub skill_sources: Option<crate::skills::SkillSources>,
+    pub skill_catalog: Option<crate::skills::SkillCatalogSource>,
     pub auto_wait: Duration,
     pub provider_retry_limit: u32,
     pub context_attempt_limit: u32,
@@ -70,6 +71,7 @@ impl Default for RunnerOptions {
             configuration_source: None,
             selection_source: None,
             skill_sources: None,
+            skill_catalog: None,
             auto_wait: Duration::from_secs(60),
             provider_retry_limit: 10,
             context_attempt_limit: 10,
@@ -628,14 +630,21 @@ impl SessionRunner {
                 .collect()
         };
         if purpose == Purpose::Conversation {
-            if let Some(sources) = self.dependencies.options.skill_sources.clone() {
+            if let Some(source) = self.dependencies.options.skill_catalog.clone().or_else(|| {
+                self.dependencies
+                    .options
+                    .skill_sources
+                    .clone()
+                    .map(crate::skills::local_catalog)
+            }) {
                 let session = self.state.session_id.clone();
                 let catalog = tokio::task::spawn_blocking(move || {
-                    match sources(&session) {
-                        Ok(paths) => crate::skills::discover(&paths),
+                    match source(&session) {
+                        Ok(catalog) => catalog,
                         Err(error) => crate::skills::SkillCatalog {
                             skills: Vec::new(),
                             diagnostics: vec![error.to_string()],
+                            continuations: vec![],
                         },
                     }
                     .notice()
@@ -1586,7 +1595,7 @@ fn provider_error_record(error: ModelError) -> ProviderErrorRecord {
         },
         ModelError::ProviderFailed(failure) => ProviderErrorRecord {
             stage: failure.stage.into(),
-            retryable: failure.retryable,
+            retryable: failure.retryable && failure.status_code != Some(400),
             status_code: failure.status_code,
             provider_code: failure.provider_code,
             request_id: failure.request_id,

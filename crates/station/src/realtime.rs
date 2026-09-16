@@ -106,11 +106,11 @@ impl Realtime {
                     "task_event_cursors" => return,
                     "conversation_uploads"
                     | "conversation_upload_chunks"
-                    | "conversation_file_sources" => return,
+                    | "conversation_file_origins" => return,
                     "sessions" | "visible_messages" => SESSIONS,
                     "node_agents" => AGENTS | SESSIONS,
                     "product_tasks" | "task_runs" => TASKS | SESSIONS,
-                    "task_artifacts" | "conversation_artifacts" => ARTIFACTS,
+                    "task_file_snapshots" | "conversation_file_snapshots" => ARTIFACTS,
                     _ => 0,
                 };
                 writes.fetch_or(

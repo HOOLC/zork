@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--serial", default="emulator-5554")
     parser.add_argument("--host-ip", help="Development host LAN IP for a physical Android device")
     parser.add_argument("--keep-node", action="store_true", help="keep fixture node for manual UI validation")
+    parser.add_argument("--history-only", action="store_true", help="run the JNI session history/detail and foreground recovery check after fixture setup")
     parser.add_argument("--apk", type=Path, default=ROOT / "apps/android/app/build/outputs/apk/debug/app-debug.apk")
     parser.add_argument("--test-apk", type=Path, default=ROOT / "apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/android")
@@ -77,6 +78,19 @@ def main():
         fixture.wait(lambda: urlopen(node.agent_url + "/readyz", timeout=2).status == 200, "Agent ready")
         admin("POST", "/v1/node/agents", {"id":"android-leader", "name":"Android Leader", "role":"leader",
               "avatar":"panda", "profile_id":"fixture", "model":"fixture-model", "thinking":"off"})
+        # Session creation is an admin operation; the Android client only reads
+        # this fixture through its normal, unchanged Mesh client grant.
+        history_session = admin("POST", "/v1/im/sessions", {"profile_id":"fixture", "model":"fixture-model",
+            "thinking":"off", "workspace":str(node.workspace)})["session_id"]
+        admin("POST", f"/v1/im/sessions/{history_session}/messages", {"content":json.dumps({
+            "fake_tools":[{"name":"shell.run", "input":{"command":"pwd"}}]}), "request_id":"android-history-fixture"})
+        instrument("prepareExecutionHistoryFixture", origin=node.origin, address=f"{args.host_ip or '10.0.2.2'}:{node.udp}", session=history_session)
+        instrument("sessionExecutionHistoryUsesNativeObservation")
+        if args.history_only:
+            (artifacts / "session-history-native.json").write_bytes(device("exec-out", "run-as", PACKAGE, "cat", "files/session-history-native.json"))
+            print("PASS: Android JNI execution history and foreground recovery", flush=True)
+            keep = args.keep_node
+            return
         instrument("exchangeAndQueueBeforeProcessDeath", origin=node.origin, address=f"{args.host_ip or '10.0.2.2'}:{node.udp}")
         instrument("settingsManageDevice")
         instrument("restoreInNewProcess")

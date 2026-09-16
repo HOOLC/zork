@@ -264,10 +264,11 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                     tokio::select! {
                         _ = stop_push.recv() => break,
                         result = async {
-                            // Only the bridge source is needed for readiness;
-                            // normal background scanning owns user workspaces.
+                            // The bridge waits for its local publication;
+                            // business sources stage once without waiting for
+                            // peer delivery. Ongoing changes use the watcher.
                             pushing.scan_source_and_stage_async(&request.space).await?;
-                            pushing.flush_staged().await?;
+                            if request.flush { pushing.flush_staged().await?; }
                             Ok::<_, synch_engine::EngineError>(())
                         } => {
                             let result = result.map_err(anyhow::Error::from);
@@ -320,7 +321,29 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
         // peer can wake. Synch still flushes its local publisher on stop, and
         // both completions precede releasing the engine and lifecycle lock.
         let draining_started = std::time::Instant::now();
-        let (shutdown, ()) = tokio::join!(engine.shutdown(), async {
+        let transport_stop = async {
+            if client_only {
+                // Iroh can leave a closed QUIC connection in wait_all_draining
+                // after remote subscription use. Access clients have
+                // no execution sockets. Bound their network drain, then drop
+                // the router/endpoint only after the local publisher is done.
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    engine.shutdown(),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::warn!("Mesh accessor transport did not drain; closing its endpoint");
+                        Ok(())
+                    }
+                }
+            } else {
+                engine.shutdown().await
+            }
+        };
+        let (shutdown, ()) = tokio::join!(transport_stop, async {
             while let Some(result) = loops.join_next().await {
                 if let Err(error) = result {
                     errors.push(error.to_string());

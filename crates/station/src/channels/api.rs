@@ -23,6 +23,8 @@ pub struct Rpc {
     #[serde(default)]
     pub files: Vec<FileRef>,
     #[serde(default)]
+    pub publication: Option<crate::db::chats::cards::publication::Grant>,
+    #[serde(default)]
     pub interrupt: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -73,23 +75,8 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         !input.invocation_id.is_empty() && input.invocation_id.len() <= 256,
         "invalid_channel_invocation"
     );
-    validate(&input.tool, &input.arguments)?;
     let who = node_access::subject(state, &input.session_id)?;
-    if input.tool.ends_with(".recover") {
-        let id = field(&input.arguments, "operation_id")?;
-        let key = format!("outgoing-{}", fingerprint(&(&who, id))?);
-        let _guard = state.entries.lock_local_task(&key).await;
-        if let Some(value) = state.db.chat_receipt(&key)? {
-            return Ok(value);
-        }
-        let saved = state
-            .db
-            .chat_outgoing(&key)?
-            .context("channel_operation_not_found")?;
-        let rpc: Rpc = serde_json::from_value(saved["rpc"].clone())?;
-        ensure!(rpc.subject == who, "channel_operation_not_found");
-        return dispatch(state, &key, field(&saved, "target")?, rpc).await;
-    }
+    validate(&input.tool, &input.arguments)?;
     if input.tool == "agent.list" && input.arguments.get("target").is_none() {
         return agents::discover(state, &who, &input.arguments).await;
     }
@@ -104,6 +91,43 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     args.as_object_mut().unwrap().remove("target");
     let key = format!("outgoing-{}", fingerprint(&(&who, &input.invocation_id))?);
     let mutation = zork_agent_gateway_tools::channels::mutating(&input.tool);
+    if ordinary_send(&input.tool, &args) {
+        if input.interrupt {
+            return Ok(json!({"status":"delivery_unknown","operation_id":input.invocation_id}));
+        }
+        let key = format!("send-{}", ulid::Ulid::new());
+        let files = if zork_agent_gateway_tools::channels::sends_message(&input.tool) {
+            attachments::prepare(state, &who, &target, &args).await?
+        } else {
+            vec![]
+        };
+        state.db.prepare_send_files(
+            &key,
+            if local(state, &target) {
+                "local"
+            } else {
+                &target
+            },
+            &files,
+        )?;
+        let _files = SendFiles {
+            db: &state.db,
+            key: key.clone(),
+        };
+        args.as_object_mut().unwrap().remove("attachments");
+        let rpc = Rpc {
+            subject: who,
+            invocation_id: input.invocation_id,
+            tool: input.tool,
+            arguments: args,
+            prepared_key: key.clone(),
+            files: files.iter().map(|file| file.reference.clone()).collect(),
+            publication: None,
+            interrupt: false,
+        };
+        return dispatch(state, &key, &target, rpc).await;
+    }
+
     if !mutation {
         let rpc = Rpc {
             subject: who,
@@ -112,10 +136,13 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             arguments: args,
             prepared_key: key,
             files: vec![],
-            interrupt: false,
+            publication: None,
+            interrupt: input.interrupt,
         };
         let mut value = route(state, &target, rpc).await?;
-        if input.arguments["attachment_id"].is_string() && value["status"] != "rejected" {
+        if input.arguments["attachment_id"].is_string()
+            && !matches!(value["status"].as_str(), Some("rejected" | "cancelled"))
+        {
             value = attachments::materialize(
                 state,
                 &input.session_id,
@@ -131,6 +158,25 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             target
         });
         return Ok(value);
+    }
+    if input.interrupt {
+        let rpc = if let Some(saved) = state.db.chat_outgoing(&key)? {
+            let mut rpc: Rpc = serde_json::from_value(saved["rpc"].clone())?;
+            rpc.interrupt = true;
+            rpc
+        } else {
+            Rpc {
+                subject: who,
+                invocation_id: input.invocation_id,
+                tool: input.tool,
+                arguments: args,
+                prepared_key: key.clone(),
+                files: vec![],
+                publication: None,
+                interrupt: true,
+            }
+        };
+        return dispatch(state, &key, &target, rpc).await;
     }
     let _guard = state.entries.lock_local_task(&key).await;
     let receipt = state
@@ -148,6 +194,11 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         state.db.finish_chat_outgoing(&key, &result)?;
         return Ok(result);
     } else {
+        let publication = if input.tool == "chat.send" {
+            crate::business_cards::prepare(state, &who, &target, &args).await?
+        } else {
+            None
+        };
         let files = if input.tool == "chat.send" {
             attachments::prepare(state, &who, &target, &args).await?
         } else {
@@ -161,6 +212,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             arguments: args,
             prepared_key: key.clone(),
             files: files.iter().map(|f| f.reference.clone()).collect(),
+            publication,
             interrupt: false,
         };
         let destination = if local(state, &target) {
@@ -191,6 +243,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
 }
 
 async fn dispatch(state: &AppState, key: &str, target: &str, rpc: Rpc) -> Result<Value> {
+    let persist = !ordinary_send(&rpc.tool, &rpc.arguments);
     let operation = rpc.invocation_id.clone();
     let preferences = (rpc.tool == "chat.update_preferences").then(|| {
         (
@@ -234,8 +287,10 @@ async fn dispatch(state: &AppState, key: &str, target: &str, rpc: Rpc) -> Result
             } else {
                 target.to_owned()
             });
-            if let Err(error) = state.db.finish_chat_outgoing(key, &result) {
-                tracing::warn!(error=%super::error(&error),"Committed channel receipt awaits local recovery");
+            if persist {
+                if let Err(error) = state.db.finish_chat_outgoing(key, &result) {
+                    tracing::warn!(error=%super::error(&error),"Committed channel receipt awaits local recovery");
+                }
             }
             Ok(result)
         }
@@ -277,7 +332,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         "channel_request_too_large"
     );
     let mut schema_args = rpc.arguments.clone();
-    if rpc.tool == "chat.send" {
+    if zork_agent_gateway_tools::channels::sends_message(&rpc.tool) {
         schema_args["attachments"] = json!([]);
     }
     validate(&rpc.tool, &schema_args)?;
@@ -285,13 +340,25 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         "command-{}",
         fingerprint(&(&rpc.subject, &rpc.invocation_id))?
     );
-    let mutation = zork_agent_gateway_tools::channels::mutating(&rpc.tool);
+    let ordinary = ordinary_send(&rpc.tool, &rpc.arguments);
+    let mutation = zork_agent_gateway_tools::channels::mutating(&rpc.tool) && !ordinary;
+    if rpc.interrupt {
+        if mutation {
+            let signature =
+                fingerprint(&(&rpc.tool, &rpc.arguments, &rpc.files, &rpc.publication))?;
+            if let Some(result) = state.db.chat_cancel(&command, &signature)? {
+                return Ok(result);
+            }
+        }
+        crate::interaction_registry::cancel(state, &rpc.subject, &rpc.invocation_id).await?;
+        return Ok(json!({"status":"cancelled"}));
+    }
     let _guard = state.entries.lock_local_task(&command).await;
     let object = if mutation {
-        if rpc.tool.starts_with("agent.") && rpc.tool != "agent.message" {
+        if rpc.tool.starts_with("agent.") {
             node_access::manage(state, &rpc.subject, is_local)?;
         }
-        let signature = fingerprint(&(&rpc.tool, &rpc.arguments, &rpc.files))?;
+        let signature = fingerprint(&(&rpc.tool, &rpc.arguments, &rpc.files, &rpc.publication))?;
         let receipt = state.db.chat_begin(&command, &signature)?;
         if let Some(result) = receipt.result {
             return Ok(result);
@@ -303,6 +370,8 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             return Ok(json!({"status":"cancelled"}));
         }
         receipt.object_id
+    } else if ordinary {
+        ulid::Ulid::new().to_string()
     } else {
         String::new()
     };
@@ -321,10 +390,23 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         return Ok(json!({"items":rows,"next_cursor":next}));
     }
     if rpc.tool == "chat.create" {
-        return Ok(serde_json::to_value(state.db.create_chat(
+        let creator = Author {
+            id: actor(&rpc.subject),
+            kind: AuthorKind::Agent,
+            name: if is_local {
+                state
+                    .db
+                    .node_agent(&rpc.subject.agent)?
+                    .map(|agent| agent.name)
+            } else {
+                None
+            },
+        };
+        return Ok(serde_json::to_value(state.db.create_chat_as(
             &command,
             &object,
             field(args, "title")?,
+            Some(&creator),
         )?)?);
     }
     let channel = state.db.chat(field(args, "chat_id")?)?;
@@ -361,42 +443,15 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             value["chat_id"] = json!(chat);
             Ok(value)
         }
-        "chat.post_page" => {
-            let page = crate::db::pages::page_link(
-                field(args, "title")?,
-                field(args, "url")?,
-                args["description"].as_str().unwrap_or(""),
-            )?;
-            let author = Author {
-                id: actor(&rpc.subject),
-                kind: AuthorKind::Agent,
-                name: if is_local {
-                    state
-                        .db
-                        .node_agent(&rpc.subject.agent)?
-                        .map(|agent| agent.name)
-                } else {
-                    None
-                },
-            };
-            let text = crate::db::pages::page_text(&page);
-            let message = state.db.post_chat_with_pages(
-                &command,
-                &object,
-                chat,
-                &author,
-                &text,
-                &[],
-                args["reply_to"].as_str(),
-                &[],
-                &[zork_client_types::pages::DeliveredPage { page }],
-            )?;
-            state
-                .entries
-                .publish_visible_message(&state.db.chat_visible_message(&message.message_id)?);
-            Ok(serde_json::to_value(message)?)
-        }
-        "chat.send" => {
+        "chat.send" | "chat.send.android_script" => {
+            if !args["oauth"].is_null() {
+                ensure!(
+                    args["interaction"].is_null() && rpc.files.is_empty(),
+                    "oauth_card_cannot_include_interaction_or_attachments"
+                );
+                node_access::manage(state, &rpc.subject, is_local)?;
+                return crate::provider_login::execute(state, &rpc, &command, &object).await;
+            }
             let author = Author {
                 id: actor(&rpc.subject),
                 kind: AuthorKind::Agent,
@@ -417,25 +472,45 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
                 .map(serde_json::from_value)
                 .transpose()?
                 .unwrap_or_default();
-            let mut interaction = args
-                .get("interaction")
-                .cloned()
-                .map(serde_json::from_value::<zork_client_types::interaction::Request>)
-                .transpose()?;
-            if let Some(zork_client_types::interaction::Request::CreateAgent { config }) =
-                &mut interaction
-            {
-                if config.allowed_leaders.is_empty() {
-                    config.allowed_leaders.push(actor(&rpc.subject));
+            let reference = args["interaction"]["request_id"].as_str();
+            let interaction = if let Some(id) = reference {
+                if let Some(grant) = &rpc.publication {
+                    ensure!(
+                        grant.request_id == id
+                            && grant.chat == args["chat_id"].as_str().unwrap_or_default(),
+                        "interaction_publication_denied"
+                    );
+                    let existing = state.db.business_card_message(id, chat)?;
+                    let root = existing
+                        .as_ref()
+                        .map_or(object.as_str(), |m| m.message_id.as_str());
+                    crate::business_cards::publish(state, grant, chat, root, &author.id).await?;
                 }
-            }
-            if let Some(request) = &interaction {
-                request.validate().map_err(anyhow::Error::msg)?;
-            }
-            let interaction =
-                interaction.map(zork_client_types::interaction::MessageContent::request);
+                let request = state.db.business_card(id)?;
+                Some(serde_json::to_value(
+                    zork_client_types::interaction::MessageContent::linked(
+                        id.into(),
+                        request.handler,
+                        request.request,
+                        None,
+                    ),
+                )?)
+            } else if rpc.tool == "chat.send.android_script" {
+                let script = zork_client_types::local_script::Card {
+                    kind: zork_client_types::local_script::Kind::LocalScript,
+                    version: zork_client_types::local_script::VERSION,
+                    platform: "android".into(),
+                    title: field(args, "title")?.into(),
+                    description: args["description"].as_str().map(str::to_owned),
+                    source: field(args, "source")?.into(),
+                };
+                script.validate().map_err(anyhow::Error::msg)?;
+                Some(serde_json::to_value(script)?)
+            } else {
+                None
+            };
             let message = state.db.post_chat_content(
-                &command,
+                (!ordinary).then_some(command.as_str()),
                 &object,
                 chat,
                 &author,
@@ -451,14 +526,14 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
                 .publish_visible_message(&state.db.chat_visible_message(&message.message_id)?);
             Ok(serde_json::to_value(message)?)
         }
-        "chat.history" | "chat.search" => {
-            let query = args["query"].as_str();
-            let scope = fingerprint(&(chat, query))?;
+        "chat.history" => {
+            let query = None::<&str>;
+            let scope = fingerprint(&(chat, state.db.chat_source_epoch(chat)?, query))?;
             let before = cursor(args, &scope)?
                 .map(|s| s.parse::<i64>())
                 .transpose()
                 .context("invalid_chat_cursor")?;
-            let rows = state.db.chat_messages(chat, before, limit(args), query)?;
+            let rows = state.db.chat_messages(chat, before, limit(args))?;
             let total = rows.len();
             let mut items = Vec::new();
             let mut bytes = 0;
@@ -548,4 +623,19 @@ pub(super) fn cursor(args: &Value, scope: &str) -> Result<Option<String>> {
             Ok(position)
         })
         .transpose()
+}
+
+fn ordinary_send(tool: &str, args: &Value) -> bool {
+    zork_agent_gateway_tools::channels::ordinary_send(tool, args)
+}
+struct SendFiles<'a> {
+    db: &'a crate::db::GatewayDb,
+    key: String,
+}
+impl Drop for SendFiles<'_> {
+    fn drop(&mut self) {
+        if let Err(error) = self.db.clear_send_files(&self.key) {
+            tracing::warn!(%error,"Could not clear completed message file transfer");
+        }
+    }
 }

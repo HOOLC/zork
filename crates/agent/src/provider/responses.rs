@@ -167,7 +167,7 @@ pub(super) async fn do_generate(
         "Authorization".to_owned(),
         format!("Bearer {}", execution.secret()),
     )]);
-    headers.extend(execution.headers().clone());
+    headers.extend(options.headers.as_ref().unwrap_or(execution.headers()).clone());
     let response = send_stream_timed(
         HttpRequest {
             method: HttpMethod::Post,
@@ -242,7 +242,7 @@ pub(super) async fn do_stream(
         "Authorization".to_owned(),
         format!("Bearer {}", execution.secret()),
     )]);
-    headers.extend(execution.headers().clone());
+    headers.extend(options.headers.as_ref().unwrap_or(execution.headers()).clone());
     let response = send_stream_timed(
         HttpRequest {
             method: HttpMethod::Post,
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, PROJECTION-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, PROJECTION-02]
     fn raw_output_items_follow_provider_output_index_not_arrival_order() {
         let captured = CapturedOutputItems::default();
         captured.observe(&output_item_done(
@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn raw_output_items_reject_a_missing_output_index() {
         let captured = CapturedOutputItems::default();
         captured.observe(&output_item_done(
@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn terminal_state_requires_a_terminal_responses_event() {
         let captured = CapturedOutputItems::default();
         captured.observe(&output_item_done(
@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn merging_reasoning_releases_the_stream_side_ciphertext() {
         let final_reasoning = Mutex::new(HashMap::from([(
             "rs_1".to_owned(),

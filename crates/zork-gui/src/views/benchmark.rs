@@ -7,6 +7,15 @@ pub const RECORDS: usize = 600;
 pub const NOW: i64 = 1_800_000_600_000;
 
 impl RootView {
+    pub fn benchmark_composer_material(&self) -> serde_json::Value {
+        self.presence.scene.inspect()
+    }
+    pub fn benchmark_history_modal(&self, window: &gpui::Window, cx: &gpui::App) -> serde_json::Value {
+        let mut value = self.history_details.read(cx).inspect(window, cx);
+        value["detail"] = serde_json::json!(self.history.detail);
+        value["agent"] = serde_json::json!(self.history.agent_detail);
+        value
+    }
     pub fn benchmark_page_catalog(
         &mut self,
         pages: zork_client_core::pages::PageCatalog,
@@ -77,6 +86,7 @@ impl RootView {
                                 .get(&message.request_id)
                                 .cloned()
                                 .unwrap_or_default(),
+                            error: message.error.clone(),
                         },
                     )
                 })
@@ -189,16 +199,16 @@ impl RootView {
             avatar: Some("fox".into()),
             session_id: "render-fixture".into(),
             subscribed: true,
+            assigned: false,
             activity: None,
         }];
         view.attach_navigation(navigation.clone(), "mini1".into());
         let (selection, locale) = view.navigation_selection();
-        let data = zork_client_core::state::NavigationData {
-            online: Some(true),
-            agents: view.node_agents.clone(),
-            tasks: view.tasks_by_leader.clone(),
-            ..Default::default()
-        };
+        let mut directory = zork_client_core::state::DeviceData::default();
+        directory.online = Some(true);
+        directory.agents = view.node_agents.clone();
+        directory.tasks = view.tasks_by_leader.clone();
+        let data = zork_client_core::state::NavigationData::project(&directory, Default::default());
         navigation.update(cx, |nav, cx| {
             nav.activate("mini1", cx);
             nav.set_preview("mini1", data, selection, locale, cx);
@@ -343,17 +353,17 @@ impl RootView {
 
     pub fn benchmark_message_coverage(&self) -> serde_json::Value {
         let mut coverage = messages::coverage(self.lines.len());
-        coverage["measured_kinds"] = serde_json::json!(messages::KINDS
+        coverage["measured_kinds"] = serde_json::json!(messages::kinds()
             .iter()
             .enumerate()
             .filter(|(index, _)| self.benchmark_message_kinds.get()
-                & ((1 << index) | (1 << (index + messages::KINDS.len())))
+                & ((1 << index) | (1 << (index + messages::kinds().len())))
                 != 0)
             .map(|(_, kind)| *kind)
             .collect::<Vec<_>>());
-        coverage["both_roles_measured"] = (0..messages::KINDS.len())
+        coverage["both_roles_measured"] = (0..messages::kinds().len())
             .all(|index| {
-                let mask = (1 << index) | (1 << (index + messages::KINDS.len()));
+                let mask = (1 << index) | (1 << (index + messages::kinds().len()));
                 self.benchmark_message_kinds.get() & mask == mask
             })
             .into();
@@ -364,7 +374,7 @@ impl RootView {
     }
 
     pub fn benchmark_kind_count() -> usize {
-        messages::KINDS.len()
+        messages::kinds().len()
     }
 
     pub fn benchmark_restore_delivery_failure(&mut self, cx: &mut Context<Self>) {
@@ -451,17 +461,17 @@ impl RootView {
     }
 }
 
-pub(super) fn message_kind_mask(index: usize) -> u64 {
-    1 << (index % messages::KINDS.len()
-        + if (index / messages::KINDS.len()) % 3 == 0 {
+pub(super) fn message_kind_mask(index: usize) -> u128 {
+    1 << (index % messages::kinds().len()
+        + if (index / messages::kinds().len()) % 3 == 0 {
             0
         } else {
-            messages::KINDS.len()
+            messages::kinds().len()
         })
 }
 
 pub(super) fn artifact_is_image(index: usize) -> Option<bool> {
-    match messages::KINDS[index % messages::KINDS.len()] {
+    match messages::kinds()[index % messages::kinds().len()] {
         "image_reference" => Some(true),
         "file_link" => Some(false),
         _ => None,

@@ -3,7 +3,8 @@ use futures_util::{stream, StreamExt};
 use iroh::{endpoint::Connection, TransportAddr};
 use std::net::IpAddr;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectionScope {
     #[default]
     Unknown,
@@ -129,7 +130,7 @@ fn scope(path: &iroh::endpoint::Path<'_>) -> ConnectionScope {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ConnectionRoute {
     pub scope: ConnectionScope,
     pub direct: bool,

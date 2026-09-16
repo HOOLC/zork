@@ -9,7 +9,7 @@ use zork_agent_testkit::{
 const CONTRACT_SESSION_COUNT: usize = 100_000;
 const MAX_PEAK_RSS_BYTES: u64 = 512 * 1024 * 1024;
 
-// Contract: docs/zork-agent-architecture.md [STARTUP-03, PERF-03]
+// Contract: docs/design/agent-runtime.md [STARTUP-03, PERF-03]
 fn main() {
     let arguments = std::env::args()
         .skip(1)

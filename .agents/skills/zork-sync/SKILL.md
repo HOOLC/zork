@@ -5,30 +5,18 @@ description: 修改或审查 zork 的客户端同步、持久化投影、游标�
 
 # 同步开发
 
-先读[同步空闲合同](../../../docs/sync-idle-contract.md)。协议与存储实现分别在 `crates/zork-client-types/src/sync.rs`、`crates/station/src/db/sync*.rs`、`crates/zork-client-core/src/sync.rs` 和 `crates/zork-client-core/src/store/replica.rs`；不要把架构建议文档中的目标当成已实现的行为。
+先读 [同步空闲合同](../../../docs/design/synchronization.md#invalidation) 与涉及的协议/存储源码。Station 业务副本、Chat 原始消息流、Synch 文件元数据/CAS 各有权威和版本；消息归并用 [zork-chat-messages](../zork-chat-messages/SKILL.md)，文件树用 [zork-shared-files](../zork-shared-files/SKILL.md)。
 
-## 修改时保持的边界
+## 不变条件
 
-- 触及客户端状态、操作或平台适配时，应用 [zork-client-boundary](../zork-client-boundary/SKILL.md)。业务权威、网络操作和生命周期由 Rust core 维护；UI 通过统一操作和订阅访问，不另建业务列表、拼请求、重试或推断投递状态。
+- HTTP 方法不代表业务变化；POST 拉取/回执查询也不能广播失效。检查“通知 → 刷新 → 请求 → 存储 → 通知”闭环，内部导出缓存和回执记账不能触发自激循环。
+- 业务投影与持久版本同事务提交；相同内容不推进版本，回滚不通知。SQLite hook 只负责唤醒。读取不承担业务协调；配置/Profile 外部来源由独立幂等流程投影，失败保留旧值并标记不可用，初始化和失败等待有界。
+- 仅在 owner/epoch/scope 一致时比较 sequence；UI revision、对象 revision、同步游标不混用。先订阅再追赶，同设备/范围合并需求；已覆盖提示不排队重复请求，在途更高版本继续追赶。重连同时恢复在线状态和校验副本。
+- 冻结分页保持同一批次/视图，完整落盘后推进游标。断线、过期、epoch 变化和撤权沿重置/隔离合同处理，不清库或改命令 ID 掩盖问题。需要幂等恢复的业务命令先查原回执，不自动重复提交或跨 owner 重发；普通消息发送遵循 Chat 约定。
+- 客户端业务与同步生命周期经 [zork-client-boundary](../zork-client-boundary/SKILL.md)，UI 不另建列表、请求或重试。文件树不套用 Station replica 游标，折叠卡片不充当原消息锚点。
 
-- HTTP 方法不代表业务变化。同步拉取、回执查询即使用 POST，也不能因此广播失效通知。检查完整的“通知 → 客户端刷新 → 请求 → 存储 → 通知”链路，确保没有自激循环。
-- 业务投影与持久化版本在同一事务中更新；相同内容不推进版本，回滚不通知。SQLite hook 只是唤醒机制，不能把导出缓存、分页位置、回执等内部记账当成产品变化。
-- 查询不得承担业务协调。文件配置、Profile 等外部权威由独立协调流程投影；读取失败保留旧值并标记不可用，不能用空集合覆盖。协调必须幂等，初始化和失败等待必须有界。
-- 通知携带版本提示，数据通过持久化同步协议落盘。只在 owner、epoch、scope 一致时比较 sequence；UI revision、对象 revision 和同步游标不能混用。先订阅再追赶，避免读取期间漏掉变化。
-- 同一设备与范围合并同步需求；一次拉取已覆盖的重复提示不再触发网络请求。在途出现更高版本时继续追赶，不能只加串行锁而让重复工作排队。重连后同时恢复在线状态，并校验持久副本；不能因数据版本未变而一直显示离线。
-- 冻结分页必须保持同一批次与一致视图，客户端只在完整批次落盘后推进游标。断线、过期批次、epoch 变化和撤权沿现有重置/隔离流程处理，不通过清库或更换命令 ID 掩盖问题。
-- 不确定命令结果先查原请求回执，遵循既有重放策略。同步优化不得引入自动重复提交、跨 owner 重发或绕过授权。
+## 定向验证
 
-## 验证与诊断
+按 [zork-validation](../zork-validation/SKILL.md) 重建受影响二进制，选择 Station `db::sync`、core 副本测试与 `scripts/test-sync-idle.py`；隔离产物用 `ZORK_TEST_BIN_DIR`。
 
-以下是同步开发与回归入口，不是个人测试设备安装的前置条件。安装到个人测试设备时遵循本地环境规则，不额外运行独立测试。
-
-按 `zork-validation` 选择当前检查入口，进程测试前重建涉及的二进制。同步改动至少验证相关边界：空读/重复协调安静、真实修改最终收敛后停止、重复或突发通知合并、断线恢复不丢更新。变更影响分页、回执或权限时补充对应用例。
-
-- `cargo test --locked -p zork-station db::sync` 覆盖投影、游标、分页和客户端收敛。
-- `cargo test --locked -p zork-client-core` 覆盖共享客户端状态与持久副本。
-- 重建 `zork-station` 后运行 `python3 scripts/test-sync-idle.py`，验证真实 HTTP/SSE 的读取与修改闭环；隔离产物通过 `ZORK_TEST_BIN_DIR` 指定。
-
-排查高 CPU 时同时记录进程 CPU、采样调用栈、单位时间请求/通知数量和版本是否实际推进。区分业务写入、内部缓存写入、网络重连与重复失效；不要仅凭错误日志数量归因。限流和退避可以提供保护，但不能代替切断错误的变更来源。
-
-报告源码验证与实际设备测量的边界。fixture 收敛不等于用户设备已更新；诊断或源码修复不自动扩大为安装、重启或发布授权。
+覆盖空读/重复协调安静、真实修改收敛后停止、突发提示合并和断线恢复；涉及分页、回执、权限时补对应边界。高 CPU 诊断同时记录调用栈、请求/通知频率和版本推进，区分业务写入、内部记账与重连；退避不代替切断错误变化来源。fixture 不证明实际设备已更新。

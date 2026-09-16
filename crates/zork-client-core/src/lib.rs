@@ -1,11 +1,15 @@
 //! Client-owned identity, offline state and bounded Gateway operations.
-//! The platform serializes commands, and calls `pause` when leaving foreground.
+//! The platform reports host visibility and service lifetime; core decides when
+//! to retain or release connections according to the user's background preference.
 #[cfg(not(target_family = "wasm"))]
 pub mod activity;
 #[cfg(not(target_family = "wasm"))]
-pub mod api;
+pub mod adb;
 #[cfg(not(target_family = "wasm"))]
+pub mod api;
 pub mod composer;
+#[cfg(not(target_family = "wasm"))]
+pub mod data_reset;
 #[cfg(not(target_family = "wasm"))]
 pub mod conversation;
 pub use zork_client_types::{comments, files};
@@ -26,6 +30,8 @@ pub mod file_io;
 pub mod interactions;
 #[cfg(not(target_family = "wasm"))]
 pub mod live;
+#[cfg(not(target_family = "wasm"))]
+pub mod local_scripts;
 pub mod locale;
 pub mod model_edit;
 #[cfg(not(target_family = "wasm"))]
@@ -36,6 +42,8 @@ pub mod pages;
 pub mod preferences;
 #[cfg(not(target_family = "wasm"))]
 pub mod resources;
+#[cfg(not(target_family = "wasm"))]
+pub mod shared_files;
 #[cfg(not(target_family = "wasm"))]
 mod services;
 #[cfg(not(target_family = "wasm"))]
@@ -61,3 +69,5 @@ pub mod api;
 
 #[cfg(not(target_family = "wasm"))]
 include!("client.rs");
+
+pub mod device_edit;

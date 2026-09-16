@@ -1,5 +1,6 @@
 //! Supervised logical-tool execution.
 
+use futures_util::FutureExt;
 use std::collections::{BTreeSet, HashMap};
 use std::future::pending;
 use std::sync::{Arc, Mutex};
@@ -15,34 +16,23 @@ pub struct ToolExecutor {
     registry: Arc<ToolRegistry>,
     clock: Arc<dyn Clock>,
     timeout: Option<Duration>,
-    permits: Arc<tokio::sync::Semaphore>,
     live: ExecutorTable,
 }
 
 impl ToolExecutor {
     pub fn new(registry: Arc<ToolRegistry>, timeout: Duration) -> Self {
-        Self::with_concurrency(registry, timeout, 64)
-    }
-
-    pub fn with_concurrency(
-        registry: Arc<ToolRegistry>,
-        timeout: Duration,
-        max_concurrency: usize,
-    ) -> Self {
-        Self::with_clock(registry, Arc::new(SystemClock), timeout, max_concurrency)
+        Self::with_clock(registry, Arc::new(SystemClock), timeout)
     }
 
     pub fn with_clock(
         registry: Arc<ToolRegistry>,
         clock: Arc<dyn Clock>,
         timeout: impl Into<Option<Duration>>,
-        max_concurrency: usize,
     ) -> Self {
         Self {
             registry,
             clock,
             timeout: timeout.into(),
-            permits: Arc::new(tokio::sync::Semaphore::new(max_concurrency.max(1))),
             live: ExecutorTable::default(),
         }
     }
@@ -69,21 +59,6 @@ impl ToolExecutor {
                 None => pending::<()>().await,
             }
         });
-
-        // Control requests use the bounded runner channel. Holding an
-        // execution permit while awaiting cleanup could prevent another
-        // cancellation from reaching its target.
-        let permit = if invocation.tool == "tool.cancel" {
-            None
-        } else {
-            Some(tokio::select! {
-                _ = &mut cancelled => return cancelled_execution(),
-                permit = self.permits.clone().acquire_owned() => match permit {
-                    Ok(permit) => permit,
-                    Err(_) => return failed_execution("Tool executor is shutting down.".into(), None),
-                }
-            })
-        };
 
         let instance = match self
             .registry
@@ -113,6 +88,11 @@ impl ToolExecutor {
         };
 
         let arguments = invocation.arguments;
+        if cancelled.as_mut().now_or_never().is_some() {
+            return cancel_cleanup(instance, context, arguments)
+                .await
+                .unwrap_or_else(cancelled_execution);
+        }
         let task_instance = instance.clone();
         let task_context = context.clone();
         let task_arguments = arguments.clone();
@@ -129,6 +109,7 @@ impl ToolExecutor {
         tokio::pin!(timeout);
 
         let result = tokio::select! {
+            biased;
             _ = &mut cancelled => {
                 task.abort();
                 let _ = task.await;
@@ -154,7 +135,6 @@ impl ToolExecutor {
                 Err(error) => failed_execution(format!("Tool task panicked: {error}"), None),
             }
         };
-        drop(permit);
         result
     }
 

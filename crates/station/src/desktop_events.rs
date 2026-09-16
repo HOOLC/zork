@@ -45,18 +45,20 @@ pub async fn subscribe(
         session.platform == LOCAL_GUI_PLATFORM,
         "local_im_session_not_found"
     );
-    let changes =
-        changes.merge(
-            state
-                .db
-                .chat_topics
-                .subscribe([crate::db::chats::Topic::Channel(
-                    state.db.chat(&session.key)?.channel.chat_id,
-                )]),
-        );
+    let chat_id = state.db.chat(&session.key)?.channel.chat_id;
+    let message_changes = state
+        .db
+        .chat_topics
+        .subscribe([crate::db::chats::Topic::Channel(chat_id.clone())]);
+    let changes = changes.merge(
+        state
+            .db
+            .chat_topics
+            .subscribe([crate::db::chats::Topic::Channel(chat_id)]),
+    );
     // Start the shared snapshot-backed projection once. It reports readiness
     // after its first snapshot, without replaying the historical event archive.
-    for mut participant in state.entries.local_participants(&session)? {
+    for mut participant in state.entries.local_members(&session)? {
         let key = participant
             .as_object_mut()
             .unwrap()
@@ -89,7 +91,7 @@ pub async fn subscribe(
         }
     }
     let (messages, mut initial) = state.entries.subscribe_local_with_snapshot(&session);
-    let mut initial_participants = state.entries.local_participants(&session)?;
+    let mut initial_participants = state.entries.local_members(&session)?;
     for participant in &mut initial_participants {
         participant.as_object_mut().unwrap().remove("session_key");
     }
@@ -101,6 +103,22 @@ pub async fn subscribe(
         }
         Err(_) => None,
     });
+    // Business results can append directly to the durable Chat source without
+    // passing through an IM entry. Observe its tail independently of members.
+    let source_messages = zork_notify::stream::spawn(
+        MessagesSource {
+            state: state.clone(),
+            session_key: session.key.clone(),
+        },
+        message_changes,
+        1,
+        None,
+        |event| match event {
+            zork_notify::stream::Event::Data(value) => Some(value),
+            zork_notify::stream::Event::Error(_) => Some(json!({"name":"resync","data":{}})),
+            zork_notify::stream::Event::Heartbeat => None,
+        },
+    );
     let participants = zork_notify::stream::spawn(
         ParticipantsSource { state, session },
         changes,
@@ -112,7 +130,7 @@ pub async fn subscribe(
             zork_notify::stream::Event::Heartbeat => None,
         },
     );
-    let mut merged = zork_notify::stream::merge(vec![participants, messages], 64);
+    let mut merged = zork_notify::stream::merge(vec![participants, messages, source_messages], 64);
     let (tx, rx) = mpsc::channel(64);
     // Prefill before starting the forwarder: no participant/status/live frame
     // can overtake this connection's initial snapshot, over either HTTP or Mesh.
@@ -132,6 +150,21 @@ pub async fn subscribe(
     Ok(rx)
 }
 
+struct MessagesSource {
+    state: AppState,
+    session_key: String,
+}
+impl zork_notify::stream::Source for MessagesSource {
+    type Item = Value;
+    type Error = anyhow::Error;
+    async fn read(&mut self) -> Result<zork_notify::stream::Page<Value>> {
+        let (epoch, sequence) = self.state.db.chat_source_tail(&self.session_key)?;
+        Ok(zork_notify::stream::Page::snapshot(json!({
+            "name":"messages_changed","data":{"source_epoch":epoch,"through":sequence}
+        })))
+    }
+}
+
 struct ParticipantsSource {
     state: AppState,
     session: crate::db::SessionRow,
@@ -140,7 +173,7 @@ impl zork_notify::stream::Source for ParticipantsSource {
     type Item = Value;
     type Error = anyhow::Error;
     async fn read(&mut self) -> Result<zork_notify::stream::Page<Value>> {
-        let mut items = self.state.entries.local_participants(&self.session)?;
+        let mut items = self.state.entries.local_members(&self.session)?;
         for participant in &mut items {
             participant.as_object_mut().unwrap().remove("session_key");
         }

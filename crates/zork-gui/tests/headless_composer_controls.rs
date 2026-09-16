@@ -12,6 +12,7 @@ use zork_gui::{
 };
 
 fn main() -> anyhow::Result<()> {
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let baseline = std::env::var_os("ZORK_COMPOSER_BASELINE").is_some();
     let output = std::env::var_os("ZORK_COMPOSER_OUTPUT")
         .map(std::path::PathBuf::from)
@@ -43,6 +44,7 @@ fn main() -> anyhow::Result<()> {
             view = Some(root.clone());
             cx.new(|_| AutomationRoot::new(root))
         })?;
+        cx.update_window(window.into(), |_, window, _| window.activate_window())?;
         let view = view.unwrap();
         view.update(&mut cx, |v, cx| {
             v.benchmark_bind_core(cx);
@@ -55,7 +57,6 @@ fn main() -> anyhow::Result<()> {
                 cx.run_until_parked();
                 cx.update_window(window.into(), |_, w, cx| {
                     w.simulate_next_frame(cx);
-                    w.draw(cx).clear(cx)
                 })?;
             }
             Ok(())
@@ -67,6 +68,10 @@ fn main() -> anyhow::Result<()> {
             pump(cx)
         };
         pump(&mut cx)?;
+        anyhow::ensure!(
+            cx.update_window(window.into(), |_, window, _| window.is_window_active())?,
+            "selection rendering requires an active headless window"
+        );
         let messages = view.update(&mut cx, |view, _| view.benchmark_record_count(false));
         if let Ok(requested) = std::env::var("ZORK_BENCH_MESSAGE_COUNT") {
             anyhow::ensure!(
@@ -109,8 +114,13 @@ fn main() -> anyhow::Result<()> {
                 .0)
         };
         anyhow::ensure!(
-            sample(&mut cx)?[..3] == [170, 170, 164],
-            "empty composer uses an enabled accent"
+            sample(&mut cx)?[..3]
+                == if baseline {
+                    [170, 170, 164]
+                } else {
+                    zork_ui::design::INTERACTION.neutral_pressed.to_be_bytes()[1..].try_into().unwrap()
+                },
+            "disabled send should use the shared primary action state"
         );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("composer-{width}-empty.png")))?;
@@ -125,6 +135,92 @@ fn main() -> anyhow::Result<()> {
         anyhow::ensure!(
             core.draft("render-fixture").text == "检查紧凑发送按钮",
             "input did not update the shared draft"
+        );
+        let command = if cfg!(target_os = "macos") {
+            "cmd"
+        } else {
+            "ctrl"
+        };
+        let select_line_start = if cfg!(target_os = "macos") {
+            "cmd-shift-left"
+        } else {
+            "shift-home"
+        };
+        let select_document_start = if cfg!(target_os = "macos") {
+            "cmd-shift-up"
+        } else {
+            "ctrl-shift-home"
+        };
+        for (step, action) in [
+            json!({"type":"key","keystroke":"shift-enter"}),
+            json!({"type":"type_text","text":"second line"}),
+            json!({"type":"key","keystroke":select_line_start}),
+            json!({"type":"type_text","text":"替换"}),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            act(&mut cx, action)?;
+            if step == 2 {
+                let screenshot = cx.capture_screenshot(window.into())?;
+                let snapshot = driver.snapshot(false);
+                let bounds = snapshot
+                    .elements
+                    .iter()
+                    .find(|e| e.id == "composer-input")
+                    .unwrap()
+                    .bounds;
+                let scale = snapshot.scale_factor;
+                let mut selection_pixels = 0;
+                for y in (bounds.y * scale) as u32..((bounds.y + bounds.height) * scale) as u32 {
+                    for x in (bounds.x * scale) as u32..((bounds.x + bounds.width) * scale) as u32 {
+                        let color = screenshot.get_pixel(x, y).0;
+                        if color[2] as u16 > color[0] as u16 + 12
+                            && color[2] as u16 > color[1] as u16 + 3
+                        {
+                            selection_pixels += 1;
+                        }
+                    }
+                }
+                anyhow::ensure!(
+                    selection_pixels > 50,
+                    "keyboard selection is not visibly highlighted"
+                );
+                screenshot.save(output.join(format!("composer-{width}-line-selection.png")))?;
+            }
+        }
+        anyhow::ensure!(
+            core.draft("render-fixture").text == "检查紧凑发送按钮\n替换",
+            "line selection crossed into the previous line"
+        );
+        act(
+            &mut cx,
+            json!({"type":"key","keystroke":format!("{command}-z")}),
+        )?;
+        anyhow::ensure!(
+            core.draft("render-fixture").text == "检查紧凑发送按钮\nsecond line",
+            "replacement typing did not undo through the draft subscription as one edit: {:?}",
+            core.draft("render-fixture").text
+        );
+        act(
+            &mut cx,
+            json!({"type":"key","keystroke":format!("{command}-shift-z")}),
+        )?;
+        anyhow::ensure!(
+            core.draft("render-fixture").text == "检查紧凑发送按钮\n替换",
+            "redo did not publish the restored draft"
+        );
+        act(
+            &mut cx,
+            json!({"type":"key","keystroke":select_document_start}),
+        )?;
+        act(
+            &mut cx,
+            json!({"type":"type_text","text":"检查紧凑发送按钮"}),
+        )?;
+        anyhow::ensure!(
+            core.draft("render-fixture").text == "检查紧凑发送按钮",
+            "document selection did not replace the whole draft"
         );
         anyhow::ensure!(
             driver
@@ -141,7 +237,7 @@ fn main() -> anyhow::Result<()> {
         };
         anyhow::ensure!(
             sample(&mut cx)?[..3] == expected.to_be_bytes()[1..],
-            "ready send did not use the intended accent"
+            "ready send should use the shared primary action color"
         );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("composer-{width}-ready.png")))?;
@@ -164,7 +260,7 @@ fn main() -> anyhow::Result<()> {
                 .save(output.join(format!("composer-{width}-hover.png")))?;
             anyhow::ensure!(
                 actual[..3] == expected[1..],
-                "send hover did not use shared brand feedback: {actual:?}"
+                "send hover did not use shared primary feedback: {actual:?}"
             );
         }
         cx.capture_screenshot(window.into())?
@@ -219,6 +315,6 @@ fn main() -> anyhow::Result<()> {
         output.join("report.json"),
         serde_json::to_vec_pretty(&reports)?,
     )?;
-    println!("PASS composer controls: compact geometry, no text overlap, disabled/ready colors, shared draft, one offline send, CPU budget");
+    println!("PASS composer controls: geometry, keyboard selection/undo/redo through shared drafts, one offline send, CPU budget");
     Ok(())
 }

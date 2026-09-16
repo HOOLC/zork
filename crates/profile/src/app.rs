@@ -38,6 +38,9 @@ pub struct ProfileModel {
     pub streaming: bool,
     #[serde(default)]
     pub parallel_tool_calls: bool,
+    /// This endpoint's chat template accepts only one leading system message.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub single_system_message: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     pub thinking: Vec<String>,
@@ -378,6 +381,9 @@ pub fn validate(document: &ProfileDocument) -> Result<()> {
                 );
             }
         }
+        if model.single_system_message && model.api != ModelApi::OpenaiCompletions {
+            anyhow::bail!("single_system_message is supported only for openai-completions");
+        }
         if model.parallel_tool_calls && model.api != ModelApi::OpenaiResponses {
             anyhow::bail!(
                 "model {} api {} does not support parallel_tool_calls",
@@ -673,6 +679,28 @@ mod tests {
     }
 
     #[test]
+    fn single_system_message_is_opt_in_and_completions_only() {
+        let parsed: ProfileDocument = serde_json::from_value(fixture()).unwrap();
+        assert!(!parsed.models[0].single_system_message);
+        assert!(serde_json::to_value(&parsed).unwrap()["models"][0]
+            .get("single_system_message")
+            .is_none());
+        for (api, accepted) in [
+            ("openai-completions", true),
+            ("openai-responses", false),
+            ("openai-codex-responses", false),
+            ("anthropic-messages", false),
+        ] {
+            let mut document = fixture();
+            document["models"][0]["api"] = json!(api);
+            document["models"][0]["single_system_message"] = json!(true);
+            let parsed: ProfileDocument = serde_json::from_value(document).unwrap();
+            assert_eq!(validate(&parsed).is_ok(), accepted, "{api}");
+            assert!(parsed.models[0].single_system_message);
+        }
+    }
+
+    #[test]
     fn model_parallel_tool_calls_defaults_to_false_and_is_supported_only_by_standard_responses() {
         let parsed: ProfileDocument = serde_json::from_value(fixture()).unwrap();
         assert_eq!(
@@ -751,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-03]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-03]
     fn every_provider_default_limit_policy_is_table_driven() {
         let mut actual = Vec::new();
         for provider in providers::all() {

@@ -10,6 +10,8 @@ use zork_gui::{
 };
 
 fn main() -> anyhow::Result<()> {
+    // The lazily mounted brand reads the same platform preference as the app.
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../artifacts/message-presentation/native");
     std::fs::create_dir_all(&output)?;
@@ -62,7 +64,6 @@ fn main() -> anyhow::Result<()> {
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
         }
         Ok(())
@@ -157,6 +158,7 @@ fn main() -> anyhow::Result<()> {
     connected.connected = true;
     conversation.seed(connected);
     pump(&mut cx)?;
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
     cx.update(|cx| cx.set_reduce_motion(false));
     // A history refresh after connection readiness must not manufacture activity.
     let mut history = conversation.snapshot().as_ref().clone();

@@ -4,75 +4,12 @@ use crate::{
     state::{Observable, Subscription},
 };
 use std::{
-    collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
 };
 pub use zork_client_types::resources::*;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Inspection {
-    AgentSkills(String),
-    Skill {
-        agent: String,
-        skill: String,
-        file: Option<String>,
-    },
-    Mcp(String),
-    Service {
-        id: String,
-        log: Option<String>,
-    },
-}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum InspectionContent {
-    Skills(AgentSkills),
-    Details(ResourceDetails),
-}
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct InspectionState {
-    pub loading: bool,
-    pub error: Option<String>,
-    pub content: Option<Arc<InspectionContent>>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResourceDevice {
-    pub id: String,
-    pub name: String,
-    pub catalog: Option<ResourceCatalog>,
-    pub loading: bool,
-    pub error: Option<String>,
-}
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResourcesData {
-    pub devices: Vec<ResourceDevice>,
-    pub inspections: HashMap<(String, Inspection), InspectionState>,
-}
-
-impl ResourcesData {
-    pub fn rows(&self, kind: ResourceKind, node: Option<&str>) -> Vec<(usize, usize)> {
-        self.devices
-            .iter()
-            .enumerate()
-            .filter(|(_, d)| node.is_none_or(|node| node == d.id))
-            .flat_map(|(di, d)| {
-                d.catalog.iter().flat_map(move |c| {
-                    c.items
-                        .iter()
-                        .enumerate()
-                        .filter(move |(_, r)| r.kind == kind)
-                        .map(move |(ri, _)| (di, ri))
-                })
-            })
-            .collect()
-    }
-    pub fn inspection(&self, node: &str, query: &Inspection) -> Option<&InspectionState> {
-        self.inspections.get(&(node.into(), query.clone()))
-    }
-}
 
 pub struct Resources {
     clients: Mutex<Vec<(String, u64, Arc<GatewayClient>)>>,
@@ -160,12 +97,15 @@ impl Resources {
         }
     }
     pub async fn refresh(&self) {
+        self.refresh_scope(None).await;
+    }
+    pub async fn refresh_scope(&self, peer: Option<&str>) {
         let clients = self.clients.lock().unwrap().clone();
         let requests = {
             let mut state = self.state.lock().expect("resource inventory");
             let mut requests = vec![];
             for device in &mut state.devices {
-                if !device.loading {
+                if !device.loading && peer.is_none_or(|peer| peer == device.id) {
                     if let Some((_, generation, client)) =
                         clients.iter().find(|(id, _, _)| id == &device.id)
                     {
@@ -302,6 +242,29 @@ impl Resources {
         .await;
     }
 
+    pub(crate) fn revoke(&self, peer: &str) {
+        let mut clients = self.clients.lock().unwrap();
+        let had_client = clients.iter().any(|(id, _, _)| id == peer);
+        clients.retain(|(id, _, _)| id != peer);
+        let mut state = self.state.lock().unwrap();
+        if !had_client
+            && !state.inspections.keys().any(|(id, _)| id == peer)
+            && !state
+                .devices
+                .iter()
+                .any(|d| d.id == peer && d.catalog.is_some())
+        {
+            return;
+        }
+        state.inspections.retain(|(id, _), _| id != peer);
+        if let Some(device) = state.devices.iter_mut().find(|d| d.id == peer) {
+            device.catalog = None;
+            device.loading = false;
+            device.error = Some("设备访问权限已撤销".into());
+        }
+        self.changes.invalidate(state.clone());
+    }
+
     pub async fn inspect(&self, node: &str, query: Inspection) {
         let source = self
             .clients
@@ -314,6 +277,21 @@ impl Resources {
             return;
         };
         let key = (node.to_owned(), query.clone());
+        let pinned_skill = if let Inspection::Skill { agent, skill, .. } = &query {
+            let state = self.state.lock().unwrap();
+            state
+                .inspection(node, &Inspection::AgentSkills(agent.clone()))
+                .and_then(|state| state.content.as_deref())
+                .and_then(|content| match content {
+                    InspectionContent::Skills(catalog) => {
+                        catalog.skills.iter().find(|entry| &entry.id == skill)
+                    }
+                    _ => None,
+                })
+                .map(|entry| entry.path.clone())
+        } else {
+            None
+        };
         {
             let mut state = self.state.lock().unwrap();
             if !state.inspections.contains_key(&key) && state.inspections.len() >= 64 {
@@ -337,7 +315,12 @@ impl Resources {
             self.changes.publish(state.clone());
         }
         let result = async {
-            let path = inspection_path(&query)?;
+            let mut path = inspection_path(&query)?;
+            if let Some(reference) = pinned_skill.filter(|path| path.starts_with("synch://")) {
+                let mut url = reqwest::Url::parse(&format!("http://node.invalid{path}"))?;
+                url.query_pairs_mut().append_pair("reference", &reference);
+                path = format!("{}?{}", url.path(), url.query().unwrap());
+            }
             let value = client
                 .node_request(reqwest::Method::GET, path, None)
                 .await?;
@@ -483,8 +466,10 @@ mod tests {
             let (mut socket, _) = listener.accept().unwrap();
             let mut request = [0; 8192];
             let n = socket.read(&mut request).unwrap();
-            assert!(String::from_utf8_lossy(&request[..n])
-                .starts_with("GET /v1/node/resources/mcp/server "));
+            assert!(
+                String::from_utf8_lossy(&request[..n])
+                    .starts_with("GET /v1/node/resources/mcp/server ")
+            );
             ready.send(()).unwrap();
             wait.recv().unwrap();
             let body = serde_json::to_string(&ResourceDetails {

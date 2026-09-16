@@ -1,4 +1,4 @@
-use super::{Observable, Subscription};
+use super::{NavigationData, Observable, Subscription};
 use crate::{
     api::{
         Artifact, ConversationReadMarker, GatewayClient, MeshStatus, ProductTask, ProfileInfo,
@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
@@ -58,6 +58,7 @@ pub struct DeviceData {
     pub sessions_loaded: bool,
     pub agents: Arc<Vec<Value>>,
     pub tasks: Arc<HashMap<String, Vec<ProductTask>>>,
+    pub chats: Option<Arc<Vec<zork_client_types::chat::Channel>>>,
     pub profiles: Arc<Vec<ProfileInfo>>,
     pub inbox: Arc<Vec<ProductTask>>,
     pub inbox_loaded: bool,
@@ -70,18 +71,6 @@ pub struct DeviceData {
     pub mesh: Arc<MeshStatus>,
     pub read_markers: Arc<Vec<ConversationReadMarker>>,
     revisions: [u64; 8],
-}
-
-/// Navigation's business projection. Selection, folding and viewport positions
-/// belong to the platform; unread identity and state belong to this core.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct NavigationData {
-    pub online: Option<bool>,
-    pub route: crate::api::ConnectionRoute,
-    pub agents: Arc<Vec<Value>>,
-    pub tasks: Arc<HashMap<String, Vec<ProductTask>>>,
-    pub unread: Arc<HashSet<String>>,
-    pub executors: Arc<HashMap<String, (String, bool)>>,
 }
 
 pub struct DeviceUpdate {
@@ -280,12 +269,19 @@ impl Device {
             sessions: Arc::new(sessions),
             agents: Arc::new(agents),
             tasks: Arc::new(tasks),
+            chats: cached::<Option<Vec<zork_client_types::chat::Channel>>>(&cache, "chats")
+                .map(Arc::new),
             inbox: Arc::new(cached(&cache, "inbox")),
             artifacts: Arc::new(cached(&cache, "drive")),
             pages: Arc::new(cached(&cache, "pages")),
             read_markers: Arc::new(cached(&cache, "read-markers")),
             ..Default::default()
         };
+        if let Some((store, node)) = &cache {
+            if let Ok(links) = store.message_links(node) {
+                crate::pages::merge_message_links(Arc::make_mut(&mut data.pages), links);
+            }
+        }
         data.content_indices =
             Arc::new(crate::pages::content_indices(&data.artifacts, &data.pages));
         let owned = Owned {
@@ -379,6 +375,13 @@ impl Device {
                 .data
                 .subscribe_topics(zork_observe::Topics::new(domains.0 as u64)),
         }
+    }
+    pub fn has_long_term_agents(&self) -> bool {
+        self.navigation
+            .read()
+            .agents
+            .iter()
+            .any(|agent| agent.can_open)
     }
     pub fn navigation(&self) -> Subscription<NavigationData> {
         self.navigation.subscribe()
@@ -602,7 +605,9 @@ impl Device {
                 || before.metadata_loaded != after.metadata_loaded,
             before.sessions != after.sessions || before.sessions_loaded != after.sessions_loaded,
             before.agents != after.agents,
-            before.tasks != after.tasks || before.read_markers != after.read_markers,
+            before.tasks != after.tasks
+                || before.chats != after.chats
+                || before.read_markers != after.read_markers,
             before.profiles != after.profiles,
             before.inbox != after.inbox
                 || before.inbox_loaded != after.inbox_loaded
@@ -664,29 +669,17 @@ impl Device {
     }
     fn project_navigation(owned: &Owned) -> NavigationData {
         let data = &owned.data;
-        NavigationData {
-            online: data.online,
-            route: data.route,
-            agents: data.agents.clone(),
-            tasks: data.tasks.clone(),
-            unread: Arc::new(
-                data.read_markers
-                    .iter()
-                    .filter(|m| {
-                        m.role == Role::Assistant
-                            && owned.seen.get(&m.session_id) != Some(&m.last_message_id)
-                    })
-                    .map(|m| m.session_id.clone())
-                    .collect(),
-            ),
-            executors: Arc::new(
-                data.mesh
-                    .peers
-                    .iter()
-                    .map(|p| (p.origin.clone(), (p.name.clone(), p.online)))
-                    .collect(),
-            ),
-        }
+        NavigationData::project(
+            data,
+            data.read_markers
+                .iter()
+                .filter(|m| {
+                    m.role == Role::Assistant
+                        && owned.seen.get(&m.session_id) != Some(&m.last_message_id)
+                })
+                .map(|m| m.session_id.clone())
+                .collect(),
+        )
     }
     pub fn notifications(&self) -> Subscription<crate::notifications::Ledger> {
         self.notifications.subscribe()
@@ -874,6 +867,30 @@ impl Device {
                 }
             } else {
                 failed.insert(Domains::AGENTS);
+            }
+        }
+        if self.agents_enabled
+            && domains.contains(Domains::TASKS | Domains::AGENTS | Domains::SESSIONS)
+        {
+            match self
+                .client
+                .node_request(reqwest::Method::GET, "/v1/node/chats".into(), None)
+                .await
+            {
+                Ok(value) if value["schema_version"] == 1 => {
+                    match serde_json::from_value::<Vec<zork_client_types::chat::Channel>>(
+                        value["items"].clone(),
+                    ) {
+                        Ok(chats) => {
+                            self.persist("chats", &chats);
+                            self.commit(|s| s.chats = Some(Arc::new(chats)));
+                        }
+                        Err(_) => failed.insert(Domains::TASKS),
+                    }
+                }
+                Err(crate::api::ApiError::Api { status: 404, .. })
+                    if self.snapshot().chats.is_none() => {}
+                _ => failed.insert(Domains::TASKS),
             }
         }
         if self.agents_enabled && domains.contains(Domains::TASKS | Domains::AGENTS) {
@@ -1181,6 +1198,70 @@ mod tests {
         );
         assert!(navigation.changed().now_or_never().is_none());
     }
+    #[tokio::test]
+    async fn navigation_wire_retries_unapplied_unread_changes_and_clears_revoked_content() {
+        use crate::subscriptions::{Key, WireSubscription};
+        let (_directory, store, device) = device();
+        let mut wire = WireSubscription::from_device(
+            Key::Conversation {
+                peer: "node".into(),
+                session: None,
+            },
+            device.clone(),
+            store,
+        )
+        .unwrap();
+        let initial = wire.prepare().unwrap().unwrap();
+        assert_eq!(
+            initial["state"]["navigation"]["agents"],
+            serde_json::json!([])
+        );
+        assert!(wire.finish(initial["batch"].as_u64().unwrap(), true));
+        device.commit(|s| {
+            s.agents = Arc::new(vec![
+                serde_json::json!({"id":"a","name":"A","role":"leader"}),
+            ]);
+            s.chats = Some(Arc::new(vec![serde_json::from_value(serde_json::json!({
+                "chat_id":"chat","title":"Task","created_at":"now","message_count":1,
+                "creator":{"id":"a","kind":"agent"}
+            }))
+            .unwrap()]));
+            s.read_markers = Arc::new(vec![ConversationReadMarker {
+                session_id: "chat".into(),
+                last_message_id: "m1".into(),
+                created_at: "now".into(),
+                role: Role::Assistant,
+            }]);
+        });
+        let unread = wire.prepare().unwrap().unwrap();
+        assert_eq!(
+            unread["state"]["navigation"]["tasks"]["a"][0]["unread"],
+            true
+        );
+        assert!(wire.finish(unread["batch"].as_u64().unwrap(), true));
+        device.report_view(Some("chat".into()), true, true);
+        let read = wire.prepare().unwrap().unwrap();
+        assert_eq!(
+            read["state"]["navigation"]["tasks"]["a"][0]["unread"],
+            false
+        );
+        assert!(wire.finish(read["batch"].as_u64().unwrap(), false));
+        let retry = wire.prepare().unwrap().unwrap();
+        assert_eq!(retry["state"]["navigation"], read["state"]["navigation"]);
+        assert!(wire.finish(retry["batch"].as_u64().unwrap(), true));
+        assert!(wire.prepare().unwrap().is_none());
+        device.commit(|s| s.revoked = true);
+        let revoked = wire.prepare().unwrap().unwrap();
+        assert_eq!(
+            revoked["state"]["navigation"]["tasks"],
+            serde_json::json!({})
+        );
+        assert_eq!(
+            revoked["state"]["navigation"]["agents"],
+            serde_json::json!([])
+        );
+    }
+
     #[tokio::test]
     async fn core_owns_unread_and_only_marks_the_visible_tail() {
         let (_directory, store, device) = device();

@@ -3,12 +3,12 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use zork_observe::{BatchId, Readiness, ValueSource, ValueSubscription};
 
-pub(super) struct SnapshotWire {
-    updates: ValueSubscription<Value>,
+pub(super) struct SnapshotWire<T = Value> {
+    updates: ValueSubscription<T>,
     pending: Option<BatchId>,
 }
-impl SnapshotWire {
-    pub fn new(source: &ValueSource<Value>) -> Self {
+impl<T: serde::Serialize> SnapshotWire<T> {
+    pub fn new(source: &ValueSource<T>) -> Self {
         Self {
             updates: source.subscribe(),
             pending: None,

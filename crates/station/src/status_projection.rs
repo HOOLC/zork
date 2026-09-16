@@ -236,6 +236,25 @@ async fn consume_stream(
     loop {
         let now = now_ms();
         let activity_wake = projection.activity.next_wake(now);
+        // A previous publish or stream setup may have crossed the final
+        // presentation deadline. Reconcile it before parking without a timer.
+        if activity_wake.is_none() && projection.activity_status.is_some() {
+            let status_event = projection.activity_event(now)?;
+            if projection.last_activity_event.as_ref() != Some(&status_event) {
+                projection.last_activity_event = Some(status_event.clone());
+                entries
+                    .set_status(
+                        connection_id,
+                        session_key,
+                        channel_id,
+                        root_message_id,
+                        status_event,
+                        &projection.current_tool_status(),
+                    )
+                    .await;
+                continue;
+            }
+        }
         let activity_delay =
             Duration::from_millis(activity_wake.unwrap_or(now).saturating_sub(now).max(0) as u64);
         tokio::select! {
@@ -948,6 +967,15 @@ mod tests {
 
     #[tokio::test]
     async fn action_deadline_publishes_core_requesting_without_another_agent_event() {
+        assert_requesting_after_action_grace(2_900).await;
+    }
+
+    #[tokio::test]
+    async fn expired_action_deadline_is_published_before_the_stream_parks() {
+        assert_requesting_after_action_grace(3_100).await;
+    }
+
+    async fn assert_requesting_after_action_grace(request_age_ms: i64) {
         use crate::{
             connections::ConnectionManager,
             db::{EnsureSession, GatewayDb},
@@ -991,7 +1019,7 @@ mod tests {
         })).unwrap());
         projection
             .activity
-            .begin_request("s".into(), now_ms() - 2_900);
+            .begin_request("s".into(), now_ms() - request_age_ms);
         projection.activity_status = Some(zork_client_core::api::AgentStatus::Thinking);
         let mut cursor = None;
         let mut runtime = zork_agent::AgentRuntime::start(zork_agent::AgentOptions {

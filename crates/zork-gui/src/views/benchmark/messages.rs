@@ -37,11 +37,26 @@ pub const KINDS: &[&str] = &[
     "incomplete_markdown",
     "legacy_metadata",
     "empty",
+    "interaction_create",
+    "interaction_input",
+    "interaction_completed",
+    "interaction_long",
 ];
 
+pub fn kinds() -> &'static [&'static str] {
+    // Retain an identical input for before/after measurements of the original
+    // renderer; the default pressure gate always includes all current kinds.
+    if std::env::var_os("ZORK_BENCH_PRE_INTERACTION_FIXTURE").is_some() {
+        &KINDS[..KINDS.len() - 4]
+    } else {
+        KINDS
+    }
+}
+
 pub fn line(index: usize) -> TranscriptLine {
-    let kind = index % KINDS.len();
-    let content = match KINDS[kind] {
+    let kinds = kinds();
+    let kind = index % kinds.len();
+    let content = match kinds[kind] {
         "plain" => format!("消息 {index}：读取项目配置并记录结果。"),
         "unicode" => {
             format!("消息 {index}：中文 English العربية 日本語 한국어 👨‍👩‍👧‍👦 🐈 e\u{301} café。")
@@ -150,14 +165,15 @@ pub fn line(index: usize) -> TranscriptLine {
         }
         "legacy_metadata" => format!("历史消息 {index}：没有发送者元数据。"),
         "empty" => String::new(),
+        "interaction_create" | "interaction_input" | "interaction_completed" | "interaction_long" => format!("交互请求 {index}：请确认下面的信息。"),
         _ => unreachable!(),
     };
-    let role = if (index / KINDS.len()) % 3 == 0 {
+    let role = if (index / kinds.len()) % 3 == 0 {
         Role::User
     } else {
         Role::Assistant
     };
-    let metadata = if KINDS[kind] == "legacy_metadata" {
+    let mut metadata = if kinds[kind] == "legacy_metadata" {
         MessageMetadata::default()
     } else {
         MessageMetadata {
@@ -170,6 +186,11 @@ pub fn line(index: usize) -> TranscriptLine {
             ..Default::default()
         }
     };
+    if let Some(state) = kinds[kind].strip_prefix("interaction_") {
+        let mut card = zork_client_core::interactions::preview::Preview::new(state).card();
+        card.message_id = format!("stress-{index}");
+        metadata.interaction_view = Some(Box::new(card));
+    }
     TranscriptLine::Message {
         role,
         content,
@@ -178,14 +199,15 @@ pub fn line(index: usize) -> TranscriptLine {
 }
 
 pub fn coverage(count: usize) -> serde_json::Value {
-    let mut kinds = serde_json::Map::new();
-    for (index, kind) in KINDS.iter().enumerate() {
-        kinds.insert(
+    let mut counts = serde_json::Map::new();
+    let kinds = kinds();
+    for (index, kind) in kinds.iter().enumerate() {
+        counts.insert(
             (*kind).into(),
-            (count / KINDS.len() + usize::from(index < count % KINDS.len())).into(),
+            (count / kinds.len() + usize::from(index < count % kinds.len())).into(),
         );
     }
-    serde_json::json!({"message_kinds":kinds,"roles":["user","assistant"],"agent_avatars":12,
+    serde_json::json!({"message_kinds":counts,"roles":["user","assistant"],"agent_avatars":12,
         "image_markdown":"link fallback; raster image preview is tested separately",
         "separate_surfaces":["file artifact card","PNG image preview","text artifact preview","participant activity","delivery state"]})
 }

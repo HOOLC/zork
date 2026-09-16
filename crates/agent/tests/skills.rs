@@ -103,7 +103,7 @@ fn explicit_symlink_roots_work_without_following_child_symlinks_or_cycles() {
 }
 
 #[tokio::test]
-async fn embedded_runtime_loads_default_directory_without_a_config_file() {
+async fn embedded_runtime_provisions_skill_files_without_registering_skill_wrappers() {
     use std::sync::Arc;
     use zork_agent::session::tools::{ToolContext, ToolRegistry, ToolResolution, ToolVersion};
     use zork_agent::{AgentOptions, AgentRuntime};
@@ -123,31 +123,46 @@ async fn embedded_runtime_loads_default_directory_without_a_config_file() {
         ..Default::default()
     })
     .unwrap();
-    let ToolResolution::Ready(tool) =
-        registry.resolve("skill.list", Some(&ToolVersion::new("2").unwrap()))
-    else {
-        panic!("missing skill.list");
-    };
+    for name in [
+        "skill.list",
+        "skill.sources",
+        "skill.validate",
+        "skill.write",
+        "skill.archive",
+        "skill.bundle",
+    ] {
+        assert!(registry.current_contract(name).is_none());
+        assert!(registry.compatibility(name).is_some());
+    }
     let context = ToolContext {
         control: None,
         session_id: "ordinary-session".into(),
         invocation_id: "invocation".into(),
         workspace: temp.path().to_string_lossy().into_owned(),
     };
-    let result = tool.execute(&context, &serde_json::json!({})).await;
-    assert_eq!(result.data["skills"][0]["name"], "default-skill");
-    assert_eq!(result.data["diagnostics"], serde_json::json!([]));
+    let sources = zork_config::SkillsConfig::default()
+        .sources(temp.path(), &[])
+        .unwrap();
+    let catalog = discover(&sources);
+    assert!(catalog
+        .skills
+        .iter()
+        .any(|skill| skill.name == "default-skill"));
+    assert!(catalog
+        .skills
+        .iter()
+        .any(|skill| skill.name == "file-sharing"));
+    assert!(catalog.diagnostics.is_empty());
     assert!(matches!(
         registry.resolve("skill.read", None),
         ToolResolution::Unavailable
     ));
-    let guide = result.data["skills"]
-        .as_array()
-        .unwrap()
+    let guide = catalog
+        .skills
         .iter()
-        .find(|skill| skill["name"] == "skill-management")
+        .find(|skill| skill.name == "skill-management")
         .unwrap();
-    let path = guide["path"].as_str().unwrap();
+    let path = guide.path.to_str().unwrap();
     assert!(Path::new(path).is_file());
     let ToolResolution::Ready(reader) =
         registry.resolve("file.read", Some(&ToolVersion::new("builtin-2").unwrap()))

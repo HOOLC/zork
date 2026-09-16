@@ -93,7 +93,7 @@ async fn finish(world: &mut TestWorld, session: &str, next: PendingModelRequest)
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-01, COMPACTION-01, PROVIDER-02]
+// Contract: docs/design/agent-runtime.md [CONTEXT-01, COMPACTION-01, PROVIDER-02]
 async fn default_compaction_uses_an_independent_summary_and_retains_recent_context() {
     assert_eq!(
         ServiceOptions::default().runner.context.strategy,
@@ -208,7 +208,7 @@ async fn default_compaction_uses_an_independent_summary_and_retains_recent_conte
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-01, HANDOFF-01, COMPACTION-01]
+// Contract: docs/design/agent-runtime.md [CONTEXT-01, HANDOFF-01, COMPACTION-01]
 async fn strategy_changes_apply_to_the_next_operation_in_both_directions() {
     let mut world = TestWorld::with_options(options(ContextStrategy::Compaction));
     let (session, summary) = begin(&mut world).await;
@@ -286,7 +286,7 @@ async fn strategy_changes_apply_to_the_next_operation_in_both_directions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-02, HANDOFF-02, HANDOFF-03]
+// Contract: docs/design/agent-runtime.md [CONTEXT-02, HANDOFF-02, HANDOFF-03]
 async fn both_modes_fall_back_without_losing_mail_or_late_tool_results() {
     for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
         let mut world = TestWorld::with_options(options(strategy));
@@ -387,7 +387,39 @@ async fn both_modes_fall_back_without_losing_mail_or_late_tool_results() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-02, RETRY-01, PROVIDER-02]
+// Contract: docs/design/agent-runtime.md [CONTEXT-02, RETRY-01, PROVIDER-02]
+async fn http_400_during_context_maintenance_preserves_inputs_without_restarting_the_turn() {
+    for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
+        for code in ["max_output_tokens", "context_length_exceeded"] {
+            let mut world = TestWorld::with_options(options(strategy));
+            let (session, attempt) = begin(&mut world).await;
+            let mut failure = ProviderFailure::new("provider.http", true, "bad request");
+            failure.status_code = Some(400);
+            failure.provider_code = Some(code.into());
+            attempt.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
+            let stopped = world.wait_for_state(&session, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+            }).await;
+            assert_eq!(stopped.generation.number, 1);
+            assert!(stopped.unconsumed_inputs.iter().any(|input| {
+                input.content == "Continue the remaining work." && !input.wake
+            }));
+            assert!(!stopped.should_start_turn());
+            world.restart().await.unwrap();
+            world.clock.advance(Duration::from_secs(60));
+            let restored = world.state(&session).await.unwrap();
+            assert_eq!(restored.last_turn_outcome, Some(TurnOutcome::Failed));
+            assert!(restored.active_turn.is_none());
+            let events = world.events(&session);
+            assert_eq!(events.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 2);
+            assert!(!events.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+            world.shutdown().await;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [CONTEXT-02, RETRY-01, PROVIDER-02]
 async fn output_limit_exhaustion_is_document_failure_but_network_failure_is_not() {
     for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
         let mut world = TestWorld::with_options(options(strategy));
@@ -432,7 +464,7 @@ async fn output_limit_exhaustion_is_document_failure_but_network_failure_is_not(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-02, COMPACTION-01]
+// Contract: docs/design/agent-runtime.md [CONTEXT-02, COMPACTION-01]
 async fn an_overflow_first_tries_compaction_then_can_take_the_shared_empty_exit() {
     let mut world = TestWorld::with_options(options(ContextStrategy::Compaction));
     let session = world
@@ -469,7 +501,7 @@ async fn an_overflow_first_tries_compaction_then_can_take_the_shared_empty_exit(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-01, SNAPSHOT-01, RECOVERY-01]
+// Contract: docs/design/agent-runtime.md [CONTEXT-01, SNAPSHOT-01, RECOVERY-01]
 async fn compaction_plan_survives_restart_and_does_not_change_with_configuration() {
     let mut world = TestWorld::with_options(options(ContextStrategy::Compaction));
     let (session, interrupted) = begin(&mut world).await;
@@ -517,7 +549,7 @@ async fn compaction_plan_survives_restart_and_does_not_change_with_configuration
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [COMPACTION-01, HANDOFF-02, PROJECTION-01]
+// Contract: docs/design/agent-runtime.md [COMPACTION-01, HANDOFF-02, PROJECTION-01]
 async fn a_result_in_the_retained_original_tail_is_not_delivered_twice() {
     let mut config = options(ContextStrategy::Compaction);
     config.runner.context.keep_recent_tokens = 1_000;
@@ -579,7 +611,7 @@ async fn a_result_in_the_retained_original_tail_is_not_delivered_twice() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-01, CANCEL-01]
+// Contract: docs/design/agent-runtime.md [CONTEXT-01, CANCEL-01]
 async fn cancel_interrupts_either_context_step_without_committing_a_generation() {
     for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
         let mut world = TestWorld::with_options(options(strategy));

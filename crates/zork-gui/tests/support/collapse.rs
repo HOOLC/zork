@@ -137,7 +137,6 @@ pub fn run(output: &std::path::Path) -> anyhow::Result<()> {
                 cx.run_until_parked();
                 cx.update_window(window.into(), |_, w, cx| {
                     w.simulate_next_frame(cx);
-                    w.draw(cx).clear(cx)
                 })?;
                 samples.push(start.elapsed().as_secs_f64() * 1000.);
             }
@@ -312,7 +311,6 @@ fn production_sidebar(output: &std::path::Path) -> anyhow::Result<()> {
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
         }
         Ok(())

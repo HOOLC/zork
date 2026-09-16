@@ -2,7 +2,7 @@ use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-03]
+// Contract: docs/design/agent-runtime.md [EVENT-03]
 fn canonical_event_ids_are_stable_round_trippable_and_ordered() {
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
     let expected = [

@@ -1,4 +1,11 @@
 import init, * as wasm from "./pkg/zork_gui_web.js";
+let clientTrace;
+if (new URLSearchParams(location.search).get("trace") === "client") {
+  if (new URLSearchParams(location.search).get("gpu") === "1") await import("./webgpu_timing.js");
+  if (new URLSearchParams(location.search).get("msaa") === "compare") await import("./path_store_probe.js");
+  const { installClientTrace } = await import("./client_trace.js");
+  clientTrace = installClientTrace();
+}
 const initial = new URLSearchParams(location.search).get("story") || "button-primary";
 const loading = document.getElementById("loading");
 let current = initial;
@@ -67,7 +74,7 @@ window.zorkModalBackdrop = (payload) => {
     layer.dataset.zorkModalBlur = data.id;
     modalBackdrops.set(data.id, layer);
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${innerWidth}" height="${innerHeight}"><defs><mask id="hole"><rect width="100%" height="100%" fill="white"/><rect x="${data.x}" y="${data.y}" width="${data.width}" height="${data.height}" rx="${data.radius}" fill="black"/></mask></defs><rect width="100%" height="100%" fill="white" mask="url(#hole)"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${innerWidth}" height="${innerHeight}"><defs><mask id="hole"><rect width="100%" height="100%" fill="white"/><path d="${data.path}" transform="translate(${data.x} ${data.y})" fill="black"/></mask></defs><rect width="100%" height="100%" fill="white" mask="url(#hole)"/></svg>`;
   const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   layer.style.maskImage = mask;
   layer.style.webkitMaskImage = mask;
@@ -79,6 +86,10 @@ try {
   if (!response.ok) throw Error(`WASM download ${response.status}`);
   const payload = await response.arrayBuffer();
   const signature = new Uint8Array(payload, 0, Math.min(2, payload.byteLength));
+  if (clientTrace && crypto.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", payload);
+    clientTrace.artifact({ sha256: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""), bytes: payload.byteLength, encoding: signature[0] === 0x1f && signature[1] === 0x8b ? "gzip" : "wasm" });
+  }
   // Vite serves .gz with Content-Encoding, so fetch may already have decoded it.
   const bytes = signature[0] === 0x1f && signature[1] === 0x8b ? await new Response(new Blob([payload]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer() : payload;
   await init({ module_or_path: bytes });
@@ -89,6 +100,7 @@ try {
   motionPreference.addEventListener("change", (event) => wasm.set_reduce_motion(event.matches));
 
   let initialSelectionApplied = false;
+  let probeStarted = false;
   const wait = () => {
     if (failed) return;
     if (ready()) {
@@ -103,6 +115,10 @@ try {
       loading.hidden = true;
       document.documentElement.dataset.ready = "true";
       parent.postMessage({ type: "zork-story-ready", id: current }, location.origin);
+      if (clientTrace && !probeStarted && new URLSearchParams(location.search).get("autoprobe") === "1") {
+        probeStarted = true;
+        import("./client_probe.js").then(({ runClientProbe }) => runClientProbe(wasm, clientTrace)).catch((error) => clientTrace.fail(error));
+      }
     } else requestAnimationFrame(wait);
   };
   requestAnimationFrame(wait);

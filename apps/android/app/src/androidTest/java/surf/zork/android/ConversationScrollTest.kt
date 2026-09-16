@@ -21,10 +21,67 @@ class ConversationScrollTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private fun launch(empty: Boolean = false) = ActivityScenario.launch<ConversationScrollActivity>(Intent(instrumentation.targetContext,ConversationScrollActivity::class.java).putExtra("empty",empty))
     private fun settled() { instrumentation.waitForIdleSync(); Thread.sleep(150); instrumentation.waitForIdleSync() }
+    @Test fun emptySourcePageCanLoadEarlierMessages() {
+        val intent = Intent(instrumentation.targetContext, ConversationScrollActivity::class.java)
+            .putExtra("empty", true).putExtra("older", true)
+        ActivityScenario.launch<ConversationScrollActivity>(intent).use { scenario ->
+            val automation = instrumentation.uiAutomation
+            fun find(node: android.view.accessibility.AccessibilityNodeInfo?): android.view.accessibility.AccessibilityNodeInfo? {
+                if (node == null) return null
+                if (node.isVisibleToUser && node.text?.toString() == "加载更早消息") return node
+                for (i in 0 until node.childCount) find(node.getChild(i))?.let { return it }
+                return null
+            }
+            var button: android.view.accessibility.AccessibilityNodeInfo? = null
+            val deadline = android.os.SystemClock.uptimeMillis() + 5000
+            while (button == null && android.os.SystemClock.uptimeMillis() < deadline) {
+                automation.clearCache()
+                button = find(automation.rootInActiveWindow)
+                if (button == null) Thread.sleep(50)
+            }
+            assertNotNull("An empty display page must still offer source history", button)
+            while (button != null && !button.isClickable) button = button.parent
+            assertTrue(button?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true)
+            settled()
+            scenario.onActivity {
+                assertEquals(1, it.olderLoads)
+                assertTrue("Earlier messages were not drawn", it.drawnPositions.any { frame -> frame.messages == 1 })
+            }
+        }
+    }
     private fun move(scenario: ActivityScenario<ConversationScrollActivity>, index: Int, animate: Boolean = false) {
         val done=CountDownLatch(1)
         scenario.onActivity { a -> a.lifecycleScope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) { try { if(animate)a.scroll.animateScrollToItem(index) else a.scroll.scrollToItem(index) } finally {done.countDown()} } }
         assertTrue(done.await(10,TimeUnit.SECONDS)); settled()
+    }
+    private fun swipeMessages(scenario: ActivityScenario<ConversationScrollActivity>, earlier: Boolean) {
+        var x = 0f; var y = 0f
+        scenario.onActivity {
+            assertFalse("Message viewport was not measured", it.messageBounds.isEmpty)
+            x = it.messageBounds.exactCenterX()
+            y = it.messageBounds.top + it.messageBounds.height() * .4f
+        }
+        val start = y + if (earlier) -150f else 150f
+        val end = y + if (earlier) 150f else -150f
+        val down = android.os.SystemClock.uptimeMillis()
+        fun touch(action: Int, position: Float) {
+            val event = android.view.MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), action, x, position, 0)
+            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+        }
+        touch(android.view.MotionEvent.ACTION_DOWN, start)
+        for (step in 1..20) {
+            Thread.sleep(12)
+            touch(android.view.MotionEvent.ACTION_MOVE, start + (end - start) * step / 20f)
+        }
+        touch(android.view.MotionEvent.ACTION_UP, end)
+        val deadline = android.os.SystemClock.uptimeMillis() + 5000
+        var scrolling = true
+        while (scrolling && android.os.SystemClock.uptimeMillis() < deadline) {
+            settled()
+            scenario.onActivity { scrolling = it.scroll.isScrollInProgress }
+        }
+        assertFalse("User scroll did not settle", scrolling)
     }
     @Test fun initialEntryAndNewMessagesFollowOnlyAtBottom() {
         launch(empty=true).use { scenario ->
@@ -34,11 +91,18 @@ class ConversationScrollTest {
             scenario.onActivity { assertFalse("Append at bottom must stay at bottom",it.scroll.canScrollForward) }
             scenario.onActivity { it.growTail() }; settled()
             scenario.onActivity { assertFalse("A tall final message must also reach its end",it.scroll.canScrollForward) }
-            move(scenario,20,true)
+            // Follow mode responds to user input, not programmatic list jumps.
+            swipeMessages(scenario, earlier=true)
             var index=0;var offset=0
             scenario.onActivity { index=it.scroll.firstVisibleItemIndex;offset=it.scroll.firstVisibleItemScrollOffset;assertTrue(it.scroll.canScrollForward);it.append() };settled()
             scenario.onActivity { assertEquals(index,it.scroll.firstVisibleItemIndex);assertEquals(offset,it.scroll.firstVisibleItemScrollOffset) }
-            move(scenario,83,true)
+            var awayFromTail = true
+            for (attempt in 0 until 8) {
+                swipeMessages(scenario, earlier=false)
+                scenario.onActivity { awayFromTail = it.scroll.canScrollForward }
+                if (!awayFromTail) break
+            }
+            assertFalse("User scroll did not return to the tail", awayFromTail)
             scenario.onActivity { assertFalse(it.scroll.canScrollForward);it.append() };settled()
             scenario.onActivity { assertFalse("Returning to bottom enables following again",it.scroll.canScrollForward) }
         }

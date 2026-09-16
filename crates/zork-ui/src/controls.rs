@@ -5,7 +5,7 @@ use crate::{
     components::text_input::ComposerInput,
     design::{TextRole, CUE_UI, FORM, INTERACTION},
 };
-use gpui::{div, prelude::*, px, rgb, svg, AnimationExt, Div, Entity, FontWeight, Stateful};
+use gpui::{div, prelude::*, px, rgb, svg, Div, Entity, FontWeight, Stateful};
 
 pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
     svg()
@@ -23,15 +23,13 @@ pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
-pub const BUTTON_RADIUS: f32 = 999.;
-pub const FIELD_RADIUS: f32 = 12.;
-pub const CARD_RADIUS: f32 = 20.;
-pub const ICON_BUTTON_RADIUS: f32 = 12.;
+pub use zork_liquid::tokens::{BUTTON_RADIUS, FIELD_RADIUS, CARD_RADIUS, COMPACT_CARD_RADIUS, ICON_BUTTON_RADIUS};
 pub const BUTTON_PADDING_X: f32 = 16.;
-pub const MODAL_RADIUS: f32 = 32.;
-pub const MENU_RADIUS: f32 = 20.;
+pub const MODAL_RADIUS: f32 = CARD_RADIUS;
+pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
 pub const MENU_OUTSET: f32 = 4.;
 pub const MENU_GAP: f32 = 6.;
+pub const MENU_PADDING: f32 = 8.;
 pub const FIELD_HOVER_BORDER: u32 = FORM.hover_border;
 pub const FIELD_FOCUS_BORDER: u32 = FORM.focus_border;
 
@@ -92,16 +90,10 @@ pub fn action_link(
 pub fn page_action(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
-) -> Stateful<Div> {
-    button(id, "", false, true)
-        .h(px(BUTTON_HEIGHT))
-        .text_size(px(11.))
-        .rounded(px(BUTTON_RADIUS))
-        .pl(px(12.))
-        .pr(px(BUTTON_PADDING_X))
-        .gap_1()
-        .child(icon("icons/plus.svg", 14.))
-        .child(text.into())
+) -> Action {
+    adaptive_action(id, text, ActionStyle {
+        icon: Some("icons/plus.svg"), icon_only: Some(false), ..Default::default()
+    }, CUE_UI.palette.canvas).h(px(BUTTON_HEIGHT)).text_size(px(11.))
 }
 
 pub fn heading(
@@ -146,108 +138,22 @@ pub fn section() -> Div {
         .flex_col()
         .gap_4()
         .py_5()
-        .border_t_1()
+        .border_t(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(CUE_UI.palette.border))
 }
-/// Composite disabled paint once against the canvas. Applying GPUI opacity to
-/// each overlapping primitive separately darkens the border and label twice.
-fn disabled_color(color: u32) -> u32 {
-    (0..3).fold(0, |value, index| {
-        let shift = (2 - index) * 8;
-        let foreground = ((color >> shift) & 255) as f32;
-        let background = ((CUE_UI.palette.canvas >> shift) & 255) as f32;
-        value | (((foreground * 0.4 + background * 0.6).round() as u32) << shift)
-    })
-}
-fn button_base(
-    id: impl Into<gpui::ElementId>,
-    text: impl Into<gpui::SharedString>,
-    primary: bool,
-    enabled: bool,
-) -> Stateful<Div> {
-    button_base_with_hover(id, text, primary, enabled, None)
-}
-fn button_base_with_hover(
-    id: impl Into<gpui::ElementId>,
-    text: impl Into<gpui::SharedString>,
-    primary: bool,
-    enabled: bool,
-    hover: Option<(u32, f32)>,
-) -> Stateful<Div> {
-    let text = text.into();
-    let id = id.into();
-    let hover_id = format!("button-hover-{id:?}");
-    let group: gpui::SharedString = format!("action-{id:?}").into();
-    let pressed = if primary {
-        INTERACTION.primary_pressed
-    } else {
-        INTERACTION.neutral_pressed
-    };
-    let p = CUE_UI.palette;
-    let paint = |color| {
-        if enabled {
-            color
-        } else {
-            disabled_color(color)
-        }
-    };
-    div()
-        .id(id)
-        .group(group.clone())
-        .relative()
-        .h(px(BUTTON_HEIGHT))
-        .flex_shrink_0()
-        .px(px(BUTTON_PADDING_X))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(7.))
-        .rounded(px(BUTTON_RADIUS))
-        .border_1()
-        .border_color(rgb(paint(if primary { p.text } else { p.border_strong })))
-        .bg(rgb(paint(if primary { p.text } else { p.elevated })))
-        .text_color(rgb(paint(if primary { p.elevated } else { p.text })))
-        .text_size(px(12.))
-        .font_weight(FontWeight::MEDIUM)
-        .when(enabled, |v| {
-            v.focusable()
-                .tab_stop(true)
-                .cursor_pointer()
-                .focus_visible(move |v| v.border_color(rgb(INTERACTION.focus_border)))
-                .active(move |v| v.bg(rgb(pressed)))
-        })
-        .when(!enabled, |v| v.cursor_default())
-        .when_some(hover.filter(|_| enabled), |v, (color, radius)| {
-            v.child(crate::components::motion::HoverFill {
-                id: hover_id.into(),
-                color,
-                radius,
-                pressed: Some((group, pressed)),
-            })
-        })
-        .when(!text.is_empty(), |v| v.child(text))
-}
+/// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
+pub use crate::components::liquid::controls::{Action, ActionStyle};
+use crate::components::liquid::controls::adaptive_action;
+
 pub fn button(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
     primary: bool,
     enabled: bool,
-) -> Stateful<Div> {
-    button_base_with_hover(
-        id,
-        text,
-        primary,
-        enabled,
-        Some((
-            if primary {
-                BUTTON_FOCUS_BACKGROUND
-            } else {
-                INTERACTION.neutral_hover
-            },
-            BUTTON_RADIUS,
-        )),
-    )
+) -> Action {
+    adaptive_action(id, text, ActionStyle { primary, icon_only: Some(false), disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
 }
+
 /// A pending request stays scoped to the action that started it.
 pub fn busy_button(
     id: impl Into<gpui::ElementId>,
@@ -255,24 +161,8 @@ pub fn busy_button(
     primary: bool,
     enabled: bool,
     busy: bool,
-) -> Stateful<Div> {
-    let id = id.into();
-    let indicator_id = format!("{id:?}-loading");
-    button(id, "", primary, enabled && !busy)
-        .child(div().when(busy, |v| v.opacity(0.)).child(text.into()))
-        .when(busy, |v| {
-            v.child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        crate::components::loading::indicator(indicator_id, 14.).without_delay(),
-                    ),
-            )
-        })
+) -> Action {
+    adaptive_action(id, text, ActionStyle { primary, icon_only: Some(false), disabled: !enabled && !busy, busy, ..Default::default() }, CUE_UI.palette.canvas)
 }
 /// Standard and compact actions share their outline with the feedback layer.
 #[derive(Clone, Copy)]
@@ -298,126 +188,44 @@ impl IconButtonSize {
     }
 }
 
-pub fn icon_button(id: impl Into<gpui::ElementId>, enabled: bool) -> Stateful<Div> {
+pub fn icon_button(id: impl Into<gpui::ElementId>, enabled: bool) -> Action {
     icon_button_sized(id, enabled, IconButtonSize::Standard)
 }
 pub fn icon_button_sized(
     id: impl Into<gpui::ElementId>,
     enabled: bool,
     size: IconButtonSize,
-) -> Stateful<Div> {
-    button_base_with_hover(
-        id,
-        "",
-        false,
-        enabled,
-        Some((INTERACTION.neutral_hover, size.radius())),
-    )
-    .size(px(size.extent()))
-    .gap_0()
-    .px_0()
-    .border_1()
-    .border_color(gpui::rgba(0))
-    .rounded(px(size.radius()))
-    .bg(gpui::rgba(0))
-    .when(!enabled, |v| v.opacity(0.4))
+) -> Action {
+    adaptive_action(id, "", ActionStyle { icon_only: Some(true), disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
+        .size(px(size.extent()))
+        .gap_0()
+        .px_0()
 }
-/// Quiet text actions use the same feedback as adjacent icon actions.
+/// Compact text actions use the same adaptive action material.
 pub fn quiet_button(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
     enabled: bool,
     size: IconButtonSize,
-) -> Stateful<Div> {
-    icon_button_sized(id, enabled, size)
+) -> Action {
+    adaptive_action(id, text, ActionStyle { quiet: true, disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
+        .h(px(size.extent()))
         .w_auto()
         .px_2()
         .gap_1()
-        .child(text.into())
-}
-/// A single-selection control with one shared capsule and a selected segment.
-pub fn choice_group(id: impl Into<gpui::ElementId>, selected: usize, count: usize) -> Div {
-    let count = count.max(1) as f32;
-    div()
-        .relative()
-        .flex()
-        .gap(px(2.))
-        .p(px(4.))
-        .rounded_full()
-        .bg(rgb(CUE_UI.palette.prompt))
-        .child(
-            div().absolute().inset(px(4.)).child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .w(gpui::relative(1. / count))
-                    .pr(px(2. * (count - 1.) / count))
-                    .child(
-                        div()
-                            .size_full()
-                            .rounded_full()
-                            .bg(rgb(CUE_UI.palette.canvas))
-                            .shadow(vec![gpui::BoxShadow::new(
-                                px(0.),
-                                px(1.),
-                                gpui::rgba(0x24272B14).into(),
-                            )
-                            .blur_radius(px(3.))]),
-                    )
-                    .with_spring(
-                        id,
-                        crate::components::motion::spring(selected as f32),
-                        move |v, t| v.left(gpui::relative(t / count)).ml(px(t * 2. / count)),
-                    ),
-            ),
-        )
-}
-pub fn segment(
-    id: impl Into<gpui::ElementId>,
-    text: impl Into<gpui::SharedString>,
-    selected: bool,
-    enabled: bool,
-) -> Stateful<Div> {
-    choice(id, text, selected, enabled)
-        .border_1()
-        .border_color(gpui::rgba(0))
-        .justify_center()
-        .bg(gpui::rgba(0))
 }
 pub fn choice(
     id: impl Into<gpui::ElementId>,
     text: impl Into<gpui::SharedString>,
     selected: bool,
     enabled: bool,
-) -> Stateful<Div> {
-    let text = text.into();
-    let p = CUE_UI.palette;
-    div()
-        .id(id)
-        .when(enabled, |v| {
-            v.focusable()
-                .tab_stop(true)
-                .cursor_pointer()
-                .focus_visible(|v| v.border_color(rgb(INTERACTION.focus_border)))
-                .active(|v| v.bg(rgb(INTERACTION.neutral_pressed)))
-        })
-        .px(px(BUTTON_PADDING_X))
-        .h(px(CONTROL_HEIGHT))
-        .flex()
-        .items_center()
-        .gap_2()
-        .rounded(px(BUTTON_RADIUS))
-        .border_1()
-        .border_color(rgb(p.border_strong))
-        .bg(rgb(if selected { p.selected } else { p.elevated }))
-        .text_color(rgb(if selected { p.text } else { p.muted }))
-        .text_size(px(12.))
-        .when(!enabled, |v| v.opacity(0.45).cursor_default())
-        .when(enabled && !selected, |v| {
-            v.hover(|v| v.bg(rgb(INTERACTION.neutral_hover)))
-        })
-        .child(text.clone())
+) -> Action {
+    use crate::components::liquid::controls::ButtonVariant;
+    adaptive_action(id, text, ActionStyle {
+        selected, disabled: !enabled, icon_only: Some(false),
+        variant: Some(if selected { ButtonVariant::Soft } else { ButtonVariant::Outline }),
+        ..Default::default()
+    }, CUE_UI.palette.canvas).aria_toggled(if selected { gpui::Toggled::True } else { gpui::Toggled::False })
 }
 pub fn field(
     id: impl Into<gpui::ElementId>,
@@ -433,49 +241,9 @@ pub fn input_control(
     id: impl Into<gpui::ElementId>,
     input: &Entity<ComposerInput>,
     invalid: bool,
-    cx: &gpui::App,
-) -> Stateful<Div> {
-    let handle = input.read(cx).focus_handle();
-    let focus = input.clone();
-    let p = CUE_UI.palette;
-    div()
-        .id(id)
-        .h(px(FIELD_HEIGHT))
-        .track_focus(&handle)
-        .focus(move |v| {
-            v.border_color(rgb(if invalid {
-                FORM.error_focus_border
-            } else {
-                FIELD_FOCUS_BORDER
-            }))
-            .bg(rgb(if invalid {
-                FORM.error_surface
-            } else {
-                p.elevated
-            }))
-        })
-        .px_3()
-        .py(px(5.))
-        .text_size(px(13.))
-        .line_height(px(20.))
-        .w_full()
-        .border_1()
-        .border_color(rgb(if invalid {
-            FORM.error_border
-        } else {
-            p.border_strong
-        }))
-        .rounded(px(FIELD_RADIUS))
-        .bg(rgb(if invalid {
-            FORM.error_surface
-        } else {
-            p.elevated
-        }))
-        .when(!invalid, |v| {
-            v.hover(|v| v.border_color(rgb(FIELD_HOVER_BORDER)))
-        })
-        .child(input.clone())
-        .on_click(move |_, w, cx| w.focus(&focus.read(cx).focus_handle(), cx))
+    _cx: &gpui::App,
+) -> crate::components::liquid::controls::Field {
+    crate::components::liquid::controls::adaptive_input(id, input, invalid, CUE_UI.palette.canvas)
 }
 
 pub fn field_with_error(
@@ -584,19 +352,7 @@ pub fn agent_portrait(avatar: Option<&str>, size: f32) -> Div {
 }
 
 pub fn agent_avatar(avatar: Option<&str>, size: f32) -> Div {
-    let (_, _, path) = AGENT_AVATARS
-        .iter()
-        .find(|(key, _, _)| Some(*key) == avatar)
-        .unwrap_or(&AGENT_AVATARS[0]);
-    div()
-        .size(px(size))
-        .flex_shrink_0()
-        .rounded(px((size * 0.375).min(12.)))
-        .border_1()
-        .border_color(rgb(CUE_UI.palette.border))
-        .overflow_hidden()
-        .bg(rgb(CUE_UI.palette.canvas))
-        .child(gpui::img(*path).size(px((size - 2.).max(1.))))
+    agent_portrait(avatar, size)
 }
 
 /// A single-selection field with a window-clamped overlay; choices never reflow the form.
@@ -638,248 +394,31 @@ pub fn dropdown_with_icons<V: 'static>(
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
+    use crate::components::liquid::{overlay::{Choice, Placement, Popover, Selection, Trigger}, Material};
+    use std::{cell::RefCell, rc::Rc};
     let id = id.into();
-    let p = CUE_UI.palette;
-    let count = options.len();
-    let selected_index = options.iter().position(|option| option.2).unwrap_or(0);
-    let trigger_state =
-        window.use_keyed_state(format!("{id}-focus"), cx, |_, cx| cx.focus_handle());
-    let trigger_focus = trigger_state.read(cx).clone();
-    let options_state = window.use_keyed_state(format!("{id}-option-focus"), cx, |_, _| {
-        Vec::<gpui::FocusHandle>::new()
-    });
-    options_state.update(cx, |handles, cx| {
-        while handles.len() < count {
-            handles.push(cx.focus_handle());
-        }
-    });
-    let option_focus = options_state.read(cx).clone();
-
-    let set_open = std::rc::Rc::new(set_open);
-    let toggle = set_open.clone();
-    let choose = std::rc::Rc::new(choose);
-    let click_trigger = trigger_focus.clone();
-    let keyboard_open = set_open.clone();
-    let key_handles = option_focus.clone();
-    let menu_close = set_open.clone();
-    let menu_trigger = trigger_focus.clone();
-    let menu_handles = option_focus.clone();
-
-    let menu_max_width = f32::from(window.viewport_size().width) - 24.;
+    let state = window.use_keyed_state(format!("{id}-popover"), cx, |_, cx| {
+        Rc::new(RefCell::new(Popover::new(cx)))
+    }).read(cx).clone();
     let measured = window.use_keyed_state(format!("{id}-width"), cx, |_, _| 0f32);
-    let menu_width = *measured.read(cx);
-    div()
-        .relative()
-        .w_full()
-        .h(px(DROPDOWN_HEIGHT))
-        .child(
-            gpui::canvas(
-                move |bounds, _, cx| {
-                    measured.update(cx, |width, cx| {
-                        let next = f32::from(bounds.size.width);
-                        if (*width - next).abs() > 0.1 {
-                            *width = next;
-                            cx.notify();
-                        }
-                    });
-                },
-                |_, _, _, _| {},
-            )
-            .absolute()
-            .size_full(),
-        )
-        .child(
-            button_base(id.clone(), "", false, enabled)
-                .track_focus(&trigger_focus)
-                .on_key_down(
-                    cx.listener(move |v, event: &gpui::KeyDownEvent, window, cx| {
-                        if !enabled {
-                            return;
-                        }
-                        if matches!(event.keystroke.key.as_str(), "down" | "up") && count > 0 {
-                            keyboard_open(v, true, cx);
-                            let index = if event.keystroke.key == "up" {
-                                count - 1
-                            } else {
-                                selected_index.min(count - 1)
-                            };
-                            let focus = key_handles[index].clone();
-                            window.on_next_frame(move |window, cx| window.focus(&focus, cx));
-                            cx.stop_propagation();
-                        } else if event.keystroke.key == "escape" && open {
-                            keyboard_open(v, false, cx);
-                            cx.stop_propagation();
-                        }
-                    }),
-                )
-                .w_full()
-                .h(px(DROPDOWN_HEIGHT))
-                .justify_between()
-                .px(px(12.))
-                .gap(px(8.))
-                .text_size(px(13.))
-                .rounded(px(FIELD_RADIUS))
-                .border_color(rgb(if open {
-                    FIELD_FOCUS_BORDER
-                } else {
-                    p.border_strong
-                }))
-                .when(enabled, |v| {
-                    v.hover(|v| v.border_color(rgb(FIELD_HOVER_BORDER)))
-                        .active(|v| v.bg(rgb(p.elevated)).border_color(rgb(FIELD_FOCUS_BORDER)))
-                        .focus_visible(|v| v.border_color(rgb(FIELD_FOCUS_BORDER)))
-                })
-                .when_some(leading, |v, path| {
-                    v.child(
-                        gpui::img(path)
-                            .size(px(18.))
-                            .flex_shrink_0()
-                            .when(!enabled, |v| v.opacity(0.4)),
-                    )
-                })
-                .child(div().flex_1().min_w_0().truncate().child(label.clone()))
-                .child(icon("icons/chevron-down.svg", 12.).with_spring(
-                    "select-chevron",
-                    crate::components::motion::spring(if open { 1. } else { 0. }),
-                    |v, t| {
-                        v.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                            std::f32::consts::PI * t,
-                        )))
-                    },
-                ))
-                .on_click(cx.listener(move |v, _, window, cx| {
-                    if enabled {
-                        toggle(v, !open, cx);
-                        window.focus(&click_trigger, cx);
-                    }
-                }))
-                .automation_enabled(enabled, AutomationRole::Button, label),
-        )
-        .when(open && menu_width > 0., |root| {
-            root.child(
-                gpui::deferred(
-                    gpui::anchored()
-                        .offset(gpui::point(px(-MENU_OUTSET), px(MENU_GAP)))
-                        .snap_to_window_with_margin(px(12.))
-                        .child(
-                            div()
-                                .id(format!("{id}-menu"))
-                                .flex()
-                                .flex_col()
-                                .gap(px(2.))
-                                .occlude()
-                                .on_key_down(cx.listener(
-                                    move |v, event: &gpui::KeyDownEvent, window, cx| {
-                                        if event.keystroke.key == "escape" {
-                                            menu_close(v, false, cx);
-                                            window.focus(&menu_trigger, cx);
-                                            cx.stop_propagation();
-                                            return;
-                                        }
-                                        if count == 0 {
-                                            return;
-                                        }
-                                        let current = menu_handles
-                                            .iter()
-                                            .take(count)
-                                            .position(|focus| focus.is_focused(window))
-                                            .unwrap_or(0);
-                                        let next = match event.keystroke.key.as_str() {
-                                            "down" => Some((current + 1) % count),
-                                            "up" => Some((current + count - 1) % count),
-                                            "home" => Some(0),
-                                            "end" => Some(count - 1),
-                                            _ => None,
-                                        };
-                                        if let Some(next) = next {
-                                            window.focus(&menu_handles[next], cx);
-                                            cx.stop_propagation();
-                                        }
-                                    },
-                                ))
-                                .w(px((menu_width + MENU_OUTSET * 2.).min(menu_max_width)))
-                                .max_h(px(218.))
-                                .overflow_y_scroll()
-                                .p_2()
-                                .rounded(px(MENU_RADIUS))
-                                .border_1()
-                                .border_color(rgb(p.border))
-                                .bg(rgb(p.canvas))
-                                .shadow_md()
-                                .on_mouse_down_out(
-                                    cx.listener(move |v, _, _, cx| set_open(v, false, cx)),
-                                )
-                                .children(options.into_iter().enumerate().map(
-                                    |(index, (id, label, selected))| {
-                                        let choose = choose.clone();
-                                        let return_focus = trigger_focus.clone();
-                                        let icon_path = option_icons.get(index).copied().flatten();
-                                        button_base(id, "", false, enabled)
-                                            .track_focus(&option_focus[index])
-                                            .w_full()
-                                            .h(px(32.))
-                                            .text_size(px(13.))
-                                            .line_height(px(20.))
-                                            .gap(px(8.))
-                                            .rounded(px(FIELD_RADIUS))
-                                            .border_1()
-                                            .border_color(gpui::rgba(0))
-                                            .px_2()
-                                            .justify_between()
-                                            .bg(rgb(if selected { p.selected } else { p.canvas }))
-                                            .when(enabled, |v| {
-                                                v.hover(move |v| {
-                                                    v.bg(rgb(if selected {
-                                                        p.selected
-                                                    } else {
-                                                        p.sidebar_hover
-                                                    }))
-                                                })
-                                            })
-                                            .when_some(icon_path, |v, path| {
-                                                v.child(
-                                                    gpui::img(path)
-                                                        .size(px(18.))
-                                                        .flex_shrink_0()
-                                                        .when(!enabled, |v| v.opacity(0.4)),
-                                                )
-                                            })
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .min_w_0()
-                                                    .truncate()
-                                                    .child(label.clone()),
-                                            )
-                                            .when(selected, |v| {
-                                                v.child(icon("icons/check.svg", 12.))
-                                            })
-                                            .on_click(cx.listener(move |v, _, window, cx| {
-                                                if enabled {
-                                                    choose(v, index, cx);
-                                                    window.focus(&return_focus, cx);
-                                                }
-                                            }))
-                                            .automation_enabled(
-                                                enabled,
-                                                AutomationRole::Option,
-                                                label,
-                                            )
-                                    },
-                                ))
-                                .automation(AutomationRole::Status, "下拉菜单")
-                                .map(|menu| {
-                                    crate::components::motion::enter_instrumented(
-                                        menu,
-                                        "menu-enter",
-                                        4.,
-                                    )
-                                }),
-                        ),
-                )
-                .with_priority(200),
-            )
-        })
+    let width = *measured.read(cx);
+    let choices = options.into_iter().map(|(id, label, checked)| Choice {
+        id, label: label.into(), checked: Some(checked), disabled: !enabled,
+    }).collect();
+    let popover = state.borrow_mut().render_with_icons(
+        id, label, choices, Selection::Single, Trigger::Field, open, enabled,
+        Placement::Window { width: width.max(32.) }, Material::default(), leading, option_icons,
+        window, cx, move |v, open, _, cx| set_open(v, open, cx),
+        move |v, index, _, cx| choose(v, index, cx),
+    );
+    div().relative().w_full().h(px(DROPDOWN_HEIGHT))
+        .child(gpui::canvas(move |bounds, _, cx| {
+            measured.update(cx, |width, cx| {
+                let next = bounds.size.width.as_f32();
+                if (*width - next).abs() > 0.1 { *width = next; cx.notify(); }
+            });
+        }, |_, _, _, _| {}).absolute().size_full())
+        .child(popover)
         .into_any_element()
 }
 
@@ -909,7 +448,7 @@ pub struct OpenAgent {
 }
 /// Controlled switch with the same compact geometry in native and Web renderers.
 pub fn switch<V: 'static>(
-    id: impl Into<gpui::ElementId>,
+    id: impl Into<gpui::SharedString>,
     label: impl Into<gpui::SharedString>,
     checked: bool,
     enabled: bool,
@@ -917,84 +456,20 @@ pub fn switch<V: 'static>(
     cx: &gpui::Context<V>,
     on_change: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
 ) -> impl IntoElement {
-    let p = CUE_UI.palette;
-    let paint = |color| {
-        if enabled {
-            color
-        } else {
-            disabled_color(color)
-        }
-    };
-    let off_color = paint(FORM.switch_off);
-    let on_color = paint(p.success);
-    let change = std::rc::Rc::new(on_change);
-    let click_focus = focus.clone();
-    let label: gpui::SharedString = label.into();
-    div()
-        .id(id)
-        .w(px(48.))
-        .h(px(CONTROL_HEIGHT))
-        .relative()
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .border_1()
-        .border_color(gpui::rgba(0))
-        .when(enabled, |v| {
-            v.focusable()
-                .track_focus(focus)
-                .tab_stop(true)
-                .cursor_pointer()
-                .focus_visible(|s| s.border_color(rgb(INTERACTION.focus_border)))
-                .hover(|s| s.bg(rgb(INTERACTION.neutral_hover)))
-                .active(|s| s.bg(rgb(INTERACTION.neutral_pressed)))
-        })
-        .when(!enabled, |v| v.cursor_default())
-        .on_click(cx.listener(move |v, _, window, cx| {
-            cx.stop_propagation();
-            if enabled {
-                window.focus(&click_focus, cx);
-                change(v, !checked, cx);
-            }
-        }))
-        .child(
-            div()
-                .relative()
-                .w(px(41.))
-                .h(px(24.))
-                .rounded_full()
-                .bg(rgb(paint(if checked {
-                    p.success
-                } else {
-                    FORM.switch_off
-                })))
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(3.))
-                        .left(px(3.))
-                        .size(px(18.))
-                        .rounded_full()
-                        .bg(rgb(p.canvas))
-                        .with_spring(
-                            "switch-thumb",
-                            crate::components::motion::spring(if checked { 20. } else { 3. }),
-                            |v, x| v.left(px(x)),
-                        ),
-                )
-                .with_spring(
-                    "switch-color",
-                    crate::components::motion::spring(if checked { 1. } else { 0. }),
-                    move |v, t| v.bg(crate::components::motion::mix_rgb(off_color, on_color, t)),
-                ),
-        )
-        .automation_enabled(
-            enabled,
-            AutomationRole::Option,
-            format!("{}：{}", label, if checked { "开启" } else { "关闭" }),
-        )
+    let label = label.into();
+    crate::components::liquid::controls::deferred_toggle(
+        id,
+        checked,
+        enabled,
+        CUE_UI.palette.canvas,
+        focus.clone(),
+        cx.listener(move |view, checked: &bool, _, cx| on_change(view, *checked, cx)),
+    )
+    .automation_enabled(
+        enabled,
+        AutomationRole::Option,
+        format!("{}：{}", label, if checked { "开启" } else { "关闭" }),
+    )
 }
 
 pub fn avatar_picker<V: 'static>(
@@ -1004,52 +479,15 @@ pub fn avatar_picker<V: 'static>(
     cx: &gpui::Context<V>,
     choose: impl Fn(&mut V, &'static str, &mut gpui::Context<V>) + 'static,
 ) -> Div {
+    use crate::components::liquid::primitives::data::{portrait_choices, PortraitOption};
     let prefix = prefix.into();
-    let p = CUE_UI.palette;
-    let choose = std::rc::Rc::new(choose);
-    div().flex().flex_col().gap_2().child(label("头像")).child(
-        div()
-            .flex()
-            .flex_wrap()
-            .max_w(px(232.))
-            .gap_2()
-            .children(AGENT_AVATARS.into_iter().map(|(key, title, _)| {
-                let choose = choose.clone();
-                let active = selected == key;
-                div()
-                    .id(format!("{prefix}-{key}"))
-                    .size(px(CONTROL_HEIGHT))
-                    .p(px(4.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(FIELD_RADIUS))
-                    .bg(rgb(if active { p.selected } else { p.elevated }))
-                    .when(enabled, |v| {
-                        v.focusable()
-                            .tab_stop(true)
-                            .cursor_pointer()
-                            .focus_visible(|v| v.bg(rgb(p.sidebar_hover)))
-                            .hover(|v| v.bg(rgb(p.sidebar_hover)))
-                    })
-                    .when(!enabled, |v| v.opacity(0.4).cursor_default())
-                    .child(agent_avatar(Some(key), 24.))
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        if enabled {
-                            choose(v, key, cx);
-                        }
-                    }))
-                    .automation_enabled(
-                        enabled,
-                        AutomationRole::Option,
-                        if active {
-                            format!("{title} · 已选择")
-                        } else {
-                            title.into()
-                        },
-                    )
-            })),
-    )
+    let selected = AGENT_AVATARS.iter().position(|(key, _, _)| *key == selected).unwrap_or(0);
+    div().flex().flex_col().gap_2().child(label("头像")).child(portrait_choices(
+        prefix.clone(), AGENT_AVATARS.iter().map(|(key, title, _)| PortraitOption {
+            id: format!("{prefix}-{key}"), portrait: key, label: (*title).into(),
+        }).collect(), selected, enabled, 6, 32., 24.,
+        cx.listener(move |v, index: &usize, _, cx| choose(v, AGENT_AVATARS[*index].0, cx)),
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -1061,58 +499,11 @@ pub enum NoticeKind {
     Loading,
 }
 pub fn status_notice(message: String, kind: NoticeKind) -> Div {
-    let (foreground, background, glyph) = match kind {
-        NoticeKind::Info => (
-            CUE_UI.palette.text,
-            CUE_UI.palette.prompt,
-            "icons/attention.svg",
-        ),
-        NoticeKind::Success => (
-            CUE_UI.palette.success,
-            FORM.success_surface,
-            "icons/completed.svg",
-        ),
-        NoticeKind::Error => (
-            CUE_UI.palette.danger,
-            FORM.error_surface,
-            "icons/attention.svg",
-        ),
-        NoticeKind::Warning => (
-            CUE_UI.palette.warning,
-            FORM.warning_surface,
-            "icons/attention.svg",
-        ),
-        NoticeKind::Loading => (
-            CUE_UI.palette.muted,
-            CUE_UI.palette.prompt,
-            "icons/loader.svg",
-        ),
-    };
-    div()
-        .flex()
-        .items_start()
-        .gap_2()
-        .px_3()
-        .py_2()
-        .rounded(px(FIELD_RADIUS))
-        .bg(rgb(background))
-        .text_color(rgb(foreground))
-        .text_size(px(12.))
-        .line_height(px(20.))
-        .child(
-            div()
-                .w(px(16.))
-                .h(px(20.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .child(
-                    gpui::svg()
-                        .path(glyph)
-                        .size(px(16.))
-                        .flex_shrink_0()
-                        .text_color(rgb(foreground)),
-                ),
-        )
-        .child(message)
+    use crate::components::liquid::primitives::{feedback, surface};
+    let (_, fill) = feedback::colors(kind);
+    div().w_full().child(
+        surface("status-notice-surface", FIELD_RADIUS, fill, false)
+            .w_full().px_3().py_2()
+            .child(feedback::notice_content("status-notice", message, kind, None))
+    )
 }

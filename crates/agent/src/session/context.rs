@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [COMPACTION-01, PROJECTION-01]
+    // Contract: docs/design/agent-runtime.md [COMPACTION-01, PROJECTION-01]
     fn retention_never_splits_a_parallel_call_group_inside_one_long_turn() {
         let invocation = |id: &str| {
             json!({"invocation_id": id, "provider_call_id": id,
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [COMPACTION-01, PROVIDER-02]
+    // Contract: docs/design/agent-runtime.md [COMPACTION-01, PROVIDER-02]
     fn retention_accounts_for_api_reported_reasoning_tokens_not_just_visible_text() {
         let entries = vec![
             entry(
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [COMPACTION-01, TOOL-13]
+    // Contract: docs/design/agent-runtime.md [COMPACTION-01, TOOL-13]
     fn tool_excerpts_preserve_actual_execution_metadata_before_large_output() {
         let result_entry = |tool: &str, arguments: serde_json::Value, data: serde_json::Value| {
             entry(json!({
@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [COMPACTION-01]
+    // Contract: docs/design/agent-runtime.md [COMPACTION-01]
     fn summary_prompt_has_a_hard_size_bound_for_a_16_mib_tool_result() {
         let mut state = SessionState::empty("large");
         state.generation.entries = vec![

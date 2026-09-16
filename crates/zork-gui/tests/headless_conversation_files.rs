@@ -79,7 +79,7 @@ fn main() -> anyhow::Result<()> {
     } else if let Some(path) = &reference_assets {
         std::fs::read(path.join("center.png"))?
     } else {
-        include_bytes!("../../../docs/conversation-files.md").to_vec()
+        include_bytes!("fixtures/markdown-scroll.md").repeat(16)
     };
     let second_content = if let Some(path) = &mixed_assets {
         std::fs::read(path.join("sample.zip"))?
@@ -430,13 +430,30 @@ fn main() -> anyhow::Result<()> {
     )?;
     act(
         &mut cx,
-        json!({"type":"click","target":{"element_id":"drive-reuse"}}),
+        json!({"type":"click","target":{"element_id":"preview-menu-0-drive-reuse"}}),
     )?;
     anyhow::ensure!(core.draft("render-fixture").files == vec![file.clone()]);
+    let overlay = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
+    anyhow::ensure!(overlay["destinationLayer"] == "modal" && overlay["anchor"]["w"].as_f64().is_some_and(|w| w > 40.),
+        "attachment preview did not bind the real file source: {overlay}");
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
+    cx.update(|cx| cx.set_reduce_motion(false));
     act(
         &mut cx,
-        json!({"type":"click","target":{"element_id":"drive-close-preview"}}),
+        json!({"type":"click","target":{"element_id":"attachment-preview-dialog-close"}}),
     )?;
+    let retiring = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
+    anyhow::ensure!(retiring["destinationLayer"] == "source" && retiring["progress"].as_f64().is_some_and(|p| p > 0.),
+        "closing attachment skipped its retained exit: {retiring}");
+    anyhow::ensure!(!driver.snapshot(false).elements.iter().any(|e| e.id == "drive-save" && e.enabled),
+        "retiring preview kept an active save action");
+    act(&mut cx, json!({"type":"click","target":{"element_id":format!("message-file-0-{}",file.id)}}))?;
+    let reversed = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
+    anyhow::ensure!(reversed["destinationLayer"] == "modal", "attachment did not reverse into the modal layer");
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
+    cx.update(|cx| cx.set_reduce_motion(true));
+    pump(&mut cx)?;
+    act(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
     act(
         &mut cx,
         json!({"type":"move","target":{"element_id":format!("draft-preview-{}",file.id)}}),
@@ -716,13 +733,24 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(
         geometry(&cx)["presence"] == 0. && geometry(&cx)["files"].as_array().unwrap().is_empty()
     );
+    // The shared composer retains the changing opening until its contour also
+    // settles. Verify that lifetime explicitly before testing idle redraws.
+    let mut settling_frames = 0;
+    while view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == true) && settling_frames < 30 {
+        pump(&mut cx)?;
+        settling_frames += 1;
+    }
+    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false), "attachment material did not settle");
+    pump(&mut cx)?;
     let stable = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     for _ in 0..4 {
         pump(&mut cx)?;
     }
+    let after = view.read_with(&cx, |v, cx| v.benchmark_region_counts(cx));
     anyhow::ensure!(
-        stable == view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx)),
-        "attachment animation keeps redrawing after completion"
+        stable == after,
+        "attachment animation keeps redrawing after completion: before={stable:?}, after={after:?}, material={}",
+        view.read_with(&cx, |v, _| v.benchmark_composer_material())
     );
     let mut timings = cx.update_window(window.into(), |_, w, _| w.frame_duration_snapshot())?;
     timings

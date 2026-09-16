@@ -164,10 +164,10 @@ impl ClientStore {
         let tx = conn.transaction()?;
         tx.execute("INSERT INTO replica_bindings(peer,generation,revoked) VALUES(?1,1,1) ON CONFLICT(peer) DO UPDATE SET generation=generation+1,revoked=1",[peer])?;
         for table in [
-            "delivered_messages",
+            "messages",
             "message_history",
-            "pending_interaction_results",
-            "interaction_outbox",
+            "pending_business_card_results",
+            "agent_configuration_outbox",
             "replica_scopes",
             "replica_entities",
             "replica_batches",
@@ -176,25 +176,43 @@ impl ClientStore {
         ] {
             let owner_column = if matches!(
                 table,
-                "delivered_messages"
+                "messages"
                     | "message_history"
-                    | "pending_interaction_results"
-                    | "interaction_outbox"
+                    | "pending_business_card_results"
+                    | "agent_configuration_outbox"
             ) {
                 "node"
             } else {
                 "peer"
             };
+            let confirmed = if table == "messages" {
+                " AND status='sent'"
+            } else {
+                ""
+            };
             tx.execute(
-                &format!("DELETE FROM {table} WHERE {owner_column}=?1"),
+                &format!("DELETE FROM {table} WHERE {owner_column}=?1{confirmed}"),
                 [peer],
             )?;
         }
-        tx.execute("DELETE FROM cache WHERE node=?1 AND (key IN ('agents','sessions','inbox','drive','read-markers','public-settings') OR key LIKE 'http:%' OR key LIKE 'messages:%' OR key LIKE 'leader-tasks:%' OR key LIKE 'history:%')",[peer])?;
-        tx.execute("DELETE FROM blobs WHERE node=?1", [peer])?;
+        tx.execute("DELETE FROM cache WHERE node=?1 AND (key IN ('agents','sessions','inbox','drive','read-markers','public-settings','profile-authorization','mesh-admin-invitations','settings-command','node-update-check','node-operation','notification-ledger-v1') OR key LIKE 'http:%' OR key LIKE 'messages:%' OR key LIKE 'leader-tasks:%' OR key LIKE 'history:%')",[peer])?;
+        let uploads = super::message_delivery::upload_keys(&tx, peer)?;
+        let blobs = tx
+            .prepare("SELECT key FROM blobs WHERE node=?1")?
+            .query_map([peer], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for key in blobs {
+            if !uploads.contains(&key) {
+                tx.execute(
+                    "DELETE FROM blobs WHERE node=?1 AND key=?2",
+                    params![peer, key],
+                )?;
+            }
+        }
         tx.commit()?;
         drop(conn);
         self.settings_changed(peer);
+        self.notifications_changed();
         Ok(())
     }
     pub fn replica_state(&self, peer: &str, scope: &Scope) -> Result<ReplicaState> {

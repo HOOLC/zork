@@ -574,7 +574,7 @@ mod tests {
     use super::{migrate_event, validate_history_event, EVENT_SCHEMA_VERSION};
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [EVENT-04, QUERY-01]
+    // Contract: docs/design/agent-runtime.md [EVENT-04, QUERY-01]
     fn borrowed_history_validation_matches_the_current_event_schema() {
         for json in [
             r#"{"kind":"input_appended","input":{"input_id":"input-1","request_id":"request-1","content":"hello","received_at_ms":1}}"#,

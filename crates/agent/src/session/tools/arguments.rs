@@ -90,6 +90,15 @@ pub(super) fn builtin(kind: BuiltinKind, value: &Value) -> Result<(), String> {
             unsigned(o, "offset", 0, u64::MAX)?;
             unsigned(o, "limit", 1, 1024 * 1024)?;
         }
+        BuiltinKind::FileList => {
+            let o = fields(value, &["path", "cursor", "limit"])?;
+            text(o, "path", true)?;
+            if o.contains_key("cursor") {
+                text(o, "cursor", true)?;
+            }
+            unsigned(o, "limit", 1, 128)?;
+        }
+        BuiltinKind::FileMaterialize => text(fields(value, &["path"])?, "path", true)?,
         BuiltinKind::FileWrite => {
             let o = fields(value, &["path", "content"])?;
             text(o, "path", true)?;
@@ -110,8 +119,25 @@ pub(super) fn builtin(kind: BuiltinKind, value: &Value) -> Result<(), String> {
             }
         }
         BuiltinKind::ShellRun => {
-            let o = fields(value, &["command"])?;
+            let o = fields(value, &["command", "cwd", "env"])?;
             text(o, "command", true)?;
+            if o.contains_key("cwd") {
+                text(o, "cwd", true)?;
+            }
+            if let Some(value) = o.get("env") {
+                let env = value
+                    .as_object()
+                    .ok_or("env must be an object of strings.")?;
+                if env.iter().any(|(key, value)| {
+                    key.is_empty()
+                        || key.contains(['=', '\0'])
+                        || !value.as_str().is_some_and(|s| !s.contains('\0'))
+                }) {
+                    return Err(
+                        "env must contain valid names and string values without NUL bytes.".into(),
+                    );
+                }
+            }
         }
     }
     Ok(())

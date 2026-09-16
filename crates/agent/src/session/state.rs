@@ -373,6 +373,13 @@ impl SessionState {
                 self.active_step = None;
                 self.auto_wait = None;
                 self.last_turn_outcome = Some(*outcome);
+                if self.failed_bad_request() {
+                    // Keep inputs queued during context maintenance, but do not
+                    // turn the rejected request into a new automatic turn.
+                    for input in &mut self.unconsumed_inputs {
+                        input.wake = false;
+                    }
+                }
                 // Keep terminal results in their existing assistant entry: adding
                 // entries during replay would shift persisted context ranges.
                 for delivery in self.planned_deliveries(false) {
@@ -462,12 +469,13 @@ impl SessionState {
             ),
             SessionEvent::StepFailed { step_id, error, .. } => {
                 self.update_token_anchor(step_id, error.usage.as_ref());
+                let bad_request = error.status_code == Some(400);
                 let purpose = self
                     .active_step
                     .as_ref()
                     .filter(|step| step.step_id == *step_id)
                     .map_or(Purpose::Conversation, |step| step.purpose);
-                if error.is_context_overflow() {
+                if !bad_request && error.is_context_overflow() {
                     if let Some(step) = self
                         .active_step
                         .as_ref()
@@ -490,7 +498,7 @@ impl SessionState {
                 }
                 self.close_step(step_id, "failed");
                 if let Some(turn) = &mut self.active_turn {
-                    if purpose.is_context() && error.is_invalid_document() {
+                    if !bad_request && purpose.is_context() && error.is_invalid_document() {
                         if let Some(progress) = &mut turn.context {
                             progress.attempts = progress.attempts.saturating_add(1);
                         }
@@ -499,7 +507,7 @@ impl SessionState {
                     } else {
                         turn.consecutive_provider_failures =
                             turn.consecutive_provider_failures.saturating_add(1);
-                        turn.provider_retry_allowed = error.retryable;
+                        turn.provider_retry_allowed = !bad_request && error.retryable;
                     }
                 }
                 self.last_step_failure = Some(StepFailureState {
@@ -1176,11 +1184,18 @@ impl SessionState {
         self.unconsumed_inputs.iter().any(|input| input.wake)
     }
 
+    fn failed_bad_request(&self) -> bool {
+        self.last_turn_outcome == Some(TurnOutcome::Failed)
+            && self.last_step_failure.as_ref().is_some_and(|failure| {
+                failure.error.status_code == Some(400)
+            })
+    }
+
     pub fn should_start_turn(&self) -> bool {
         if self.has_waking_inputs() {
             return true;
         }
-        if self.last_turn_outcome == Some(TurnOutcome::Cancelled) {
+        if self.last_turn_outcome == Some(TurnOutcome::Cancelled) || self.failed_bad_request() {
             return false;
         }
         (!self.pending_notices.is_empty() && self.last_turn_outcome != Some(TurnOutcome::Failed))

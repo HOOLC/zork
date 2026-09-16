@@ -444,9 +444,6 @@ impl Store {
         match request.op.as_str() {
             "install" => {}
             "update" => server.config = prepared.context("mcp_missing_config")?,
-            "enable" => server.config.enabled = true,
-            "disable" => server.config.enabled = false,
-            "share" => server.config.grant = request.grant.clone().context("mcp_missing_grant")?,
             "uninstall" => {}
             _ => anyhow::bail!("mcp_invalid_operation"),
         }
@@ -461,16 +458,12 @@ impl Store {
         result["operation_id"] = json!(new_id());
         result["state"] = json!("succeeded");
         result["op"] = json!(request.op);
-        result["grant"] = json!(server.config.grant);
         result["enabled"] = json!(server.config.enabled);
         if request.op == "uninstall" {
             result["availability"] = json!("removed");
         }
-        result["next_step"] = json!(if matches!(
-            request.op.as_str(),
-            "install" | "update" | "enable"
-        ) {
-            Some("probe")
+        result["next_step"] = json!(if matches!(request.op.as_str(), "install" | "update") {
+            Some("inspect")
         } else {
             None
         });

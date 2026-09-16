@@ -2,7 +2,7 @@
 use gpui::{AnyWindowHandle, Entity, HeadlessAppContext};
 use std::{path::Path, time::Duration};
 use zork_gui::{
-    automation::{protocol::UserAction, HeadlessAutomation},
+    automation::{HeadlessAutomation, protocol::UserAction},
     views::RootView,
 };
 
@@ -12,9 +12,19 @@ fn action(
     driver: &HeadlessAutomation,
     value: serde_json::Value,
 ) -> anyhow::Result<()> {
+    let settle_overlay = value["type"] != "scroll";
     let action: UserAction = serde_json::from_value(value)?;
     cx.update_window(window, |_, w, cx| driver.dispatch(action, w, cx))??;
     cx.run_until_parked();
+    if settle_overlay {
+        // Shared overlays measure content and publish placement on later frames.
+        // Keep these setup frames outside the continuous-scroll measurement.
+        for _ in 0..4 {
+            cx.advance_clock(Duration::from_millis(16));
+            cx.update_window(window, |_, w, cx| w.simulate_next_frame(cx))?;
+            cx.run_until_parked();
+        }
+    }
     Ok(())
 }
 fn rows(driver: &HeadlessAutomation) -> Vec<String> {
@@ -67,10 +77,15 @@ pub fn verify(
     let open =
         serde_json::json!({"type":"click","target":{"element_id":"conversation-files-button"}});
     action(cx, window, driver, open.clone())?;
-    anyhow::ensure!(
-        panel_visible(driver),
-        "file entry did not open the file list"
-    );
+    if !panel_visible(driver) {
+        std::fs::write(
+            output.join("files-open-failure.json"),
+            serde_json::to_vec_pretty(&driver.snapshot(false))?,
+        )?;
+        cx.capture_screenshot(window)?
+            .save(output.join("files-open-failure.png"))?;
+        anyhow::bail!("file entry did not open the file list");
+    }
     let preview = rows(driver);
     anyhow::ensure!(
         !preview.is_empty() && preview.len() <= 3,

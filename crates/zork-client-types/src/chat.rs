@@ -2,6 +2,9 @@
 //! Participation is derived from authorship; a preference is not membership.
 use serde::{Deserialize, Serialize};
 
+/// Maximum UTF-8 bytes in Chat text, excluding the file-reference envelope.
+pub const MAX_MESSAGE_TEXT_BYTES: usize = 32 * 1024;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageFilter {
@@ -100,6 +103,11 @@ pub struct Channel {
     pub title: String,
     pub created_at: String,
     pub message_count: u64,
+    /// Authenticated creation provenance, independent of authors and subscribers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creator: Option<Author>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_at: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +115,9 @@ pub struct Message {
     pub message_id: String,
     pub chat_id: String,
     pub author: Author,
+    /// Origin-qualified client connection that submitted this user message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
     pub text: String,
     pub attachments: Vec<crate::files::FileRef>,
     pub mentions: Vec<String>,
@@ -141,6 +152,7 @@ mod tests {
     #[test]
     fn receive_rules_are_independent_and_do_not_echo_own_output() {
         let mut message = Message {
+            client_id: None,
             message_id: "message".into(),
             chat_id: "channel".into(),
             author: Author {

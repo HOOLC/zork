@@ -27,5 +27,16 @@ pub mod region;
 pub mod message_preview;
 
 pub mod liquid_composer;
+pub mod liquid;
 
 pub mod collapse;
+pub mod workbench;
+pub mod smooth;
+
+pub mod message_reader;
+
+pub mod json_tree;
+
+pub mod message_row;
+
+pub mod message_placeholder;

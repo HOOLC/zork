@@ -12,9 +12,6 @@ async fn tool_inner(state: &AppState, input: ToolRequest) -> Result<Value> {
     let who = crate::node_access::subject(state, &input.session_id)
         .map_err(|_| anyhow::anyhow!("mcp_unknown_session"))?;
     let request = input.request;
-    if request.op == "setup" && request.owner.is_none() {
-        return management::targets(state, &who).await;
-    }
     if request.op == "recover" {
         let mut calls = Vec::new();
         for (invocation, owner, request) in state.mcp.store.pending(&who)?.into_iter().take(4) {
@@ -48,7 +45,7 @@ async fn tool_inner(state: &AppState, input: ToolRequest) -> Result<Value> {
     }
     let owner = if matches!(request.op.as_str(), "status" | "cancel" | "read") {
         state.mcp.store.owner(&who, field(&request.call_id)?)?
-    } else if matches!(request.op.as_str(), "install" | "installed" | "setup") {
+    } else if matches!(request.op.as_str(), "install" | "list") {
         request.owner.clone().unwrap_or_else(|| "local".into())
     } else {
         request
@@ -116,7 +113,7 @@ async fn tool_inner(state: &AppState, input: ToolRequest) -> Result<Value> {
         }
         Err(error) if request.op == "call" || management::is_mutation(&request.op) => {
             return Ok(
-                json!({"pending_delivery":true,"error":safe_error(&error),"recovery":"Use mcp recover to resolve this request; do not submit a new call."}),
+                json!({"pending_delivery":true,"error":safe_error(&error),"recovery":"Read the original invocation with history.list; do not submit a new call."}),
             )
         }
         Err(error) => return Err(error),
@@ -151,7 +148,7 @@ pub async fn admin_list(State(state): State<AppState>, headers: HeaderMap) -> Re
     if let Err(error) = identity_ready(&state) {
         return response(Err(error));
     }
-    response(state.mcp.store.servers().map(|servers|json!({"items":servers.iter().map(|s|json!({"server":state.mcp.descriptor(s,&own_origin(&state)),"grant":s.config.grant,"tool_allowlist":s.config.tool_allowlist,"transport":match s.config.transport{runtime::Transport::Stdio{..}=>"stdio",runtime::Transport::Http{..}=>"http"}})).collect::<Vec<_>>()})))
+    response(state.mcp.store.servers().map(|servers|json!({"items":servers.iter().map(|s|json!({"server":state.mcp.descriptor(s,&own_origin(&state)),"tool_allowlist":s.config.tool_allowlist,"transport":match s.config.transport{runtime::Transport::Stdio{..}=>"stdio",runtime::Transport::Http{..}=>"http"}})).collect::<Vec<_>>()})))
 }
 pub async fn admin_create(
     State(state): State<AppState>,
@@ -260,23 +257,28 @@ pub async fn admin_probe(
         json!({"op":"inspect","server_ref":{"owner_origin":own_origin(&state),"server_id":id}}),
     );
     response(match request {
-        Ok(request) => {
-            execute(
-                &state,
-                Rpc {
-                    interrupt: false,
-                    subject: Subject {
-                        origin: "local".into(),
-                        agent: "admin".into(),
-                        session: "probe".into(),
-                    },
-                    invocation_id: new_id(),
-                    request,
+        Ok(request) => execute(
+            &state,
+            Rpc {
+                interrupt: false,
+                subject: Subject {
+                    origin: "local".into(),
+                    agent: "admin".into(),
+                    session: "probe".into(),
                 },
-                true,
-            )
-            .await
-        }
+                invocation_id: new_id(),
+                request,
+            },
+            true,
+        )
+        .await
+        .and_then(|value| {
+            ensure!(value["availability"] != "disabled", "mcp_disabled");
+            if let Some(error) = value["error"].as_str() {
+                anyhow::bail!("{error}");
+            }
+            Ok(value)
+        }),
         Err(_) => Err(anyhow::anyhow!("mcp_invalid_request")),
     })
 }

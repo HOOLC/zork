@@ -170,6 +170,67 @@ pub struct Profiles {
     authorization_task: Mutex<Option<crate::api::ClientTask>>,
 }
 impl Profiles {
+    #[cfg(not(target_family = "wasm"))]
+    fn save_authorization_record(&self, record: &Value) -> anyhow::Result<()> {
+        if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
+            if let Some((store, peer)) = &device.cache {
+                store.put_authorized_settings(peer, "profile-authorization", record)?;
+            }
+        }
+        Ok(())
+    }
+    #[cfg(target_family = "wasm")]
+    fn save_authorization_record(&self, _: &Value) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Suspend only the local monitor when the host releases its connection.
+    /// The remote authorization is resumed using its public attempt metadata.
+    pub(crate) fn suspend_authorization(&self) {
+        if let Some(task) = self.authorization_task.lock().unwrap().take() {
+            task.abort();
+        }
+        let mut owned = self.owned.lock().unwrap();
+        owned.authorization_epoch = owned.authorization_epoch.wrapping_add(1);
+        owned.state.authorization_busy = false;
+        self.state.publish(owned.state.clone());
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn restore_authorization(self: &Arc<Self>) -> anyhow::Result<()> {
+        if self.snapshot().authorization.is_none() {
+            let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) else {
+                return Ok(());
+            };
+            let Some((store, peer)) = &device.cache else {
+                return Ok(());
+            };
+            let Some(record) = store
+                .get::<Value>(peer, "profile-authorization")?
+                .filter(|v| v.is_object())
+            else {
+                return Ok(());
+            };
+            let mut owned = self.owned.lock().unwrap();
+            if record["completed"] == true {
+                owned.state.authorization_complete = true;
+            } else if record["id"]
+                .as_str()
+                .is_some_and(|id| crate::model_edit::valid_id(id).is_ok())
+                && record["client_expires_at"]
+                    .as_i64()
+                    .is_some_and(|at| at > chrono::Utc::now().timestamp())
+            {
+                owned.state.authorization = Some(record);
+                owned.state.authorization_error = None;
+            } else {
+                store.put(peer, "profile-authorization", &Value::Null)?;
+                owned.state.authorization_error = Some("上次授权已过期，请重新开始".into());
+            }
+            self.state.publish(owned.state.clone());
+        }
+        self.continue_authorization(String::new());
+        Ok(())
+    }
     pub fn continue_authorization(self: &Arc<Self>, callback: String) {
         let mut task = self.authorization_task.lock().unwrap();
         if task.as_ref().is_some_and(|task| !task.is_finished()) {
@@ -392,7 +453,13 @@ impl Profiles {
             owned.authorization_epoch
         };
         let result = self.client.node_request(http::Method::POST, "/v1/node/auth".into(),
-            Some(serde_json::json!({"profile_id":id.trim(),"provider":provider,"billing":billing}))).await;
+            Some(serde_json::json!({"profile_id":id.trim(),"provider":provider,"billing":billing}))).await.map(|mut value| {
+                value["profile_id"] = serde_json::json!(id.trim());
+                value["provider"] = serde_json::json!(provider);
+                value["billing"] = serde_json::json!(billing);
+                value["client_expires_at"] = serde_json::json!(chrono::Utc::now().timestamp() + 600);
+                value
+            });
         let stale = {
             let mut owned = self.owned.lock().unwrap();
             if owned.authorization_epoch != epoch {
@@ -417,6 +484,23 @@ impl Profiles {
             }
             anyhow::bail!("授权已取消");
         }
+        // Never persist a provider credential or a pasted browser callback.
+        let mut record = serde_json::Map::new();
+        for key in [
+            "id",
+            "profile_id",
+            "provider",
+            "billing",
+            "flow",
+            "verification_url",
+            "user_code",
+            "client_expires_at",
+        ] {
+            if let Some(value) = value.get(key) {
+                record.insert(key.into(), value.clone());
+            }
+        }
+        self.save_authorization_record(&Value::Object(record))?;
         self.continue_authorization(String::new());
         Ok(())
     }
@@ -434,6 +518,7 @@ impl Profiles {
             self.state.publish(owned.state.clone());
             attempt
         };
+        self.save_authorization_record(&Value::Null)?;
         if let Some(id) = attempt.as_ref().and_then(|a| a["id"].as_str()) {
             self.client
                 .node_request(http::Method::DELETE, format!("/v1/node/auth/{id}"), None)
@@ -458,7 +543,11 @@ impl Profiles {
         } else {
             serde_json::json!({"callback":callback})
         };
-        let deadline = std::time::Instant::now() + Duration::from_secs(600);
+        let remaining = attempt["client_expires_at"]
+            .as_i64()
+            .map(|at| at.saturating_sub(chrono::Utc::now().timestamp()).max(0) as u64)
+            .unwrap_or(600);
+        let deadline = std::time::Instant::now() + Duration::from_secs(remaining);
         loop {
             anyhow::ensure!(
                 std::time::Instant::now() < deadline,
@@ -499,6 +588,7 @@ impl Profiles {
                         .as_ref()
                         .is_some_and(|a| a["id"] == id)
                     {
+                        self.save_authorization_record(&serde_json::json!({"id":id,"profile_id":attempt["profile_id"],"completed":true}))?;
                         owned.state.authorization = None;
                         owned.state.authorization_complete = true;
                         self.state.publish(owned.state.clone());
@@ -602,6 +692,17 @@ impl Profiles {
     }
     async fn while_visible_with(&self, stale: impl Fn(&ProfileInfo) -> bool) {
         let mut initial = self.subscribe();
+        self.refresh_stale_with(stale).await;
+        // Ongoing changes arrive from the shared Device/catalog subscription.
+        while initial.changed().await.is_some() {}
+    }
+    /// One opening intent, also used by platforms whose observation is independent.
+    pub async fn refresh_stale(&self) {
+        self.refresh_stale_with(|p| p.quota_stale_at(chrono::Utc::now().timestamp()))
+            .await;
+    }
+    async fn refresh_stale_with(&self, stale: impl Fn(&ProfileInfo) -> bool) {
+        let mut initial = self.subscribe();
         self.refresh_statuses().await;
         // A page can open while its initial list request is already running.
         // Wait for that result before deciding which snapshots need a probe.
@@ -620,9 +721,6 @@ impl Profiles {
         for id in stale_ids {
             self.refresh_quota(id).await;
         }
-        // Ongoing changes arrive from the shared Device/catalog subscription.
-        // A visible settings page does not install a second refresh timer.
-        while initial.changed().await.is_some() {}
     }
 
     pub async fn rename(&self, id: String, name: String) -> anyhow::Result<()> {
@@ -841,6 +939,59 @@ mod tests {
     };
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn authorization_restores_public_metadata_after_connection_replacement() {
+        let router = Router::new().route("/v1/node/auth", post(|| async {
+            Json(json!({"id":"attempt","flow":"browser_callback","verification_url":"https://example.test/login",
+                "device_code":"must-not-be-persisted"}))
+        })).route("/v1/node/auth/attempt", axum::routing::delete(|| async { Json(json!({})) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
+        let device = super::super::Device::open(
+            Arc::new(GatewayClient::new(url.clone(), None)),
+            Some((store.clone(), "node".into())),
+            false,
+        );
+        let profiles = device.profiles();
+        profiles
+            .start_authorization("account".into(), "provider".into(), "subscription".into())
+            .await
+            .unwrap();
+        let record = store
+            .get::<Value>("node", "profile-authorization")
+            .unwrap()
+            .unwrap();
+        assert_eq!(record["profile_id"], "account");
+        assert!(!record.to_string().contains("must-not-be-persisted"));
+        profiles.suspend_authorization();
+        drop(profiles);
+        drop(device);
+        let next = super::super::Device::open(
+            Arc::new(GatewayClient::new(url, None)),
+            Some((store.clone(), "node".into())),
+            false,
+        );
+        next.profiles().restore_authorization().unwrap();
+        assert_eq!(
+            next.profiles().snapshot().authorization.as_ref().unwrap()["id"],
+            "attempt"
+        );
+        next.profiles().cancel_authorization().await.unwrap();
+        assert_eq!(
+            store
+                .get::<Value>("node", "profile-authorization")
+                .unwrap()
+                .unwrap(),
+            Value::Null
+        );
+        server.abort();
+    }
 
     #[tokio::test]
     async fn opening_during_a_list_fetch_refreshes_only_the_stale_profile() {

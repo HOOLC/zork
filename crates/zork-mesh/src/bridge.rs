@@ -190,6 +190,8 @@ pub enum Reply {
     Tunnel {
         upstream: tokio::net::TcpStream,
         cancelled: tokio::sync::watch::Receiver<bool>,
+        /// Optional capacity/lifetime lease, held until forwarding finishes.
+        guard: Option<Box<dyn Send>>,
     },
     Subscription(tokio::sync::mpsc::Receiver<Value>),
 }
@@ -229,7 +231,9 @@ where
                 Ok(Ok(Reply::Tunnel {
                     mut upstream,
                     mut cancelled,
+                    guard,
                 })) => {
+                    let _guard = guard;
                     let bytes = br#"{"v":1,"ok":true}"#;
                     if stream.write_u32(bytes.len() as u32).await.is_ok()
                         && stream.write_all(bytes).await.is_ok()

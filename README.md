@@ -72,7 +72,7 @@ python3 scripts/lib/build_env.py -- cargo run --locked -p zork-gui
 Configure model connections and agents in Settings, then select an agent from the
 conversation sidebar. The client can manage its local node or connect to other
 devices. Product settings live in the node's `config.json`; local build settings
-may use an ignored `.env`. See [desktop setup](docs/desktop-node.md) and
+may use an ignored `.env`. See [desktop setup](docs/design/devices.md#lifecycle) and
 [Android development](apps/android/README.md).
 
 <details>
@@ -87,7 +87,7 @@ curl -fsSL https://github.com/HOOLC/zork/releases/latest/download/install.sh | s
 The installer selects and verifies a native package and starts a persistent
 Station. Node.js and npm are not required on an installed node. To join a mesh,
 use the pinned invitation command from Settings → Device connections.
-[Native release instructions](docs/native-releases.md) cover offline installs,
+[Native release instructions](docs/guides/native-releases.md) cover offline installs,
 version pinning, service management and upgrades.
 
 `zork update` restarts an existing node with already staged binaries.
@@ -119,22 +119,22 @@ Each owning Station checks the permissions it has granted:
 
 Each Station keeps its own state and workspace. Sharing is explicit; joining the
 mesh does not automatically replicate entire directories. See
-[device and skill tools](docs/agent-node-tools.md), [Mesh MCP](docs/mesh-mcp.md),
-[service sharing](docs/service-sharing.md) and [file sharing](docs/conversation-files.md).
+[device and skill tools](docs/design/external-capabilities.md), [Mesh MCP](docs/design/external-capabilities.md#mcp),
+[service sharing](docs/design/external-capabilities.md#services) and [file sharing](docs/design/shared-files.md#attachments).
 
 ## Development
 
 The `zork` supervisor starts one `zork-station` process, which embeds the agent
 runtime. The standalone `zork-agent` binary is also available. Clients submit
 business intents through `zork-client-core` and render its state. See the
-[agent architecture](docs/zork-agent-architecture.md),
-[client boundary](docs/client-core-ui-boundary.md) and
-[chat contracts](docs/chat-tools-design.md).
+[agent architecture](docs/design/agent-runtime.md),
+[client boundary](docs/design/client-core.md) and
+[chat contracts](docs/design/chat.md).
 
 This repository includes a macOS desktop client and Android client. Native node
 packaging targets macOS and Linux on ARM64 and x64; desktop app packaging and
 signing follow a separate workflow. The Web design workspace is an interactive
-reference and component showcase. See [native releases](docs/native-releases.md)
+reference and component showcase. See [native releases](docs/guides/native-releases.md)
 for platform requirements.
 
 <details>
@@ -172,22 +172,17 @@ python3 scripts/check-client-boundary.py
 Design workspace: `pnpm design:dev`, `pnpm design:check`, `pnpm design:test` and
 `pnpm design:build`. DeepSWE adapter tests: `pnpm benchmark:deep-swe:test`.
 Functional tests and performance measurements have separate entry points; see
-[validation](docs/zork-agent-status.md) and [repository content](docs/repository-content.md).
+[validation](.agents/skills/zork-validation/SKILL.md) and [repository content](AGENTS.md#repository-content).
 
 </details>
 
 ## Documentation
 
-- [Station naming and compatibility](docs/station-naming.md)
-- [Agent architecture](docs/zork-agent-architecture.md)
-- [Chat and message tools](docs/chat-tools-design.md)
-- [Client core and UI boundaries](docs/client-core-ui-boundary.md)
-- [Mesh and device connections](docs/local-mesh.md)
-- [Device, MCP and skill tools](docs/agent-node-tools.md)
-- [Shared services](docs/service-sharing.md)
-- [Files and attachments](docs/conversation-files.md)
-- [Native releases and upgrades](docs/native-releases.md)
-- [Design workspace](apps/zork-design/README.md)
+The [documentation index](docs/README.md) groups Agent, Chat, client, Mesh, UI and
+engineering contracts and pending proposals. Implementation details stay with the
+source and generated help; test results belong to their run artifacts.
+The [design workspace](apps/zork-design/README.md) contains the handbook, prototypes
+and shared visual references.
 
 ## License
 

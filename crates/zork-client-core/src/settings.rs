@@ -76,13 +76,27 @@ pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
         .and_then(std::sync::Weak::upgrade);
     let state = device.as_ref().map(|d| d.snapshot());
     let profiles = device.as_ref().map(|d| d.profiles().snapshot());
-    let authorization = profiles.as_ref().and_then(|p| p.authorization.clone());
+    let saved_authorization: Option<Value> = store.get(peer, "profile-authorization")?;
+    let authorization = profiles
+        .as_ref()
+        .and_then(|p| p.authorization.clone())
+        .or_else(|| {
+            saved_authorization
+                .as_ref()
+                .filter(|value| value.is_object() && value["completed"] != true)
+                .cloned()
+        });
     let authorization_busy = profiles.as_ref().is_some_and(|p| p.authorization_busy);
     let authorization_error = profiles
         .as_ref()
         .and_then(|p| p.authorization_error.clone());
-    let authorization_complete = profiles.as_ref().is_some_and(|p| p.authorization_complete);
+    let authorization_complete = profiles.as_ref().is_some_and(|p| p.authorization_complete)
+        || saved_authorization
+            .as_ref()
+            .is_some_and(|v| v["completed"] == true);
     let operation: Option<Value> = store.get(peer, "node-operation")?;
+    let command: Option<Value> = store.get(peer, "settings-command")?;
+    let update_check: Option<Value> = store.get(peer, "node-update-check")?;
     let online = state.as_ref().is_some_and(|s| {
         s.online == Some(true)
             && s.confirmed_at_ms
@@ -104,6 +118,15 @@ pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
     snapshot["authorization_error"] = json!(authorization_error);
     snapshot["authorization_complete"] = json!(authorization_complete);
     snapshot["operation"] = json!(operation);
+    snapshot["command"] = json!(command);
+    snapshot["update_check"] = json!(update_check);
+    snapshot["profile_refreshing"] = json!(profiles.as_ref().map(|p| &p.refreshing));
+    snapshot["profile_failed"] = json!(profiles.as_ref().map(|p| &p.failed));
+    snapshot["connection_state"] = json!(match state.as_ref().and_then(|s| s.online) {
+        None => "connecting",
+        Some(true) if online => "online",
+        _ => "offline",
+    });
     snapshot["online"] = json!(online);
     if error.is_some() {
         snapshot["error"] = json!(error);
@@ -130,14 +153,16 @@ pub(crate) async fn refresh(
         store.put(peer,"public-settings",&snapshot)?;
         Ok(())
     }.await;
-    let mut snapshot = cached(&store, peer)?;
+    let mut snapshot = snapshot(&store, peer)?;
     match result {
         Ok(()) => {
             snapshot["cached"] = json!(false);
             snapshot["online"] = json!(true);
+            snapshot["connection_state"] = json!("online");
         }
         Err(error) => {
             snapshot["online"] = json!(false);
+            snapshot["connection_state"] = json!("offline");
             snapshot["error"] = json!(error.to_string());
         }
     }

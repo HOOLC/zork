@@ -12,8 +12,10 @@ use super::ports::{Clock, FilePage, FileSystem, ProcessRequest, ProcessSpawner, 
 
 pub mod activity;
 mod arguments;
+mod namespace;
 mod parameters;
 pub use activity::{ActivityTarget, ToolActivity};
+pub use namespace::ToolNamespace;
 
 pub const PROVIDER_CALL_NAME: &str = "call";
 
@@ -109,7 +111,9 @@ pub enum DynamicCallError {
     Invalid(String),
     #[error("dynamic call tool must not be empty")]
     EmptyTool,
-    #[error("call requires non-empty top-level action (what this invocation does), alongside tool and arguments. No tool was executed. Retry with an action description in the user's language; keep the original tool arguments inside arguments.")]
+    #[error(
+        "call requires non-empty top-level action (what this invocation does), alongside tool and arguments. No tool was executed. Retry with an action description in the user's language; keep the original tool arguments inside arguments."
+    )]
     DescriptionsRequired,
 }
 
@@ -342,16 +346,12 @@ struct RegistryEntry {
 #[derive(Default)]
 pub struct ToolRegistry {
     entries: RwLock<BTreeMap<String, RegistryEntry>>,
+    namespaces: RwLock<BTreeMap<String, namespace::NamespaceEntry>>,
 }
 
 impl ToolRegistry {
     pub fn activity(&self, name: &str, arguments: &Value) -> ToolActivity {
-        let instance = self
-            .entries
-            .read()
-            .expect("tool registry lock poisoned")
-            .get(name)
-            .and_then(|entry| entry.current.clone());
+        let instance = self.instance(name);
         instance.map_or_else(ToolActivity::default, |tool| (tool.activity)(arguments))
     }
     pub fn register(&self, instance: Arc<ToolInstance>) {
@@ -377,9 +377,23 @@ impl ToolRegistry {
         entry.current.take().is_some()
     }
 
+    /// Preserve historical state/result decoding without registering a callable
+    /// tool or adding anything to the model's catalog.
+    pub fn register_retired(&self, name: &str, compatibility: Arc<dyn ToolCompatibility>) {
+        self.entries
+            .write()
+            .expect("tool registry lock poisoned")
+            .insert(
+                name.into(),
+                RegistryEntry {
+                    current: None,
+                    compatibility,
+                },
+            );
+    }
+
     pub fn resolve(&self, name: &str, known: Option<&ToolVersion>) -> ToolResolution {
-        let entries = self.entries.read().expect("tool registry lock poisoned");
-        let Some(instance) = entries.get(name).and_then(|entry| entry.current.as_ref()) else {
+        let Some(instance) = self.instance(name) else {
             return ToolResolution::Unavailable;
         };
         if known == Some(&instance.contract().version) {
@@ -392,24 +406,25 @@ impl ToolRegistry {
     }
 
     pub fn compatibility(&self, name: &str) -> Option<Arc<dyn ToolCompatibility>> {
-        self.entries
+        if let Some(entry) = self
+            .entries
             .read()
             .expect("tool registry lock poisoned")
             .get(name)
-            .map(|entry| entry.compatibility.clone())
+        {
+            return Some(entry.compatibility.clone());
+        }
+        self.namespace_instance(name, true)
+            .map(|tool| tool.compatibility())
     }
 
     pub fn current_contract(&self, name: &str) -> Option<ToolContract> {
-        self.entries
-            .read()
-            .expect("tool registry lock poisoned")
-            .get(name)
-            .and_then(|entry| entry.current.as_ref())
-            .map(|instance| instance.contract().clone())
+        self.instance(name).map(|tool| tool.contract().clone())
     }
 
     pub fn initial_catalog(&self) -> Vec<ToolIntroduction> {
-        self.entries
+        let mut catalog: Vec<_> = self
+            .entries
             .read()
             .expect("tool registry lock poisoned")
             .values()
@@ -420,42 +435,47 @@ impl ToolRegistry {
                 version: instance.contract().version.clone(),
                 description: instance.contract().initial_description.clone(),
             })
-            .collect()
+            .collect();
+        catalog.extend(self.namespace_introductions());
+        catalog.sort_by(|a, b| a.name.cmp(&b.name));
+        catalog
     }
 
     pub fn changes(&self, known: &BTreeMap<String, ToolVersion>) -> Vec<ToolChange> {
-        let entries = self.entries.read().expect("tool registry lock poisoned");
-        let mut changes = Vec::new();
-        for (name, entry) in entries.iter() {
-            let Some(instance) = &entry.current else {
-                if known.contains_key(name) {
-                    changes.push(ToolChange::Removed { name: name.clone() });
+        let mut current: BTreeMap<_, _> = self
+            .initial_catalog()
+            .into_iter()
+            .map(|i| (i.name, i.version))
+            .collect();
+        // Only resolve exact dynamic names the session already knows. Merely
+        // describing a namespace does not enumerate or retain its method space.
+        for name in known.keys() {
+            if !current.contains_key(name) {
+                if let Some(contract) = self.current_contract(name) {
+                    current.insert(name.clone(), contract.version);
                 }
-                continue;
-            };
-            if !instance.advertised && !known.contains_key(name) {
-                continue;
             }
+        }
+        let mut changes = Vec::new();
+        for (name, version) in &current {
             match known.get(name) {
                 None => changes.push(ToolChange::Added {
                     name: name.clone(),
-                    version: instance.contract().version.clone(),
+                    version: version.clone(),
                 }),
-                Some(version) if version != &instance.contract().version => {
-                    changes.push(ToolChange::Updated {
-                        name: name.clone(),
-                        version: instance.contract().version.clone(),
-                    });
-                }
+                Some(old) if old != version => changes.push(ToolChange::Updated {
+                    name: name.clone(),
+                    version: version.clone(),
+                }),
                 Some(_) => {}
             }
         }
         for name in known.keys() {
-            if !entries.contains_key(name) {
+            if !current.contains_key(name) {
                 changes.push(ToolChange::Removed { name: name.clone() });
             }
         }
-        changes.sort_by(|left, right| left.name().cmp(right.name()));
+        changes.sort_by(|a, b| a.name().cmp(b.name()));
         changes
     }
 }
@@ -590,6 +610,8 @@ impl ToolChange {
 pub enum ToolDefinitionError {
     #[error("tool name must not be empty")]
     EmptyName,
+    #[error("namespace prefix must end in a dot and advertise prefix.*")]
+    InvalidNamespace,
     #[error("tool version must not be empty")]
     EmptyVersion,
     #[error("tool initial description must not be empty")]
@@ -660,6 +682,8 @@ enum BuiltinKind {
     ToolCancel,
     HistoryList,
     FileRead,
+    FileList,
+    FileMaterialize,
     FileWrite,
     FileEdit,
     ShellRun,
@@ -673,6 +697,10 @@ impl BuiltinKind {
             Self::ToolCancel => ToolActivity::new("取消操作", "Cancelling operation", ""),
             Self::HistoryList => ToolActivity::new("查看执行历史", "Reading activity history", ""),
             Self::FileRead => ToolActivity::field("读取", "Reading", args, "/path"),
+            Self::FileList => ToolActivity::field("浏览目录", "Listing files", args, "/path"),
+            Self::FileMaterialize => {
+                ToolActivity::field("准备执行文件", "Preparing files", args, "/path")
+            }
             Self::FileWrite => ToolActivity::field("写入", "Writing", args, "/path"),
             Self::FileEdit => ToolActivity::field("编辑", "Editing", args, "/path"),
             Self::ShellRun => ToolActivity::new("执行命令", "Running command", ""),
@@ -767,6 +795,22 @@ fn builtin_contracts() -> Result<Vec<(BuiltinKind, ToolContract)>, ToolDefinitio
             },
         ),
         (
+            BuiltinKind::FileMaterialize,
+            ToolContract {
+                name: "file.materialize".into(),
+                version: version()?,
+                initial_description: "Prepare a synch:// file or directory as an immutable local snapshot when a shell command needs local paths.".into(),
+                detailed_description: "Fetch the selected shared file versions into a read-only cache outside the published tree. Returns a local path stable for this Station process lifetime. Prefer file.read for inspection. Does not install a skill or bind a source; copy into the workspace explicitly if editing is needed.".into(),
+                input_schema: serde_json::json!({"type":"object","properties":{"path":{"type":"string","minLength":1}},"required":["path"],"additionalProperties":false}),
+            },
+        ),
+        (BuiltinKind::FileList, ToolContract {
+            name:"file.list".into(),version:version()?,
+            initial_description:"List one page of a local or synch:// directory. Use returned file paths with file.read and next_cursor for continuation.".into(),
+            detailed_description:"Read direct children without fetching file bodies. Keep the returned directory path and next_cursor together when continuing; a synch:// path with origin captures one fixed tree snapshot. The cursor is scoped to that directory and snapshot.".into(),
+            input_schema:serde_json::json!({"type":"object","properties":{"path":{"type":"string","minLength":1},"cursor":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":128}},"required":["path"],"additionalProperties":false}),
+        }),
+        (
             BuiltinKind::FileWrite,
             ToolContract {
                 name: super::events::FILE_WRITE_NAME.into(),
@@ -823,7 +867,9 @@ fn builtin_contracts() -> Result<Vec<(BuiltinKind, ToolContract)>, ToolDefinitio
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "command": {"type": "string", "minLength": 1}
+                        "command": {"type": "string", "minLength": 1},
+                        "cwd": {"type": "string", "minLength": 1},
+                        "env": {"type": "object", "additionalProperties": {"type": "string"}}
                     },
                     "required": ["command"],
                     "additionalProperties": false
@@ -883,6 +929,35 @@ impl ToolImplementation for BuiltinTool {
                     history_list(dependencies.query.as_ref(), &context.session_id, &arguments)
                 }
                 BuiltinKind::FileRead => file_read(&dependencies, &context, &arguments).await,
+                BuiltinKind::FileList => {
+                    let path = resolve_path(
+                        &context.workspace,
+                        arguments["path"].as_str().unwrap_or_default(),
+                    );
+                    let result = dependencies
+                        .files
+                        .clone()
+                        .list_page_async(
+                            path,
+                            arguments["cursor"].as_str().map(str::to_owned),
+                            arguments["limit"].as_u64().unwrap_or(128) as usize,
+                        )
+                        .await;
+                    match result {
+                        Ok(value) => success(value),
+                        Err(error) => failed(error.to_string()),
+                    }
+                }
+                BuiltinKind::FileMaterialize => {
+                    let path =
+                        std::path::PathBuf::from(arguments["path"].as_str().expect("parsed path"));
+                    match dependencies.files.materialize(path).await {
+                        Ok(path) => success(
+                            serde_json::json!({"path":path,"lifetime":"station_process","read_only":true}),
+                        ),
+                        Err(error) => failed(error.to_string()),
+                    }
+                }
                 BuiltinKind::FileWrite => {
                     blocking(move || file_write(&dependencies, &context, &arguments)).await
                 }
@@ -1004,7 +1079,7 @@ async fn file_read(
             Ok(Some(event)) => match serde_json::to_vec_pretty(&event) {
                 Ok(bytes) => page_bytes(bytes, offset, limit),
                 Err(error) => {
-                    return failed(format!("History event serialization failed: {error}"))
+                    return failed(format!("History event serialization failed: {error}"));
                 }
             },
             Ok(None) => return failed(format!("History event {event_id} was not found.")),
@@ -1014,7 +1089,7 @@ async fn file_read(
         let path = resolve_path(&context.workspace, path);
         // Detect from the file header even when a caller requests a tiny page
         // or a nonzero offset. Binary images are indivisible tool content.
-        let header = match dependencies.files.read_page(&path, 0, 12) {
+        let header = match read_file_page(dependencies.files.clone(), path.clone(), 0, 12).await {
             Ok(page) => page,
             Err(error) => return failed(format!("Failed to read {}: {error}", path.display())),
         };
@@ -1025,18 +1100,23 @@ async fn file_read(
             if header.total_size > MAX_IMAGE_BYTES as u64 {
                 return failed("Image exceeds the 20 MiB limit. Resize it before reading.");
             }
-            let image = match dependencies.files.read_page(&path, 0, MAX_IMAGE_BYTES) {
-                Ok(page)
-                    if page.next_offset.is_none()
-                        && image_media_type(&page.bytes) == Some(media_type) =>
+            let image =
+                match read_file_page(dependencies.files.clone(), path.clone(), 0, MAX_IMAGE_BYTES)
+                    .await
                 {
-                    page
-                }
-                Ok(_) => {
-                    return failed("Image changed or exceeds the 20 MiB limit; retry the read.")
-                }
-                Err(error) => return failed(format!("Failed to read image: {error}")),
-            };
+                    Ok(page)
+                        if page.next_offset.is_none()
+                            && image_media_type(&page.bytes) == Some(media_type) =>
+                    {
+                        page
+                    }
+                    Ok(_) => {
+                        return failed(
+                            "Image changed or exceeds the 20 MiB limit; retry the read.",
+                        );
+                    }
+                    Err(error) => return failed(format!("Failed to read image: {error}")),
+                };
             use base64::Engine;
             let mut result = success(serde_json::json!({
                 "path": path.to_string_lossy(), "media_type": media_type,
@@ -1050,7 +1130,7 @@ async fn file_read(
             });
             return result;
         }
-        match dependencies.files.read_page(&path, offset, limit) {
+        match read_file_page(dependencies.files.clone(), path.clone(), offset, limit).await {
             Ok(page) => page,
             Err(error) => return failed(format!("Failed to read {}: {error}", path.display())),
         }
@@ -1083,7 +1163,19 @@ fn page_bytes(bytes: Vec<u8>, offset: u64, limit: usize) -> FilePage {
     }
 }
 
+async fn read_file_page(
+    files: Arc<dyn FileSystem>,
+    path: std::path::PathBuf,
+    offset: u64,
+    limit: usize,
+) -> std::io::Result<FilePage> {
+    files.read_page_async(path, offset, limit).await
+}
+
 fn resolve_path(workspace: &str, path: &str) -> std::path::PathBuf {
+    if path.starts_with("synch://") {
+        return path.into();
+    }
     let path = std::path::PathBuf::from(path);
     if path.is_absolute() {
         path
@@ -1192,6 +1284,19 @@ async fn shell_run(
         .and_then(Value::as_str)
         .unwrap_or_default();
     let workspace = std::path::Path::new(&context.workspace);
+    let current_dir = input["cwd"]
+        .as_str()
+        .map(|cwd| workspace.join(cwd))
+        .unwrap_or_else(|| workspace.to_owned());
+    let mut environment = dependencies.environment.clone();
+    if let Some(overrides) = input["env"].as_object() {
+        for (key, value) in overrides {
+            environment.insert(
+                key.clone(),
+                value.as_str().expect("validated environment").into(),
+            );
+        }
+    }
     let relative = format!(".zork/live-{}.log", context.invocation_id);
     let live_path = workspace.join(&relative);
     if let Err(error) = dependencies.files.create_dir_all(&workspace.join(".zork")) {
@@ -1206,8 +1311,8 @@ async fn shell_run(
         handle,
     } = match dependencies.processes.spawn(ProcessRequest {
         command: command.to_owned(),
-        current_dir: workspace.to_owned(),
-        environment: dependencies.environment.clone(),
+        current_dir,
+        environment,
     }) {
         Ok(process) => process,
         Err(error) => return failed(format!("Failed to start command: {error}")),

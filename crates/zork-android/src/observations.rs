@@ -49,6 +49,15 @@ pub(super) enum Query {
         generation: u64,
         anchor: Option<String>,
     },
+    Detail {
+        handle: u64,
+        generation: u64,
+        id: Option<String>,
+    },
+    Refresh {
+        handle: u64,
+        generation: u64,
+    },
     Close {
         handle: u64,
         generation: u64,
@@ -184,7 +193,11 @@ impl Registry {
                     | Query::Newer { handle, generation }
                     | Query::Window {
                         handle, generation, ..
-                    } => (*handle, *generation),
+                    }
+                    | Query::Detail {
+                        handle, generation, ..
+                    }
+                    | Query::Refresh { handle, generation } => (*handle, *generation),
                     _ => unreachable!(),
                 };
                 let entry = self.get(handle, generation)?;
@@ -215,6 +228,14 @@ impl Registry {
                     }
                     Query::Window { anchor, .. } => {
                         state.window_anchor(anchor)?;
+                        Ok(json!({}))
+                    }
+                    Query::Detail { id, .. } => {
+                        state.detail(id)?;
+                        Ok(json!({}))
+                    }
+                    Query::Refresh { .. } => {
+                        state.refresh()?;
                         Ok(json!({}))
                     }
                     _ => unreachable!(),

@@ -12,6 +12,7 @@ use zork_observe::{BatchId, List, ListEdit, Readiness};
 
 struct Pending {
     device: Option<BatchId>,
+    navigation: Option<BatchId>,
     conversation: Option<BatchId>,
     draft: Option<BatchId>,
     window: Transcript,
@@ -26,6 +27,7 @@ pub(super) struct ConversationWire {
     store: Arc<ClientStore>,
     conversation: Option<Arc<state::Conversation>>,
     device_updates: state::DeviceSubscription,
+    navigation_updates: state::Subscription<state::NavigationData>,
     conversation_updates: Option<state::ConversationSubscription>,
     draft_updates: Option<state::Subscription<state::Draft>>,
     window: Transcript,
@@ -49,6 +51,7 @@ impl ConversationWire {
             Domains::CONNECTION | Domains::SESSIONS | Domains::AGENTS | Domains::TASKS,
         );
         let conversation = id.as_ref().map(|id| device.conversation(id));
+        let navigation_updates = device.navigation();
         let conversation_updates = conversation.as_ref().map(|c| {
             use state::ConversationTopics as T;
             c.subscribe_topics(
@@ -63,6 +66,7 @@ impl ConversationWire {
             store,
             conversation,
             device_updates,
+            navigation_updates,
             conversation_updates,
             draft_updates,
             window: Transcript::new(),
@@ -74,7 +78,10 @@ impl ConversationWire {
         })
     }
     pub(super) fn signals(&self) -> Vec<Readiness> {
-        let mut signals = vec![self.device_updates.readiness()];
+        let mut signals = vec![
+            self.device_updates.readiness(),
+            self.navigation_updates.readiness(),
+        ];
         if let Some(updates) = &self.conversation_updates {
             signals.push(updates.readiness());
         }
@@ -87,49 +94,37 @@ impl ConversationWire {
         debug_assert!(self.pending.is_none());
         // Sending/withdrawing publishes transcript and draft under this same
         // gate. Capture roots here, then release it before DTO conversion.
-        let (device, conversation, draft) = {
+        let (device, navigation, conversation, draft) = {
             let _transaction = self.device.draft_gate.lock().unwrap();
             (
                 self.device_updates.prepare(),
+                self.navigation_updates.prepare(),
                 self.conversation_updates.as_mut().and_then(|s| s.prepare()),
                 self.draft_updates.as_mut().and_then(|s| s.prepare()),
             )
         };
-        if device.is_none() && conversation.is_none() && draft.is_none() {
+        if device.is_none() && navigation.is_none() && conversation.is_none() && draft.is_none() {
             return Ok(None);
         }
         let revoked = self.device.snapshot().revoked
             || conversation.as_ref().is_some_and(|c| c.state.revoked);
         let reset = revoked || conversation.as_ref().is_some_and(|c| c.reset);
         let mut value = json!({"peer":self.peer, "session":self.id, "unified_transcript":true});
+        if let Some(navigation) = &navigation {
+            value["navigation"] = json!(navigation.snapshot.value);
+        }
         if let Some(update) = &device {
             let d = &update.state;
             if update.reset {
                 value["nodes"] = json!(self.store.nodes()?);
             }
-            if update.domains.contains(Domains::AGENTS) {
-                value["agents"] = json!(d.agents);
-            }
             if update.domains.contains(Domains::SESSIONS) {
-                value["sessions"] = json!(d
-                    .sessions
-                    .iter()
-                    .map(|session| {
-                        let mut value = serde_json::to_value(session).unwrap();
-                        value["can_send"] = json!(can_send(session));
-                        value["can_stop"] = json!(crate::composer::can_stop(session));
-                        value
-                    })
-                    .collect::<Vec<_>>());
                 let summary = self
                     .id
                     .as_ref()
                     .and_then(|id| d.sessions.iter().find(|s| &s.session_id == id));
                 value["can_send"] = json!(summary.is_some_and(can_send));
                 value["can_stop"] = json!(summary.is_some_and(crate::composer::can_stop));
-            }
-            if update.domains.contains(Domains::TASKS) {
-                value["tasks_by_leader"] = json!(d.tasks);
             }
             if self.id.is_none() {
                 value["connected"] = json!(d.online == Some(true));
@@ -216,12 +211,14 @@ impl ConversationWire {
             start = 0;
             anchor = None;
             value = json!({"peer":self.peer,"session":self.id,"unified_transcript":true,
+                "navigation":state::NavigationData::default(),
                 "revoked":true,"messages":[],"agents":[],"sessions":[],"tasks_by_leader":{},"participants":[],
                 "connected":false,"running":false,"can_send":false,"can_stop":false,"activity":null,
                 "draft_document":state::Draft::default(),"older_cursor":null,"newer_available":false,"loading_older":false,"error":"设备访问权限已撤销"});
         }
         self.pending = Some(Pending {
             device: device.and_then(|u| u.batch),
+            navigation: navigation.map(|u| u.id),
             conversation: conversation.and_then(|u| u.batch),
             draft: draft.map(|u| u.id),
             window,
@@ -234,6 +231,8 @@ impl ConversationWire {
     pub(super) fn valid(&self) -> bool {
         self.pending.as_ref().is_some_and(|p| {
             p.device.is_none_or(|id| self.device_updates.valid(id))
+                && p.navigation
+                    .is_none_or(|id| self.navigation_updates.valid(id))
                 && p.conversation
                     .is_none_or(|id| self.conversation_updates.as_ref().unwrap().valid(id))
                 && p.draft
@@ -245,6 +244,13 @@ impl ConversationWire {
             return false;
         };
         let mut valid = true;
+        if let Some(id) = pending.navigation {
+            valid &= if applied {
+                self.navigation_updates.acknowledge(id)
+            } else {
+                self.navigation_updates.discard(id)
+            };
+        }
         if let Some(id) = pending.device {
             valid &= if applied {
                 self.device_updates.acknowledge(id)
@@ -275,6 +281,7 @@ impl ConversationWire {
             self.anchor = pending.anchor;
         }
         if !valid {
+            self.navigation_updates.reset();
             self.device_updates.reset();
             if let Some(s) = &mut self.conversation_updates {
                 s.reset();
@@ -376,6 +383,7 @@ fn row(line: &TranscriptLine, state: &ConversationData) -> Value {
         value["request_id"] = json!(delivery.request_id);
         value["attempted"] = json!(delivery.attempted);
         value["delivery_status"] = json!(delivery.status);
+        value["delivery_error"] = json!(delivery.error);
     }
     project_payload(&mut value);
     if let Some(card) = &metadata.interaction_view {
@@ -386,7 +394,7 @@ fn row(line: &TranscriptLine, state: &ConversationData) -> Value {
 
 /// Mechanically clip ordered producer splices to an anchored or tail window. Ordinary
 /// appends encode one row plus one removal, regardless of loaded history size.
-fn project<T>(
+pub(super) fn project<T>(
     window: &List<T>,
     mut offset: usize,
     changes: &[ListEdit<T>],

@@ -280,7 +280,7 @@ async fn feed_distinguishes_live_imports_from_history_recovery() {
 }
 
 #[tokio::test]
-async fn shared_delivery_requires_manual_retry_and_retains_identity() {
+async fn shared_delivery_attempts_each_send_once_and_manual_resend_has_a_new_identity() {
     let attempts = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let recorded = attempts.clone();
     let (url, server) = server(Router::new().route(
@@ -328,14 +328,245 @@ async fn shared_delivery_requires_manual_retry_and_retains_identity() {
         .delivered
         .is_empty());
     store.retry_delivery("node", "stable-id").unwrap();
-    let mut reports = pump.reports();
-    tokio::time::timeout(Duration::from_secs(5), reports.changed())
-        .await
+    let pending = store.outbox("node").unwrap();
+    let resend = pending
+        .iter()
+        .find(|m| m.request_id != "stable-id")
         .unwrap()
+        .request_id
+        .clone();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while attempts.lock().unwrap().len() != 2 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        *attempts.lock().unwrap(),
+        ["stable-id".to_owned(), resend.clone()]
+    );
+    assert_eq!(
+        store.outbox("node").unwrap().len(),
+        2,
+        "HTTP success cannot confirm a message"
+    );
+    let echo = |id: &str| serde_json::from_value(message(&format!("client-chat-{id}"))).unwrap();
+    store
+        .cache_message_page(
+            "node",
+            "chat",
+            &MessagePage {
+                source_epoch: None,
+                items: vec![echo("stable-id")],
+                older_cursor: None,
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        store.outbox("node").unwrap()[0].request_id,
+        resend,
+        "old echo cannot confirm the new send"
+    );
+    store
+        .cache_message_page(
+            "node",
+            "chat",
+            &MessagePage {
+                source_epoch: None,
+                items: vec![echo("stable-id"), echo(&resend)],
+                older_cursor: None,
+            },
+            None,
+        )
         .unwrap();
     assert!(store.outbox("node").unwrap().is_empty());
-    assert_eq!(*attempts.lock().unwrap(), ["stable-id", "stable-id"]);
+    assert_eq!(
+        store
+            .cached_messages("node", "chat", None, 100)
+            .unwrap()
+            .unwrap()
+            .items
+            .len(),
+        2
+    );
     drop(pump);
+    server.abort();
+}
+
+#[tokio::test]
+async fn incompatible_message_endpoint_keeps_the_body_and_explains_the_failure() {
+    let (url, server) = server(Router::new().route(
+        "/v1/im/sessions/chat/messages",
+        post(|| async { StatusCode::UNPROCESSABLE_ENTITY }),
+    ))
+    .await;
+    let root = tempfile::tempdir().unwrap();
+    let store = Arc::new(ClientStore::open(root.path()).unwrap());
+    store
+        .enqueue(
+            "node",
+            &QueuedMessage {
+                request_id: "incompatible".into(),
+                session_id: "chat".into(),
+                content: "原消息正文".into(),
+                sent_at_ms: zork_client_core::store::delivery_now_ms(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let report = delivery::flush(&GatewayClient::new(url, None), &store, "node").await;
+    assert_eq!(
+        report.error.as_deref(),
+        Some("目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。")
+    );
+    let failed = store.outbox("node").unwrap().remove(0);
+    assert_eq!(failed.content, "原消息正文");
+    assert_eq!(failed.error, report.error);
+    server.abort();
+}
+
+#[tokio::test]
+async fn long_message_manual_resend_keeps_file_bytes_and_creates_a_new_message() {
+    use std::collections::HashMap;
+    use zork_client_core::{
+        files,
+        state::{Device, DraftAction},
+    };
+    #[derive(Default)]
+    struct Captured {
+        uploads: HashMap<String, Vec<u8>>,
+        receipts: HashMap<String, Value>,
+        posts: usize,
+    }
+    let captured = Arc::new(std::sync::Mutex::new(Captured::default()));
+    let upload = captured.clone();
+    let messages = captured.clone();
+    let (url, server) = server(
+        Router::new()
+            .route(
+                "/v1/im/sessions/chat/files",
+                post(move |Json(body): Json<Value>| {
+                    let state = upload.clone();
+                    async move {
+                        let file: files::FileRef =
+                            serde_json::from_value(body["file"].clone()).unwrap();
+                        let bytes: Vec<u8> = serde_json::from_value(body["bytes"].clone()).unwrap();
+                        let offset = body["offset"].as_u64().unwrap() as usize;
+                        let mut state = state.lock().unwrap();
+                        let stored = state.uploads.entry(file.id).or_default();
+                        if stored.len() == offset {
+                            stored.extend_from_slice(&bytes);
+                        } else {
+                            assert_eq!(&stored[offset..offset + bytes.len()], bytes.as_slice());
+                        }
+                        Json(json!({"received":stored.len()}))
+                    }
+                }),
+            )
+            .route(
+                "/v1/im/sessions/chat/messages",
+                post(move |Json(body): Json<Value>| {
+                    let state = messages.clone();
+                    async move {
+                        let mut state = state.lock().unwrap();
+                        let (text, files) =
+                            files::decode(body["content"].as_str().unwrap()).unwrap();
+                        assert!(text.is_empty());
+                        assert_eq!(files.len(), 1);
+                        for file in files {
+                            let bytes = &state.uploads[&file.id];
+                            assert_eq!(bytes.len(), file.byte_len);
+                            assert_eq!(zork_mesh::content_root(bytes), file.content_root);
+                        }
+                        let id = body["request_id"].as_str().unwrap().to_owned();
+                        if let Some(old) = state.receipts.get(&id) {
+                            assert_eq!(old, &body);
+                        }
+                        state.receipts.insert(id, body);
+                        state.posts += 1;
+                        if state.posts == 1 {
+                            (
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                Json(json!({"error":"reply lost after commit"})),
+                            )
+                        } else {
+                            (StatusCode::OK, Json(json!({})))
+                        }
+                    }
+                }),
+            ),
+    )
+    .await;
+    let client = Arc::new(GatewayClient::new(&url, None));
+    let root = tempfile::tempdir().unwrap();
+    let text = format!("  {}\n", "完整文本 🐈\n".repeat(4000));
+    let queued;
+    {
+        let store = Arc::new(ClientStore::open(root.path()).unwrap());
+        let device = Device::open(client.clone(), Some((store.clone(), "node".into())), false);
+        device
+            .edit_draft_action("chat", DraftAction::Edit { text: text.clone() })
+            .unwrap();
+        queued = device.submit_draft("chat", &text).unwrap().unwrap();
+        assert!(delivery::flush(&client, &store, "node")
+            .await
+            .error
+            .is_some());
+        let state = captured.lock().unwrap();
+        assert_eq!(state.uploads.len(), 1);
+        assert_eq!(state.uploads.values().next().unwrap(), text.as_bytes());
+        assert_eq!(state.receipts.len(), 1);
+    }
+    let store = ClientStore::open(root.path()).unwrap();
+    assert_eq!(store.outbox("node").unwrap()[0].content, queued.content);
+    store.retry_delivery("node", &queued.request_id).unwrap();
+    let resend = store
+        .outbox("node")
+        .unwrap()
+        .into_iter()
+        .find(|m| m.request_id != queued.request_id)
+        .unwrap();
+    assert_eq!(resend.content, queued.content);
+    let result = delivery::flush(&client, &store, "node").await;
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(result.delivered.is_empty());
+    assert_eq!(store.outbox("node").unwrap().len(), 2);
+    let state = captured.lock().unwrap();
+    assert_eq!(state.posts, 2);
+    assert_eq!(state.uploads.len(), 1);
+    assert_eq!(state.receipts.len(), 2);
+    assert!(state.receipts.contains_key(&queued.request_id));
+    assert!(state.receipts.contains_key(&resend.request_id));
+    drop(state);
+    let echo = |id: &str| {
+        serde_json::from_value(json!({"type":"message","role":"user",
+        "id":format!("client-chat-{id}"),"content":queued.content}))
+        .unwrap()
+    };
+    store
+        .cache_message_page(
+            "node",
+            "chat",
+            &MessagePage {
+                source_epoch: None,
+                items: vec![echo(&queued.request_id), echo(&resend.request_id)],
+                older_cursor: None,
+            },
+            None,
+        )
+        .unwrap();
+    assert!(store.outbox("node").unwrap().is_empty());
+    assert_eq!(
+        store
+            .cached_messages("node", "chat", None, 100)
+            .unwrap()
+            .unwrap()
+            .items
+            .len(),
+        2
+    );
     server.abort();
 }
 
@@ -368,7 +599,7 @@ async fn catchup_crosses_multiple_pages_and_merge_preserves_loaded_history() {
 }
 
 #[tokio::test]
-async fn slow_ack_shows_sending_only_after_one_second_and_abort_becomes_manual_failure() {
+async fn sending_is_visible_immediately_and_abort_becomes_manual_failure() {
     let (url, server) = server(Router::new().route(
         "/v1/im/sessions/chat/messages",
         post(|| async {
@@ -394,7 +625,10 @@ async fn slow_ack_shows_sending_only_after_one_second_and_abort_becomes_manual_f
     let client = Arc::new(GatewayClient::new(url, None));
     let pump = DeliveryPump::start(client, store.clone(), "node".into());
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(store.outbox("node").unwrap()[0].delivery_status(), "");
+    assert_eq!(
+        store.outbox("node").unwrap()[0].delivery_status(),
+        "sending"
+    );
     tokio::time::sleep(Duration::from_millis(800)).await;
     assert_eq!(
         store.outbox("node").unwrap()[0].delivery_status(),
@@ -439,10 +673,132 @@ async fn transcript_ack_settles_a_lost_post_response_without_retry() {
     let sending = tokio::spawn(async move { delivery::flush(&client, &tx_store, "node").await });
     tokio::time::sleep(Duration::from_millis(100)).await;
     let confirmed = serde_json::from_value(message("client-chat-ack")).unwrap();
-    store.acknowledge_transcript("node", &[confirmed]).unwrap();
+    store
+        .cache_message_page(
+            "node",
+            "chat",
+            &zork_client_core::api::MessagePage {
+                source_epoch: None,
+                items: vec![confirmed],
+                older_cursor: None,
+            },
+            None,
+        )
+        .unwrap();
     let report = sending.await.unwrap();
     assert!(report.error.is_none());
     assert_eq!(report.delivered, ["ack"]);
     assert!(store.outbox("node").unwrap().is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn core_receives_confirmation_after_all_chat_views_are_gone() {
+    use zork_client_core::state::Device;
+    let (events, _) = tokio::sync::broadcast::channel::<Value>(8);
+    let listeners = Arc::new(AtomicUsize::new(0));
+    let posts = Arc::new(AtomicUsize::new(0));
+    let publish = events.clone();
+    let connections = listeners.clone();
+    let sends = posts.clone();
+    let (url, server) = server(
+        Router::new()
+            .route(
+                "/v1/im/sessions/chat/events",
+                get(move || {
+                    let receiver = publish.subscribe();
+                    connections.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        Sse::new(
+                            stream::once(async {
+                                Ok::<_, std::convert::Infallible>(
+                                    Event::default().event("snapshot").data(
+                                        json!({"session_id":"chat","execution":null}).to_string(),
+                                    ),
+                                )
+                            })
+                            .chain(stream::unfold(
+                                receiver,
+                                |mut receiver| async move {
+                                    let value = receiver.recv().await.ok()?;
+                                    Some((
+                                        Ok::<_, std::convert::Infallible>(
+                                            Event::default()
+                                                .event("message")
+                                                .data(value.to_string()),
+                                        ),
+                                        receiver,
+                                    ))
+                                },
+                            )),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/v1/im/sessions/chat/messages",
+                get(|| async { Json(json!({"items":[],"older_cursor":null})) }).post(move || {
+                    sends.fetch_add(1, Ordering::SeqCst);
+                    async { Json(json!({"accepted":true})) }
+                }),
+            ),
+    )
+    .await;
+    let root = tempfile::tempdir().unwrap();
+    let store = Arc::new(ClientStore::open(root.path()).unwrap());
+    let device = Device::open(
+        Arc::new(GatewayClient::new(url, None)),
+        Some((store.clone(), "node".into())),
+        false,
+    );
+    let queued = device
+        .enqueue("chat", "saved locally first".into())
+        .unwrap();
+    assert_eq!(
+        store.outbox("node").unwrap()[0].delivery_status(),
+        "sending"
+    );
+    device.start_delivery();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while listeners.load(Ordering::SeqCst) == 0 || posts.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Evict the recent-view cache. Only pending delivery's core receive interest
+    // retains this Chat; no UI handle or UI subscription ever existed.
+    for i in 0..32 {
+        device.conversation(&format!("other-{i}"));
+    }
+    assert_eq!(
+        store.outbox("node").unwrap().len(),
+        1,
+        "HTTP success is not source confirmation"
+    );
+    let id = format!("client-chat-{}", queued.request_id);
+    events
+        .send(json!({"type":"message","id":id,"role":"user","content":"authoritative source body"}))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !store.outbox("node").unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let history = store
+        .cached_messages("node", "chat", None, 100)
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.items.len(), 1);
+    let TranscriptMessage::Message {
+        content, metadata, ..
+    } = &history.items[0];
+    assert_eq!(metadata.id.as_deref(), Some(id.as_str()));
+    assert_eq!(content, "authoritative source body");
+    assert_eq!(posts.load(Ordering::SeqCst), 1);
+    assert_eq!(listeners.load(Ordering::SeqCst), 1);
+    drop(device);
     server.abort();
 }

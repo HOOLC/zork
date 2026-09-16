@@ -51,13 +51,7 @@ impl MeshDevice {
 }
 
 pub fn validate_device_name(name: &str) -> Result<String> {
-    let name = name.trim();
-    ensure!(!name.is_empty(), "请输入设备名称");
-    ensure!(
-        name.chars().count() <= 64 && !name.chars().any(char::is_control),
-        "设备名称不能超过 64 个字符或包含控制字符"
-    );
-    Ok(name.to_owned())
+    zork_client_types::device::validate_name(name).map_err(anyhow::Error::msg)
 }
 
 impl MeshGroup {

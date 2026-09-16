@@ -137,6 +137,7 @@ mod tests {
         });
         let mut participants = vec![ParticipantStatus {
             subscribed: false,
+            assigned: false,
             id: "leader".into(),
             name: "Leader".into(),
             avatar: None,

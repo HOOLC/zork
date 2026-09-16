@@ -24,7 +24,7 @@ Selecting a passage in rendered Markdown opens a comment popover. Enter adds it 
 
 Settings use a separate navigation layout with separate Help and diagnostics and About tabs, plus each device's own Station, Agent and model-connection pages. Connection setup starts with Subscription/API access, then a compact icon-bearing provider selector. Authentication, model discovery (where the provider actually supports it), manual model configuration and Agent Profile/model assignment use the selected device's authenticated APIs. Creating a connection does not imply that template models are verified account capabilities. Station version information is real; in-client self-upgrade remains unsupported.
 
-The sidebar and settings navigation also expose **Mesh resources**: a read-only, device-filtered inventory of managed skills, MCP servers and services. Search and type filters lead to binding, ownership, status and access details. Opening or refreshing fetches current records; stale and unavailable devices remain explicit. Wide windows retain a detail column, while compact windows show a returnable detail page. See [the resource contract](../../docs/mesh-resources.md).
+The sidebar and settings navigation also expose **Mesh resources**: a read-only, device-filtered inventory of managed skills, MCP servers and services. Search and type filters lead to binding, ownership, status and access details. Opening or refreshing fetches current records; stale and unavailable devices remain explicit. Wide windows retain a detail column, while compact windows show a returnable detail page. See [the resource contract](../../docs/design/external-capabilities.md#publication).
 
 “Connect device” offers separate phone and other-device panes. Phone access uses a short QR invitation and explicit desktop approval; other devices use the Station join command. Delivered conversation artifacts remain available for native preview, cached offline viewing and saving. Local files, drops and clipboard images become immutable conversation-owned snapshots before delivery.
 
@@ -236,7 +236,7 @@ Native windows support 900×600 and larger. Cmd+B toggles the device sidebar;
 Escape dismisses the active conversation popover. Model and Agent configuration
 belongs to device settings. The composer accepts local files, file drops and clipboard
 images. Conversation-owned snapshots appear as a fused fan of previews; hover unfolds
-the fan and clicking pins it. See [conversation files](../../docs/conversation-files.md).
+the fan and clicking pins it. See [conversation files](../../docs/design/shared-files.md#attachments).
 
 Embedded `locales/zh-CN.json` and `locales/en.json` catalogs supply shared labels.
 `ZORK_GUI_LOCALE=zh-CN|en` overrides the saved startup locale, and
@@ -254,8 +254,8 @@ python3 scripts/test-client-settings.py
 ```
 
 Delivered files can be previewed and saved from the current conversation. Immutable
-snapshots survive changes to their original source. See the [task API](../../docs/local-product-tasks.md),
-[file storage limits](../../docs/local-drive.md), and [Mesh transport](../../docs/local-mesh.md).
+snapshots survive changes to their original source. See the [task API](../../docs/design/chat.md#compatibility),
+[file storage contracts](../../docs/design/shared-files.md), and [Mesh transport](../../docs/design/devices.md).
 
 ### Headless rendering and performance acceptance
 

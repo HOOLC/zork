@@ -48,37 +48,6 @@ impl GatewayDb {
         Ok(())
     }
 
-    pub fn enqueue_agent_input(
-        &self,
-        key: &str,
-        agent: &str,
-        author: &crate::node_access::Subject,
-        content: &str,
-    ) -> Result<Value> {
-        anyhow::ensure!(
-            !content.trim().is_empty() && content.len() <= 32 * 1024,
-            "invalid_agent_message"
-        );
-        let mut conn = self.conn.lock().expect("db mutex");
-        let tx = conn.transaction()?;
-        command_active(&tx, key)?;
-        anyhow::ensure!(
-            tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM node_agents WHERE id=?1)",
-                [agent],
-                |r| r.get::<_, bool>(0)
-            )?,
-            "agent_not_found"
-        );
-        tx.execute("INSERT INTO chat_direct_inputs(request_key,agent_id,author,content) VALUES(?1,?2,?3,?4)",params![key,agent,serde_json::to_string(author)?,content])?;
-        let result = json!({"state":"queued","agent_id":agent});
-        finish(&tx, key, &result)?;
-        tx.commit()?;
-        self.chat_topics
-            .publish([Topic::Mailbox, Topic::AgentInput(agent.into())]);
-        Ok(result)
-    }
-
     pub fn direct_agent_inputs(
         &self,
         agent: &str,
@@ -121,18 +90,43 @@ impl GatewayDb {
         }))
     }
 
-    pub fn save_channel_agent(
+    pub(crate) fn save_channel_agent(
         &self,
         key: &str,
         agent: &NodeAgent,
         expected: Option<&str>,
+        request: Option<&str>,
     ) -> Result<Value> {
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
         command_active(&tx, key)?;
+        if let Some(id) = request {
+            crate::db::interaction_registry::require_active(&tx, id, agent_configuration::HANDLER)?;
+        }
         let result = save_agent(&tx, agent, expected)?;
         finish(&tx, key, &result)?;
+        let topics = if let Some(id) = request {
+            let mut record = cards::read(&tx, id)?;
+            let old = record.result.as_ref().context("interaction_not_accepted")?;
+            anyhow::ensure!(
+                old.outcome == zork_client_types::interaction::Outcome::Pending,
+                "interaction_settled"
+            );
+            let resolution = zork_client_types::interaction::Resolution {
+                request_message_id: String::new(),
+                response_id: old.response_id.clone(),
+                revision: old.revision + 1,
+                outcome: zork_client_types::interaction::Outcome::Completed,
+                actor: old.actor.clone(),
+                output: result.clone(),
+            };
+            cards::resolve(&tx, &mut record, resolution)?
+        } else {
+            vec![]
+        };
         tx.commit()?;
+        self.flush_messages(&conn)?;
+        self.chat_topics.publish(topics);
         Ok(result)
     }
 
@@ -162,6 +156,7 @@ impl GatewayDb {
             )?;
         }
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(agent)
     }
 

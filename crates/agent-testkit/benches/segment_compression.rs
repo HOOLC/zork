@@ -7,7 +7,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
-use zork_agent::session::events::{Input, Selection, SessionEvent, EVENT_SCHEMA_VERSION};
+use zork_agent::session::events::{EVENT_SCHEMA_VERSION, Input, Selection, SessionEvent};
 use zork_agent::session::store::{EventEnvelope, SessionStore, StreamStore};
 
 const DEFAULT_SEGMENT_MIB: u64 = 32;
@@ -32,7 +32,7 @@ impl CompressionPerformance {
     }
 }
 
-// Contract: docs/zork-agent-architecture.md [SEGMENT-02]
+// Contract: docs/design/agent-runtime.md [SEGMENT-02]
 fn main() {
     let arguments = std::env::args()
         .skip(1)
@@ -98,7 +98,7 @@ fn prepare_fixture(data_root: &Path, target_bytes: u64) -> std::io::Result<(Stri
     let session_ulid: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
     let session_id = session_ulid.to_string();
     let segments = data_root
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_id)
         .join("segments");
     std::fs::create_dir_all(&segments)?;
@@ -215,7 +215,7 @@ fn measure_child(arguments: &[String]) {
     let session_id = &arguments[2];
     let first_event_id = &arguments[3];
     let source = data_root
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(session_id)
         .join("segments")
         .join(format!("{first_event_id}.jsonl"));

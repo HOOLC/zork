@@ -49,6 +49,10 @@ def main():
                AR_aarch64_linux_android=str(llvm / "llvm-ar"),
                CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=str(compiler),
                CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384")
+    # Native QuickJS bindings must use the Android headers and ABI, including
+    # when libclang itself is provided by the host toolchain.
+    env.setdefault("BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android",
+                   f"--target=aarch64-linux-android29 --sysroot={llvm.parent / 'sysroot'}")
     # Do not contend with desktop Cargo's build lock or change its feature graph.
     env.setdefault("CARGO_TARGET_DIR", str(ROOT / "target/android"))
     if not env.get("JAVA_HOME"):

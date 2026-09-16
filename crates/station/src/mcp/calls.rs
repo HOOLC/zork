@@ -78,7 +78,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, local: bool) -> Result<V
         reference.owner_origin == own_origin(state) || (local && reference.owner_origin == "local"),
         "mcp_wrong_owner"
     );
-    let server = check(
+    let server = check_permission(
         state,
         who,
         local,
@@ -86,16 +86,27 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, local: bool) -> Result<V
         request.tool.as_deref(),
     )?;
     if request.op == "inspect" {
-        let _slot = state
-            .mcp
-            .slots
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| anyhow::anyhow!("mcp_stopping"))?;
+        let mut details = state.mcp.descriptor(&server, &own_origin(state));
+        details["config"] = serde_json::to_value(&server.config)?;
+        details["items"] = json!([]);
+        if !server.config.enabled {
+            return Ok(details);
+        }
+        let slot = state.mcp.slots.clone().try_acquire_owned();
+        let Ok(_slot) = slot else {
+            ensure!(
+                request.tool.is_none() && request.cursor.is_none(),
+                "mcp_busy"
+            );
+            details["error"] = json!("mcp_busy");
+            return Ok(details);
+        };
         let session = state.mcp.connection(&server, who)?;
         let operation = async {
-            let mut connection = session.connection.lock().await;
+            let mut connection = session
+                .connection
+                .try_lock()
+                .map_err(|_| anyhow::anyhow!("mcp_busy"))?;
             let result = async {
                 // Taking ownership makes cancellation discard a half-read protocol session.
                 let mut client = match connection.take() {
@@ -141,9 +152,35 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, local: bool) -> Result<V
             *session.used.lock().expect("mcp used") = Instant::now();
             result
         };
-        return operation.await;
+        let result = match tokio::time::timeout(Duration::from_secs(10), operation).await {
+            Ok(result) => result,
+            Err(_) => {
+                let result = Err(anyhow::anyhow!("mcp_inspection_timeout"));
+                state.mcp.healthy(&server.id, &result);
+                result
+            }
+        };
+        let current = check_permission(state, who, local, &server.id, request.tool.as_deref())?;
+        ensure!(
+            current.revision == server.revision,
+            "mcp_definition_changed"
+        );
+        match result {
+            Ok(page) => details
+                .as_object_mut()
+                .unwrap()
+                .extend(page.as_object().unwrap().clone()),
+            Err(error) if request.tool.is_none() && request.cursor.is_none() => {
+                details["error"] = json!(safe_error(&error));
+            }
+            Err(error) => return Err(error),
+        }
+        details["availability"] =
+            state.mcp.descriptor(&server, &own_origin(state))["availability"].clone();
+        return Ok(details);
     }
     ensure!(request.op == "call", "mcp_invalid_operation");
+    ensure!(server.config.enabled, "mcp_disabled");
     field(&request.tool)?;
     field(&request.binding_revision)?;
     ensure!(

@@ -94,7 +94,7 @@ impl RootView {
                 self.select_session(session, cx);
             }
             Destination::Page(route) => self.navigate_shell(route.clone(), cx),
-            Destination::Manage(_) => {}
+            Destination::Manage(_) | Destination::SharedFiles => {}
         }
         self.notify_navigation(cx);
         zork_ui::components::region::invalidate_all(cx);
@@ -151,65 +151,36 @@ impl RootView {
     }
 
     pub(super) fn render_leader_home(&mut self, cx: &mut Context<Self>) -> Div {
-        let empty = self.node_agents.is_empty();
-        let copy =
-            self.regions
-                .auto_height("home", self.composer_surface_width, cx, |view, _, _| {
-                    let empty = view.node_agents.is_empty();
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap_4()
-                        .child(
-                            div()
-                                .text_size(px(24.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(if empty {
-                                    "创建你的第一位 领队"
-                                } else {
-                                    "从一段对话开始"
-                                }),
-                        )
-                        .child(
-                            div()
-                                .text_center()
-                                .text_size(px(13.))
-                                .line_height(px(22.))
-                                .text_color(rgb(DIM))
-                                .child(if empty {
-                                    "在设备设置中添加模型连接，再创建 领队。"
-                                } else {
-                                    view.locale.text("device_choose_leader")
-                                }),
-                        )
-                        .into_any_element()
-                });
-        // The animated brand is a sibling of the retained text, never its child.
-        div()
-            .flex_1()
-            .min_w_0()
-            .min_h_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .px_8()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(440.))
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap_4()
-                    .child(if empty {
-                        self.onboarding_brand.clone()
-                    } else {
-                        self.home_brand.clone()
-                    })
-                    .child(copy),
-            )
+        let empty = !self.core_device.has_long_term_agents();
+        let data = zork_ui::welcome::Data {
+            title: if empty {
+                "创建你的第一位 领队"
+            } else {
+                "从一段对话开始"
+            }
+            .into(),
+            description: if empty {
+                "在设备设置中添加模型连接，再创建 领队。"
+            } else {
+                self.locale.text("device_choose_leader")
+            }
+            .into(),
+        };
+        let brand = if empty {
+            self.onboarding_brand.clone()
+        } else {
+            self.home_brand.clone()
+        };
+        let welcome = self
+            .welcome
+            .get_or_insert_with(|| {
+                cx.new(|_| zork_ui::welcome::Welcome::new(data.clone(), brand.clone()))
+            })
+            .clone();
+        welcome.update(cx, |view, cx| {
+            view.configure(data, brand, self.composer_surface_width, cx)
+        });
+        div().flex_1().min_w_0().min_h_0().flex().child(welcome)
     }
 }
 

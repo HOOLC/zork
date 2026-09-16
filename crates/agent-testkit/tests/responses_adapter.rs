@@ -1,6 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -347,14 +350,28 @@ fn assert_runtime_notice_reasoning(body: &Value) -> usize {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn deepseek_wait_notifications_keep_reasoning_and_replay_after_restart() {
-    for streaming in [true, false] {
-        let mut agent = RealAgent::new().unwrap();
+async fn deepseek_routes_keep_notification_reasoning_and_replay_after_restart() {
+    let mut agent = RealAgent::new().unwrap();
+    for (provider, model, streaming) in [
+        ("deepseek", MODEL, true),
+        ("deepseek", MODEL, false),
+        ("opencode-go", "deepseek-flash", true),
+        ("opencode-go", "deepseek-flash", false),
+        ("opencode-go", "deepseek-v4-pro", true),
+        ("opencode-go", "deepseek-v4-pro", false),
+    ] {
         let mut settings = profile(agent.provider_base_url(), streaming);
-        settings["provider"] = json!("deepseek");
-        agent.install_profile("deepseek", settings).unwrap();
+        settings["provider"] = json!(provider);
+        if provider == "opencode-go" {
+            settings["billing"] = json!("subscription");
+        }
+        settings["models"][0]["id"] = json!(model);
+        let profile_id = format!("{provider}-{model}-{streaming}");
+        agent.install_profile(&profile_id, settings).unwrap();
+        let mut selected = selection(&profile_id);
+        selected.model = model.into();
         let session = agent
-            .create_configured_session(selection("deepseek"), None)
+            .create_configured_session(selected, None)
             .await
             .unwrap();
         agent
@@ -363,6 +380,13 @@ async fn deepseek_wait_notifications_keep_reasoning_and_replay_after_restart() {
             .unwrap();
         let first = agent.request().await;
         let first_body = first.json().unwrap();
+        assert_eq!(first_body["model"], model);
+        if provider == "opencode-go" {
+            assert_eq!(
+                first.headers.get("x-opencode-session").map(String::as_str),
+                Some(session.as_str())
+            );
+        }
         let original = vec![
             reasoning_item("rs_wait", false),
             response_call_item("fc_wait", "real_wait", "wait", json!({"seconds": 0.02})),
@@ -432,8 +456,8 @@ async fn deepseek_wait_notifications_keep_reasoning_and_replay_after_restart() {
                 .contains("Runtime-generated notification;"),
             "wire compatibility markers must not replace persisted provider output"
         );
-        agent.shutdown().await;
     }
+    agent.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -466,6 +490,277 @@ async fn deepseek_missing_reasoning_400_ends_the_turn_after_one_attempt() {
     );
     assert!(history.iter().any(|event| matches!(&event.event,
         SessionEvent::StepFailed { error, .. } if !error.retryable && error.status_code == Some(400))));
+    agent.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [RETRY-02]
+async fn arbitrary_http_400_stops_streaming_and_non_streaming_after_one_request() {
+    let mut agent = RealAgent::new().unwrap();
+    for streaming in [true, false] {
+        let profile_id = format!("http-400-{streaming}");
+        agent.install_profile(&profile_id, profile(agent.provider_base_url(), streaming)).unwrap();
+        for (code, message) in [
+            ("invalid_request_error", "Request is missing x-opencode-session"),
+            ("context_length_exceeded", "maximum context length exceeded"),
+        ] {
+            let session = agent.create_configured_session(selection(&profile_id), None).await.unwrap();
+            agent.send_mail(&session, "continue").await.unwrap();
+            agent.request().await.respond_json(StatusCode::BAD_REQUEST, json!({"error": {
+                "type": "invalid_request_error", "code": code, "message": message
+            }})).unwrap();
+            agent.wait_for_state(&session, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+            }).await;
+            let history = agent.history(&session, None, 200).unwrap();
+            assert_eq!(history.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 1);
+            assert!(!history.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+            assert!(history.iter().any(|e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
+                if !error.retryable && error.status_code == Some(400))));
+        }
+    }
+    agent.shutdown().await;
+}
+
+struct DisconnectingGateway {
+    url: String,
+    disconnect: Arc<AtomicBool>,
+    stop: tokio::sync::oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl DisconnectingGateway {
+    async fn start(upstream: &str) -> Self {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let upstream = upstream.strip_prefix("http://").unwrap().to_owned();
+        let disconnect = Arc::new(AtomicBool::new(true));
+        let flag = disconnect.clone();
+        let (stop, mut stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                tokio::select! {
+                    _ = &mut stopped => break,
+                    Some(_) = connections.join_next(), if !connections.is_empty() => {},
+                    accepted = listener.accept() => {
+                        let (mut incoming, _) = accepted.unwrap();
+                        if flag.load(Ordering::SeqCst) {
+                            // No HTTP response: exercise the actual client send error.
+                            drop(incoming);
+                            continue;
+                        }
+                        let upstream = upstream.clone();
+                        connections.spawn(async move {
+                            if let Ok(mut outgoing) = tokio::net::TcpStream::connect(upstream).await {
+                                let _ = tokio::io::copy_bidirectional(&mut incoming, &mut outgoing).await;
+                            }
+                        });
+                    }
+                }
+            }
+            connections.abort_all();
+            while connections.join_next().await.is_some() {}
+        });
+        Self {
+            url,
+            disconnect,
+            stop,
+            task,
+        }
+    }
+
+    async fn shutdown(self) {
+        let _ = self.stop.send(());
+        self.task.await.unwrap();
+    }
+}
+
+async fn wait_for_failure_count(agent: &RealAgent, session: &str, count: usize) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let failures = agent
+                .history(session, None, 200)
+                .unwrap()
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::StepFailed { .. }))
+                .count();
+            if failures >= count {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("provider failure became durable");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [PROJECTION-02, RETRY-01, RETRY-02, RECOVERY-01]
+async fn network_disconnect_and_truncated_output_recover_without_repeating_tools() {
+    let mut agent = RealAgent::new().unwrap();
+    for streaming in [true, false] {
+        let gateway = DisconnectingGateway::start(agent.provider_base_url()).await;
+        let profile_id = format!("go-disconnect-{streaming}");
+        let mut settings = profile(&gateway.url, streaming);
+        settings["provider"] = json!("opencode-go");
+        settings["billing"] = json!("subscription");
+        settings["models"][0]["id"] = json!("deepseek-flash");
+        agent.install_profile(&profile_id, settings).unwrap();
+        let mut selected = selection(&profile_id);
+        selected.model = "deepseek-flash".into();
+        let session = agent
+            .create_configured_session(selected, None)
+            .await
+            .unwrap();
+        agent
+            .send_mail(&session, "run a tool after the connection recovers")
+            .await
+            .unwrap();
+        wait_for_failure_count(&agent, &session, 2).await;
+        gateway.disconnect.store(false, Ordering::SeqCst);
+        let first = tokio::time::timeout(Duration::from_secs(10), agent.request())
+            .await
+            .unwrap();
+        assert_runtime_notice_reasoning(&first.json().unwrap());
+        let original = vec![
+            reasoning_item("rs_after_disconnect", false),
+            response_call_item(
+                "fc_once",
+                "call_once",
+                "shell.run",
+                json!({
+                    "command": "printf 'once\\n' >> count.txt",
+                }),
+            ),
+        ];
+        respond_output_items(first, "after-disconnect", &original, streaming);
+        let next = agent.request().await;
+        let before_truncation = next.json().unwrap();
+        assert_raw_items(&before_truncation, &original, "call_once");
+        let workspace = agent.workspace(&session).unwrap().to_owned();
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("count.txt")).unwrap(),
+            "once\n"
+        );
+        if streaming {
+            let stream = next.begin_sse(8).unwrap();
+            let partial = response_call_item(
+                "fc_uncommitted",
+                "call_uncommitted",
+                "file.write",
+                json!({
+                    "path": "must-not-exist.txt", "content": "uncommitted response",
+                }),
+            );
+            stream
+                .send_json(json!({"type":"response.created", "response":{"id":"truncated"}}))
+                .await
+                .unwrap();
+            stream.send_json(json!({"type":"response.output_item.added", "output_index":0, "item":{
+                "type":"function_call", "id":"fc_uncommitted", "call_id":"call_uncommitted", "name":"call", "arguments":"",
+            }})).await.unwrap();
+            stream
+                .send_json(
+                    json!({"type":"response.function_call_arguments.delta", "output_index":0,
+                        "item_id":"fc_uncommitted", "delta":partial["arguments"],
+                    }),
+                )
+                .await
+                .unwrap();
+            stream
+                .send_json(
+                    json!({"type":"response.output_item.done", "output_index":0, "item":partial}),
+                )
+                .await
+                .unwrap();
+            // End the body without a terminal response: completed tool JSON alone
+            // must never commit or execute an incomplete model response.
+            stream.finish().await.unwrap();
+        } else {
+            next.respond_raw(
+                StatusCode::OK,
+                "application/json",
+                "{\"id\":\"truncated\",\"output\":[",
+            )
+            .unwrap();
+        }
+        wait_for_failure_count(&agent, &session, 3).await;
+        let recovered = agent.request().await;
+        let recovered_body = recovered.json().unwrap();
+        assert!(input(&recovered_body).starts_with(input(&before_truncation)));
+        assert_raw_items(&recovered_body, &original, "call_once");
+        assert_runtime_notice_reasoning(&recovered_body);
+        assert!(!workspace.join("must-not-exist.txt").exists());
+        let finish = vec![
+            reasoning_item("rs_finish", false),
+            response_call_item("fc_finish", "call_finish", "end", json!({})),
+        ];
+        respond_output_items(recovered, "finish", &finish, streaming);
+        agent
+            .wait_for_state(&session, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Finished)
+            })
+            .await;
+        let history = agent.history(&session, None, 200).unwrap();
+        let errors = history
+            .iter()
+            .filter_map(|event| match &event.event {
+                SessionEvent::StepFailed { error, .. } => Some(error),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(errors.len(), 3);
+        assert!(errors
+            .iter()
+            .all(|error| error.retryable && error.status_code.is_none()));
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("count.txt")).unwrap(),
+            "once\n"
+        );
+
+        agent
+            .send_mail(&session, "a request that the provider rejects")
+            .await
+            .unwrap();
+        agent
+            .request()
+            .await
+            .respond_json(
+                StatusCode::BAD_REQUEST,
+                json!({"error":{"message":"invalid input"}}),
+            )
+            .unwrap();
+        agent
+            .wait_for_state(&session, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Failed)
+            })
+            .await;
+        agent.restart().await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), agent.request())
+                .await
+                .is_err()
+        );
+        agent
+            .send_mail(&session, "continue after correcting the bad request")
+            .await
+            .unwrap();
+        let resumed = agent.request().await;
+        assert_raw_items(&resumed.json().unwrap(), &original, "call_once");
+        respond_output_items(resumed, "resumed", &finish, streaming);
+        agent
+            .wait_for_state(&session, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Finished)
+            })
+            .await;
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("count.txt")).unwrap(),
+            "once\n"
+        );
+        assert!(!workspace.join("must-not-exist.txt").exists());
+        gateway.shutdown().await;
+    }
     agent.shutdown().await;
 }
 
@@ -535,7 +830,62 @@ fn provider_request(profile_id: &str, observer: Arc<dyn ModelStreamObserver>) ->
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [COMPACTION-01, PROVIDER-01, PROVIDER-02]
+// Contract: docs/design/agent-runtime.md [PROVIDER-01, COMPACTION-01, RETRY-02]
+async fn opencode_session_headers_reach_every_http_protocol_and_context_request() {
+    let mut provider = ControlledHttpProvider::start(32).unwrap();
+    for (api, path) in [
+        ("openai-responses", "/v1/responses"),
+        ("openai-completions", "/v1/chat/completions"),
+        ("anthropic-messages", "/v1/messages"),
+    ] {
+        for streaming in [true, false] {
+            for (session_id, step_id, independent) in [
+                ("session-a", "step-1", false),
+                ("session-a", "step-2", false),
+                ("session-b", "step-3", false),
+                ("session-a", "summary-4", true),
+            ] {
+                let mut request = provider_request("go", Arc::new(SilentStreamObserver));
+                request.session_id = session_id.into();
+                request.step_id = step_id.into();
+                request.independent = independent;
+                let execution = ProfileExecution::new(
+                    "go".into(), "opencode-go".into(), MODEL.into(), api.into(),
+                    streaming, false, None, format!("{}/v1", provider.base_url()),
+                    HashMap::from([
+                        ("X-OpenCode-Session".into(), "stale-profile-value".into()),
+                        ("x-custom".into(), "keep".into()),
+                    ]),
+                    "xhigh".into(), ModelLimits {
+                        context_window_tokens: 1_000_000,
+                        max_output_tokens: 56_000,
+                        reserve_percent: 10,
+                    }, "test-secret".into(),
+                );
+                let task = tokio::spawn(async move {
+                    ProviderRouter::new().complete(&request, execution).await
+                });
+                let received = provider.request().await;
+                assert_eq!(received.path_and_query, path);
+                assert_eq!(received.headers["x-opencode-session"], if independent { step_id } else { session_id });
+                assert!(received.headers["user-agent"].starts_with("zork-agent/"));
+                assert_eq!(received.headers["x-custom"], "keep");
+                received.respond_json(StatusCode::BAD_REQUEST, json!({"error": {
+                    "type": "invalid_request_error", "message": "controlled request rejection"
+                }})).unwrap();
+                let ModelError::ProviderFailed(failure) = task.await.unwrap().unwrap_err() else {
+                    panic!("expected controlled provider rejection");
+                };
+                assert_eq!(failure.status_code, Some(400));
+                assert!(!failure.retryable);
+            }
+        }
+    }
+    provider.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [COMPACTION-01, PROVIDER-01, PROVIDER-02]
 async fn compaction_is_tool_free_on_responses_and_chat_completions() {
     for api in ["openai-responses", "openai-completions"] {
         let mut agent = RealAgent::new().unwrap();
@@ -628,7 +978,7 @@ async fn compaction_is_tool_free_on_responses_and_chat_completions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [PERSIST-01, PROVIDER-01, PROVIDER-02, PROVIDER-03, PROVIDER-04]
+// Contract: docs/design/agent-runtime.md [PERSIST-01, PROVIDER-01, PROVIDER-02, PROVIDER-03, PROVIDER-04]
 async fn real_responses_adapter_preserves_wire_usage_reasoning_and_restart_replay() {
     let started = Instant::now();
     let mut agent = RealAgent::new().unwrap();
@@ -993,7 +1343,7 @@ async fn reasoning_output_updates_activity_before_text_or_response_completion() 
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-// Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-01]
+// Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-01]
 async fn streaming_and_complete_responses_stay_on_one_request_across_thirty_silent_seconds() {
     let _io_guard = PausedTimeIoGuard::start();
     let router = Arc::new(ProviderRouter::new());
@@ -1062,7 +1412,7 @@ async fn streaming_and_complete_responses_stay_on_one_request_across_thirty_sile
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+// Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
 async fn responses_eof_without_a_terminal_event_is_a_diagnostic_provider_failure() {
     let router = ProviderRouter::new();
     let mut provider = ControlledHttpProvider::start(4).unwrap();

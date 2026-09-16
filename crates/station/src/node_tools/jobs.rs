@@ -15,7 +15,7 @@ impl Drop for Child {
     }
 }
 fn output(state: &AppState, id: &str) -> std::path::PathBuf {
-    state.config.state_dir.join("device-output").join(id)
+    zork_config::files_root(&state.config.data_root).join("device-output").join(id)
 }
 pub async fn run(
     state: &AppState,
@@ -29,9 +29,7 @@ pub async fn run(
         .filter(|s| !s.is_empty())
         .context("device_missing_parameter")?;
     ensure!(script.len() <= 64 * 1024, "device_command_limit");
-    let root = state
-        .config
-        .data_root
+    let root = zork_config::files_root(&state.config.data_root)
         .join("device-workspaces")
         .join(fingerprint(&rpc.subject)?);
     let cwd = rpc

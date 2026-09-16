@@ -1,7 +1,10 @@
+mod adb;
 mod admin;
 mod agent;
+mod agent_configuration;
 mod binshim;
 mod browser;
+mod business_cards;
 mod channels;
 mod config;
 mod connections;
@@ -11,19 +14,24 @@ mod db;
 mod delivery;
 mod desktop_events;
 mod enrollment;
+mod files;
 mod http;
 mod im_entry;
 mod inbound;
+mod interaction_registry;
 mod jobs;
 mod mcp;
 mod mesh;
+mod message_log;
 mod node;
 mod node_access;
 mod node_tools;
-mod pages;
+mod provider_login;
 mod realtime;
+mod shared_files;
 mod shared_services;
 mod slack;
+mod slack_tools;
 mod socket;
 mod state;
 mod status_projection;
@@ -41,23 +49,28 @@ use tracing::info;
 use zork_agent::{session::tools::ToolRegistry, AgentOptions, AgentRuntime};
 
 fn main() -> Result<()> {
+    zork_config::startup::mark("station.main");
     if std::env::args().nth(1).as_deref() == Some("--service-process") {
         let input = std::env::args()
             .nth(2)
             .ok_or_else(|| anyhow::anyhow!("missing service launch"))?;
         std::process::exit(shared_services::process::entry(&input)?);
     }
+    let identity = zork_config::service::prepare_process_identity()?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(run())
+        .block_on(run(identity))
 }
-async fn run() -> Result<()> {
+async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
+    zork_config::startup::mark("station.runtime_created");
     if std::env::args()
         .skip(1)
         .any(|arg| arg == "--help" || arg == "-h")
     {
-        println!("Usage: zork-station [--data DIR] [--listen HOST] [--agent-token TOKEN] [--no-streaming]");
+        println!(
+            "Usage: zork-station [--data DIR] [--listen HOST] [--agent-token TOKEN] [--no-streaming]"
+        );
         return Ok(());
     }
     tracing_subscriber::fmt()
@@ -68,6 +81,7 @@ async fn run() -> Result<()> {
     let shutdown = arm_shutdown_signal()?;
     let args = zork_config::parse_process_args()?;
     let mut config = RuntimeConfig::load()?;
+    zork_config::startup::mark("station.config_loaded");
     for path in [
         &config.state_dir,
         &config.workspaces_root,
@@ -78,13 +92,44 @@ async fn run() -> Result<()> {
         std::fs::create_dir_all(path)?;
     }
     binshim::install(&mut config)?;
+    zork_config::startup::mark("station.shims_installed");
     let file = zork_config::load_config(&config.data_root)?;
-    let db = Arc::new(GatewayDb::open(&config.state_dir, &config.workspaces_root)?);
+    let (db, prepared_agent) = std::thread::scope(|scope| -> Result<_> {
+        let database = scope.spawn(|| -> Result<_> {
+            zork_config::service::clear_signal_mask()?;
+            GatewayDb::open_with_paths(
+                &config.state_dir,
+                &config.workspaces_root,
+                &zork_config::files_root(&config.data_root),
+                &config.data_root.join("chats"),
+                &config.data_root.join("cache"),
+            )
+        });
+        let preparation = scope.spawn(|| {
+            zork_config::service::clear_signal_mask()?;
+            AgentRuntime::prepare(&config.data_root)
+        });
+        // Launch Services stays on the main thread, overlapping only durable
+        // storage IO. No session, tool or listener serves before all complete.
+        let registered = identity.register();
+        let db = database.join();
+        let prepared = preparation.join();
+        // Join both workers on every error path; their storage locks cannot
+        // outlive startup or an unsuccessful process identity registration.
+        registered?;
+        let db = db.map_err(|_| anyhow::anyhow!("Station storage preparation interrupted"))??;
+        let prepared = prepared
+            .map_err(|_| anyhow::anyhow!("Agent storage preparation interrupted"))??;
+        Ok((Arc::new(db), prepared))
+    })?;
+    zork_config::startup::mark("station.database_opened");
     let http_client = reqwest::Client::builder().no_proxy().build()?;
     let connections = Arc::new(
         connections::ConnectionManager::load(config.data_root.clone(), http_client).await?,
     );
+    zork_config::startup::mark("station.connections_loaded");
     let control_db = Arc::new(control_db::ControlDb::open(&config.state_dir)?);
+    zork_config::startup::mark("station.control_database_opened");
     control_db.attach_realtime(&db.realtime);
     // Bind before recovery starts: recovered tools may immediately call back into Gateway.
     let mut listeners = vec![
@@ -107,9 +152,25 @@ async fn run() -> Result<()> {
             ListenerKind::Gateway,
         ));
     }
+    zork_config::startup::mark("station.listeners_bound");
     let tools = Arc::new(ToolRegistry::default());
     zork_agent_gateway_tools::register(&tools, config.broker_http_base_url.clone())?;
-    let mut runtime = AgentRuntime::start(AgentOptions {
+    let mesh = Arc::new(std::sync::OnceLock::new());
+    let files = Arc::new(files::Files::new(
+        config.data_root.clone(),
+        db.clone(),
+        mesh.clone(),
+    ));
+    let mut runtime = prepared_agent.start(AgentOptions {
+        files: Some(files.clone()),
+        configure_tools: Some({
+            let base = config.broker_http_base_url.clone();
+            Arc::new(move |registry| zork_agent_gateway_tools::extend_shell(registry, &base))
+        }),
+        skill_catalog: Some({
+            let files = files.clone();
+            Arc::new(move |session| files.catalog(session))
+        }),
         service: zork_agent::session::service::ServiceOptions {
             runner: zork_agent::session::runner::RunnerOptions {
                 configuration_source: Some({
@@ -124,22 +185,6 @@ async fn run() -> Result<()> {
             },
             ..Default::default()
         },
-        skill_source_manager: Some({
-            let db = db.clone();
-            let root = config.data_root.clone();
-            Arc::new(move |session, request| {
-                let config = zork_config::load_config(&root)?.skills;
-                // Validate node defaults before making a persistent change.
-                config.sources(&root, &[])?;
-                let mut result = db.manage_skill_sources(session, request)?;
-                let paths: Vec<std::path::PathBuf> =
-                    serde_json::from_value(result["agent_paths"].clone())?;
-                result["sources"] = serde_json::to_value(config.sources(&root, &paths)?)?;
-                result["shared_path"] = serde_json::to_value(config.shared_path)?;
-                result["device_paths"] = serde_json::to_value(config.paths)?;
-                Ok(result)
-            })
-        }),
         skill_sources: Some({
             let db = db.clone();
             let root = config.data_root.clone();
@@ -154,15 +199,42 @@ async fn run() -> Result<()> {
         no_streaming: args.no_streaming,
         context: file.context.clone(),
         tools,
-        environment: zork_agent_gateway_tools::environment(
-            &config.data_root,
-            &config.broker_http_base_url,
-        )?,
+        environment: {
+            let mut environment = zork_agent_gateway_tools::environment(
+                &config.data_root,
+                &config.broker_http_base_url,
+            )?;
+            environment.insert(
+                "SKILLS_ROOT".into(),
+                zork_config::skill_bundles::skills_root(&config.data_root)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+            environment.insert(
+                "REPOS_ROOT".into(),
+                zork_config::files_root(&config.data_root)
+                    .join("repos")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+            environment.insert(
+                "SHARED_FILES_ROOT".into(),
+                zork_config::shared_files_root(&config.data_root)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+            environment
+        },
         ..Default::default()
     })?;
+    zork_config::startup::mark("station.agent_started");
     let agent = runtime.agent().clone();
     let entries = im_entry::ImEntryGateway::new(db.clone(), connections.clone());
     let state = AppState {
+        files,
+        provider_auth: Arc::new(node::auth::Hub::new()?),
+        login_cards: Default::default(),
+        interaction_handlers: Arc::new(business_cards::lifecycle_handlers()?),
         node_tools: Arc::new(node_tools::Hub::open(&config.state_dir)?),
         mcp: Arc::new(mcp::Hub::open(&config.state_dir)?),
         browser: Arc::new(browser::Hub::open(&config.data_root)?),
@@ -177,7 +249,7 @@ async fn run() -> Result<()> {
         ),
         entries,
         jobs: Arc::new(JobSupervisor::new(db.clone(), config.clone(), agent)),
-        mesh: Arc::new(std::sync::OnceLock::new()),
+        mesh,
         admin: state::AdminPlane {
             db: control_db,
             admin_token: (!file.admin.token.trim().is_empty())
@@ -186,6 +258,7 @@ async fn run() -> Result<()> {
             reload_sock: zork_config::zork_sock_path(&config.data_root),
         },
     };
+    zork_config::startup::mark("station.hubs_created");
     let mut profile_changes = state.agent.profiles.subscribe();
     let profile_realtime = state.db.realtime.clone();
     let _profile_events = zork_notify::Task(tokio::spawn(async move {
@@ -195,11 +268,16 @@ async fn run() -> Result<()> {
     }));
     let _config_watch = realtime::watch_config(config.data_root.clone(), db.realtime.clone())?;
     let channel_delivery = channels::start(state.clone())?;
+    let user_interaction_delivery = interaction_registry::start(state.clone())?;
+    let business_card_delivery = business_cards::start(state.clone())?;
+    zork_config::startup::mark("station.delivery_started");
     let (stop_mesh, mesh_stopped) = watch::channel(false);
     let mut mesh_tasks = tokio::task::JoinSet::new();
     mesh_tasks.spawn(run_mesh(state.clone(), mesh_stopped));
     let result = serve(&state, &mut runtime, listeners, shutdown, &mut mesh_tasks).await;
     drop(channel_delivery);
+    drop(user_interaction_delivery);
+    drop(business_card_delivery);
     state.mcp.shutdown();
     state.node_tools.shutdown().await;
     let mesh_closing = std::time::Instant::now();
@@ -281,6 +359,12 @@ async fn serve(
                     token: state.config.agent_token.clone(),
                 })),
         };
+        zork_config::startup::mark(match kind {
+            ListenerKind::Runtime => "station.runtime_router_built",
+            ListenerKind::Gateway => "station.gateway_router_built",
+            ListenerKind::Admin => "station.admin_router_built",
+            ListenerKind::Agent => "station.agent_router_built",
+        });
         let router = router.layer(axum::middleware::from_fn_with_state(
             http_stopped.clone(),
             http::close_event_streams_on_shutdown,
@@ -296,6 +380,7 @@ async fn serve(
     }
     // Listeners remain alive while Agent drains, including tool callbacks and final status delivery.
     state.jobs.restore().await?;
+    zork_config::startup::mark("station.jobs_restored");
     for session in state.db.list_sessions()? {
         if let Some(id) = session.id.as_deref() {
             state
@@ -311,10 +396,12 @@ async fn serve(
         }
     }
     let (stop_connections, connections_stopped) = watch::channel(false);
+    zork_config::startup::mark("station.projections_restored");
     let socket_state = state.clone();
     let mut socket_task = tokio::spawn(socket::run_connections(socket_state, connections_stopped));
     zork_config::write_ready_pid(&state.config.data_root, "zork-station")?;
     state.draining.store(false, Ordering::Release);
+    zork_config::startup::mark("station.ready");
     let mcp_state = state.clone();
     let mcp_maintenance = tokio::spawn(async move {
         loop {

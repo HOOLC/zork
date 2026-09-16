@@ -9,7 +9,7 @@ impl Device {
         crate::valid_session(session)?;
         ensure!(
             bytes.len() <= files::MAX_FILE_BYTES,
-            "单个附件不能超过 10 MiB"
+            "单个附件不能超过 300 MiB"
         );
         let file = FileRef {
             id: format!("file-{}", ulid::Ulid::new()),
@@ -23,7 +23,7 @@ impl Device {
         draft.files.push(file.clone());
         ensure!(
             files::valid(&draft.files),
-            "每条消息最多 16 个附件，共 40 MiB"
+            "每条消息最多 16 个附件，共 1200 MiB"
         );
         let (store, node) = self
             .cache
@@ -41,7 +41,7 @@ impl Device {
         ensure!(before.is_file(), "请选择普通文件");
         ensure!(
             before.len() <= files::MAX_FILE_BYTES as u64,
-            "单个附件不能超过 10 MiB"
+            "单个附件不能超过 300 MiB"
         );
         let mut bytes = Vec::new();
         (&source)
@@ -85,7 +85,7 @@ impl Device {
         }
         ensure!(
             files::valid(&draft.files),
-            "每条消息最多 16 个附件，共 40 MiB"
+            "每条消息最多 16 个附件，共 1200 MiB"
         );
         let (store, node) = self
             .cache

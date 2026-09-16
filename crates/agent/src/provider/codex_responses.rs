@@ -1362,7 +1362,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn request_uses_codex_wire_contract_and_profile_parallelism() {
         let execution = ProfileExecution::new(
             "profile".into(),
@@ -1425,7 +1425,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     async fn proxy_tunnel_uses_the_selected_authority_and_proxy_credentials() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1473,7 +1473,7 @@ mod tests {
     /// 15 分钟无帧、无错误、无重试），短窗下必须以 retryable 错误浮出，
     /// 交给 step 内退避重试。
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-01]
     async fn idle_timeout_breaks_silent_websocket() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1532,7 +1532,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     fn provider_error_event_preserves_explicit_status_and_code() {
         let error = provider_event_failure(&json!({
             "type": "error",
@@ -1558,7 +1558,29 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    fn http_400_is_permanent_for_status_handshake_and_provider_events() {
+        let handshake = tokio_tungstenite::tungstenite::http::Response::builder()
+            .status(400)
+            .body(None)
+            .unwrap();
+        for error in [
+            status_failure("codex.proxy.status", 400, "bad request"),
+            websocket_failure("codex.websocket.connect", WebSocketError::Http(handshake)),
+            provider_event_failure(&json!({
+                "type": "error",
+                "error": {"status": 400, "code": "context_length_exceeded", "message": "too long"}
+            })),
+        ] {
+            let ModelError::ProviderFailed(failure) = error else {
+                panic!("expected provider failure");
+            };
+            assert_eq!(failure.status_code, Some(400));
+            assert!(!failure.retryable);
+        }
+    }
+
+    #[test]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     fn incomplete_event_preserves_its_reason() {
         let error = provider_event_failure(&json!({
             "type": "response.incomplete",
@@ -1592,7 +1614,7 @@ mod tests {
     /// 单连接 60 分钟硬限必须可重试：重试路径 session.reset() 已弃旧连接，
     /// 重连即获新窗口（v2idle 第 61 分钟非重试终结实证）。
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     fn websocket_connection_limit_is_retryable() {
         let error = provider_event_failure(&json!({
             "type": "error",

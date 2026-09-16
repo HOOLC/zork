@@ -35,6 +35,12 @@ internal object ZorkColors {
     val Disabled = Color(0xFFA8AAAA)
     val Warning = Color(0xFF7F5306)
     val Danger = Color(0xFFB42318)
+    // Exact timeline accents from zork-gui/src/views/history.rs::history_color.
+    val HistoryInput = Color(0xFF2878CE)
+    val HistoryModel = Color(0xFF8056C4)
+    val HistoryTool = Color(0xFF21865B)
+    val HistoryError = Color(0xFFD43D45)
+    val HistoryBreak = Color(0xFF9CA3AF)
 }
 
 @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
@@ -78,6 +84,6 @@ internal fun ZorkTheme(content: @Composable () -> Unit) {
         secondaryContainer = ZorkColors.Selected,
         error = ZorkColors.Danger,
     ), typography = ZorkFonts.Styles) {
-        CompositionLocalProvider(LocalContentColor provides ZorkColors.Ink, LocalTextStyle provides TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp)) { content() }
+        CompositionLocalProvider(LocalContentColor provides ZorkColors.Ink, LocalTextStyle provides TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp)) { LiquidHost(content) }
     }
 }

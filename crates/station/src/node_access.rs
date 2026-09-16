@@ -73,11 +73,7 @@ pub fn manage(state: &AppState, who: &Subject, local: bool) -> Result<()> {
     if !local {
         let mesh = zork_config::load_config(&state.config.data_root)?.mesh;
         ensure!(
-            mesh.enabled
-                && mesh
-                    .peers
-                    .iter()
-                    .any(|p| p.origin == who.origin && p.client),
+            mesh.enabled && mesh.peers.iter().any(|p| p.origin == who.origin),
             "node_management_denied"
         );
     }
@@ -139,5 +135,5 @@ pub fn environment(state: &AppState) -> Value {
         .into_iter()
         .filter_map(|name| executable(name).map(|path| (name.to_owned(), json!(path))))
         .collect::<serde_json::Map<_, _>>();
-    json!({"target":identity(state),"owner":identity(state),"name":zork_config::load_config(&state.config.data_root).map(|c|c.mesh.name).unwrap_or_default(),"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"commands":commands,"managed_workspace_root":state.config.data_root.join("device-workspaces")})
+    json!({"target":identity(state),"owner":identity(state),"name":zork_config::load_config(&state.config.data_root).map(|c|c.mesh.name).unwrap_or_default(),"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"commands":commands,"managed_workspace_root":zork_config::files_root(&state.config.data_root).join("device-workspaces")})
 }

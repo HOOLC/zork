@@ -63,7 +63,7 @@ npx --yes pnpm@10.33.0 design:components:web
 ```
 
 统一 UI 的最新规范直接引用仓库内文档，网页通过 `docs/` 中的仓库内链接展示同一份内容：
-[规范入口](docs/gui-approved-design.md)、[交互契约](docs/ui-interaction-states.md)、[迁移清单](docs/ui-system-unification.md)。
+[界面规范](docs/gui-approved-design.md)。
 
 `src/app/` 管理顶层导航；`src/pages/` 是设计内容页面；`src/workbench/` 管理组件导航、GPUI、HTML 参考与像素对照；`src/reference/` 是当前完整设计参考；旧 HTML 与 `src/bridge/reference-entry.ts` 保留为历史原型适配。
 

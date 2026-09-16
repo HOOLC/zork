@@ -18,6 +18,9 @@ pub struct AdminPlane {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub login_cards: Arc<crate::provider_login::Hub>,
+    pub interaction_handlers: Arc<crate::interaction_registry::Handlers>,
+    pub provider_auth: Arc<crate::node::auth::Hub>,
     pub node_tools: Arc<crate::node_tools::Hub>,
     pub mcp: Arc<crate::mcp::Hub>,
     pub browser: Arc<crate::browser::Hub>,
@@ -25,6 +28,7 @@ pub struct AppState {
     pub agent: zork_agent::Agent,
     pub draining: Arc<std::sync::atomic::AtomicBool>,
     pub db: Arc<GatewayDb>,
+    pub files: Arc<crate::files::Files>,
     pub connections: Arc<ConnectionManager>,
     pub entries: ImEntryGateway,
     pub status_projection: AgentStatusProjector,

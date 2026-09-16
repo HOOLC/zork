@@ -1,7 +1,6 @@
 package surf.zork.android
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -16,10 +15,10 @@ internal fun AgentGrantFields(state: MobileSettingsState, selected: Set<String>,
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.agents.filter { it.text("role") == "leader" }.forEach { leader ->
             val id = leader.text("id")
-            FilterChip(selected = id in selected, onClick = { select(if (id in selected) selected - id else selected + id) },
-                enabled = enabled, label = { Text(leader.text("name"), fontSize = 13.sp) })
+            LiquidCheckbox(leader.text("name"), id in selected,
+                { checked -> select(if (checked) selected + id else selected - id) }, enabled = enabled)
         }
     }
     SettingsField("其他设备的领队引用 · 可选", remote, changeRemote, enabled = enabled, singleLine = false,
-        detail = "多个引用用空格或换行分隔")
+        detail = "多个引用用空格、换行或逗号分隔")
 }

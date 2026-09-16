@@ -108,16 +108,9 @@ impl Hub {
     }
 }
 fn mutating(tool: &str) -> bool {
-    matches!(
-        tool,
-        "device.exec"
-            | "skill.install"
-            | "skill.import"
-            | "skill.bind"
-            | "skill.unbind"
-            | "skill.uninstall"
-    )
+    tool == "device.exec"
 }
+
 pub async fn tool(State(state): State<AppState>, Json(input): Json<ToolRequest>) -> Response {
     match api(&state, input).await {
         Ok(v) => Json(v).into_response(),
@@ -135,31 +128,14 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     if input.tool == "device.list" {
         return list(state, &who).await;
     }
-    if input.tool == "device.recover" {
-        let mut operations = Vec::new();
-        for (target, rpc) in state.node_tools.store.pending(&who)?.into_iter().take(4) {
-            if let Ok(Ok(value)) =
-                tokio::time::timeout(Duration::from_secs(5), route(state, &target, rpc.clone()))
-                    .await
-            {
-                if let Some(id) = value["operation_id"].as_str() {
-                    state.node_tools.store.ack(&who, &rpc.invocation_id, id)?;
-                    operations.push(value);
-                }
-            }
-        }
-        return Ok(
-            json!({"operations":operations,"pending_delivery":!state.node_tools.store.pending(&who)?.is_empty()}),
-        );
-    }
-    let mut args = input.arguments;
+    let args = input.arguments;
     if let Some(target) = args.get("target") {
         ensure!(
             target.as_str().is_some_and(|t| !t.is_empty()),
             "device_invalid_target"
         );
     }
-    let mut target = args
+    let target = args
         .get("target")
         .and_then(Value::as_str)
         .map(str::to_owned)
@@ -178,7 +154,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             }
         })
         .unwrap_or_else(|| "local".into());
-    let mut rpc = Rpc {
+    let rpc = Rpc {
         interrupt: false,
         subject: who.clone(),
         invocation_id: input.invocation_id.clone(),
@@ -186,40 +162,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         arguments: args.clone(),
     };
     let mut first_delivery = false;
-    if input.tool == "skill.share" {
-        let original = fingerprint(&(&who, &input.tool, &args))?;
-        if let Some(saved) =
-            state
-                .node_tools
-                .store
-                .saved_route(&who, &input.invocation_id, &original)?
-        {
-            target = saved.0;
-            rpc = saved.1;
-        } else {
-            let exported = route(
-                state,
-                &target,
-                Rpc {
-                    interrupt: false,
-                    subject: who.clone(),
-                    invocation_id: format!("export-{}", input.invocation_id),
-                    tool: "skill.export".into(),
-                    arguments: args.clone(),
-                },
-            )
-            .await?;
-            target = field(&args, "destination")?.into();
-            args = json!({"target":target,"package":exported["package"]});
-            rpc.tool = "skill.install".into();
-            rpc.arguments = args;
-        }
-        first_delivery =
-            state
-                .node_tools
-                .store
-                .enqueue(&who, &input.invocation_id, &original, &target, &rpc)?;
-    } else if mutating(&input.tool) {
+    if mutating(&input.tool) {
         first_delivery = state.node_tools.store.enqueue(
             &who,
             &input.invocation_id,
@@ -231,7 +174,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     let result = route(state, &target, rpc).await;
     match result {
         Ok(value) => {
-            if mutating(&input.tool) || input.tool == "skill.share" {
+            if mutating(&input.tool) {
                 state.node_tools.store.ack(
                     &who,
                     &input.invocation_id,
@@ -254,8 +197,8 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             state.node_tools.store.reject(&who, &input.invocation_id)?;
             Err(crate::tool_stream::Rejected(e).into())
         }
-        Err(e) if mutating(&input.tool) || input.tool == "skill.share" => Ok(
-            json!({"pending_delivery":true,"error":error(&e),"recovery":"Use device.recover for the original operation; do not issue it again with a new invocation."}),
+        Err(e) if mutating(&input.tool) => Ok(
+            json!({"pending_delivery":true,"error":error(&e),"instruction":"The original invocation is still being tracked; do not repeat it."}),
         ),
         Err(e) => Err(e),
     }
@@ -343,14 +286,10 @@ async fn execute(state: &AppState, rpc: Rpc, local: bool) -> Result<Value> {
     match rpc.tool.as_str() {
         "device.inspect" => {
             let mut v = node_access::environment(state);
-            v["capabilities"] = json!(["device.exec", "mcp", "skill.install", "skill.bind"]);
+            v["capabilities"] = json!(["shell.run", "mcp.call"]);
             Ok(v)
         }
-        "device.agents" => Ok(
-            json!({"target":node_access::identity(state),"agents":state.db.node_agents()?.iter().map(|a|json!({"id":a.id,"name":a.name,"role":a.role})).collect::<Vec<_>>()}),
-        ),
         "device.status" | "device.read" | "device.cancel" => jobs::status(state, &rpc).await,
-        "skill.installed" | "skill.export" | "skill.bindings" => skills::read(state, &rpc),
         op if mutating(op) => submit(state, rpc, local).await,
         _ => anyhow::bail!("device_unknown_tool"),
     }
@@ -377,7 +316,7 @@ async fn submit(state: &AppState, rpc: Rpc, local: bool) -> Result<Value> {
     let mut active = state.node_tools.active.lock().expect("device jobs");
     let (id, fresh) = state.node_tools.store.accept(&rpc, &fingerprint)?;
     if fresh {
-        let (stop, mut stopped) = watch::channel(false);
+        let (stop, stopped) = watch::channel(false);
         if state
             .node_tools
             .store
@@ -390,21 +329,7 @@ async fn submit(state: &AppState, rpc: Rpc, local: bool) -> Result<Value> {
         let operation_id = id.clone();
         tokio::spawn(async move {
             let _slot = slot;
-            let result = if rpc.tool == "device.exec" {
-                jobs::run(&state, &rpc, &operation_id, stopped, local).await
-            } else {
-                let cancelled = *stopped.borrow();
-                let task = async {
-                    ensure!(!cancelled, "device_interrupted");
-                    node_access::manage(&state, &rpc.subject, local)?;
-                    let value = skills::mutate(&state, &rpc, &operation_id)?;
-                    state
-                        .node_tools
-                        .store
-                        .finish(&operation_id, "succeeded", Some(value))
-                };
-                tokio::select! {r=task=>r,_=stopped.changed()=>Err(anyhow::anyhow!("device_interrupted"))}
-            };
+            let result = jobs::run(&state, &rpc, &operation_id, stopped, local).await;
             if let Err(e) = result {
                 let previous = state
                     .node_tools

@@ -1,8 +1,5 @@
 //! Decode and fit once, then rasterize requested quarter-degree poses off-thread.
-//! Paper shadows are shared across files; a first preview never waits for an atlas.
-use std::sync::Arc;
-
-pub(super) struct Images(pub [(Arc<gpui::RenderImage>, Arc<gpui::RenderImage>); 97]);
+use std::sync::{Arc, OnceLock};
 
 pub(super) fn load(
     name: &str,
@@ -121,35 +118,14 @@ pub(super) fn render(page: &image::RgbaImage, index: usize) -> Arc<gpui::RenderI
     Arc::new(gpui::RenderImage::new(vec![image::Frame::new(buffer)]))
 }
 
-fn render_page(page: image::RgbaImage) -> Images {
-    let mut images = Vec::new();
-    for step in -48..=48 {
-        let output = paper_pixels(&page, (step + 48) as usize);
-        let mut shadow = output.clone();
-        for pixel in shadow.pixels_mut() {
-            *pixel = image::Rgba([37, 39, 41, (pixel[3] as f32 * 0.12) as u8]);
-        }
-        let shadow = image::imageops::blur(&shadow, 1.5);
-        let mut shifted = image::RgbaImage::from_pixel(144, 144, image::Rgba([37, 39, 41, 0]));
-        image::imageops::overlay(&mut shifted, &shadow, 0, 1);
-        let shadow =
-            image::imageops::resize(&shifted, 72, 72, image::imageops::FilterType::Triangle);
-        // Keep the shadow separate: GPU filtering of a flattened straight-alpha
-        // paper+shadow texture pulls dark shadow RGB into the paper's edge.
-        let render = |mut buffer: image::RgbaImage| {
-            for pixel in buffer.pixels_mut() {
-                pixel.0.swap(0, 2);
-            }
-            Arc::new(gpui::RenderImage::new(vec![image::Frame::new(buffer)]))
-        };
-        images.push((render(output), render(shadow)));
-    }
-    Images(images.try_into().ok().unwrap())
-}
-
 // Loading and unsupported files use the same rotated paper and clipping as
 // decoded previews. Only the content differs; the silhouette never changes.
-pub(super) fn placeholder() -> Images {
+pub(super) fn placeholder(index: usize) -> Arc<gpui::RenderImage> {
+    static PAGE: OnceLock<image::RgbaImage> = OnceLock::new();
+    render(PAGE.get_or_init(placeholder_page), index)
+}
+
+fn placeholder_page() -> image::RgbaImage {
     let icon = include_str!("../../../assets/icons/file.svg")
         .replace("currentColor", "#9b9fa4")
         .replace("width=\"24\"", "x=\"60\" y=\"64\" width=\"96\"")
@@ -164,5 +140,5 @@ pub(super) fn placeholder() -> Images {
     for pixel in page.pixels_mut() {
         pixel.0.swap(0, 2);
     }
-    render_page(page)
+    page
 }

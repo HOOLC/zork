@@ -280,7 +280,7 @@ pub(crate) fn public_snapshot(store: &ClientStore, running: bool) -> Result<Valu
         "invitation": pending.as_ref().map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})),
         "done":pending.is_none(),
         "identity":store.get::<String>("device","identity")?, "running":running,
-        "nodes":store.nodes()?, "selected_peer":store.get::<String>("device","last-node")?,
+        "nodes":store.nodes()?, "selected_peer":store.get::<Option<String>>("device","last-node")?.flatten(),
         "network":store.get::<Network>("device","network")?.unwrap_or_default(),
     }))
 }

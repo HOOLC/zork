@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use gpui::{
     div, prelude::*, px, rgb, AppContext, Context, Entity, HeadlessAppContext, Render, Window,
     WindowHandle,
@@ -88,7 +89,16 @@ impl<V: Render + 'static> Fixture<V> {
         self.cx.update_window(self.window.into(), |_, w, cx| {
             self.driver.dispatch(action, w, cx)
         })??;
-        self.cx.run_until_parked();
+        // Measured shared controls publish their layout on the following frame.
+        // Drive the same frame boundary before inspecting reduced-motion endpoints.
+        for _ in 0..4 {
+            self.cx.advance_clock(std::time::Duration::from_millis(16));
+            self.cx.run_until_parked();
+            self.cx.update_window(self.window.into(), |_, w, cx| {
+                w.simulate_next_frame(cx);
+                w.draw(cx).clear(cx);
+            })?;
+        }
         Ok(())
     }
     fn click(&mut self, id: &str) -> anyhow::Result<()> {
@@ -97,7 +107,18 @@ impl<V: Render + 'static> Fixture<V> {
     fn key(&mut self, key: &str) -> anyhow::Result<()> {
         self.action(json!({"type":"key","keystroke":key}))
     }
-    fn modal(&self, id: &str, width: f32, height: f32) -> anyhow::Result<()> {
+    fn reveal(&mut self, id: &str, dialog: &str) -> anyhow::Result<()> {
+        for _ in 0..5 {
+            if self.element(id).is_some_and(|element| element.bounds == element.visible_bounds) {
+                return Ok(());
+            }
+            let card = self.element(dialog).expect("dialog is open");
+            self.action(json!({"type":"scroll", "target":{"x":card.center.x,"y":card.bounds.y+140.},"delta_y":-100.}))?;
+        }
+        self.screenshot(&format!("{dialog}-missing-{id}.png"))?;
+        anyhow::bail!("{id} could not be reached by scrolling {dialog}")
+    }
+    fn modal(&mut self, id: &str, width: f32, height: f32) -> anyhow::Result<()> {
         let card = self
             .element(id)
             .ok_or_else(|| anyhow::anyhow!("missing modal {id}"))?;
@@ -120,10 +141,16 @@ impl<V: Render + 'static> Fixture<V> {
         let footer = self
             .element(&format!("{id}-footer"))
             .expect("modal must keep a fixed action area");
+        if footer.bounds != footer.visible_bounds
+            || footer.bounds.y + footer.bounds.height > card.bounds.y + card.bounds.height
+        {
+            self.screenshot(&format!("{id}-{width}-clipped.png"))?;
+        }
         anyhow::ensure!(
             footer.bounds == footer.visible_bounds
                 && footer.bounds.y + footer.bounds.height <= card.bounds.y + card.bounds.height,
-            "modal actions are clipped"
+            "modal actions are clipped: card={:?}, footer={:?}, visible={:?}",
+            card.bounds, footer.bounds, footer.visible_bounds
         );
         Ok(())
     }
@@ -151,7 +178,8 @@ impl<V: Render + 'static> Fixture<V> {
                 .elements
                 .iter()
                 .filter(|e| {
-                    avatars.iter().any(|a| e.id == format!("agent-avatar-{a}")) && e.visible
+                    avatars.iter().any(|a| e.id == format!("agent-avatar-{a}"))
+                        && e.visible_bounds.width >= 16. && e.visible_bounds.height >= 16.
                 })
                 .all(|e| {
                     let colors: std::collections::HashSet<_> = (-8..8)
@@ -182,16 +210,18 @@ impl<V: Render + 'static> Fixture<V> {
                 )?;
                 break;
             }
-            anyhow::ensure!(
-                started.elapsed().as_secs() < 5,
-                "screenshot did not settle or has unloaded SVGs: {name}"
-            );
+            if started.elapsed().as_secs() >= 5 {
+                pixels.save(out.join(format!("failed-{name}")))?;
+                std::fs::write(out.join(format!("failed-{name}.json")), serde_json::to_vec_pretty(&snapshot)?)?;
+                anyhow::bail!("screenshot did not settle or has unloaded SVGs: {name} (avatars={ready}, stable={stable})");
+            }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         Ok(())
     }
 }
 fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|arg| arg == "--data-reset") { return data_reset_checks(); }
     std::env::set_var("SEED", "0");
     let state = tempfile::tempdir()?;
     std::env::set_var(
@@ -282,10 +312,12 @@ fn main() -> anyhow::Result<()> {
         let mut f = Fixture::new(width, height, HeadlessAgentsView::headless_fixture)?;
         f.click("agent-add")?;
         f.modal("agent-create-dialog", width, height)?;
+        f.reveal("agent-profile-select", "agent-create-dialog")?;
         anyhow::ensure!(
             f.element("agent-profile-select").unwrap().label == "自动分配",
             "new agents must default to the pool"
         );
+        f.reveal("agent-avatar-cat", "agent-create-dialog")?;
         f.screenshot(&format!("agent-create-{width}.png"))?;
         anyhow::ensure!(
             f.element("agent-create")
@@ -324,14 +356,18 @@ fn main() -> anyhow::Result<()> {
         let select = f.element("agent-edit-profile-select").unwrap().bounds;
         let menu = f.element("agent-edit-profile-select-menu").unwrap().bounds;
         anyhow::ensure!(
-            (menu.y - select.y - select.height - 6.).abs() < 0.1
-                && (menu.x - select.x + 4.).abs() < 0.1
-                && (menu.width - select.width - 8.).abs() < 0.1,
-            "dropdown must retain its 6 px gap and 4 px outward inset"
+            (menu.y >= select.y + select.height + 6.
+                || menu.y + menu.height <= select.y - 6.)
+                && menu.width >= select.width
+                && menu.x >= 0. && menu.x + menu.width <= width as f32
+                && menu.y >= 0. && menu.y + menu.height <= height as f32,
+            "shared dropdown overlaps its source or leaves the viewport: select={select:?}, menu={menu:?}"
         );
         anyhow::ensure!(
-            (option.bounds.y - menu.y - 9.).abs() < 0.1,
-            "dropdown options must retain the 8 px padding inside the border"
+            option.bounds.y >= menu.y + 4.
+                && option.bounds.x >= menu.x + 4.
+                && option.bounds.x + option.bounds.width <= menu.x + menu.width - 4.,
+            "dropdown option enters the rounded panel edge"
         );
         f.screenshot(&format!("agent-dropdown-{width}.png"))?;
         f.click("agent-edit-profile-0")?;
@@ -354,5 +390,52 @@ fn main() -> anyhow::Result<()> {
     println!(
         "Headless modal opening, clipping, input, Escape, close button and backdrop checks passed at both sizes."
     );
+    Ok(())
+}
+
+struct ResetFrame {
+    content: Entity<zork_ui::settings::data::DataSettings>,
+    confirmations: usize,
+}
+impl Render for ResetFrame {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement { self.content.clone() }
+}
+fn data_reset_checks() -> anyhow::Result<()> {
+    use zork_ui::settings::data::{Confirmed, Data, DataSettings};
+    for (width, height) in [(900., 600.), (1280., 800.)] {
+        for locale in zork_gui::i18n::Locale::ALL {
+            let text = zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
+            let view_text = text.clone();
+            let mut f = Fixture::<ResetFrame>::new(width, height, move |cx| {
+                let content = cx.new(|cx| DataSettings::new(Data::default(), view_text, cx));
+                cx.subscribe(&content, |v, _, _: &Confirmed, cx| { v.confirmations += 1; cx.notify(); }).detach();
+                ResetFrame { content, confirmations: 0 }
+            })?;
+            f.click("clear-client-data")?;
+            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "opening cleared data");
+            let confirm = f.element("clear-client-data-dialog-confirm").context("missing reset confirmation")?;
+            anyhow::ensure!(confirm.bounds == confirm.visible_bounds, "reset confirmation clipped");
+            f.key("escape")?;
+            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "cancelling cleared data");
+            f.click("clear-client-data")?;
+            f.click("clear-client-data-dialog-cancel")?;
+            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "cancel button cleared data");
+            f.click("clear-client-data")?;
+            f.screenshot(&format!("clear-data-{}-{width}.png", locale.code()))?;
+            f.click("clear-client-data-dialog-confirm")?;
+            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 1, "confirmed reset was not emitted exactly once");
+            f.view.update(&mut f.cx, |v, cx| {
+                v.content.update(cx, |v, cx| v.configure(Data { busy: true, error: None }, text.clone(), cx));
+            });
+            f.key("escape")?;
+            anyhow::ensure!(f.view.read_with(&f.cx, |v, cx| v.content.read(cx).inspect())["open"] == true, "busy reset dismissed");
+            anyhow::ensure!(!f.element("clear-client-data-dialog-confirm").unwrap().enabled, "busy reset stayed clickable");
+            f.view.update(&mut f.cx, |v, cx| {
+                v.content.update(cx, |v, cx| v.configure(Data { busy: false, error: Some("Node could not stop".into()) }, text.clone(), cx));
+            });
+            f.key("escape")?;
+        }
+    }
+    println!("PASS reset confirmation, cancellation, busy state and viewport: Chinese/English, 900/1280");
     Ok(())
 }

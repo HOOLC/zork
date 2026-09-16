@@ -158,9 +158,21 @@ fn main() -> anyhow::Result<()> {
             w.draw(cx).clear(cx)
         })?;
     }
+    // Binding the core replaces the activity fixture and animates the member
+    // parcels. Measure an unrelated message only after that prior change rests.
+    for _ in 0..120 {
+        cx.advance_clock(Duration::from_millis(16));
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
+        if view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false) { break; }
+    }
+    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false), "composer did not settle after core binding");
+    cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
     let motion_before_message = view.read_with(&cx, |v, _| v.benchmark_message_motion());
     let before_message = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     let original_count = view.update(&mut cx, |v, _| v.benchmark_record_count(false));
+    let mut message_probe = conversation.subscribe();
+    message_probe.snapshot();
     conversation.seed_event(&zork_client_core::api::SseEvent {
         name: "message".into(),
         data: json!({"type":"message","role":"assistant","id":"isolation-core-message","content":"来自核心订阅的新消息"}).to_string(),
@@ -171,6 +183,11 @@ fn main() -> anyhow::Result<()> {
         w.draw(cx).clear(cx)
     })?;
     let after_message = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
+    let delta = message_probe.snapshot();
+    std::fs::write(output.join("message-topics.json"), serde_json::to_vec_pretty(&json!({
+        "reset":delta.reset,"activity":delta.activity_changed,"participants":delta.participants_changed,
+        "loading":delta.loading_changed,"arrivals":delta.message_arrivals.count,"before":before_message,"after":after_message
+    }))?)?;
     anyhow::ensure!(
         view.update(&mut cx, |v, _| v.benchmark_record_count(false)) == original_count + 1,
         "core message did not reach the presentation list"
@@ -183,7 +200,7 @@ fn main() -> anyhow::Result<()> {
         if key != "transcript" {
             anyhow::ensure!(
                 after_message.get(key) == Some(counts),
-                "message refreshed unrelated {key}; tail state before event: {motion_before_message:?}"
+                "message refreshed unrelated {key}; before={counts:?}, after={:?}; tail state before event: {motion_before_message:?}", after_message.get(key)
             );
         }
     }

@@ -127,7 +127,7 @@ impl StreamStore {
     ) -> std::io::Result<Self> {
         let data_root = root.as_ref();
         std::fs::create_dir_all(data_root)?;
-        let root = data_root.join("sessions");
+        let root = zork_config::files_root(data_root).join("sessions");
         std::fs::create_dir_all(&root)?;
         let root_lock = OpenOptions::new()
             .create(true)
@@ -341,7 +341,7 @@ impl SessionStore for StreamStore {
         if !path.is_dir() {
             return Err(StoreError::SessionNotFound(session_id.into()));
         }
-        let detached_root = self.data_root.join("detached-sessions");
+        let detached_root = zork_config::files_root(&self.data_root).join("detached-sessions");
         std::fs::create_dir_all(&detached_root)?;
         let detached = detached_root.join(format!("{session_id}-{}", crate::ids::new_ulid()));
         std::fs::rename(path, &detached)?;
@@ -476,7 +476,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PERSIST-03, EVENT-02]
+    // Contract: docs/design/agent-runtime.md [PERSIST-03, EVENT-02]
     fn sync_failure_is_returned_after_the_complete_batch_was_written() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("events.jsonl");

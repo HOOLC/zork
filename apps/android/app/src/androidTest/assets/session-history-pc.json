@@ -1,0 +1,624 @@
+{
+  "details": {
+    "0000000000000000": {
+      "action": "input",
+      "end": 1800000510000,
+      "id": "0000000000000000",
+      "lane": 0,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"保留时间线，连续常规操作合并；等待独立显示。\",\n      \"input_id\": \"input-0\",\n      \"received_at_ms\": 1800000510000,\n      \"request_id\": \"fixture-user-message\"\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"0000000000000000\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000510000,
+      "state": "received",
+      "summary": "保留时间线，连续常规操作合并；等待独立显示。",
+      "usage": null
+    },
+    "0000000000000064": {
+      "action": "input",
+      "end": 1800000555000,
+      "id": "0000000000000064",
+      "lane": 0,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"后台任务已完成。\",\n      \"input_id\": \"wake\",\n      \"received_at_ms\": 1800000555000\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"0000000000000064\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000555000,
+      "state": "received",
+      "summary": "后台任务已完成。",
+      "usage": null
+    },
+    "model:s1": {
+      "action": "conversation",
+      "end": 1800000515000,
+      "id": "model:s1",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"purpose\": \"conversation\",\n    \"started_at_ms\": 1800000514000,\n    \"step_id\": \"s1\"\n  },\n  \"event_id\": \"0000000000000003\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000515000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"path\": \"crates/zork-client-types/src/history.rs\"\n        },\n        \"invocation_id\": \"tool-1\",\n        \"started_at_ms\": 1800000515000,\n        \"tool\": \"file.read\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s1\"\n  },\n  \"event_id\": \"0000000000000004\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000514000,
+      "state": "succeeded",
+      "summary": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+      "usage": null
+    },
+    "model:s2": {
+      "action": "conversation",
+      "end": 1800000517000,
+      "id": "model:s2",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"purpose\": \"conversation\",\n    \"started_at_ms\": 1800000516000,\n    \"step_id\": \"s2\"\n  },\n  \"event_id\": \"0000000000000006\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000517000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"command\": \"rg -n history crates/zork-ui\"\n        },\n        \"invocation_id\": \"tool-2\",\n        \"started_at_ms\": 1800000517000,\n        \"tool\": \"shell.run\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s2\"\n  },\n  \"event_id\": \"0000000000000007\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000516000,
+      "state": "succeeded",
+      "summary": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+      "usage": null
+    },
+    "model:s3": {
+      "action": "conversation",
+      "end": 1800000525000,
+      "id": "model:s3",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"purpose\": \"conversation\",\n    \"started_at_ms\": 1800000524000,\n    \"step_id\": \"s3\"\n  },\n  \"event_id\": \"0000000000000009\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000525000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"kind\": \"progress\",\n          \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n        },\n        \"invocation_id\": \"tool-3\",\n        \"started_at_ms\": 1800000525000,\n        \"tool\": \"chat.post_message\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s3\"\n  },\n  \"event_id\": \"000000000000000a\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000524000,
+      "state": "succeeded",
+      "summary": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+      "usage": null
+    },
+    "model:s4": {
+      "action": "conversation",
+      "end": 1800000540000,
+      "id": "model:s4",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"purpose\": \"conversation\",\n    \"started_at_ms\": 1800000539000,\n    \"step_id\": \"s4\"\n  },\n  \"event_id\": \"000000000000000c\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000540000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"reason\": \"等待后台任务的新消息\",\n          \"seconds\": 20\n        },\n        \"invocation_id\": \"tool-4\",\n        \"started_at_ms\": 1800000540000,\n        \"tool\": \"wait\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s4\"\n  },\n  \"event_id\": \"000000000000000d\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000539000,
+      "state": "succeeded",
+      "summary": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+      "usage": null
+    },
+    "model:s5": {
+      "action": "conversation",
+      "end": 1800000575000,
+      "id": "model:s5",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"purpose\": \"conversation\",\n    \"started_at_ms\": 1800000574000,\n    \"step_id\": \"s5\"\n  },\n  \"event_id\": \"000000000000000f\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000575000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"command\": \"cargo test --locked -p zork-client-types\"\n        },\n        \"invocation_id\": \"tool-5\",\n        \"started_at_ms\": 1800000575000,\n        \"tool\": \"shell.run\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s5\"\n  },\n  \"event_id\": \"0000000000000010\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000574000,
+      "state": "succeeded",
+      "summary": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+      "usage": null
+    },
+    "model:usage": {
+      "action": "",
+      "end": 1800000600000,
+      "id": "model:usage",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1800000599000,\n    \"step_id\": \"usage\"\n  },\n  \"event_id\": \"00000000000000c8\"\n}",
+          "kind": "start"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"completed_at_ms\": 1800000600000,\n    \"kind\": \"step_completed\",\n    \"step_id\": \"usage\",\n    \"usage\": {\n      \"cached_input_tokens\": 96000,\n      \"input_tokens\": 128432,\n      \"output_tokens\": 2400\n    }\n  },\n  \"event_id\": \"00000000000000c9\"\n}",
+          "kind": "end"
+        }
+      ],
+      "start": 1800000599000,
+      "state": "succeeded",
+      "summary": "",
+      "usage": {
+        "cached_input_tokens": 96000,
+        "input_tokens": 128432,
+        "output_tokens": 2400
+      }
+    },
+    "model:wake": {
+      "action": "",
+      "end": null,
+      "id": "model:wake",
+      "lane": 1,
+      "model": null,
+      "outcome": null,
+      "stages": [
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [\n      \"wake\"\n    ],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1800000555010,\n    \"step_id\": \"wake\"\n  },\n  \"event_id\": \"0000000000000065\"\n}",
+          "kind": "start"
+        }
+      ],
+      "start": 1800000555010,
+      "state": "running",
+      "summary": "",
+      "usage": null
+    },
+    "tool:tool-1": {
+      "action": "file.read",
+      "end": 1800000515010,
+      "id": "tool:tool-1",
+      "lane": 2,
+      "model": null,
+      "outcome": "source",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"path\": \"crates/zork-client-types/src/history.rs\"\n  },\n  \"invocation_id\": \"tool-1\",\n  \"started_at_ms\": 1800000515000,\n  \"tool\": \"file.read\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"content\": \"source\"\n      },\n      \"finished_at_ms\": 1800000515010,\n      \"invocation_id\": \"tool-1\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"file.read\"\n    }\n  },\n  \"event_id\": \"0000000000000005\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000515000,
+      "state": "succeeded",
+      "summary": "crates/zork-client-types/src/history.rs",
+      "usage": null
+    },
+    "tool:tool-2": {
+      "action": "shell.run",
+      "end": 1800000517010,
+      "id": "tool:tool-2",
+      "lane": 2,
+      "model": null,
+      "outcome": "matches",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"command\": \"rg -n history crates/zork-ui\"\n  },\n  \"invocation_id\": \"tool-2\",\n  \"started_at_ms\": 1800000517000,\n  \"tool\": \"shell.run\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"stdout\": \"matches\"\n      },\n      \"finished_at_ms\": 1800000517010,\n      \"invocation_id\": \"tool-2\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"shell.run\"\n    }\n  },\n  \"event_id\": \"0000000000000008\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000517000,
+      "state": "succeeded",
+      "summary": "rg -n history crates/zork-ui",
+      "usage": null
+    },
+    "tool:tool-3": {
+      "action": "chat.post_message",
+      "end": 1800000525010,
+      "id": "tool:tool-3",
+      "lane": 2,
+      "model": null,
+      "outcome": "{\"ok\":true}",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"kind\": \"progress\",\n    \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n  },\n  \"invocation_id\": \"tool-3\",\n  \"started_at_ms\": 1800000525000,\n  \"tool\": \"chat.post_message\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"ok\": true\n      },\n      \"finished_at_ms\": 1800000525010,\n      \"invocation_id\": \"tool-3\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"chat.post_message\"\n    }\n  },\n  \"event_id\": \"000000000000000b\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000525000,
+      "state": "succeeded",
+      "summary": "我会调整条目层级，保留明确的消息来源和目标。",
+      "usage": null
+    },
+    "tool:tool-4": {
+      "action": "wait",
+      "end": 1800000555010,
+      "id": "tool:tool-4",
+      "lane": 2,
+      "model": null,
+      "outcome": "{\"until_ms\":1800000560010}",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"reason\": \"等待后台任务的新消息\",\n    \"seconds\": 20\n  },\n  \"invocation_id\": \"tool-4\",\n  \"started_at_ms\": 1800000540000,\n  \"tool\": \"wait\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"until_ms\": 1800000560010\n      },\n      \"finished_at_ms\": 1800000540010,\n      \"invocation_id\": \"tool-4\",\n      \"outcome\": \"succeeded\",\n      \"tool\": \"wait\"\n    }\n  },\n  \"event_id\": \"000000000000000e\"\n}",
+          "kind": "event"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"consumed_inputs\": [\n      \"wake\"\n    ],\n    \"kind\": \"step_started\",\n    \"started_at_ms\": 1800000555010,\n    \"step_id\": \"wake\"\n  },\n  \"event_id\": \"0000000000000065\"\n}",
+          "kind": "start"
+        }
+      ],
+      "start": 1800000540010,
+      "state": "succeeded",
+      "summary": "{\"reason\":\"等待后台任务的新消息\",\"seconds\":20}",
+      "usage": null
+    },
+    "tool:tool-5": {
+      "action": "shell.run",
+      "end": 1800000575010,
+      "id": "tool:tool-5",
+      "lane": 2,
+      "model": null,
+      "outcome": "fixture failure: history_empty_state",
+      "stages": [
+        {
+          "json": "{\n  \"arguments\": {\n    \"command\": \"cargo test --locked -p zork-client-types\"\n  },\n  \"invocation_id\": \"tool-5\",\n  \"started_at_ms\": 1800000575000,\n  \"tool\": \"shell.run\"\n}",
+          "kind": "request"
+        },
+        {
+          "json": "{\n  \"event\": {\n    \"kind\": \"tool_result\",\n    \"result\": {\n      \"data\": {\n        \"error\": \"fixture failure: history_empty_state\"\n      },\n      \"finished_at_ms\": 1800000575010,\n      \"invocation_id\": \"tool-5\",\n      \"outcome\": \"failed\",\n      \"tool\": \"shell.run\"\n    }\n  },\n  \"event_id\": \"0000000000000011\"\n}",
+          "kind": "event"
+        }
+      ],
+      "start": 1800000575000,
+      "state": "failed",
+      "summary": "cargo test --locked -p zork-client-types",
+      "usage": null
+    }
+  },
+  "history": {
+    "blocks": [
+      {
+        "end": 1800000510000,
+        "grouped": false,
+        "id": "0000000000000000",
+        "members": [
+          "0000000000000000"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1800000510000,
+        "summary": "保留时间线，连续常规操作合并；等待独立显示。",
+        "written": 0
+      },
+      {
+        "end": 1800000517010,
+        "grouped": true,
+        "id": "tool:tool-1",
+        "members": [
+          "tool:tool-1",
+          "tool:tool-2"
+        ],
+        "queries": 0,
+        "read": 1,
+        "shell": 1,
+        "start": 1800000515000,
+        "summary": "crates/zork-client-types/src/history.rs · rg -n history crates/zork-ui",
+        "written": 0
+      },
+      {
+        "end": 1800000525010,
+        "grouped": false,
+        "id": "tool:tool-3",
+        "members": [
+          "tool:tool-3"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1800000525000,
+        "summary": "我会调整条目层级，保留明确的消息来源和目标。",
+        "written": 0
+      },
+      {
+        "end": 1800000555010,
+        "grouped": false,
+        "id": "tool:tool-4",
+        "members": [
+          "tool:tool-4"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1800000540010,
+        "summary": "等待后台任务的新消息",
+        "written": 0
+      },
+      {
+        "end": 1800000555000,
+        "grouped": false,
+        "id": "0000000000000064",
+        "members": [
+          "0000000000000064"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1800000555000,
+        "summary": "后台任务已完成。",
+        "written": 0
+      },
+      {
+        "end": 1800000575010,
+        "grouped": false,
+        "id": "tool:tool-5",
+        "members": [
+          "tool:tool-5"
+        ],
+        "queries": 0,
+        "read": 0,
+        "shell": 0,
+        "start": 1800000575000,
+        "summary": "fixture failure: history_empty_state",
+        "written": 0
+      }
+    ],
+    "clock_offset_ms": 10789977484,
+    "detail": null,
+    "entries": [
+      {
+        "action": "input",
+        "end": 1800000510000,
+        "id": "0000000000000000",
+        "kind": "received",
+        "lane": 0,
+        "model": null,
+        "preview": "保留时间线，连续常规操作合并；等待独立显示。",
+        "requested_wait_ms": null,
+        "start": 1800000510000,
+        "state": "received",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "conversation",
+        "end": 1800000515000,
+        "id": "model:s1",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+        "requested_wait_ms": null,
+        "start": 1800000514000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "file.read",
+        "end": 1800000515010,
+        "id": "tool:tool-1",
+        "kind": "read",
+        "lane": 2,
+        "model": null,
+        "preview": "crates/zork-client-types/src/history.rs",
+        "requested_wait_ms": null,
+        "start": 1800000515000,
+        "state": "succeeded",
+        "subject": {
+          "label": "crates/zork-client-types/src/history.rs"
+        },
+        "visible": true
+      },
+      {
+        "action": "conversation",
+        "end": 1800000517000,
+        "id": "model:s2",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+        "requested_wait_ms": null,
+        "start": 1800000516000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "shell.run",
+        "end": 1800000517010,
+        "id": "tool:tool-2",
+        "kind": "shell",
+        "lane": 2,
+        "model": null,
+        "preview": "rg -n history crates/zork-ui",
+        "requested_wait_ms": null,
+        "start": 1800000517000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "conversation",
+        "end": 1800000525000,
+        "id": "model:s3",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+        "requested_wait_ms": null,
+        "start": 1800000524000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "chat.post_message",
+        "end": 1800000525010,
+        "id": "tool:tool-3",
+        "kind": "send_message",
+        "lane": 2,
+        "model": null,
+        "preview": "我会调整条目层级，保留明确的消息来源和目标。",
+        "requested_wait_ms": null,
+        "start": 1800000525000,
+        "state": "succeeded",
+        "subject": {
+          "label": "当前对话"
+        },
+        "visible": true
+      },
+      {
+        "action": "conversation",
+        "end": 1800000540000,
+        "id": "model:s4",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+        "requested_wait_ms": null,
+        "start": 1800000539000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "wait",
+        "end": 1800000555010,
+        "id": "tool:tool-4",
+        "kind": "wait",
+        "lane": 2,
+        "model": null,
+        "preview": "等待后台任务的新消息",
+        "requested_wait_ms": 20000,
+        "start": 1800000540010,
+        "state": "succeeded",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "input",
+        "end": 1800000555000,
+        "id": "0000000000000064",
+        "kind": "received",
+        "lane": 0,
+        "model": null,
+        "preview": "后台任务已完成。",
+        "requested_wait_ms": null,
+        "start": 1800000555000,
+        "state": "received",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": null,
+        "id": "model:wake",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1800000555010,
+        "state": "running",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "conversation",
+        "end": 1800000575000,
+        "id": "model:s5",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE",
+        "requested_wait_ms": null,
+        "start": 1800000574000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      },
+      {
+        "action": "shell.run",
+        "end": 1800000575010,
+        "id": "tool:tool-5",
+        "kind": "shell",
+        "lane": 2,
+        "model": null,
+        "preview": "fixture failure: history_empty_state",
+        "requested_wait_ms": null,
+        "start": 1800000575000,
+        "state": "failed",
+        "subject": null,
+        "visible": true
+      },
+      {
+        "action": "",
+        "end": 1800000600000,
+        "id": "model:usage",
+        "kind": null,
+        "lane": 1,
+        "model": null,
+        "preview": "",
+        "requested_wait_ms": null,
+        "start": 1800000599000,
+        "state": "succeeded",
+        "subject": null,
+        "visible": false
+      }
+    ],
+    "error": null,
+    "loaded": true,
+    "loading": false,
+    "newer": false,
+    "older": false,
+    "overview": {
+      "cache_hit_rate": null,
+      "cached": null,
+      "context_limit": 256000,
+      "context_tokens": 128432,
+      "input": null,
+      "model": "gpt-5.4",
+      "output": null,
+      "partial_cache": false,
+      "profile": null,
+      "thinking": "high",
+      "total": null
+    },
+    "peer": "peer",
+    "session": "pc-reference",
+    "total": 14,
+    "window_start": 0
+  },
+  "now_ms": 1800000600000
+}

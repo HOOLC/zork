@@ -6,6 +6,9 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
+mod notifications;
+pub mod data;
+pub use notifications::{notifications, NotificationAction, NotificationData};
 pub fn row(
     title: impl Into<gpui::SharedString>,
     detail: impl Into<gpui::SharedString>,
@@ -16,7 +19,7 @@ pub fn row(
         .items_center()
         .gap_5()
         .py(px(14.))
-        .border_b_1()
+        .border_b(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(CUE_UI.palette.border))
         .child(
             div()
@@ -194,6 +197,7 @@ pub struct DeviceData {
 pub fn device<V: 'static>(
     data: DeviceData,
     focus: &[FocusHandle; 2],
+    rename_source: crate::components::liquid::overlay::SourceBinding,
     cx: &Context<V>,
     action: impl Fn(&mut V, DeviceAction, &mut Context<V>) + 'static,
 ) -> Div {
@@ -205,10 +209,6 @@ pub fn device<V: 'static>(
     let toggle = action.clone();
     let background = action.clone();
     let login = action.clone();
-    let foreground = action.clone();
-    let mode_keyboard = action.clone();
-    let foreground_key = action.clone();
-    let background_key = action.clone();
     let p = CUE_UI.palette;
     let has_update = data
         .latest_version
@@ -300,6 +300,18 @@ pub fn device<V: 'static>(
                                         .on_click(cx.listener(move |v, _, _, cx| {
                                             rename(v, DeviceAction::Rename, cx)
                                         }))
+                                        .map(|button| {
+                                            rename_source.bind(
+                                                button,
+                                                "",
+                                                ui::ActionStyle {
+                                                    quiet: true,
+                                                    icon: Some("icons/edit.svg"),
+                                                    disabled: data.busy,
+                                                    ..Default::default()
+                                                },
+                                            )
+                                        })
                                         .automation_enabled(
                                             !data.busy,
                                             AutomationRole::Button,
@@ -396,86 +408,31 @@ pub fn device<V: 'static>(
                     .font_weight(FontWeight::MEDIUM)
                     .child("运行方式"),
             )
-            .child(
-                ui::choice_group("local-node-mode", usize::from(data.background), 2)
-                    .on_key_down(cx.listener(move |v, event: &gpui::KeyDownEvent, _, cx| {
-                        let value = match event.keystroke.key.as_str() {
-                            "left" | "home" => Some(false),
-                            "right" | "end" => Some(true),
-                            _ => None,
-                        };
-                        if let Some(on) = value.filter(|_| !data.busy) {
-                            mode_keyboard(v, DeviceAction::Background(on), cx);
-                            cx.stop_propagation();
-                        }
-                    }))
-                    .child(crate::components::tooltip::hint(
-                        ui::segment(
-                            "local-node-foreground",
-                            "随客户端",
-                            !data.background,
-                            !data.busy,
-                        )
-                        .flex_1()
-                        .on_key_down(cx.listener(move |v, event: &gpui::KeyDownEvent, _, cx| {
-                            if !data.busy
-                                && matches!(event.keystroke.key.as_str(), "enter" | "space")
-                            {
-                                foreground_key(v, DeviceAction::Background(false), cx);
-                                cx.stop_propagation();
-                            }
-                        }))
-                        .on_click(cx.listener(move |v, _, _, cx| {
-                            if !data.busy {
-                                foreground(v, DeviceAction::Background(false), cx)
-                            }
-                        }))
-                        .automation_enabled(
-                            !data.busy,
-                            AutomationRole::Button,
-                            if data.background {
-                                "随客户端"
-                            } else {
-                                "随客户端 · 已选中"
-                            },
-                        ),
-                        "node-foreground",
-                        "关闭客户端时，设备一同停止。",
-                    ))
-                    .child(crate::components::tooltip::hint(
-                        ui::segment(
-                            "local-node-background",
-                            "后台运行",
-                            data.background,
-                            !data.busy,
-                        )
-                        .flex_1()
-                        .on_key_down(cx.listener(move |v, event: &gpui::KeyDownEvent, _, cx| {
-                            if !data.busy
-                                && matches!(event.keystroke.key.as_str(), "enter" | "space")
-                            {
-                                background_key(v, DeviceAction::Background(true), cx);
-                                cx.stop_propagation();
-                            }
-                        }))
-                        .on_click(cx.listener(move |v, _, _, cx| {
-                            if !data.busy {
-                                background(v, DeviceAction::Background(true), cx)
-                            }
-                        }))
-                        .automation_enabled(
-                            !data.busy,
-                            AutomationRole::Button,
-                            if data.background {
-                                "后台运行 · 已选中"
-                            } else {
-                                "后台运行"
-                            },
-                        ),
-                        "node-background",
-                        "退出客户端后，设备继续运行。",
-                    )),
-            )
+            .child(crate::components::liquid::controls::deferred_segmented(
+                "local-node-mode",
+                [
+                    ("local-node-foreground", "随客户端"),
+                    ("local-node-background", "后台运行"),
+                ]
+                .into_iter()
+                .map(|(id, label)| crate::components::liquid::controls::Segment {
+                    id: id.into(),
+                    label: label.into(),
+                    disabled: false,
+                })
+                .collect(),
+                vec![
+                    Some("关闭客户端时，设备一同停止。".into()),
+                    Some("退出客户端后，设备继续运行。".into()),
+                ],
+                Some(usize::from(data.background)),
+                crate::components::liquid::controls::SegmentKind::Choice,
+                !data.busy,
+                p.canvas,
+                cx.listener(move |v, index: &usize, _, cx| {
+                    background(v, DeviceAction::Background(*index == 1), cx)
+                }),
+            ))
             .when(data.background, |v| {
                 v.child(
                     div()
@@ -507,7 +464,7 @@ pub fn device<V: 'static>(
                 div()
                     .mt_6()
                     .pt_4()
-                    .border_t_1()
+                    .border_t(gpui::px(crate::design::BORDER_WIDTH))
                     .border_color(rgb(p.border))
                     .flex()
                     .items_center()
@@ -551,6 +508,7 @@ pub fn device<V: 'static>(
 
 #[cfg(feature = "stories")]
 pub struct SettingsStory {
+    validate_name: fn(&str) -> Result<String, String>,
     rename_input: gpui::Entity<crate::components::text_input::ComposerInput>,
     rename_open: bool,
     rename_error: Option<String>,
@@ -562,13 +520,19 @@ pub struct SettingsStory {
 }
 #[cfg(feature = "stories")]
 impl SettingsStory {
-    pub fn new(family: String, state: String, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        family: String,
+        state: String,
+        validate_name: fn(&str) -> Result<String, String>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let f = crate::stories::page_fixture();
         let text = |k: &str| f["account"][k].as_str().unwrap_or_default().to_owned();
         let rename_input =
             cx.new(|cx| crate::components::text_input::ComposerInput::new("设备名称", cx));
         cx.observe(&rename_input, |_, _, cx| cx.notify()).detach();
         Self {
+            validate_name,
             rename_input,
             rename_open: false,
             rename_error: None,
@@ -607,6 +571,10 @@ impl gpui::Render for SettingsStory {
             window,
             cx,
         );
+        let rename_visible = self
+            .rename_modal
+            .retain("device-rename-dialog", self.rename_open.then_some(()), cx)
+            .is_some();
         let page = if self.family == "client" {
             account(self.account.clone(), cx, |v, event, cx| {
                 match event {
@@ -631,100 +599,71 @@ impl gpui::Render for SettingsStory {
                 cx.notify();
             })
         } else {
-            device(self.data.clone(), &self.focus, cx, |v, event, cx| {
-                match event {
-                    DeviceAction::Rename => {
-                        v.rename_input
-                            .update(cx, |i, cx| i.set_value(v.data.name.clone(), cx));
-                        v.rename_open = true;
-                        v.rename_error = None;
-                    }
-                    DeviceAction::CheckUpdate => {
-                        v.data.latest_version = Some("0.1.31".into());
-                    }
-                    DeviceAction::Upgrade => {
-                        v.data.version = v
-                            .data
-                            .latest_version
-                            .take()
-                            .unwrap_or(v.data.version.clone());
-                        v.data.notice = Some("版本升级完成".into());
-                    }
-                    DeviceAction::Refresh => {
-                        v.data.busy = false;
-                        v.data.notice = Some("设备状态已刷新。".into())
-                    }
-                    DeviceAction::ToggleRunning => {
-                        v.data.running = !v.data.running;
-                        v.data.online = Some(v.data.running)
-                    }
-                    DeviceAction::Background(on) => {
-                        v.data.background = on;
-                        if !on {
-                            v.data.start_at_login = false
+            device(
+                self.data.clone(),
+                &self.focus,
+                self.rename_modal.source("device-rename-dialog"),
+                cx,
+                |v, event, cx| {
+                    match event {
+                        DeviceAction::Rename => {
+                            v.rename_input
+                                .update(cx, |i, cx| i.set_value(v.data.name.clone(), cx));
+                            v.rename_open = true;
+                            v.rename_error = None;
                         }
+                        DeviceAction::CheckUpdate => {
+                            v.data.latest_version = Some("0.1.31".into());
+                        }
+                        DeviceAction::Upgrade => {
+                            v.data.version = v
+                                .data
+                                .latest_version
+                                .take()
+                                .unwrap_or(v.data.version.clone());
+                            v.data.notice = Some("版本升级完成".into());
+                        }
+                        DeviceAction::Refresh => {
+                            v.data.busy = false;
+                            v.data.notice = Some("设备状态已刷新。".into())
+                        }
+                        DeviceAction::ToggleRunning => {
+                            v.data.running = !v.data.running;
+                            v.data.online = Some(v.data.running)
+                        }
+                        DeviceAction::Background(on) => {
+                            v.data.background = on;
+                            if !on {
+                                v.data.start_at_login = false
+                            }
+                        }
+                        DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
                     }
-                    DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
-                }
-                cx.notify();
-            })
+                    cx.notify();
+                },
+            )
         };
-        page.when(self.rename_open, |page| {
-            page.child(ui::modal(
-                "device-rename-dialog",
-                "修改设备名称",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(ui::field(
-                        "device-name-input",
-                        "名称",
-                        &self.rename_input,
-                        cx,
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(rgb(CUE_UI.palette.muted))
-                            .child("连接此设备的小伙伴都会看到新名称。"),
-                    ),
-                div()
-                    .flex()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        ui::button("device-name-cancel", "取消", false, true).on_click(
-                            cx.listener(|v, _, _, cx| {
-                                v.rename_open = false;
-                                cx.notify();
-                            }),
-                        ),
-                    )
-                    .child(
-                        ui::button("device-name-save", "保存", true, true)
-                            .on_click(cx.listener(|v, _, _, cx| {
-                                let name = v.rename_input.read(cx).value().trim().to_owned();
-                                if name.is_empty()
-                                    || name.chars().count() > 64
-                                    || name.chars().any(char::is_control)
-                                {
-                                    v.rename_error = Some("请输入 1–64 个字符的设备名称".into());
-                                } else {
+        page.when(rename_visible, |page| {
+            page.child(rename_device::render(
+                &self.rename_input,
+                false,
+                self.rename_error.clone(),
+                &self.rename_modal,
+                window,
+                cx,
+                |v, action, cx| {
+                    match action {
+                        rename_device::Action::Cancel => v.rename_open = false,
+                        rename_device::Action::Save => {
+                            match (v.validate_name)(v.rename_input.read(cx).value()) {
+                                Ok(name) => {
                                     v.data.name = name;
                                     v.rename_open = false;
                                 }
-                                cx.notify();
-                            }))
-                            .automation(AutomationRole::Button, "保存设备名称"),
-                    ),
-                self.rename_error.clone(),
-                &self.rename_modal.focus,
-                window,
-                cx,
-                true,
-                |v, _, cx| {
-                    v.rename_open = false;
+                                Err(error) => v.rename_error = Some(error),
+                            }
+                        }
+                    }
                     cx.notify();
                 },
             ))
@@ -732,3 +671,7 @@ impl gpui::Render for SettingsStory {
         .into_any_element()
     }
 }
+
+pub mod appearance;
+
+pub mod rename_device;

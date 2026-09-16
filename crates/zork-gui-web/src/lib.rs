@@ -191,13 +191,28 @@ pub fn action(action: String) -> Result<(), JsValue> {
 pub fn start(id: String) {
     console_error_panic_hook::set_once();
     gpui_web::init_logging();
+    let query = web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .unwrap_or_default();
+    // A development build of the platform defaults to Debug. Font fallback
+    // emits per-word diagnostics there, which stalls normal CJK interactions.
+    // Keep useful diagnostics and make the verbose mode an explicit choice.
+    log::set_max_level(
+        if query
+            .trim_start_matches('?')
+            .split('&')
+            .any(|p| p == "log=debug")
+        {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        },
+    );
     let story = stories::catalog()
         .into_iter()
         .find(|s| s.id == id)
         .unwrap_or_else(|| stories::catalog()[0].clone());
-    let force_webgl = web_sys::window()
-        .and_then(|w| w.location().search().ok())
-        .is_some_and(|q| q.contains("backend=webgl"));
+    let force_webgl = query.contains("backend=webgl");
     let platform = Rc::new(gpui_web::WebPlatform::new_with_backend(
         false,
         if force_webgl {
@@ -236,7 +251,7 @@ pub fn start(id: String) {
             let driver = automation::Automation::install(cx);
             let mut host = None;
             let window = cx
-                .open_window(gpui::WindowOptions::default(), |_, cx| {
+                .open_window(gpui::WindowOptions::default(), |window, cx| {
                     let inner = cx.new(|cx| StoryHost::new(story.clone(), cx));
                     let view = cx.new(|_| Host {
                         inner: inner.into(),

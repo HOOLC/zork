@@ -11,4 +11,4 @@ pub mod skills;
 pub use profiles::ProfileStore;
 
 pub use application::{Agent, AgentError};
-pub use runtime::{AgentOptions, AgentRuntime};
+pub use runtime::{AgentOptions, AgentRuntime, PreparedAgent};

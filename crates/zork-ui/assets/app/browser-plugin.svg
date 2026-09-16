@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img">
+  <title>Zork Browser Plugin</title>
+  <rect width="128" height="128" rx="28" fill="#E9643B"/>
+  <path fill="none" stroke="#F6F3EA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" d="M35 38h17v-3a12 12 0 0 1 24 0v3h17a9 9 0 0 1 9 9v13h-3a12 12 0 0 0 0 24h3v13a9 9 0 0 1-9 9H35a9 9 0 0 1-9-9V47a9 9 0 0 1 9-9Z"/>
+</svg>

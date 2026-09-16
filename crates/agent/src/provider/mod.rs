@@ -53,13 +53,8 @@ fn aimux_failure(stage: &'static str, error: AiMuxError) -> ModelError {
         _ => (None, None),
     };
     let message = error.to_string();
-    let invalid_history = status_code == Some(400)
-        && (message.contains("No tool output found for tool call")
-            || message.contains(
-                "The `reasoning_text` in the thinking mode must be passed back to the API",
-            ));
-    let retryable = !invalid_history
-        && !provider_failure_is_certainly_permanent(status_code, provider_code.as_deref());
+    let retryable =
+        !provider_failure_is_certainly_permanent(status_code, provider_code.as_deref());
     ModelError::ProviderFailed(ProviderFailure {
         stage,
         retryable,
@@ -80,7 +75,7 @@ pub(super) fn provider_failure_is_certainly_permanent(
     status_code: Option<u16>,
     provider_code: Option<&str>,
 ) -> bool {
-    if matches!(status_code, Some(401 | 403)) {
+    if matches!(status_code, Some(400 | 401 | 403)) {
         return true;
     }
     let Some(code) = provider_code else {
@@ -142,7 +137,7 @@ impl ProviderRouter {
             .collect::<Vec<_>>();
         let headers = request_headers(
             execution.provider(),
-            &request.session_id,
+            if request.independent { &request.step_id } else { &request.session_id },
             execution.headers(),
         );
         let options = CallOptions {
@@ -212,20 +207,28 @@ impl ProviderRouter {
     }
 }
 
-// xAI keeps prompt caches on individual servers. Keep one stable routing key
-// per logical Session instead of routing each model step independently.
+// Ordinary turns share Session routing; isolated context steps use their own key.
 fn request_headers(
     provider: &str,
-    session_id: &str,
+    routing_id: &str,
     configured: &HashMap<String, String>,
 ) -> HashMap<String, String> {
     let mut headers = configured.clone();
+    if provider == "opencode-go" {
+        // A profile-wide value would mix unrelated conversations. Generate this
+        // per request from its durable Session/step identity, without changing auth.
+        headers.retain(|key, _| !key.eq_ignore_ascii_case("x-opencode-session"));
+        headers.insert("x-opencode-session".into(), routing_id.into());
+        if !headers.keys().any(|key| key.eq_ignore_ascii_case("user-agent")) {
+            headers.insert("User-Agent".into(), concat!("zork-agent/", env!("CARGO_PKG_VERSION")).into());
+        }
+    }
     if provider == "xai"
         && !headers
             .keys()
             .any(|key| key.eq_ignore_ascii_case("x-grok-conv-id"))
     {
-        headers.insert("x-grok-conv-id".into(), session_id.into());
+        headers.insert("x-grok-conv-id".into(), routing_id.into());
     }
     headers
 }
@@ -261,7 +264,7 @@ async fn stream_request(
             let mut config = OpenAIConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
                 .with_provider(execution.provider().to_owned())
-                .with_headers(execution.headers().clone());
+                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
             config.retry_config.max_retries = 0;
             OpenAIProvider::new(config)
                 .model(execution.model())
@@ -272,7 +275,7 @@ async fn stream_request(
         "anthropic-messages" => {
             let mut config = AnthropicConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
-                .with_headers(execution.headers().clone());
+                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
             config.retry_config.max_retries = 0;
             AnthropicProvider::new(config)
                 .model(execution.model())
@@ -293,7 +296,7 @@ async fn generate_request(
             let mut config = OpenAIConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
                 .with_provider(execution.provider().to_owned())
-                .with_headers(execution.headers().clone());
+                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
             config.retry_config.max_retries = 0;
             OpenAIProvider::new(config)
                 .model(execution.model())
@@ -304,7 +307,7 @@ async fn generate_request(
         "anthropic-messages" => {
             let mut config = AnthropicConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
-                .with_headers(execution.headers().clone());
+                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
             config.retry_config.max_retries = 0;
             AnthropicProvider::new(config)
                 .model(execution.model())
@@ -743,11 +746,14 @@ fn responses_input_from_transcript(
                     continue;
                 }
                 // DeepSeek requires nonempty reasoning for each assistant tool
-                // turn, including runtime-generated notifications. Only these
-                // synthetic calls get a marker; real provider output stays opaque.
+                // turn, including through OpenCode Go. Limit the gateway policy
+                // to its DeepSeek model family, not every model on that provider.
+                // Only synthetic calls get a marker; real output stays opaque.
                 if message.runtime_generated
                     && !message.tool_calls.is_empty()
-                    && execution.provider() == "deepseek"
+                    && (execution.provider() == "deepseek"
+                        || (execution.provider() == "opencode-go"
+                            && execution.model().starts_with("deepseek-")))
                     && !matches!(execution.thinking(), "off" | "none")
                 {
                     input.push(serde_json::json!({
@@ -802,7 +808,34 @@ fn prompt_from_transcript(
 ) -> Result<LanguageModelPrompt, ModelError> {
     let mut prompt = Vec::new();
     let mut pending_images = Vec::new();
+    // Opt-in endpoint policy; never infer chat-template behavior from model names.
+    // Merge only the immutable leading block, preserving subsequent wire prefixes.
+    let leading_systems =
+        if execution.api() == "openai-completions" && execution.single_system_message() {
+            transcript
+                .iter()
+                .take_while(|message| message.role == TranscriptRole::System)
+                .count()
+        } else {
+            0
+        };
     for (index, message) in transcript.iter().enumerate() {
+        if index < leading_systems {
+            if index == 0 {
+                prompt.push(LanguageModelPromptMessage {
+                    role: Role::System,
+                    content: vec![ContentPart::text(
+                        transcript[..leading_systems]
+                            .iter()
+                            .map(|message| message.content.as_ref())
+                            .collect::<Vec<_>>()
+                            .join("\n\n"),
+                    )],
+                    provider_options: None,
+                });
+            }
+            continue;
+        }
         let role = match message.role {
             TranscriptRole::System => Role::System,
             TranscriptRole::User => Role::User,
@@ -910,7 +943,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     fn aimux_failure_preserves_structured_diagnostics_without_raw_body() {
         let error = AiMuxError::ApiCall(aimux_core::ApiCallError {
             status_code: Some(429),
@@ -957,7 +990,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_reasoning_is_permanent_without_reclassifying_other_failures() {
+    fn every_http_400_is_permanent_without_reclassifying_other_statuses() {
         let missing = "The `reasoning_text` in the thinking mode must be passed back to the API.";
         for (status, code, message, retryable, overflow) in [
             (400, "invalid_request_error", missing, false, false),
@@ -965,10 +998,12 @@ mod tests {
                 400,
                 "invalid_request_error",
                 "invalid request body",
-                true,
+                false,
                 false,
             ),
-            (400, "context_length_exceeded", "context limit", true, true),
+            (400, "context_length_exceeded", "context limit", false, true),
+            (400, "rate_limit_exceeded", "slow down", false, false),
+            (400, "", "Request is missing x-opencode-session", false, false),
             (429, "rate_limit_exceeded", "slow down", true, false),
             (502, "upstream_error", missing, true, false),
         ] {
@@ -994,7 +1029,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_reasoning_requires_provenance_and_deepseek_thinking() {
+    fn runtime_reasoning_requires_provenance_and_a_deepseek_route() {
         let original = ProviderMessage {
             images: Vec::new(),
             role: TranscriptRole::Assistant,
@@ -1009,17 +1044,24 @@ mod tests {
             }],
             provider_context: None,
         };
-        for (provider, thinking, expected) in [
-            ("deepseek", "high", true),
-            ("deepseek", "off", false),
-            ("deepseek", "none", false),
-            ("openai", "high", false),
-            ("openai-compatible", "high", false),
+        for (provider, model, thinking, expected) in [
+            ("deepseek", "model", "high", true),
+            ("deepseek", "model", "off", false),
+            ("deepseek", "model", "none", false),
+            ("opencode-go", "deepseek-flash", "high", true),
+            ("opencode-go", "deepseek-v4-pro", "xhigh", true),
+            ("opencode-go", "deepseek-v4.1-flash", "high", true),
+            ("opencode-go", "deepseek-flash", "off", false),
+            ("opencode-go", "deepseek-flash", "none", false),
+            ("opencode-go", "muse-spark-1.2-contributor", "high", false),
+            ("opencode-go", "gpt-5.6-luna", "high", false),
+            ("openai", "model", "high", false),
+            ("openai-compatible", "deepseek-flash", "high", false),
         ] {
             let execution = ProfileExecution::new(
                 "profile".into(),
                 provider.into(),
-                "model".into(),
+                model.into(),
                 "openai-responses".into(),
                 true,
                 false,
@@ -1037,7 +1079,11 @@ mod tests {
             runtime.runtime_generated = true;
             let generated =
                 responses_input_from_transcript(&[runtime.clone()], &execution).unwrap();
-            assert_eq!(generated.len(), 1 + usize::from(expected));
+            assert_eq!(
+                generated.len(),
+                1 + usize::from(expected),
+                "{provider}/{model} thinking={thinking}"
+            );
             assert_eq!(generated.last(), genuine.last());
             if expected {
                 assert_eq!(generated[0]["type"], "reasoning");
@@ -1057,7 +1103,7 @@ mod tests {
             runtime.provider_context = Some(ProviderContext {
                 profile_id: "profile".into(),
                 provider: provider.into(),
-                model: "model".into(),
+                model: model.into(),
                 api: "openai-responses".into(),
                 output_items: raw.clone(),
             });
@@ -1089,6 +1135,25 @@ mod tests {
         assert!(request_headers("openai", "session-a", &empty).is_empty());
         let configured = HashMap::from([("X-Grok-Conv-Id".into(), "custom".into())]);
         assert_eq!(request_headers("xai", "session-a", &configured), configured);
+    }
+
+    #[test]
+    fn opencode_routing_uses_the_session_identity_and_an_identifiable_user_agent() {
+        let configured = HashMap::from([
+            ("X-OpenCode-Session".into(), "profile-wide-session".into()),
+            ("x-custom".into(), "keep".into()),
+        ]);
+        let first = request_headers("opencode-go", "session-a", &configured);
+        assert_eq!(first["x-opencode-session"], "session-a");
+        assert!(!first.contains_key("X-OpenCode-Session"));
+        assert!(first["User-Agent"].starts_with("zork-agent/"));
+        assert_eq!(first["x-custom"], "keep");
+        assert_eq!(first, request_headers("opencode-go", "session-a", &configured));
+        assert_ne!(first["x-opencode-session"], request_headers("opencode-go", "session-b", &configured)["x-opencode-session"]);
+        let configured = HashMap::from([("user-agent".into(), "custom-zork/1".into())]);
+        let headers = request_headers("opencode-go", "session-a", &configured);
+        assert_eq!(headers["user-agent"], "custom-zork/1");
+        assert!(!headers.contains_key("User-Agent"));
     }
 
     #[test]
@@ -1148,6 +1213,72 @@ mod tests {
             panic!("tool result")
         };
         assert_eq!(result["value"][1]["source"]["data"], "aW1n");
+    }
+
+    #[test]
+    fn chat_completions_merges_only_leading_system_messages_and_keeps_prefix() {
+        let message = |role, content: &str| ProviderMessage {
+            role,
+            content: content.into(),
+            images: Vec::new(),
+            is_error: false,
+            runtime_generated: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            provider_context: None,
+        };
+        let mut transcript = vec![
+            message(TranscriptRole::System, "Session instructions"),
+            message(TranscriptRole::System, "Tool catalog"),
+            message(TranscriptRole::User, "New task"),
+        ];
+        let original = execution("openai-completions", true);
+        let unchanged = prompt_from_transcript(&transcript, &original).unwrap();
+        assert_eq!(unchanged.len(), 3);
+        assert_eq!(unchanged[0].role, Role::System);
+        assert_eq!(unchanged[1].role, Role::System);
+        let execution = original.with_single_system_message(true);
+        let first = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].role, Role::System);
+        assert!(
+            matches!(&first[0].content[0], ContentPart::Text { text, .. } if text == "Session instructions\n\nTool catalog")
+        );
+        assert_eq!(first[1].role, Role::User);
+        transcript.push(message(TranscriptRole::Assistant, "Done"));
+        transcript.push(message(TranscriptRole::User, "Next task"));
+        let second = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&second[..first.len()]).unwrap()
+        );
+        assert_eq!(transcript.len(), 5);
+        // Do not hoist a later system message into the already-sent prefix.
+        transcript.push(message(TranscriptRole::System, "Late system message"));
+        let late = prompt_from_transcript(&transcript, &execution).unwrap();
+        assert_eq!(late.last().unwrap().role, Role::System);
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&late[..first.len()]).unwrap()
+        );
+    }
+
+    #[test]
+    fn system_position_rejection_is_permanent_only_for_bad_request() {
+        for (status, retryable) in [(400, false), (502, true)] {
+            let error = AiMuxError::ApiCall(aimux_core::ApiCallError {
+                status_code: Some(status),
+                message: "System message must be at the beginning.".into(),
+                is_retryable: true,
+                ..Default::default()
+            });
+            let ModelError::ProviderFailed(failure) =
+                aimux_failure("openai.completions.stream_start", error)
+            else {
+                panic!("expected provider failure");
+            };
+            assert_eq!(failure.retryable, retryable);
+        }
     }
 
     fn execution(api: &str, streaming: bool) -> ProfileExecution {
@@ -1275,7 +1406,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     async fn incomplete_tool_stream_keeps_request_and_usage_without_a_false_json_error() {
         let partial = r#"{"tool":"file.read","arguments":{"path":"/tmp"#;
         let result = stream_result(vec![
@@ -1344,7 +1475,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, RETRY-02]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, RETRY-02]
     async fn transport_error_after_tool_input_end_is_not_masked_by_partial_json() {
         let result = stream_result(vec![
             StreamPart::ToolInputStart {
@@ -1387,7 +1518,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn non_streaming_result_preserves_the_streaming_outcome_contract() {
         let result = aimux_core::result::GenerateResult {
             content: vec![
@@ -1492,7 +1623,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01]
     fn non_streaming_responses_accepts_plain_raw_reasoning() {
         let result = aimux_core::result::GenerateResult {
             content: vec![aimux_core::result::GenerateContent::Reasoning {
@@ -1536,7 +1667,7 @@ mod tests {
     }
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, PROVIDER-03]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, PROVIDER-03]
     fn responses_options_preserve_profile_defined_reasoning_exactly() {
         let options = responses_provider_options("future-depth");
 

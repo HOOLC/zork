@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +102,8 @@ internal class WorkbenchActions(
     val newer: () -> Unit = {},
     val windowAnchor: (String?) -> Unit = {},
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
+    val history: (String, String) -> Unit = { _, _ -> },
+    val sharedFiles: () -> Unit = {},
 )
 
 private class ConversationPresentation {
@@ -184,7 +187,12 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
         }
         if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
         Spacer(Modifier.height(0.5.dp))
+        NavRow(onClick = actions.sharedFiles) {
+            Glyph(R.drawable.ic_folder, 24.dp)
+            Text("共享文件", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        }
         val collapsed = remember { mutableStateMapOf<String, Boolean>() }
+        val expanded = remember { mutableStateMapOf<String, Boolean>() }
         LazyColumn(state = rememberLazyListState(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 10.dp)) {
             if (state.peers.isEmpty()) item {
                 Text(if (state.ready) "连接已有设备，与领队继续工作。" else "正在准备连接…",
@@ -212,38 +220,50 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                 }
                 if (tree != null && collapsed[peer.id] != true) {
                     tree.leaders.forEach { leader ->
-                        item(key = "leader:${leader.text("id")}") {
+                        item(key = "leader:${peer.id}:${leader.text("id")}") {
                             val interactions = remember { MutableInteractionSource() }
-                            NavRow(interactions = interactions, onLongClick = { details=leader.text("name") to listOf("职责" to leader.text("instructions"),"设备" to peer.name,"连接" to leader.text("profile_id"),"模型" to leader.text("model")) }, onClick = { actions.leader(JSONObject(leader.toString()).put("_peer", peer.id)) }) {
+                            NavRow(interactions = interactions, onLongClick = { details=leader.text("name") to listOf("职责" to leader.text("instructions"),"设备" to peer.name,"连接" to leader.text("profile_id"),"模型" to leader.text("model")) }, onClick = { if (leader.optBoolean("can_open", true)) actions.leader(JSONObject(leader.toString()).put("_peer", peer.id)) }) {
                                 Avatar(leader.text("avatar"), 28.dp)
                                 Text(leader.text("name"), fontSize = 15.sp, fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (leader.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
                             }
                         }
                         val tasks = tree.tasksByLeader[leader.text("id")].orEmpty()
-                        tasks.forEach { task ->
-                            item(key = "task:${task.text("task_id")}") {
-                                NavRow(indent = 54.dp, onLongClick = { details=task.text("title") to listOf("目标" to task.text("goal"),"领队" to leader.text("name"),"设备" to peer.name,"状态" to task.text("state"),"工作目录" to task.text("workspace")) },
-                                    onClick = { actions.session(JSONObject().put("_peer", peer.id).put("session_id", task.text("conversation_id")).put("task", task)) }) {
-                                    Text(task.text("title"), fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (task.optInt("unread") > 0) Box(Modifier.height(19.dp).widthIn(min = 19.dp)
-                                        .background(ZorkColors.Ink, CircleShape).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
-                                        Text(task.optInt("unread").toString(), color = Color.White, fontSize = 11.sp)
-                                    }
+                        val groupKey = "${peer.id}/${leader.text("id")}"
+                        val visible = tasks.filter { expanded[groupKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
+                        visible.forEach { task ->
+                            item(key = "task:${peer.id}:${task.text("chat_id")}") {
+                                NavRow(indent = 54.dp, onLongClick = { details=task.text("title") to listOf("说明" to task.text("description"),"创建者" to leader.text("name"),"设备" to peer.name,"工作目录" to task.text("workspace")) },
+                                    onClick = { actions.session(JSONObject(task.toString()).put("_peer", peer.id)) }) {
+                                    Text(task.text("title", "对话"), fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (task.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
                                 }
                             }
                         }
+                        if (visible.size < tasks.size || expanded[groupKey] == true) item(key = "more:$groupKey") {
+                            NavRow(indent = 54.dp, onClick = { expanded[groupKey] = expanded[groupKey] != true }) {
+                                Text(if (expanded[groupKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
+                            }
+                        }
                     }
-                    if (tree.leaders.isEmpty()) item {
-                        Text(if (state.connected) "这台设备还没有领队" else "等待设备连接…", fontSize = 12.sp,
+                    if (tree.leaders.isEmpty() && tree.sessions.isEmpty()) item {
+                        Text(if (tree.online) "这台设备还没有长期伙伴" else "等待设备连接…", fontSize = 12.sp,
                             color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
                     }
-                    val assigned = tree.tasksByLeader.values.flatten().map { it.text("conversation_id") }.toSet()
-                    items(tree.sessions.filter { it.text("session_id") !in assigned }, key = { "unassigned:${it.text("session_id")}" }) { session ->
+                    val othersKey = "${peer.id}/unattributed"
+                    val others = tree.sessions.filter { expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
+                    items(others, key = { "unassigned:${peer.id}:${it.text("chat_id")}" }) { session ->
                         NavRow(indent = 54.dp,
                             onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
-                            Text(session.optJSONObject("task")?.text("title") ?: "任务", fontSize = 15.sp,
+                            Text(session.text("title", "对话"), fontSize = 15.sp,
                                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (session.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
+                        }
+                    }
+                    if (others.size < tree.sessions.size || expanded[othersKey] == true) item(key = "more:$othersKey") {
+                        NavRow(indent = 54.dp, onClick = { expanded[othersKey] = expanded[othersKey] != true }) {
+                            Text(if (expanded[othersKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
                         }
                     }
                 }
@@ -256,17 +276,14 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
             FooterAction("设置", R.drawable.ic_settings, Modifier.weight(1f), true, actions.settings)
         }
     }
-    details?.let { (title,rows) -> SettingsSheet(title,dismiss={details=null}) {
+    LiquidRetained(details) { (title,rows), open, closed -> SettingsSheet(title,dismiss={details=null}, open=open, onClosed=closed) {
         rows.filter{it.second.isNotBlank()}.forEach{(label,value)->Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,fontSize=12.sp,color=ZorkColors.Muted);Text(value,fontSize=14.sp,lineHeight=22.sp)}}
     }}
 }
 
 @Composable
 private fun FooterAction(label: String, icon: Int, modifier: Modifier, enabled: Boolean, action: () -> Unit) {
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    Row(modifier.height(48.dp).clip(RoundedCornerShape(6.dp)).background(if (pressed) ZorkColors.Pressed else Color.Transparent)
-        .clickable(enabled = enabled, interactionSource = interactions, indication = null, onClick = action),
+    Row(modifier.height(48.dp).liquidPressable(enabled = enabled, onClick = action),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         Glyph(icon, 22.dp); Text(label, fontSize = 14.sp)
     }
@@ -277,11 +294,8 @@ private fun FooterAction(label: String, icon: Int, modifier: Modifier, enabled: 
 private fun NavRow(indent: Dp = 14.dp, enabled: Boolean = true,
     interactions: MutableInteractionSource = remember { MutableInteractionSource() },
     onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable RowScope.() -> Unit) {
-    val pressed by interactions.collectIsPressedAsState()
-    val focused by interactions.collectIsFocusedAsState()
     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 2.dp).height(48.dp)
-        .clip(RoundedCornerShape(6.dp)).background(if (pressed || focused) ZorkColors.Pressed else Color.Transparent)
-        .combinedClickable(enabled = enabled, interactionSource = interactions, indication = null, onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "查看详情")
+        .liquidPressable(enabled = enabled, interactionSource = interactions, onClick = onClick, onLongClick = onLongClick)
         .padding(start = indent, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         content()
@@ -295,11 +309,14 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
         if (showBack) IconAction(R.drawable.ic_arrow_left, "返回对话列表", onClick = actions.back)
         Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
             if (state.participants.isNotEmpty()) state.participants.take(3).forEach { member ->
-                Box(Modifier.size(44.dp, 44.dp).semantics { contentDescription = member.text("name") }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(44.dp, 44.dp)
+                    .historyPress(enabled = member.text("session_id").isNotBlank(), radius = 12.dp) { actions.history(member.text("session_id"), member.text("name")) }
+                    .semantics { contentDescription = "${member.text("name")} · 执行历史" }, contentAlignment = Alignment.Center) {
                     Avatar(member.text("avatar"), 30.dp, member.text("name"))
                 }
             } else state.conversation?.let {
-                Box(Modifier.size(44.dp, 44.dp).semantics { contentDescription = it.title }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(44.dp, 44.dp).historyPress(radius = 12.dp) { actions.history(it.id, it.title) }
+                    .semantics { contentDescription = "${it.title} · 执行历史" }, contentAlignment = Alignment.Center) {
                     Avatar(it.avatar, 30.dp, it.title)
                 }
             }
@@ -499,7 +516,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             // IME/composer resize changes the viewport, not message geometry.
             // A moving limit retruncates native TextViews on every inset frame.
             val messageLimit = (messagePreviewHeight.takeIf { it in 80..720 } ?: 192).dp
-            if (rows.isNotEmpty()) LazyColumn(state = listState, modifier = Modifier.fillMaxSize().pointerInput(listState) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().pointerInput(listState) {
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -522,9 +539,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Text(messageDate(firstDate), color = ZorkColors.Muted, fontSize = 12.sp)
                         HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
                     }
-                    if (messageState.older) TextButton(onClick = { following = false; messageActions.older() }, enabled = !messageState.busy) {
-                        Text("加载更早消息", fontSize = 11.sp)
-                    }
+                    if (messageState.older) LiquidButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
                 }
                 items(rows, key = { it.id }) { row ->
                     Column {
@@ -543,9 +558,8 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 // Padding is a list measure input, so animated clearance is applied
                 // immediately rather than waiting for a lazy spacer to recompose.
                 item(key = "conversation-bottom") {
-                    if (messageState.newer) TextButton(onClick = messageActions.newer, enabled = !messageState.busy) {
-                        Text("加载更新消息", fontSize = 11.sp)
-                    } else Spacer(Modifier.height(0.dp))
+                    if (messageState.newer) LiquidButton("加载更新消息", quiet = true, onClick = messageActions.newer, enabled = !messageState.busy)
+                    else Spacer(Modifier.height(0.dp))
                 }
             }
 
@@ -601,7 +615,7 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerMot
         // Extra rows above the viewport remain recorded during downward layer
         // translation. The list's geometry changes only at retarget/resize, not
         // on every spring sample; the visible tail still tracks that sample.
-        val overscan = ((presence.members.size * 35f + 16f) * density).toInt()
+        val overscan = ((presence.members.size * 48f + 48f) * density).toInt()
         val body = subcompose("messages", slot.content!!)
             .map { it.measure(androidx.compose.ui.unit.Constraints.fixed(constraints.maxWidth, constraints.maxHeight + overscan)) }
         layout(constraints.maxWidth, constraints.maxHeight) {
@@ -616,19 +630,33 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerMot
 private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
-            Surface(color = ZorkColors.Bubble, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, ZorkColors.Border)) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
-                    row.files.forEach { FileCard(it) { file(it) } }
+            if (row.content.isNotBlank() || row.files.isNotEmpty()) {
+                LiquidCard(color = ZorkColors.Bubble, radius = 20.dp) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
+                        row.files.forEach { FileCard(it) { file(it) } }
+                    }
                 }
             }
             val time = messageTime(row.createdAt)
             if (time.isNotEmpty()) Text(time, fontSize = 11.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
-            if (row.pending) Row(verticalAlignment = Alignment.CenterVertically) {
-                if (row.deliveryStatus.isNotBlank()) Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 10.sp, color = ZorkColors.Muted)
+            if (row.pending) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (row.deliveryStatus.isNotBlank()) Column(Modifier.weight(1f, fill = false)) {
+                    Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 10.sp, color = ZorkColors.Muted)
+                    if (row.deliveryStatus == "failed" && row.deliveryError.isNotBlank())
+                        Text(row.deliveryError, fontSize = 10.sp, color = ZorkColors.Muted)
+                }
                 if (row.deliveryStatus == "failed") {
-                    TextButton(onClick = { resend(row.requestId.ifBlank { row.id }) }) { Text("重发", fontSize = 11.sp) }
-                    TextButton(onClick = { deleteFailed(row.requestId.ifBlank { row.id }) }) { Text("删除", fontSize = 11.sp) }
+                    LiquidButton("重发", quiet = true, onClick = { resend(row.requestId.ifBlank { row.id }) },
+                        modifier = Modifier.clearAndSetSemantics {
+                            contentDescription = "重发失败消息"
+                            onClick { resend(row.requestId.ifBlank { row.id }); true }
+                        })
+                    LiquidButton("删除", quiet = true, onClick = { deleteFailed(row.requestId.ifBlank { row.id }) },
+                        modifier = Modifier.clearAndSetSemantics {
+                            contentDescription = "删除失败消息"
+                            onClick { deleteFailed(row.requestId.ifBlank { row.id }); true }
+                        })
                 }
             }
         }
@@ -648,11 +676,11 @@ private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed:
 }
 
 @Composable
-private fun ComposerPlate(presence: ComposerMotion, modifier: Modifier, body: @Composable () -> Unit) {
+private fun ComposerPlate(presence: ComposerMotion, modifier: Modifier, history: (String, String) -> Unit, body: @Composable () -> Unit) {
     // The editor receives constant constraints during presence motion. In a
     // Column, the changing header consumed its max height and remeasured the
     // text editor on every frame despite its unchanged three-line viewport.
-    androidx.compose.ui.layout.Layout(modifier = modifier, content = { ComposerMembers(presence); body() }) { measurables, constraints ->
+    androidx.compose.ui.layout.Layout(modifier = modifier, content = { ComposerMembers(presence, history); body() }) { measurables, constraints ->
         val controls = measurables[1].measure(constraints.copy(minHeight = 0))
         val header = measurables[0].measure(constraints.copy(minHeight = 0))
         layout(constraints.maxWidth, controls.height + header.height) {
@@ -681,8 +709,7 @@ private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence:
         WorkbenchActions(draft = { latest.value.draft(it) }, attach = { latest.value.attach() },
             removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() })
     }
-    val contour = remember { ComposerContourCache() }
-    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f).liquidComposer(presence, contour)) {
+    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f).liquidComposer(presence), actions.history) {
         ComposerControls(draft, attachments, canSend, stop, enabled, heightLimit, controls)
     }
 }
@@ -734,11 +761,7 @@ internal fun Glyph(resource: Int, size: Dp, tint: Color = ZorkColors.Ink) {
 }
 @Composable
 internal fun IconAction(resource: Int, description: String, enabled: Boolean = true, glyphSize: Dp = 22.dp, onClick: () -> Unit) {
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(if (pressed) ZorkColors.Pressed else Color.Transparent)
-        .clickable(enabled = enabled, interactionSource = interactions, indication = null, onClick = onClick)
-        .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+    LiquidIconButton(description, enabled = enabled, onClick = onClick) {
         Glyph(resource, glyphSize, if (enabled) ZorkColors.Ink else ZorkColors.Ink.copy(alpha = 0.35f))
     }
 }
@@ -758,7 +781,7 @@ internal fun Avatar(name: String?, size: Dp, description: String? = null) {
 private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(ZorkColors.Paper).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(message, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        TextButton(onClick = retry, enabled = !busy) { Text("重试", fontSize = 11.sp) }
+        LiquidButton("重试", quiet = true, onClick = retry, enabled = !busy)
     }
 }
 private fun messageTime(value: String): String = runCatching {
@@ -772,8 +795,7 @@ private fun messageDate(value: String): String = runCatching {
 
 @Composable
 private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchActions, heightLimit: Dp) {
-    Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), color = ZorkColors.Canvas,
-        shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, ZorkColors.Border)) {
+    LiquidCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("待发送评论 · ${comments.size}", fontSize = 11.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
@@ -781,7 +803,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
             comments.forEach { comment ->
                 HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
                 Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).clickable { actions.editComment(comment) }) {
+                    Column(Modifier.weight(1f).liquidPressable(opensPanel = true) { actions.editComment(comment) }) {
                         Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))
                             Text(comment.quote, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted, maxLines = 1,
@@ -799,9 +821,8 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
 
 @Composable
 private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
-    Surface(Modifier.fillMaxWidth().padding(top = 12.dp).clickable(onClick = save), color = ZorkColors.Bubble,
-        shape = RoundedCornerShape(10.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E1DA))) {
-        Row(Modifier.heightIn(min = 64.dp).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+    LiquidCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+        Row(Modifier.heightIn(min = 64.dp).liquidPressable(onClick = save).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Glyph(R.drawable.ic_result, 22.dp)
             Column(Modifier.weight(1f)) {

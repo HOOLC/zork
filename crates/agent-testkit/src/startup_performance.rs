@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use zork_agent::session::event_id::{EventId, EventIdError};
-use zork_agent::session::events::{SessionEvent, TurnOutcome, EVENT_SCHEMA_VERSION};
+use zork_agent::session::events::{EVENT_SCHEMA_VERSION, SessionEvent, TurnOutcome};
 use zork_agent::session::model::{
     ModelError, ModelGateway, ModelOutcome, ModelReleaseSuggestion, ModelRequest,
 };
@@ -94,7 +94,7 @@ pub fn prepare_real_startup_fixture(
         return Err(StartupPerformanceError::FixtureTooSmall);
     }
 
-    let sessions_root = data_root.join("sessions");
+    let sessions_root = data_root.join("shared-files/sessions");
     std::fs::create_dir_all(&sessions_root)?;
 
     // The requested session is written first and has the greatest ULID. It is
@@ -663,7 +663,7 @@ mod tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
-    // Contract: docs/zork-agent-architecture.md [STARTUP-02, STARTUP-03, PERF-03]
+    // Contract: docs/design/agent-runtime.md [STARTUP-02, STARTUP-03, PERF-03]
     async fn real_store_measurement_prioritizes_then_recovers_finished_sessions_once() {
         let root = tempfile::tempdir().unwrap();
         let data_root = root.path().join("data");

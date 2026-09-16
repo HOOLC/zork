@@ -44,13 +44,37 @@ impl MeshAdmin {
         client: Arc<GatewayClient>,
         device: std::sync::Weak<super::Device>,
     ) -> Arc<Self> {
-        Arc::new(Self {
+        let invitations = device
+            .upgrade()
+            .and_then(|d| d.cache.clone())
+            .and_then(|(store, peer)| {
+                store
+                    .get::<[Option<Value>; 2]>(&peer, "mesh-admin-invitations")
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_default();
+        let initial = MeshAdminData {
+            invitations,
+            ..Default::default()
+        };
+        let source = Arc::new(Self {
             client,
             device,
-            owned: Mutex::new(Default::default()),
-            state: Observable::new(Default::default()),
+            owned: Mutex::new(initial.clone()),
+            state: Observable::new(initial),
             watcher: Mutex::new(None),
-        })
+        });
+        if source
+            .snapshot()
+            .invitations
+            .iter()
+            .flatten()
+            .any(|invite| !finished(invite))
+        {
+            source.watch();
+        }
+        source
     }
     pub fn subscribe(&self) -> Subscription<MeshAdminData> {
         self.state.subscribe()
@@ -58,9 +82,42 @@ impl MeshAdmin {
     pub fn snapshot(&self) -> Arc<MeshAdminData> {
         self.state.read()
     }
+    pub fn invitation_view(&self) -> Value {
+        let state = self.snapshot();
+        let available = state.config.is_some();
+        let project = |invite: &Option<Value>| {
+            let mut value = invite.clone().unwrap_or_else(|| json!({}));
+            let active = invite.as_ref().is_some_and(|i| !finished(i));
+            value["can_create"] = json!(available && !state.busy && !active);
+            value["can_revoke"] = json!(available && !state.busy && active);
+            value["can_approve"] =
+                json!(available && !state.busy && value["status"] == "awaiting_approval");
+            value
+        };
+        json!({"available":available,"busy":state.busy,"error":state.message,
+            "node":project(&state.invitations[0]),"phone":project(&state.invitations[1])})
+    }
     fn commit(&self, change: impl FnOnce(&mut MeshAdminData)) {
         let mut s = self.owned.lock().unwrap();
+        let previous = s.invitations.clone();
         change(&mut s);
+        for invitation in s.invitations.iter_mut().flatten() {
+            if finished(invitation) {
+                if let Some(fields) = invitation.as_object_mut() {
+                    fields.remove("invitation");
+                    fields.remove("command");
+                }
+            }
+        }
+        if previous != s.invitations {
+            if let Some((store, peer)) = self.device.upgrade().and_then(|d| d.cache.clone()) {
+                if let Err(error) =
+                    store.put_authorized_settings(&peer, "mesh-admin-invitations", &s.invitations)
+                {
+                    s.message = Some(format!("邀请状态未能保存：{error}"));
+                }
+            }
+        }
         self.state.publish(s.clone());
     }
     pub fn dispatch(self: &Arc<Self>, action: MeshAction) {
@@ -132,16 +189,13 @@ impl MeshAdmin {
                 address,
                 client,
             } => {
-                let name = zork_config::membership::validate_device_name(&name)?;
-                let origin = origin.trim();
-                anyhow::ensure!(!origin.is_empty(), "请填写设备身份");
-                let address = address.trim();
+                let input = crate::device_edit::validate_peer(&name, &origin, &address).map_err(anyhow::Error::msg)?;
                 let mut config = self.current().await?;
-                config.peers.retain(|p| p.origin != origin);
+                config.peers.retain(|p| p.origin != input.origin);
                 config.peers.push(zork_config::MeshPeer {
-                    origin: origin.into(),
-                    name,
-                    addr: (!address.is_empty()).then(|| address.into()),
+                    origin: input.origin,
+                    name: input.name,
+                    addr: input.address,
                     execute: vec![],
                     client,
                     collaborate: false,
@@ -330,6 +384,38 @@ fn finished(invite: &Value) -> bool {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn invitations_survive_controller_replacement_and_finished_tickets_are_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
+        let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+        let device =
+            super::super::Device::open(client.clone(), Some((store.clone(), "node".into())), false);
+        let source = device.mesh_admin();
+        source.commit(|s| s.invitations[1] = Some(json!({"id":"phone","status":"waiting","invitation":"private-ticket","expires_at":zork_mesh::enrollment::now()+300})));
+        drop(source);
+        drop(device);
+        let next = super::super::Device::open(client, Some((store.clone(), "node".into())), false);
+        let source = next.mesh_admin();
+        assert_eq!(
+            source.snapshot().invitations[1].as_ref().unwrap()["id"],
+            "phone"
+        );
+        source.commit(|s| {
+            s.config = Some(Default::default());
+            s.invitations[1].as_mut().unwrap()["status"] = json!("revoked");
+        });
+        assert_eq!(source.invitation_view()["phone"]["can_create"], true);
+        assert_eq!(source.invitation_view()["phone"]["can_revoke"], false);
+        assert!(!store
+            .get::<Value>("node", "mesh-admin-invitations")
+            .unwrap()
+            .unwrap()
+            .to_string()
+            .contains("private-ticket"));
+        source.watcher.lock().unwrap().take();
+    }
 
     #[tokio::test]
     async fn invitation_kinds_share_reads_and_ignore_unrelated_device_changes() {

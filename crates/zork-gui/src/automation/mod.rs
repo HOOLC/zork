@@ -18,7 +18,6 @@ use tokio::sync::mpsc;
 use driver::{attach_driver, DriverEnvelope};
 use element::{AutomationRegistry, AutomationRegistryGlobal};
 
-pub(crate) use element::{is_enabled, record_canvas_control};
 pub use element::{AutomationElementExt, AutomationRoot};
 pub use protocol::AutomationRole;
 

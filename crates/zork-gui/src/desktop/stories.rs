@@ -1,22 +1,224 @@
 //! Development-only component stories. Every sample calls production renderers.
 use super::{agents::AgentsView, profiles::ProfilesView, ui};
-#[cfg(not(target_family = "wasm"))]
-use crate::{api::Role, transcript::TranscriptLine, views::RootView};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::CUE_UI,
 };
-use gpui::{div, prelude::*, px, rgb, AnyView, Context, Window};
-use serde_json::{json, Value};
-#[cfg(not(target_family = "wasm"))]
-use std::sync::Arc;
+use gpui::{AnyView, Context, Window, div, prelude::*, px, rgb};
+use serde_json::{Value, json};
 
 pub use zork_ui::stories::{PrimitiveStory, Story};
 fn click(id: &str) -> Value {
     json!({"type":"click","target":{"element_id":id}})
 }
+pub fn install(cx: &mut gpui::App) {
+    cx.set_global(zork_ui::history_page::stories::StoryText(
+        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+            crate::i18n::Locale::ZhCn.text(key).into()
+        })),
+    ));
+    if cx
+        .try_global::<zork_ui::liquid_story::business::Catalog>()
+        .is_none()
+    {
+        zork_ui::liquid_story::business::install(
+            catalog(),
+            |story, cx| cx.new(|cx| StoryHost::new(story, cx)).into(),
+            |view, cx| {
+                view.clone()
+                    .downcast::<StoryHost>()
+                    .map(|view| view.read(cx).inspect(cx))
+                    .unwrap_or_default()
+            },
+            cx,
+        );
+    }
+    zork_ui::liquid_story::install_composer_fixture(cx, || {
+        Box::new(zork_client_core::composer::fixture::Fixture::default())
+    });
+}
+
 pub fn catalog() -> Vec<Story> {
     let mut items = zork_ui::stories::catalog();
+    for (family, title, states, source) in [
+        (
+            "welcome",
+            "会话欢迎页",
+            &["first-agent", "choose-agent"][..],
+            "crates/zork-ui/src/welcome.rs",
+        ),
+        (
+            "node-directory",
+            "本机与已存设备",
+            &[
+                "empty",
+                "running",
+                "stopped",
+                "background",
+                "pairing",
+                "loading",
+            ][..],
+            "crates/zork-ui/src/node_directory.rs",
+        ),
+    ] {
+        for state in states {
+            let mut story = Story::new(family, title, state, source, family);
+            story.width = 900.;
+            story.height = 700.;
+            items.push(story);
+        }
+    }
+    for state in ["entry", "agent", "long"] {
+        let mut story = Story::new(
+            "history-details",
+            "执行记录与成员详情",
+            state,
+            "crates/zork-ui/src/history_details.rs",
+            "history-details",
+        );
+        story.width = 900.;
+        story.height = 700.;
+        story.actions = vec![click("history-details-open")];
+        items.push(story);
+    }
+    for state in ["idle", "active", "error"] {
+        let mut story = Story::new(
+            "member-activity",
+            "成员活动预览",
+            state,
+            "crates/zork-ui/src/member_activity.rs",
+            "member-activity",
+        );
+        story.width = 640.;
+        story.height = 600.;
+        story.actions =
+            vec![json!({"type":"move","target":{"element_id":"member-activity-source"}})];
+        items.push(story);
+    }
+    for state in ["automatic", "minimum", "custom", "maximum"] {
+        let mut story = Story::new(
+            "appearance",
+            "客户端外观",
+            state,
+            "crates/zork-ui/src/settings/appearance.rs",
+            "appearance",
+        );
+        story.width = 640.;
+        story.height = 880.;
+        items.push(story);
+    }
+    for state in ["idle", "error"] {
+        let mut story = Story::new("data-settings", "清空本机数据", state,
+            "crates/zork-ui/src/settings/data.rs", "data-settings");
+        story.width = 640.; story.height = 640.;
+        story.actions = vec![click("clear-client-data")];
+        items.push(story);
+    }
+    for state in ["empty", "tabs", "applications", "loading", "error"] {
+        let mut story = Story::new(
+            "browser",
+            "页面浏览器",
+            state,
+            "crates/zork-ui/src/browser_chrome.rs",
+            "browser",
+        );
+        story.width = 640.;
+        story.height = 600.;
+        items.push(story);
+    }
+    let mut composer = Story::new(
+        "composer",
+        "消息输入",
+        "interactive",
+        "crates/zork-ui/src/components/liquid/composer.rs",
+        "composer",
+    );
+    composer.width = 900.;
+    composer.height = 700.;
+    items.push(composer);
+    for state in ["image", "document", "long", "loading", "error"] {
+        let mut story = Story::new(
+            "attachment-viewer",
+            "附件预览",
+            state,
+            "crates/zork-ui/src/attachment_viewer.rs",
+            "attachment-viewer",
+        );
+        story.width = 900.;
+        story.height = 760.;
+        story.actions = vec![click("attachment-viewer-open")];
+        items.push(story);
+    }
+    for state in ["menu", "toolbar", "files", "pages", "empty"] {
+        let mut story = Story::new(
+            "conversation-files",
+            "会话文件与页面",
+            state,
+            "crates/zork-ui/src/conversation_contents.rs",
+            "conversation-files",
+        );
+        story.width = 640.;
+        story.height = 600.;
+        items.push(story);
+    }
+    for state in [
+        "connected",
+        "creator",
+        "unread",
+        "collapsed",
+        "offline",
+        "empty",
+    ] {
+        let mut story = Story::new(
+            "chat-navigation",
+            "设备与 Chat 导航",
+            state,
+            "crates/zork-ui/src/chat_navigation.rs",
+            "chat-navigation",
+        );
+        story.width = 320.;
+        story.height = 760.;
+        items.push(story);
+    }
+    for state in ["markdown", "literal", "long"] {
+        let mut story = Story::new(
+            "message-reader",
+            "全文阅读",
+            state,
+            "crates/zork-ui/src/components/message_reader.rs",
+            "message-reader",
+        );
+        story.width = 900.;
+        story.height = 760.;
+        story.actions = vec![click("message-reader-open")];
+        items.push(story);
+    }
+    for state in ["list", "grid", "preview", "empty", "loading", "error"] {
+        let mut story = Story::new(
+            "shared-files",
+            "共享文件",
+            state,
+            "crates/zork-ui/src/shared_files.rs",
+            "shared-files",
+        );
+        story.width = 900.;
+        story.height = 600.;
+        items.push(story);
+    }
+    for state in [
+        "list", "detail", "services", "skills", "empty", "loading", "error",
+    ] {
+        let mut story = Story::new(
+            "resources",
+            "资源目录与详情",
+            state,
+            "crates/zork-ui/src/resources.rs",
+            "resources",
+        );
+        story.width = 900.;
+        story.height = 600.;
+        items.push(story);
+    }
     for (family, title, state, target, actions, reference) in [
         (
             "connection",
@@ -120,7 +322,7 @@ pub fn catalog() -> Vec<Story> {
             "conversation",
             "会话",
             "composer",
-            "composer-surface",
+            "liquid-composer-surface",
             vec![],
             "composer",
         ),
@@ -139,7 +341,7 @@ pub fn catalog() -> Vec<Story> {
                 title,
                 &format!("{state}-{suffix}"),
                 if family == "conversation" {
-                    "views.rs (production desktop fixture)"
+                    "crates/zork-ui/src/components/message_row.rs / history_page/mod.rs"
                 } else if family == "agent" {
                     "desktop/agents.rs"
                 } else {
@@ -199,6 +401,60 @@ pub fn catalog() -> Vec<Story> {
             }
         }
     }
+    for state in [
+        "approval",
+        "approved",
+        "declined",
+        "cancelled",
+        "input",
+        "prefilled",
+        "create",
+        "update",
+        "login",
+        "login-device",
+        "login-callback",
+        "login-completed",
+        "completed",
+        "long",
+    ] {
+        for (width, height, suffix) in [(420., 760., "compact"), (900., 700., "wide")] {
+            let mut story = Story::new(
+                "message-interaction",
+                "交互消息",
+                &format!("{state}-{suffix}"),
+                "zork-ui/src/components/interaction.rs",
+                "interaction",
+            );
+            story.width = width;
+            story.height = height;
+            story.target = "interaction-card-preview".into();
+            items.push(story);
+        }
+    }
+    for state in ["enabled", "disabled", "muted", "denied", "busy", "error"] {
+        let mut story = Story::new(
+            "notifications",
+            "通知设置",
+            state,
+            "zork-ui/src/settings/notifications.rs",
+            "notifications",
+        );
+        story.width = 900.;
+        story.height = 680.;
+        items.push(story);
+    }
+    for state in ["long", "loading", "empty", "offline", "error"] {
+        let mut story = Story::new(
+            "conversation",
+            "会话",
+            state,
+            "crates/zork-ui/src/components/message_row.rs",
+            "conversation",
+        );
+        story.width = 900.;
+        story.height = 700.;
+        items.push(story);
+    }
     let form = zork_ui::stories::page_fixture()["model_form"].clone();
     for story in &mut items {
         if story.family == "model"
@@ -229,16 +485,34 @@ pub struct StoryHost {
 }
 impl StoryHost {
     pub fn inspect(&self, cx: &gpui::App) -> Value {
+        if let Ok(view) = self.inner.clone().downcast::<zork_ui::settings::data::DataSettings>() {
+            return view.read(cx).inspect();
+        }
+        if let Ok(view) = self
+            .inner
+            .clone()
+            .downcast::<zork_ui::liquid_story::ComposerExample>()
+        {
+            return view.read(cx).inspect();
+        }
         if let Ok(view) = self.inner.clone().downcast::<PrimitiveStory>() {
             return view.read(cx).inspect(cx);
         }
         if let Ok(view) = self.inner.clone().downcast::<ProfilesView>() {
             return view.read(cx).headless_state(cx);
         }
+        if let Ok(view) = self
+            .inner
+            .clone()
+            .downcast::<super::interaction_story::InteractionStory>()
+        {
+            return view.read(cx).inspect();
+        }
         json!({})
     }
 
     pub fn new(story: Story, cx: &mut Context<Self>) -> Self {
+        install(cx);
         #[cfg(not(target_family = "wasm"))]
         let directory = tempfile::tempdir().expect("isolated story directory");
         let settings = matches!(
@@ -246,6 +520,155 @@ impl StoryHost {
             "connection" | "model" | "agent" | "client" | "device" | "mesh" | "enrollment"
         );
         let inner = match story.family.as_str() {
+            "welcome" => zork_ui::welcome::story(
+                &story.state,
+                zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                    crate::i18n::Locale::ZhCn.text(key).into()
+                })),
+                cx,
+            )
+            .into(),
+            "node-directory" => cx
+                .new(|cx| zork_ui::node_directory::Story::new(&story.state, cx))
+                .into(),
+            "history" => cx
+                .new(|cx| {
+                    zork_ui::history_page::stories::Story::with_text(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "conversation" if story.state.starts_with("history") => cx
+                .new(|cx| {
+                    zork_ui::history_page::stories::Story::with_text(
+                        "compact",
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "history-details" => cx
+                .new(|cx| {
+                    zork_ui::history_details::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "member-activity" => cx
+                .new(|cx| {
+                    zork_ui::member_activity::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "appearance" => cx
+                .new(|cx| {
+                    zork_ui::settings::appearance::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "data-settings" => cx.new(|cx| zork_ui::settings::data::DataSettings::new(
+                zork_ui::settings::data::Data { busy: false, error: (story.state == "error").then(|| "本机运行尚未结束，请稍后重试".into()) },
+                zork_ui::resources::Text(std::rc::Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())), cx)).into(),
+            "browser" => cx
+                .new(|cx| {
+                    zork_ui::browser_chrome::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "composer" => cx.new(zork_ui::liquid_story::ComposerExample::new).into(),
+            "attachment-viewer" => cx
+                .new(|cx| {
+                    zork_ui::attachment_viewer::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "conversation-files" => cx
+                .new(|cx| {
+                    zork_ui::conversation_contents::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "chat-navigation" => zork_ui::chat_navigation::stories::create(
+                &story.state,
+                zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                    crate::i18n::Locale::ZhCn.text(key).into()
+                })),
+                cx,
+            )
+            .into(),
+            "message-reader" => cx
+                .new(|cx| {
+                    zork_ui::components::message_reader::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
+            "shared-files" => zork_ui::shared_files::stories::create(
+                &story.state,
+                zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                    crate::i18n::Locale::ZhCn.text(key).into()
+                })),
+                std::rc::Rc::new(|time| {
+                    chrono::DateTime::from_timestamp_nanos(time)
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string()
+                }),
+                cx,
+            )
+            .into(),
+            "resources" => zork_ui::resources::stories::create(
+                &story.state,
+                zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                    crate::i18n::Locale::ZhCn.text(key).into()
+                })),
+                cx,
+            )
+            .into(),
+            "notifications" => cx
+                .new(|cx| super::notification_story::NotificationStory::new(&story.state, cx))
+                .into(),
+            "message-interaction" => cx
+                .new(|cx| super::interaction_story::InteractionStory::new(&story.state, cx))
+                .into(),
             "mesh" | "enrollment" => cx
                 .new(|cx| {
                     zork_ui::network::NetworkStory::new(
@@ -255,6 +678,7 @@ impl StoryHost {
                             .trim_end_matches("-compact")
                             .trim_end_matches("-wide")
                             .into(),
+                        zork_client_core::device_edit::validate_peer,
                         cx,
                     )
                 })
@@ -268,6 +692,7 @@ impl StoryHost {
                             .trim_end_matches("-compact")
                             .trim_end_matches("-wide")
                             .into(),
+                        zork_client_core::device_edit::validate_name,
                         cx,
                     )
                 })
@@ -277,71 +702,17 @@ impl StoryHost {
                 .into(),
             "model" => cx.new(|cx| ProfilesView::headless_fixture(true, cx)).into(),
             "agent" => cx.new(AgentsView::headless_fixture).into(),
-            #[cfg(not(target_family = "wasm"))]
-            "conversation" => {
-                let store = Arc::new(
-                    super::store::ClientStore::open(directory.path()).expect("story store"),
-                );
-                cx.new(|cx| {
-                    let history = story.state.starts_with("history");
-                    let mut view = RootView::render_benchmark_fixture(history, store, cx);
-                    {
-                        let fixture = zork_ui::stories::page_fixture();
-                        let messages = fixture["conversation"]["messages"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .map(|message| TranscriptLine::Message {
-                                role: if message["role"] == "user" {
-                                    Role::User
-                                } else {
-                                    Role::Assistant
-                                },
-                                content: message["content"].as_str().unwrap().into(),
-                                metadata: crate::api::MessageMetadata {
-                                    id: message["id"].as_str().map(str::to_owned),
-                                    created_at: message["created_at"].as_str().map(str::to_owned),
-                                    author_agent_id: if message["role"] == "assistant" {
-                                        Some("leader".into())
-                                    } else {
-                                        None
-                                    },
-                                    author_name: if message["role"] == "assistant" {
-                                        Some("产品领队".into())
-                                    } else {
-                                        None
-                                    },
-                                    author_avatar: if message["role"] == "assistant" {
-                                        Some("fox".into())
-                                    } else {
-                                        None
-                                    },
-                                    device: Some("mini1".into()),
-                                    ..Default::default()
-                                },
-                            })
-                            .collect();
-                        view.benchmark_replace_messages(messages, cx);
-                        view.benchmark_story_placeholder(
-                            fixture["conversation"]["placeholder"]
-                                .as_str()
-                                .unwrap()
-                                .to_owned(),
-                            cx,
-                        );
-                        if history {
-                            view.benchmark_story_history(
-                                serde_json::from_value(fixture["history"]["records"].clone())
-                                    .unwrap(),
-                                fixture["history"]["now"].as_i64().unwrap(),
-                                cx,
-                            );
-                        }
-                    }
-                    view
+            "conversation" => cx
+                .new(|cx| {
+                    zork_ui::components::message_row::stories::Story::new(
+                        &story.state,
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
                 })
-                .into()
-            }
+                .into(),
             _ => cx.new(|cx| PrimitiveStory::new(story, cx)).into(),
         };
         Self {
@@ -355,13 +726,10 @@ impl StoryHost {
 impl Render for StoryHost {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let inner = if self.settings {
-            div().size_full().bg(rgb(CUE_UI.palette.sidebar)).child(
-                div()
-                    .ml(px(240.))
-                    .h_full()
-                    .bg(rgb(CUE_UI.palette.canvas))
-                    .child(ui::settings_content(self.inner.clone())),
-            )
+            div()
+                .size_full()
+                .bg(rgb(CUE_UI.palette.canvas))
+                .child(ui::settings_content(self.inner.clone()))
         } else {
             div().size_full().child(self.inner.clone())
         };

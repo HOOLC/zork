@@ -152,7 +152,7 @@ async fn end_result_is_paired_across_turns_and_event_replay() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-03]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-03]
 async fn concurrent_inspection_of_an_idle_session_does_not_wait_for_new_input() {
     let mut world = TestWorld::new();
     let mut inspections = tokio::task::JoinSet::new();
@@ -179,7 +179,7 @@ async fn concurrent_inspection_of_an_idle_session_does_not_wait_for_new_input() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-01, TURN-01]
+// Contract: docs/design/agent-runtime.md [TOOL-01, TURN-01]
 async fn one_provider_call_definition_finishes_naturally_without_tools() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/call-end").await;
@@ -231,7 +231,7 @@ async fn one_provider_call_definition_finishes_naturally_without_tools() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TURN-01]
+// Contract: docs/design/agent-runtime.md [TURN-01]
 async fn end_ignores_arguments_without_end_semantics() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/end-extra-arguments").await;
@@ -261,7 +261,7 @@ async fn end_ignores_arguments_without_end_semantics() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TURN-01]
+// Contract: docs/design/agent-runtime.md [TURN-01]
 async fn failed_end_is_returned_to_the_agent_instead_of_finishing_the_turn() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/failed-end").await;
@@ -300,7 +300,7 @@ async fn failed_end_is_returned_to_the_agent_instead_of_finishing_the_turn() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [EVENT-05, TOOL-01, TOOL-10]
+// Contract: docs/design/agent-runtime.md [EVENT-05, TOOL-01, TOOL-10]
 async fn malformed_dynamic_call_preserves_the_provider_outcome_and_returns_a_tool_error() {
     let mut options = ServiceOptions::default();
     options.runner.provider_retry_base = Duration::ZERO;
@@ -411,7 +411,7 @@ async fn malformed_dynamic_call_preserves_the_provider_outcome_and_returns_a_too
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [MAILBOX-01]
+// Contract: docs/design/agent-runtime.md [MAILBOX-01]
 async fn mailbox_input_arriving_during_a_provider_step_is_sent_next() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/inflight-mailbox").await;
@@ -439,7 +439,7 @@ async fn mailbox_input_arriving_during_a_provider_step_is_sent_next() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [WAIT-01, EVENT-05]
+// Contract: docs/design/agent-runtime.md [WAIT-01, EVENT-05]
 async fn one_auto_wait_delivers_every_result_from_a_completed_tool_batch() {
     let mut world = TestWorld::new();
     let workspace = "/virtual/tool-batch";
@@ -511,7 +511,7 @@ async fn one_auto_wait_delivers_every_result_from_a_completed_tool_batch() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-11, WAIT-01, EVENT-05]
+// Contract: docs/design/agent-runtime.md [TOOL-11, WAIT-01, EVENT-05]
 async fn concurrent_tool_results_are_not_mistaken_for_interrupted_executions() {
     let mut options = ServiceOptions::default();
     options.runner.tool_result_capacity = 1;
@@ -553,7 +553,7 @@ async fn concurrent_tool_results_are_not_mistaken_for_interrupted_executions() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [WAIT-02]
+// Contract: docs/design/agent-runtime.md [WAIT-02]
 async fn new_mail_ends_an_explicit_wait_and_starts_the_next_step() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/explicit-wait").await;
@@ -587,7 +587,7 @@ async fn new_mail_ends_an_explicit_wait_and_starts_the_next_step() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [DEADLINE-01]
+// Contract: docs/design/agent-runtime.md [DEADLINE-01]
 async fn explicit_wait_deadline_is_rebuilt_after_restart_and_reached_once() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/rebuilt-wait-deadline").await;
@@ -637,7 +637,7 @@ async fn explicit_wait_deadline_is_rebuilt_after_restart_and_reached_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CANCEL-01]
+// Contract: docs/design/agent-runtime.md [CANCEL-01]
 async fn cancelling_an_active_turn_preserves_the_session_for_a_new_turn() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/cancel-turn").await;
@@ -682,7 +682,7 @@ fn controlled_tool(name: &str) -> ToolContract {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TURN-01, PROJECTION-03]
+// Contract: docs/design/agent-runtime.md [TURN-01, PROJECTION-03]
 async fn end_with_unfinished_work_reports_it_then_finishes_after_the_result() {
     let mut world = TestWorld::new();
     let mut slow = world.install_tool(controlled_tool("test.slow")).unwrap();
@@ -753,7 +753,7 @@ async fn end_with_unfinished_work_reports_it_then_finishes_after_the_result() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [STATE-01, RECOVERY-01]
+// Contract: docs/design/agent-runtime.md [STATE-01, RECOVERY-01]
 async fn restart_resumes_an_active_text_turn_and_reports_the_interrupted_step() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/active-restart").await;
@@ -801,7 +801,7 @@ async fn restart_resumes_an_active_text_turn_and_reports_the_interrupted_step() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [RETRY-01, MAILBOX-01]
+// Contract: docs/design/agent-runtime.md [RETRY-01, MAILBOX-01]
 async fn retrying_a_provider_step_includes_mail_received_during_the_failed_attempt() {
     let mut options = ServiceOptions::default();
     options.runner.provider_retry_base = Duration::from_millis(1);
@@ -873,7 +873,7 @@ async fn retrying_a_provider_step_includes_mail_received_during_the_failed_attem
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [RETRY-02]
+// Contract: docs/design/agent-runtime.md [RETRY-02]
 async fn a_permanent_provider_failure_waits_for_new_mail_then_the_session_recovers() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/permanent-provider-failure").await;
@@ -953,7 +953,77 @@ async fn a_permanent_provider_failure_waits_for_new_mail_then_the_session_recove
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [RETRY-02]
+// Contract: docs/design/agent-runtime.md [RETRY-02]
+async fn http_400_never_retries_or_restores_rejected_input_and_new_mail_recovers() {
+    let mut world = TestWorld::new();
+    for code in ["invalid_request_error", "context_length_exceeded", "max_output_tokens"] {
+        let session_id = session(&world, "/virtual/http-400").await;
+        world.send_mail(&session_id, "rejected input").await.unwrap();
+        let mut failure = ProviderFailure::new("controlled.http", true, "invalid request");
+        failure.status_code = Some(400);
+        failure.provider_code = Some(code.into());
+        world.request().await.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
+        let stopped = world.wait_for_state(&session_id, |state| {
+            state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+        }).await;
+        assert!(stopped.unconsumed_inputs.is_empty());
+        assert_eq!(stopped.generation.number, 1);
+        world.restart().await.unwrap();
+        world.clock.advance(Duration::from_secs(60));
+        let restored = world.state(&session_id).await.unwrap();
+        assert_eq!(restored.last_turn_outcome, Some(TurnOutcome::Failed));
+        assert!(restored.active_turn.is_none());
+        let events = world.events(&session_id);
+        assert_eq!(events.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 1);
+        assert!(!events.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+        assert!(events.iter().any(|e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
+            if error.status_code == Some(400) && !error.retryable)));
+
+        world.send_mail(&session_id, "request is fixed; continue").await.unwrap();
+        let next = world.request().await;
+        assert!(next.transcript.iter().any(|message| message.content.as_ref() == "request is fixed; continue"));
+        next.respond_text("done").unwrap();
+        world.wait_for_state(&session_id, |state| state.last_turn_outcome == Some(TurnOutcome::Finished)).await;
+    }
+    world.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [RETRY-02]
+async fn a_late_tool_result_after_http_400_waits_for_new_input_without_losing_the_result() {
+    let mut world = TestWorld::new();
+    let mut slow = world.install_tool(controlled_tool("test.slow")).unwrap();
+    let session_id = session(&world, "/virtual/http-400-late-tool").await;
+    world.send_mail(&session_id, "start work").await.unwrap();
+    world.request().await.respond_call(
+        "provider-slow", "test.slow", json!({"value": "controlled"}),
+    ).unwrap();
+    let running = slow.request().await;
+    world.send_mail(&session_id, "continue while the tool runs").await.unwrap();
+    let mut failure = ProviderFailure::new("controlled.http", false, "bad request");
+    failure.status_code = Some(400);
+    world.request().await.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
+    world.wait_for_state(&session_id, |state| {
+        state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+    }).await;
+    running.succeed(json!({"text": "authoritative late result"})).unwrap();
+    let stopped = world.wait_for_state(&session_id, |state| {
+        state.pending_tools.values().any(|tool| tool.result.is_some())
+    }).await;
+    assert!(stopped.active_turn.is_none());
+    assert!(!stopped.should_start_turn());
+    assert_eq!(world.events(&session_id).iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 2);
+
+    world.send_mail(&session_id, "request is fixed; continue").await.unwrap();
+    let next = world.request().await;
+    assert!(next.transcript.iter().any(|message| message.content.contains("authoritative late result")));
+    next.respond_text("done").unwrap();
+    world.wait_for_state(&session_id, |state| state.last_turn_outcome == Some(TurnOutcome::Finished)).await;
+    world.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+// Contract: docs/design/agent-runtime.md [RETRY-02]
 async fn ten_retryable_provider_failures_end_the_turn_and_new_mail_recovers_the_session() {
     let mut options = ServiceOptions::default();
     options.runner.provider_retry_base = Duration::from_millis(1);
@@ -1026,7 +1096,7 @@ async fn ten_retryable_provider_failures_end_the_turn_and_new_mail_recovers_the_
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [RECOVERY-02, PROJECTION-03]
+// Contract: docs/design/agent-runtime.md [RECOVERY-02, PROJECTION-03]
 async fn restart_preserves_a_recorded_tool_result_and_reports_the_unfinished_peer() {
     let mut world = TestWorld::new();
     let mut controlled = world
@@ -1114,7 +1184,7 @@ async fn restart_preserves_a_recorded_tool_result_and_reports_the_unfinished_pee
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-10, PROJECTION-02]
+// Contract: docs/design/agent-runtime.md [TOOL-10, PROJECTION-02]
 async fn controlled_tools_start_together_and_project_results_in_declaration_order() {
     let mut world = TestWorld::new();
     let mut first_tool = world.install_tool(controlled_tool("test.first")).unwrap();
@@ -1174,7 +1244,7 @@ async fn controlled_tools_start_together_and_project_results_in_declaration_orde
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [WAIT-01, PROJECTION-03]
+// Contract: docs/design/agent-runtime.md [WAIT-01, PROJECTION-03]
 async fn auto_wait_timeout_projects_pending_work_then_delivers_the_late_result() {
     let mut options = ServiceOptions::default();
     options.runner.auto_wait = Duration::from_millis(10);
@@ -1238,7 +1308,7 @@ async fn auto_wait_timeout_projects_pending_work_then_delivers_the_late_result()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [EVENT-05, PERSIST-02]
+// Contract: docs/design/agent-runtime.md [EVENT-05, PERSIST-02]
 async fn every_external_effect_observes_its_durable_preparation_without_replaying_history() {
     let mut world = TestWorld::new();
     let mut echo = world
@@ -1289,7 +1359,7 @@ async fn every_external_effect_observes_its_durable_preparation_without_replayin
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [PERSIST-02, SUPERVISOR-01]
+// Contract: docs/design/agent-runtime.md [PERSIST-02, SUPERVISOR-01]
 async fn an_idle_session_recovers_once_then_keeps_folding_only_new_events_while_active() {
     let mut world = TestWorld::new();
     let session_id = session(&world, "/virtual/idle-rebuild").await;
@@ -1332,7 +1402,7 @@ async fn an_idle_session_recovers_once_then_keeps_folding_only_new_events_while_
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-07]
+// Contract: docs/design/agent-runtime.md [TOOL-07]
 async fn a_tool_version_change_during_a_provider_request_returns_one_knowledge_updating_result() {
     let mut world = TestWorld::new();
     let _version_one = world
@@ -1383,7 +1453,7 @@ async fn a_tool_version_change_during_a_provider_request_returns_one_knowledge_u
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-05, TOOL-09]
+// Contract: docs/design/agent-runtime.md [TOOL-05, TOOL-09]
 async fn tool_change_notices_are_brief_once_per_session_and_readdition_is_new() {
     let mut world = TestWorld::new();
     let _version_one = world.install_tool(controlled_tool("test.catalog")).unwrap();
@@ -1509,10 +1579,9 @@ async fn tool_change_notices_are_brief_once_per_session_and_readdition_is_new() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TOOL-12]
+// Contract: docs/design/agent-runtime.md [TOOL-12]
 async fn tool_cancel_is_durable_before_the_target_cancelled_result_and_never_replaces_it() {
     let mut options = ServiceOptions::default();
-    options.tool_concurrency = 1;
     options.runner.auto_wait = Duration::from_millis(10);
     let mut world = TestWorld::with_options(options);
     let mut slow = world
@@ -1595,7 +1664,7 @@ async fn tool_cancel_is_durable_before_the_target_cancelled_result_and_never_rep
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [TURN-02, PROJECTION-03]
+// Contract: docs/design/agent-runtime.md [TURN-02, PROJECTION-03]
 async fn end_can_acknowledge_a_visible_outstanding_item_and_late_completion_remains_a_notice() {
     let mut options = ServiceOptions::default();
     options.runner.auto_wait = Duration::from_millis(10);

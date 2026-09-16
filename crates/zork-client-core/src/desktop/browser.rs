@@ -51,14 +51,14 @@ impl Grant {
     pub fn start(
         worker: Worker,
         client: Arc<GatewayClient>,
-        session: String,
+        _session: String,
         host: String,
     ) -> Self {
         let allowed = Arc::new(AtomicBool::new(true));
         let connected = Arc::new(AtomicBool::new(false));
         let error = Arc::new(Mutex::new(None));
-        let registration = json!({"client_id":ulid::Ulid::new().to_string(), "secret":zork_config::random_token(), "name":"Zork desktop", "replies":[]});
-        let path = format!("/v1/im/sessions/{session}/browser/receipts");
+        let registration = json!({"client_id":client.client_id(), "generation":client.next_browser_generation(), "secret":zork_config::random_token(), "name":"Zork desktop", "replies":[]});
+        let path = "/v1/client/browser/receipts".to_owned();
         let (active, ready, failure, owner, scope, channel, credentials) = (
             allowed.clone(),
             connected.clone(),
@@ -69,16 +69,7 @@ impl Grant {
             registration.clone(),
         );
         let task = client.spawn(async move {
-            let outcome = run(
-                &owner,
-                &channel,
-                &session,
-                &scope,
-                &credentials,
-                &active,
-                &ready,
-            )
-            .await;
+            let outcome = run(&owner, &channel, &scope, &credentials, &active, &ready).await;
             if let Err(error) = outcome {
                 *failure.lock().unwrap() = Some(format!("浏览器操作连接失败：{error}"));
             }
@@ -111,14 +102,13 @@ impl Grant {
 async fn run(
     worker: &Worker,
     client: &Arc<GatewayClient>,
-    session: &str,
     host: &str,
     registration: &Value,
     allowed: &Arc<AtomicBool>,
     ready: &AtomicBool,
 ) -> Result<()> {
-    let mut feed = client.browser_events(session, registration.clone());
-    let path = format!("/v1/im/sessions/{session}/browser/receipts");
+    let mut feed = client.browser_events(registration.clone());
+    let path = "/v1/client/browser/receipts".to_owned();
     let mut replies: Vec<Value> = vec![];
     // A reconnect uses the same grant identity and retains its execution cache.
     // A new grant has a new identity and cannot inherit/replay old commands.
@@ -161,6 +151,19 @@ async fn run(
                         let permitted = allowed.clone();
                         let received = worker.submit(move |browser| {
                             anyhow::ensure!(permitted.load(Ordering::Acquire), "用户已接管浏览器");
+                            if matches!(command.action, zork_browser::Action::List) {
+                                return Ok(json!({"tabs":browser.all_tabs()}));
+                            }
+                            let scope = if let Some(id) = command.action.tab_id() {
+                                browser
+                                    .all_tabs()
+                                    .into_iter()
+                                    .find(|tab| tab.id == id)
+                                    .ok_or_else(|| anyhow::anyhow!("浏览器标签已关闭"))?
+                                    .host
+                            } else {
+                                scope
+                            };
                             browser.execute(&scope, command.action)
                         });
                         let raw = raw.clone();
@@ -194,7 +197,7 @@ async fn run(
                             .as_str()
                             .or_else(|| raw["action"]["tab_id"].as_str())
                         {
-                            worker.select(&host, tab);
+                            worker.select(result["tab"]["host"].as_str().unwrap_or(host), tab);
                         }
                     }
                     receipts.push_back((id.clone(), raw, result.clone()));

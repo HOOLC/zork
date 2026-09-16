@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" role="img">
+  <title>Zork Browser Helper</title>
+  <rect width="128" height="128" rx="28" fill="#E9643B"/>
+  <g fill="none" stroke="#F6F3EA" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27 37h16m24 0h34M27 64h38m24 0h12M27 91h8m24 0h42"/>
+    <circle cx="55" cy="37" r="11"/><circle cx="77" cy="64" r="11"/><circle cx="47" cy="91" r="11"/>
+  </g>
+</svg>

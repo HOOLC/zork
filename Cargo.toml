@@ -20,10 +20,12 @@ members = [
   "crates/zork-observe",
   "crates/zork-gui-web",
   "crates/zork-ui",
+  "crates/zork-liquid",
   "crates/zork-client-core",
   "crates/zork-client-types",
   "crates/zork-android",
 ]
+exclude = ["vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial"]
 resolver = "2"
 
 [workspace.package]
@@ -32,6 +34,8 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+markdown = "1.0.0"
+rusqlite = { version = "0.31", features = ["bundled", "hooks", "functions"] }
 imbl = "=7.0.1"
 ulid = "1.2"
 getrandom = { version = "0.3", features = ["std"] }
@@ -49,6 +53,20 @@ opt-level = 3
 [profile.dev.package.gpui-unofficial]
 opt-level = 3
 
+# The Web gallery is interactive performance evidence, including in dev builds.
+# Keep per-frame WebGL submission and font shaping out of debug code paths.
+[profile.dev.package.gpui-web-gpui-unofficial]
+opt-level = 3
+
+[profile.dev.package.gpui-wgpu-gpui-unofficial]
+opt-level = 3
+
+[profile.dev.package.cosmic-text]
+opt-level = 3
+
+[profile.dev.package.harfrust]
+opt-level = 3
+
 [profile.dev.package.taffy]
 opt-level = 3
 
@@ -56,6 +74,15 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.zork-ui]
+opt-level = 3
+
+[profile.dev.package.zork-liquid]
+opt-level = 3
+
+[profile.dev.package.gpui-base-uo]
+opt-level = 3
+
+[profile.dev.package.ropey]
 opt-level = 3
 
 # The personal desktop build also runs image fitting on demand. Keep its
@@ -117,3 +144,16 @@ opt-level = 3
 
 [profile.dev.package.lyon_algorithms]
 opt-level = 3
+
+# gpui-base's library does not use the profiler; enabling it transitively
+# makes GPUI 1.17 action dispatch call std::time::Instant on wasm.
+[patch.crates-io]
+gpui-unofficial = { path = "vendor/gpui-unofficial" }
+gpui-base-uo = { path = "vendor/gpui-base-uo" }
+gpui-wgpu-gpui-unofficial = { path = "vendor/gpui-wgpu-gpui-unofficial" }
+gpui-apple-gpui-unofficial = { path = "vendor/gpui-apple-gpui-unofficial" }
+gpui-macos-gpui-unofficial = { path = "vendor/gpui-macos-gpui-unofficial" }
+gpui-web-gpui-unofficial = { path = "vendor/gpui-web-gpui-unofficial" }
+
+[patch."https://github.com/AFK-surf/synchronicity.git"]
+synch-engine = { path = "vendor/synch-engine" }

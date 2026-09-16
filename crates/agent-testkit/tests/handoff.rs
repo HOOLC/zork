@@ -53,7 +53,7 @@ fn outcome(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [PROVIDER-02]
+// Contract: docs/design/agent-runtime.md [PROVIDER-02]
 async fn usage_from_an_old_selection_cannot_restore_its_token_anchor() {
     let mut world = TestWorld::with_options(handoff_options());
     let session_id = world
@@ -94,7 +94,7 @@ async fn usage_from_an_old_selection_cannot_restore_its_token_anchor() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-01]
+// Contract: docs/design/agent-runtime.md [HANDOFF-01]
 async fn handoff_has_no_cross_request_deadline() {
     let mut options = handoff_options();
     options.runner.input_budget = Arc::new(|_| Some(100));
@@ -145,7 +145,7 @@ async fn handoff_has_no_cross_request_deadline() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-03]
+// Contract: docs/design/agent-runtime.md [HANDOFF-03]
 async fn explicit_context_overflow_applies_an_empty_handoff() {
     let mut world = TestWorld::with_options(handoff_options());
     let session_id = world
@@ -162,7 +162,6 @@ async fn explicit_context_overflow_applies_an_empty_handoff() {
         false,
         "maximum context length exceeded",
     );
-    failure.status_code = Some(400);
     failure.provider_code = Some("context_length_exceeded".into());
     world
         .request()
@@ -191,7 +190,7 @@ async fn explicit_context_overflow_applies_an_empty_handoff() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-01, HANDOFF-02, PROVIDER-02, PROVIDER-04, PROJECTION-01]
+// Contract: docs/design/agent-runtime.md [HANDOFF-01, HANDOFF-02, PROVIDER-02, PROVIDER-04, PROJECTION-01]
 async fn token_anchor_handoff_carries_live_tools_and_delivers_their_result_as_a_notification() {
     let mut options = handoff_options();
     options.runner.input_budget = Arc::new(|_| Some(100));
@@ -381,7 +380,7 @@ async fn token_anchor_handoff_carries_live_tools_and_delivers_their_result_as_a_
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-03, PROJECTION-03]
+// Contract: docs/design/agent-runtime.md [HANDOFF-03, PROJECTION-03]
 async fn exhausted_handoff_document_attempts_create_a_successor_without_the_document() {
     let mut options = handoff_options();
     options.runner.input_budget = Arc::new(|_| Some(100));
@@ -545,7 +544,7 @@ async fn exhausted_handoff_document_attempts_create_a_successor_without_the_docu
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-03, RETRY-01]
+// Contract: docs/design/agent-runtime.md [HANDOFF-03, RETRY-01]
 async fn exhausted_provider_retries_fail_the_turn_without_empty_handoff() {
     let mut options = handoff_options();
     options.runner.input_budget = Arc::new(|_| Some(100));
@@ -613,7 +612,7 @@ async fn exhausted_provider_retries_fail_the_turn_without_empty_handoff() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HANDOFF-01, RETRY-01]
+// Contract: docs/design/agent-runtime.md [HANDOFF-01, RETRY-01]
 async fn handoff_survives_an_interrupted_request_a_provider_retry_and_new_mail() {
     let mut options = handoff_options();
     options.runner.input_budget = Arc::new(|_| Some(100));
@@ -734,7 +733,7 @@ async fn handoff_survives_an_interrupted_request_a_provider_retry_and_new_mail()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SNAPSHOT-02, HANDOFF-02]
+// Contract: docs/design/agent-runtime.md [SNAPSHOT-02, HANDOFF-02]
 async fn handoff_snapshot_size_is_independent_of_the_sealed_transcript_length() {
     let short = snapshot_size_after_history(4).await;
     let long = snapshot_size_after_history(200).await;

@@ -87,7 +87,6 @@ pub fn run(output: &Path, baseline: bool) -> anyhow::Result<()> {
             let began = Instant::now();
             let callbacks = cx.update_window(window.into(), |_, w, cx| {
                 let pending = w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx);
                 pending
             })?;
             Ok((callbacks, began.elapsed().as_secs_f64() * 1000.))

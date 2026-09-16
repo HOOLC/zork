@@ -11,8 +11,12 @@ use zork_gui::{
 
 fn main() -> anyhow::Result<()> {
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
-    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../artifacts/message-attachments-redesign/native");
+    let output = std::env::var_os("ZORK_ATTACHMENT_PREVIEW_OUTPUT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../artifacts/message-attachments-redesign/native")
+        });
     std::fs::create_dir_all(&output)?;
     for (width, height) in [(1280., 800.), (900., 600.)] {
         let directory = tempfile::tempdir()?;
@@ -180,7 +184,7 @@ fn main() -> anyhow::Result<()> {
         save(&mut cx, "pan")?;
         click(&mut cx, "preview-fit")?;
         menu(&mut cx)?;
-        click(&mut cx, "preview-source")?;
+        click(&mut cx, "preview-menu-0-preview-source")?;
         anyhow::ensure!(
             !driver
                 .snapshot(false)
@@ -228,7 +232,7 @@ fn main() -> anyhow::Result<()> {
         );
         save(&mut cx, "markdown")?;
         menu(&mut cx)?;
-        click(&mut cx, "drive-reuse")?;
+        click(&mut cx, "preview-menu-0-drive-reuse")?;
         anyhow::ensure!(
             core.draft("render-fixture").files == vec![markdown.clone()],
             "reuse did not preserve selected file identity"

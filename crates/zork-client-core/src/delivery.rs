@@ -1,5 +1,5 @@
 //! Durable delivery shared by desktop and mobile. Commit attempted before IO;
-//! remove only after an acknowledgement. Retries retain the original request ID.
+//! source echo updates the same local row. Every manual resend has a new ID.
 use crate::{api::GatewayClient, store::ClientStore};
 use serde::Serialize;
 #[derive(Clone, Default, Serialize)]
@@ -23,19 +23,23 @@ pub async fn flush(client: &GatewayClient, store: &ClientStore, node: &str) -> D
                 settled: false,
             };
             let result = tokio::time::timeout(
-                std::time::Duration::from_secs(
-                    if zork_client_types::files::decode(&message.content).is_some() {
-                        120
-                    } else {
-                        15
-                    },
-                ),
+                delivery_timeout(&message),
                 deliver(client, store, node, &message),
             )
             .await;
             guard.settled = true;
             match result {
-                Ok(Ok(_)) => store.acknowledge(node, &message.request_id)?,
+                Ok(Ok(_)) => {
+                    // A successful request is not the message echo. Leave the
+                    // saved row sending until the receive path updates it.
+                    if store
+                        .outbox(node)?
+                        .iter()
+                        .any(|m| m.request_id == message.request_id)
+                    {
+                        continue;
+                    }
+                }
                 result => {
                     if !store
                         .outbox(node)?
@@ -46,7 +50,7 @@ pub async fn flush(client: &GatewayClient, store: &ClientStore, node: &str) -> D
                         continue;
                     }
                     let error = match result {
-                        Ok(Err(e)) => e.to_string(),
+                        Ok(Err(e)) => delivery_error(&e),
                         _ => "发送超时".into(),
                     };
                     store.fail_delivery(node, &message.request_id, &error)?;
@@ -56,34 +60,10 @@ pub async fn flush(client: &GatewayClient, store: &ClientStore, node: &str) -> D
             }
             report.delivered.push(message.request_id.clone());
         }
-        for pending in store.interaction_deliveries(node)? {
-            if pending.submission.attempted || pending.submission.error.is_some() {
-                continue;
-            }
-            if !store.change_interaction(node, &pending, |s| s.attempted = true)? {
-                continue;
-            }
-            let mut guard = InteractionGuard {
-                store,
-                node,
-                pending: pending.clone(),
-                settled: false,
-            };
-            let result = tokio::time::timeout(
-                std::time::Duration::from_secs(60),
-                deliver_interaction(client, store, node, &pending),
-            )
-            .await;
-            guard.settled = true;
-            let error = match result {
-                Ok(Ok(())) => None,
-                Ok(Err(error)) => Some(error.to_string()),
-                Err(_) => Some("Submission timed out; recover the original response.".into()),
-            };
-            if let Some(error) = error {
-                store.change_interaction(node, &pending, |s| s.error = Some(error.clone()))?;
-                report.error = Some(error);
-            }
+        if let Some(error) =
+            crate::interactions::agent_configuration::delivery::flush(client, store, node).await?
+        {
+            report.error = Some(error);
         }
         Ok(())
     }
@@ -94,50 +74,33 @@ pub async fn flush(client: &GatewayClient, store: &ClientStore, node: &str) -> D
     report
 }
 
-async fn deliver_interaction(
-    client: &GatewayClient,
-    store: &ClientStore,
-    node: &str,
-    pending: &crate::store::InteractionDelivery,
-) -> anyhow::Result<()> {
-    use anyhow::{ensure, Context};
-    if !pending.submission.accepted {
-        let value = client
-            .node_request(
-                reqwest::Method::POST,
-                format!(
-                    "/v1/node/chats/{}/messages/{}/respond",
-                    pending.session, pending.message_id
-                ),
-                Some(serde_json::to_value(&pending.submission.response)?),
-            )
-            .await?;
-        let message: crate::api::TranscriptMessage =
-            serde_json::from_value(value["message"].clone())?;
-        let crate::api::TranscriptMessage::Message { metadata, .. } = &message;
-        let result = crate::interactions::result(metadata)
-            .context("Missing authoritative interaction result")?;
-        ensure!(
-            result.request_message_id == pending.message_id,
-            "Interaction response belongs to another request"
-        );
-        store.change_interaction(node, pending, |s| s.accepted = true)?;
+fn delivery_error(error: &anyhow::Error) -> String {
+    if error
+        .downcast_ref::<crate::api::ApiError>()
+        .and_then(crate::api::ApiError::status)
+        == Some(422)
+    {
+        return "目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。".into();
     }
-    // A command receipt can arrive ahead of intermediate Chat messages. Catch
-    // up from the durable source tail instead of inserting that receipt as a
-    // fictitious contiguous page or advancing the stream past unseen messages.
-    let tail = store.source_message_tail(node, &pending.session, pending.generation)?;
-    let page = client
-        .catch_up_messages(&pending.session, tail.as_deref(), 100)
-        .await?;
-    store.cache_message_page_at(node, &pending.session, &page, None, pending.generation)?;
-    ensure!(
-        !store
-            .interaction_submissions(node, &pending.session, pending.generation)?
-            .contains_key(&pending.message_id),
-        "Interaction result has not reached the message stream yet"
-    );
-    Ok(())
+    error.to_string()
+}
+
+fn delivery_timeout(message: &crate::store::QueuedMessage) -> std::time::Duration {
+    let seconds = match zork_client_types::files::decode(&message.content) {
+        Some((_, references)) => {
+            let bytes = references
+                .iter()
+                .fold(0u64, |total, file| {
+                    total.saturating_add(file.byte_len as u64)
+                })
+                .min(zork_client_types::files::MAX_MESSAGE_BYTES as u64);
+            // Keep setup/receipt grace, then allow time proportional to the
+            // bounded payload instead of cutting off every upload at 2 minutes.
+            120 + bytes.div_ceil(256 * 1024)
+        }
+        None => 15,
+    };
+    std::time::Duration::from_secs(seconds)
 }
 
 async fn deliver(
@@ -211,16 +174,32 @@ impl DeliveryPump {
         let task = executor.spawn(async move {
             loop {
                 changes.borrow_and_update();
-                let messages = store.outbox(&node).is_ok_and(|messages| {
-                    messages.iter().any(|m| !m.attempted && m.error.is_none())
-                });
-                let interactions = store.interaction_deliveries(&node).is_ok_and(|items| {
-                    items
-                        .iter()
-                        .any(|i| !i.submission.attempted && i.submission.error.is_none())
-                });
+                let pending = store.outbox(&node).unwrap_or_default();
+                let messages = pending.iter().any(|m| !m.attempted && m.error.is_none());
+                let interactions =
+                    crate::interactions::agent_configuration::delivery::has_pending(&store, &node);
                 if messages || interactions {
                     reports_tx.send_replace(flush(&client, &store, &node).await);
+                    continue;
+                }
+                let now = crate::store::delivery_now_ms();
+                let mut next = None;
+                let mut expired = false;
+                for message in pending.iter().filter(|message|message.attempted && message.error.is_none()) {
+                    let deadline = message.sent_at_ms.saturating_add(delivery_timeout(message).as_millis() as u64);
+                    if deadline <= now {
+                        let _ = store.fail_delivery(&node, &message.request_id, "发送超时，未收到消息确认");
+                        expired = true;
+                    } else {
+                        next = Some(next.map_or(deadline, |old: u64|old.min(deadline)));
+                    }
+                }
+                if expired { continue; }
+                if let Some(next) = next {
+                    tokio::select! {
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(next.saturating_sub(now))) => {},
+                        result = changes.changed() => if result.is_err() { return; },
+                    }
                 } else if changes.changed().await.is_err() {
                     return;
                 }
@@ -266,24 +245,6 @@ impl Drop for AttemptGuard<'_> {
             let _ = self
                 .store
                 .fail_delivery(self.node, self.id, "发送中断，请手动重发");
-        }
-    }
-}
-
-struct InteractionGuard<'a> {
-    store: &'a ClientStore,
-    node: &'a str,
-    pending: crate::store::InteractionDelivery,
-    settled: bool,
-}
-impl Drop for InteractionGuard<'_> {
-    fn drop(&mut self) {
-        if !self.settled {
-            let _ = self
-                .store
-                .change_interaction(self.node, &self.pending, |s| {
-                    s.error = Some("Submission interrupted; recover the original response.".into())
-                });
         }
     }
 }

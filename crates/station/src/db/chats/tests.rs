@@ -313,12 +313,7 @@ fn replay_is_explicit_filtering_and_unsubscription_preserve_message_facts() {
     );
     assert!(!db.chat_notice_page("local", None, 0).unwrap().items[0].active);
     assert_eq!(db.chat_participants(&chat.chat_id).unwrap().len(), 2);
-    assert_eq!(
-        db.chat_messages(&chat.chat_id, None, 100, None)
-            .unwrap()
-            .len(),
-        3
-    );
+    assert_eq!(db.chat_messages(&chat.chat_id, None, 100).unwrap().len(), 3);
 }
 
 #[test]
@@ -583,4 +578,231 @@ fn receiving_policy_rejects_in_flight_old_pages_and_pending_inputs_after_unsubsc
         .unwrap();
     assert!(fresh.pending_chat_inputs().unwrap().is_empty());
     assert_eq!(fresh.chat_sources().unwrap()[0].3, page.through);
+}
+
+#[test]
+fn navigation_creator_is_immutable_and_independent_of_authorship_and_receiving() {
+    let (_root, db) = database();
+    let receipt = db.chat_begin("create-owned", "same").unwrap();
+    let created = db
+        .create_chat_as(
+            "create-owned",
+            &receipt.object_id,
+            "Owned chat",
+            Some(&author("creator")),
+        )
+        .unwrap();
+    assert_eq!(created.creator.as_ref().unwrap().id, "creator");
+    assert!(created.last_message_at.is_none());
+    assert!(db.chat_participants(&created.chat_id).unwrap().is_empty());
+    assert!(db.channel_agent_sessions("creator").unwrap().is_empty());
+    assert_eq!(
+        db.chat_begin("create-owned", "same")
+            .unwrap()
+            .result
+            .unwrap()["creator"]["id"],
+        "creator"
+    );
+    preferences(
+        &db,
+        "reader-only",
+        &created.chat_id,
+        "receiver",
+        PreferenceChanges {
+            subscribed: Some(true),
+            ..Default::default()
+        },
+        None,
+    );
+    let sent = post(
+        &db,
+        "first-message",
+        &created.chat_id,
+        "other-writer",
+        None,
+        &[],
+    );
+    let actual = db.chat(&created.chat_id).unwrap().channel;
+    assert_eq!(actual.creator, created.creator);
+    assert_eq!(
+        actual.last_message_at.as_deref(),
+        Some(sent.created_at.as_str())
+    );
+    assert_eq!(actual.message_count, 1);
+    let before = db
+        .sync_cursor(
+            &db.sync_local_owner().unwrap(),
+            zork_client_types::sync::Scope::Catalog {},
+        )
+        .unwrap();
+    for _ in 0..10 {
+        assert!(db.chat_navigation().unwrap().contains(&actual));
+    }
+    assert_eq!(
+        before,
+        db.sync_cursor(
+            &db.sync_local_owner().unwrap(),
+            zork_client_types::sync::Scope::Catalog {}
+        )
+        .unwrap()
+    );
+    let projected: String = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM sync_entities WHERE kind='resource' AND id=?1",
+            [&created.chat_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&projected).unwrap()["creator"]["id"],
+        "creator"
+    );
+}
+
+fn assigned_chat(
+    db: &GatewayDb,
+    creator: &str,
+    request: &str,
+    worker: &str,
+) -> (Channel, SessionRow) {
+    let (key, runtime, _) = db
+        .worker_task_allocation(creator, request, worker, request)
+        .unwrap();
+    let parts = key.split(':').collect::<Vec<_>>();
+    let session = db
+        .ensure_session(EnsureSession {
+            connection_id: "local_gui",
+            platform: "local_gui",
+            channel_id: parts[1],
+            root_thread_ts: parts[2],
+            channel_type: Some("worker_task"),
+            initiator_user_id: Some(creator),
+            initiator_message_ts: None,
+        })
+        .unwrap();
+    db.set_agent_session(
+        &key,
+        &runtime,
+        &session.workspace_path,
+        "fixture",
+        "model",
+        "off",
+    )
+    .unwrap();
+    db.ensure_product_task(&key).unwrap();
+    db.record_visible_message(
+        &format!("assignment-{creator}-{request}"),
+        &key,
+        "local_gui",
+        &session.channel_id,
+        &session.root_thread_ts,
+        "user",
+        request,
+        None,
+    )
+    .unwrap();
+    (
+        db.chat(&key).unwrap().channel,
+        db.get_session(&key).unwrap().unwrap(),
+    )
+}
+
+#[test]
+fn work_contexts_and_initial_delivery_are_bound_to_each_chat() {
+    let (_root, db) = database();
+    let (one, first) = assigned_chat(&db, "creator", "one", "worker");
+    let (two, second) = assigned_chat(&db, "creator", "two", "worker");
+    assert_ne!(first.id, second.id);
+    assert_eq!(one.title, "one");
+    assert_eq!(two.title, "two");
+    for (chat, session) in [(&one, &first), (&two, &second)] {
+        assert_eq!(
+            db.chat_execution("worker", "local", &chat.chat_id)
+                .unwrap()
+                .unwrap()
+                .id,
+            session.id
+        );
+        assert_eq!(chat.creator.as_ref().unwrap().id, "creator");
+        assert_eq!(
+            db.chat_executor(&chat.chat_id).unwrap().as_deref(),
+            Some("worker")
+        );
+        assert!(db
+            .chat_execution("other-worker", "local", &chat.chat_id)
+            .unwrap()
+            .is_none());
+    }
+    let sent = post(&db, "follow-up", &one.chat_id, "creator", None, &[]);
+    let notices = db.chat_notice_page("local", None, 0).unwrap().items;
+    let follow_up = notices
+        .iter()
+        .find(|n| n.message.message_id == sent.message_id)
+        .unwrap();
+    assert_eq!(
+        follow_up.work.as_ref().unwrap().assignment_id,
+        format!("worker-{}", one.chat_id)
+    );
+    assert!(!follow_up.work.as_ref().unwrap().initial);
+    assert!(notices
+        .iter()
+        .filter(|n| n.message.message_id.starts_with("assignment-"))
+        .all(|n| n.work.as_ref().unwrap().initial));
+}
+
+#[test]
+fn creator_migration_preserves_unknown_sources_and_remains_quiet_on_reopen() {
+    let (root, db) = database();
+    let (assigned, _) = assigned_chat(&db, "original-creator", "legacy", "worker");
+    let unknown = channel(&db, "unknown");
+    post(
+        &db,
+        "unknown-first-author",
+        &unknown.chat_id,
+        "not-the-creator",
+        None,
+        &[],
+    );
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE chat_channels SET creator=NULL,last_message_at=NULL",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM chat_metadata WHERE key='navigation-v1'", [])
+            .unwrap();
+    }
+    drop(db);
+    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert_eq!(
+        db.chat(&assigned.chat_id)
+            .unwrap()
+            .channel
+            .creator
+            .unwrap()
+            .id,
+        "original-creator"
+    );
+    assert!(db.chat(&unknown.chat_id).unwrap().channel.creator.is_none());
+    assert!(db
+        .chat(&unknown.chat_id)
+        .unwrap()
+        .channel
+        .last_message_at
+        .is_some());
+    let owner = db.sync_local_owner().unwrap();
+    let before = db
+        .sync_cursor(&owner, zork_client_types::sync::Scope::Catalog {})
+        .unwrap();
+    drop(db);
+    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert_eq!(
+        before,
+        db.sync_cursor(&owner, zork_client_types::sync::Scope::Catalog {})
+            .unwrap()
+    );
 }

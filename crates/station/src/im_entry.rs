@@ -172,6 +172,25 @@ impl ImEntryGateway {
         snapshot: &zork_agent_api::SessionSnapshot,
     ) -> Result<()> {
         self.db.project_task_snapshot(session_key, snapshot)?;
+        self.store_execution_snapshot(session_key, snapshot)
+    }
+
+    pub fn execution_snapshot(&self, session_key: &str) -> Option<Value> {
+        self.local_gui
+            .overviews
+            .lock()
+            .expect("local GUI overviews mutex")
+            .get(session_key)
+            .cloned()
+    }
+
+    /// Remote overviews remain transient. Their run journal has its own durable
+    /// projection; copying counters into local task runs would double count.
+    pub fn store_execution_snapshot(
+        &self,
+        session_key: &str,
+        snapshot: &zork_agent_api::SessionSnapshot,
+    ) -> Result<()> {
         let value = serde_json::to_value(snapshot)?;
         let mut overviews = self
             .local_gui
@@ -195,6 +214,7 @@ impl ImEntryGateway {
                 data: value,
             },
         );
+        self.db.realtime.notify(crate::realtime::ACTIVITY);
         Ok(())
     }
 
@@ -217,12 +237,16 @@ impl ImEntryGateway {
 
     pub fn message_json(&self, message: &VisibleMessageRow) -> Value {
         let mut value = visible_message_json(message);
+        if let Ok(epoch) = self.db.chat_source_epoch(&message.session_key) {
+            value["source_epoch"] = json!(epoch);
+        }
         if let Ok(channel) = self.db.chat(&message.session_key) {
             if let Ok(fact) = self
                 .db
                 .chat_message(&channel.channel.chat_id, &message.message_id)
             {
                 value["chat_id"] = json!(fact.chat_id);
+                value["client_id"] = json!(fact.client_id);
                 value["author"] = json!(fact.author);
                 value["author_kind"] = json!(fact.author.kind);
                 value["mentions"] = json!(fact.mentions);
@@ -335,14 +359,45 @@ impl ImEntryGateway {
         self.db.realtime.notify(crate::realtime::ACTIVITY);
     }
 
-    /// Participants are actual authors, with their independent receiving policy.
-    pub fn local_participants(&self, session: &SessionRow) -> Result<Vec<Value>> {
-        let channel = self.db.chat(&session.key)?;
-        let mut participants = Vec::new();
-        for participant in self.db.chat_participants(&channel.channel.chat_id)? {
+    /// Composer members combine actual Agent authors, home bindings and explicit executors.
+    /// The assignment flag is separate from authorship and receiving policy;
+    /// chat.inspect continues to return only actual authors.
+    pub fn local_members(&self, session: &SessionRow) -> Result<Vec<Value>> {
+        use zork_client_types::chat::{Author, AuthorKind};
+        let chat = self.db.chat(&session.key)?.channel;
+        let executor = self.db.chat_executor(&chat.chat_id)?;
+        let home = self.db.chat_home_agent(&chat.chat_id)?;
+        let mut authors = self.db.chat_participants(&chat.chat_id)?;
+        for id in executor.iter().chain(home.iter()) {
+            if !authors
+                .iter()
+                .any(|participant| participant.author.id == *id)
+            {
+                authors.push(zork_client_types::chat::Participant {
+                    author: Author {
+                        id: id.clone(),
+                        kind: AuthorKind::Agent,
+                        name: None,
+                    },
+                    subscribed: self.db.chat_preferences(&chat.chat_id, id)?.subscribed,
+                    message_count: 0,
+                });
+            }
+        }
+        let mut members = Vec::new();
+        for participant in authors
+            .into_iter()
+            .filter(|p| p.author.kind == AuthorKind::Agent)
+        {
             let author = participant.author;
             let agent = self.db.node_agent(&author.id)?;
-            let binding = if let Some(agent) = &agent {
+            let assigned = executor.as_deref() == Some(&author.id);
+            let binding = if assigned {
+                self.db.chat_execution(&author.id, "local", &chat.chat_id)?
+            } else if let Some(agent) = agent.as_ref().filter(|a| {
+                a.role == crate::db::agents::AgentRole::Leader
+                    || home.as_deref() == Some(a.id.as_str())
+            }) {
                 agent
                     .session_key
                     .as_deref()
@@ -354,26 +409,32 @@ impl ImEntryGateway {
             } else {
                 None
             };
+            let key = binding.as_ref().map(|s| s.key.as_str());
+            let activity = key.and_then(|key| self.local_activity(key));
             let name = agent
                 .as_ref()
                 .map(|a| a.name.clone())
                 .or(author.name)
-                .unwrap_or_else(|| {
-                    if author.kind == zork_client_types::chat::AuthorKind::User {
-                        "User".into()
-                    } else {
-                        author.id.clone()
-                    }
-                });
-            let key = binding.as_ref().map(|s| s.key.as_str());
-            let activity = key.and_then(|key| self.local_activity(key));
-            participants.push(json!({"id":author.id,"name":name,"author_kind":author.kind,
-                "avatar":agent.as_ref().and_then(|a|a.avatar.as_ref()),"subscribed":participant.subscribed,
-                "message_count":participant.message_count,
+                .or_else(|| {
+                    activity
+                        .as_ref()
+                        .and_then(|a| a["actor_name"].as_str())
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| author.id.clone());
+            let avatar = agent.as_ref().and_then(|a| a.avatar.clone()).or_else(|| {
+                activity
+                    .as_ref()
+                    .and_then(|a| a["actor_avatar"].as_str())
+                    .map(str::to_owned)
+            });
+            members.push(json!({"id":author.id,"name":name,"author_kind":author.kind,
+                "assigned":assigned,"home":home.as_deref() == Some(&author.id),"message_count":participant.message_count,
+                "avatar":avatar,"subscribed":participant.subscribed,
                 "session_id":binding.as_ref().and_then(|s|s.id.as_deref()).unwrap_or(""),
                 "session_key":key,"activity":activity}));
         }
-        Ok(participants)
+        Ok(members)
     }
 
     pub async fn set_status(
@@ -468,6 +529,7 @@ pub fn visible_message_json(message: &VisibleMessageRow) -> Value {
     json!({
         "type": "message",
         "id": message.message_id,
+        "source_sequence": message.sequence,
         "created_at": message.created_at,
         "role": message.role,
         "content": message.text,

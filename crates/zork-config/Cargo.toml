@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+zork-client-types = { path = "../zork-client-types" }
 getrandom.workspace = true
 anyhow = "1"
 fs2 = "0.4"

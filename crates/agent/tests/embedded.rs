@@ -47,7 +47,31 @@ async fn fixture(root: &std::path::Path) -> AgentRuntime {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-// Contract: docs/zork-agent-architecture.md [EMBED-01, EMBED-02, PERSIST-01]
+async fn prepared_storage_keeps_one_writer_and_rejects_another_data_root() {
+    let root = tempfile::tempdir().unwrap();
+    let other = tempfile::tempdir().unwrap();
+    let path = root.path().to_owned();
+    // Storage preparation does not depend on a Tokio context on this worker.
+    let prepared = std::thread::spawn(move || AgentRuntime::prepare(&path))
+        .join()
+        .unwrap()
+        .unwrap();
+    assert!(AgentRuntime::prepare(root.path()).is_err());
+    assert!(prepared.start(options(other.path())).is_err());
+    assert!(!other.path().join(".zork-agent.lock").exists());
+
+    let prepared = AgentRuntime::prepare(root.path()).unwrap();
+    let mut runtime = prepared.start(options(root.path())).unwrap();
+    assert!(AgentRuntime::start(options(root.path())).is_err());
+    runtime.shutdown().await;
+    drop(runtime);
+    // Neither an abandoned preparation nor an orderly runtime retains the lock.
+    drop(AgentRuntime::prepare(root.path()).unwrap());
+    assert!(AgentRuntime::prepare(root.path()).is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Contract: docs/design/agent-runtime.md [EMBED-01, EMBED-02, PERSIST-01]
 async fn embedded_execution_validates_requests_and_releases_storage_on_shutdown() {
     let root = tempfile::tempdir().unwrap();
     let mut runtime = fixture(root.path()).await;
@@ -146,7 +170,7 @@ async fn embedded_execution_validates_requests_and_releases_storage_on_shutdown(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-// Contract: docs/zork-agent-architecture.md [EMBED-01, SSE-01, SSE-02]
+// Contract: docs/design/agent-runtime.md [EMBED-01, SSE-01, SSE-02]
 async fn embedded_events_reset_snapshot_after_lag_and_reconnect_without_history_replay() {
     let root = tempfile::tempdir().unwrap();
     let mut runtime = fixture(root.path()).await;

@@ -105,7 +105,7 @@ fn request_input(request: &PendingCodexRequest) -> &[Value] {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [EVENT-05, PROVIDER-01, TOOL-10]
+// Contract: docs/design/agent-runtime.md [EVENT-05, PROVIDER-01, TOOL-10]
 async fn malformed_codex_call_arguments_remain_a_completed_provider_step() {
     let mut provider = ControlledCodexProvider::start(8).unwrap();
     let mut agent = RealAgent::new().unwrap();
@@ -179,7 +179,7 @@ async fn malformed_codex_call_arguments_remain_a_completed_provider_step() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [PROVIDER-01, PROVIDER-04, HANDOFF-02]
+// Contract: docs/design/agent-runtime.md [PROVIDER-01, PROVIDER-04, HANDOFF-02]
 async fn real_codex_websocket_reuses_continuations_and_resets_on_restart_and_handoff() {
     let started = Instant::now();
     let mut provider = ControlledCodexProvider::start(64).unwrap();
@@ -597,7 +597,7 @@ async fn real_codex_websocket_reuses_continuations_and_resets_on_restart_and_han
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [COMPACTION-01, PROVIDER-02, PROVIDER-04]
+// Contract: docs/design/agent-runtime.md [COMPACTION-01, PROVIDER-02, PROVIDER-04]
 async fn compaction_uses_an_isolated_tool_free_codex_request_and_is_not_a_public_reply() {
     let mut provider = ControlledCodexProvider::start(16).unwrap();
     let mut agent = RealAgent::new().unwrap();

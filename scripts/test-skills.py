@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 from urllib.error import HTTPError
@@ -51,7 +52,7 @@ def main():
         skill(node.root / "skills/build", "build", "Shared build", "SHARED_BODY")
         skill(node.root / "device-skills/build", "build", "Device build", "DEVICE_BODY")
         skill(node.root / "agent-skills/build", "build", "Agent build", "AGENT_BODY")
-        skill(node.root / "other-device/secret", "secret", "Other device", "NOT_VISIBLE")
+        skill(node.root / "files/other-device/secret", "secret", "Other device", "NOT_VISIBLE")
         log_path = node.root / "skills.log"
         session_id = None
         for restart in range(2):
@@ -70,13 +71,29 @@ def main():
                         catalog = request(node.url, "GET", endpoint)["catalog"]
                         assert len([s for s in catalog["skills"] if s["name"] == "build"]) == 3, catalog
                         assert any(s["name"] == "skill-management" for s in catalog["skills"])
+                        assert any(s["name"] == "file-sharing" for s in catalog["skills"])
+                        assert any(s["name"] == "slack" for s in catalog["skills"])
                         assert {s["description"] for s in catalog["skills"] if s["name"] == "build"} == {"Agent build", "Device build", "Shared build"}
                         assert len(catalog["diagnostics"]) == 0
-                        session_id = request(node.url, "POST", "/v1/node/agents/leader/open", {})["session_id"]
+                        opened = request(node.url, "POST", "/v1/node/agents/leader/open", {})
+                        chat_id = opened["chat_id"]
+                        session_id = opened["agent"]["session_id"]
+
+                        def history():
+                            try:
+                                return request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
+                            except HTTPError as error:
+                                if error.code == 404:
+                                    return {"items": []}
+                                raise
+
+                        def send(content):
+                            import uuid
+                            request(node.url, "POST", f"/v1/im/sessions/{chat_id}/messages", {"request_id": str(uuid.uuid4()), "content": content})
 
                         def read_skill(expected, path):
-                            request(node.agent_url, "POST", f"/sessions/{session_id}/mailbox", {"content": json.dumps({"fake_tool": {"name": "file.read", "input": {"path": str(path)}}})})
-                            fixture.wait(lambda: expected in json.dumps(request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")), "file.read result " + expected)
+                            send(json.dumps({"fake_tool": {"name": "file.read", "input": {"path": str(path)}}}))
+                            fixture.wait(lambda: expected in json.dumps(history()), "file.read result " + expected)
 
                         read_skill("AGENT_BODY", node.root / "agent-skills/build/SKILL.md")
                         request(node.url, "PUT", endpoint, {"paths": []})
@@ -84,60 +101,52 @@ def main():
                         node.config["skills"]["paths"] = []
                         config_path.write_text(json.dumps(node.config))
                         read_skill("SHARED_BODY", node.root / "skills/build/SKILL.md")
-                        history = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
-                        notices = [notice for item in history["items"] for notice in item["event"].get("notices", []) if notice.startswith("Current skill catalog")]
+                        snapshot = history()
+                        notices = [notice for item in snapshot["items"] for notice in item["event"].get("notices", []) if notice.startswith("Current skill catalog")]
                         assert len(notices) == 3, notices
                         assert "Other device" not in "\n".join(notices)
 
                         def tool(name, arguments, outcome="succeeded"):
-                            before = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
+                            before = history()
                             seen = {item["event_id"] for item in before["items"]}
-                            request(node.agent_url, "POST", f"/sessions/{session_id}/mailbox", {"content": json.dumps({"fake_tool": {"name": name, "input": arguments}})})
+                            send(json.dumps({"fake_tool": {"name": name, "input": arguments}}))
                             def result():
-                                history = request(node.agent_url, "GET", f"/sessions/{session_id}/history?limit=200")
-                                return next((item["event"]["result"] for item in history["items"] if item["event_id"] not in seen and item["event"].get("kind") == "tool_result" and item["event"]["result"]["tool"] == name), None)
+                                snapshot = history()
+                                return next((item["event"]["result"] for item in snapshot["items"] if item["event_id"] not in seen and item["event"].get("kind") == "tool_result" and item["event"]["result"]["tool"] == name), None)
                             result = fixture.wait(result, "tool result " + name)
                             assert result["outcome"] == outcome, result
                             return result["data"]
 
                         guide_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "skill-management")
                         assert Path(guide_path).is_file()
+                        assert (node.root / "skills/skill-management/SKILL.md").read_bytes() == Path(guide_path).read_bytes()
+                        assert (node.root / "skills/service-sharing/SKILL.md").is_file()
+                        assert all(not (node.root / "files" / name).exists() for name in ("bundled-skills", "custom-skills", "managed-skills"))
                         guide = tool("file.read", {"path": guide_path})
-                        assert "expected_hash" in guide["content"]
-                        added = tool("skill.sources", {"action": "add", "path": "agent-skills"})
-                        assert added["agent_id"] == "leader" and added["agent_paths"] == ["agent-skills"]
+                        assert guide["content"] == Path(guide_path).read_text()
+                        slack_path = next(s["path"] for s in catalog["skills"] if s["name"] == "slack")
+                        assert tool("file.read", {"path": slack_path})["content"] == Path(slack_path).read_text()
+                        tool("shell.run", {"command": "test \"$SKILLS_ROOT\" = " + shlex.quote(str(node.root / "skills"))})
                         content = "---\nname: managed\ndescription: Managed skill\n---\nManaged body\n"
-                        draft = {"source": str(node.root / "agent-skills"), "directory": "managed", "content": content}
-                        saved = tool("skill.write", draft)
-                        assert (node.root / "agent-skills/managed/SKILL.md").read_text() == content
-                        tool("skill.write", draft, outcome="failed")
-                        updated = tool("skill.write", dict(draft, content=content + "Updated\n", expected_hash=saved["content_hash"]))
-                        archived = tool("skill.archive", {"source": draft["source"], "directory": "managed", "expected_hash": updated["content_hash"]})
-                        assert Path(archived["archived_path"]).read_text().endswith("Updated\n")
-                        assert not (node.root / "agent-skills/managed/SKILL.md").exists()
-                        removed = tool("skill.sources", {"action": "remove", "path": "agent-skills"})
-                        assert removed["agent_paths"] == []
-                        bundle = tool("skill.bundle", {"action": "list"})
-                        assert "skill-management" in bundle["active"]["skills"]
-                        selected_version = bundle["active"]["directory"]
-                        tool("skill.bundle", {"action": "rollback", "version": selected_version})
-                        guide_entry = next(s for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "skill-management")
-                        failure = tool("skill.write", {"source": guide_entry["source"], "directory": ".", "content": guide["content"], "expected_hash": guide_entry["content_hash"]}, outcome="failed")
-                        assert "release-managed" in failure["error"]
-                        tool("skill.bundle", {"action": "disable", "skill": "skill-management"})
-                        assert Path(guide_path).is_file()
-                        assert all(s["name"] != "skill-management" for s in request(node.url, "GET", endpoint)["catalog"]["skills"])
+                        directory = node.root / "skills/managed"
+                        tool("shell.run", {"command": "mkdir -p " + shlex.quote(str(directory))})
+                        tool("file.write", {"path": str(directory / "SKILL.md"), "content": content})
+                        assert (directory / "SKILL.md").read_text() == content
+                        catalog = request(node.url, "GET", endpoint)["catalog"]
+                        assert any(s["name"] == "managed" for s in catalog["skills"])
+                        tool("file.write", {"path": str(directory / "SKILL.md"), "content": content + "Updated\n"})
+                        assert tool("file.read", {"path": str(directory / "SKILL.md")})["content"].endswith("Updated\n")
+                        tool("shell.run", {"command": "mv " + shlex.quote(str(directory / "SKILL.md")) + " " + shlex.quote(str(directory / "saved.md"))})
+                        assert not any(s["name"] == "managed" for s in request(node.url, "GET", endpoint)["catalog"]["skills"])
+                        assert (directory / "saved.md").read_text().endswith("Updated\n")
                     else:
                         catalog = request(node.url, "GET", endpoint)
                         assert catalog["paths"] == []
-                        assert catalog["catalog"]["skills"][0]["description"] == "Shared build"
+                        build_skills = [s for s in catalog["catalog"]["skills"] if s["name"] == "build"]
+                        assert len(build_skills) == 1 and build_skills[0]["description"] == "Shared build", build_skills
                         assert request(node.agent_url, "GET", f"/sessions/{session_id}")["session_id"] == session_id
-                        assert all(s["name"] != "skill-management" for s in catalog["catalog"]["skills"])
-                        status = tool("skill.bundle", {"action": "list"})
-                        assert status["rollback"] and status["active"]["directory"] == selected_version
-                        assert status["disabled"] == ["skill-management"]
-                        tool("skill.bundle", {"action": "enable", "skill": "skill-management"})
-                        assert any(s["name"] == "skill-management" for s in request(node.url, "GET", endpoint)["catalog"]["skills"])
+                        assert any(s["name"] == "skill-management" for s in catalog["catalog"]["skills"])
+                        assert (node.root / "skills/managed/saved.md").read_text().endswith("Updated\n")
                     process.terminate()
                     assert process.wait(timeout=30) == 0
                 except Exception:
@@ -147,7 +156,7 @@ def main():
                     if process.poll() is None:
                         process.kill()
                         process.wait()
-    print("PASS: Skill API authorization/validation, ordered sources, live Agent/node updates, ordinary file.read, bundle controls, persistent disable/rollback, durable catalogs and Gateway restart; temporary data cleaned")
+    print("PASS: Skill API authorization/validation, ordered sources, live Agent/node updates, ordinary file read/write and shell, preserved resources, durable catalogs and Gateway restart; temporary data cleaned")
 
 
 if __name__ == "__main__":

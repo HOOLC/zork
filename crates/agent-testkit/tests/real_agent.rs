@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
-use zork_agent::session::events::{Input, SessionEvent, TurnOutcome, EVENT_SCHEMA_VERSION};
+use zork_agent::session::events::{EVENT_SCHEMA_VERSION, Input, SessionEvent, TurnOutcome};
 use zork_agent::session::store::EventEnvelope;
 use zork_agent::session::wire::SessionSelection;
 use zork_agent_testkit::{PendingHttpRequest, RealAgent};
@@ -52,7 +52,10 @@ async fn wait_for_shell_exit(pid: &str) {
 }
 
 fn active_segment(data_root: &Path, session_id: &str) -> PathBuf {
-    let segments = data_root.join("sessions").join(session_id).join("segments");
+    let segments = data_root
+        .join("shared-files/sessions")
+        .join(session_id)
+        .join("segments");
     let mut active = std::fs::read_dir(segments)
         .expect("session segment directory")
         .filter_map(Result::ok)
@@ -67,7 +70,7 @@ fn active_segment(data_root: &Path, session_id: &str) -> PathBuf {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [ENV-01, TOOL-13, CANCEL-01, RECOVERY-01, DELETE-01, PERF-02]
+// Contract: docs/design/agent-runtime.md [ENV-01, TOOL-13, CANCEL-01, RECOVERY-01, DELETE-01, PERF-02]
 async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
     let started = Instant::now();
     let mut agent = RealAgent::new().unwrap();
@@ -99,12 +102,14 @@ async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
             .collect::<Vec<_>>(),
         vec!["call"]
     );
-    assert!(first_body["messages"]
-        .as_array()
-        .expect("provider messages")
-        .iter()
-        .any(|message| message["role"] == "user"
-            && message["content"] == "create and inspect note.txt"));
+    assert!(
+        first_body["messages"]
+            .as_array()
+            .expect("provider messages")
+            .iter()
+            .any(|message| message["role"] == "user"
+                && message["content"] == "create and inspect note.txt")
+    );
     first_request
         .respond_openai_calls(
             "chatcmpl-1",
@@ -388,11 +393,13 @@ async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
         })
         .await;
     tokio::time::sleep(Duration::from_millis(1_200)).await;
-    assert!(!agent
-        .workspace(&session_id)
-        .unwrap()
-        .join("late.txt")
-        .exists());
+    assert!(
+        !agent
+            .workspace(&session_id)
+            .unwrap()
+            .join("late.txt")
+            .exists()
+    );
 
     let before_restart = agent.history(&session_id, None, 200).unwrap();
     assert!(before_restart.iter().any(|event| matches!(
@@ -412,11 +419,13 @@ async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
             && workspace == &agent.workspace(&session_id).unwrap().to_string_lossy()
     ));
     let messages = agent.messages(&session_id).await.unwrap();
-    assert!(messages["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|message| message["content"] == "create and inspect note.txt"));
+    assert!(
+        messages["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["content"] == "create and inspect note.txt")
+    );
 
     let second_session = agent
         .create_session(
@@ -579,8 +588,11 @@ async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
         .await;
 
     let workspace = agent.workspace(&session_id).unwrap().to_path_buf();
-    let session_storage = agent.data_root().join("sessions").join(&session_id);
-    let blocker = agent.data_root().join("detached-sessions");
+    let session_storage = agent
+        .data_root()
+        .join("shared-files/sessions")
+        .join(&session_id);
+    let blocker = agent.data_root().join("shared-files/detached-sessions");
     std::fs::write(&blocker, "block directory creation").unwrap();
     assert!(agent.delete(&session_id).await.is_err());
     assert!(session_storage.exists());

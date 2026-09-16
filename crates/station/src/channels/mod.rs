@@ -8,7 +8,6 @@ use crate::{
     node_access::{self, Subject},
     state::AppState,
 };
-pub(crate) use agents::apply_configuration;
 pub(crate) use agents::open_home;
 use anyhow::{ensure, Context, Result};
 pub use api::{tool, FileRequest, Rpc};
@@ -27,14 +26,10 @@ fn field<'a>(args: &'a Value, name: &str) -> Result<&'a str> {
 fn local(state: &AppState, target: &str) -> bool {
     target == "local" || target == node_access::identity(state)
 }
-fn access(state: &AppState, peer: &str) -> Result<()> {
+pub(crate) fn access(state: &AppState, peer: &str) -> Result<()> {
     let config = zork_config::load_config(&state.config.data_root)?.mesh;
     ensure!(
-        config.enabled
-            && config
-                .peers
-                .iter()
-                .any(|p| p.origin == peer && (p.collaborate || p.client)),
+        config.enabled && config.peers.iter().any(|p| p.origin == peer),
         "chat_access_denied"
     );
     Ok(())
@@ -45,6 +40,9 @@ fn actor(who: &Subject) -> String {
     } else {
         format!("{}/{}", who.origin, who.agent)
     }
+}
+pub(crate) fn request_actor(who: &Subject) -> String {
+    actor(who)
 }
 fn error(error: &anyhow::Error) -> String {
     let code = error.to_string();

@@ -2,13 +2,13 @@ use std::{sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
 use reqwest::StatusCode;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tempfile::TempDir;
 use zork_agent::session::events::{Selection, SessionEvent, TurnOutcome};
 use zork_agent::session::service::{LiveSessionEvent, ServiceOptions};
 use zork_agent_api::{
-    DurableEvent, EventQuery, SessionSnapshot, TextDeltaEvent, DURABLE_EVENT_NAME,
-    TEXT_DELTA_EVENT_NAME,
+    DURABLE_EVENT_NAME, DurableEvent, EventQuery, SessionSnapshot, TEXT_DELTA_EVENT_NAME,
+    TextDeltaEvent,
 };
 use zork_agent_testkit::{PendingHttpRequest, RealAgent, TestWorld};
 
@@ -97,7 +97,7 @@ async fn send_mail(agent: &RealAgent, session_id: &str, content: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [CONTEXT-01, HTTP-01, HTTP-02]
+// Contract: docs/design/agent-runtime.md [CONTEXT-01, HTTP-01, HTTP-02]
 async fn session_context_configuration_defaults_overrides_and_survives_restart() {
     let mut agent = RealAgent::new().unwrap();
     put_profile(
@@ -183,7 +183,7 @@ async fn read_messages(agent: &RealAgent, session_id: &str, query: &str) -> Valu
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [HTTP-01, HTTP-02, QUERY-01, SSE-01, SSE-02, SSE-03]
+// Contract: docs/design/agent-runtime.md [HTTP-01, HTTP-02, QUERY-01, SSE-01, SSE-02, SSE-03]
 async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
     let token = "agent-app-api-token";
     let mut agent = RealAgent::fake_with_token(Some(token.into())).unwrap();
@@ -244,9 +244,11 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
         json!({"ok": false, "error": "not_probed"})
     );
     assert_eq!(public_profile["models"], profile["models"]);
-    assert!(!public_profile
-        .to_string()
-        .contains("secret-that-must-not-be-returned"));
+    assert!(
+        !public_profile
+            .to_string()
+            .contains("secret-that-must-not-be-returned")
+    );
 
     let unknown_session_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
     let unknown_selection = json!({
@@ -619,16 +621,18 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
     .await
     .expect("SSE delivered transient and durable events");
     assert_eq!(observed.first().unwrap().event, "snapshot");
-    assert!(observed
-        .iter()
-        .filter(|frame| frame.event == "event")
-        .all(|frame| {
-            frame.id.as_ref().is_some_and(|id| {
-                id.len() == 16
-                    && id.bytes().all(|byte| byte.is_ascii_digit())
-                    && frame.data["event_id"] == *id
+    assert!(
+        observed
+            .iter()
+            .filter(|frame| frame.event == "event")
+            .all(|frame| {
+                frame.id.as_ref().is_some_and(|id| {
+                    id.len() == 16
+                        && id.bytes().all(|byte| byte.is_ascii_digit())
+                        && frame.data["event_id"] == *id
+                })
             })
-        }));
+    );
     for frame in &observed {
         match frame.event.as_str() {
             DURABLE_EVENT_NAME => {
@@ -660,10 +664,12 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
     assert_eq!(initial.event, "snapshot");
     let snapshot: SessionSnapshot = serde_json::from_value(initial.data).unwrap();
     assert_eq!(snapshot.session_id, stream_session_id);
-    assert!(snapshot
-        .cursor
-        .as_deref()
-        .is_some_and(|id| id >= reconnect_cursor.as_str()));
+    assert!(
+        snapshot
+            .cursor
+            .as_deref()
+            .is_some_and(|id| id >= reconnect_cursor.as_str())
+    );
     assert_eq!(snapshot.aggregates.run_count, 1);
     assert_eq!(snapshot.aggregates.usage.reported_steps, 1);
 
@@ -733,12 +739,16 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
         contains_event_text(frames, "secondary isolated input") && contains_turn_finished(frames)
     })
     .await;
-    assert!(primary_frames
-        .iter()
-        .all(|frame| !frame.data.to_string().contains("secondary isolated input")));
-    assert!(secondary_frames
-        .iter()
-        .all(|frame| !frame.data.to_string().contains("primary isolated input")));
+    assert!(
+        primary_frames
+            .iter()
+            .all(|frame| !frame.data.to_string().contains("secondary isolated input"))
+    );
+    assert!(
+        secondary_frames
+            .iter()
+            .all(|frame| !frame.data.to_string().contains("primary isolated input"))
+    );
     reconnect_pump.abort();
     isolated_pump.abort();
 
@@ -746,7 +756,7 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SSE-01]
+// Contract: docs/design/agent-runtime.md [SSE-01]
 async fn sse_lag_replaces_the_snapshot_without_querying_history() {
     let mut world = TestWorld::with_options(ServiceOptions {
         live_event_capacity: 1,
@@ -914,7 +924,7 @@ async fn idempotent_creation_retries_incomplete_disk_state_without_overwriting_c
         let id = ulid::Ulid::from(1000 + index as u128);
         let segments = agent
             .data_root()
-            .join("sessions")
+            .join("shared-files/sessions")
             .join(id.to_string())
             .join("segments");
         std::fs::create_dir_all(&segments).unwrap();
@@ -980,10 +990,12 @@ async fn snapshot_reports_runtime_and_usage_while_history_is_details_only() {
     assert_eq!(before.data["runtime"]["context_limit"], 256000);
     assert!(before.data["runtime"]["context_tokens"].is_null());
     assert_eq!(before.data["runtime"]["profile"]["profile_id"], "fixture");
-    assert!(!before
-        .data
-        .to_string()
-        .contains("secret-that-must-not-be-returned"));
+    assert!(
+        !before
+            .data
+            .to_string()
+            .contains("secret-that-must-not-be-returned")
+    );
     send_mail(&agent, id, "Report actual usage").await;
     agent
         .request()

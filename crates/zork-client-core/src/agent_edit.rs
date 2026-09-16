@@ -1,6 +1,55 @@
 //! Core-owned Agent configuration choices and validation.
 use crate::api::{ProfileInfo, ProfileModel};
 use serde_json::Value;
+
+/// Accept the same pasted grant references on every client.
+pub fn grant_references(local: Vec<String>, remote: &str) -> Vec<String> {
+    local
+        .into_iter()
+        .chain(std::iter::once(remote.to_owned()))
+        .flat_map(|text| {
+            text.split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    #[test]
+    fn pasted_grants_share_separators_and_remove_duplicates() {
+        assert_eq!(
+            grant_references(
+                vec!["local".into(), "node/a,node/b".into()],
+                "node/a\nother/c local"
+            ),
+            vec!["local", "node/a", "node/b", "other/c"]
+        );
+    }
+    #[test]
+    fn repaired_agent_input_is_valid_while_the_original_input_is_not() {
+        let profiles: Vec<ProfileInfo> = serde_json::from_value(serde_json::json!([
+            {"profile_id":"account","provider":"openai","models":[{"id":"model","thinking":["high"],"default_thinking":"high"}]}
+        ])).unwrap();
+        let options = choices(&profiles, "removed-account", "model", "removed-level");
+        assert_eq!(options["valid"], true);
+        assert!(
+            validate_selection(&profiles, "removed-account", "model", "removed-level").is_err()
+        );
+        assert!(validate_selection(
+            &profiles,
+            options["profile"].as_str().unwrap(),
+            "model",
+            options["thinking"].as_str().unwrap()
+        )
+        .is_ok());
+    }
+}
 pub fn thinking_after_choice(model: Option<&ProfileModel>, thinking: &str) -> String {
     model
         .map(|m| {

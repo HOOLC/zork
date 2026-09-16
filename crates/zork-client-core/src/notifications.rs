@@ -1,4 +1,5 @@
 //! Device-local notification policy. OS delivery attempts are not read receipts.
+pub mod mobile;
 use crate::{
     api::{Role, TaskState},
     state::DeviceData,
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const KEY: &str = "notification-ledger-v1";
-const PREFERENCES: &str = "notification-preferences-v1";
+pub(crate) const PREFERENCES: &str = "notification-preferences-v1";
 const MAX_AGE_MS: u64 = 10 * 60 * 1000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

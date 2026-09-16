@@ -371,7 +371,8 @@ impl ProfileResolver for ProfileStore {
             },
             execution.bearer,
         )
-        .with_image_input(execution.image_input))
+        .with_image_input(execution.image_input)
+        .with_single_system_message(execution.single_system_message))
     }
 }
 
@@ -542,7 +543,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-01, PROVIDER-03]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-01, PROVIDER-03]
     async fn process_override_disables_streaming_for_every_resolved_profile() {
         let root = tempfile::tempdir().unwrap();
         let profile = ProfileStore::open(root.path().to_owned(), true, false);
@@ -580,7 +581,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // Contract: docs/zork-agent-architecture.md [PROVIDER-03]
+    // Contract: docs/design/agent-runtime.md [PROVIDER-03]
     async fn execution_rejects_a_model_without_limits_before_provider_resolution() {
         let root = tempfile::tempdir().unwrap();
         let profiles = ProfileStore::open(root.path().to_owned(), true, false);

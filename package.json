@@ -38,6 +38,7 @@
     "test": "vp test --run",
     "test:rust": "python3 scripts/lib/build_env.py -- cargo test --locked --workspace --exclude zork-gui --exclude zork-browser-runtime",
     "test:desktop": "python3 scripts/lib/build_env.py -- cargo test --locked -p zork-gui",
+    "smoke:critical": "python3 scripts/smoke-critical.py",
     "test:mesh-enrollment": "python3 scripts/test-mesh-enrollment.py",
     "test:mesh-experience": "python3 scripts/test-mesh-experience-ui.py",
     "test:installer": "python3 scripts/test-native-installer.py",

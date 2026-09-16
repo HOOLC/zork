@@ -121,6 +121,14 @@ pub fn decide(state: &SessionState, world: &DecisionWorld) -> Decision {
     if let Some(turn) = &state.active_turn {
         if turn.consecutive_provider_failures > 0 {
             let failure = state.last_step_failure.as_ref();
+            // Also fence restored failures produced by older adapters that
+            // marked HTTP 400 retryable. Context recovery must not resend it.
+            if failure.is_some_and(|failure| failure.error.status_code == Some(400)) {
+                return Decision::FinishTurn {
+                    outcome: TurnOutcome::Failed,
+                    outstanding: world.outstanding.clone(),
+                };
+            }
             if failure.is_some_and(|failure| failure.error.is_context_overflow()) {
                 let purpose = state.context_progress().map_or_else(
                     || state.context_config.strategy.into(),
@@ -314,10 +322,59 @@ pub(super) fn handoff_document(invocations: &[ToolInvocation]) -> Result<String,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::state::{ActiveTurn, ContextProgress};
+    use crate::session::{
+        events::ProviderErrorRecord,
+        state::{ActiveTurn, ContextProgress, StepFailureState},
+    };
 
     #[test]
-    // Contract: docs/zork-agent-architecture.md [HANDOFF-01, RETRY-01]
+    fn restored_http_400_ends_the_turn_even_with_legacy_retry_and_context_flags() {
+        for purpose in [Purpose::Conversation, Purpose::Compaction, Purpose::Handoff] {
+            let mut state = SessionState::empty("session");
+            state.active_turn = Some(ActiveTurn {
+                turn_id: "turn".into(),
+                started_at_ms: 0,
+                cancel_requested: false,
+                consecutive_provider_failures: 1,
+                provider_retry_allowed: true,
+                context: purpose.is_context().then_some(ContextProgress {
+                    purpose,
+                    attempts: 0,
+                    source_entries: 0,
+                    retain_from: 0,
+                }),
+            });
+            state.last_step_failure = Some(StepFailureState {
+                purpose,
+                error: ProviderErrorRecord {
+                    stage: "legacy.provider".into(),
+                    retryable: true,
+                    status_code: Some(400),
+                    provider_code: Some("context_length_exceeded".into()),
+                    request_id: None,
+                    provider_input: None,
+                    usage: None,
+                    message: "maximum context length exceeded".into(),
+                },
+            });
+            let world = DecisionWorld {
+                now_ms: 60_000,
+                live_tools: BTreeSet::new(),
+                tool_changes: Vec::new(),
+                outstanding: Vec::new(),
+                estimated_input_tokens: Some(1_000_000),
+                input_budget: Some(100),
+                provider_retry_limit: 10,
+                context_attempt_limit: 3,
+            };
+            assert!(matches!(decide(&state, &world), Decision::FinishTurn {
+                outcome: TurnOutcome::Failed, ..
+            }));
+        }
+    }
+
+    #[test]
+    // Contract: docs/design/agent-runtime.md [HANDOFF-01, RETRY-01]
     fn interrupted_handoff_retry_keeps_its_purpose_and_retry_limit() {
         let mut state = SessionState::empty("session");
         state.active_turn = Some(ActiveTurn {

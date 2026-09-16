@@ -1,4 +1,5 @@
 //! Real navigation row input and forced-draw CPU measurements.
+use anyhow::Context as _;
 use gpui::{
     px, AppContext, HeadlessAppContext, MouseButton, MouseDownEvent, MouseUpEvent, PlatformInput,
 };
@@ -70,7 +71,6 @@ fn main() -> anyhow::Result<()> {
                     cx.run_until_parked();
                     cx.update_window(window.into(), |_, w, cx| {
                         w.simulate_next_frame(cx);
-                        w.draw(cx).clear(cx)
                     })?;
                 }
                 Ok(())
@@ -290,12 +290,14 @@ fn sliding_hover_checks(output: &std::path::Path) -> anyhow::Result<()> {
     })?;
     let pump = |cx: &mut HeadlessAppContext, frames: usize| -> anyhow::Result<()> {
         for _ in 0..frames {
-            std::thread::sleep(Duration::from_millis(16));
-            cx.advance_clock(Duration::from_millis(16));
+            // Match the 120 Hz motion fixture: two 16 ms sleeps plus
+            // rendering/readback can miss a short row transition entirely.
+            let tick = Duration::from_nanos(8_333_333);
+            std::thread::sleep(tick);
+            cx.advance_clock(tick);
             cx.run_until_parked();
             cx.update_window(window.into(), |_, w, cx| {
                 w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
             })?;
         }
         Ok(())
@@ -452,7 +454,6 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 cx.run_until_parked();
                 cx.update_window(window.into(), |_, w, cx| {
                     w.simulate_next_frame(cx);
-                    w.draw(cx).clear(cx)
                 })?;
             }
             Ok(())
@@ -474,6 +475,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 .bounds
         };
         let appearance = bounds("client_appearance");
+        let notifications = bounds("client_notifications");
         let account = bounds("client_account");
         let client_heading = bounds("client-settings-heading");
         let device_heading = bounds("device-settings-heading");
@@ -492,6 +494,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         for id in [
             "desktop-return",
             "client_appearance",
+            "client_notifications",
             "client_account",
             "settings-device-fixture",
             "settings-fixture-1",
@@ -504,10 +507,12 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 "settings tab geometry differs: {id}: {row:?}"
             );
         }
-        anyhow::ensure!(
-            (account.y - appearance.y - appearance.height - 2.).abs() < 0.1,
-            "settings tab gap differs"
-        );
+        for (previous, next) in [(appearance, notifications), (notifications, account)] {
+            anyhow::ensure!(
+                (next.y - previous.y - previous.height - 2.).abs() < 0.1,
+                "settings tab gap differs: {previous:?} -> {next:?}"
+            );
+        }
         let scale = snapshot.scale_factor;
         let color = zork_ui::design::BRAND_ACCENT.to_be_bytes()[1..].to_vec();
         let sample = |cx: &mut HeadlessAppContext, x: f32, y: f32| -> anyhow::Result<[u8; 4]> {
@@ -651,7 +656,6 @@ fn gap_surface_checks(output: &std::path::Path) -> anyhow::Result<()> {
         cx.run_until_parked();
         cx.update_window(window.into(), |_, w, cx| {
             w.simulate_next_frame(cx);
-            w.draw(cx).clear(cx)
         })?;
         Ok(())
     };
@@ -679,6 +683,9 @@ fn gap_surface_checks(output: &std::path::Path) -> anyhow::Result<()> {
     let marker_x = ((first.x + 3.) * scale) as u32;
     let fill_x = ((first.x + first.width - 12.) * scale) as u32;
     let gap_y = (((first.y + first.height + second.y) / 2.) * scale) as u32;
+    // A short marker can cross one scanline between readbacks. Observe the
+    // entire gap, then verify that the captured surface has its full height.
+    let gap_rows = (((first.y + first.height) * scale) as u32)..((second.y * scale) as u32);
     let active = zork_ui::design::BRAND_ACCENT.to_be_bytes()[1..].to_vec();
     action(
         &mut cx,
@@ -690,27 +697,54 @@ fn gap_surface_checks(output: &std::path::Path) -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"click","target":{"element_id":"gap-tab-second"}}),
     )?;
-    let mut crossing = None;
+    // Hover follows pointer input, while the active marker follows selection.
+    // Their first frames can differ; each surface must cross the gap intact.
+    let mut active_crossing = None;
+    let mut hover_crossing = None;
+    let probe_started = Instant::now();
+    let mut probes = Vec::new();
     for _ in 0..60 {
         pump(&mut cx)?;
         let image = cx.capture_screenshot(window.into())?;
-        if image.get_pixel(marker_x, gap_y).0[..3] == active
-            && image.get_pixel(fill_x, gap_y).0[..3] == [239, 238, 234]
+        probes.push(json!({"ms":probe_started.elapsed().as_secs_f64()*1000.,
+            "active_top":(0..image.height()).find(|y|image.get_pixel(marker_x,*y).0[..3]==active),
+            "hover_top":(0..image.height()).find(|y|image.get_pixel(fill_x,*y).0[..3]==[239,238,234])}));
+        if active_crossing.is_none()
+            && gap_rows
+                .clone()
+                .any(|y| image.get_pixel(marker_x, y).0[..3] == active)
         {
-            crossing = Some(image);
+            active_crossing = Some(image.clone());
+        }
+        if hover_crossing.is_none()
+            && gap_rows
+                .clone()
+                .any(|y| image.get_pixel(fill_x, y).0[..3] == [239, 238, 234])
+        {
+            hover_crossing = Some(image);
+        }
+        if active_crossing.is_some() && hover_crossing.is_some() {
             break;
         }
     }
-    let image = crossing
-        .ok_or_else(|| anyhow::anyhow!("hover or active disappeared in the 52px section gap"))?;
-    image.save(output.join("gap-both-moving.png"))?;
+    std::fs::write(
+        output.join("gap-probes.json"),
+        serde_json::to_vec_pretty(
+            &json!({"first":first,"second":second,"scale":scale,"gap_y":gap_y,"frames":probes}),
+        )?,
+    )?;
+    let active_image = active_crossing.context("active disappeared in the 52px section gap")?;
+    let hover_image = hover_crossing.context("hover disappeared in the 52px section gap")?;
+    active_image.save(output.join("gap-active-crossing.png"))?;
+    hover_image.save(output.join("gap-hover-crossing.png"))?;
     let ys = ((first.y * scale) as u32)..(((second.y + second.height) * scale) as u32);
     let marker_pixels = ys
         .clone()
-        .filter(|y| image.get_pixel(marker_x, *y).0[..3] == active)
+        .filter(|y| active_image.get_pixel(marker_x, *y).0[..3] == active)
         .collect::<Vec<_>>();
     let hover_pixels = ys
-        .filter(|y| image.get_pixel(fill_x, *y).0[..3] == [239, 238, 234])
+        .clone()
+        .filter(|y| hover_image.get_pixel(fill_x, *y).0[..3] == [239, 238, 234])
         .collect::<Vec<_>>();
     anyhow::ensure!(
         marker_pixels.len() >= (12. * scale) as usize
@@ -722,7 +756,12 @@ fn gap_surface_checks(output: &std::path::Path) -> anyhow::Result<()> {
             && hover_pixels.windows(2).all(|p| p[1] == p[0] + 1),
         "hover surface was clipped between tabs"
     );
-    let moving_top = marker_pixels[0] as f32 / scale;
+    let current = cx.capture_screenshot(window.into())?;
+    let moving_top = ys
+        .clone()
+        .find(|y| current.get_pixel(marker_x, *y).0[..3] == active)
+        .context("active marker disappeared before reversal")? as f32
+        / scale;
     action(
         &mut cx,
         json!({"type":"click","target":{"element_id":"gap-tab-first"}}),

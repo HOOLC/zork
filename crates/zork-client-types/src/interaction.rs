@@ -1,36 +1,13 @@
-//! Structured requests and authoritative results carried by ordinary Chat messages.
-//! Deserializing a message never executes its action. Client cache projections may
-//! attach a resolution to the original request without modifying the source.
+//! Business card presentation contracts. These are used by the Agent configuration
+//! and Provider login adapters, not by the interaction registration mechanism.
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
-
-pub const VERSION: u32 = 1;
-pub const MAX_FIELDS: usize = 16;
-pub const MAX_INPUT_BYTES: usize = 32 * 1024;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Selection {
-    pub profile_id: String,
-    pub model: String,
-    pub thinking: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentConfig {
-    pub name: String,
-    pub selection: Selection,
-    #[serde(default)]
-    pub avatar: Option<String>,
-    #[serde(default)]
-    pub instructions: String,
-    #[serde(default)]
-    pub skill_paths: Vec<String>,
-    #[serde(default)]
-    pub allowed_leaders: Vec<String>,
-}
+pub const VERSION: u32 = 5;
+pub const AGENT_CONFIGURATION: &str = "agent.configuration";
+pub const PROVIDER_LOGIN: &str = "provider.login";
+pub const MAX_FIELDS: usize = 64;
+pub const MAX_INPUT_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,7 +15,6 @@ pub struct Choice {
     pub value: String,
     pub label: String,
 }
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
@@ -46,9 +22,10 @@ pub enum FieldKind {
     Text,
     Multiline,
     Choice,
+    MultiChoice,
+    Json,
 }
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Field {
     pub id: String,
@@ -62,29 +39,39 @@ pub struct Field {
     #[serde(default)]
     pub options: Vec<Choice>,
 }
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", deny_unknown_fields)]
 pub enum Request {
-    #[serde(rename = "agent.create")]
-    CreateAgent { config: AgentConfig },
-    #[serde(rename = "agent.update")]
-    UpdateAgent {
-        agent_id: String,
-        expected_revision: String,
-        config: AgentConfig,
+    #[serde(rename = "agent_configuration")]
+    AgentConfiguration {
+        creating: bool,
+        name: String,
+        fields: Vec<Field>,
+        prominent: Vec<String>,
     },
+    #[serde(rename = "oauth", alias = "provider_login")]
+    OAuth { title: String },
+    #[serde(rename = "approval")]
+    Approval { title: String, description: String },
     #[serde(rename = "input")]
     Input { title: String, fields: Vec<Field> },
 }
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
     Completed,
     Declined,
+    Pending,
+    Cancelled,
+    Expired,
+    Failed,
+    Unknown,
 }
-
+impl Outcome {
+    pub fn terminal(self) -> bool {
+        self != Self::Pending
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Resolution {
@@ -95,42 +82,52 @@ pub struct Resolution {
     pub actor: String,
     pub output: Value,
 }
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Content {
     Request { request: Request },
     Result { result: Resolution },
 }
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageContent {
     pub version: u32,
+    pub request_id: String,
+    pub handler: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Resolution>,
     #[serde(flatten)]
     pub content: Content,
 }
-
 impl MessageContent {
-    pub fn request(request: Request) -> Self {
+    pub fn parse(value: &Value) -> Option<Self> {
+        let content: Self = serde_json::from_value(value.clone()).ok()?;
+        (content.version == VERSION && valid_id(&content.request_id) && valid_id(&content.handler))
+            .then_some(content)
+    }
+    pub fn linked(
+        request_id: String,
+        handler: String,
+        request: Request,
+        snapshot: Option<Resolution>,
+    ) -> Self {
         Self {
             version: VERSION,
+            request_id,
+            handler,
+            snapshot,
             content: Content::Request { request },
         }
     }
-    pub fn result(result: Resolution) -> Self {
+    pub fn linked_result(request_id: String, handler: String, result: Resolution) -> Self {
         Self {
             version: VERSION,
+            request_id,
+            handler,
+            snapshot: None,
             content: Content::Result { result },
         }
     }
-    /// Keep unknown versions in the enclosing message's raw JSON so older
-    /// clients can show its text, without guessing an executable operation.
-    pub fn parse(value: &Value) -> Option<Self> {
-        let content: Self = serde_json::from_value(value.clone()).ok()?;
-        (content.version == VERSION).then_some(content)
-    }
 }
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Response {
@@ -139,58 +136,48 @@ pub struct Response {
     #[serde(default)]
     pub values: BTreeMap<String, String>,
 }
-
 pub fn valid_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+    !value.is_empty() && value.len() <= 2048 && !value.chars().any(char::is_control)
 }
-
-impl AgentConfig {
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if self.name.trim().is_empty()
-            || self.name.len() > 160
-            || self.name.chars().any(char::is_control)
-        {
-            return Err("invalid_agent_name");
-        }
-        if !valid_id(&self.selection.profile_id)
-            || !valid_id(&self.selection.model)
-            || !valid_id(&self.selection.thinking)
-            || self.instructions.len() > MAX_INPUT_BYTES
-        {
-            return Err("invalid_agent_configuration");
-        }
-        if self.skill_paths.len() > 32
-            || self.allowed_leaders.len() > 64
-            || self
-                .skill_paths
-                .iter()
-                .chain(&self.allowed_leaders)
-                .any(|s| !valid_id(s))
-        {
-            return Err("invalid_agent_resources");
-        }
-        Ok(())
-    }
-}
-
 impl Request {
     pub fn validate(&self) -> Result<(), &'static str> {
-        match self {
-            Self::CreateAgent { config } => config.validate(),
-            Self::UpdateAgent {
-                agent_id,
-                expected_revision,
-                config,
-            } => {
-                if !valid_id(agent_id) || !valid_id(expected_revision) {
-                    return Err("invalid_agent_reference");
-                }
-                config.validate()
+        let title = match self {
+            Self::AgentConfiguration { .. } => "Agent configuration",
+            Self::OAuth { title } | Self::Approval { title, .. } | Self::Input { title, .. } => {
+                title
             }
-            Self::Input { title, fields } => {
-                if title.trim().is_empty()
-                    || title.len() > 512
-                    || fields.is_empty()
+        };
+        if title.trim().is_empty() || title.len() > 512 {
+            return Err("invalid_interaction_title");
+        }
+        if let Self::AgentConfiguration {
+            name,
+            fields,
+            prominent,
+            ..
+        } = self
+        {
+            let mut seen = HashSet::new();
+            if name.len() > 640
+                || prominent.is_empty()
+                || prominent
+                    .iter()
+                    .any(|id| !seen.insert(id) || !fields.iter().any(|field| field.id == *id))
+            {
+                return Err("invalid_agent_review");
+            }
+        }
+        match self {
+            Self::OAuth { .. } => Ok(()),
+            Self::Approval { description, .. } => {
+                if description.trim().is_empty() || description.len() > MAX_INPUT_BYTES {
+                    Err("invalid_approval_request")
+                } else {
+                    Ok(())
+                }
+            }
+            Self::AgentConfiguration { fields, .. } | Self::Input { fields, .. } => {
+                if fields.is_empty()
                     || fields.len() > MAX_FIELDS
                     || fields.iter().map(|f| f.default.len()).sum::<usize>() > MAX_INPUT_BYTES
                 {
@@ -198,17 +185,12 @@ impl Request {
                 }
                 let mut ids = HashSet::new();
                 for field in fields {
-                    if field.id.is_empty()
+                    if !valid_id(&field.id)
                         || field.id.len() > 64
-                        || !field
-                            .id
-                            .bytes()
-                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
                         || !ids.insert(&field.id)
                         || field.label.trim().is_empty()
                         || field.label.len() > 512
-                        || field.default.len() > 8192
-                        || field.options.len() > 32
+                        || field.default.len() > MAX_INPUT_BYTES
                     {
                         return Err("invalid_input_field");
                     }
@@ -219,9 +201,14 @@ impl Request {
                         return Err("invalid_input_choices");
                     }
                     if field.kind == FieldKind::Choice {
-                        if field.options.is_empty()
+                        if (field.options.is_empty()
+                            && !matches!(self, Self::AgentConfiguration { .. }))
                             || (!field.default.is_empty() && !options.contains(&field.default))
                         {
+                            return Err("invalid_input_choices");
+                        }
+                    } else if field.kind == FieldKind::MultiChoice {
+                        if !valid_multi_choice(field, &field.default) {
                             return Err("invalid_input_choices");
                         }
                     } else if !field.options.is_empty() {
@@ -232,33 +219,21 @@ impl Request {
             }
         }
     }
-
-    /// The only editable Agent fields on a confirmation card are its name and
-    /// instructions. Model, resources and grants remain explicitly visible and
-    /// fixed by the proposal; a different configuration is a new proposal.
     pub fn defaults(&self) -> BTreeMap<String, String> {
         match self {
-            Self::CreateAgent { config } | Self::UpdateAgent { config, .. } => [
-                ("name".into(), config.name.clone()),
-                ("instructions".into(), config.instructions.clone()),
-            ]
-            .into(),
-            Self::Input { fields, .. } => fields
+            Self::AgentConfiguration { fields, .. } | Self::Input { fields, .. } => fields
                 .iter()
                 .map(|f| (f.id.clone(), f.default.clone()))
                 .collect(),
+            _ => BTreeMap::new(),
         }
     }
-
     pub fn validate_values(
         &self,
         values: &BTreeMap<String, String>,
     ) -> Result<BTreeMap<String, String>, BTreeMap<String, String>> {
         let mut merged = self.defaults();
         let mut errors = BTreeMap::new();
-        if values.values().map(String::len).sum::<usize>() > MAX_INPUT_BYTES {
-            errors.insert(String::new(), "input_too_large".into());
-        }
         for (id, value) in values {
             if !merged.contains_key(id) {
                 errors.insert(id.clone(), "unknown_input_field".into());
@@ -269,41 +244,29 @@ impl Request {
         if merged.values().map(String::len).sum::<usize>() > MAX_INPUT_BYTES {
             errors.insert(String::new(), "input_too_large".into());
         }
-        match self {
-            Self::CreateAgent { config } | Self::UpdateAgent { config, .. } => {
-                let mut config = config.clone();
-                config.name = merged["name"].clone();
-                config.instructions = merged["instructions"].clone();
-                if let Err(error) = config.validate() {
-                    errors.insert(
-                        if error == "invalid_agent_name" {
-                            "name"
-                        } else {
-                            "instructions"
-                        }
-                        .into(),
-                        error.into(),
-                    );
-                }
-            }
-            Self::Input { fields, .. } => {
-                for field in fields {
-                    let value = &merged[&field.id];
-                    let error = if field.required && value.trim().is_empty() {
-                        Some("input_required")
-                    } else if value.len() > 8192 {
-                        Some("input_too_large")
-                    } else if field.kind == FieldKind::Choice
-                        && !value.is_empty()
-                        && !field.options.iter().any(|c| c.value == *value)
-                    {
-                        Some("invalid_input_choice")
-                    } else {
-                        None
-                    };
-                    if let Some(error) = error {
-                        errors.insert(field.id.clone(), error.into());
-                    }
+        if let Self::AgentConfiguration { fields, .. } | Self::Input { fields, .. } = self {
+            for field in fields {
+                let value = &merged[&field.id];
+                let error = if field.required && value.trim().is_empty() {
+                    Some("input_required")
+                } else if field.kind == FieldKind::Choice
+                    && !value.is_empty()
+                    && !field.options.iter().any(|c| c.value == *value)
+                {
+                    Some("invalid_input_choice")
+                } else if field.kind == FieldKind::MultiChoice && !valid_multi_choice(field, value)
+                {
+                    Some("invalid_input_choice")
+                } else if field.kind == FieldKind::Json
+                    && !value.is_empty()
+                    && serde_json::from_str::<Value>(value).is_err()
+                {
+                    Some("invalid_input_json")
+                } else {
+                    None
+                };
+                if let Some(error) = error {
+                    errors.insert(field.id.clone(), error.into());
                 }
             }
         }
@@ -314,77 +277,79 @@ impl Request {
         }
     }
 }
-
-/// One schema is shared by the tool catalog and its gateway validation.
-pub fn request_schema() -> Value {
-    let string = || json!({"type":"string","minLength":1,"maxLength":512});
-    let config = json!({"type":"object","additionalProperties":false,"required":["name","selection"],"properties":{
-        "name":{"type":"string","minLength":1,"maxLength":160},
-        "selection":{"type":"object","additionalProperties":false,"required":["profile_id","model","thinking"],"properties":{"profile_id":string(),"model":string(),"thinking":string()}},
-        "avatar":{"type":["string","null"]},"instructions":{"type":"string","maxLength":32768},
-        "skill_paths":{"type":"array","maxItems":32,"items":string()},"allowed_leaders":{"type":"array","maxItems":64,"uniqueItems":true,"items":string()}
-    }});
-    let field = json!({"type":"object","additionalProperties":false,"required":["id","label"],"properties":{
-        "id":{"type":"string","pattern":"^[a-zA-Z0-9_-]{1,64}$"},"label":string(),"kind":{"enum":["text","multiline","choice"]},"required":{"type":"boolean"},"default":{"type":"string","maxLength":8192},
-        "options":{"type":"array","maxItems":32,"items":{"type":"object","additionalProperties":false,"required":["value","label"],"properties":{"value":string(),"label":string()}}}
-    }});
-    json!({"oneOf":[
-        {"type":"object","additionalProperties":false,"required":["action","config"],"properties":{"action":{"const":"agent.create"},"config":config}},
-        {"type":"object","additionalProperties":false,"required":["action","agent_id","expected_revision","config"],"properties":{"action":{"const":"agent.update"},"agent_id":string(),"expected_revision":string(),"config":config}},
-        {"type":"object","additionalProperties":false,"required":["action","title","fields"],"properties":{"action":{"const":"input"},"title":string(),"fields":{"type":"array","minItems":1,"maxItems":MAX_FIELDS,"items":field}}}
-    ]})
+fn valid_multi_choice(field: &Field, value: &str) -> bool {
+    let Ok(values) = serde_json::from_str::<Vec<String>>(value) else {
+        return false;
+    };
+    let mut seen = HashSet::new();
+    values.len() <= 32
+        && values.iter().all(|value| {
+            seen.insert(value) && field.options.iter().any(|choice| choice.value == *value)
+        })
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn input() -> Request {
-        Request::Input {
-            title: "Choose a target".into(),
+    use serde_json::json;
+    #[test]
+    fn multiple_choices_reject_unknown_or_duplicate_selections() {
+        let request = Request::AgentConfiguration {
+            creating: true,
+            name: String::new(),
+            prominent: vec!["permissions".into()],
             fields: vec![Field {
-                id: "target".into(),
-                label: "Target".into(),
-                kind: FieldKind::Choice,
-                required: true,
-                default: "test".into(),
+                id: "permissions".into(),
+                label: "Permissions".into(),
+                kind: FieldKind::MultiChoice,
+                default: "[\"one\"]".into(),
                 options: vec![Choice {
-                    value: "test".into(),
-                    label: "Test".into(),
+                    value: "one".into(),
+                    label: "A known Agent".into(),
                 }],
+                ..Default::default()
             }],
-        }
-    }
-
-    #[test]
-    fn inputs_validate_defaults_choices_and_unknown_fields() {
-        let request = input();
-        request.validate().unwrap();
-        assert_eq!(
-            request.validate_values(&BTreeMap::new()).unwrap()["target"],
-            "test"
-        );
-        assert!(request
-            .validate_values(&[("target".into(), "production".into())].into())
-            .is_err());
-        assert!(request
-            .validate_values(&[("target".into(), "".into())].into())
-            .is_err());
-        assert!(request
-            .validate_values(&[("permission".into(), "admin".into())].into())
-            .is_err());
-    }
-
-    #[test]
-    fn unknown_versions_are_not_executable_and_duplicate_fields_are_rejected() {
-        let mut value = serde_json::to_value(MessageContent::request(input())).unwrap();
-        assert!(MessageContent::parse(&value).is_some());
-        value["version"] = json!(999);
-        assert!(MessageContent::parse(&value).is_none());
-        let Request::Input { mut fields, title } = input() else {
-            unreachable!()
         };
-        fields.push(fields[0].clone());
-        assert!(Request::Input { title, fields }.validate().is_err());
+        request.validate().unwrap();
+        for value in ["[\"unknown\"]", "[\"one\",\"one\"]", "not JSON"] {
+            assert!(request
+                .validate_values(&[("permissions".into(), value.into())].into())
+                .is_err());
+        }
+        assert!(request
+            .validate_values(&[("permissions".into(), "[]".into())].into())
+            .is_ok());
+    }
+    #[test]
+    fn business_actions_and_unbound_messages_are_not_interaction_contracts() {
+        for action in ["agent.create", "agent.update", "provider.login"] {
+            assert!(serde_json::from_value::<Request>(json!({"action":action})).is_err());
+        }
+        for version in [1, 2] {
+            assert!(MessageContent::parse(&json!({"version":version,"request_id":"owner/request","kind":"request","request":{"action":"approval","title":"Apply","description":"Apply changes"}})).is_none());
+        }
+        assert!(MessageContent::parse(&json!({"version":VERSION,"kind":"request","request":{"action":"approval","title":"Apply","description":"Apply changes"}})).is_none());
+    }
+    #[test]
+    fn form_preserves_defaults_and_rejects_unknown_or_malformed_values() {
+        let form = Request::Input {
+            title: "Configure".into(),
+            fields: vec![Field {
+                id: "paths".into(),
+                label: "Paths".into(),
+                kind: FieldKind::Json,
+                default: "[]".into(),
+                ..Default::default()
+            }],
+        };
+        assert_eq!(
+            form.validate_values(&BTreeMap::new()).unwrap()["paths"],
+            "[]"
+        );
+        assert!(form
+            .validate_values(&[("paths".into(), "invalid".into())].into())
+            .is_err());
+        assert!(form
+            .validate_values(&[("other".into(), "x".into())].into())
+            .is_err());
     }
 }

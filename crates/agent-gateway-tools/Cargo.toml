@@ -6,11 +6,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+zork-slack = { path = "../slack" }
 tokio.workspace = true
 ulid.workspace = true
 anyhow = "1"
 base64 = "0.22"
 reqwest.workspace = true
+serde.workspace = true
 serde_json = "1"
 zork-agent = { path = "../agent" }
 zork-client-types = { path = "../zork-client-types" }

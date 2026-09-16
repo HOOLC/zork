@@ -15,7 +15,10 @@ fn selection(model: &str) -> SessionEvent {
 }
 
 fn jsonl_segment(root: &std::path::Path, session_id: &str) -> std::path::PathBuf {
-    let segments = root.join("sessions").join(session_id).join("segments");
+    let segments = root
+        .join("shared-files/sessions")
+        .join(session_id)
+        .join("segments");
     std::fs::read_dir(segments)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -69,7 +72,7 @@ fn replace_event_id(path: &std::path::Path, index: usize, event_id: &str) {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [QUERY-01, SNAPSHOT-03]
+// Contract: docs/design/agent-runtime.md [QUERY-01, SNAPSHOT-03]
 fn query_pages_and_locates_persisted_events_by_durable_cursor() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -176,7 +179,7 @@ fn query_pages_and_locates_persisted_events_by_durable_cursor() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [QUERY-01, SSE-01]
+// Contract: docs/design/agent-runtime.md [QUERY-01, SSE-01]
 fn scan_after_streams_visible_history_across_segments_without_paging() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -218,7 +221,7 @@ fn scan_after_streams_visible_history_across_segments_without_paging() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-04, QUERY-01]
+// Contract: docs/design/agent-runtime.md [EVENT-04, QUERY-01]
 fn history_validates_events_that_are_not_returned() {
     for invalid_event in [
         serde_json::json!({
@@ -256,7 +259,7 @@ fn history_validates_events_that_are_not_returned() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-02, QUERY-01]
+// Contract: docs/design/agent-runtime.md [EVENT-02, QUERY-01]
 fn history_ignores_invalid_payload_in_an_incomplete_tail_batch() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -297,7 +300,7 @@ fn history_ignores_invalid_payload_in_an_incomplete_tail_batch() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-03, SEGMENT-01, QUERY-01]
+// Contract: docs/design/agent-runtime.md [EVENT-03, SEGMENT-01, QUERY-01]
 fn history_rejects_event_order_that_overlaps_the_next_segment() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -321,7 +324,7 @@ fn history_rejects_event_order_that_overlaps_the_next_segment() {
 
     let older_segment = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments")
         .join(format!("{}.jsonl", initial[0].event_id));

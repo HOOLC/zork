@@ -1,6 +1,10 @@
 use super::{Device, MessageActivity, MessageArrivals};
 use zork_observe::{BatchId, Changes, Cursor, JournalLimits, ListEdit, Readiness, Source, Topics};
+mod agent_configuration;
 mod data;
+mod login;
+#[cfg(test)]
+mod pagination_tests;
 use crate::{
     api::{
         AgentStatus, GatewayClient, MessagePage, ParticipantStatus, SessionSummary, SseEvent,
@@ -52,6 +56,7 @@ pub struct DeliveryState {
     pub request_id: String,
     pub attempted: bool,
     pub status: String,
+    pub error: Option<String>,
 }
 pub type MessageDeliveries = imbl::HashMap<String, DeliveryState>;
 
@@ -113,6 +118,7 @@ mod tests {
             data: value("chat", "11", 1000).to_string(),
         });
         chat.apply_page(&MessagePage {
+            source_epoch: None,
             items: vec![message("old", "old")],
             older_cursor: None,
         });
@@ -164,6 +170,7 @@ mod tests {
         // Even with a connection already published, restoration is silent.
         chat.commit(|s| s.connected = true);
         chat.apply_page(&MessagePage {
+            source_epoch: None,
             items: vec![message("cached", "cached"), message("offline", "offline")],
             older_cursor: None,
         });
@@ -180,6 +187,7 @@ mod tests {
         // Imported-message notifications fetch history but emit only new deliveries.
         chat.apply_message_page(
             &MessagePage {
+                source_epoch: None,
                 items: vec![
                     message("older", "older"),
                     message("live", "live"),
@@ -194,6 +202,7 @@ mod tests {
         assert_eq!(arrivals.ids, ["imported"]);
         chat.apply_event(&delivered("imported"));
         chat.apply_page(&MessagePage {
+            source_epoch: None,
             items: vec![message("recovered", "recovered")],
             older_cursor: None,
         });
@@ -250,6 +259,7 @@ mod tests {
         let sent = device.enqueue("chat", "first".into()).unwrap();
         let id = format!("client-chat-{}", sent.request_id);
         let page = MessagePage {
+            source_epoch: None,
             items: vec![message(&id, "first")],
             older_cursor: None,
         };
@@ -279,6 +289,14 @@ mod tests {
             .fail_delivery("node", &failed.request_id, "offline")
             .unwrap();
         device.reload_outbox();
+        let failed_id = format!("client-chat-{}", failed.request_id);
+        let failed_delivery = conversation
+            .snapshot()
+            .deliveries
+            .get(&failed_id)
+            .cloned()
+            .unwrap();
+        assert_eq!(failed_delivery.error.as_deref(), Some("offline"));
         device.withdraw_delivery(&failed.request_id).unwrap();
         assert_eq!(device.draft("chat").text, "second");
         assert_eq!(conversation.snapshot().lines.len(), 1);
@@ -302,6 +320,7 @@ mod tests {
         );
         let conversation = device.conversation("a");
         conversation.apply_page(&MessagePage {
+            source_epoch: None,
             items: (0..250)
                 .map(|i| message(&format!("a-{i}"), "cached"))
                 .collect(),
@@ -321,6 +340,7 @@ mod tests {
         drop(conversation);
         let b = device.conversation("b");
         b.apply_page(&MessagePage {
+            source_epoch: None,
             items: vec![message("b-1", "other chat")],
             older_cursor: None,
         });
@@ -347,6 +367,7 @@ mod tests {
         );
         // Network refresh must preserve access to the locally cached older pages.
         restored.apply_page(&MessagePage {
+            source_epoch: None,
             items: (150..250)
                 .map(|i| message(&format!("a-{i}"), "cached"))
                 .collect(),
@@ -385,6 +406,7 @@ mod tests {
         );
         let conversation = device.conversation("large");
         conversation.apply_page(&MessagePage {
+            source_epoch: None,
             items: vec![message("large", &"x".repeat(RECENT_MESSAGE_BYTES))],
             older_cursor: None,
         });
@@ -450,7 +472,7 @@ mod tests {
             .route(
                 "/v1/im/sessions/{id}/messages",
                 get(|Path(id): Path<String>| async move {
-                    Json(MessagePage {
+                    Json(MessagePage { source_epoch: None,
                         items: vec![message(&format!("{id}-initial"), "initial")],
                         older_cursor: None,
                     })
@@ -515,6 +537,137 @@ mod tests {
                 .items
                 .len(),
             1
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn failed_local_commit_reconnects_from_the_applied_source_anchor() {
+        use axum::{
+            extract::Query,
+            response::sse::{Event, Sse},
+            routing::get,
+            Json, Router,
+        };
+        use futures_util::{stream, StreamExt};
+        use std::{
+            collections::HashMap,
+            sync::atomic::{AtomicUsize, Ordering},
+            time::Duration,
+        };
+        let old_reads = Arc::new(AtomicUsize::new(0));
+        let reads = old_reads.clone();
+        let app = Router::new()
+            .route(
+                "/v1/im/sessions/chat/events",
+                get(|| async {
+                    Sse::new(
+                        stream::once(async {
+                            Ok::<_, std::convert::Infallible>(
+                                Event::default()
+                                    .event("snapshot")
+                                    .data("{\"session_id\":\"chat\",\"execution\":null}"),
+                            )
+                        })
+                        .chain(stream::pending()),
+                    )
+                }),
+            )
+            .route(
+                "/v1/im/sessions/chat/messages",
+                get(move |Query(query): Query<HashMap<String, String>>| {
+                    let reads = reads.clone();
+                    async move {
+                        let older = query.get("before").is_some();
+                        if older {
+                            reads.fetch_add(1, Ordering::SeqCst);
+                        }
+                        Json(MessagePage {
+                            source_epoch: Some("source".into()),
+                            items: if older {
+                                vec![message("known", "known"), message("missed", "missed")]
+                            } else {
+                                vec![message("new-1", "new 1"), message("new-2", "new 2")]
+                            },
+                            older_cursor: (!older).then(|| "older".into()),
+                        })
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
+        store
+            .cache_message_page(
+                "node",
+                "chat",
+                &MessagePage {
+                    source_epoch: Some("source".into()),
+                    items: vec![message("known", "known")],
+                    older_cursor: None,
+                },
+                None,
+            )
+            .unwrap();
+        let fault = rusqlite::Connection::open(root.path().join("client.db")).unwrap();
+        fault.execute_batch("CREATE TRIGGER fail_message_commit BEFORE INSERT ON messages WHEN NEW.id='new-1' BEGIN SELECT RAISE(ABORT,'fixture persistence failure'); END;").unwrap();
+        let device = Device::open(
+            Arc::new(GatewayClient::new(url, None)),
+            Some((store.clone(), "node".into())),
+            false,
+        );
+        let conversation = device.conversation("chat");
+        conversation.start();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while conversation.snapshot().error.is_none() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            store
+                .cached_messages("node", "chat", None, 100)
+                .unwrap()
+                .unwrap()
+                .items
+                .len(),
+            1
+        );
+        assert_eq!(
+            conversation.confirmed_anchor.lock().unwrap().as_deref(),
+            Some("known")
+        );
+        fault
+            .execute_batch("DROP TRIGGER fail_message_commit;")
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(8), async {
+            while conversation.snapshot().lines.len() != 4 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let page = store
+            .cached_messages("node", "chat", None, 100)
+            .unwrap()
+            .unwrap();
+        let ids = page
+            .items
+            .iter()
+            .map(|item| {
+                let TranscriptMessage::Message { metadata, .. } = item;
+                metadata.id.as_deref().unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["known", "missed", "new-1", "new-2"]);
+        assert!(
+            old_reads.load(Ordering::SeqCst) >= 2,
+            "transport advanced past a rejected local commit"
         );
         server.abort();
     }
@@ -684,7 +837,9 @@ pub struct Conversation {
     reload: Mutex<Option<tokio::task::JoinHandle<()>>>,
     cancel: Mutex<Option<tokio::task::JoinHandle<()>>>,
     history: std::sync::OnceLock<Arc<super::History>>,
+    login_tasks: Mutex<std::collections::HashSet<String>>,
     confirmed_anchor: Mutex<Option<String>>,
+    source_epoch: Mutex<Option<String>>,
     message_bytes: std::sync::atomic::AtomicUsize,
     cache_generation: u64,
 }
@@ -795,6 +950,7 @@ impl Conversation {
                 None
             }
         };
+        let source_epoch = page.as_ref().and_then(|page| page.source_epoch.clone());
         let confirmed_anchor =
             page.as_ref()
                 .and_then(|page| page.items.last())
@@ -802,6 +958,13 @@ impl Conversation {
                     let TranscriptMessage::Message { metadata, .. } = message;
                     metadata.id.clone()
                 });
+        let source_head = page
+            .as_ref()
+            .and_then(|page| page.items.first())
+            .and_then(|message| {
+                let TranscriptMessage::Message { metadata, .. } = message;
+                metadata.id.clone()
+            });
         if let Some(page) = page {
             data.lines = page.items.iter().filter_map(transcript_line_from).collect();
             data.older_cursor = page.older_cursor;
@@ -819,6 +982,7 @@ impl Conversation {
             .unwrap_or(false);
         let mut owned = Owned::new(data);
         owned.cache_backed = device.cache.is_some();
+        owned.source_head = source_head;
         let data = owned.data.clone();
         let message_bytes = owned.bytes;
         let conversation = Arc::new(Self {
@@ -833,7 +997,9 @@ impl Conversation {
             reload: Mutex::new(None),
             cancel: Mutex::new(None),
             history: std::sync::OnceLock::new(),
+            login_tasks: Mutex::new(Default::default()),
             confirmed_anchor: Mutex::new(confirmed_anchor),
+            source_epoch: Mutex::new(source_epoch),
             cache_generation,
         });
         conversation.sync_outbox();
@@ -846,15 +1012,12 @@ impl Conversation {
             .clone()
     }
 
-    /// User interaction is a core business intent. The durable delivery pump
-    /// owns its IO; closing a card never has to append the outcome itself.
+    /// Dispatch a card input to the business that supplied the authoritative card.
     pub fn respond_to_interaction(
         self: &Arc<Self>,
         command: crate::interactions::Command,
     ) -> anyhow::Result<()> {
-        use crate::interactions::{self, Command, Response};
-        let command = command.resolve()?;
-        let id = command.message_id().to_owned();
+        let id = command.message_id();
         let device = self
             .device
             .upgrade()
@@ -862,48 +1025,23 @@ impl Conversation {
         let (store, node) = device
             .cache
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Persistent interaction delivery unavailable"))?;
+            .ok_or_else(|| anyhow::anyhow!("Persistent card operations unavailable"))?;
         let message = store
-            .cached_message_at(node, &self.id, &id, self.cache_generation)?
-            .ok_or_else(|| anyhow::anyhow!("Interaction request unavailable"))?;
+            .cached_message_at(node, &self.id, id, self.cache_generation)?
+            .ok_or_else(|| anyhow::anyhow!("Business card unavailable"))?;
         let TranscriptMessage::Message { metadata, .. } = &message;
-        let request = interactions::request(metadata)
-            .ok_or_else(|| anyhow::anyhow!("Unsupported interaction request"))?;
-        if metadata.interaction_result.is_some() {
-            self.commit(|s| s.update_cached_interactions(std::slice::from_ref(&message)));
-            return Ok(());
-        }
-        if matches!(&command, Command::Retry { .. }) {
-            store.retry_interaction(node, &self.id, &id, self.cache_generation)?;
-        } else {
-            let (accept, values) = match command {
-                Command::Submit { values, .. } => match request.validate_values(&values) {
-                    Ok(values) => (true, values),
-                    Err(errors) => {
-                        self.commit(|s| s.set_interaction_errors(&id, errors));
-                        return Ok(());
-                    }
-                },
-                Command::Decline { .. } => (false, Default::default()),
-                Command::Retry { .. } => unreachable!(),
-                Command::Activate { .. } => unreachable!(),
-            };
-            store.prepare_interaction(
-                node,
-                &self.id,
-                &id,
-                Response {
-                    response_id: ulid::Ulid::new().to_string(),
-                    accept,
-                    values,
-                },
-                self.cache_generation,
-            )?;
-        }
-        self.commit(|s| s.set_interaction_errors(&id, Default::default()));
-        self.sync_interactions();
-        device.start_delivery();
-        Ok(())
+        let content = crate::interactions::MessageContent::parse(
+            metadata
+                .interaction
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Business card required"))?,
+        )
+        .ok_or_else(|| anyhow::anyhow!("Unsupported business card"))?;
+        anyhow::ensure!(
+            crate::interactions::request(metadata).is_some(),
+            "Unsupported business card"
+        );
+        crate::interactions::dispatch(self, &content.handler, command)
     }
 
     pub(super) fn sync_interactions(&self) {
@@ -915,7 +1053,7 @@ impl Conversation {
         };
         let updates: anyhow::Result<_> = (|| {
             let submissions =
-                store.interaction_submissions(node, &self.id, self.cache_generation)?;
+                store.configuration_submissions(node, &self.id, self.cache_generation)?;
             let mut ids: std::collections::HashSet<String> = self
                 .owned
                 .lock()
@@ -1062,13 +1200,16 @@ impl Conversation {
                 let Some(conversation) = weak.upgrade() else {
                     return;
                 };
-                match event {
-                    LiveEvent::Connected => conversation.commit(|s| {
-                        s.connected = true;
-                        s.revoked = false;
-                        s.error = None;
-                    }),
-                    LiveEvent::Route(_) => {}
+                let applied = match event {
+                    LiveEvent::Connected => {
+                        conversation.commit(|s| {
+                            s.connected = true;
+                            s.revoked = false;
+                            s.error = None;
+                        });
+                        true
+                    }
+                    LiveEvent::Route(_) => true,
                     LiveEvent::Page(page) => conversation.apply_page(&page),
                     LiveEvent::Messages(page) => conversation.apply_message_page(&page, true),
                     LiveEvent::Event(event) => conversation.apply_event(&event),
@@ -1082,7 +1223,15 @@ impl Conversation {
                         if revoked {
                             return;
                         }
+                        true
                     }
+                };
+                if applied {
+                    feed.acknowledge_messages(
+                        conversation.confirmed_anchor.lock().unwrap().clone(),
+                    );
+                } else {
+                    feed.resync_messages();
                 }
             }
         }));
@@ -1100,7 +1249,9 @@ impl Conversation {
             let result = client.catch_up_messages(&id, anchor.as_deref(), 100).await;
             if let Some(conversation) = weak.upgrade() {
                 match result {
-                    Ok(page) => conversation.apply_page(&page),
+                    Ok(page) => {
+                        conversation.apply_page(&page);
+                    }
                     Err(e) => conversation.commit(|s| {
                         s.loading = false;
                         s.error = Some(e.to_string());
@@ -1144,15 +1295,25 @@ impl Conversation {
             .await;
             if let Some(conversation) = weak.upgrade() {
                 match result {
+                    Ok(page)
+                        if page.source_epoch.as_ref().is_some_and(|epoch| {
+                            conversation
+                                .source_epoch
+                                .lock()
+                                .unwrap()
+                                .as_ref()
+                                .is_some_and(|current| current != epoch)
+                        }) =>
+                    {
+                        conversation.commit(|state| state.loading_older = false);
+                    }
                     Ok(page) => match conversation.cached_interaction_updates(&page.items) {
                         Ok(updates) => conversation.commit(|s| {
+                            let current_page = s.older_cursor.as_ref() == Some(&cursor);
                             s.prepend(&page.items);
                             s.update_cached_interactions(&updates);
-                            if page.items.is_empty() || s.lines.is_empty() {
-                                s.older_cursor = page.older_cursor.clone();
-                            }
                             s.error = None;
-                            conversation.update_older_cursor(s, &page);
+                            conversation.update_older_cursor(s, &page, current_page);
                             s.loading_older = false;
                         }),
                         Err(error) => conversation.commit(|s| {
@@ -1168,17 +1329,10 @@ impl Conversation {
             }
         }));
     }
-    fn acknowledge(&self, items: &[TranscriptMessage]) {
-        if let Some(device) = self.device.upgrade() {
-            if let Some((store, node)) = &device.cache {
-                let _ = store.acknowledge_transcript(node, items);
-            }
-        }
+    fn apply_page(&self, page: &MessagePage) -> bool {
+        self.apply_message_page(page, false)
     }
-    fn apply_page(&self, page: &MessagePage) {
-        self.apply_message_page(page, false);
-    }
-    fn apply_message_page(&self, page: &MessagePage, delivery: bool) {
+    fn apply_message_page(&self, page: &MessagePage, delivery: bool) -> bool {
         if let Some(device) = self.device.upgrade() {
             if let Some((store, node)) = &device.cache {
                 if let Err(error) =
@@ -1188,9 +1342,23 @@ impl Conversation {
                         s.error = Some(error.to_string());
                         s.loading = false;
                     });
-                    return;
+                    return false;
                 }
             }
+        }
+        if let Some(epoch) = &page.source_epoch {
+            let mut current = self.source_epoch.lock().unwrap();
+            if current.as_ref().is_some_and(|current| current != epoch) {
+                if let Some(older) = self.older.lock().unwrap().take() {
+                    older.abort();
+                }
+                *self.confirmed_anchor.lock().unwrap() = None;
+                self.commit(|state| {
+                    state.clear_messages();
+                    state.loading_older = false;
+                });
+            }
+            *current = Some(epoch.clone());
         }
         let updates = match self.cached_interaction_updates(&page.items) {
             Ok(updates) => updates,
@@ -1199,7 +1367,7 @@ impl Conversation {
                     s.error = Some(error.to_string());
                     s.loading = false;
                 });
-                return;
+                return false;
             }
         };
         let arrival_start = if delivery {
@@ -1221,16 +1389,16 @@ impl Conversation {
                 *self.confirmed_anchor.lock().unwrap() = Some(id.clone());
             }
         }
-        self.acknowledge(&page.items);
         self.commit(|state| {
             state.merge(&page.items, arrival_start);
             state.update_cached_interactions(&updates);
             state.loaded = true;
             state.loading = false;
             state.error = None;
-            self.update_older_cursor(state, page);
+            self.update_older_cursor(state, page, false);
         });
         self.sync_outbox();
+        true
     }
     fn cached_interaction_updates(
         &self,
@@ -1248,26 +1416,43 @@ impl Conversation {
         }
         Ok(vec![])
     }
-    fn update_older_cursor(&self, state: &mut ConversationData, page: &MessagePage) {
-        if page.items.first().and_then(transcript_line_from).as_ref() == state.lines.first() {
-            state.older_cursor = page.older_cursor.clone();
-        }
+    fn update_older_cursor(&self, state: &mut Owned, page: &MessagePage, older: bool) {
+        let candidate = page.items.first().and_then(|message| {
+            let TranscriptMessage::Message { metadata, .. } = message;
+            metadata.id.as_deref()
+        });
         if let Some(device) = self.device.upgrade() {
-            if let (Some((store, node)), Some(TranscriptLine::Message { metadata, .. })) =
-                (&device.cache, state.lines.first())
-            {
-                if let Some(id) = &metadata.id {
-                    match store.cached_cursor_before(node, &self.id, id, self.cache_generation) {
-                        Ok(cursor) => state.older_cursor = cursor,
-                        Err(error) => {
-                            state.error = Some(error.to_string());
-                        }
+            if let Some((store, node)) = &device.cache {
+                match store.cached_history_boundary(
+                    node,
+                    &self.id,
+                    state.source_head.as_deref(),
+                    candidate,
+                    self.cache_generation,
+                ) {
+                    Ok((head, cursor)) => {
+                        state.source_head = head;
+                        state.older_cursor = cursor;
                     }
+                    Err(error) => state.error = Some(error.to_string()),
                 }
+                return;
             }
         }
+        let reaches_head = state.source_head.as_ref().is_none_or(|head| {
+            page.items.iter().any(|message| {
+                let TranscriptMessage::Message { metadata, .. } = message;
+                metadata.id.as_ref() == Some(head)
+            })
+        });
+        if older || reaches_head {
+            if let Some(candidate) = candidate {
+                state.source_head = Some(candidate.into());
+            }
+            state.older_cursor = page.older_cursor.clone();
+        }
     }
-    fn apply_event(&self, event: &SseEvent) {
+    fn apply_event(&self, event: &SseEvent) -> bool {
         if event.name == "snapshot" {
             if let Ok(snapshot) = serde_json::from_str::<super::InitialSessionSnapshot>(&event.data)
             {
@@ -1277,7 +1462,7 @@ impl Conversation {
                         .as_ref()
                         .is_some_and(|execution| execution.session_id != self.id)
                 {
-                    return;
+                    return true;
                 }
                 self.commit(|state| {
                     state.overview = Arc::new(
@@ -1303,7 +1488,7 @@ impl Conversation {
                     history.refresh_if_observed();
                 }
             }
-            return;
+            return true;
         }
         if event.name == "session_updated" {
             if let Ok(snapshot) = serde_json::from_str::<super::SessionSnapshot>(&event.data) {
@@ -1311,13 +1496,23 @@ impl Conversation {
                     self.commit(|state| state.overview = Arc::new(snapshot.overview()));
                 }
             }
-            return;
+            return true;
         }
         let Ok(Some(event)) = decode_sse_event(event) else {
-            return;
+            return true;
         };
         match event {
             DecodedSseEvent::Transcript(message) => {
+                let TranscriptMessage::Message { metadata, .. } = &message;
+                if metadata.source_epoch.as_ref().is_some_and(|epoch| {
+                    self.source_epoch
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .is_some_and(|current| current != epoch)
+                }) {
+                    return true;
+                }
                 if let Some(device) = self.device.upgrade() {
                     if let Some((store, node)) = &device.cache {
                         if let Err(error) = store.cache_delivered_message(
@@ -1327,7 +1522,7 @@ impl Conversation {
                             self.cache_generation,
                         ) {
                             self.commit(|s| s.error = Some(error.to_string()));
-                            return;
+                            return false;
                         }
                     }
                 }
@@ -1337,14 +1532,16 @@ impl Conversation {
                     Ok(updates) => updates,
                     Err(error) => {
                         self.commit(|s| s.error = Some(error.to_string()));
-                        return;
+                        return false;
                     }
                 };
                 if let Some(id) = &metadata.id {
                     *self.confirmed_anchor.lock().unwrap() = Some(id.clone());
                 }
-                self.acknowledge(std::slice::from_ref(&message));
                 self.commit(|s| {
+                    if s.source_head.is_none() {
+                        s.source_head = metadata.id.clone();
+                    }
                     if s.delivered_message(&message) {
                         if let Some(id) = &metadata.id {
                             s.message_activity.record(id.clone());
@@ -1380,6 +1577,7 @@ impl Conversation {
             }
             _ => {}
         }
+        true
     }
     pub(super) fn confirm_status(&self, sessions: &[SessionSummary], online: bool) {
         let status = sessions
@@ -1425,7 +1623,33 @@ impl Conversation {
             return;
         };
         let queued = device.outbox();
+        let mut confirmed = Vec::new();
+        if let Some((store, node)) = &device.cache {
+            let ids: Vec<_> = self
+                .owned
+                .lock()
+                .unwrap()
+                .deliveries
+                .keys()
+                .cloned()
+                .collect();
+            for id in ids {
+                if !queued.by_message_id.contains_key(&id) {
+                    match store.confirmed_message(node, &self.id, &id, self.cache_generation) {
+                        Ok(Some(message)) => confirmed.push(message),
+                        Ok(None) => {}
+                        Err(error) => {
+                            self.commit(|state| state.error = Some(error.to_string()));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         self.commit(|s| {
+            for message in confirmed {
+                s.delivered_message(&message);
+            }
             for message in queued.items.iter().filter(|m| m.session_id == self.id) {
                 let id = format!("client-{}-{}", self.id, message.request_id);
                 let missing = s.index_of(&id).is_none();
@@ -1451,6 +1675,7 @@ impl Conversation {
                                 .get(&message.request_id)
                                 .cloned()
                                 .unwrap_or_default(),
+                            error: message.error.clone(),
                         }),
                     );
                 }

@@ -1,4 +1,4 @@
-//! 会话运行时。目标架构见 `docs/zork-agent-architecture.md`。
+//! 会话运行时。目标架构见 `docs/design/agent-runtime.md`。
 
 pub mod compression;
 pub mod context;

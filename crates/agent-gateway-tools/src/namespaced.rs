@@ -1,6 +1,5 @@
-//! Named device/MCP/skill capabilities share targets and durable state groups.
+//! Named device and MCP capabilities use the ordinary tool lifecycle.
 use super::*;
-use zork_agent::session::{events::OutstandingItem, tools::ToolState};
 
 struct Named {
     base: String,
@@ -8,85 +7,7 @@ struct Named {
     name: String,
     fields: Vec<String>,
 }
-struct NodeState;
-impl ToolCompatibility for NodeState {
-    fn state_namespace(&self) -> Option<&'static str> {
-        Some("device.exec")
-    }
-    fn migrate_result(&self, v: u32, data: Value) -> Result<Value, String> {
-        if v == 2 {
-            // Current calls use the executor's pending set. Version 1 results
-            // still replay through the legacy receipt fold without data loss.
-            Ok(Value::Null)
-        } else if v == 1 {
-            Ok(data)
-        } else {
-            Err("Unsupported node tool result".into())
-        }
-    }
-    fn migrate_state(&self, state: ToolState) -> Result<ToolState, String> {
-        if state.schema_version == 1 {
-            Ok(state)
-        } else {
-            Err("Unsupported node tool state".into())
-        }
-    }
-    fn initial_state(&self) -> Option<ToolState> {
-        Some(ToolState {
-            schema_version: 1,
-            value: json!({}),
-        })
-    }
-    fn fold(&self, state: Option<&ToolState>, result: &Value) -> Result<Option<ToolState>, String> {
-        let mut value = state.map(|s| s.value.clone()).unwrap_or(json!({}));
-        if let Some(pending) = result["pending_delivery"].as_bool() {
-            if pending {
-                value["pending_delivery"] = json!("delivery_unknown");
-            } else {
-                value
-                    .as_object_mut()
-                    .ok_or("Invalid node state")?
-                    .remove("pending_delivery");
-            }
-        }
-        if let Some(items) = result["operations"].as_array() {
-            for item in items {
-                value = self
-                    .fold(
-                        Some(&ToolState {
-                            schema_version: 1,
-                            value,
-                        }),
-                        item,
-                    )?
-                    .ok_or("Missing state")?
-                    .value;
-            }
-        }
-        if let (Some(id), Some(status)) =
-            (result["operation_id"].as_str(), result["state"].as_str())
-        {
-            if matches!(
-                status,
-                "accepted" | "dispatching" | "running" | "outcome_unknown"
-            ) {
-                value[id] = json!({"state":status,"target":result["target"]});
-            } else {
-                value
-                    .as_object_mut()
-                    .ok_or("Invalid node state")?
-                    .remove(id);
-            }
-        }
-        Ok(Some(ToolState {
-            schema_version: 1,
-            value,
-        }))
-    }
-    fn outstanding(&self, state: Option<&ToolState>) -> Vec<OutstandingItem> {
-        state.and_then(|s|s.value.as_object()).into_iter().flatten().map(|(id,v)|OutstandingItem{kind:"device".into(),id:id.clone(),summary:format!("Node operation {id}: {v}. Use device.status or device.recover; unknown effects must not be repeated.")}).collect()
-    }
-}
+
 fn add(
     registry: &Arc<ToolRegistry>,
     base: &str,
@@ -96,11 +17,7 @@ fn add(
     required: Vec<&str>,
     http: &reqwest::Client,
 ) -> anyhow::Result<()> {
-    let compatibility: Arc<dyn ToolCompatibility> = if name.starts_with("mcp.") {
-        Arc::new(mcp::McpState)
-    } else {
-        Arc::new(NodeState)
-    };
+    let compatibility: Arc<dyn ToolCompatibility> = Arc::new(history::Results);
     let fields = properties
         .as_object()
         .expect("tool properties")
@@ -109,7 +26,7 @@ fn add(
         .collect();
     let owned = name.to_owned();
     let activity_name = owned.clone();
-    registry.register(Arc::new(ToolInstance::new(ToolContract{name:owned.clone(),version:ToolVersion::new(if name.starts_with("mcp.") { "node-tools-5" } else { "node-tools-4" })?,initial_description:description.into(),detailed_description:format!("{description} target is the exact Gateway identity returned by device.list, not a display name. Omit target for this execution node. Identity and delivery deduplication come from ToolContext. Operations complete through ordinary tool completion events. Use tool.cancel with the invocation ID to interrupt pending work. Live output is available at .zork/live-<invocation_id>.log in this session workspace; read it with file.read. The completion result includes output_path. Do not repeat effects when the result says outcome_unknown."),input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(Named{base:base.into(),http:http.clone(),name:owned,fields}),compatibility)?.with_activity(move|args|activity(&activity_name,args)).advertise(!legacy(name))));
+    registry.register(Arc::new(ToolInstance::new(ToolContract{name:owned.clone(),version:ToolVersion::new(if name.starts_with("mcp.") { "node-tools-6" } else { "node-tools-4" })?,initial_description:description.into(),detailed_description:format!("{description} target is the exact Gateway identity returned by device.list, not a display name. Omit target for this execution node. Identity and delivery deduplication come from ToolContext. Operations complete through ordinary tool completion events. Use tool.cancel with the invocation ID to interrupt pending work. Live output is available at .zork/live-<invocation_id>.log in this session workspace; read it with file.read. The completion result includes output_path. Do not repeat effects when the result says outcome_unknown."),input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(Named{base:base.into(),http:http.clone(),name:owned,fields}),compatibility)?.with_activity(move|args|activity(&activity_name,args))));
     Ok(())
 }
 pub fn register(
@@ -120,62 +37,20 @@ pub fn register(
     let string = || json!({"type":"string","minLength":1});
     let target = json!({"target":string()});
     for (name,description,extra,required) in [
-        ("device.list","Discover manageable Mesh Gateways, their identity, environment and connectivity. Use this before selecting a device.",json!({}),vec![]),
+        ("device.list","Discover Mesh Gateways, their identity, environment and connectivity. Use this before selecting a device.",json!({}),vec![]),
         ("device.inspect","Inspect the target Gateway's OS, commands and managed workspace location.",json!({}),vec![]),
-        ("device.agents","List Agent IDs and names on the target node for skill binding.",json!({}),vec![]),
-        ("device.exec","Execute the user's authorized command on the target device to prepare dependencies or files. Completes when the command exits; output is streamed to the ordinary live log. Do not background the command with &; execution is already asynchronous. cwd must be an absolute path on the TARGET device; omitted cwd is isolated by caller session. No automatic execution replay after Gateway restart.",json!({"command":{"type":"string","minLength":1,"maxLength":65536},"cwd":string(),"env":{"type":"object","additionalProperties":{"type":"string"}}}),vec!["command"]),
-        ("device.status","Read an operation's state and result. A successful query can report a failed operation. cancelled/timed_out are terminal; result.process_state reports exited or not_started. Do not keep polling or recover terminal operations. Prior effects are not rolled back. Reuse its operation_id; target can be recovered from the caller's receipt.",json!({"operation_id":string()}),vec!["operation_id"]),
-        ("device.read","Read captured command output in bounded pages using next_offset. Reading output succeeds even if the command failed or was cancelled. base64 preserves exact bytes; text is a display preview.",json!({"operation_id":string(),"offset":{"type":"integer","minimum":0}}),vec!["operation_id"]),
-        ("device.cancel","Request interruption of an owned device operation. Poll device.status for cancelled; process_state=exited or not_started confirms no owned process remains, without undoing prior effects. outcome_unknown means termination could not be confirmed.",json!({"operation_id":string()}),vec!["operation_id"]),
-        ("device.recover","Recover original device/skill operation receipts after a lost reply or caller restart.",json!({}),vec![]),
-    ]{let mut props=target.clone();props.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());add(registry,base,name,description,props,required,http)?;}
-    let package = json!({"type":"object","properties":{"content":string(),"resources":{"type":"array","maxItems":32,"items":{"type":"object","properties":{"path":string(),"base64":{"type":"string"},"executable":{"type":"boolean"}},"required":["path","base64"],"additionalProperties":false}}},"required":["content"],"additionalProperties":false});
-    for (name,description,extra,required) in [
-        ("skill.install","Install a complete skill manifest plus resource files on a target Gateway. Package JSON is limited to 96 KiB; resources use relative paths and base64. Installation does not automatically bind it to every Agent.",json!({"package":package}),vec!["package"]),
-        ("skill.import","Import a prepared skill directory from the target device, including resource files. Hidden entries and symlinks are not imported. Use device.exec to fetch or prepare the directory first.",json!({"path":string()}),vec!["path"]),
-        ("skill.installed","List managed skill packages and their current revisions on a target Gateway.",json!({"cursor":string()}),vec![]),
-        ("skill.export","Read a complete managed skill package for inspection or transfer. expected_revision optionally pins the snapshot.",json!({"skill_id":string(),"expected_revision":string()}),vec!["skill_id"]),
-        ("skill.share","Copy a specific skill revision and resources from target to destination Gateway. Both nodes must authorize management; installation on the destination does not bind it automatically.",json!({"skill_id":string(),"expected_revision":string(),"destination":string()}),vec!["skill_id","expected_revision","destination"]),
-        ("skill.bindings","List Agents bound to a managed skill on its target node.",json!({"skill_id":string()}),vec!["skill_id"]),
-        ("skill.bind","Bind a managed skill revision to an explicit Agent on the same target node; preserves its other skill sources. Use device.agents to select the Agent.",json!({"skill_id":string(),"expected_revision":string(),"agent_id":string()}),vec!["skill_id","expected_revision","agent_id"]),
-        ("skill.unbind","Remove only this managed skill from the specified Agent's sources, preserving all other sources.",json!({"skill_id":string(),"expected_revision":string(),"agent_id":string()}),vec!["skill_id","expected_revision","agent_id"]),
-        ("skill.uninstall","Archive an unbound managed skill and its resources. Inspect skill.bindings and unbind the selected Agents first. Files are preserved for recovery.",json!({"skill_id":string(),"expected_revision":string()}),vec!["skill_id","expected_revision"]),
     ]{let mut props=target.clone();props.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());add(registry,base,name,description,props,required,http)?;}
     let properties = mcp::properties();
     for (op,description,fields,required) in [
-        ("setup","Compatibility MCP setup guide. Prefer device.list and device.inspect for selecting and preparing a node.",vec![],vec![]),
-        ("installed","List MCP installations on a target node, including current configuration revisions.",vec!["cursor"],vec![]),
-        ("configure","Inspect an MCP server configuration and credential references on its target node.",vec!["server_id"],vec!["server_id"]),
-        ("install","Install MCP configuration on a selected device. First prepare missing dependencies with device.exec; then probe the installation. Choose sharing explicitly in config.grant. Grants restrict remote callers; local Agents on the owning node retain access.",vec!["config"],vec!["config"]),
-        ("probe","Probe an installed MCP on its target node before claiming it is ready. This management check verifies connectivity, not permission to call tools; ordinary calls still enforce grant and tool_allowlist.",vec!["server_id"],vec!["server_id"]),
-        ("update","Replace an MCP configuration using the current expected_revision.",vec!["server_id","config","expected_revision"],vec!["server_id","config","expected_revision"]),
-        ("enable","Enable an MCP installation using its current expected_revision.",vec!["server_id","expected_revision"],vec!["server_id","expected_revision"]),
-        ("disable","Disable an MCP installation using its current expected_revision.",vec!["server_id","expected_revision"],vec!["server_id","expected_revision"]),
-        ("share","Change an MCP server's remote sharing grant using its current expected_revision. selected does not restrict local Agents on the owning node; this does not change management permission.",vec!["server_id","expected_revision","grant"],vec!["server_id","expected_revision","grant"]),
+        ("list","List MCP installations on a target node, including disabled installations and current configuration revisions.",vec!["cursor"],vec![]),
+        ("install","Install MCP configuration on a selected device. Prepare dependencies on the target node, then use inspect to verify connectivity. Mesh members share its enabled tools.",vec!["config"],vec!["config"]),
+        ("update","Update the supplied MCP configuration fields using the current expected_revision. Omitted fields are preserved; a supplied transport replaces the entire transport. Set config.enabled to enable or disable the installation.",vec!["server_id","config","expected_revision"],vec!["server_id","config","expected_revision"]),
         ("uninstall","Uninstall an MCP server using its current expected_revision.",vec!["server_id","expected_revision"],vec!["server_id","expected_revision"]),
         ("search","Search usable MCP services across Mesh; optionally filter target. Results include target and server_id.",vec!["query","cursor"],vec![]),
-        ("inspect","Read MCP tools or one specific tool's TypeScript parameter definition and binding_revision on the selected target/server_id. mcp_disabled means the installation is preserved but disabled; mcp_tool_not_allowed means its tool_allowlist excludes this tool; mcp_access_denied means caller authorization failed.",vec!["server_id","tool","cursor"],vec!["server_id"]),
+        ("inspect","Inspect MCP configuration, credential references and connection status on the selected target/server_id. Enabled installations are checked live and return tool summaries; supply tool for its TypeScript parameters and binding_revision. Disabled, busy or unreachable installations still return their configuration so they can be updated. Secret values are never resolved into the result.",vec!["server_id","tool","cursor"],vec!["server_id"]),
         ("call","Call the inspected MCP tool with its binding_revision; completes with the actual MCP result. mcp_disabled means the server is disabled; mcp_tool_not_allowed means the tool is excluded; mcp_definition_changed means inspect the current definition before a new call. Only not_dispatched confirms no dispatch. An interrupted call may have effects even when the error identifies a policy change; uncertain outcomes must not be repeated.",vec!["server_id","tool","binding_revision","arguments"],vec!["server_id","tool","binding_revision","arguments"]),
-        ("status","Read an MCP invocation state/result using its operation_id. Query success does not mean the invocation succeeded; inspect state/result.",vec!["operation_id"],vec!["operation_id"]),
-        ("read","Read a large MCP result using operation_id and byte offset.",vec!["operation_id","offset"],vec!["operation_id"]),
-        ("cancel","Request interruption of an MCP invocation using its operation_id.",vec!["operation_id"],vec!["operation_id"]),
-        ("recover","Recover original MCP invocation or management receipts after lost delivery.",vec![],vec![]),
-    ]{let mut props=target.clone();for field in fields{props[field]=properties.get(field).cloned().unwrap_or_else(string);}add(registry,base,&format!("mcp.{op}"),description,props,required,http)?;}
+    ]{let mut props=target.clone();for field in fields{props[field]=properties.get(field).cloned().unwrap_or_else(string);}if op=="update"{props["config"].as_object_mut().unwrap().remove("required");props["config"]["minProperties"]=json!(1);}add(registry,base,&format!("mcp.{op}"),description,props,required,http)?;}
     Ok(())
-}
-fn legacy(name: &str) -> bool {
-    matches!(
-        name,
-        "device.status"
-            | "device.read"
-            | "device.cancel"
-            | "device.recover"
-            | "mcp.status"
-            | "mcp.read"
-            | "mcp.cancel"
-            | "mcp.recover"
-            | "mcp.setup"
-    )
 }
 impl ToolImplementation for Named {
     fn execute<'a>(
@@ -185,9 +60,7 @@ impl ToolImplementation for Named {
     ) -> Pin<Box<dyn Future<Output = ToolExecution> + Send + 'a>> {
         Box::pin(async move {
             let mut execution = self.execution(context, args, false).await;
-            if !legacy(&self.name) {
-                execution.result_schema_version = 2;
-            }
+            execution.result_schema_version = 2;
             execution
         })
     }
@@ -210,16 +83,12 @@ impl ToolImplementation for Named {
     }
 }
 fn node_execution(name: &str, value: Value) -> ToolExecution {
-    let query = matches!(
-        name,
-        "device.status" | "device.read" | "device.cancel" | "device.recover"
-    );
-    let failed = !query
-        && (value["pending_delivery"] == true
-            || matches!(
-                value["state"].as_str(),
-                Some("failed" | "outcome_unknown" | "not_dispatched")
-            ));
+    let _ = name;
+    let failed = value["pending_delivery"] == true
+        || matches!(
+            value["state"].as_str(),
+            Some("failed" | "outcome_unknown" | "not_dispatched")
+        );
     let mut result = ToolExecution::success(value);
     if failed {
         result.outcome = ToolOutcome::Failed;
@@ -231,20 +100,7 @@ impl Named {
     fn mutation(&self) -> bool {
         matches!(
             self.name.as_str(),
-            "device.exec"
-                | "skill.install"
-                | "skill.import"
-                | "skill.share"
-                | "skill.bind"
-                | "skill.unbind"
-                | "skill.uninstall"
-                | "mcp.call"
-                | "mcp.install"
-                | "mcp.update"
-                | "mcp.enable"
-                | "mcp.disable"
-                | "mcp.share"
-                | "mcp.uninstall"
+            "device.exec" | "mcp.call" | "mcp.install" | "mcp.update" | "mcp.uninstall"
         )
     }
     async fn execution(
@@ -264,9 +120,7 @@ impl Named {
         .await;
         match result {
             Ok(mut value) => {
-                if !legacy(&self.name) {
-                    present_result(&self.name, &mut value);
-                }
+                present_result(&self.name, &mut value);
                 if self.mutation() {
                     if let Some(result) = value["result"].as_object_mut() {
                         result.remove("read_with");
@@ -583,29 +437,8 @@ fn normalize_mcp(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zork_agent::session::{
-        events::{SessionEvent, ToolResultData},
-        state::SessionState,
-    };
-    #[test]
-    fn rendered_mcp_help_explains_local_access_and_tool_limits() {
-        let schema = mcp::properties();
-        for field in ["config", "grant"] {
-            let text = zork_agent::session::tools::parameter_types(&schema[field]);
-            assert!(text.contains("Local Agents on the owning node"), "{text}");
-            assert!(text.contains("remote"), "{text}");
-        }
-        let text = zork_agent::session::tools::parameter_types(&schema["config"]);
-        assert!(text.contains("empty array allows none"), "{text}");
-        assert!(text.contains("omitted from mcp.search"), "{text}");
-    }
     #[test]
     fn public_results_preserve_call_identity_and_hide_transport_aliases() {
-        let mut shared =
-            json!({"tool":"skill.install","state":"succeeded","result":{"skill_id":"copy"}});
-        present_result("skill.share", &mut shared);
-        assert_eq!(shared["tool"], "skill.share");
-        assert_eq!(shared["result"]["skill_id"], "copy");
         let mut searched = json!({"items":[{"server_ref":{"owner_origin":"node","server_id":"server"},"name":"echo"}]});
         present_result("mcp.search", &mut searched);
         assert_eq!(
@@ -613,7 +446,7 @@ mod tests {
             json!({"items":[{"target":"node","server_id":"server","name":"echo"}]})
         );
         let mut installed = json!({"items":[{"server":{"server_ref":{"owner_origin":"node","server_id":"server"},"availability":"disabled"},"enabled":false}]});
-        present_result("mcp.installed", &mut installed);
+        present_result("mcp.list", &mut installed);
         assert_eq!(
             installed,
             json!({"items":[{"server":{"target":"node","server_id":"server","availability":"disabled"},"enabled":false}]})
@@ -643,25 +476,6 @@ mod tests {
         assert!(error.contains("tool_name") && error.contains("target, server_id, tool"));
         assert!(!error.contains("server_ref") && !error.contains("call_id"));
     }
-    #[test]
-    fn completed_cancellation_settles_and_queries_preserve_the_operation_outcome() {
-        let running = json!({"operation_id":"job","state":"running"});
-        let state = NodeState.fold(None, &running).unwrap();
-        let cancelled = json!({"operation_id":"job","state":"cancelled","result":{"process_state":"exited","effects_may_have_occurred":true}});
-        let done = NodeState.fold(state.as_ref(), &cancelled).unwrap();
-        assert!(NodeState.outstanding(done.as_ref()).is_empty());
-        for name in ["device.status", "device.read", "device.cancel"] {
-            let unknown =
-                json!({"operation_id":"job","state":"outcome_unknown","text":"captured output"});
-            assert_eq!(
-                node_execution(name, unknown.clone()).outcome,
-                ToolOutcome::Succeeded
-            );
-            assert_eq!(node_execution(name, unknown.clone()).data, unknown);
-            let unresolved = NodeState.fold(None, &unknown).unwrap();
-            assert_eq!(NodeState.outstanding(unresolved.as_ref()).len(), 1);
-        }
-    }
 
     #[test]
     fn parameter_rejections_preserve_plain_text_and_json_diagnostics() {
@@ -688,52 +502,6 @@ mod tests {
                 < 4200
         );
     }
-
-    #[test]
-    fn named_actions_share_pending_state_across_snapshot_replay() {
-        let registry = Arc::new(ToolRegistry::default());
-        super::super::register(&registry, "http://127.0.0.1:9".into()).unwrap();
-        for (start, finish, key, id_field) in [
-            (
-                "device.exec",
-                "device.status",
-                "device.exec",
-                "operation_id",
-            ),
-            (
-                "skill.install",
-                "device.status",
-                "device.exec",
-                "operation_id",
-            ),
-            ("mcp.call", "mcp.status", "mcp", "call_id"),
-        ] {
-            let mut state = SessionState::empty("test");
-            state.created_at_ms = Some(0);
-            let event = |tool: &str, status: &str| SessionEvent::ToolResult {
-                result: ToolResultData {
-                    images: vec![],
-                    invocation_id: format!("{tool}-result"),
-                    tool: tool.into(),
-                    outcome: ToolOutcome::Succeeded,
-                    data: json!({id_field:"01ARZ3NDEKTSV4RRFFQ69G5FAV","state":status}),
-                    result_schema_version: 1,
-                    knowledge: None,
-                    finished_at_ms: 1,
-                },
-            };
-            state.apply(&event(start, "accepted"), &registry).unwrap();
-            assert_eq!(state.outstanding(&registry).len(), 1);
-            let mut restored: SessionState =
-                serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
-            restored
-                .apply(&event(finish, "succeeded"), &registry)
-                .unwrap();
-            assert!(restored.outstanding(&registry).is_empty());
-            assert_eq!(restored.tool_states.len(), 1);
-            assert!(restored.tool_states.contains_key(key));
-        }
-    }
 }
 
 fn activity(name: &str, args: &Value) -> ToolActivity {
@@ -745,19 +513,7 @@ fn activity(name: &str, args: &Value) -> ToolActivity {
     let (zh, en) = match name {
         "device.list" => ("查看设备", "Listing devices"),
         "device.inspect" => ("查看设备环境", "Inspecting device"),
-        "device.agents" => ("查看设备伙伴", "Listing device agents"),
-        "device.exec" => ("执行设备任务", "Executing device task"),
-        "device.status" => ("查看任务状态", "Checking operation"),
-        "device.read" => ("读取任务输出", "Reading output"),
-        "device.cancel" => ("停止设备任务", "Stopping operation"),
-        "device.recover" => ("恢复设备任务", "Recovering operations"),
-        "skill.install" => ("安装技能", "Installing skill"),
-        "skill.import" => ("导入技能", "Importing skill"),
-        "skill.share" => ("共享技能", "Sharing skill"),
-        "skill.bind" => ("绑定技能", "Binding skill"),
-        "skill.unbind" => ("解绑技能", "Unbinding skill"),
-        "skill.uninstall" => ("移除技能", "Removing skill"),
-        _ => ("查看技能", "Inspecting skill"),
+        _ => ("执行命令", "Running command"),
     };
     ToolActivity::new(zh, en, "")
 }
@@ -766,104 +522,6 @@ fn activity(name: &str, args: &Value) -> ToolActivity {
 mod stream_tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    #[test]
-    fn new_catalog_has_one_interface_and_runtime_owned_request_identity() {
-        let registry = Arc::new(ToolRegistry::default());
-        super::super::register(&registry, "http://127.0.0.1:1".into()).unwrap();
-        let names = registry
-            .initial_catalog()
-            .into_iter()
-            .map(|entry| entry.name)
-            .collect::<Vec<_>>();
-        for name in [
-            "mcp",
-            "service",
-            "mcp.setup",
-            "mcp.status",
-            "mcp.read",
-            "mcp.cancel",
-            "mcp.recover",
-            "device.status",
-            "device.read",
-            "device.cancel",
-            "device.recover",
-            "agent.tasks",
-            "chat.notify",
-        ] {
-            assert!(!names.iter().any(|item| item == name), "{name}");
-            assert!(
-                registry.current_contract(name).is_some(),
-                "compatibility lost: {name}"
-            );
-        }
-        assert!(registry.current_contract("device.jobs").is_none());
-        assert!(!names.iter().any(|name| name == "device.jobs"));
-        for name in [
-            "device.exec",
-            "mcp.call",
-            "service.start",
-            "service.inspect",
-            "agent.list",
-            "agent.message",
-            "chat.send",
-            "chat.preferences",
-            "notify",
-            "skill.install",
-        ] {
-            assert!(names.iter().any(|item| item == name), "{name}");
-        }
-        for name in [
-            "browser",
-            "service.start",
-            "service.attach",
-            "service.restart",
-            "service.stop",
-            "agent.assign",
-            "agent.rework",
-            "agent.message",
-            "chat.send",
-            "notify",
-        ] {
-            let schema = registry.current_contract(name).unwrap().input_schema;
-            assert!(schema["properties"].get("request_id").is_none(), "{name}");
-            assert!(
-                !schema["required"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&json!("request_id")),
-                "{name}"
-            );
-        }
-        assert!(registry
-            .current_contract("device.exec")
-            .unwrap()
-            .input_schema["properties"]
-            .get("timeout_seconds")
-            .is_none());
-    }
-
-    #[test]
-    fn current_business_queries_do_not_recreate_legacy_pending_state() {
-        for compatibility in [
-            Arc::new(NodeState) as Arc<dyn ToolCompatibility>,
-            Arc::new(mcp::McpState),
-        ] {
-            let old = ToolState {
-                schema_version: 1,
-                value: json!({"historical":"outcome_unknown"}),
-            };
-            let query = json!({"operations":[{"operation_id":"new","state":"running"}],"calls":[{"call_id":"new","state":"running"}]});
-            let migrated = compatibility.migrate_result(2, query).unwrap();
-            assert_eq!(
-                compatibility.fold(Some(&old), &migrated).unwrap(),
-                Some(old)
-            );
-            assert!(compatibility
-                .outstanding(compatibility.fold(None, &migrated).unwrap().as_ref())
-                .is_empty());
-        }
-    }
 
     #[tokio::test]
     async fn disconnected_output_resumes_at_committed_offset_without_reexecuting() {
@@ -952,9 +610,24 @@ mod stream_tests {
             b"first\nsecond\n"
         );
         assert!(result.data.get("operation_id").is_none());
-        assert!(NodeState
-            .outstanding(NodeState.fold(None, &result.data).unwrap().as_ref())
+        assert!(history::Results
+            .outstanding(history::Results.fold(None, &result.data).unwrap().as_ref())
             .is_empty());
         std::fs::remove_dir_all(workspace).unwrap();
     }
+}
+
+pub(super) fn remote_shell(base: &str) -> anyhow::Result<Arc<dyn ToolImplementation>> {
+    Ok(Arc::new(Named {
+        base: base.into(),
+        http: reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?,
+        name: "device.exec".into(),
+        fields: ["target", "command", "cwd", "env"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    }))
 }

@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+markdown.workspace = true
 ulid.workspace = true
 zork-client-types = { path = "../zork-client-types" }
 anyhow = "1"
@@ -23,13 +24,14 @@ bytes = "1"
 reqwest.workspace = true
 thiserror = "2.0.17"
 tokio.workspace = true
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite.workspace = true
 zork-config = { path = "../zork-config" }
 zork-mesh = { path = "../zork-mesh", default-features = false }
 zork-notify = { path = "../zork-notify" }
 imbl.workspace = true
 openidconnect = { version = "=4.0.1", features = ["reqwest-blocking"], optional = true }
 zork-browser = { path = "../zork-browser", optional = true }
+rquickjs = { version = "=0.13.0", optional = true, features = ["bindgen"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
@@ -41,6 +43,7 @@ tempfile = "3"
 libc = "0.2"
 
 [features]
+local-scripts = ["dep:rquickjs"]
 headless-bench = []
 desktop = ["dep:openidconnect", "dep:zork-browser"]
 

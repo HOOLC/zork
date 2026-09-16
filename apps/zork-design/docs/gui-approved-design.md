@@ -1,1 +1,1 @@
-../../../docs/gui-approved-design.md
+../../../docs/design/interface.md

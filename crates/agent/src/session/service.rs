@@ -21,7 +21,6 @@ pub struct ServiceOptions {
     pub runner: RunnerOptions,
     pub supervisor: SupervisorOptions,
     pub tool_timeout: Option<Duration>,
-    pub tool_concurrency: usize,
     pub deadline_command_capacity: usize,
     pub deadline_wake_capacity: usize,
     pub live_event_capacity: usize,
@@ -34,7 +33,6 @@ impl Default for ServiceOptions {
             runner: RunnerOptions::default(),
             supervisor: SupervisorOptions::default(),
             tool_timeout: None,
-            tool_concurrency: 64,
             deadline_command_capacity: 4096,
             deadline_wake_capacity: 4096,
             live_event_capacity: 256,
@@ -72,7 +70,6 @@ impl SessionService {
             dependencies.tools.clone(),
             dependencies.clock.clone(),
             options.tool_timeout,
-            options.tool_concurrency,
         ));
         let (deadlines, deadline_wakes) = DeadlineScheduler::start(
             dependencies.clock.clone(),

@@ -2,6 +2,9 @@
 pub mod account;
 mod agents;
 pub mod client_settings;
+#[cfg(feature = "headless-bench")]
+mod interaction_story;
+pub(crate) mod interaction_view;
 mod mesh_settings;
 pub(crate) mod navigation;
 pub mod node;
@@ -9,6 +12,7 @@ mod notifications;
 pub(crate) mod profile_quota;
 mod profiles;
 mod resources;
+mod shared_files;
 pub mod store;
 pub mod transport;
 pub(crate) mod ui;
@@ -18,6 +22,8 @@ pub use agents::AgentsView as HeadlessAgentsView;
 pub use profiles::ProfilesView as HeadlessProfilesView;
 #[cfg(feature = "headless-bench")]
 pub use resources::ResourcesView as HeadlessResourcesView;
+#[cfg(feature = "headless-bench")]
+pub use shared_files::SharedFilesView as HeadlessSharedFilesView;
 
 use crate::components::text_input::ComposerInput;
 use crate::{
@@ -25,13 +31,18 @@ use crate::{
     design::CUE_UI,
     views::RootView,
 };
-use gpui::{div, prelude::*, px, rgb, Context, Div, Entity, FontWeight, Window};
+use gpui::{div, prelude::*, px, rgb, Context, Div, Entity, Window};
 use node::LocalNode;
 use std::sync::Arc;
 use store::{ClientStore, SavedNode};
 use zork_client_core::desktop::directory::{Directory, DirectoryData};
 
 pub use zork_client_core::desktop::{client_root, load_services};
+
+struct DesktopRuntime {
+    startup: zork_client_core::desktop::startup::Startup,
+}
+impl gpui::Global for DesktopRuntime {}
 
 pub struct DesktopRoot {
     source: Arc<Directory>,
@@ -58,6 +69,8 @@ pub struct DesktopRoot {
     pending_notification: Option<String>,
     profiles: Option<Entity<profiles::ProfilesView>>,
     resources: Option<Entity<resources::ResourcesView>>,
+    shared_files: Option<Entity<shared_files::SharedFilesView>>,
+    showing_shared_files: bool,
     resource_inspector: Option<Entity<resources::ResourcesView>>,
     service_views: std::collections::HashMap<String, (u64, Entity<resources::ResourcesView>)>,
     applications: Arc<Vec<zork_client_core::pages::ApplicationEntry>>,
@@ -91,9 +104,29 @@ pub struct DesktopRoot {
     error: Option<String>,
 }
 impl DesktopRoot {
+    pub fn install_startup(startup: zork_client_core::desktop::startup::Startup, cx: &mut gpui::App) {
+        assert!(
+            !cx.has_global::<DesktopRuntime>(),
+            "one desktop runtime per app"
+        );
+        cx.set_global(DesktopRuntime { startup });
+        cx.on_app_quit(|cx| cx.global::<DesktopRuntime>().startup.shutdown())
+            .detach();
+    }
+
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let root = client_root();
-        let source = Directory::open(&root).expect("open device-local client database");
+        if !cx.has_global::<DesktopRuntime>() {
+            Self::install_startup(
+                zork_client_core::desktop::startup::Startup::open().expect("open client runtime"),
+                cx,
+            );
+        }
+        zork_client_core::desktop::trace_startup("gui.root_begin");
+        let startup = &cx.global::<DesktopRuntime>().startup;
+        let source = startup.directory.clone();
+        let completion = startup.completion();
+        let restored = completion.try_ready();
+        zork_client_core::desktop::trace_startup("gui.directory_opened");
         let store = source.store.clone();
         let snapshot = source.snapshot();
         let client_settings = client_settings::State {
@@ -110,7 +143,6 @@ impl DesktopRoot {
         let startup_error = snapshot.error.clone();
         let local = source.local.clone();
         let identity = snapshot.account.clone();
-        let transport = source.transport.clone();
         let mut field = |label| {
             let input = cx.new(|cx| ComposerInput::new(label, cx));
             cx.observe(&input, |_, _, cx| cx.notify()).detach();
@@ -120,18 +152,6 @@ impl DesktopRoot {
         let remote_name = field("设备名称");
         let remote_origin = field("目标设备 key: 身份");
         let remote_addr = field("局域网地址（可选），例如 192.168.1.20:43120");
-        let transport_shutdown = transport.clone();
-        let shutdown = local.clone();
-        cx.on_app_quit(move |view, _| {
-            let local_closed = shutdown.shutdown();
-            let transport_closed = transport_shutdown.shutdown();
-            view.source.cancel_account();
-            async move {
-                let _ = local_closed.await;
-                let _ = transport_closed.await;
-            }
-        })
-        .detach();
         let navigation = cx.new(|cx| navigation::DeviceNavigation::new(store.clone(), &nodes, cx));
         cx.subscribe(&navigation, |v, _, action: &navigation::Navigate, cx| {
             v.navigate_device(action.clone(), cx);
@@ -168,6 +188,8 @@ impl DesktopRoot {
             pending_notification: None,
             profiles: None,
             resources: None,
+            shared_files: None,
+            showing_shared_files: false,
             resource_inspector: None,
             service_views: Default::default(),
             applications: snapshot.applications.clone(),
@@ -193,23 +215,27 @@ impl DesktopRoot {
             error: startup_error,
         };
         view.watch_directory(cx);
-        let source = view.source.clone();
-        let work = cx
-            .background_executor()
-            .spawn(async move { source.restore() });
-        cx.spawn(async move |this, cx| {
-            let result = work.await;
-            let _ = this.update(cx, |view, cx| {
-                match result {
-                    Ok(Some(node)) => view.open_node(node, cx),
-                    Ok(None) => {}
-                    Err(e) => view.error = Some(e.to_string()),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+        view.watch_data_reset(cx);
+        zork_client_core::desktop::trace_startup("gui.before_restore_dispatch");
+        if let Some(result) = restored {
+            view.apply_restored(result, cx);
+        } else {
+            cx.spawn(async move |this, cx| {
+                let result = completion.await;
+                let _ = this.update(cx, |view, cx| view.apply_restored(result, cx));
+            })
+            .detach();
+        }
+        zork_client_core::desktop::trace_startup("gui.root_created");
         view
+    }
+    fn apply_restored(&mut self, result: anyhow::Result<Option<SavedNode>>, cx: &mut Context<Self>) {
+        match result {
+            Ok(Some(node)) => self.open_node(node, cx),
+            Ok(None) => {}
+            Err(error) => self.error = Some(error.to_string()),
+        }
+        cx.notify();
     }
     fn watch_directory(&mut self, cx: &mut Context<Self>) {
         let mut updates = self.source.subscribe();
@@ -310,6 +336,17 @@ impl DesktopRoot {
         self.apply_navigation(action.destination, cx);
     }
     fn apply_navigation(&mut self, destination: navigation::Destination, cx: &mut Context<Self>) {
+        let shared=matches!(destination,navigation::Destination::SharedFiles);
+        if shared {
+            self.managing=false;
+            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|{v.set_locale(self.client_settings.locale,cx);v.set_active(true,cx);});}
+            else {let source=self.source.shared_files();let locale=self.client_settings.locale;self.shared_files=Some(cx.new(|cx|shared_files::SharedFilesView::new(source,locale,cx)));}
+        } else if self.showing_shared_files {
+            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|v.set_active(false,cx));}
+        }
+        self.showing_shared_files=shared;
+        self.navigation.update(cx,|v,cx|v.set_shared_files(shared,cx));
+        if shared {cx.notify();return;}
         if let navigation::Destination::Manage(tab) = destination {
             self.managing = true;
             self.management_tab = tab;
@@ -361,6 +398,7 @@ impl DesktopRoot {
             let active = cx.new(|cx| {
                 let mut view =
                     RootView::new_desktop(client.clone(), self.store.clone(), node.id.clone(), cx);
+                zork_client_core::desktop::trace_startup("gui.workspace_view_created");
                 view.attach_navigation(self.navigation.clone(), node.name.clone());
                 view.set_applications(self.applications.clone(), cx);
                 view
@@ -375,13 +413,13 @@ impl DesktopRoot {
             cx.subscribe(
                 &active,
                 move |desktop, _, event: &crate::views::InspectResource, cx| {
-                    match desktop.source.inspection_node(&resource_node, &event.0) {
+                    match desktop.source.inspection_node(&resource_node, &event.target) {
                         Ok(node) => {
                             let core = desktop.source.resources();
-                            let query = event.0.query.clone();
+                            let query = event.target.query.clone();
                             let locale = desktop.client_settings.locale;
                             desktop.resource_inspector = Some(cx.new(|cx| {
-                                resources::ResourcesView::inspector(core, node, query, locale, cx)
+                                resources::ResourcesView::inspector(core, node, query, locale, cx).from_source(event.source.clone(), cx)
                             }));
                         }
                         Err(error) => {
@@ -393,7 +431,7 @@ impl DesktopRoot {
                                     error.to_string(),
                                     locale,
                                     cx,
-                                )
+                                ).from_source(event.source.clone(), cx)
                             }));
                         }
                     }
@@ -405,6 +443,7 @@ impl DesktopRoot {
             let id = node.id.clone();
             let core = active.read(cx).core_device();
             sidebar.update(cx, |nav, cx| nav.bind_node(&id, core.clone(), cx));
+            zork_client_core::desktop::trace_startup("gui.workspace_navigation_bound");
             cx.subscribe(
                 &active,
                 move |desktop, _, change: &crate::views::NavigationChanged, cx| {
@@ -418,9 +457,11 @@ impl DesktopRoot {
             )
             .detach();
             self.source.bind(node.id.clone(), core, client);
+            zork_client_core::desktop::trace_startup("gui.workspace_core_bound");
             self.node_views
                 .insert(node.id.clone(), (binding, active.clone()));
             active.update(cx, |v, cx| v.start_device_updates(cx));
+            zork_client_core::desktop::trace_startup("gui.workspace_updates_started");
             active
         }))
     }
@@ -431,6 +472,7 @@ impl DesktopRoot {
         let Ok((binding, _)) = self.source.connection(&node.id) else {
             return;
         };
+        zork_client_core::desktop::trace_startup("gui.node_connection_ready");
         if let Err(error) = self.source.select(&node.id) {
             self.error = Some(error.to_string());
         }
@@ -441,6 +483,7 @@ impl DesktopRoot {
         let Some(retained) = self.ensure_node_view(&node, cx) else {
             return;
         };
+        zork_client_core::desktop::trace_startup("gui.node_view_ready");
         let profile_source = retained.read(cx).core_device().profiles();
         if let Some((_, agents, profiles, mesh)) = self
             .management_views
@@ -518,6 +561,7 @@ impl DesktopRoot {
         }
         let source = self.source.clone();
         let info_node = node.clone();
+        zork_client_core::desktop::trace_startup("gui.node_management_ready");
         cx.spawn(async move |_, _| {
             let _ = source.refresh_info(&info_node).await;
         })
@@ -843,6 +887,7 @@ impl DesktopRoot {
             .child(zork_ui::settings::device(
                 data,
                 &self.device_switch_focus,
+                self.rename_modal.source("device-rename-dialog"),
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
@@ -870,272 +915,6 @@ impl DesktopRoot {
                     .map(|(_, view)| view.clone()),
                 |body, view| body.child(view),
             )
-    }
-    fn render_nodes(&self, cx: &mut Context<Self>) -> Div {
-        let p = CUE_UI.palette;
-        let running = self.local.running();
-        let enabled = self.local_enabled;
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(ui::heading(
-                "设备",
-                if self.nodes.is_empty() {
-                    "开启本机设备，或连接一台已有设备。"
-                } else {
-                    "选择运行小伙伴的设备。"
-                },
-            ))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_4()
-                    .py_4()
-                    .child(
-                        div()
-                            .size(px(44.))
-                            .rounded(px(12.))
-                            .bg(rgb(p.selected))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(ui::icon("icons/node.svg", 22.)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(div().font_weight(FontWeight::MEDIUM).child("本机设备"))
-                            .child(div().text_size(px(12.)).text_color(rgb(p.muted)).child(
-                                if self.busy {
-                                    "处理中…"
-                                } else if running {
-                                    "运行中"
-                                } else if enabled {
-                                    "已开启，设备未运行"
-                                } else {
-                                    "已关闭"
-                                },
-                            )),
-                    )
-                    .child(
-                        ui::button(
-                            "local-node-toggle",
-                            if enabled {
-                                "关闭设备"
-                            } else {
-                                "开启本机设备"
-                            },
-                            !enabled,
-                            !self.busy,
-                        )
-                        .on_click(cx.listener(move |v, _, _, cx| {
-                            if enabled {
-                                v.stop_node(cx)
-                            } else {
-                                v.start_node(cx)
-                            }
-                        }))
-                        .automation_enabled(
-                            !self.busy,
-                            AutomationRole::Button,
-                            if enabled {
-                                "关闭设备"
-                            } else {
-                                "开启本机设备"
-                            },
-                        ),
-                    ),
-            )
-            .when(enabled && !running && !self.busy, |v| {
-                v.child(
-                    ui::button("local-node-retry", "重试启动", false, true)
-                        .on_click(cx.listener(|v, _, _, cx| v.start_node(cx)))
-                        .automation(AutomationRole::Button, "重试启动本机设备"),
-                )
-            })
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(p.muted))
-                    .pb_4()
-                    .child(if self.local.background(){"Gateway 由后台服务管理，退出客户端后继续运行。"}else{"由客户端启动的 Gateway 随客户端退出。连接已有的独立 Gateway 不改变它的运行方式。"}),
-            )
-            .when(enabled||running,|v|{
-                let background=self.local.background();let at_login=self.local.start_at_login();
-                v.child(ui::section()
-                    .child(div().flex().items_center().justify_between().gap_4()
-                        .child(div().flex_1().child("退出客户端后保持 Gateway 运行"))
-                        .child(ui::button("local-node-background",if background{"已开启"}else{"开启"},false,!self.busy)
-                            .on_click(cx.listener(move|v,_,_,cx|v.set_node_background(!background,at_login,cx)))
-                            .automation_enabled(!self.busy,AutomationRole::Button,if background{"关闭后台运行"}else{"开启后台运行"})))
-                    .when(background,|v|v.child(div().flex().items_center().justify_between().gap_4().pt_3()
-                        .child("登录系统后自动启动")
-                        .child(ui::button("local-node-login",if at_login{"已开启"}else{"开启"},false,!self.busy)
-                            .on_click(cx.listener(move|v,_,_,cx|v.set_node_background(true,!at_login,cx)))
-                            .automation_enabled(!self.busy,AutomationRole::Button,"登录系统后自动启动"))))
-                    .child(div().pt_3().text_size(px(12.)).text_color(rgb(p.muted)).child("切换后台运行不会重启任务。关闭设备会停止此设备的 Gateway，其他设备将暂时无法访问它。")))
-            })
-            .child(
-                ui::section()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .child(ui::label("其他设备"))
-                            .child(
-                                ui::button("connect-existing-node", "连接设备", false, !self.busy)
-                                    .on_click(cx.listener(|v, _, _, cx| v.start_pairing(None, cx)))
-                                    .automation_enabled(
-                                        !self.busy,
-                                        AutomationRole::Button,
-                                        "连接已有设备",
-                                    ),
-                            ),
-                    )
-                    .children(
-                        self.nodes
-                            .iter()
-                            .filter(|n| n.mesh.is_some())
-                            .cloned()
-                            .map(|node| {
-                                let open = node.clone();
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .py_2()
-                                    .child(ui::icon("icons/node.svg", 18.))
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .text_ellipsis()
-                                            .child(node.name.clone()),
-                                    )
-                                    .child(
-                                        ui::button(
-                                            format!("connect-node-{}", node.id),
-                                            "连接",
-                                            false,
-                                            !self.busy,
-                                        )
-                                        .on_click(cx.listener(move |v, _, _, cx| {
-                                            v.start_pairing(Some(open.clone()), cx)
-                                        }))
-                                        .automation_enabled(
-                                            !self.busy,
-                                            AutomationRole::Button,
-                                            "连接设备",
-                                        ),
-                                    )
-                            }),
-                    )
-                    .when(
-                        self.nodes.iter().all(|n| n.mesh.is_none()) && !self.pairing,
-                        |v| {
-                            v.child(
-                                div()
-                                    .py_3()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(p.muted))
-                                    .child("还没有连接其他设备。"),
-                            )
-                        },
-                    ),
-            )
-            .when(self.pairing, |v| {
-                v.child(
-                    ui::section()
-                        .child(ui::label("连接已有设备"))
-                        .when_some(self.mesh_identity.clone(), |v, identity| {
-                            v.child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .text_size(px(12.))
-                                            .line_height(px(20.))
-                                            .text_color(rgb(p.muted))
-                                            .child("在目标设备添加此设备，并开启客户端权限。"),
-                                    )
-                                    .child(
-                                        ui::button(
-                                            "copy-mesh-identity",
-                                            "复制我的身份",
-                                            false,
-                                            true,
-                                        )
-                                        .on_click(move |_, _, cx| {
-                                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                                identity.clone(),
-                                            ))
-                                        })
-                                        .automation(AutomationRole::Button, "复制设备身份"),
-                                    ),
-                            )
-                        })
-                        .child(ui::field("remote-name", "设备名称", &self.remote_name, cx))
-                        .child(ui::field(
-                            "remote-origin",
-                            "目标设备身份",
-                            &self.remote_origin, cx))
-                        .child(ui::field(
-                            "remote-addr",
-                            "局域网地址 · 可选",
-                            &self.remote_addr, cx))
-                        .child(
-                            div()
-                                .flex()
-                                .justify_end()
-                                .gap_2()
-                                .child(
-                                    ui::button("cancel-pairing", "取消", false, !self.busy)
-                                        .on_click(cx.listener(|v, _, _, cx| {
-                                            v.pairing = false;
-                                            cx.notify();
-                                        }))
-                                        .automation(AutomationRole::Button, "取消连接"),
-                                )
-                                .child(
-                                    ui::button(
-                                        "connect-remote",
-                                        "保存并连接",
-                                        true,
-                                        !self.busy && self.mesh_identity.is_some(),
-                                    )
-                                    .on_click(cx.listener(|v, _, _, cx| v.connect_remote(cx)))
-                                    .automation_enabled(
-                                        !self.busy && self.mesh_identity.is_some(),
-                                        AutomationRole::Button,
-                                        "保存并连接",
-                                    ),
-                                ),
-                        ),
-                )
-            })
-            .when(!running && !self.nodes.is_empty(), |v| {
-                v.child(ui::section().child(ui::label("本地记录")).children(
-                    self.nodes.clone().into_iter().map(|node| {
-                        ui::button(
-                            format!("browse-node-{}", node.id),
-                            format!("浏览 {}", node.name),
-                            false,
-                            true,
-                        )
-                        .on_click(cx.listener(move |v, _, _, cx| v.open_node(node.clone(), cx)))
-                        .automation(AutomationRole::Button, "浏览本地记录")
-                    }),
-                ))
-            })
     }
     fn render_account(&self, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{AccountAction, AccountData};
@@ -1171,8 +950,16 @@ impl DesktopRoot {
         )
     }
 }
+use zork_ui::node_directory::Host as _;
+
 impl Render for DesktopRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !(self.managing && self.management_tab == 4 && self.client_settings.page == client_settings::Page::Appearance) {
+            if let Some(view) = &self.client_settings.appearance { view.update(cx, |view, cx| view.cancel(cx)); }
+        }
+        if !(self.managing && self.management_tab == 4 && self.client_settings.page == client_settings::Page::Data) {
+            if let Some(view) = &self.client_settings.data { view.update(cx, |view, cx| view.cancel(cx)); }
+        }
         if !self.busy {
             if let Some(tag) = self.pending_notification.take() {
                 let view = cx.weak_entity();
@@ -1189,7 +976,7 @@ impl Render for DesktopRoot {
         }
         self.navigation.update(cx, |nav, cx| {
             nav.set_viewing(
-                !self.managing && !self.add_device_open && window.is_window_active(),
+                !self.managing && !self.showing_shared_files && !self.add_device_open && window.is_window_active(),
                 cx,
             )
         });
@@ -1203,10 +990,15 @@ impl Render for DesktopRoot {
             window,
             cx,
         );
+        let rename_visible = self.rename_modal.retain("device-rename-dialog", self.rename_node_id.clone(), cx).is_some();
+        let add_device_visible = self.add_device_modal.retain("add-device-dialog", self.add_device_open.then_some(()), cx).is_some();
         let width = self
             .navigation
             .read(cx)
             .width(window.viewport_size().width.as_f32());
+        if self.showing_shared_files {
+            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|v.set_width(window.viewport_size().width.as_f32()-width,cx));}
+        }
         for (id, (_, _, profiles, _)) in &self.management_views {
             let visible = self.managing
                 && self.management_tab == 0
@@ -1236,7 +1028,6 @@ impl Render for DesktopRoot {
             .font_family("Inter Variable")
             .text_size(px(13.))
             .on_mouse_move(cx.listener(|v, e: &gpui::MouseMoveEvent, w, cx| {
-                v.drag_message_preview(e.position.y.as_f32(), cx);
                 v.navigation.update(cx, |n, cx| {
                     n.resize(e.position.x.as_f32(), w.viewport_size().width.as_f32(), cx)
                 });
@@ -1244,15 +1035,13 @@ impl Render for DesktopRoot {
             .on_mouse_up(
                 gpui::MouseButton::Left,
                 cx.listener(|v, _, _, cx| {
-                    v.finish_message_preview_drag(cx);
                     v.navigation.update(cx, |n, cx| n.finish_resize(cx));
                 }),
             );
-        let shell = shell.on_mouse_up_out(
-            gpui::MouseButton::Left,
-            cx.listener(|v, _, _, cx| v.finish_message_preview_drag(cx)),
-        );
-        let content = if !self.managing {
+        let content = if self.showing_shared_files {
+            div().size_full().flex().child(self.navigation.clone())
+                .child(div().flex_1().min_w_0().h_full().when_some(self.shared_files.clone(),|v,view|v.child(view)))
+        } else if !self.managing {
             div()
                 .size_full()
                 .when_some(self.active.clone(), |v, a| v.child(a))
@@ -1428,6 +1217,7 @@ impl Render for DesktopRoot {
                                                             cx,
                                                         )
                                                     }))
+                                                    .map(|tab| self.add_device_modal.source("add-device-dialog").bind(tab, "连接设备", ui::ActionStyle { quiet: true, icon: Some("icons/plus.svg"), ..Default::default() }))
                                                     .automation(AutomationRole::Button, "连接设备"),
                                             ),
                                     ),
@@ -1488,84 +1278,20 @@ impl Render for DesktopRoot {
             .when_some(self.resource_inspector.clone(), |shell, view| {
                 shell.child(view)
             })
-            .when(self.rename_node_id.is_some(), |shell| {
-                shell.child(ui::modal(
-                    "device-rename-dialog",
-                    "修改设备名称",
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_3()
-                        .child(ui::field(
-                            "device-name-input",
-                            "名称",
-                            &self.rename_input,
-                            cx,
-                        ))
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(rgb(p.muted))
-                                .child("连接此设备的小伙伴都会看到新名称。"),
-                        ),
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            ui::button("device-name-cancel", "取消", false, !self.rename_busy)
-                                .on_click(cx.listener(|v, _, _, cx| {
-                                    if !v.rename_busy {
-                                        v.rename_node_id = None;
-                                        cx.notify();
-                                    }
-                                })),
-                        )
-                        .child(
-                            ui::busy_button(
-                                "device-name-save",
-                                if self.rename_busy {
-                                    "保存中…"
-                                } else {
-                                    "保存"
-                                },
-                                true,
-                                !self.rename_busy,
-                                self.rename_busy,
-                            )
-                            .on_click(cx.listener(|v, _, _, cx| v.save_device_name(cx)))
-                            .automation_enabled(
-                                !self.rename_busy,
-                                AutomationRole::Button,
-                                "保存设备名称",
-                            ),
-                        ),
-                    self.rename_error.clone(),
-                    &self.rename_modal.focus,
-                    window,
-                    cx,
-                    !self.rename_busy,
-                    |v, _, cx| {
-                        v.rename_node_id = None;
-                        cx.notify();
+            .when(rename_visible, |shell| {
+                shell.child(zork_ui::settings::rename_device::render(
+                    &self.rename_input, self.rename_busy, self.rename_error.clone(), &self.rename_modal, window, cx,
+                    |v, action, cx| match action {
+                        zork_ui::settings::rename_device::Action::Save => v.save_device_name(cx),
+                        zork_ui::settings::rename_device::Action::Cancel => { v.rename_node_id = None; cx.notify(); },
                     },
                 ))
             })
-            .when(self.add_device_open, |shell| {
-                shell.child(ui::detail_modal(
-                    "add-device-dialog",
-                    "连接设备",
-                    div()
-                        .flex()
-                        .flex_col()
-                        .when_some(self.mesh_settings.clone(), |v, e| v.child(e)),
-                    None,
-                    &self.add_device_modal.focus,
-                    window,
-                    cx,
-                    true,
-                    |v, _, cx| v.close_add_device(cx),
-                ))
+            .when(add_device_visible, |shell| {
+                let root = cx.entity().downgrade();
+                shell.children(self.mesh_settings.clone().map(|view| view.update(cx, |view, cx| view.enrollment_dialog(&self.add_device_modal, window, cx, move |cx| {
+                    let _ = root.update(cx, |v, cx| v.close_add_device(cx));
+                }))))
             })
     }
 }
@@ -1575,3 +1301,25 @@ pub use ui::settings_content as headless_settings_content;
 
 #[cfg(feature = "headless-bench")]
 pub mod stories;
+
+#[cfg(feature = "headless-bench")]
+mod notification_story;
+
+impl zork_ui::node_directory::Host for DesktopRoot {
+    fn nodes_data(&self) -> zork_ui::node_directory::Data {
+        zork_ui::node_directory::Data { nodes: self.nodes.iter().map(|n| zork_ui::node_directory::Node { id: n.id.clone(), name: n.name.clone(), remote: n.mesh.is_some() }).collect(),
+            running: self.local.running(), enabled: self.local_enabled, busy: self.busy, background: self.local.background(), start_at_login: self.local.start_at_login(),
+            pairing: self.pairing, mesh_identity: self.mesh_identity.clone(), remote_name: self.remote_name.clone(), remote_origin: self.remote_origin.clone(), remote_addr: self.remote_addr.clone() }
+    }
+    fn node_action(&mut self, action: zork_ui::node_directory::Action, cx: &mut Context<Self>) {
+        use zork_ui::node_directory::Action;
+        match action {
+            Action::Start => self.start_node(cx), Action::Stop => self.stop_node(cx),
+            Action::Background { enabled, at_login } => self.set_node_background(enabled, at_login, cx),
+            Action::Pair(id) => { let node = id.and_then(|id| self.nodes.iter().find(|n| n.id == id)).cloned(); self.start_pairing(node, cx); },
+            Action::CancelPair => { self.pairing = false; cx.notify(); }, Action::Connect => self.connect_remote(cx),
+            Action::Open(id) => { if let Some(node) = self.nodes.iter().find(|n| n.id == id).cloned() { self.open_node(node, cx); } },
+            Action::CopyIdentity => { if let Some(identity) = &self.mesh_identity { cx.write_to_clipboard(gpui::ClipboardItem::new_string(identity.clone())); } },
+        }
+    }
+}

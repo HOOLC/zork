@@ -30,7 +30,7 @@ impl GatewayDb {
         accepts_input(&self.conn.lock().expect("db mutex"), agent, target, notice)
     }
     pub fn chat_visible_message(&self, id: &str) -> Result<VisibleMessageRow> {
-        self.conn.lock().expect("db mutex").query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_messages WHERE message_id=?1",[id],super::super::map_visible_message_row).context("chat_message_not_found")
+        self.published_messages()?.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1",[id],super::super::map_visible_message_row).context("chat_message_not_found")
     }
     pub fn prepare_chat_file(workspace: &Path, path: &Path) -> Result<PreparedFile> {
         let (source_path, name, media_type, content) =
@@ -60,7 +60,7 @@ impl GatewayDb {
             .lock()
             .expect("db mutex")
             .query_row(
-                "SELECT workspace,media_type FROM artifact_catalog WHERE artifact_id=?1",
+                "SELECT workspace,media_type FROM artifact_file_catalog WHERE artifact_id=?1",
                 [id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -78,6 +78,7 @@ impl GatewayDb {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn post_chat_message(
         &self,
         request_key: &str,
@@ -102,6 +103,7 @@ impl GatewayDb {
         )
     }
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn post_chat_with_pages(
         &self,
         request_key: &str,
@@ -115,7 +117,7 @@ impl GatewayDb {
         pages: &[zork_client_types::pages::DeliveredPage],
     ) -> Result<Message> {
         self.post_chat_content(
-            request_key,
+            Some(request_key),
             id,
             chat,
             author,
@@ -131,7 +133,7 @@ impl GatewayDb {
     #[allow(clippy::too_many_arguments)]
     pub fn post_chat_content(
         &self,
-        request_key: &str,
+        request_key: Option<&str>,
         id: &str,
         chat: &str,
         author: &Author,
@@ -140,9 +142,42 @@ impl GatewayDb {
         reply_to: Option<&str>,
         mentions: &[String],
         pages: &[zork_client_types::pages::DeliveredPage],
-        interaction: Option<&zork_client_types::interaction::MessageContent>,
+        interaction: Option<&Value>,
     ) -> Result<Message> {
-        anyhow::ensure!(text.len() <= 32 * 1024, "message_too_large_submit_as_file");
+        self.post_chat_content_from_client(
+            request_key,
+            id,
+            chat,
+            author,
+            text,
+            attachments,
+            reply_to,
+            mentions,
+            pages,
+            interaction,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_chat_content_from_client(
+        &self,
+        request_key: Option<&str>,
+        id: &str,
+        chat: &str,
+        author: &Author,
+        text: &str,
+        attachments: &[PreparedFile],
+        reply_to: Option<&str>,
+        mentions: &[String],
+        pages: &[zork_client_types::pages::DeliveredPage],
+        interaction: Option<&Value>,
+        client_id: Option<&str>,
+    ) -> Result<Message> {
+        anyhow::ensure!(
+            text.len() <= zork_client_types::chat::MAX_MESSAGE_TEXT_BYTES,
+            "message_too_large_submit_as_file"
+        );
         anyhow::ensure!(
             !text.trim().is_empty() || !attachments.is_empty() || interaction.is_some(),
             "empty_message"
@@ -154,7 +189,26 @@ impl GatewayDb {
         anyhow::ensure!(files::valid(&refs), "invalid_attachments");
         let mut conn = self.conn.lock().expect("db mutex");
         let tx = conn.transaction()?;
-        command_active(&tx, request_key)?;
+        if let Some(key) = request_key {
+            command_active(&tx, key)?;
+        }
+        let business = interaction.and_then(zork_client_types::interaction::MessageContent::parse);
+        let hydrated = business.as_ref()
+            .map(|content| super::cards::hydrate(&tx, content, id, &author.id))
+            .transpose()?
+            .map(serde_json::to_value)
+            .transpose()?;
+        let interaction = hydrated.as_ref().or(interaction);
+        if let Some(request_id) = business.as_ref().map(|content| content.request_id.as_str()) {
+            if let Some(existing) = super::cards::existing_binding(&tx, request_id, chat)? {
+                if let Some(key) = request_key {
+                    finish(&tx, key, &serde_json::to_value(&existing)?)?;
+                }
+                tx.commit()?;
+                self.flush_messages(&conn)?;
+                return Ok(existing);
+            }
+        }
         let channel = tx
             .query_row(
                 &format!("{CHANNEL_SELECT} WHERE chat_id=?1"),
@@ -170,17 +224,18 @@ impl GatewayDb {
                 "attachment_snapshot_changed"
             );
             let existing: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM artifact_catalog WHERE artifact_id=?1)",
+                "SELECT EXISTS(SELECT 1 FROM artifact_file_catalog WHERE artifact_id=?1)",
                 [&file.reference.id],
                 |r| r.get(0),
             )?;
             if existing {
-                let owned:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM conversation_artifacts WHERE artifact_id=?1 AND session_key=?2 UNION ALL SELECT 1 FROM task_artifacts a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1 AND t.session_key=?2)",params![file.reference.id,channel.session_key],|r|r.get(0))?;
+                let owned:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM conversation_file_snapshots WHERE artifact_id=?1 AND session_key=?2 UNION ALL SELECT 1 FROM task_file_snapshots a JOIN product_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=?1 AND t.session_key=?2)",params![file.reference.id,channel.session_key],|r|r.get(0))?;
                 anyhow::ensure!(owned, "attachment_not_in_chat");
             } else {
-                let version:i64=tx.query_row("SELECT COALESCE(MAX(version),0)+1 FROM conversation_artifacts WHERE session_key=?1 AND source_path=?2",params![channel.session_key,file.source_path],|r|r.get(0))?;
-                tx.execute("INSERT INTO conversation_artifacts(artifact_id,session_key,name,source_path,media_type,workspace,content,version,created_at,caption) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL)",
-                    params![file.reference.id,channel.session_key,file.reference.name,file.source_path,file.media_type,file.workspace,file.content,version,now])?;
+                let version:i64=tx.query_row("SELECT COALESCE(MAX(version),0)+1 FROM conversation_file_snapshots WHERE session_key=?1 AND source_path=?2",params![channel.session_key,file.source_path],|r|r.get(0))?;
+                let snapshot = self.freeze_file(&file.reference.name, &file.content)?;
+                tx.execute("INSERT INTO conversation_file_snapshots(artifact_id,session_key,name,source_path,media_type,workspace,snapshot,version,created_at,caption) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL)",
+                    params![file.reference.id,channel.session_key,file.reference.name,file.source_path,file.media_type,file.workspace,snapshot,version,now])?;
             }
             tx.execute(
                 "INSERT OR IGNORE INTO chat_file_metadata(artifact_id,reference) VALUES(?1,?2)",
@@ -188,7 +243,7 @@ impl GatewayDb {
             )?;
         }
         let content = files::compose(text, &refs);
-        let topics = append_visible(
+        let mut topics = append_visible(
             &tx,
             &channel,
             id,
@@ -198,11 +253,18 @@ impl GatewayDb {
             mentions,
             pages,
             interaction,
+            client_id,
             &now,
         )?;
+        if let Some(request_id) = business.as_ref().map(|content| content.request_id.as_str()) {
+            topics.extend(super::cards::bind(&tx, request_id, chat, id)?);
+        }
         let result = message(&tx, id)?;
-        finish(&tx, request_key, &serde_json::to_value(&result)?)?;
+        if let Some(key) = request_key {
+            finish(&tx, key, &serde_json::to_value(&result)?)?;
+        }
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(result)
     }
@@ -317,6 +379,7 @@ impl GatewayDb {
             params![target, page.epoch, page.through.max(position)],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         if inserted > 0 {
             topics.push(Topic::Mailbox);
             self.chat_topics.publish(topics);
@@ -365,7 +428,8 @@ pub(super) fn append_visible(
     reply_to: Option<&str>,
     mentions: &[String],
     pages: &[zork_client_types::pages::DeliveredPage],
-    interaction: Option<&zork_client_types::interaction::MessageContent>,
+    interaction: Option<&Value>,
+    client_id: Option<&str>,
     now: &str,
 ) -> Result<Vec<Topic>> {
     conn.execute("INSERT INTO visible_messages(message_id,session_key,connection_id,conversation_id,root_message_id,role,text,kind,created_at)
@@ -375,8 +439,16 @@ pub(super) fn append_visible(
         interactions::insert(conn, id, content)?;
     }
     super::super::pages::record_pages(conn, &channel.session_key, id, pages, now)?;
-    let row = conn.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_messages WHERE message_id=?1",[id],super::super::map_visible_message_row)?;
-    let topics = record(conn, &row, Some(author), reply_to, mentions, true)?;
+    let row = conn.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1",[id],super::super::map_visible_message_row)?;
+    let topics = record_with_client(
+        conn,
+        &row,
+        Some(author),
+        reply_to,
+        mentions,
+        true,
+        client_id,
+    )?;
     conn.execute(
         "UPDATE sessions SET updated_at=?2 WHERE key=?1",
         params![channel.session_key, now],

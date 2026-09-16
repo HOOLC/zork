@@ -34,7 +34,7 @@ def ok(response):
 
 def events(node, session):
     result = []
-    for path in sorted((node.root / "sessions" / session / "segments").glob("*.jsonl")):
+    for path in sorted((node.root / "shared-files/sessions" / session / "segments").glob("*.jsonl")):
         for line in path.read_text().splitlines():
             try:
                 result.append(json.loads(line)["event"])
@@ -193,7 +193,7 @@ def main():
             nonlocal counter
             counter += 1
             return ok(a.request("POST","/v1/node-tools",{"session_id":coordinator,"invocation_id":f"oracle-{counter}","tool":name,"arguments":arguments}))
-        oracle = {"managed_skills":{n.root.name:query("skill.installed",{"target":n.origin}) for n in nodes}}
+        oracle = {"skill_files":{n.root.name:[str(p.relative_to(n.root)) for p in (n.root/"skills").rglob("SKILL.md") if ".zork" not in p.parts] for n in nodes}}
         for n in nodes:
             with sqlite3.connect(n.root/"state/gateway.sqlite") as db:
                 oracle[n.root.name+"_agents"]=[json.loads(v[0]) for v in db.execute("SELECT value FROM node_agents")]

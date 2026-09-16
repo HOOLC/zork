@@ -171,6 +171,10 @@ impl ProfilesView {
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(detail: bool, cx: &mut Context<Self>) -> Self {
+        #[cfg(not(target_family = "wasm"))]
+        let client = Arc::new(GatewayClient::fixture(zork_ui::stories::page_fixture(),
+            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
+        #[cfg(target_family = "wasm")]
         let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
         view.catalog = serde_json::from_str::<Value>(include_str!(
@@ -785,6 +789,7 @@ impl ProfilesView {
                     v.edit_model(Some(edit.clone()), cx);
                 }
             }))
+            .map(|row| self.modal.source("model-editor-dialog").bind(row, id.clone(), ui::ActionStyle { disabled: self.busy, ..Default::default() }))
             .automation(AutomationRole::Button, format!("编辑 {id}"))
             .into_any_element()
     }
@@ -1113,6 +1118,10 @@ impl Render for ProfilesView {
             None
         };
         self.modal.sync(modal_key, window, cx);
+        let create_visible = self.modal.retain("profile-create-dialog", show.then_some(()), cx).is_some();
+        let detail_visible = self.modal.retain("profile-detail-dialog", self.detail.clone().filter(|_| !self.model_form_open), cx);
+        let model_visible = self.modal.retain("model-editor-dialog", self.detail.clone().filter(|_| self.model_form_open).map(|detail| (detail, self.editing_model.clone())), cx);
+        let displayed_detail = detail_visible.clone().or_else(|| model_visible.as_ref().map(|(detail, _)| detail.clone()));
         let supports = self
             .selection()
             .is_some_and(|(_, b)| b["deviceCode"] == true);
@@ -1189,7 +1198,7 @@ impl Render for ProfilesView {
                     )
                 },
             )
-            .when(show, |v| {
+            .when(create_visible, |v| {
                 v.child(ui::modal(
                     "profile-create-dialog",
                     "添加模型连接",
@@ -1208,37 +1217,20 @@ impl Render for ProfilesView {
                         )
                         .child(ui::form_field(
                             "接入方式",
-                            ui::choice_group(
+                            zork_ui::components::liquid::controls::deferred_segmented(
                                 "profile-access-active",
-                                usize::from(!self.subscription),
-                                2,
-                            )
-                            .children(
-                                [(true, "订阅账号"), (false, "API 接入")].into_iter().map(
-                                    |(subscription, label)| {
-                                        ui::segment(
-                                            format!("profile-access-{subscription}"),
-                                            label,
-                                            self.subscription == subscription,
-                                            !self.busy && self.attempt.is_none(),
-                                        )
-                                        .flex_1()
-                                        .justify_center()
-                                        .on_click(cx.listener(move |v, _, _, cx| {
-                                            if !v.busy && v.attempt.is_none() {
-                                                v.select_access(subscription);
-                                                v.key.update(cx, |i, cx| i.clear(cx));
-                                                v.base_url.update(cx, |i, cx| i.clear(cx));
-                                                zork_ui::components::region::invalidate_all(cx);
-                                            }
-                                        }))
-                                        .automation_enabled(
-                                            !self.busy && self.attempt.is_none(),
-                                            AutomationRole::Button,
-                                            label,
-                                        )
-                                    },
-                                ),
+                                [("profile-access-true", "订阅账号"), ("profile-access-false", "API 接入")]
+                                    .into_iter().map(|(id, label)| zork_ui::components::liquid::controls::Segment { id: id.into(), label: label.into(), disabled: false }).collect(),
+                                vec![], Some(usize::from(!self.subscription)), zork_ui::components::liquid::controls::SegmentKind::Choice,
+                                !self.busy && self.attempt.is_none(), p.canvas,
+                                cx.listener(|v, index: &usize, _, cx| {
+                                    if !v.busy && v.attempt.is_none() {
+                                        v.select_access(*index == 0);
+                                        v.key.update(cx, |i, cx| i.clear(cx));
+                                        v.base_url.update(cx, |i, cx| i.clear(cx));
+                                        zork_ui::components::region::invalidate_all(cx);
+                                    }
+                                }),
                             ),
                         ))
                         .child(ui::form_field("供应商", self.provider_dropdown(window, cx)))
@@ -1375,7 +1367,7 @@ impl Render for ProfilesView {
                             },
                         ),
                     self.message.clone(),
-                    &self.modal.focus,
+                    &self.modal,
                     window,
                     cx,
                     !self.busy || self.attempt.is_some(),
@@ -1384,7 +1376,7 @@ impl Render for ProfilesView {
                     },
                 ))
             })
-            .when_some(self.detail.clone(), |v, detail| {
+            .when_some(displayed_detail, |v, detail| {
                 let profile_id = detail["profile_id"].as_str().unwrap_or_default().to_owned();
                 let title = detail["name"]
                     .as_str()
@@ -1541,6 +1533,7 @@ impl Render for ProfilesView {
                                                     v.edit_model(None, cx);
                                                 }
                                             }))
+                                            .map(|button| self.modal.source("model-editor-dialog").bind(button, "手动添加", ui::ActionStyle { icon: Some("icons/plus.svg"), disabled: self.busy, ..Default::default() }))
                                             .automation(AutomationRole::Button, "手动添加模型"),
                                     ),
                             ),
@@ -1578,7 +1571,7 @@ impl Render for ProfilesView {
                             )
                             .automation(AutomationRole::ScrollArea, "模型列表"),
                     );
-                v.when(!self.model_form_open, |v| {
+                v.when(detail_visible.is_some(), |v| {
                     v.child(ui::detail_modal_with_title_action(
                         "profile-detail-dialog",
                         title,
@@ -1623,17 +1616,17 @@ impl Render for ProfilesView {
                         ),
                         content,
                         self.message.clone(),
-                        &self.modal.focus,
+                        &self.modal,
                         window,
                         cx,
                         !self.busy,
                         |v, _, cx| v.close_dialog(cx),
                     ))
                 })
-                .when(self.model_form_open, |v| {
+                .when(model_visible.is_some(), |v| {
                     v.child(ui::modal(
                         "model-editor-dialog",
-                        if self.editing_model.is_some() {
+                        if model_visible.as_ref().is_some_and(|(_, editing)| editing.is_some()) {
                             "编辑模型"
                         } else {
                             "添加模型"
@@ -1816,7 +1809,7 @@ impl Render for ProfilesView {
                                     ),
                             ),
                         self.message.clone(),
-                        &self.modal.focus,
+                        &self.modal,
                         window,
                         cx,
                         !self.busy,
@@ -1872,6 +1865,7 @@ impl ProfilesView {
                             v.message = None;
                             zork_ui::components::region::invalidate_all(cx);
                         }))
+                        .map(|button| self.modal.source("profile-create-dialog").bind(button, "添加连接", ui::ActionStyle { icon: Some("icons/plus.svg"), ..Default::default() }))
                         .automation(AutomationRole::Button, "添加连接"),
                 )
             })
@@ -1899,11 +1893,11 @@ impl ProfilesView {
             .and_then(|b| b["label"].as_str())
             .unwrap_or("");
 
-        div()
-            .id(format!("profile-detail-{id}"))
+        ui::quiet_button(format!("profile-detail-{id}"), "", true, ui::IconButtonSize::Standard)
+            .radius(ui::FIELD_RADIUS)
+            .font_weight(gpui::FontWeight::NORMAL)
+            .justify_start()
             .w_full()
-            .cursor_pointer()
-            .hover(|v| v.bg(rgb(p.sidebar_hover)))
             .on_click(cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)))
             .h(px(80.))
             .px(px(12.))
@@ -1988,6 +1982,7 @@ impl ProfilesView {
                         "profile_unverified"
                     })),
             )
+            .map(|row| self.modal.source("profile-detail-dialog").bind(row, profile.display_name().to_owned(), ui::ActionStyle { image: Some(ui::provider_path(&profile.provider)), ..Default::default() }))
             .automation(AutomationRole::Button, profile.display_name().to_owned())
             .into_any_element()
     }

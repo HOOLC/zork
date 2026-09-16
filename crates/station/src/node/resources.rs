@@ -13,7 +13,9 @@ use std::{
     io::Read,
     path::{Component, Path as FsPath},
 };
+use zork_agent::session::ports::FileSystem;
 use zork_client_types::resources::*;
+use zork_config::tree::Reference;
 
 fn denied() -> Response {
     error(
@@ -29,18 +31,22 @@ fn reply<T: serde::Serialize>(result: Result<T>) -> Response {
 }
 fn catalog(state: &NodeState, id: &str) -> Result<(AgentSkills, Vec<zork_agent::skills::Skill>)> {
     let agent = state.app.db.node_agent(id)?.context("Agent not found")?;
-    let root = &state.app.config.data_root;
-    let sources = zork_config::load_config(root)?
-        .skills
-        .sources(root, &agent.skill_paths)?;
-    let catalog = zork_agent::skills::discover(&sources);
+    let catalog = state.app.files.catalog_sources(&agent.skill_paths)?;
     let skills = catalog
         .skills
         .iter()
         .map(|s| SkillEntry {
-            id: blake3::hash(s.path.to_string_lossy().as_bytes())
-                .to_hex()
-                .to_string(),
+            id: blake3::hash(
+                Reference::parse(&s.path.to_string_lossy())
+                    .map(|mut r| {
+                        r.root = None;
+                        r.uri()
+                    })
+                    .unwrap_or_else(|_| s.path.to_string_lossy().into_owned())
+                    .as_bytes(),
+            )
+            .to_hex()
+            .to_string(),
             name: s.name.clone(),
             description: s.description.clone(),
             path: s.path.to_string_lossy().into_owned(),
@@ -75,6 +81,7 @@ pub(super) async fn skills(
 pub(super) struct ReadQuery {
     file: Option<String>,
     log: Option<String>,
+    reference: Option<String>,
 }
 pub(super) async fn skill(
     State(state): State<NodeState>,
@@ -87,22 +94,128 @@ pub(super) async fn skill(
     }
     reply(
         tokio::task::spawn_blocking(move || -> Result<ResourceDetails> {
-            let (public, catalog) = catalog(&state, &id)?;
-            let position = public
-                .skills
-                .iter()
-                .position(|entry| entry.id == skill)
-                .context("Skill is no longer in this Agent's catalog")?;
-            let selected = &catalog[position];
-            let root = selected.path.parent().context("Skill directory missing")?;
+            let pinned;
+            let current;
+            let selected = if let Some(reference) = &query.reference {
+                let document = Reference::parse(reference)?;
+                anyhow::ensure!(
+                    document.snapshot.is_some()
+                        && document.path.rsplit('/').next() == Some("SKILL.md"),
+                    "a Skill inspection requires a fixed manifest reference"
+                );
+                let mut identity = document.clone();
+                identity.root = None;
+                anyhow::ensure!(
+                    blake3::hash(identity.uri().as_bytes()).to_hex().as_str() == skill,
+                    "Skill reference does not match selection"
+                );
+                let mut source = document.clone();
+                source.path = source
+                    .path
+                    .rsplit_once('/')
+                    .map_or("", |(parent, _)| parent)
+                    .into();
+                source.root = None;
+                let page =
+                    state
+                        .app
+                        .files
+                        .read_page(std::path::Path::new(reference), 0, 128 * 1024)?;
+                anyhow::ensure!(
+                    page.next_offset.is_none(),
+                    "Skill manifest exceeds read bound"
+                );
+                pinned = zork_agent::skills::Skill::from_document(
+                    reference.into(),
+                    source.uri().into(),
+                    &String::from_utf8(page.bytes)?,
+                )?;
+                &pinned
+            } else {
+                let (public, catalog) = catalog(&state, &id)?;
+                let position = public
+                    .skills
+                    .iter()
+                    .position(|entry| entry.id == skill)
+                    .context("Skill is no longer in this Agent's catalog")?;
+                current = catalog;
+                &current[position]
+            };
             let file = query.file.as_deref().unwrap_or("SKILL.md");
-            let mut document = read_document(root, file)?;
+            let (mut document, mut files, truncated) =
+                if selected.path.to_string_lossy().starts_with("synch://") {
+                    let root = Reference::parse(&selected.source.to_string_lossy())?;
+                    validate_relative(file)?;
+                    let path = if file == "SKILL.md" {
+                        selected.path.clone()
+                    } else {
+                        root.child(file).uri().into()
+                    };
+                    let page = state.app.files.read_page(&path, 0, 128 * 1024)?;
+                    let document = document_bytes(file, page.bytes, page.next_offset.is_some())?;
+                    let entries = tokio::runtime::Handle::current().block_on(async {
+                        let node = state.app.files.node()?;
+                        let mut directories =
+                            std::collections::VecDeque::from([(root.clone(), None)]);
+                        let mut entries = Vec::new();
+                        while let Some((directory, after)) = directories.pop_front() {
+                            let page = node
+                                .tree_directory_at(directory.clone(), after, 128)
+                                .await?;
+                            for entry in page.entries {
+                                if entry.kind == "directory"
+                                    && !entry.path.rsplit('/').next().unwrap_or("").starts_with('.')
+                                {
+                                    directories.push_back((
+                                        Reference {
+                                            path: entry.path.clone(),
+                                            ..root.clone()
+                                        },
+                                        None,
+                                    ));
+                                }
+                                if entry.kind == "file" && entry.path != root.child("SKILL.md").path
+                                {
+                                    entries.push(entry);
+                                }
+                                if entries.len() >= 257 {
+                                    return Ok::<_, anyhow::Error>(entries);
+                                }
+                            }
+                            if page.next.is_some() {
+                                directories.push_back((directory, page.next));
+                            }
+                        }
+                        Ok(entries)
+                    })?;
+                    let resources = entries
+                        .iter()
+                        .filter(|e| e.kind == "file" && e.path != root.child("SKILL.md").path)
+                        .collect::<Vec<_>>();
+                    let files = resources
+                        .iter()
+                        .take(256)
+                        .map(|entry| ResourceFile {
+                            path: entry
+                                .path
+                                .strip_prefix(&format!("{}/", root.path))
+                                .unwrap_or(&entry.path)
+                                .into(),
+                            byte_len: entry.selected.as_ref().map_or(0, |o| o.size),
+                        })
+                        .collect();
+                    (document, files, resources.len() > 256)
+                } else {
+                    let root = selected.path.parent().context("Skill directory missing")?;
+                    let document = read_document(root, file)?;
+                    let mut files = Vec::new();
+                    let mut budget = 256;
+                    list_files(root, root, 0, &mut budget, &mut files)?;
+                    (document, files, budget == 0)
+                };
             if query.file.is_none() {
                 document.text = skill_body(&document.text).to_owned();
             }
-            let mut files = Vec::new();
-            let mut budget = 256;
-            list_files(root, root, 0, &mut budget, &mut files)?;
             files.sort_by(|a, b| a.path.cmp(&b.path));
             Ok(ResourceDetails {
                 title: selected.name.clone(),
@@ -115,7 +228,7 @@ pub(super) async fn skill(
                         selected.source.to_string_lossy().into_owned(),
                     ),
                     ("path".into(), selected.path.to_string_lossy().into_owned()),
-                    ("files_truncated".into(), (budget == 0).to_string()),
+                    ("files_truncated".into(), truncated.to_string()),
                 ],
                 ..Default::default()
             })
@@ -143,16 +256,8 @@ fn skill_body(text: &str) -> &str {
     text
 }
 fn read_document(root: &FsPath, relative: &str) -> Result<ResourceDocument> {
+    validate_relative(relative)?;
     let requested = FsPath::new(relative);
-    ensure!(
-        !relative.is_empty()
-            && relative.len() <= 1024
-            && !requested.is_absolute()
-            && requested
-                .components()
-                .all(|c| matches!(c, Component::Normal(_))),
-        "Invalid resource file path"
-    );
     let root = root.canonicalize()?;
     let mut path = root.clone();
     for part in requested.components() {
@@ -174,6 +279,22 @@ fn read_document(root: &FsPath, relative: &str) -> Result<ResourceDocument> {
     if truncated {
         bytes.truncate(128 * 1024);
     }
+    document_bytes(relative, bytes, truncated)
+}
+fn validate_relative(relative: &str) -> Result<()> {
+    let requested = FsPath::new(relative);
+    ensure!(
+        !relative.is_empty()
+            && relative.len() <= 1024
+            && !requested.is_absolute()
+            && requested
+                .components()
+                .all(|c| matches!(c, Component::Normal(_))),
+        "Invalid resource file path"
+    );
+    Ok(())
+}
+fn document_bytes(relative: &str, bytes: Vec<u8>, truncated: bool) -> Result<ResourceDocument> {
     ensure!(!bytes.contains(&0), "This resource is not a text file");
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
@@ -262,7 +383,7 @@ mod tests {
     use super::*;
     #[test]
     fn skill_reader_starts_at_instructions_and_preserves_body_rules() {
-        let text="\u{feff}---\r\nname: research\r\ndescription: notes\r\n---\r\n# 研究\r\n\r\n正文\r\n---\r\n附录";
+        let text = "\u{feff}---\r\nname: research\r\ndescription: notes\r\n---\r\n# 研究\r\n\r\n正文\r\n---\r\n附录";
         assert_eq!(skill_body(text), "# 研究\r\n\r\n正文\r\n---\r\n附录");
         assert_eq!(skill_body("# 普通资源\n正文"), "# 普通资源\n正文");
     }

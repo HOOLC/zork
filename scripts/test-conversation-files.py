@@ -68,7 +68,7 @@ try:
     remote_task = f.wait(lambda: next(iter(b.get('/v1/tasks')['items']), None), 'remote task')
     remote_input = f.wait(lambda: next((v for v in b.get('/v1/artifacts')['items'] if v['session_id'] == remote_task['session_id']), None), 'remote input persisted')
     assert bytes_at(b, remote_input) == payload
-    materialized = f.wait(lambda: next(iter((b.root / 'conversation-files').glob('*/*/source.txt')), None), 'Agent input materialized')
+    materialized = f.wait(lambda: next(iter((b.root / 'files/attachments').glob('*/source.txt')), None), 'Agent input uses the published immutable file')
     assert materialized.read_bytes() == payload
     f.wait(lambda: next(t for t in a.get('/v1/tasks')['items'] if t['task_id'] == assigned['task']['task_id'])['last_run_status'] == 'finished', 'input turn finished')
     current = next(t for t in a.get('/v1/tasks')['items'] if t['task_id'] == assigned['task']['task_id'])

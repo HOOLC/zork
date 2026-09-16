@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[2]
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:49186/design/components/web/index.html');p.add_argument('--output',type=Path,default=ROOT/'artifacts/storybook/web-checks');p.add_argument('--profiles-only',action='store_true');p.add_argument('--timezone',default='Asia/Shanghai');p.add_argument('--backend',choices=['auto','webgl'],default='auto');args=p.parse_args();args.output.mkdir(parents=True,exist_ok=True)
+ p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:49186/design/components/web/index.html');p.add_argument('--output',type=Path,default=ROOT/'artifacts/storybook/web-checks');p.add_argument('--profiles-only',action='store_true');p.add_argument('--input-only',action='store_true');p.add_argument('--timezone',default='Asia/Shanghai');p.add_argument('--backend',choices=['auto','webgl'],default='auto');args=p.parse_args();args.output.mkdir(parents=True,exist_ok=True)
  with sync_playwright() as pw:
   binary=Path.home()/'Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
   b=pw.chromium.launch(headless=True,executable_path=str(binary));context=b.new_context(viewport={'width':560,'height':360},timezone_id=args.timezone);page=context.new_page();errors=[];requests=[]
@@ -34,6 +34,38 @@ def main():
    assert state()['action_error'] is None,state()
   click('story-select');click('story-option-1');assert state()['selected']==1 and not state()['open'];page.wait_for_function('JSON.parse(window.zorkStory.snapshot()).elements.some(e=>e.id==="story-select"&&e.label==="Anthropic")')
   choose('field-empty');click('story-field');type_ime('产品连接 ✓');page.wait_for_function('JSON.parse(window.zorkStory.story_state()).text==="产品连接 ✓"');page.screenshot(path=str(args.output/'input.png'))
+  mac=page.evaluate('/Mac|iPhone|iPad/.test(navigator.platform)');primary='Meta' if mac else 'Control'
+  document_start='Meta+ArrowUp' if mac else 'Control+Home'
+  document_end='Meta+ArrowDown' if mac else 'Control+End'
+  line_start='Meta+Shift+ArrowLeft' if mac else 'Shift+Home'
+  line_end='Meta+Shift+ArrowRight' if mac else 'Shift+End'
+  value='first\nsecond line\nlast';keyboard_checks=[]
+  def expect_text(expected):
+   try:page.wait_for_function('(value)=>JSON.parse(window.zorkStory.story_state()).text===value',arg=expected,timeout=5000)
+   except Exception:
+    page.screenshot(path=str(args.output/'keyboard-failure.png'));actual=state()
+    (args.output/'keyboard-failure.json').write_text(json.dumps({'expected':expected,'actual':actual},ensure_ascii=False,indent=2))
+    raise AssertionError({'expected':expected,'actual':actual})
+  for shortcut,expected in [(line_start,'first\nXYond line\nlast'),(line_end,'first\nsecXY\nlast'),('Shift+'+document_start,'XYond line\nlast'),('Shift+'+document_end,'first\nsecXY')]:
+   page.keyboard.press('ControlOrMeta+a');type_ime(value)
+   expect_text(value)
+   for key in [document_start,'ArrowDown','ArrowRight','ArrowRight','ArrowRight',shortcut]:page.keyboard.press(key)
+   page.screenshot(path=str(args.output/f'keyboard-selection-{len(keyboard_checks)}.png'))
+   page.keyboard.type('XY');expect_text(expected)
+   page.keyboard.press('ControlOrMeta+z');expect_text(value)
+   page.keyboard.press('ControlOrMeta+Shift+z');expect_text(expected)
+   keyboard_checks.append(shortcut+' / undo / redo')
+  context.grant_permissions(['clipboard-read','clipboard-write'])
+  for paste_key in [primary+'+v',primary+'+Shift+v']:
+   page.evaluate('()=>navigator.clipboard.writeText("粘贴 👩‍💻")')
+   page.keyboard.press('ControlOrMeta+a');page.keyboard.press(paste_key)
+   page.wait_for_function('JSON.parse(window.zorkStory.story_state()).text==="粘贴 👩‍💻"')
+   keyboard_checks.append(paste_key)
+  page.screenshot(path=str(args.output/'keyboard.png'))
+  if args.input_only:
+   assert not errors,errors
+   (args.output/'result.json').write_text(json.dumps({'renderer':'GPUI WASM / '+args.backend,'platform':'Mac' if mac else 'PC','keyboard_checks':keyboard_checks,'ime':'Chinese commit','errors':errors},ensure_ascii=False,indent=2)+'\n')
+   b.close();print('PASS Web keyboard navigation, selection, undo/redo, clipboard shortcuts and IME');return
   choose('markdown-table');table_cells=[e for e in snapshot()['elements'] if e['id'].endswith('-selection') and e['visible']];assert len(table_cells)>=6
   for e in table_cells:page.mouse.click(e['center']['x'],e['center']['y'])
   target=next(e for e in table_cells if e['label']=='已检查');rect=target['bounds'];page.mouse.move(rect['x']+1,target['center']['y']);page.mouse.down();page.mouse.move(rect['x']+rect['width']-1,target['center']['y'],steps=8);page.mouse.up();page.wait_for_function('JSON.parse(window.zorkStory.story_state()).quote?.includes("已检查")');page.screenshot(path=str(args.output/'table-selection.png'))
@@ -65,14 +97,14 @@ def main():
   assert abs(element('profile-name-save')['center']['y']-element('profile-detail-dialog-close')['center']['y'])<1
   assert not any(e['id']=='profile-rename' for e in snapshot()['elements'])
   page.screenshot(path=str(args.output/'inline-name-edit.png'))
-  click('profile-name');page.keyboard.press('Control+a');type_ime('我的主力模型');click('profile-name-save')
+  click('profile-name');page.keyboard.press('ControlOrMeta+a');type_ime('我的主力模型');click('profile-name-save')
   try:page.wait_for_function('JSON.parse(window.zorkStory.snapshot()).elements.some(e=>e.id==="profile-detail-dialog"&&e.label==="我的主力模型")',timeout=5000)
   except Exception:
    page.screenshot(path=str(args.output/'rename-failure.png'));(args.output/'rename-failure.json').write_text(json.dumps(snapshot(),ensure_ascii=False,indent=2));raise
   page.screenshot(path=str(args.output/'renamed-detail.png'));(args.output/'renamed-detail.json').write_text(json.dumps(snapshot(),ensure_ascii=False,indent=2))
-  click('profile-rename');click('profile-name');page.keyboard.press('Control+a');type_ime('未保存的名字');page.keyboard.press('Escape')
+  click('profile-rename');click('profile-name');page.keyboard.press('ControlOrMeta+a');type_ime('未保存的名字');page.keyboard.press('Escape')
   wait_element('profile-rename');assert element('profile-detail-dialog')['label']=='我的主力模型'
-  click('profile-rename');click('profile-name');page.keyboard.press('Control+a');type_ime('我的主力模型');page.keyboard.press('Enter')
+  click('profile-rename');click('profile-name');page.keyboard.press('ControlOrMeta+a');type_ime('我的主力模型');page.keyboard.press('Enter')
   wait_element('profile-rename');assert element('profile-detail-dialog')['label']=='我的主力模型'
   page.keyboard.press('Escape');assert wait_element('profile-detail-fixture')['label']=='我的主力模型'
   # An old snapshot refreshes once on opening; re-opening the fresh result does not.

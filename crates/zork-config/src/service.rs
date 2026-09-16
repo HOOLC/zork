@@ -2,6 +2,8 @@
 //! The GUI and the installer share this code; neither owns an independent service.
 #[cfg(unix)]
 mod events;
+#[cfg(target_os = "macos")]
+mod identity;
 use anyhow::{ensure, Context, Result};
 #[cfg(unix)]
 pub use events::Events;
@@ -42,6 +44,48 @@ pub fn prepare_child(command: &mut Command) {
     {
         let _ = command;
     }
+}
+
+/// Enter packaged helpers through their bundle path so macOS identifies the
+/// intended process immediately, without a compatibility re-exec.
+pub fn launch_path(path: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    if let Ok(resolved) = path.canonicalize() {
+        if resolved.file_name().is_some_and(|name| name == "ZorkHelperLauncher")
+            || identity::native_helper(&resolved)
+        {
+            return resolved;
+        }
+    }
+    path.to_owned()
+}
+
+/// Canonical bundle entry has completed, so background storage preparation can
+/// begin without a later compatibility re-exec interrupting it.
+pub struct ProcessIdentity {
+    #[cfg(target_os = "macos")]
+    native: bool,
+}
+
+impl ProcessIdentity {
+    /// Call on the main thread before publishing runtime readiness.
+    pub fn register(self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        identity::register(self.native)?;
+        Ok(())
+    }
+}
+
+pub fn prepare_process_identity() -> Result<ProcessIdentity> {
+    Ok(ProcessIdentity {
+        #[cfg(target_os = "macos")]
+        native: identity::enter_bundle()?,
+    })
+}
+
+/// Call on the main thread before starting a packaged background runtime.
+pub fn register_process_identity() -> Result<()> {
+    prepare_process_identity()?.register()
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -359,6 +403,25 @@ pub fn exclusive_lock(path: &Path) -> Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn packaged_launcher_is_canonical_but_ordinary_aliases_are_preserved() {
+        let temp = tempfile::tempdir().unwrap();
+        let launcher = temp.path().join("ZorkHelperLauncher");
+        fs::write(&launcher, "fixture").unwrap();
+        let alias = temp.path().join("zork");
+        std::os::unix::fs::symlink(&launcher, &alias).unwrap();
+        assert_eq!(launch_path(&alias), launcher.canonicalize().unwrap());
+        let native = temp.path().join("ZorkStation.app/Contents/MacOS/zork-station");
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
+        fs::write(&native, "native fixture").unwrap();
+        let native_alias = temp.path().join("zork-station");
+        std::os::unix::fs::symlink(&native, &native_alias).unwrap();
+        assert_eq!(launch_path(&native_alias), native.canonicalize().unwrap());
+        let ordinary = temp.path().join("ordinary");
+        std::os::unix::fs::symlink("/bin/sh", &ordinary).unwrap();
+        assert_eq!(launch_path(&ordinary), ordinary);
+    }
     #[test]
     fn service_identity_uses_canonical_data_root() {
         let temp = tempfile::tempdir().unwrap();

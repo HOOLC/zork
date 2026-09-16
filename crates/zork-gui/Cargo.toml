@@ -62,7 +62,7 @@ frame-profiler = ["gpui/profiler", "zork-ui/frame-profiler"]
 headless-bench = ["gpui/profiler", "gpui/test-support", "dep:tempfile", "zork-ui/headless-bench", "zork-ui/stories", "zork-client-core/headless-bench"]
 
 [dev-dependencies]
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite.workspace = true
 reqwest.workspace = true
 zork-config = { path = "../zork-config" }
 zork-mesh = { path = "../zork-mesh" }
@@ -141,6 +141,10 @@ path = "tests/headless_composer_controls.rs"
 harness = false
 required-features = ["headless-bench"]
 
+[target.'cfg(target_os = "macos")'.dependencies.gpui-apple]
+package = "gpui-apple-gpui-unofficial"
+version = "1.17.0-pre"
+
 [target.'cfg(target_os = "macos")'.dependencies.block2]
 version = "0.6"
 
@@ -190,4 +194,21 @@ required-features = ["headless-bench"]
 name = "headless_resource_concept"
 path = "tests/headless_resource_concept.rs"
 harness = false
+required-features = ["headless-bench"]
+
+[[test]]
+name = "headless_interactions"
+path = "tests/headless_interactions.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
+name = "headless_shared_files"
+path = "tests/headless_shared_files.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[example]]
+name = "liquid-gallery"
+path = "examples/liquid_gallery.rs"
 required-features = ["headless-bench"]

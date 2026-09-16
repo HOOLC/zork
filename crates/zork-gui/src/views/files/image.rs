@@ -2,11 +2,7 @@
 //! retain their parsed tree so zooming can rasterize at the displayed scale.
 use std::sync::Arc;
 
-pub(in crate::views) struct DecodedImage {
-    pub rendered: Arc<gpui::RenderImage>,
-    pub size: gpui::Size<f32>,
-    pub svg: Option<Arc<gpui::ParsedSvg>>,
-}
+pub(in crate::views) use zork_ui::attachment_viewer::DecodedImage;
 
 pub(in crate::views) fn format(name: &str) -> Option<gpui::ImageFormat> {
     use gpui::ImageFormat as F;

@@ -1,18 +1,22 @@
 //! Deterministic headless scrolling with real GPUI layout, shaping and paint.
 use gpui::{
-    point, px, size, AppContext, HeadlessAppContext, Modifiers, PlatformInput, ScrollDelta,
-    ScrollWheelEvent, TouchPhase,
+    AppContext, HeadlessAppContext, Modifiers, PlatformInput, ScrollDelta, ScrollWheelEvent,
+    TouchPhase, point, px, size,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
+    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
     views::RootView,
 };
 
 #[cfg(feature = "frame-profiler")]
 #[path = "render-bench/native.rs"]
 mod native;
+
+#[cfg(feature = "native-blur-bench")]
+#[path = "render-bench/native_frames.rs"]
+mod native_frames;
 
 #[path = "render-bench/files.rs"]
 mod files;
@@ -25,6 +29,9 @@ const FRAMES: usize = 240;
 
 fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_json::Value> {
     std::fs::create_dir_all(output)?;
+    // The macOS brand view refreshes system motion preferences while rendering.
+    // Use the same explicit fixture override as the native scrolling benchmark.
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let all_types = !history && std::env::var_os("ZORK_SCROLL_ALL_MESSAGES").is_some();
     let anchor = std::env::var("ZORK_BENCH_ANCHOR")
         .ok()
@@ -63,6 +70,9 @@ fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_jso
         cx.new(|_| AutomationRoot::new(view))
     })?;
     let root = root.unwrap();
+    // Root initialization applies platform preferences; this fixed-input
+    // scrolling fixture measures the settled layout, as configured above.
+    cx.update(|cx| cx.set_reduce_motion(true));
     cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear(cx))?;
     cx.run_until_parked();
     let cold = cx.update_window(handle.into(), |_, window, _| {
@@ -149,6 +159,13 @@ fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_jso
             output.join("delivery-elements.json"),
             serde_json::to_vec_pretty(&driver.snapshot(true))?,
         )?;
+        let device = root.read_with(&cx, |view, _| view.benchmark_core_device());
+        let before_resend = device.outbox();
+        let original = before_resend
+            .items
+            .iter()
+            .find(|message| message.request_id == "stress-failed")
+            .unwrap();
         let action: UserAction = serde_json::from_value(
             serde_json::json!({"type":"click","target":{"element_id":"retry-queued-stress-failed"}}),
         )?;
@@ -156,14 +173,35 @@ fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_jso
         cx.run_until_parked();
         cx.update_window(handle.into(), |_, w, cx| w.draw(cx).clear(cx))?;
         cx.run_until_parked();
+        let after_resend = device.outbox();
+        let resent = after_resend
+            .items
+            .iter()
+            .filter(|message| {
+                !before_resend
+                    .items
+                    .iter()
+                    .any(|old| old.request_id == message.request_id)
+            })
+            .collect::<Vec<_>>();
         anyhow::ensure!(
-            !driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|e| e.id == "retry-queued-stress-failed"),
-            "retry did not refresh delivery state"
+            resent.len() == 1,
+            "resend must create exactly one new message"
         );
+        anyhow::ensure!(
+            resent[0].content == original.content
+                && resent[0].error.is_none()
+                && !resent[0].attempted,
+            "resend did not preserve content in a fresh delivery"
+        );
+        anyhow::ensure!(
+            after_resend.items.iter().any(|message| message == original),
+            "resend changed the original failed message"
+        );
+        // Restore the fixed three-state fixture before measuring or replaying.
+        // The successful resend is a fourth local row with a fresh identity.
+        store.fail_delivery("mini1", &resent[0].request_id, "fixture cleanup")?;
+        device.delete_failed_delivery(&resent[0].request_id)?;
         root.update(&mut cx, |view, cx| {
             view.benchmark_restore_delivery_failure(cx)
         });
@@ -298,6 +336,19 @@ fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_jso
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "native-blur-bench")]
+    if std::env::args().nth(1).as_deref().is_some_and(|arg| matches!(arg, "--native-frame-calibration" | "--native-offscreen-calibration")) {
+        return native_frames::calibrate(&PathBuf::from(std::env::args().nth(2).ok_or_else(|| anyhow::anyhow!("missing calibration output"))?), std::env::args().nth(1).as_deref() == Some("--native-offscreen-calibration"));
+    }
+    if std::env::args().nth(1).as_deref() == Some("--native-frames") {
+        #[cfg(feature = "native-blur-bench")]
+        return native_frames::run(
+            &PathBuf::from(std::env::args().nth(2).ok_or_else(|| anyhow::anyhow!("missing configuration"))?),
+            &PathBuf::from(std::env::args().nth(3).ok_or_else(|| anyhow::anyhow!("missing output directory"))?),
+        );
+        #[cfg(not(feature = "native-blur-bench"))]
+        anyhow::bail!("--native-frames requires native-blur-bench");
+    }
     if std::env::args().nth(1).as_deref() == Some("--native") {
         #[cfg(feature = "frame-profiler")]
         return native::run(

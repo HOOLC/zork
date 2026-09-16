@@ -1,8 +1,8 @@
 //! Conversation-owned immutable file references. Bytes never travel in messages.
 use serde::{Deserialize, Serialize};
 
-pub const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
-pub const MAX_MESSAGE_BYTES: usize = 40 * 1024 * 1024;
+pub const MAX_FILE_BYTES: usize = 300 * 1024 * 1024;
+pub const MAX_MESSAGE_BYTES: usize = 4 * MAX_FILE_BYTES;
 pub const MAX_FILES: usize = 16;
 pub const CHUNK_BYTES: usize = 24 * 1024;
 const PREFIX: &str = "<zork-files version=\"1\">\n";
@@ -70,7 +70,10 @@ pub fn decode(text: &str) -> Option<(String, Vec<FileRef>)> {
 pub fn valid(files: &[FileRef]) -> bool {
     files.len() <= MAX_FILES
         && files.iter().all(FileRef::valid)
-        && files.iter().map(|f| f.byte_len).sum::<usize>() <= MAX_MESSAGE_BYTES
+        && files
+            .iter()
+            .try_fold(0usize, |total, file| total.checked_add(file.byte_len))
+            .is_some_and(|total| total <= MAX_MESSAGE_BYTES)
         && files
             .iter()
             .enumerate()
@@ -80,6 +83,41 @@ pub fn valid(files: &[FileRef]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn file_and_message_limits_accept_300_mib_without_total_overflow() {
+        let mut file = FileRef {
+            id: "file-large".into(),
+            name: "large.bin".into(),
+            byte_len: 300 * 1024 * 1024,
+            content_root: "a".repeat(64),
+        };
+        assert!(file.valid());
+        assert!(valid(std::slice::from_ref(&file)));
+        file.byte_len += 1;
+        assert!(!file.valid());
+        file.byte_len -= 1;
+        let mut files: Vec<_> = (0..4)
+            .map(|i| FileRef {
+                id: format!("file-{i}"),
+                ..file.clone()
+            })
+            .collect();
+        assert!(valid(&files));
+        files.push(FileRef {
+            id: "file-extra".into(),
+            byte_len: 1,
+            ..file.clone()
+        });
+        assert!(!valid(&files));
+        let files: Vec<_> = (0..MAX_FILES)
+            .map(|i| FileRef {
+                id: format!("file-{i}"),
+                ..file.clone()
+            })
+            .collect();
+        assert!(!valid(&files));
+    }
+
     #[test]
     fn literal_file_markup_does_not_create_attachment_references() {
         let reference = FileRef {

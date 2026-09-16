@@ -1,22 +1,25 @@
-//! Message interaction contracts and core-owned presentation/operation logic.
+//! Composition of business card adapters and their read-only common view types.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use zork_client_types::interaction::*;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Submission {
-    pub response: Response,
-    #[serde(default)]
-    pub attempted: bool,
-    #[serde(default)]
-    pub accepted: bool,
-    #[serde(default)]
-    pub error: Option<String>,
-}
+pub(crate) mod agent_configuration;
+pub(crate) mod provider_login;
+pub use agent_configuration::Submission;
+pub(crate) use provider_login::LoginView;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    LoginCallback {
+        message_id: String,
+        callback: String,
+    },
+    ContinueLogin {
+        message_id: String,
+    },
+    CancelLogin {
+        message_id: String,
+    },
     Activate {
         message_id: String,
         choice: String,
@@ -40,37 +43,28 @@ impl Command {
         action: &str,
         values: BTreeMap<String, String>,
     ) -> anyhow::Result<Self> {
-        match action {
-            "submit" => Ok(Self::Submit {
-                message_id: message_id.into(),
-                values,
-            }),
-            "decline" => Ok(Self::Decline {
-                message_id: message_id.into(),
-            }),
-            "retry" => Ok(Self::Retry {
-                message_id: message_id.into(),
-            }),
-            _ => anyhow::bail!("Unsupported interaction action"),
-        }
+        anyhow::ensure!(!action.is_empty(), "Missing card action");
+        Ok(Self::Activate {
+            message_id: message_id.into(),
+            choice: action.into(),
+            values,
+        })
     }
     pub fn message_id(&self) -> &str {
         match self {
             Self::Activate { message_id, .. }
+            | Self::LoginCallback { message_id, .. }
+            | Self::ContinueLogin { message_id }
+            | Self::CancelLogin { message_id }
             | Self::Submit { message_id, .. }
             | Self::Decline { message_id }
             | Self::Retry { message_id } => message_id,
         }
     }
-    pub(crate) fn resolve(self) -> anyhow::Result<Self> {
-        match self {
-            Self::Activate {
-                message_id,
-                choice,
-                values,
-            } => Self::from_action(&message_id, &choice, values),
-            command => Ok(command),
-        }
+    pub(crate) fn resolve(self, handler: &str) -> anyhow::Result<Self> {
+        (adapter(handler)
+            .ok_or_else(|| anyhow::anyhow!("Unsupported business card"))?
+            .resolve)(self)
     }
 }
 
@@ -78,8 +72,14 @@ impl Command {
 pub struct CardField {
     pub field: Field,
     pub localized_label: bool,
+    #[serde(default)]
+    pub localized_options: bool,
+    #[serde(default)]
+    pub advanced: bool,
     pub value: String,
     pub error_key: Option<String>,
+    #[serde(default)]
+    pub sensitive: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Detail {
@@ -91,6 +91,8 @@ pub struct CardAction {
     pub id: String,
     pub label_key: String,
     pub primary: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_url: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Card {
@@ -98,6 +100,8 @@ pub struct Card {
     pub title: String,
     pub localized_title: bool,
     pub status_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_key: Option<String>,
     pub fields: Vec<CardField>,
     pub details: Vec<Detail>,
     pub actions: Vec<CardAction>,
@@ -106,168 +110,80 @@ pub struct Card {
 }
 
 /// Portable read-only presentation, also used by deterministic Web fixtures.
+struct Adapter {
+    key: &'static str,
+    accepts: fn(&Request) -> bool,
+    project: fn(
+        &str,
+        &Request,
+        Option<&Resolution>,
+        Option<&Submission>,
+        &BTreeMap<String, String>,
+    ) -> Card,
+    resolve: fn(Command) -> anyhow::Result<Command>,
+    #[cfg(not(target_family = "wasm"))]
+    execute: fn(&std::sync::Arc<crate::state::Conversation>, Command) -> anyhow::Result<()>,
+}
+const ADAPTERS: &[Adapter] = &[agent_configuration::ADAPTER, provider_login::ADAPTER];
+fn adapter(handler: &str) -> Option<&'static Adapter> {
+    ADAPTERS.iter().find(|a| a.key == handler)
+}
+#[cfg(not(target_family = "wasm"))]
+fn accepts(handler: &str, request: &Request) -> bool {
+    adapter(handler).is_some_and(|a| (a.accepts)(request))
+}
+
 pub fn card(
     message_id: &str,
+    handler: &str,
     request: &Request,
     resolution: Option<&Resolution>,
     submission: Option<&Submission>,
     errors: &BTreeMap<String, String>,
 ) -> Card {
-    let (title, localized_title, submit, fields, details) = match request {
-        Request::CreateAgent { config } | Request::UpdateAgent { config, .. } => {
-            let updating = matches!(request, Request::UpdateAgent { .. });
-            let fields = vec![
-                Field {
-                    id: "name".into(),
-                    label: "interaction_name".into(),
-                    kind: FieldKind::Text,
-                    required: true,
-                    default: config.name.clone(),
-                    options: vec![],
-                },
-                Field {
-                    id: "instructions".into(),
-                    label: "interaction_instructions".into(),
-                    kind: FieldKind::Multiline,
-                    required: false,
-                    default: config.instructions.clone(),
-                    options: vec![],
-                },
-            ];
-            let mut details = vec![Detail {
-                label_key: "interaction_model".into(),
-                value: format!(
-                    "{} · {} · {}",
-                    config.selection.profile_id, config.selection.model, config.selection.thinking
-                ),
-            }];
-            if !config.skill_paths.is_empty() {
-                details.push(Detail {
-                    label_key: "interaction_skills".into(),
-                    value: config.skill_paths.join("\n"),
-                });
-            }
-            if !config.allowed_leaders.is_empty() {
-                details.push(Detail {
-                    label_key: "interaction_grants".into(),
-                    value: config.allowed_leaders.join("\n"),
-                });
-            }
-            (
-                (if updating {
-                    "interaction_update_agent"
-                } else {
-                    "interaction_create_agent"
-                })
-                .into(),
-                true,
-                if updating {
-                    "interaction_confirm_update"
-                } else {
-                    "interaction_confirm_create"
-                },
-                fields,
-                details,
-            )
-        }
-        Request::Input { title, fields } => (
-            title.clone(),
-            false,
-            "interaction_submit",
-            fields.clone(),
-            vec![],
-        ),
-    };
-    let mut values = request.defaults();
-    if let Some(submission) = submission {
-        values.extend(submission.response.values.clone());
+    match adapter(handler).filter(|a| (a.accepts)(request)) {
+        Some(adapter) => (adapter.project)(message_id, request, resolution, submission, errors),
+        None => unsupported(message_id),
     }
-    if let Some(resolution) = resolution {
-        if let Some(actual) = resolution
-            .output
-            .get("values")
-            .and_then(serde_json::Value::as_object)
-        {
-            values.extend(
-                actual
-                    .iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned()))),
-            );
-        }
-        if let Some(agent) = resolution.output.get("agent") {
-            for key in ["name", "instructions"] {
-                if let Some(value) = agent[key].as_str() {
-                    values.insert(key.into(), value.into());
-                }
-            }
-        }
-    }
-    let ready = resolution.is_none() && submission.is_none();
-    let retry = resolution.is_none() && submission.is_some_and(|s| s.error.is_some());
-    let status = if let Some(result) = resolution {
-        if result.outcome == Outcome::Completed {
-            "interaction_completed"
-        } else {
-            "interaction_declined"
-        }
-    } else if retry {
-        "interaction_unconfirmed"
-    } else if submission.is_some() {
-        "interaction_submitting"
-    } else {
-        "interaction_confirmation"
-    };
-    let actions = if ready {
-        vec![
-            CardAction {
-                id: "submit".into(),
-                label_key: submit.into(),
-                primary: true,
-            },
-            CardAction {
-                id: "decline".into(),
-                label_key: "interaction_decline".into(),
-                primary: false,
-            },
-        ]
-    } else if retry {
-        vec![CardAction {
-            id: "retry".into(),
-            label_key: "interaction_retry".into(),
-            primary: true,
-        }]
-    } else {
-        vec![]
-    };
+}
+fn unsupported(message_id: &str) -> Card {
     Card {
         message_id: message_id.into(),
-        title,
-        localized_title,
-        status_key: status.into(),
-        details,
-        actions,
-        editable: ready,
-        error: if resolution.is_some() {
-            None
-        } else {
-            submission
-                .and_then(|s| s.error.clone())
-                .or_else(|| errors.get("").cloned())
-        },
-        fields: fields
-            .into_iter()
-            .map(|field| CardField {
-                value: values.get(&field.id).cloned().unwrap_or_default(),
-                error_key: if ready {
-                    errors.get(&field.id).cloned()
-                } else {
-                    None
-                },
-                localized_label: localized_title,
-                field,
-            })
-            .collect(),
+        title: "interaction_unsupported".into(),
+        localized_title: true,
+        status_key: "interaction_unsupported".into(),
+        description_key: None,
+        fields: vec![],
+        details: vec![],
+        actions: vec![],
+        editable: false,
+        error: None,
     }
+}
+
+/// Shared native/Web projection. Platform support never changes the source message.
+pub fn local_script_card(message_id: &str, script: &zork_client_types::local_script::Card, android: bool) -> Card {
+    let mut details = Vec::new();
+    if let Some(description) = &script.description {
+        details.push(Detail { label_key:"local_script_description".into(), value:description.clone() });
+    }
+    details.push(Detail { label_key:"local_script_source".into(), value:script.source.clone() });
+    let can_run = android && script.validate().is_ok();
+    Card { message_id:message_id.into(), title:script.title.clone(), localized_title:false,
+        status_key:if can_run { "local_script_ready" } else { "local_script_readonly" }.into(),
+        description_key:None, fields:vec![], details,
+        actions:if can_run { vec![CardAction { id:"run_local_script".into(), label_key:"local_script_run".into(), primary:true, open_url:None }] } else { vec![] },
+        editable:false, error:None }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn dispatch(
+    conversation: &std::sync::Arc<crate::state::Conversation>,
+    handler: &str,
+    command: Command,
+) -> anyhow::Result<()> {
+    let adapter = adapter(handler).ok_or_else(|| anyhow::anyhow!("Unsupported business card"))?;
+    (adapter.execute)(conversation, command.resolve(handler)?)
 }
 
 impl Card {
@@ -276,6 +192,7 @@ impl Card {
             + self.message_id.capacity()
             + self.title.capacity()
             + self.status_key.capacity()
+            + self.description_key.as_ref().map_or(0, String::capacity)
             + self.error.as_ref().map_or(0, String::capacity)
             + self
                 .details
@@ -288,7 +205,10 @@ impl Card {
                 .actions
                 .iter()
                 .map(|a| {
-                    std::mem::size_of::<CardAction>() + a.id.capacity() + a.label_key.capacity()
+                    std::mem::size_of::<CardAction>()
+                        + a.id.capacity()
+                        + a.label_key.capacity()
+                        + a.open_url.as_ref().map_or(0, String::capacity)
                 })
                 .sum::<usize>()
             + self
@@ -322,26 +242,27 @@ pub(crate) fn view(
     errors: &BTreeMap<String, String>,
 ) -> Option<Box<Card>> {
     let raw = metadata.interaction.as_deref()?;
+    if let Some(script) = zork_client_types::local_script::Card::parse(raw) {
+        return Some(Box::new(local_script_card(metadata.id.as_deref().unwrap_or_default(), &script,
+            cfg!(all(target_os = "android", feature = "local-scripts")))));
+    }
     if let Some(request) = request(metadata) {
-        Some(Box::new(card(
+        let initial = initial_result(metadata);
+        let projection = card(
             metadata.id.as_deref()?,
+            &MessageContent::parse(raw)?.handler,
             &request,
-            metadata.interaction_result.as_deref(),
+            metadata.interaction_result.as_deref().or(initial.as_ref()),
             submission,
             errors,
+        );
+        Some(Box::new(projection))
+    } else if MessageContent::parse(raw)
+        .is_none_or(|content| matches!(content.content, Content::Request { .. }))
+    {
+        Some(Box::new(unsupported(
+            metadata.id.as_deref().unwrap_or_default(),
         )))
-    } else if MessageContent::parse(raw).is_none() {
-        Some(Box::new(Card {
-            message_id: metadata.id.clone().unwrap_or_default(),
-            title: "interaction_unsupported".into(),
-            localized_title: true,
-            status_key: "interaction_unsupported".into(),
-            fields: vec![],
-            details: vec![],
-            actions: vec![],
-            editable: false,
-            error: None,
-        }))
     } else {
         None
     }
@@ -349,45 +270,173 @@ pub(crate) fn view(
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn request(metadata: &crate::api::MessageMetadata) -> Option<Request> {
-    match MessageContent::parse(metadata.interaction.as_deref()?)?.content {
-        Content::Request { request } if request.validate().is_ok() => Some(request),
+    let content = MessageContent::parse(metadata.interaction.as_deref()?)?;
+    match content.content {
+        Content::Request { request }
+            if accepts(&content.handler, &request) && request.validate().is_ok() =>
+        {
+            Some(request)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn initial_result(metadata: &crate::api::MessageMetadata) -> Option<Resolution> {
+    let initial = MessageContent::parse(metadata.interaction.as_deref()?)?.snapshot?;
+    (metadata.id.as_deref() == Some(&initial.request_message_id)).then_some(initial)
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ResultEvent {
+    pub request_id: String,
+    pub handler: String,
+    pub result: Resolution,
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn result_event(metadata: &crate::api::MessageMetadata) -> Option<ResultEvent> {
+    if metadata.author_kind != Some(zork_client_types::chat::AuthorKind::System) {
+        return None;
+    }
+    let content = MessageContent::parse(metadata.interaction.as_deref()?)?;
+    adapter(&content.handler)?;
+    match content.content {
+        Content::Result { result }
+            if valid_id(&result.request_message_id) && result.revision > 0 =>
+        {
+            Some(ResultEvent {
+                request_id: content.request_id,
+                handler: content.handler,
+                result,
+            })
+        }
         _ => None,
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn result(metadata: &crate::api::MessageMetadata) -> Option<Resolution> {
-    if metadata.author_kind != Some(zork_client_types::chat::AuthorKind::System) {
-        return None;
-    }
-    match MessageContent::parse(metadata.interaction.as_deref()?)?.content {
-        Content::Result { result }
-            if valid_id(&result.request_message_id) && result.revision > 0 =>
-        {
-            Some(result)
-        }
-        _ => None,
-    }
+    result_event(metadata).map(|event| event.result)
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn cached_result(metadata: &crate::api::MessageMetadata) -> Option<ResultEvent> {
+    request(metadata)?;
+    let content = MessageContent::parse(metadata.interaction.as_deref()?)?;
+    let result = metadata
+        .interaction_result
+        .as_deref()
+        .cloned()
+        .or(content.snapshot)?;
+    Some(ResultEvent {
+        request_id: content.request_id,
+        handler: content.handler,
+        result,
+    })
 }
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn merge_result(
     metadata: &mut crate::api::MessageMetadata,
-    incoming: &Resolution,
+    event: &ResultEvent,
 ) -> anyhow::Result<bool> {
+    let identity = MessageContent::parse(
+        metadata
+            .interaction
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("interaction_request_mismatch"))?,
+    )
+    .ok_or_else(|| anyhow::anyhow!("interaction_request_mismatch"))?;
+    anyhow::ensure!(
+        identity.handler == event.handler && identity.request_id == event.request_id,
+        "interaction_business_mismatch"
+    );
+    let incoming = &event.result;
     anyhow::ensure!(
         metadata.id.as_deref() == Some(&incoming.request_message_id) && request(metadata).is_some(),
         "interaction_request_mismatch"
     );
-    if let Some(old) = &metadata.interaction_result {
+    let initial = initial_result(metadata);
+    if let Some(old) = metadata.interaction_result.as_deref().or(initial.as_ref()) {
         if old.revision > incoming.revision {
             return Ok(false);
         }
         if old.revision == incoming.revision {
-            anyhow::ensure!(old.as_ref() == incoming, "interaction_result_conflict");
+            anyhow::ensure!(old == incoming, "interaction_result_conflict");
             return Ok(false);
         }
     }
     metadata.interaction_result = Some(Box::new(incoming.clone()));
     Ok(true)
+}
+
+#[cfg(feature = "headless-bench")]
+pub mod preview;
+
+#[cfg(test)]
+mod participation_tests {
+    use super::*;
+    #[test]
+    fn external_business_preparation_does_not_add_an_approval_step() {
+        let request = Request::OAuth {
+            title: "Sign in".into(),
+        };
+        let view = card(
+            "card",
+            PROVIDER_LOGIN,
+            &request,
+            None,
+            None,
+            &BTreeMap::new(),
+        );
+        assert_eq!(view.status_key, "interaction_preparing_login");
+        assert!(!view.actions.iter().any(|a| a.id == "submit"));
+        assert!(view.actions.iter().any(|a| a.id == "cancel_login"));
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    #[test]
+    fn each_business_accepts_only_its_card_and_actions() {
+        let login = Request::OAuth {
+            title: "Connect".into(),
+        };
+        let wrong = card(
+            "card",
+            AGENT_CONFIGURATION,
+            &login,
+            None,
+            None,
+            &BTreeMap::new(),
+        );
+        assert!(!wrong.editable && wrong.actions.is_empty());
+        assert!(Command::from_action("card", "submit", BTreeMap::new())
+            .unwrap()
+            .resolve(PROVIDER_LOGIN)
+            .is_err());
+        assert!(
+            Command::from_action("card", "continue_login", BTreeMap::new())
+                .unwrap()
+                .resolve(AGENT_CONFIGURATION)
+                .is_err()
+        );
+        assert!(Command::from_action("card", "submit", BTreeMap::new())
+            .unwrap()
+            .resolve("unregistered-business")
+            .is_err());
+        let unknown = card(
+            "card",
+            "unregistered-business",
+            &login,
+            None,
+            None,
+            &BTreeMap::new(),
+        );
+        assert_eq!(unknown.status_key, "interaction_unsupported");
+        assert!(unknown.actions.is_empty());
+    }
 }

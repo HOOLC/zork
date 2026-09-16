@@ -155,7 +155,7 @@ pub struct FileSessionQuery {
 impl FileSessionQuery {
     pub fn open(root: impl AsRef<Path>) -> Self {
         Self {
-            root: root.as_ref().join("sessions"),
+            root: zork_config::files_root(root.as_ref()).join("sessions"),
         }
     }
 

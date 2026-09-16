@@ -4,11 +4,11 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
 use zork_agent::session::events::{
-    Input, Selection, SessionEvent, TurnOutcome, EVENT_SCHEMA_VERSION,
+    EVENT_SCHEMA_VERSION, Input, Selection, SessionEvent, TurnOutcome,
 };
 use zork_agent::session::query::{FileSessionQuery, SessionQuery};
 use zork_agent::session::recovery::recover;
-use zork_agent::session::state::{snapshot_value, STATE_SCHEMA_VERSION};
+use zork_agent::session::state::{STATE_SCHEMA_VERSION, snapshot_value};
 use zork_agent::session::store::{EventEnvelope, SessionStore, StreamStore};
 use zork_agent::session::tools::ToolRegistry;
 
@@ -23,7 +23,7 @@ fn selection(model: &str) -> SessionEvent {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-01, EVENT-03]
+// Contract: docs/design/agent-runtime.md [EVENT-01, EVENT-03]
 fn complete_batches_round_trip_and_sequence_continues_after_reopen() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -48,7 +48,7 @@ fn complete_batches_round_trip_and_sequence_continues_after_reopen() {
 
     let segment = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments")
         .join(format!("{}.jsonl", persisted[0].event_id));
@@ -73,7 +73,7 @@ fn complete_batches_round_trip_and_sequence_continues_after_reopen() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [PROJECTION-02]
+// Contract: docs/design/agent-runtime.md [PROJECTION-02]
 fn recovery_preserves_domain_ulids_independently_from_event_ids() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -117,7 +117,7 @@ fn recovery_preserves_domain_ulids_independently_from_event_ids() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [PERSIST-01]
+// Contract: docs/design/agent-runtime.md [PERSIST-01]
 fn data_root_ownership_is_exclusive_and_released_with_the_store() {
     let first_root = tempfile::tempdir().unwrap();
     let second_root = tempfile::tempdir().unwrap();
@@ -132,7 +132,7 @@ fn data_root_ownership_is_exclusive_and_released_with_the_store() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [STARTUP-03]
+// Contract: docs/design/agent-runtime.md [STARTUP-03]
 fn last_commit_read_returns_a_complete_normally_finished_commit() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -183,7 +183,7 @@ fn last_commit_read_returns_a_complete_normally_finished_commit() {
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [EVENT-02, SEGMENT-01]
+// Contract: docs/design/agent-runtime.md [EVENT-02, SEGMENT-01]
 fn recovery_and_compression_keep_complete_batches_and_drop_only_an_incomplete_tail_batch() {
     let root = tempfile::tempdir().unwrap();
     let session_id: Ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
@@ -217,7 +217,7 @@ fn recovery_and_compression_keep_complete_batches_and_drop_only_an_incomplete_ta
 
     let active = root
         .path()
-        .join("sessions")
+        .join("shared-files/sessions")
         .join(&session_text)
         .join("segments")
         .join(format!("{}.jsonl", first[0].event_id));

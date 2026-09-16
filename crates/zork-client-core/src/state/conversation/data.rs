@@ -39,9 +39,12 @@ pub(super) struct Owned {
     pub edits: Vec<ListEdit<TranscriptLine>>,
     pub replaced: bool,
     pub cache_backed: bool,
-    pending_interactions: HashMap<String, crate::interactions::Resolution>,
+    /// Oldest consumed source record, including folded interaction results.
+    pub source_head: Option<String>,
+    pending_interactions: HashMap<String, crate::interactions::ResultEvent>,
     pub interaction_submissions: HashMap<String, crate::interactions::Submission>,
     interaction_errors: HashMap<String, std::collections::BTreeMap<String, String>>,
+    pub(super) login_views: HashMap<String, crate::interactions::LoginView>,
     anonymous: HashSet<i64>,
     front: i64,
     back: i64,
@@ -68,6 +71,7 @@ pub(super) fn row_bytes(line: &TranscriptLine) -> usize {
         + content.capacity()
         + [
             &metadata.id,
+            &metadata.source_epoch,
             &metadata.created_at,
             &metadata.author_agent_id,
             &metadata.author_name,
@@ -101,15 +105,21 @@ pub(super) fn row_bytes(line: &TranscriptLine) -> usize {
 impl Owned {
     pub fn new(mut data: ConversationData) -> Self {
         data.lookup = TranscriptLookup::default();
+        let source_head = data.lines.first().and_then(|line| {
+            let TranscriptLine::Message { metadata, .. } = line;
+            metadata.id.clone()
+        });
         let mut owned = Self {
             data,
             bytes: 0,
             edits: Vec::new(),
             replaced: false,
             cache_backed: false,
+            source_head,
             pending_interactions: HashMap::new(),
             interaction_submissions: HashMap::new(),
             interaction_errors: HashMap::new(),
+            login_views: HashMap::new(),
             anonymous: HashSet::new(),
             front: -1,
             back: 0,
@@ -141,10 +151,12 @@ impl Owned {
         self.data.lines = List::new();
         self.data.lookup = TranscriptLookup::default();
         self.data.deliveries.clear();
+        self.source_head = None;
         self.anonymous = HashSet::new();
         self.pending_interactions.clear();
         self.interaction_submissions.clear();
         self.interaction_errors.clear();
+        self.login_views.clear();
         self.front = -1;
         self.back = 0;
         self.bytes = 0;
@@ -411,10 +423,10 @@ impl Owned {
     fn project_items(&mut self, items: &[TranscriptMessage]) -> Vec<TranscriptLine> {
         for message in items {
             let TranscriptMessage::Message { metadata, .. } = message;
-            let Some(result) = crate::interactions::result(metadata) else {
+            let Some(result) = crate::interactions::result_event(metadata) else {
                 continue;
             };
-            if let Some(index) = self.index_of(&result.request_message_id) {
+            if let Some(index) = self.index_of(&result.result.request_message_id) {
                 let mut line = self.lines[index].clone();
                 let TranscriptLine::Message { metadata, .. } = &mut line;
                 match crate::interactions::merge_result(metadata, &result) {
@@ -429,10 +441,18 @@ impl Owned {
                 // In-memory fixtures use the same reducer; production defers
                 // off-screen roots to the durable cache instead of retaining
                 // an unbounded duplicate of those results in this controller.
-                let old = self.pending_interactions.get(&result.request_message_id);
-                if old.is_none_or(|old| old.revision < result.revision) {
+                let old = self
+                    .pending_interactions
+                    .get(&result.result.request_message_id);
+                if old.is_some_and(|old| {
+                    old.handler != result.handler || old.request_id != result.request_id
+                }) {
+                    self.error = Some("interaction_business_mismatch".into());
+                    continue;
+                }
+                if old.is_none_or(|old| old.result.revision < result.result.revision) {
                     self.pending_interactions
-                        .insert(result.request_message_id.clone(), result);
+                        .insert(result.result.request_message_id.clone(), result);
                 }
             }
         }
@@ -446,7 +466,7 @@ impl Owned {
                         let result = self.pending_interactions.remove(&id).or_else(|| {
                             let old = &self.lines[self.index_of(&id)?];
                             let TranscriptLine::Message { metadata, .. } = old;
-                            metadata.interaction_result.as_deref().cloned()
+                            crate::interactions::cached_result(metadata)
                         });
                         if let Some(result) = result {
                             if let Err(error) = crate::interactions::merge_result(metadata, &result)
@@ -474,6 +494,9 @@ impl Owned {
                 .get(id)
                 .unwrap_or(&Default::default()),
         );
+        if let Some(view) = self.login_views.get(id) {
+            crate::interactions::provider_login::decorate(metadata, view);
+        }
     }
 
     pub fn set_interaction_errors(
@@ -485,6 +508,22 @@ impl Owned {
             self.interaction_errors.remove(id);
         } else {
             self.interaction_errors.insert(id.into(), errors);
+        }
+        self.refresh_interaction(id);
+    }
+
+    pub(super) fn set_login_view(
+        &mut self,
+        id: &str,
+        view: Option<crate::interactions::LoginView>,
+    ) {
+        if self.login_views.get(id) == view.as_ref() {
+            return;
+        }
+        if let Some(view) = view {
+            self.login_views.insert(id.into(), view);
+        } else {
+            self.login_views.remove(id);
         }
         self.refresh_interaction(id);
     }

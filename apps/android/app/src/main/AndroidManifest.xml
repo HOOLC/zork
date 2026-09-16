@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
     <application
         android:label="Zork"
         android:icon="@drawable/ic_zork"
@@ -15,7 +29,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Zork">
         <profileable android:shell="${zorkProfileable}" />
-        <activity android:name=".QrScanActivity" android:exported="false" android:screenOrientation="fullSensor" />
+        <service android:name=".ZorkNotificationService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
+        <service android:name=".ZorkAdbService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+        <activity android:name=".QrScanActivity" android:exported="false" android:screenOrientation="portrait">
+            <!-- Keep the scanner portrait on Android 16 foldable/tablet displays too. -->
+            <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />
+        </activity>
         <activity android:name=".MainActivity" android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

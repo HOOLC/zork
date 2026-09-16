@@ -1,11 +1,9 @@
 use super::ui;
 use crate::{
     api::{MeshAction, MeshAdmin, MeshAdminData},
-    automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
-    design::CUE_UI,
 };
-use gpui::{div, prelude::*, rgb, Context, Entity, Window};
+use gpui::{prelude::*, Context, Entity, Window};
 use std::sync::Arc;
 pub struct MeshSettings {
     pub enrollment_only: bool,
@@ -116,15 +114,6 @@ impl MeshSettings {
     fn remove_peer(&mut self, origin: String, _cx: &mut Context<Self>) {
         self.source.dispatch(MeshAction::RemovePeer(origin));
     }
-    fn field(
-        &self,
-        id: &'static str,
-        label: &'static str,
-        input: &Entity<ComposerInput>,
-        cx: &gpui::App,
-    ) -> gpui::Div {
-        ui::field(id, label, input, cx)
-    }
 }
 impl MeshSettings {
     fn enrollment_data(&self) -> zork_ui::network::EnrollmentData {
@@ -227,6 +216,14 @@ impl Render for MeshSettings {
             window,
             cx,
         );
+        let peer_visible = self
+            .modal
+            .retain(
+                "mesh-peer-dialog",
+                (self.form_open && !self.enrollment_only).then_some(()),
+                cx,
+            )
+            .is_some();
         if self.enrollment_only {
             return zork_ui::network::enrollment(self.enrollment_data(), cx, |v, event, cx| {
                 v.enrollment_action(event, cx)
@@ -278,19 +275,31 @@ impl Render for MeshSettings {
                 })
                 .unwrap_or_default(),
         };
-        div()
-            .flex()
-            .flex_col()
-            .child(zork_ui::network::network(
+        zork_ui::network::page(
+            zork_ui::network::Page {
                 data,
-                &self.switch_focus[0],
-                cx,
-                |v, event, cx| {
-                    use zork_ui::network::NetworkAction;
-                    match event {
-                        NetworkAction::Toggle(on) => {
-                            v.source.dispatch(MeshAction::Enable(on));
-                        }
+                invitation: self.enrollment_data(),
+                focus: &self.switch_focus[0],
+                source: self.modal.source("mesh-peer-dialog"),
+                modal: &self.modal,
+                peer: peer_visible.then(|| zork_ui::network::peer::Fields {
+                    name: &self.name,
+                    origin: &self.peer,
+                    address: &self.addr,
+                    grant: self.client_grant,
+                    focus: &self.switch_focus[1],
+                    busy: self.busy,
+                    notice: self.message.clone(),
+                }),
+            },
+            window,
+            cx,
+            |v, event, cx| {
+                use zork_ui::network::{peer, NetworkAction, PageAction};
+                match event {
+                    PageAction::Enrollment(event) => v.enrollment_action(event, cx),
+                    PageAction::Network(event) => match event {
+                        NetworkAction::Toggle(on) => v.source.dispatch(MeshAction::Enable(on)),
                         NetworkAction::Refresh => v.refresh(cx),
                         NetworkAction::CopyIdentity => {
                             if let Some(origin) = &v.origin {
@@ -298,103 +307,44 @@ impl Render for MeshSettings {
                                     origin.clone(),
                                 ));
                                 v.message = Some("设备身份已复制。".into());
-                                cx.notify();
                             }
                         }
                         NetworkAction::Add => {
                             v.form_open = true;
                             v.message = None;
-                            cx.notify();
                         }
                         NetworkAction::Remove(id) => v.remove_peer(id, cx),
-                    }
-                },
-            ))
-            .child(
-                div()
-                    .mt_6()
-                    .pt_5()
-                    .border_t_1()
-                    .border_color(rgb(CUE_UI.palette.border))
-                    .child(zork_ui::network::enrollment(
-                        self.enrollment_data(),
-                        cx,
-                        |v, event, cx| v.enrollment_action(event, cx),
-                    )),
-            )
-            .when(self.form_open, |v| {
-                v.child(ui::modal(
-                    "mesh-peer-dialog",
-                    "手动连接设备",
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_4()
-                        .child(self.field("mesh-peer-name", "设备名称", &self.name, cx))
-                        .child(self.field("mesh-peer-origin", "设备身份", &self.peer, cx))
-                        .child(self.field("mesh-peer-addr", "局域网地址 · 可选", &self.addr, cx))
-                        .child(zork_ui::settings::row(
-                            "允许作为客户端管理",
-                            "可管理此设备的模型连接、小伙伴和任务。",
-                            ui::switch(
-                                "mesh-client-grant",
-                                "客户端权限",
-                                self.client_grant,
-                                !self.busy,
-                                &self.switch_focus[1],
-                                cx,
-                                |v, on, cx| {
-                                    v.client_grant = on;
-                                    cx.notify();
-                                },
-                            ),
-                        )),
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            ui::button("mesh-cancel-peer", "取消", false, !self.busy)
-                                .on_click(cx.listener(|v, _, _, cx| {
-                                    if !v.busy {
-                                        v.form_open = false;
-                                        v.message = None;
-                                        cx.notify();
-                                    }
-                                }))
-                                .automation_enabled(!self.busy, AutomationRole::Button, "取消添加"),
-                        )
-                        .child(
-                            ui::busy_button(
-                                "mesh-add-peer",
-                                if self.busy {
-                                    "正在保存…"
-                                } else {
-                                    "保存配对"
-                                },
-                                true,
-                                !self.busy,
-                                self.busy,
-                            )
-                            .on_click(cx.listener(|v, _, _, cx| v.add_peer(cx)))
-                            .automation_enabled(
-                                !self.busy,
-                                AutomationRole::Button,
-                                "保存配对",
-                            ),
-                        ),
-                    self.message.clone(),
-                    &self.modal.focus,
-                    window,
-                    cx,
-                    !self.busy,
-                    |v, _, cx| {
-                        v.form_open = false;
-                        v.message = None;
-                        cx.notify();
                     },
-                ))
-            })
-            .into_any_element()
+                    PageAction::Peer(event) => match event {
+                        peer::Action::Grant(on) => v.client_grant = on,
+                        peer::Action::Save => v.add_peer(cx),
+                        peer::Action::Cancel => {
+                            v.form_open = false;
+                            v.message = None;
+                        }
+                    },
+                }
+                cx.notify();
+            },
+        )
+    }
+}
+
+impl MeshSettings {
+    pub(super) fn enrollment_dialog(
+        &self,
+        modal: &ui::ModalState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        close: impl Fn(&mut gpui::App) + 'static,
+    ) -> gpui::AnyElement {
+        zork_ui::network::enrollment_dialog(
+            self.enrollment_data(),
+            modal,
+            window,
+            cx,
+            |v, event, cx| v.enrollment_action(event, cx),
+            move |_, cx| close(cx),
+        )
     }
 }

@@ -18,7 +18,7 @@ fn selection() -> SessionSelection {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-04]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-04]
 async fn runtime_fault_is_visible_and_two_completed_steps_reset_its_streak() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -83,7 +83,7 @@ async fn runtime_fault_is_visible_and_two_completed_steps_reset_its_streak() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-04]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-04]
 async fn a_different_runtime_fault_fingerprint_starts_a_new_streak() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -137,7 +137,7 @@ async fn a_different_runtime_fault_fingerprint_starts_a_new_streak() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-04]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-04]
 async fn fifth_consecutive_runtime_fault_opens_only_that_sessions_circuit() {
     let mut options = ServiceOptions::default();
     options.supervisor.runner_fault_limit = 5;
@@ -206,7 +206,7 @@ async fn fifth_consecutive_runtime_fault_opens_only_that_sessions_circuit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-02]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-02]
 async fn paused_durable_append_proves_session_and_global_admission_are_bounded() {
     let mut session_options = ServiceOptions::default();
     session_options.supervisor.session_queue_capacity = 1;
@@ -252,7 +252,7 @@ async fn paused_durable_append_proves_session_and_global_admission_are_bounded()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [DELETE-01]
+// Contract: docs/design/agent-runtime.md [DELETE-01]
 async fn delete_rejects_new_work_before_waiting_for_the_active_runner() {
     let mut world = TestWorld::new();
     let session_id = world
@@ -283,7 +283,7 @@ async fn delete_rejects_new_work_before_waiting_for_the_active_runner() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-02]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-02]
 async fn bounded_admission_is_reported_as_real_http_429_and_503() {
     let mut session_options = ServiceOptions::default();
     session_options.supervisor.session_queue_capacity = 1;
@@ -339,7 +339,7 @@ async fn bounded_admission_is_reported_as_real_http_429_and_503() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [SUPERVISOR-03]
+// Contract: docs/design/agent-runtime.md [SUPERVISOR-03]
 async fn an_accepted_command_is_not_replayed_after_its_runner_fails() {
     let mut options = ServiceOptions::default();
     options.supervisor.session_queue_capacity = 1;
@@ -392,7 +392,7 @@ async fn an_accepted_command_is_not_replayed_after_its_runner_fails() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// Contract: docs/zork-agent-architecture.md [STARTUP-01, STARTUP-02]
+// Contract: docs/design/agent-runtime.md [STARTUP-01, STARTUP-02]
 async fn requested_unchecked_session_bypasses_background_scan_and_is_recovered_once() {
     let mut options = ServiceOptions::default();
     // One controlled background worker keeps `requested` unclaimed while the

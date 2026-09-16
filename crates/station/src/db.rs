@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -12,8 +12,11 @@ pub mod agents;
 mod artifacts;
 pub mod chats;
 mod conversation_files;
+pub(crate) mod interaction_registry;
 pub mod mesh;
+mod message_source;
 pub(crate) mod pages;
+mod snapshots;
 mod sync;
 mod sync_commands;
 mod tasks;
@@ -26,7 +29,10 @@ pub struct GatewayDb {
     pub realtime: crate::realtime::Realtime,
     pub chat_topics: zork_notify::Hub<chats::Topic>,
     conn: Mutex<Connection>,
+    message_log: Arc<crate::message_log::MessageLog>,
     workspaces_root: PathBuf,
+    files_root: PathBuf,
+    file_staging: PathBuf,
     sync_watermark: PathBuf,
 }
 
@@ -204,7 +210,24 @@ pub struct JobRow {
 }
 
 impl GatewayDb {
+    #[cfg(test)]
     pub fn open(state_dir: &Path, workspaces_root: &Path) -> Result<Self> {
+        Self::open_with_paths(
+            state_dir,
+            workspaces_root,
+            workspaces_root.parent().context("fixture file root")?,
+            &state_dir.join("chats"),
+            &state_dir.join("cache"),
+        )
+    }
+
+    pub fn open_with_paths(
+        state_dir: &Path,
+        workspaces_root: &Path,
+        files_root: &Path,
+        chats_root: &Path,
+        cache_root: &Path,
+    ) -> Result<Self> {
         fs::create_dir_all(state_dir).context("create state dir")?;
         fs::create_dir_all(workspaces_root).context("create workspaces root")?;
         let path = state_dir.join(GATEWAY_DB);
@@ -212,23 +235,39 @@ impl GatewayDb {
         conn.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS as u64))?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "synchronous", "FULL")?;
+        zork_config::startup::mark("station.db_connection_opened");
+        let message_log = Arc::new(crate::message_log::MessageLog::open(
+            chats_root, cache_root,
+        )?);
+        zork_config::startup::mark("station.db_message_log_opened");
+        message_source::install_reader(&conn, message_log.clone())?;
         let realtime = crate::realtime::Realtime::default();
         realtime.install(&conn);
         let db = Self {
             realtime,
             chat_topics: Default::default(),
             conn: Mutex::new(conn),
+            message_log,
             workspaces_root: workspaces_root.to_path_buf(),
+            files_root: files_root.to_path_buf(),
+            file_staging: state_dir.join("file-staging"),
             sync_watermark: state_dir.join("sync-lineage.json"),
         };
         db.initialize_schema()?;
+        zork_config::startup::mark("station.db_schema_ready");
+        {
+            let conn = db.conn.lock().expect("db mutex");
+            db.flush_messages(&conn)?;
+            db.recover_message_projection(&conn)?;
+        }
         Ok(db)
     }
 
     fn initialize_schema(&self) -> Result<()> {
         {
-            let conn = self.conn.lock().expect("db mutex");
+            let mut connection = self.conn.lock().expect("db mutex");
+            let conn = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             conn.execute_batch(
                 r#"
             CREATE TABLE IF NOT EXISTS sessions (
@@ -350,15 +389,21 @@ impl GatewayDb {
             );
             "#,
             )?;
+            message_source::initialize(&conn)?;
             agents::initialize(&conn)?;
             tasks::initialize(&conn)?;
+            interaction_registry::initialize(&conn)?;
             chats::initialize(&conn)?;
             mesh::initialize(&conn)?;
             artifacts::initialize(&conn)?;
             pages::initialize(&conn)?;
+            zork_config::startup::mark("station.db_public_schema_ready");
             sync::initialize(&conn)?;
             sync_commands::initialize(&conn)?;
-            self.sync_check_lineage(&conn)?;
+            zork_config::startup::mark("station.db_schema_statements_ready");
+            conn.commit()?;
+            zork_config::startup::mark("station.db_schema_committed");
+            self.sync_check_lineage(&connection)?;
         }
         Ok(())
     }
@@ -1248,7 +1293,7 @@ impl GatewayDb {
             .query_row(
                 r#"
             SELECT sequence, message_id, session_key, role, text, kind, created_at
-            FROM visible_messages WHERE message_id = ?1
+            FROM visible_message_content WHERE message_id = ?1
             "#,
                 [message_id],
                 map_visible_message_row,
@@ -1264,6 +1309,7 @@ impl GatewayDb {
             Vec::new()
         };
         conn.commit()?;
+        self.flush_messages(&guard)?;
         self.chat_topics.publish(topics);
         Ok(message)
     }
@@ -1274,14 +1320,14 @@ impl GatewayDb {
         before_sequence: Option<i64>,
         limit: i64,
     ) -> Result<Vec<VisibleMessageRow>> {
-        let conn = self.conn.lock().expect("db mutex");
+        let conn = self.published_messages()?;
         let mut stmt = conn.prepare(
             r#"
             SELECT sequence, message_id, session_key, role, text, kind, created_at
             FROM (
               SELECT sequence, message_id, session_key, role, text, kind, created_at
-              FROM visible_messages
-              WHERE session_key = ?1 AND (?2 IS NULL OR sequence < ?2)
+              FROM visible_message_content
+              WHERE session_key = ?1 AND sequence <= ?2
               ORDER BY sequence DESC
               LIMIT ?3
             )
@@ -1290,7 +1336,11 @@ impl GatewayDb {
         )?;
         let rows = stmt
             .query_map(
-                params![session_key, before_sequence, limit],
+                params![
+                    session_key,
+                    before_sequence.map_or(i64::MAX, |sequence| sequence.saturating_sub(1)),
+                    limit
+                ],
                 map_visible_message_row,
             )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1298,13 +1348,12 @@ impl GatewayDb {
     }
 
     pub fn has_visible_messages_before(&self, session_key: &str, sequence: i64) -> Result<bool> {
-        let conn = self.conn.lock().expect("db mutex");
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM visible_messages WHERE session_key = ?1 AND sequence < ?2",
+        let conn = self.published_messages()?;
+        Ok(conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM visible_messages WHERE session_key = ?1 AND sequence < ?2)",
             params![session_key, sequence],
             |row| row.get(0),
-        )?;
-        Ok(count > 0)
+        )?)
     }
 
     pub fn insert_job(&self, job: &JobRow) -> Result<()> {

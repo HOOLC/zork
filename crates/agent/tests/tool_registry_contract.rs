@@ -87,7 +87,7 @@ impl ToolImplementation for Echo {
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-06]
+// Contract: docs/design/agent-runtime.md [TOOL-06]
 async fn tool_help_always_returns_the_targets_current_detailed_contract() {
     let registry = Arc::new(ToolRegistry::default());
     registry.register(instance("file.read", "v1", "old"));
@@ -141,7 +141,7 @@ fn instance(name: &str, version: &str, output: &'static str) -> Arc<ToolInstance
 }
 
 #[tokio::test]
-// Contract: docs/zork-agent-architecture.md [TOOL-02]
+// Contract: docs/design/agent-runtime.md [TOOL-02]
 async fn each_logical_tool_updates_and_resolves_its_own_opaque_version() {
     let registry = ToolRegistry::default();
     let first = instance("aa.one", "blue", "old");
@@ -247,7 +247,7 @@ fn stateful_instance(name: &str, version: &str, marker: &'static str) -> Arc<Too
 }
 
 #[test]
-// Contract: docs/zork-agent-architecture.md [TOOL-08]
+// Contract: docs/design/agent-runtime.md [TOOL-08]
 fn removing_a_tool_keeps_compatibility_and_readding_it_is_reported_as_added() {
     let registry = ToolRegistry::default();
     registry.register(stateful_instance("aa.removable", "old", "old-state"));

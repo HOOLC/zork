@@ -105,10 +105,10 @@ void *zork_modal_blur_create(void *rawView) {
         return (__bridge_retained void *)view;
     }
 }
-void zork_modal_blur_update(void *handle, double x, double y, double width, double height, double radius) {
+void zork_modal_blur_update(void *handle, double x, double y, double width, double height, const double *curves, size_t curveCount) {
     @autoreleasepool {
         ZorkModalBlurView *view = (__bridge ZorkModalBlurView *)handle;
-        if (!view.sourceView) return;
+        if (!view.sourceView || !curves || !curveCount || width <= 0 || height <= 0) return;
         NSView *source = view.sourceView;
         NSView *host = view.superview;
         NSRect frame = host.bounds;
@@ -131,11 +131,18 @@ void zork_modal_blur_update(void *handle, double x, double y, double width, doub
         CGMutablePathRef mask = CGPathCreateMutable();
         CGPathAddRect(mask, NULL, NSRectToCGRect(view.bounds));
         // Leave the foreground card outside the dark scrim without an extra outline.
-        CGRect hole = card;
-        CGPathRef rounded = CGPathCreateWithRoundedRect(hole, radius, radius, NULL);
-        CGPathAddPath(mask, NULL, rounded);
+        // Rust supplies the exact shared smooth contour; AppKit only maps it
+        // into compositor coordinates. No platform-specific corner formula.
+        double sx = card.size.width / width, sy = card.size.height / height;
+        CGPathMoveToPoint(mask, NULL, card.origin.x + curves[0] * sx, card.origin.y + curves[1] * sy);
+        for (size_t i = 0; i < curveCount; ++i) {
+            const double *c = curves + i * 8;
+            CGPathAddCurveToPoint(mask, NULL, card.origin.x + c[2] * sx, card.origin.y + c[3] * sy,
+                card.origin.x + c[4] * sx, card.origin.y + c[5] * sy,
+                card.origin.x + c[6] * sx, card.origin.y + c[7] * sy);
+        }
+        CGPathCloseSubpath(mask);
         view.exclusionMask.path = mask;
-        CGPathRelease(rounded);
         CGPathRelease(mask);
         view.previousCard = card;
         [CATransaction commit];

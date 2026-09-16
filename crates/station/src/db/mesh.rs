@@ -132,8 +132,8 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
         UNIQUE(assignment_id,event_key)
     );
     CREATE INDEX IF NOT EXISTS mesh_exports_assignment ON mesh_exports(assignment_id,sequence);
-    CREATE TABLE IF NOT EXISTS mesh_artifact_refs (
-        artifact_id TEXT PRIMARY KEY REFERENCES task_artifacts(artifact_id),
+    CREATE TABLE IF NOT EXISTS mesh_artifact_file_refs (
+        artifact_id TEXT PRIMARY KEY REFERENCES task_file_snapshots(artifact_id),
         assignment_id TEXT NOT NULL REFERENCES mesh_links(assignment_id),
         remote_artifact_id TEXT NOT NULL, remote_version INTEGER NOT NULL, object_json TEXT NOT NULL
     );")?;
@@ -177,7 +177,7 @@ fn insert_message(
 ) -> Result<Vec<super::chats::Topic>> {
     let inserted = conn.execute("INSERT OR IGNORE INTO visible_messages(message_id,session_key,connection_id,conversation_id,root_message_id,role,text,kind,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![id,session.key,session.connection_id,session.channel_id,session.root_thread_ts,role,text,kind,now_rfc3339()])?;
     if inserted > 0 {
-        let message = conn.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_messages WHERE message_id=?1", [id], map_visible_message_row)?;
+        let message = conn.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1", [id], map_visible_message_row)?;
         let topics = tasks::record_message(conn, &message)?;
         super::pages::record_file_handoff(conn, &message)?;
         return Ok(topics);
@@ -260,6 +260,7 @@ impl GatewayDb {
             params![link.assignment.assignment_id, request_id, goal],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(())
     }
@@ -288,6 +289,7 @@ impl GatewayDb {
             |r| r.get(0),
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(id)
     }
     pub fn mesh_links(&self) -> Result<Vec<Link>> {
@@ -355,6 +357,7 @@ impl GatewayDb {
         )?;
         let link = get_link(&tx, &assignment.assignment_id)?.context("mesh link missing")?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(link)
     }
@@ -375,6 +378,7 @@ impl GatewayDb {
         tx.execute("INSERT INTO mesh_links(assignment_id,assignment_json,role,state) VALUES (?1,?2,'executor','queued')",params![assignment.assignment_id,serde_json::to_string(assignment)?])?;
         let link = get_link(&tx, &assignment.assignment_id)?.context("mesh link missing")?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(link)
     }
 
@@ -397,6 +401,7 @@ impl GatewayDb {
             None,
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(())
     }
@@ -440,6 +445,7 @@ impl GatewayDb {
             )?;
         }
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(())
     }
 
@@ -459,6 +465,7 @@ impl GatewayDb {
             },
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(())
     }
 
@@ -472,7 +479,7 @@ impl GatewayDb {
         let Some(task_id) = link.local_task_id.as_ref() else {
             return Ok(());
         };
-        let mut q=tx.prepare("SELECT artifact_id,name,source_path,media_type,caption,version FROM task_artifacts WHERE task_id=?1 UNION ALL SELECT a.artifact_id,a.name,a.source_path,a.media_type,a.caption,a.version FROM conversation_artifacts a WHERE a.session_key=(SELECT session_key FROM product_tasks WHERE task_id=?1) AND EXISTS(SELECT 1 FROM visible_messages m WHERE m.session_key=a.session_key AND m.role='assistant' AND m.kind='file' AND instr(m.text,'\"id\":\"'||a.artifact_id||'\"')>0)")?;
+        let mut q=tx.prepare("SELECT artifact_id,name,source_path,media_type,caption,version FROM task_file_snapshots WHERE task_id=?1 UNION ALL SELECT a.artifact_id,a.name,a.source_path,a.media_type,a.caption,a.version FROM conversation_file_snapshots a WHERE a.session_key=(SELECT session_key FROM product_tasks WHERE task_id=?1) AND EXISTS(SELECT 1 FROM visible_message_content m WHERE m.session_key=a.session_key AND m.role='assistant' AND m.kind='file' AND instr(m.text,'\"id\":\"'||a.artifact_id||'\"')>0)")?;
         let artifacts = q
             .query_map([task_id], |r| {
                 Ok(EventBody::Artifact {
@@ -492,7 +499,7 @@ impl GatewayDb {
                 export(&tx, id, &format!("artifact:{artifact_id}"), &body)?;
             }
         }
-        let mut q=tx.prepare("SELECT message_id,text,kind FROM visible_messages WHERE session_key=?1 AND role='assistant' ORDER BY sequence")?;
+        let mut q=tx.prepare("SELECT message_id,text,kind FROM visible_message_content WHERE session_key=?1 AND role='assistant' ORDER BY sequence")?;
         let messages = q
             .query_map([&link.session_key], |r| {
                 Ok(EventBody::Message {
@@ -535,6 +542,7 @@ impl GatewayDb {
             }
         }
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(())
     }
 
@@ -653,12 +661,12 @@ impl GatewayDb {
                         );
                         for file in &mut files {
                             file.id = format!("mesh-{}-{}", event.assignment_id, file.id);
-                            let (name,bytes):(String,Vec<u8>) = tx.query_row("SELECT name,content FROM task_artifacts WHERE task_id=?1 AND artifact_id=?2",params![task_id,file.id],|r|Ok((r.get(0)?,r.get(1)?)))?;
+                            let (name,snapshot):(String,super::snapshots::Snapshot) = tx.query_row("SELECT name,snapshot FROM task_file_snapshots WHERE task_id=?1 AND artifact_id=?2",params![task_id,file.id],|r|Ok((r.get(0)?,r.get(1)?)))?;
                             ensure!(
                                 file.valid()
                                     && name == file.name
-                                    && bytes.len() == file.byte_len
-                                    && zork_mesh::content_root(&bytes) == file.content_root,
+                                    && snapshot.byte_len == file.byte_len
+                                    && snapshot.root == file.content_root,
                                 "attachment_reference_mismatch"
                             );
                         }
@@ -720,9 +728,10 @@ impl GatewayDb {
                         "invalid_mesh_artifact_name"
                     );
                     let id = format!("mesh-{}-{artifact_id}", event.assignment_id);
-                    let local_version:i64=tx.query_row("SELECT COALESCE(MAX(version),0)+1 FROM task_artifacts WHERE task_id=?1 AND source_path=?2",params![task_id,source_path],|r|r.get(0))?;
-                    tx.execute("INSERT OR IGNORE INTO task_artifacts(artifact_id,task_id,name,source_path,media_type,content,version,created_at,caption,workspace) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![id,task_id,name,source_path,media_type,bytes,local_version,now_rfc3339(),caption,format!("{}:{}",peer,link.assignment.workspace_id)])?;
-                    tx.execute("INSERT OR IGNORE INTO mesh_artifact_refs(artifact_id,assignment_id,remote_artifact_id,remote_version,object_json) VALUES (?1,?2,?3,?4,?5)",params![id,event.assignment_id,artifact_id,version,serde_json::to_string(object)?])?;
+                    let local_version:i64=tx.query_row("SELECT COALESCE(MAX(version),0)+1 FROM task_file_snapshots WHERE task_id=?1 AND source_path=?2",params![task_id,source_path],|r|r.get(0))?;
+                    let snapshot = self.freeze_file(name, bytes)?;
+                    tx.execute("INSERT OR IGNORE INTO task_file_snapshots(artifact_id,task_id,name,source_path,media_type,snapshot,version,created_at,caption,workspace) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![id,task_id,name,source_path,media_type,snapshot,local_version,now_rfc3339(),caption,format!("{}:{}",peer,link.assignment.workspace_id)])?;
+                    tx.execute("INSERT OR IGNORE INTO mesh_artifact_file_refs(artifact_id,assignment_id,remote_artifact_id,remote_version,object_json) VALUES (?1,?2,?3,?4,?5)",params![id,event.assignment_id,artifact_id,version,serde_json::to_string(object)?])?;
                     tx.execute("UPDATE product_tasks SET revision=revision+1,updated_at=?2 WHERE task_id=?1",params![task_id,now_rfc3339()])?;
                 }
                 EventBody::Attention { message } => {
@@ -735,6 +744,7 @@ impl GatewayDb {
             params![event.assignment_id, event.sequence],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         self.chat_topics.publish(topics);
         Ok(true)
     }
@@ -828,7 +838,7 @@ impl GatewayDb {
                 let original = message
                     .strip_prefix(&format!("mesh-{id}-"))
                     .context("mesh_decision_wrong_result")?;
-                Some(tx.query_row("SELECT sequence FROM visible_messages WHERE message_id=?1 AND session_key=?2 AND kind='final'",params![original,link.session_key],|r|r.get::<_,i64>(0))?)
+                Some(tx.query_row("SELECT sequence FROM visible_message_content WHERE message_id=?1 AND session_key=?2 AND kind='final'",params![original,link.session_key],|r|r.get::<_,i64>(0))?)
             } else {
                 None
             };
@@ -839,6 +849,7 @@ impl GatewayDb {
             params![id, serde_json::to_string(decision)?],
         )?;
         tx.commit()?;
+        self.flush_messages(&conn)?;
         Ok(())
     }
 }
@@ -854,7 +865,7 @@ pub(super) fn record_decision(
 ) -> Result<()> {
     let artifacts: Vec<String> = {
         let mut q = conn.prepare(
-            "SELECT artifact_id FROM task_artifacts WHERE task_id=?1 ORDER BY artifact_id",
+            "SELECT artifact_id FROM task_file_snapshots WHERE task_id=?1 ORDER BY artifact_id",
         )?;
         let rows = q
             .query_map([task_id], |r| r.get(0))?
@@ -1056,7 +1067,7 @@ mod tests {
         );
         // A persisted historical decision remains auditable. New messages do
         // not create such a decision and are not discarded because of it.
-        db.conn.lock().unwrap().execute("UPDATE product_tasks SET state='review',result_sequence=(SELECT sequence FROM visible_messages WHERE message_id=?2) WHERE task_id=?1",params![a.task_id,format!("mesh-{}-final-b",a.assignment_id)]).unwrap();
+        db.conn.lock().unwrap().execute("UPDATE product_tasks SET state='review',result_sequence=(SELECT sequence FROM visible_message_content WHERE message_id=?2) WHERE task_id=?1",params![a.task_id,format!("mesh-{}-final-b",a.assignment_id)]).unwrap();
         let review = db.product_task(&a.task_id).unwrap().unwrap();
         assert!(db
             .transition_task(&a.task_id, 0, tasks::TaskAction::Accept)

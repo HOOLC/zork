@@ -125,33 +125,6 @@ impl Store {
             json!({"operation_id":id,"tool":tool,"state":state,"result":result.map(|v|serde_json::from_str::<Value>(&v)).transpose()?}),
         )
     }
-    pub fn saved_route(
-        &self,
-        who: &Subject,
-        invocation: &str,
-        hash: &str,
-    ) -> Result<Option<(String, Rpc)>> {
-        self.0
-            .lock()
-            .expect("node db")
-            .query_row(
-                "SELECT fingerprint,target,rpc FROM outbox WHERE origin=?1 AND invocation=?2",
-                params![who.origin, invocation],
-                |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, String>(2)?,
-                    ))
-                },
-            )
-            .optional()?
-            .map(|(old, target, rpc)| {
-                ensure!(old == hash, "device_invocation_conflict");
-                Ok((target, serde_json::from_str(&rpc)?))
-            })
-            .transpose()
-    }
     pub fn enqueue(
         &self,
         who: &Subject,
@@ -235,19 +208,6 @@ impl Store {
             )
             .optional()?
             .context("device_operation_not_found")
-    }
-    pub fn pending(&self, who: &Subject) -> Result<Vec<(String, Rpc)>> {
-        let c = self.0.lock().expect("node db");
-        let mut s =
-            c.prepare("SELECT target,rpc FROM outbox WHERE subject=?1 AND id IS NULL AND status='pending' LIMIT 16")?;
-        let rows = s
-            .query_map([serde_json::to_string(who)?], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows.into_iter()
-            .map(|(t, r)| Ok((t, serde_json::from_str(&r)?)))
-            .collect()
     }
 }
 

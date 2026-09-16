@@ -2,6 +2,8 @@ pub mod membership;
 pub mod service;
 pub mod services;
 pub mod skill_bundles;
+pub mod startup;
+pub mod tree;
 pub mod update;
 
 /// Generate a bearer credential with 256 bits of OS randomness.
@@ -36,6 +38,18 @@ const UNIX_SOCK_MAX_BYTES: usize = 103;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+/// Station-owned files, including execution records and immutable attachments.
+/// Keep this location stable for existing workspaces and fixed file references;
+/// it is separate from the directory users choose to share.
+pub fn files_root(data_root: &Path) -> PathBuf {
+    data_root.join("shared-files")
+}
+
+/// The user-controlled file-sharing source. A fresh node leaves it empty.
+pub fn shared_files_root(data_root: &Path) -> PathBuf {
+    data_root.join("shared")
+}
 
 const DEFAULT_GATEWAY_BIND: &str = "127.0.0.1:18790";
 const DEFAULT_RUNTIME_BIND: &str = "127.0.0.1:3000";
@@ -84,19 +98,25 @@ impl SkillsConfig {
         validate_skill_paths(agent_paths)?;
         validate_skill_paths(std::slice::from_ref(&self.shared_path))?;
         let mut sources = skill_bundles::sources(data_root)?;
-        sources.push(data_root.join("custom-skills"));
+        sources.push(skill_bundles::skills_root(data_root));
         sources.extend(
             std::iter::once(&self.shared_path)
                 .chain(&self.paths)
                 .chain(agent_paths)
                 .map(|path| {
-                    if path.is_absolute() {
+                    if path.is_absolute() || path.to_string_lossy().starts_with("synch://") {
                         path.clone()
                     } else {
-                        data_root.join(path)
+                        if path == &self.shared_path && path == std::path::Path::new("skills") {
+                            skill_bundles::skills_root(data_root)
+                        } else {
+                            data_root.join(path)
+                        }
                     }
                 }),
         );
+        let mut seen = std::collections::BTreeSet::new();
+        sources.retain(|source| seen.insert(source.clone()));
         Ok(sources)
     }
 }
@@ -109,6 +129,12 @@ pub fn validate_skill_paths(paths: &[PathBuf]) -> Result<()> {
             !text.trim().is_empty() && text.len() <= 4096 && !text.chars().any(char::is_control),
             "invalid skill path"
         );
+        if text.starts_with("synch://") {
+            anyhow::ensure!(
+                tree::Reference::parse(&text)?.root.is_none(),
+                "skill source must reference a directory"
+            );
+        }
     }
     Ok(())
 }
@@ -130,7 +156,7 @@ mod skill_tests {
                 .sources(&root, &[PathBuf::from("agent/skills")])
                 .unwrap(),
             vec![
-                root.join("custom-skills"),
+                skill_bundles::skills_root(&root),
                 root.join("shared/skills"),
                 root.join("devices/one/skills"),
                 root.join("agent/skills")
@@ -507,9 +533,11 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 pub fn ensure_layout(data_root: &Path) -> Result<FileConfig> {
     fs::create_dir_all(data_root).with_context(|| format!("create {}", data_root.display()))?;
     fs::create_dir_all(data_root.join("state"))?;
-    fs::create_dir_all(data_root.join("sessions"))?;
-    fs::create_dir_all(data_root.join("repos"))?;
-    fs::create_dir_all(data_root.join("jobs"))?;
+    fs::create_dir_all(shared_files_root(data_root))?;
+    fs::create_dir_all(files_root(data_root).join("sessions"))?;
+    fs::create_dir_all(skill_bundles::skills_root(data_root))?;
+    fs::create_dir_all(files_root(data_root).join("repos"))?;
+    fs::create_dir_all(files_root(data_root).join("jobs"))?;
     fs::create_dir_all(data_root.join("logs"))?;
     fs::create_dir_all(data_root.join("bin"))?;
     fs::create_dir_all(data_root.join("run"))?;

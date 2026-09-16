@@ -118,6 +118,10 @@ fn main() -> anyhow::Result<()> {
                     .iter()
                     .find(|e| e.id == "profile-detail-dialog-close")
                     .expect("detail close button");
+                if !(close.visible && close.enabled && close.bounds == close.visible_bounds) {
+                    cx.capture_screenshot(window.into())?.save(output.join(format!("detail-close-clipped-{width}.png")))?;
+                    std::fs::write(output.join(format!("detail-close-clipped-{width}.json")), serde_json::to_vec_pretty(&snapshot)?)?;
+                }
                 anyhow::ensure!(
                     close.visible && close.enabled && close.bounds == close.visible_bounds,
                     "detail close button clipped"
@@ -328,13 +332,14 @@ fn verify_cases(output: &std::path::Path) -> anyhow::Result<()> {
                     let action = serde_json::from_value(
                         json!({"type":"scroll","target":{"element_id":"profile-models"},"delta_y":if index<60 {-640.}else{640.}}),
                     )?;
+                    let start = Instant::now();
                     cx.update_window(window.into(), |_, window, cx| {
                         driver.dispatch(action, window, cx)
                     })??;
                     cx.advance_clock(Duration::from_millis(16));
+                    // HeadlessAppContext paints dirty windows while draining.
+                    // A second explicit draw doubled both row work and frames.
                     cx.run_until_parked();
-                    let start = Instant::now();
-                    cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;
                     if index >= 20 {
                         samples.push(start.elapsed().as_secs_f64() * 1000.);
                     }
