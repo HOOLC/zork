@@ -111,17 +111,24 @@ adb -s SERIAL shell am start -W -n surf.zork.android.debug/surf.zork.android.Mai
 - `apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`（仅 `--tests`）
 
 脚本使用 `Cargo.lock` 和 Gradle 严格依赖锁；修改依赖后需要有意更新锁文件。
-JDK / SDK 可由 `JAVA_HOME`、`ANDROID_HOME` 指定。mini1 上默认复用 Homebrew
+JDK / SDK 可由 `JAVA_HOME`、`ANDROID_HOME` 指定。macOS 默认复用 Homebrew
 JDK 17 和 `~/Library/Android/sdk`。正常 Rust 工具链可安装
 `aarch64-linux-android` target；Homebrew Rust 没有该标准库时，脚本使用与
 编译器匹配的 `rust-src` 构建标准库，不替换系统 Rust。
 
-Android 编译缓存默认位于 `target/android`，与桌面 Cargo 构建锁分离。
-若项目的 `target` 指向网络盘，可用 `CARGO_TARGET_DIR` 指定临时本地缓存，
-避免 macOS 从 SMB 加载编译期动态库时的等待；验证后可清理这份临时缓存。
+Android 编译缓存默认位于 `target/android`，与桌面 Cargo 构建锁分离；配置
+`ZORK_BUILD_ROOT` 时位于该根目录的 `android` 子目录。活跃缓存使用本机磁盘，
+路径和回收规则见 [构建指南](../../docs/guides/rust-builds.md)。
 保持 `CARGO_INCREMENTAL=0`、`CARGO_PROFILE_DEV_DEBUG=0`、4 个 Cargo 构建任务。
 `--skip-native` 仅供确认 Rust 部分没有变动的 UI 迭代；`--native-only` 只构建和
 准备 native 资源。不要在 native 代码变更后用旧 `.so` 交付。
+
+更换开发机后，要覆盖已安装的开发版并保留数据，须继续使用原调试签名。
+将 keystore 保存在私有目录，并在项目忽略的 `.env` 中设置
+`ZORK_ANDROID_DEBUG_KEYSTORE=/absolute/path/to/debug.keystore`；构建脚本将其
+传给 Gradle 的 debug 签名配置，也适用于 `--profile`。不配置时沿用 Android
+默认调试签名。不要覆盖其他项目使用的全局 keystore，也不要把密钥提交到 Git。
+安装前用 SDK 的 `apksigner verify --print-certs` 核对 APK 证书。
 
 Android 平台 TLS 验证器的 Java 类从 Cargo 锁定的 AAR 提取；不是下载另一份
 独立版本。NDK compiler-rt 显式参与链接，并用 `--no-undefined` 检查缺失符号。

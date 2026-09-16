@@ -25,7 +25,8 @@ const nativeDesign=await readFile(resolve(repo,'crates/zork-ui/src/design.rs'),'
 const palette=nativeDesign.slice(nativeDesign.indexOf('palette: Palette {',nativeDesign.indexOf('pub const CUE_UI:')));
 const colors=Object.fromEntries([...palette.slice(0,palette.indexOf('},')).matchAll(/(\w+): 0x([0-9A-Fa-f]{6})/g)].map(([,name,value])=>[name,'#'+value]));
 const nativeControls=await readFile(resolve(repo,'crates/zork-ui/src/controls.rs'),'utf8');
-const sizeExpressions=Object.fromEntries([...nativeControls.matchAll(/pub const (\w+): f32 = ([\w.]+);/g)].map(([,name,value])=>[name,value]));
+const liquidTokens=await readFile(resolve(repo,'crates/zork-liquid/src/tokens.rs'),'utf8');
+const sizeExpressions=Object.fromEntries([...liquidTokens.matchAll(/pub const (\w+): f32 = ([\w.]+);/g),...nativeControls.matchAll(/pub const (\w+): f32 = ([\w.]+);/g)].map(([,name,value])=>[name,value]));
 function sizeValue(name,seen=new Set()) { if(seen.has(name))throw new Error('Cyclic control size: '+name); seen.add(name); const value=sizeExpressions[name]; if(value===undefined)throw new Error('Unknown control size: '+name); return /^[0-9.]+$/.test(value)?Number(value):sizeValue(value,seen); }
 const sizes=Object.fromEntries(Object.keys(sizeExpressions).map(name=>[name,sizeValue(name)]));
 catalog.tokens={colors,sizes};

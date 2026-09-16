@@ -22,7 +22,7 @@ def main():
  if not (sysroot/'lib/rustlib/wasm32-unknown-unknown').exists():
   if not (sysroot/'lib/rustlib/src/rust/library/Cargo.lock').exists():raise SystemExit('Install the wasm32 Rust target or rust-src before building GPUI Web.')
   env['RUSTC_BOOTSTRAP']='1';build[2:2]=['-Z','build-std=std,panic_abort']
- if 'CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER' not in env and Path('/opt/homebrew/Cellar/lld/23.1.0/bin/wasm-ld').exists():env['CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER']=str(ROOT/'scripts/storybook/wasm-linker.sh')
+ if 'CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER' not in env and (env.get('ZORK_WASM_LD') or shutil.which('wasm-ld')):env['CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER']=str(ROOT/'scripts/storybook/wasm-linker.sh')
  subprocess.run(['uv','run',str(ROOT/'scripts/storybook/prepare_fonts.py')],cwd=ROOT,check=True)
  subprocess.run(build,cwd=ROOT,env=env,check=True)
  cache=target_root/'storybook-tools';tool=cache/f'wasm-bindgen-{BINDGEN}-aarch64-apple-darwin/wasm-bindgen'

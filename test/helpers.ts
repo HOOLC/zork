@@ -26,7 +26,7 @@ export function testSessionKey(channelId: string, rootMessageId: string): string
 }
 
 export function testNormalWorkspace(dataRoot: string, channelId: string, rootMessageId: string): string {
-  return path.join(dataRoot, "workspaces", "im", testConnectionId, "normal", channelId, rootMessageId);
+  return path.join(dataRoot, "shared-files", "workspaces", "im", testConnectionId, "normal", channelId, rootMessageId);
 }
 
 export async function getFreePort(): Promise<number> {

@@ -33,6 +33,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     sourceSets.getByName("main").jniLibs.srcDir(file("build/generated/jniLibs"))
+    signingConfigs.getByName("debug") {
+        providers.environmentVariable("ZORK_ANDROID_DEBUG_KEYSTORE").orNull?.let {
+            storeFile = file(it)
+        }
+    }
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"

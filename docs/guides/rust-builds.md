@@ -25,6 +25,12 @@ workspace 内直接依赖同一个第三方 crate 时，使用同一版本和同
 
 原生客户端在构建时编译 Metal shader，避免每次启动编译源码。macOS 构建机需要与 Xcode 匹配的 Metal Toolchain；构建前用 `xcrun --find metal` 和 `xcrun --find metallib` 检查。修改 shader 或生成绑定后重建原生渲染器，再验证实际绘制结果。
 
+GPUI Web 使用当前 Rust 的 WebAssembly target，或匹配该编译器的 `rust-src`。
+若工具链没有自带 linker，可在忽略的 `.env` 中用 `ZORK_WASM_LD` 指定兼容的
+`wasm-ld`；未指定时优先使用 PATH 中的 `wasm-ld`，否则保留 Cargo 的默认选择。
+显式 `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER` 优先，不依赖固定 Homebrew
+Cellar 版本，也不修改全局 LLVM 链接。
+
 ## 可选的本机存储配置
 
 真实机器路径放在被 Git 忽略的 `.env`，不写进共享脚本或 skill：
@@ -42,6 +48,11 @@ ZORK_BUILD_LOW_WATER_GIB=80
 `target`，不会要求共享盘。路径相对仓库根目录解析，支持引号和 `~`，
 不执行命令、也不展开 `$变量`。进程环境变量优先于 `.env`；显式
 `CARGO_TARGET_DIR` 优先于自动生成的路径。
+
+更换开发机时，在新主机创建本地构建根并重新构建。需要兼容直接读取 `target`
+的入口时，让该链接指向同一构建根的 `target` 子目录，不沿用旧主机的绝对路径。
+源码、锁文件和必要资产随工作区迁移；节点运行数据、身份与活跃数据库按独立的
+运行环境管理，不随构建缓存切换。
 
 现有 pnpm 的 Rust build/dev/test/start 入口，以及 Android、storybook、
 桌面 headless Python 入口读取配置。其他脚本或直接 Cargo 命令不会自动

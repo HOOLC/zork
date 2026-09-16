@@ -32,7 +32,7 @@ export class EmbeddedAgent {
   }
 
   private facts(): Fact[] {
-    const sessions = path.join(this.root, "sessions");
+    const sessions = path.join(this.root, "shared-files", "sessions");
     if (!existsSync(sessions)) return [];
     return readdirSync(sessions)
       .sort()

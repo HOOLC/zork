@@ -122,9 +122,9 @@ describe.sequential("Gateway mailbox delivery", () => {
     });
     const first = await agent.waitForAppend(1);
     const create = await agent.waitForCreate(1);
-    expect(create.workspace).toBe(path.join(tempRoot, "workspaces", "im", testConnectionId, "proactive"));
-    expect(create.system_prompt).toEqual(expect.stringContaining("Do not reply unless all three conditions are true"));
-    expect(create.system_prompt).toEqual(expect.stringContaining("slack.post_message"));
+    expect(create.workspace).toBe(path.join(tempRoot, "shared-files", "workspaces", "im", testConnectionId, "proactive"));
+    expect(create.system_prompt).toContain("You are Zork observing Slack");
+    expect(create.system_prompt).toContain("Publishing a Slack message is an explicit external action");
     expect(first.body.content).toContain('"channel_id": "C-FIRST"');
     expect(first.body.content).toContain('"thread_ts": "100.001"');
     await waitFor(
@@ -918,7 +918,7 @@ describe.sequential("Gateway mailbox delivery", () => {
       text: "<@U-NORMAL> normal request",
     });
     const normalAppend = await agent.waitForAppend(1);
-    expect(normalAppend.body.content).toContain('"connection_id": "01J00000000000000000000001"');
+    expect(normalAppend.body.content).toContain('"connect_id": "01J00000000000000000000001"');
 
     await proactiveSlack.sendEvent("same-message", {
       type: "message",
@@ -929,7 +929,7 @@ describe.sequential("Gateway mailbox delivery", () => {
       text: "proactive observation",
     });
     const proactiveAppend = await agent.waitForAppend(2);
-    expect(proactiveAppend.body.content).toContain('"connection_id": "01J00000000000000000000002"');
+    expect(proactiveAppend.body.content).toContain('"connect_id": "01J00000000000000000000002"');
     expect(proactiveAppend.sessionId).not.toBe(normalAppend.sessionId);
     expect(agent.creates).toHaveLength(2);
     expect(agent.creates.map((create) => String(create.workspace))).toEqual(expect.arrayContaining([expect.stringContaining("01J00000000000000000000001"), expect.stringContaining("01J00000000000000000000002")]));
@@ -1048,7 +1048,7 @@ describe.sequential("Gateway mailbox delivery", () => {
       text: "<@U-PROACTIVE> this connection is normal now",
     });
     const changedModeAppend = await agent.waitForAppend(3);
-    expect(changedModeAppend.body.content).toContain('"connection_id": "01J00000000000000000000002"');
+    expect(changedModeAppend.body.content).toContain('"connect_id": "01J00000000000000000000002"');
     expect(changedModeAppend.sessionId).not.toBe(proactiveAppend.sessionId);
 
     await normalSlack.sendEvent("normal-still-running", {
@@ -1060,7 +1060,7 @@ describe.sequential("Gateway mailbox delivery", () => {
       text: "<@U-NORMAL> unchanged connection still works",
     });
     const unchangedConnectionAppend = await agent.waitForAppend(4);
-    expect(unchangedConnectionAppend.body.content).toContain('"connection_id": "01J00000000000000000000001"');
+    expect(unchangedConnectionAppend.body.content).toContain('"connect_id": "01J00000000000000000000001"');
     expect(normalSlack.socketConnectionCount).toBe(1);
   });
 });

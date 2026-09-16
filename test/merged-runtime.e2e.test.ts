@@ -91,7 +91,7 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     const bot = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/im/bot`);
     expect(bot.status).toBe(200);
     await expect(bot.json()).resolves.toMatchObject({ ok: true, self: { userId: "UBOT" } });
-    const workspace = path.join(tempRoot, "workspaces", "im", connectionId, "normal", "C123", "100.200");
+    const workspace = path.join(tempRoot, "shared-files", "workspaces", "im", connectionId, "normal", "C123", "100.200");
     expect(identity.workspace_path).toBe(workspace);
     await waitFor(
       async () => readAgentStatus(agentBase, identity.id),
