@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,10 +15,43 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build and test
+  static:
+    name: Main branch static checks
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.15
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting and lint
+        run: |
+          pnpm format:check
+          cargo fmt --all -- --check
+          pnpm lint
+      - name: Check client boundaries
+        run: |
+          python3 scripts/check-client-boundary.py --self-test
+          python3 scripts/check-client-boundary.py
+      - name: Check design workspace
+        run: |
+          pnpm design:check
+          pnpm design:test
+
+  frontend:
+    name: Runtime E2E and integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -27,11 +61,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Restore CI target cache
+        id: target
+        uses: actions/cache/restore@v4
+        with:
+          path: target
+          key: ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up kache build cache
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
+          manifest-key: zork-ci-runtime-${{ runner.os }}-${{ runner.arch }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
           s3-region: auto
           s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
@@ -52,52 +97,100 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check formatting
+      - name: Build runtime test binaries
         run: |
-          pnpm format:check
-          cargo fmt --all -- --check
+          python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-station -p zork-gh
 
-      - name: Check client core and UI boundaries
-        run: |
-          python3 scripts/check-client-boundary.py --self-test
-          python3 scripts/check-client-boundary.py
+      - name: Record compiled dependencies
+        if: env.KACHE_CONFIGURED == 'true'
+        run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Check design workspace
-        run: |
-          pnpm design:check
-          pnpm design:test
-          pnpm design:build
-
-      - name: Build
-        run: pnpm build
+      - name: Save compiled target cache
+        if: steps.target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: target
+          key: ${{ steps.target.outputs.cache-primary-key }}
 
       - name: Run tests
         run: pnpm test
 
-      - name: Run backend tests
-        run: pnpm test:rust --no-fail-fast
-
-      - name: Test core-owned desktop operations
-        run: cargo test --locked -p zork-client-core --features desktop --lib --test client_boundary
+      - name: Test Slack forwarding and bundled skills
+        run: |
+          python3 scripts/test-slack-forwarding.py
+          python3 scripts/test-skills.py
 
       - name: Test Gateway sync reaches idle
         run: python3 scripts/test-sync-idle.py
 
-      - name: Test invitation and browser notifications
-        run: |
-          cargo build --locked -p zork-client-core --example invitation-observer
-          python3 scripts/test-mesh-notifications.py
-
       - name: Run desktop entry contract
         run: python3 crates/zork-gui/tests/test_gateway_entry.py
 
-      - name: Test native installer and release assembly
-        run: python3 scripts/test-native-installer.py
+  backend:
+    name: Rust (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: core
+            packages: --workspace --exclude zork-gui --exclude zork-browser-runtime --exclude zork-agent-testkit --exclude zork-ui --exclude zork-station --exclude zork-client-core
+          - suite: station
+            packages: -p zork-station -p zork-client-core --features zork-client-core/desktop
+          - suite: agent
+            packages: -p zork-agent-testkit
+          - suite: ui
+            packages: -p zork-ui
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_BUILD_JOBS: "4"
+      KACHE_CONFIGURED: ${{ vars.KACHE_S3_ENDPOINT != '' && secrets.KACHE_S3_ACCESS_KEY != '' && secrets.KACHE_S3_SECRET_KEY != '' }}
 
-      - name: Test native Gateway upgrades
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Restore CI target cache
+        id: target
+        uses: actions/cache/restore@v4
+        with:
+          path: target
+          key: ci-target-v4-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ci-target-v4-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v3-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v2-backend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
+            ci-target-v1-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Set up kache build cache
+        if: env.KACHE_CONFIGURED == 'true'
+        uses: kunobi-ninja/kache-action@v1
+        with:
+          manifest-key: zork-ci-${{ matrix.suite }}-${{ runner.os }}-${{ runner.arch }}
+          s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
+          s3-region: auto
+          s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
+          s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY }}
+          s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+
+      - name: Build backend tests
         run: |
-          python3 scripts/test-native-upgrade.py
-          python3 scripts/test-gateway-upgrade.py
+          python3 scripts/lib/build_env.py -- cargo test --locked ${{ matrix.packages }} --lib --tests --no-fail-fast --no-run
+
+      - name: Record compiled dependencies
+        if: env.KACHE_CONFIGURED == 'true'
+        run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
+
+      - name: Save compiled target cache
+        if: steps.target.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: target
+          key: ${{ steps.target.outputs.cache-primary-key }}
+
+      - name: Run backend tests
+        run: |
+          python3 scripts/lib/build_env.py -- cargo test --locked ${{ matrix.packages }} --lib --tests --no-fail-fast

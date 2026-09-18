@@ -73,6 +73,14 @@ async fn virtual_world_can_pause_assert_and_continue_at_effect_boundaries() {
     pending_echo
         .succeed(json!({"message": "echo completed", "value": "one"}))
         .unwrap();
+    world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .values()
+                .any(|pending| pending.invocation.tool == "test.echo" && pending.result.is_some())
+        })
+        .await;
     second
         .respond_text("I will incorporate the result.")
         .unwrap();

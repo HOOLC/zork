@@ -89,7 +89,7 @@ def main():
 
         # Root selection is deliberately explicit when several Gateways are live.
         ambiguous = run(['mesh', 'join', invitation], success=False)
-        assert 'Multiple Gateway installations' in ambiguous.stderr
+        assert 'Multiple Station installations' in ambiguous.stderr, ambiguous.stderr
         assert current_pids() == pids
         run(['stop', '--data', str(fresh)])
         config = json.loads((fresh / 'config.json').read_text())
