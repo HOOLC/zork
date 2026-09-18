@@ -27,10 +27,21 @@ impl RootView {
         for id in &arrivals.ids {
             self.message_motion.arrivals.insert(id.clone(), now);
         }
-        if self.transcript_list.is_following_tail() || self.message_motion.scroll.is_some() {
-            if !cx.reduce_motion() {
-                self.animate_message_tail(cx);
-            }
+        // Following means: actually following, mid-animation, at the scrollbar end,
+        // or sitting on the last message's header (our new tail target for tall messages).
+        let is_at_end = self
+            .transcript_list
+            .is_scrolled_to_end()
+            .unwrap_or(false);
+        let is_on_last_header = !self.lines.is_empty()
+            && self.transcript_list.logical_scroll_top().item_ix
+                == self.lines.len().saturating_sub(1);
+        let following = self.transcript_list.is_following_tail()
+            || self.message_motion.scroll.is_some()
+            || is_at_end
+            || is_on_last_header;
+        if following {
+            self.animate_message_tail(cx);
         } else {
             self.message_motion.unread = self
                 .message_motion
@@ -43,9 +54,30 @@ impl RootView {
         if std::mem::take(&mut self.message_motion.unread) > 0 {
             zork_ui::components::region::invalidate(cx, &["composer"]);
         }
+        // Determine the first newly arrived message so we can scroll its
+        // header into view instead of only bringing the absolute bottom
+        // into view (which clips tall headers).
+        let first_new = self
+            .lines
+            .len()
+            .saturating_sub(self.message_motion.arrivals.len().max(1));
+        let target_offset = gpui::ListOffset {
+            item_ix: first_new.min(self.lines.len().saturating_sub(1)),
+            offset_in_item: px(0.),
+        };
         if cx.reduce_motion() {
-            self.transcript_list.set_follow_mode(FollowMode::Tail);
-            self.transcript_list.scroll_to_end();
+            // Reduce-motion: immediate jump to the new message's header.
+            // For small messages header==bottom, this matches classic Tail; for tall
+            // messages it keeps the header visible without animation.
+            self.transcript_list.set_follow_mode(FollowMode::Normal);
+            self.transcript_list.scroll_to(target_offset);
+            let target_y = -self.transcript_list.scroll_px_offset_for_scrollbar().y.as_f32();
+            let max_y = self.transcript_list.max_offset_for_scrollbar().y.as_f32();
+            if target_y >= max_y - 1. {
+                // Small message: restore Tail semantics so is_following_tail stays true
+                self.transcript_list.set_follow_mode(FollowMode::Tail);
+                self.transcript_list.scroll_to_end();
+            }
             zork_ui::components::region::invalidate(cx, &["transcript"]);
             return;
         }
@@ -57,7 +89,18 @@ impl RootView {
             .scroll_px_offset_for_scrollbar()
             .y
             .as_f32();
+        // Compute pixel target for the first new message's top via a
+        // temporary scroll_to; this accounts for variable item heights
+        // without adding vendor dependencies.
+        let start_offset = self.transcript_list.logical_scroll_top();
         self.transcript_list.set_follow_mode(FollowMode::Normal);
+        self.transcript_list.scroll_to(target_offset);
+        let target = -self
+            .transcript_list
+            .scroll_px_offset_for_scrollbar()
+            .y
+            .as_f32();
+        self.transcript_list.scroll_to(start_offset);
         self.message_motion.scroll = Some(cx.spawn(async move |this, cx| {
             let began = Instant::now();
             loop {
@@ -67,14 +110,6 @@ impl RootView {
                 let done = this
                     .update(cx, |v, cx| {
                         let t = (began.elapsed().as_secs_f32() / 0.20).min(1.);
-                        // GPUI's scrollbar extent excludes content padding; the
-                        // transcript reserves its floating composer at the tail.
-                        let target = v.transcript_list.max_offset_for_scrollbar().y.as_f32()
-                            + if v.can_send_selected() {
-                                v.composer_overlay_height
-                            } else {
-                                0.
-                            };
                         let current = -v
                             .transcript_list
                             .scroll_px_offset_for_scrollbar()
@@ -83,8 +118,22 @@ impl RootView {
                         let next = start + (target - start).max(0.) * (1. - (1. - t).powi(3));
                         v.transcript_list.scroll_by(px((next - current).max(0.)));
                         if t >= 1. {
-                            v.transcript_list.set_follow_mode(FollowMode::Tail);
-                            v.transcript_list.scroll_to_end();
+                            let final_ix = v
+                                .lines
+                                .len()
+                                .saturating_sub(v.message_motion.arrivals.len().max(1))
+                                .min(v.lines.len().saturating_sub(1));
+                            let max_y = v.transcript_list.max_offset_for_scrollbar().y.as_f32();
+                            if target >= max_y - 1. {
+                                v.transcript_list.set_follow_mode(FollowMode::Tail);
+                                v.transcript_list.scroll_to_end();
+                            } else {
+                                v.transcript_list.set_follow_mode(FollowMode::Normal);
+                                v.transcript_list.scroll_to(gpui::ListOffset {
+                                    item_ix: final_ix,
+                                    offset_in_item: px(0.),
+                                });
+                            }
                             v.message_motion.scroll = None;
                         }
                         zork_ui::components::region::invalidate(cx, &["transcript"]);

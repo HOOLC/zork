@@ -212,3 +212,9 @@ required-features = ["headless-bench"]
 name = "liquid-gallery"
 path = "examples/liquid_gallery.rs"
 required-features = ["headless-bench"]
+
+
+[[test]]
+name = "transcript_scroll_simple"
+path = "tests/transcript_scroll_simple.rs"
+harness = true

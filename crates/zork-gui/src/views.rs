@@ -1843,6 +1843,7 @@ fn render_line(
                     let root = expand_root.clone();
                     cx.defer(move |cx| {
                         let _ = root.update(cx, |v, cx| {
+                            let was_following = v.transcript_list.is_following_tail();
                             let mut anchor = v.transcript_list.logical_scroll_top();
                             let expanded = !cached.expanded.get();
                             cached.expanded.set(expanded);
@@ -1852,7 +1853,15 @@ fn render_line(
                                 anchor.offset_in_item = px(0.);
                             }
                             v.transcript_list.splice(index..index + 1, 1);
-                            v.transcript_list.scroll_to(anchor);
+                            if was_following {
+                                // Preserve tail-following across aperture height
+                                // changes instead of freezing with splice+scroll_to
+                                // which stops following via `scroll_to`.
+                                v.transcript_list.set_follow_mode(FollowMode::Tail);
+                                v.transcript_list.scroll_to_end();
+                            } else {
+                                v.transcript_list.scroll_to(anchor);
+                            }
                             zork_ui::components::region::invalidate(cx, &["transcript"]);
                         });
                     });
