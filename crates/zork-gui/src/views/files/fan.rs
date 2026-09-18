@@ -175,13 +175,19 @@ impl RootView {
             }
         }
         if !remeasure.is_empty() {
+            let was_following = self.transcript_list.is_following_tail();
             let anchor = self.transcript_list.logical_scroll_top();
             for row in remeasure {
                 if row < self.lines.len() {
                     self.transcript_list.splice(row..row + 1, 1);
                 }
             }
-            self.transcript_list.scroll_to(anchor);
+            if was_following {
+                self.transcript_list.set_follow_mode(FollowMode::Tail);
+                self.transcript_list.scroll_to_end();
+            } else {
+                self.transcript_list.scroll_to(anchor);
+            }
         }
         if moving {
             let root = cx.entity().downgrade();
