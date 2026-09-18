@@ -436,7 +436,12 @@ impl MeshService {
         let files = zork_config::files_root(root);
         std::fs::create_dir_all(&files)?;
         node.retire_source("zork").await?;
-        node.add_filesystem_source(zork_config::tree::STATION_FILES_SPACE, &files)
+        // The station business tree holds workspaces, repositories, jobs, session
+        // records and frozen attachments. Those are internal state, not user
+        // sharing: only the shared folder and the skill sources are published.
+        // A node that already published this space gives the role up here, so the
+        // removal is published instead of leaving a stale view in the mesh.
+        node.retire_source(zork_config::tree::STATION_FILES_SPACE)
             .await?;
         let shared = zork_config::shared_files_root(root);
         std::fs::create_dir_all(&shared)?;
@@ -448,8 +453,6 @@ impl MeshService {
             .await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let token = managed::deploy_bridge(root, &node, listener.local_addr()?.port()).await?;
-        node.schedule_source_scan(zork_config::tree::STATION_FILES_SPACE)
-            .await?;
         node.schedule_source_scan(zork_config::tree::SHARED_FILES_SPACE)
             .await?;
         node.schedule_source_scan(zork_config::tree::SKILLS_SPACE)
