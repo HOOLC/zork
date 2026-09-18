@@ -299,7 +299,9 @@ async fn consume_stream(
                     } else if matches!(value["kind"].as_str(), Some("step_completed" | "step_failed" | "step_interrupted")) {
                         if let Some(id) = value["step_id"].as_str() { projection.activity.end_request(id); }
                     }
-                    let mut event = serde_json::from_value::<AgentEvent>(value)?;
+                    let Some(mut event) = projected_event(&value) else {
+                        continue;
+                    };
                     event.resolve_activity_targets(entries);
                     let Some(event) = event.status_event() else { continue; };
                     let starts_wait = matches!(
@@ -356,12 +358,30 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// The projection models a subset of the Agent's durable events. An event it does
+/// not model, or a newer variant it cannot parse yet, must not end the
+/// observation: skipping that one event keeps the rest of the stream live.
+fn projected_event(value: &serde_json::Value) -> Option<AgentEvent> {
+    match serde_json::from_value::<AgentEvent>(value.clone()) {
+        Ok(event) => Some(event),
+        Err(error) => {
+            warn!(
+                kind = %value["kind"],
+                error = %error,
+                "Ignoring an Agent event the status projection does not model"
+            );
+            None
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AgentEvent {
     SessionCreated,
     InputAppended,
     SelectionChanged,
+    ConfigurationChanged,
     ContextConfigured,
     TurnStarted,
     TurnCancelRequested,
@@ -440,6 +460,8 @@ impl AgentEvent {
 
     fn status_event(self) -> Option<AgentStatusEvent> {
         match self {
+            // A configuration change carries no status of its own.
+            Self::ConfigurationChanged => None,
             Self::SessionCreated => Some(AgentStatusEvent::Clear),
             Self::TurnStarted | Self::StepStarted | Self::ContextApplied => {
                 Some(AgentStatusEvent::Thinking)
@@ -868,6 +890,21 @@ impl ProjectionState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn configuration_changes_keep_the_projection_alive() {
+        let configured = serde_json::json!({
+            "kind": "configuration_changed",
+            "agent_id": "leader",
+            "changed_at_ms": 1,
+        });
+        let event = projected_event(&configured).expect("a configuration change is modelled");
+        assert!(event.status_event().is_none());
+
+        // A variant this projection does not know yet is skipped, not fatal.
+        let unknown = serde_json::json!({"kind": "a_future_event"});
+        assert!(projected_event(&unknown).is_none());
+    }
+
     use super::*;
 
     #[tokio::test]
