@@ -116,7 +116,7 @@ impl MeshSettings {
     }
 }
 impl MeshSettings {
-    fn enrollment_data(&self) -> zork_ui::network::EnrollmentData {
+    pub(super) fn enrollment_data(&self) -> zork_ui::network::EnrollmentData {
         let invitation = self.invitation.as_ref();
         let status = invitation.and_then(|i| i["status"].as_str()).unwrap_or("");
         let remaining = self.source.remaining(self.phone).unwrap_or_default();
@@ -181,7 +181,7 @@ impl MeshSettings {
         self.phone = phone;
         self.accept(self.source.snapshot(), cx);
     }
-    fn enrollment_action(
+    pub(super) fn enrollment_action(
         &mut self,
         action: zork_ui::network::EnrollmentAction,
         cx: &mut Context<Self>,
@@ -326,25 +326,6 @@ impl Render for MeshSettings {
                 }
                 cx.notify();
             },
-        )
-    }
-}
-
-impl MeshSettings {
-    pub(super) fn enrollment_dialog(
-        &self,
-        modal: &ui::ModalState,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        close: impl Fn(&mut gpui::App) + 'static,
-    ) -> gpui::AnyElement {
-        zork_ui::network::enrollment_dialog(
-            self.enrollment_data(),
-            modal,
-            window,
-            cx,
-            |v, event, cx| v.enrollment_action(event, cx),
-            move |_, cx| close(cx),
         )
     }
 }

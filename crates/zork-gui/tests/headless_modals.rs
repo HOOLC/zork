@@ -221,6 +221,8 @@ impl<V: Render + 'static> Fixture<V> {
     }
 }
 fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|arg| arg == "--paint-nodes") { return paint_node_checks(); }
+    if std::env::args().any(|arg| arg == "--enrollment") { return enrollment_checks(); }
     if std::env::args().any(|arg| arg == "--data-reset") { return data_reset_checks(); }
     std::env::set_var("SEED", "0");
     let state = tempfile::tempdir()?;
@@ -387,9 +389,301 @@ fn main() -> anyhow::Result<()> {
             "Agent editor did not close"
         );
     }
+    paint_node_checks()?;
+    enrollment_checks()?;
     println!(
         "Headless modal opening, clipping, input, Escape, close button and backdrop checks passed at both sizes."
     );
+    Ok(())
+}
+
+struct PaintNodeFrame {
+    node: gpui::PaintNode,
+    copies: usize,
+    gpu: bool,
+    nested: bool,
+    alpha: f32,
+    snapshot: std::rc::Rc<std::cell::RefCell<Option<gpui::PaintSnapshot>>>,
+    region: std::rc::Rc<std::cell::RefCell<Option<gpui::PaintRegion>>>,
+}
+
+impl Render for PaintNodeFrame {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        use gpui::*;
+        window.enable_gpu_layers(self.gpu);
+        let (node, copies, nested, alpha) = (self.node, self.copies, self.nested, self.alpha);
+        let snapshot = self.snapshot.clone();
+        let region = self.region.clone();
+        canvas(|_, _, _| {}, move |bounds, _, window, cx| {
+            for row in 0..16 {
+                for col in 0..24 {
+                    let cell = Bounds::new(bounds.origin + point(px(col as f32 * 16.), px(row as f32 * 16.)), size(px(16.), px(16.)));
+                    window.paint_quad(fill(cell, rgb(if (row + col) % 2 == 0 { 0xffffff } else { 0x7e9ca8 })));
+                }
+            }
+            let source = Bounds::new(bounds.origin + point(px(32.5), px(40.5)), size(px(280.), px(70.)));
+            let (_, picture) = window.capture_paint_snapshot(0x501, source, None, |window| {
+                window.paint_quad(quad(source, px(24.), rgba(0xf7672a80), px(1.), rgba(0x24313b80), gpui::BorderStyle::Solid));
+                let label = "半透明 text + icon";
+                let line = window.text_system().shape_line(label.into(), px(16.), &[TextRun {
+                    len: label.len(), font: font("Inter Variable"), color: rgba(0x152b4580).into(),
+                    background_color: None, underline: None, strikethrough: None,
+                }], None);
+                line.paint(source.origin + point(px(16.), px(20.)), px(24.), TextAlign::Left, None, window, cx).unwrap();
+            });
+            *snapshot.borrow_mut() = Some(picture.clone());
+            let paint = |window: &mut Window| {
+                window.with_scaled_alpha_paint_clip(point(px(0.), px(0.)), 1., alpha, &[bounds], |window| {
+                    if copies == 0 { window.paint_snapshot(&picture); }
+                    else { window.paint_node(node, &picture); }
+                });
+            };
+            if nested { window.with_retained_paint(0x503, bounds, paint); }
+            else { paint(window); }
+            let (_, recorded) = window.record_paint_region(|window| {
+                for _ in 1..copies {
+                    if nested { window.with_retained_paint(0x502, bounds, paint); }
+                    else { paint(window); }
+                }
+            });
+            *region.borrow_mut() = recorded;
+        }).w(px(384.)).h(px(256.))
+    }
+}
+
+fn paint_node_checks() -> anyhow::Result<()> {
+    for gpu in [false, true] {
+        let mut f = Fixture::new(900., 600., |_| PaintNodeFrame {
+            node: Default::default(), copies: 0, gpu, nested: false, alpha: 1.,
+            snapshot: Default::default(), region: Default::default(),
+        })?;
+        for (alpha, nested) in [0., 0.35, 1.].into_iter().flat_map(|alpha| [false, true].map(|nested| (alpha, nested))) {
+            f.view.update(&mut f.cx, |view, cx| {
+                view.copies = 0;
+                view.alpha = alpha;
+                view.nested = nested;
+                cx.notify();
+            });
+            f.cx.run_until_parked();
+            let reference = f.cx.capture_screenshot(f.window.into())?;
+            for copies in [1, 2, 3] {
+                f.view.update(&mut f.cx, |view, cx| {
+                    view.copies = copies;
+                    cx.notify();
+                });
+                f.cx.run_until_parked();
+                let pixels = f.cx.capture_screenshot(f.window.into())?;
+                let difference = pixels.pixels().zip(reference.pixels()).filter(|(a,b)| a != b).count();
+                anyhow::ensure!(difference == 0, "node changed native alpha/edges: gpu={gpu}, alpha={alpha}, copies={copies}, nested={nested}, different pixels={difference}");
+            }
+            let region = f.view.read_with(&f.cx, |view, _| view.region.borrow().clone()).unwrap();
+            let replaced = f.cx.update_window(f.window.into(), |_, window, _| {
+                let replaced = window.repaint_region(&region, |_| {});
+                window.present_if_needed();
+                replaced
+            })?;
+            anyhow::ensure!(replaced, "paint-only cancellation was not exercised");
+            let pixels = f.cx.capture_screenshot(f.window.into())?;
+            anyhow::ensure!(pixels == reference, "cancelling playback lost/doubled source pixels: gpu={gpu}, alpha={alpha}");
+        }
+    }
+    println!("paint nodes: native transparency, text edges, parent alpha, nested replay and paint-only cancellation passed on GPU and fallback");
+    Ok(())
+}
+
+struct EnrollmentOwner {
+    phone: bool,
+}
+
+struct EnrollmentFrame {
+    content: Entity<EnrollmentOwner>,
+    navigation: Entity<zork_ui::chat_navigation::Navigation>,
+    modal: zork_ui::modal::ModalState,
+    open: bool,
+}
+
+impl Render for EnrollmentFrame {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let visible = self
+            .modal
+            .retain("add-device-dialog", self.open.then_some(()), cx)
+            .is_some();
+        let content = self.content.clone();
+        div()
+            .size_full()
+            .relative()
+            .font_family("Inter Variable")
+            .text_size(px(13.))
+            .bg(rgb(0xffffff))
+            .child(
+                div()
+                    .w(px(240.))
+                    .h(window.viewport_size().height - px(60.))
+                    .child(self.navigation.clone()),
+            )
+            .when(visible, |frame| {
+                let data = zork_ui::network::EnrollmentData {
+                    client: content.read(cx).phone,
+                    available: true,
+                    busy: false,
+                    ticket: String::new(),
+                    command: String::new(),
+                    status: String::new(),
+                    status_label: String::new(),
+                    notice: None,
+                };
+                frame.child(zork_ui::network::enrollment_dialog(
+                    data,
+                    &self.modal,
+                    window,
+                    cx,
+                    move |_, action, cx| {
+                        content.update(cx, |owner, cx| {
+                            if let zork_ui::network::EnrollmentAction::Select(phone) = action {
+                                owner.phone = phone;
+                            }
+                            cx.notify();
+                        });
+                    },
+                    |view, cx| {
+                        view.open = false;
+                        cx.notify();
+                    },
+                ))
+            })
+    }
+}
+
+fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Result<serde_json::Value> {
+    use std::time::{Duration, Instant};
+    let started = Instant::now();
+    let capture = std::env::var_os("ZORK_ENROLLMENT_SOURCE_FRAMES")
+        .map(|path| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(path));
+    let mut samples = Vec::new();
+    let mut minimum_ink = usize::MAX;
+    loop {
+        f.cx.advance_clock(Duration::from_millis(16));
+        f.cx.update_window(f.window.into(), |_, window, cx| {
+            window.simulate_next_frame(cx);
+        })?;
+        f.cx.run_until_parked();
+        f.cx.update_window(f.window.into(), |_, window, _| {
+            window.present_if_needed();
+        })?;
+        let state = f.view.read_with(&f.cx, |view, _| view.modal.inspect("add-device-dialog"));
+        {
+            let source = f.element("device-add").context("source disappeared from input tree")?;
+            let snapshot = f.driver.snapshot(false);
+            let scale = snapshot.scale_factor;
+            let pixels = f.cx.capture_screenshot(f.window.into())?;
+            let x = (source.bounds.x * scale).round() as u32;
+            let y = (source.bounds.y * scale).round() as u32;
+            let width = (source.bounds.width * scale).round() as u32;
+            let height = (source.bounds.height * scale).round() as u32;
+            let crop = image::imageops::crop_imm(&pixels, x, y, width, height).to_image();
+            let ink = crop.pixels().filter(|pixel| pixel.0[..3].iter().all(|c| *c < 150)).count();
+            let name = format!("{}-{}", pixels.width(), if open { "open" } else { "close" });
+            if let Some(output) = &capture {
+                std::fs::create_dir_all(output)?;
+                crop.save(output.join(format!("{name}-{:03}.png", samples.len())))?;
+            }
+            if ink < minimum_ink {
+                minimum_ink = ink;
+                if let Some(output) = &capture {
+                    pixels.save(output.join(format!("{name}-minimum.png")))?;
+                }
+            }
+            let counters = f.view.read_with(&f.cx, |view,cx| view.navigation.read(cx).counters(cx));
+            samples.push(json!({"ms":started.elapsed().as_secs_f64()*1000.,"ink":ink,"motion":state,"counters":counters}));
+            if let Some(output) = &capture {
+                std::fs::write(output.join(format!("{name}.json")), serde_json::to_vec_pretty(&samples)?)?;
+            }
+            anyhow::ensure!(ink > 500, "source button stopped drawing: {name}, ink={ink}, state={state}");
+        }
+        let alpha = if open { 1. } else { 0. };
+        if state["moving"] == false && state["open"] == open
+            && state["contentAlpha"] == alpha && state["backdropAlpha"] == alpha
+        {
+            return Ok(state);
+        }
+        anyhow::ensure!(started.elapsed() < Duration::from_secs(5), "enrollment did not settle: {state}");
+        std::thread::sleep(Duration::from_millis(16));
+    }
+}
+
+fn enrollment_checks() -> anyhow::Result<()> {
+    std::env::set_var("SEED", "0");
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
+    let output = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/headless-interactions/modals");
+    std::fs::create_dir_all(&output)?;
+    // At DPR 2 these exercise both retained GPU content and the size-limited fallback.
+    for (width, height) in [(1280., 800.), (1470., 956.)] {
+        let mut f = Fixture::new(width, height, |cx| {
+            let mut modal = zork_ui::modal::ModalState::new(cx);
+            modal.retain("add-device-dialog", None::<()>, cx);
+            let navigation = cx.new(|cx| {
+                let mut navigation = zork_ui::chat_navigation::Navigation::new(
+                    Default::default(),
+                    zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                        zork_gui::i18n::Locale::ZhCn.text(key).into()
+                    })),
+                    cx,
+                );
+                navigation.bind_add_device_source(modal.source("add-device-dialog"), cx);
+                navigation
+            });
+            cx.subscribe(&navigation, |view: &mut EnrollmentFrame, _, action, cx| {
+                if matches!(action, zork_ui::chat_navigation::Action::Navigate {
+                    node: None, destination: zork_ui::chat_navigation::Destination::Manage(3)
+                }) {
+                    view.open = true;
+                    cx.notify();
+                }
+            }).detach();
+            EnrollmentFrame {
+                content: cx.new(|_| EnrollmentOwner { phone: true }),
+                navigation, modal, open: false,
+            }
+        })?;
+        f.cx.update(|cx| cx.set_reduce_motion(false));
+        let source = f.element("device-add").context("sidebar source missing")?.bounds;
+        f.click("device-add")?;
+        let state = settle_enrollment(&mut f, true)?;
+        let pixels = f.cx.capture_screenshot(f.window.into())?;
+        pixels.save(output.join(format!("enrollment-{width}.png")))?;
+        std::fs::write(output.join(format!("enrollment-{width}.json")), serde_json::to_vec_pretty(&json!({"motion":state,"elements":f.driver.snapshot(false)}))?)?;
+        let card = f.element("add-device-dialog").context("enrollment dialog missing")?;
+        anyhow::ensure!((state["anchor"]["cx"].as_f64().unwrap() - (source.x + source.width / 2.) as f64).abs() < 1.
+            && (state["anchor"]["cy"].as_f64().unwrap() - (source.y + source.height / 2.) as f64).abs() < 1.,
+            "dialog did not bind its real sidebar source: {}", state["anchor"]);
+        anyhow::ensure!((state["pose"]["w"].as_f64().unwrap() - card.bounds.width as f64).abs() < 1., "enrollment material and content width differ: {state}");
+        anyhow::ensure!((state["pose"]["h"].as_f64().unwrap() - card.bounds.height as f64).abs() < 1., "enrollment material and content height differ: {state}");
+        for id in ["add-device-dialog-close", "mesh-connect-phone-tab", "mesh-connect-device-tab", "mesh-client-invite-create"] {
+            let control = f.element(id).with_context(|| format!("missing {id}"))?;
+            anyhow::ensure!(control.visible && control.bounds == control.visible_bounds, "{id} was clipped");
+            anyhow::ensure!(control.bounds.x >= card.bounds.x && control.bounds.y >= card.bounds.y
+                && control.bounds.x + control.bounds.width <= card.bounds.x + card.bounds.width
+                && control.bounds.y + control.bounds.height <= card.bounds.y + card.bounds.height,
+                "{id} escaped the dialog");
+        }
+        let scale = f.driver.snapshot(false).scale_factor;
+        let title_ink = pixels.enumerate_pixels().filter(|(x, y, pixel)| {
+            let (x, y) = (*x as f32 / scale, *y as f32 / scale);
+            x >= card.bounds.x + 24. && x < card.bounds.x + 190.
+                && y >= card.bounds.y + 20. && y < card.bounds.y + 56.
+                && pixel.0[..3].iter().all(|channel| *channel < 150)
+        }).count();
+        anyhow::ensure!(title_ink > 50, "dialog title missing from native pixels");
+        f.click("mesh-connect-device-tab")?;
+        anyhow::ensure!(!f.view.read_with(&f.cx, |view, cx| view.content.read(cx).phone), "tab input missed its painted control");
+        f.click("add-device-dialog-close")?;
+        settle_enrollment(&mut f, false)?;
+        f.key("enter")?;
+        anyhow::ensure!(f.view.read_with(&f.cx, |view, _| view.open), "closing did not restore the sidebar trigger's keyboard focus");
+        f.key("escape")?;
+        settle_enrollment(&mut f, false)?;
+        println!("enrollment {width}: source, layout, native pixels, tabs, close and keyboard reversal passed");
+    }
     Ok(())
 }
 

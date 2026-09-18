@@ -70,7 +70,6 @@ pub async fn tool(State(state): State<AppState>, Json(request): Json<ToolRequest
 }
 
 async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
-    node_access::ready(state)?;
     ensure!(
         !input.invocation_id.is_empty() && input.invocation_id.len() <= 256,
         "invalid_channel_invocation"
@@ -85,6 +84,9 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         .unwrap_or("local")
         .to_owned();
     if !local(state, &target) {
+        // Local channel reads and replies use the authenticated Station and
+        // its message store; restoring Mesh peers must not block them.
+        node_access::ready(state)?;
         access(state, &target)?;
     }
     let mut args = input.arguments.clone();

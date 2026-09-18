@@ -159,7 +159,7 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
     validate(config)?;
     let data = data_dir(root);
     let init_data = data.clone();
-    let lock = tokio::task::spawn_blocking(move || -> Result<_> {
+    let (lock, clean_start) = tokio::task::spawn_blocking(move || -> Result<_> {
         let _scope = synch_core::BlockingScope::enter();
         let lock = synch_engine::LifecycleLock::acquire(&init_data)?;
         if !init_data.join("synchronicity.db").exists() {
@@ -182,11 +182,12 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                 std::fs::Permissions::from_mode(0o700),
             )?;
         }
-        Ok(lock)
+        let clean_start = crate::clean_start::consume(&init_data)?;
+        Ok((lock, clean_start))
     })
     .await??;
     synch_net::tls::install_crypto_provider();
-    let mut options = synch_engine::NodeConfig::new(data);
+    let mut options = synch_engine::NodeConfig::new(data.clone());
     if client_only {
         options.socket_workers = 0;
     }
@@ -243,7 +244,10 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                 Ok(())
             })
             .await?;
-        engine.readopt_self_on_startup().await?;
+        if !clean_start {
+            engine.readopt_self_on_startup().await?;
+        }
+        tracing::info!(clean_start, "Mesh startup history checked");
         Ok(())
     }
     .await;
@@ -255,6 +259,7 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
     let mut loops = JoinSet::new();
     let pushing = engine.clone();
     let mut stop_push = stop_loops.subscribe();
+    let (pending_head, mut outgoing_head) = tokio::sync::watch::channel(None);
     loops.spawn(async move {
         loop {
             tokio::select! {
@@ -268,7 +273,11 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                             // business sources stage once without waiting for
                             // peer delivery. Ongoing changes use the watcher.
                             pushing.scan_source_and_stage_async(&request.space).await?;
-                            if request.flush { pushing.flush_staged().await?; }
+                            if request.flush {
+                                if let Some(head) = pushing.publish_staged().await? {
+                                    pending_head.send_replace(Some(head));
+                                }
+                            }
                             Ok::<_, synch_engine::EngineError>(())
                         } => {
                             let result = result.map_err(anyhow::Error::from);
@@ -276,6 +285,28 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                                 tracing::warn!(%error, "startup Mesh publication failed");
                             }
                             let _ = request.done.send(result);
+                        }
+                    }
+                }
+            }
+        }
+        "startup-publication"
+    });
+    let pushing = engine.clone();
+    let mut stop_push = stop_loops.subscribe();
+    loops.spawn(async move {
+        loop {
+            tokio::select! {
+                _ = stop_push.recv() => break,
+                changed = outgoing_head.changed() => {
+                    if changed.is_err() { break; }
+                    let Some(head) = outgoing_head.borrow_and_update().clone() else { continue; };
+                    tokio::select! {
+                        _ = stop_push.recv() => break,
+                        result = pushing.push_head(&head) => {
+                            if let Err(error) = result {
+                                tracing::warn!(%error, "startup Mesh push failed");
+                            }
                         }
                     }
                 }
@@ -327,20 +358,19 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                 // after remote subscription use. Access clients have
                 // no execution sockets. Bound their network drain, then drop
                 // the router/endpoint only after the local publisher is done.
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    engine.shutdown(),
-                )
-                .await
+                match tokio::time::timeout(std::time::Duration::from_secs(10), engine.shutdown())
+                    .await
                 {
-                    Ok(result) => result,
+                    Ok(result) => result.map(|()| true),
                     Err(_) => {
-                        tracing::warn!("Mesh accessor transport did not drain; closing its endpoint");
-                        Ok(())
+                        tracing::warn!(
+                            "Mesh accessor transport did not drain; closing its endpoint"
+                        );
+                        Ok(false)
                     }
                 }
             } else {
-                engine.shutdown().await
+                engine.shutdown().await.map(|()| true)
             }
         };
         let (shutdown, ()) = tokio::join!(transport_stop, async {
@@ -357,8 +387,7 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
         drop(local_registration);
         closing.release_engine();
         drop(engine);
-        drop(lock);
-        shutdown?;
+        let clean_close = shutdown?;
         if let Some(error) = failure {
             anyhow::bail!(error);
         }
@@ -367,6 +396,14 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
             "Synch background tasks failed: {}",
             errors.join(", ")
         );
+        if clean_close {
+            if let Err(error) =
+                tokio::task::spawn_blocking(move || crate::clean_start::record(&data)).await?
+            {
+                tracing::warn!(%error, "Mesh clean restart receipt unavailable");
+            }
+        }
+        drop(lock);
         Ok(())
     });
     Ok(Runtime {
@@ -507,12 +544,36 @@ mod tests {
             Ok(())
         })
         .await?;
+        // Station queues several sources after publishing its bridge. A local
+        // publication returning early is insufficient if those sends still wait
+        // behind the old publication's network push in the bounded queue.
+        tokio::time::timeout(Duration::from_secs(3), async {
+            for index in 0..3 {
+                let space = format!("startup-following-{index}");
+                let source = root.path().join(&space);
+                std::fs::create_dir(&source)?;
+                std::fs::write(source.join("entry"), b"independent local scan")?;
+                node.add_filesystem_source(&space, &source).await?;
+                node.schedule_source_scan(&space).await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .context("initial source scans waited for remote publication")??;
         // Shutdown owns the publication task and drains Synch's other loops;
         // reopening proves the lock and network lifetime were released.
         tokio::time::timeout(Duration::from_secs(30), runtime.shutdown())
             .await
             .context("startup publisher did not stop")??;
-        let mut reopened = start(root.path(), &config()).await?;
+        let started = std::time::Instant::now();
+        let mut reopened =
+            tokio::time::timeout(Duration::from_secs(1), start(root.path(), &config()))
+                .await
+                .context("clean restart waited for the unresponsive peer")??;
+        eprintln!(
+            "clean Mesh restart with unresponsive peer: {:?}",
+            started.elapsed()
+        );
         reopened.shutdown().await?;
         Ok(())
     }
@@ -588,6 +649,73 @@ mod tests {
         eprintln!("three further Synch transfers: {:?}", started.elapsed());
         a.shutdown().await?;
         b.shutdown().await?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn restored_database_and_old_receipt_still_readopt_the_peer_head() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let witness_root = tempfile::tempdir()?;
+        let mut runtime = start_client(root.path(), &config()).await?;
+        let mut witness = start_client(witness_root.path(), &config()).await?;
+        let id = runtime.node().identity().await?;
+        let witness_id = witness.node().identity().await?;
+        runtime.node().trust(&witness_id, "witness", None).await?;
+        witness.node().trust(&id, "publisher", None).await?;
+        runtime.node().add_api_source("restore-test").await?;
+        let first = runtime
+            .node()
+            .put("restore-test", "version", b"one")
+            .await?;
+        witness.node().read(&first).await?;
+        runtime.shutdown().await?;
+        let data = data_dir(root.path());
+        let database = data.join(synch_store::DB_FILE);
+        let backup = std::fs::read(&database)?;
+        let old_receipt = std::fs::read(data.join("clean-start.json"))?;
+
+        runtime = start_client(root.path(), &config()).await?;
+        let second = runtime
+            .node()
+            .put("restore-test", "version", b"two")
+            .await?;
+        let witness_engine = witness.node().blocking(|node| Ok(node)).await?;
+        witness_engine
+            .sync_with_peer(&synch_core::NodeId::from_z32(&id[4..])?)
+            .await?;
+        drop(witness_engine);
+        ensure!(
+            witness.node().read(&second).await? == b"two",
+            "witness did not retain the newer version"
+        );
+        runtime.shutdown().await?;
+
+        // Restore both the old SQLite file and its old clean-exit receipt.
+        // Changed file identity/timestamps must force authenticated readoption.
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(data.join(format!("{}{suffix}", synch_store::DB_FILE)));
+        }
+        std::fs::write(&database, backup)?;
+        std::fs::write(data.join("clean-start.json"), old_receipt)?;
+        runtime = start_client(root.path(), &config()).await?;
+        runtime
+            .node()
+            .blocking(|node| {
+                let entry = node.resolve(
+                    "restore-test",
+                    "version",
+                    &synch_engine::VersionPolicy::Origin(node.origin().clone()),
+                )?;
+                ensure!(
+                    entry.content == Some(synch_core::Hash::new(b"two")),
+                    "startup published from an old database without readoption"
+                );
+                Ok(())
+            })
+            .await?;
+        runtime.shutdown().await?;
+        witness.shutdown().await?;
         Ok(())
     }
 

@@ -68,6 +68,7 @@ pub struct Navigation {
     brand: Option<gpui::Entity<crate::components::brand::Brand>>,
     shared_files: bool,
     tabs: TabGroup,
+    add_device_source: Option<crate::components::liquid::overlay::SourceBinding>,
     details_overlay: Option<gpui::Entity<crate::components::tooltip::DetailsOverlay>>,
 }
 impl gpui::EventEmitter<Action> for Navigation {}
@@ -85,6 +86,7 @@ impl Navigation {
             brand: None,
             shared_files: false,
             tabs: TabGroup::new(cx),
+            add_device_source: None,
             details_overlay: None,
         }
     }
@@ -125,6 +127,14 @@ impl Navigation {
     pub fn set_text(&mut self, locale: Text, cx: &mut Context<Self>) {
         self.locale = locale;
         crate::components::region::invalidate_all(cx);
+    }
+    pub fn bind_add_device_source(
+        &mut self,
+        source: crate::components::liquid::overlay::SourceBinding,
+        cx: &mut Context<Self>,
+    ) {
+        self.add_device_source = Some(source);
+        crate::components::region::invalidate(cx, &["footer"]);
     }
     #[cfg(feature = "headless-bench")]
     pub fn counters(&self, cx: &gpui::App) -> HashMap<String, [usize; 4]> {
@@ -567,17 +577,33 @@ impl Render for Navigation {
 
 impl Navigation {
     fn render_footer(&self, cx: &mut Context<Self>) -> Div {
+        let add_device = self
+            .tabs
+            .tab("device-add".into(), false)
+            .child(ui::icon("icons/plus.svg", 20.))
+            .child(self.locale.text("device_add"))
+            .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)));
+        let add_device = match &self.add_device_source {
+            Some(source) => source
+                .bind(
+                    add_device,
+                    self.locale.text("device_add"),
+                    ui::ActionStyle {
+                        quiet: true,
+                        icon: Some("icons/plus.svg"),
+                        ..Default::default()
+                    },
+                )
+                .automation(AutomationRole::Button, self.locale.text("device_add"))
+                .into_any_element(),
+            None => add_device
+                .automation(AutomationRole::Button, self.locale.text("device_add"))
+                .into_any_element(),
+        };
         self.tabs
             .column()
             .py_2()
-            .child(
-                self.tabs
-                    .tab("device-add".into(), false)
-                    .child(ui::icon("icons/plus.svg", 20.))
-                    .child(self.locale.text("device_add"))
-                    .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)))
-                    .automation(AutomationRole::Button, self.locale.text("device_add")),
-            )
+            .child(add_device)
             .child(
                 self.tabs
                     .tab("desktop-manage".into(), false)

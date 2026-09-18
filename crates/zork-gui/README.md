@@ -34,7 +34,6 @@ The sidebar and settings header place the Zork wordmark alongside the native tra
 
 Run `python3 scripts/test-device-sidebar.py` for the isolated native regression; `CARGO_TARGET_DIR` selects the shared build directory and `ZORK_GUI_TEST_WINDOW_SIZE=900x600` exercises the minimum window. This test uses real isolated Stations/Agents with a fake model runtime, never user devices or model credentials, and never generates an enrollment invitation. Run the same script with `--brand-only` to compare real first/intermediate/final GPU frames; add `ZORK_GUI_TEST_REDUCE_MOTION=1` to verify static endpoints in a debug build without modifying the system setting. Frame hashes and PNGs are saved under `artifacts/gui-approved-design/brand-motion` or `brand-reduced`.
 
-
 ## Running
 
 ```sh
@@ -50,13 +49,13 @@ python3 scripts/update-mba.py
 ```
 
 For this personal test-device install, the script directly
-builds on mini1 with the locked dependency graph and bounded Cargo settings,
+builds on the configured development host with the locked dependency graph and bounded Cargo settings,
 packages the GUI and node binaries, verifies the transferred archive and signature,
 temporarily stages the old application, installs the new app, and checks readiness.
 Successful updates delete the staged old app and keep no historical app backups.
 Failed installation or startup restores the old app. Client data and configuration remain in place.
 SSH authentication is reused for the whole update; a password may be requested once.
-Invocations from another development host forward to the canonical mini1 checkout.
+Invocations from another host forward to the configured development checkout.
 
 The local-node switch is persistent: once enabled, the node starts with Zork until
 explicitly disabled. Quitting stops its processes without changing that preference;
@@ -85,15 +84,15 @@ curl -H "Authorization: Bearer $ZORK_GUI_DEV_TOKEN" \
   -d '{"type":"type_text","target":{"element_id":"composer-input"},"text":"hello"}'
 ```
 
-| Route | Purpose |
-|---|---|
-| `GET /health` | Unauthenticated process readiness; contains no UI data |
-| `GET /v1` | Protocol metadata and supported action names |
-| `GET /v1/elements` | Visible actionable elements with IDs, roles, labels, bounds, centers, and supported actions |
-| `GET /v1/elements?include_hidden=true` | Also include rendered elements clipped by a viewport or scroll mask |
-| `GET /v1/elements?after_revision=N&timeout_ms=3000` | Wait for a newer rendered frame, up to 30 seconds |
-| `GET /v1/screenshot` | Current window as PNG, with dimensions and UI revision in response headers |
-| `POST /v1/actions` | Dispatch `click`, `move`, `type_text`, `key`, `scroll`, or `drag` input |
+| Route                                               | Purpose                                                                                     |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `GET /health`                                       | Unauthenticated process readiness; contains no UI data                                      |
+| `GET /v1`                                           | Protocol metadata and supported action names                                                |
+| `GET /v1/elements`                                  | Visible actionable elements with IDs, roles, labels, bounds, centers, and supported actions |
+| `GET /v1/elements?include_hidden=true`              | Also include rendered elements clipped by a viewport or scroll mask                         |
+| `GET /v1/elements?after_revision=N&timeout_ms=3000` | Wait for a newer rendered frame, up to 30 seconds                                           |
+| `GET /v1/screenshot`                                | Current window as PNG, with dimensions and UI revision in response headers                  |
+| `POST /v1/actions`                                  | Dispatch `click`, `move`, `type_text`, `key`, `scroll`, or `drag` input                     |
 
 Coordinates use logical pixels relative to the window content. The element
 response includes `scale_factor`; PNG dimensions are logical dimensions times
@@ -123,13 +122,13 @@ and two tasks sharing one workspace still resolve their exact gateway binding.
 
 ## Station-owned conversation API
 
-| UI piece | Source |
-|---|---|
-| Device conversations and status | Shared client state, updated by Station events |
-| Delivered message history | `GET /v1/im/sessions/{id}/messages` (cursor pages of 100) |
-| Live delivery/activity | SSE `GET /v1/im/sessions/{id}/events` — `message` and `status` |
-| Composer send | Durable client outbox → `POST /v1/im/sessions/{id}/messages` |
-| Cancel | `POST /v1/im/sessions/{id}/cancel` |
+| UI piece                        | Source                                                         |
+| ------------------------------- | -------------------------------------------------------------- |
+| Device conversations and status | Shared client state, updated by Station events                 |
+| Delivered message history       | `GET /v1/im/sessions/{id}/messages` (cursor pages of 100)      |
+| Live delivery/activity          | SSE `GET /v1/im/sessions/{id}/events` — `message` and `status` |
+| Composer send                   | Durable client outbox → `POST /v1/im/sessions/{id}/messages`   |
+| Cancel                          | `POST /v1/im/sessions/{id}/cancel`                             |
 
 ### Status projection
 

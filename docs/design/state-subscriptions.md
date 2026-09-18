@@ -13,6 +13,11 @@ Projection identity names a business object and scope, independently of widgets
 and frame clocks. Observers of the same device or conversation share its producer.
 Closing a view releases its observation; it does not cancel a business operation.
 
+Publish the authoritative device snapshot before a derived navigation projection
+advertises its actions. Input resolves identities from the current core snapshot;
+a sibling view's newer navigation must not depend on a catalog from the previous
+painted frame.
+
 A latest-value source may skip intermediate display states. Ordered list or text
 changes must remain reconstructable. Delivery, unread state and operation completion
 cannot depend on UI consuming a callback. In particular, an outbox row disappearing
