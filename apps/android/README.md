@@ -96,10 +96,10 @@ Profile 包同时携带应用 UI 的 Baseline Profile（`app/src/main/baseline-p
 
 ```sh
 adb -s SERIAL install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
-adb -s SERIAL shell am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE -n surf.zork.android.debug/androidx.profileinstaller.ProfileInstallReceiver
-adb -s SERIAL shell am force-stop surf.zork.android.debug
-adb -s SERIAL shell cmd package compile -f -m speed-profile surf.zork.android.debug
-adb -s SERIAL shell am start -W -n surf.zork.android.debug/surf.zork.android.MainActivity
+adb -s SERIAL shell am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE -n ing.zork.android.debug/androidx.profileinstaller.ProfileInstallReceiver
+adb -s SERIAL shell am force-stop ing.zork.android.debug
+adb -s SERIAL shell cmd package compile -f -m speed-profile ing.zork.android.debug
+adb -s SERIAL shell am start -W -n ing.zork.android.debug/ing.zork.android.MainActivity
 ```
 
 安装配置的广播应返回 `result=1`；用 `dumpsys package dexopt` 确认该包为 `speed-profile`。

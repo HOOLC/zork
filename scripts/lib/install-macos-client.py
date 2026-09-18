@@ -43,7 +43,7 @@ def wait_for(check, description, seconds=30):
 
 def quit_app(app):
     if processes(app):
-        run(['osascript', '-e', 'tell application id "surf.zork.desktop" to quit'])
+        run(['osascript', '-e', 'tell application id "ing.zork.desktop" to quit'])
         try:
             wait_for(lambda: not processes(app), 'Zork 未完成退出；未替换应用', seconds=5)
         except RuntimeError:

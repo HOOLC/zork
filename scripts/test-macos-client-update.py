@@ -65,10 +65,10 @@ class HelperBundleTests(unittest.TestCase):
                 wrapped = name in packager.RUNTIME_ALIASES
                 self.assertEqual(info['CFBundleExecutable'], 'ZorkHelperLauncher' if wrapped else name)
                 self.assertEqual(info.get('ZorkRuntimeExecutable'), name if wrapped else None)
-                self.assertEqual(info['CFBundleIdentifier'], 'surf.zork.desktop.' + role)
+                self.assertEqual(info['CFBundleIdentifier'], 'ing.zork.desktop.' + role)
                 if name == 'zork-station':
                     self.assertEqual(info['CFBundleDisplayName'], 'Zork-Station')
-                    self.assertEqual(info['CFBundleIdentifier'], 'surf.zork.desktop.gateway')
+                    self.assertEqual(info['CFBundleIdentifier'], 'ing.zork.desktop.gateway')
                 if name == 'zork-service-watch':
                     self.assertEqual(info['CFBundleDisplayName'], 'Zork-Service-Watch')
                     self.assertTrue((helper / 'Contents/MacOS' / name).is_symlink())
