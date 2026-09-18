@@ -68,7 +68,7 @@ class HelperBundleTests(unittest.TestCase):
                 self.assertEqual(info['CFBundleIdentifier'], 'ing.zork.desktop.' + role)
                 if name == 'zork-station':
                     self.assertEqual(info['CFBundleDisplayName'], 'Zork-Station')
-                    self.assertEqual(info['CFBundleIdentifier'], 'ing.zork.desktop.gateway')
+                    self.assertEqual(info['CFBundleIdentifier'], 'ing.zork.desktop.station')
                 if name == 'zork-service-watch':
                     self.assertEqual(info['CFBundleDisplayName'], 'Zork-Service-Watch')
                     self.assertTrue((helper / 'Contents/MacOS' / name).is_symlink())
