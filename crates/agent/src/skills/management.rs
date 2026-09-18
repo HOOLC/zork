@@ -24,6 +24,10 @@ pub fn provision_bundled(data_root: &Path) -> Result<()> {
             path: "file-sharing/SKILL.md",
             content: include_bytes!("../../skills/file-sharing/SKILL.md"),
         },
+        super::bundled::BundleFile {
+            path: "agent-delegation/SKILL.md",
+            content: include_bytes!("../../skills/agent-delegation/SKILL.md"),
+        },
     ];
     let mut groups = BTreeMap::<_, Vec<_>>::new();
     for file in files {

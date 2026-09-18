@@ -102,8 +102,8 @@ pub fn definitions() -> Vec<Definition> {
         ),
         (
             "agent.create",
-            "Create an Agent on a manageable node. Supply config to prefill its business parameters; missing required values or review=true keep this same call pending for user input. On user_action_required, publish only the returned request_id with chat.send. The original call validates and creates the Agent after the user responds. Complete authorized calls without review execute directly. Creation does not start work; use agent.assign with the resulting ID.",
-            json!({"config":config,"review":{"type":"boolean","description":"Let the user edit and confirm this operation before it executes. Supplied config values prefill its form."}}),
+            "Create an Agent on a manageable node. Supply config to prefill its business parameters; creation always keeps this same call pending until the user confirms or edits the parameters, and the original call then validates and creates the Agent. On user_action_required, publish only the returned request_id with chat.send. Creation does not start work; use agent.assign with the resulting ID.",
+            json!({"config":config,"review":{"type":"boolean","description":"Let the user edit and confirm this operation before it executes. Creating an Agent always asks for confirmation; supplied config values prefill its form."}}),
             vec!["config"],
             true,
         ),
