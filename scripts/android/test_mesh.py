@@ -14,9 +14,9 @@ import tempfile
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE = "surf.zork.android.debug"
+PACKAGE = "ing.zork.android.debug"
 RUNNER = PACKAGE + ".test/androidx.test.runner.AndroidJUnitRunner"
-CLASS = "surf.zork.android.MeshIntegrationTest"
+CLASS = "ing.zork.android.MeshIntegrationTest"
 
 
 def main():

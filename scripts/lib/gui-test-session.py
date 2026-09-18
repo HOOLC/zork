@@ -52,7 +52,7 @@ def main():
             sys.executable, str(root / 'runner.py'), str(root)]) + '\n')
         executable.chmod(0o700)
         with (app / 'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'CFBundleIdentifier': 'surf.zork.test.controller',
+            plistlib.dump({'CFBundleIdentifier': 'ing.zork.test.controller',
                           'CFBundleExecutable': executable.name,
                           'CFBundlePackageType': 'APPL', 'LSUIElement': True}, output)
         subprocess.run(['codesign', '--force', '--sign', '-', str(app)],

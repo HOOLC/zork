@@ -12,13 +12,13 @@ val profileBuild = providers.gradleProperty("zorkProfile").map(String::toBoolean
 val productVersion = (groovy.json.JsonSlurper().parse(rootProject.file("../../package.json")) as Map<*, *>)["version"] as String
 
 android {
-    namespace = "surf.zork.android"
+    namespace = "ing.zork.android"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
     sourceSets.getByName("main").kotlin.srcDir(rootProject.file("third-party/rustls-platform-verifier/src"))
 
     defaultConfig {
-        applicationId = "surf.zork.android"
+        applicationId = "ing.zork.android"
         minSdk = 29
         targetSdk = 36
         versionCode = 1

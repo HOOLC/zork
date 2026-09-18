@@ -113,7 +113,7 @@ def main():
             shutil.copyfile(ROOT / 'crates/zork-ui/assets/app/Zork.icns', resources / 'Zork.icns')
             shutil.copy2(binary, mac / 'zork-gui')
             info = packager.app_info('1.0')
-            info['CFBundleIdentifier'] = 'surf.zork.notification-test.' + uuid.uuid4().hex
+            info['CFBundleIdentifier'] = 'ing.zork.notification-test.' + uuid.uuid4().hex
             info['CFBundleName'] = info['CFBundleDisplayName'] = 'Zork notification identity test'
             if mode == 'old_script_entry':
                 info['CFBundleExecutable'] = 'ZorkLauncher'

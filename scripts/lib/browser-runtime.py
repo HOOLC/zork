@@ -71,7 +71,7 @@ def sign(path, identity=None, *, deep=False):
                               shlex.quote(str(root/'result')) + '\nexit "$sign_result"\n')
         executable.chmod(0o755)
         with (app/'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'CFBundleIdentifier':'surf.zork.build-signer', 'CFBundleExecutable':'ZorkSigner',
+            plistlib.dump({'CFBundleIdentifier':'ing.zork.build-signer', 'CFBundleExecutable':'ZorkSigner',
                           'CFBundleName':'Zork build signer', 'CFBundlePackageType':'APPL', 'LSUIElement':True}, output)
         subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
         subprocess.run(['open','-n','-W','-g','-a',str(app),'--args',*arguments],check=True)
@@ -130,7 +130,7 @@ def stage_runtime(binaries: Path, destination: Path):
                           'NSSupportsAutomaticGraphicsSwitching': True,
                           'LSEnvironment': {'MallocNanoZone': '0'}}, output)
 
-    bundle(app, 'ZorkBrowser', executable, 'surf.zork.desktop.browser', 'Zork-Browser', 'ZorkBrowser.icns')
+    bundle(app, 'ZorkBrowser', executable, 'ing.zork.desktop.browser', 'Zork-Browser', 'ZorkBrowser.icns')
     # Like Station, register each helper's app identity before exec. PID, CEF
     # arguments and inherited sandbox/IPC descriptors survive that exec.
     with tempfile.TemporaryDirectory(prefix='zork-browser-launcher-') as scratch:
@@ -141,7 +141,7 @@ def stage_runtime(binaries: Path, destination: Path):
         # Keep CEF's executable/bundle layout and existing identifiers stable.
         for index, role in enumerate(['Helper', 'Alerts', 'GPU', 'Plugin', 'Renderer', 'Network', 'Storage']):
             name = 'ZorkBrowser Helper' + ('' if role == 'Helper' else f' ({role})')
-            bundle(frameworks / (name + '.app'), name, launcher, f'surf.zork.desktop.browser.helper{index}',
+            bundle(frameworks / (name + '.app'), name, launcher, f'ing.zork.desktop.browser.helper{index}',
                    'Zork-Browser-' + role, 'ZorkBrowser' + role + '.icns', helper)
     resources = contents / 'Resources'
     resources.mkdir(exist_ok=True)

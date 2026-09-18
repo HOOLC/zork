@@ -32,7 +32,7 @@ def copy_binary(source, destination):
 
 
 def app_info(version):
-    return {'CFBundleIdentifier': 'surf.zork.desktop', 'CFBundleName': 'Zork',
+    return {'CFBundleIdentifier': 'ing.zork.desktop', 'CFBundleName': 'Zork',
             'CFBundleDisplayName': 'Zork', 'CFBundleIconFile': 'Zork.icns',
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': version, 'CFBundleVersion': version,
@@ -88,7 +88,7 @@ def stage_binaries(app, binaries, assets, version, launcher):
             shutil.copy2(launcher, executable_dir / entry)
         shutil.copy2(assets / (bundle_name + '.icns'), resources / (bundle_name + '.icns'))
         with (bundle / 'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'CFBundleIdentifier': 'surf.zork.desktop.' + role,
+            plistlib.dump({'CFBundleIdentifier': 'ing.zork.desktop.' + role,
                           'CFBundleName': display_name,
                           'CFBundleDisplayName': display_name,
                           'CFBundleExecutable': entry,
