@@ -29,7 +29,9 @@ required-features = ["headless-bench"]
 name = "headless_modals"
 path = "tests/headless_modals.rs"
 harness = false
-required-features = ["headless-bench"]
+# The modal fixtures drive frames synchronously through `present_if_needed`,
+# which the vendored gpui exposes under its `bench` feature.
+required-features = ["headless-bench", "native-blur-bench"]
 
 [[test]]
 name = "headless_profile_quota"
