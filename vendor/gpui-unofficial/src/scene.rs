@@ -16,6 +16,8 @@ use std::{
 };
 
 mod retained;
+mod paint_node;
+pub use paint_node::PaintNode;
 pub use retained::{PaintSnapshot, RetainedContent, RetainedFramePlan, RetainedLayer, RetainedLayerKey, SceneBatch};
 use retained::Capture;
 
@@ -44,6 +46,8 @@ impl From<bool> for PaddedBool32 {
 #[expect(missing_docs)]
 pub struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
+    has_paint_nodes: bool,
+    retained_paint_disabled: bool,
     captures: Vec<Capture>,
     pub retained_layers: Vec<RetainedLayer>,
     primitive_bounds: BoundsTree<ScaledPixels>,
@@ -63,6 +67,8 @@ pub struct Scene {
 impl Scene {
     pub fn clear(&mut self) {
         self.paint_operations.clear();
+        self.has_paint_nodes = false;
+        self.retained_paint_disabled = false;
         self.captures.clear();
         self.retained_layers.clear();
         self.paint_effects.clear();
@@ -251,6 +257,9 @@ impl Scene {
         while index < range.end {
             let operation = &prev_scene.paint_operations[index];
             match operation {
+                PaintOperation::Node { node, content } => {
+                    self.paint_node(*node, content.clone());
+                }
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::SharedPrimitive(primitive) => self.insert_shared_primitive(primitive.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
@@ -278,7 +287,13 @@ impl Scene {
                     index += length;
                     continue;
                 }
-                PaintOperation::SnapshotStart { .. } | PaintOperation::RetainedStart { .. } | PaintOperation::RetainedEnd
+                PaintOperation::RetainedStart { length, .. } => {
+                    // This capture is being flattened, or the cached view's
+                    // range contains only part of it. Do not let a later
+                    // replay mistake following operations for its remainder.
+                    self.paint_operations.push(PaintOperation::RetainedStart { content: None, length: *length });
+                }
+                PaintOperation::SnapshotStart { .. } | PaintOperation::RetainedEnd
                     | PaintOperation::RegionMarker { .. } => {
                     // A nested view's range can be inside a retained region.
                     // Its original primitives are replayed into the new capture.
@@ -290,6 +305,9 @@ impl Scene {
     }
 
     pub fn finish(&mut self) {
+        if self.has_paint_nodes {
+            self.resolve_paint_nodes();
+        }
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
@@ -318,7 +336,7 @@ impl Scene {
     /// Expand captured drawing through the same transforms and clips when a
     /// renderer cannot admit this frame to its bounded layer cache.
     pub fn without_retained_layers(&self) -> Self {
-        let mut scene = Self::default();
+        let mut scene = Self { retained_paint_disabled: true, ..Self::default() };
         scene.replay_with_retained(0..self.len(), self, false);
         scene.finish();
         scene
@@ -371,6 +389,7 @@ pub(crate) enum PrimitiveKind {
 
 #[derive(Clone)]
 pub(crate) enum PaintOperation {
+    Node { node: PaintNode, content: std::sync::Arc<RetainedContent> },
     RegionMarker { id: (u64, usize), start: bool },
     RetainedContent(std::sync::Arc<RetainedContent>),
     Barrier(Bounds<ScaledPixels>),

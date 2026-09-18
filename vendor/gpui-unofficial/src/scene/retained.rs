@@ -116,6 +116,7 @@ pub enum SceneBatch {
 
 impl Scene {
     pub(crate) fn can_retain(&self) -> bool {
+        if self.retained_paint_disabled { return false; }
         if let Some(capture) = self.captures.last() {
             return capture.scene.can_retain();
         }
@@ -208,6 +209,7 @@ impl Scene {
     }
 
     pub(super) fn insert_retained(&mut self, content: Arc<RetainedContent>) {
+        self.has_paint_nodes |= content.scene.has_paint_nodes;
         if let Some(capture) = self.captures.last_mut() {
             capture.scene.insert_retained(content);
             return;
@@ -235,7 +237,10 @@ impl Scene {
     }
 
     fn same_drawing(&self, other: &Self) -> bool {
-        self.surfaces.is_empty()
+        // Node placement is resolved by the enclosing frame. Equal local
+        // pixels do not establish equal drawing identities or references.
+        !self.has_paint_nodes && !other.has_paint_nodes
+            && self.surfaces.is_empty()
             && other.surfaces.is_empty()
             && self.quads == other.quads
             && self.shadows == other.shadows
