@@ -284,6 +284,7 @@ pub fn activity_color(kind: Kind, state: &str) -> u32 {
     }
     match kind {
         Kind::Received => RECEIVE_COLOR,
+        Kind::Model => MODEL_COLOR,
         Kind::SendMessage | Kind::SendFile | Kind::Notify => SEND_COLOR,
         Kind::Assign | Kind::Rework | Kind::Wait | Kind::Cancel => CUE_UI.palette.muted,
         Kind::Error => CUE_UI.palette.danger,
@@ -293,6 +294,7 @@ pub fn activity_color(kind: Kind, state: &str) -> u32 {
 pub fn kind_label(kind: Kind) -> &'static str {
     match kind {
         Kind::Received => "history_receive_message",
+        Kind::Model => "history_model_message",
         Kind::SendMessage => "history_send_message",
         Kind::SendFile => "history_send_file",
         Kind::Notify => "history_notify",
@@ -319,6 +321,7 @@ pub fn kind_label(kind: Kind) -> &'static str {
 pub fn kind_icon(kind: Kind) -> &'static str {
     match kind {
         Kind::Received => "history/receive.svg",
+        Kind::Model => "cue/sparkles.svg",
         Kind::SendMessage => "history/send.svg",
         Kind::SendFile => "history/attachment.svg",
         Kind::Notify => "history/notify.svg",

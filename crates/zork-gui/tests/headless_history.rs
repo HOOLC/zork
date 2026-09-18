@@ -24,6 +24,15 @@ fn fixture() -> Vec<Record> {
         json!({"kind":"input_appended", "input":{
         "input_id":"input-0", "request_id":"fixture-user-message", "content":"保留时间线，连续常规操作合并；等待独立显示。", "received_at_ms":NOW-90000}}),
     )];
+    rows.push(record(
+        1,
+        json!({"kind":"step_started","step_id":"reply","purpose":"conversation","started_at_ms":NOW-89000}),
+    ));
+    rows.push(record(
+        2,
+        json!({"kind":"step_completed","step_id":"reply","purpose":"conversation","completed_at_ms":NOW-88000,
+        "assistant_text":"我先读一遍历史投影，再合并连续的操作。","invocations":[]}),
+    ));
     for (i, name, args, time, state, data) in [
         (
             1,
@@ -68,7 +77,7 @@ fn fixture() -> Vec<Record> {
     ] {
         rows.push(record(i*3, json!({"kind":"step_started","step_id":format!("s{i}"),"purpose":"conversation","started_at_ms":time-1000})));
         rows.push(record(i*3+1, json!({"kind":"step_completed","step_id":format!("s{i}"),"completed_at_ms":time,
-            "assistant_text":"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE", "invocations":[{
+            "invocations":[{
                 "invocation_id":format!("tool-{i}"),"tool":name,"arguments":args,"started_at_ms":time}]})));
         rows.push(record(i*3+2, json!({"kind":"tool_result","result":{
             "invocation_id":format!("tool-{i}"),"tool":name,"outcome":state,"data":data,"finished_at_ms":time+10}})));
@@ -374,7 +383,16 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .all(|e| e.bounds.height <= 46.),
         "history item exceeded two lines"
     );
-    anyhow::ensure!(!snapshot.elements.iter().any(|e|e.id.starts_with("history-record-")&&e.label.contains("INTERNAL-MODEL-TEXT")),"internal model text leaked");
+    let reply = snapshot
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-record-") && e.label.contains("模型请求"))
+        .expect("assistant reply is a history row");
+    anyhow::ensure!(
+        reply.label.contains("我先读一遍历史投影"),
+        "the reply row does not read its own text: {}",
+        reply.label
+    );
     anyhow::ensure!(
         snapshot
             .elements

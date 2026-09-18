@@ -361,6 +361,7 @@
   "history_activity": "Activity",
   "history_fold_all": "Collapse all",
   "history_receive_message": "Received message",
+  "history_model_message": "Model request",
   "history_send_message": "Send message",
   "history_send_file": "Send file",
   "history_notify": "Send notification",

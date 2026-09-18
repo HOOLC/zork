@@ -14,7 +14,7 @@ fn tool(id: &str, name: &str, args: Value, state: &str, at: i64) -> Vec<Record> 
         record(
             &format!("{id}-start"),
             json!({"kind":"step_completed","step_id":id,
-            "completed_at_ms":at,"assistant_text":"Internal text must not be sent",
+            "completed_at_ms":at,
             "invocations":[{"invocation_id":id,"tool":name,"arguments":args,"started_at_ms":at}]}),
         ),
         record(
@@ -59,6 +59,78 @@ fn messages_use_deliberate_delivery_arguments_and_keep_failures() {
     );
     assert!(projection.activities.iter().all(|a| a.routine.is_none()));
     assert!(projection.entry_to_block.iter().any(Option::is_none));
+}
+
+#[test]
+fn assistant_replies_read_as_model_rows_and_failures_stay_errors() {
+    let records = [
+        record(
+            "1",
+            json!({"kind":"step_started","step_id":"s1","purpose":"conversation","started_at_ms":1}),
+        ),
+        record(
+            "2",
+            json!({"kind":"step_completed","step_id":"s1","purpose":"conversation",
+            "assistant_text":"改好了 3 个文件。\n\n下一步跑测试。","completed_at_ms":4,"invocations":[]}),
+        ),
+        record(
+            "3",
+            json!({"kind":"step_started","step_id":"s2","purpose":"conversation","started_at_ms":5}),
+        ),
+        record(
+            "4",
+            json!({"kind":"step_completed","step_id":"s2","purpose":"conversation",
+            "assistant_text":"","completed_at_ms":6,"invocations":[]}),
+        ),
+        // The runtime records reply text only on tool-free steps; if a step ever
+        // carried both, the text still reads as the reply next to its calls.
+        record(
+            "4b",
+            json!({"kind":"step_started","step_id":"s2b","purpose":"conversation","started_at_ms":6}),
+        ),
+        record(
+            "4c",
+            json!({"kind":"step_completed","step_id":"s2b","purpose":"conversation",
+            "assistant_text":"顺带说明一下。","completed_at_ms":6,
+            "invocations":[{"invocation_id":"call-1","tool":"shell.run",
+            "arguments":{"command":"pwd"},"started_at_ms":6}]}),
+        ),
+        record(
+            "5",
+            json!({"kind":"step_started","step_id":"s3","purpose":"conversation","started_at_ms":7}),
+        ),
+        record(
+            "6",
+            json!({"kind":"step_failed","step_id":"s3",
+            "error":{"stage":"openai.responses.stream_start","message":"boom"},"failed_at_ms":8}),
+        ),
+        record(
+            "7",
+            json!({"kind":"step_started","step_id":"s4","purpose":"conversation","started_at_ms":9}),
+        ),
+    ];
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    let rows: Vec<_> = p
+        .activities
+        .iter()
+        .map(|a| (a.kind, a.summary.as_str()))
+        .collect();
+    // A reply is readable, a failure stays an error, and a step that is still
+    // running or carries no text is not a row.
+    assert_eq!(
+        rows,
+        [
+            (Kind::Model, "改好了 3 个文件。 下一步跑测试。"),
+            (Kind::Model, "顺带说明一下。"),
+            (Kind::Shell, "pwd"),
+            (Kind::Error, "boom"),
+        ]
+    );
+    // Replies are never folded into a routine group and have no destination.
+    assert!(p.activities.iter().all(|a| a.routine.is_none()));
+    assert!(p.activities.iter().all(|a| a.subject.is_none()));
+    assert_eq!(p.blocks.len(), p.activities.len());
 }
 
 #[test]

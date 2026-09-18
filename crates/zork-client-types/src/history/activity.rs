@@ -10,6 +10,8 @@ use std::collections::{BTreeSet, HashSet};
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
     Received,
+    /// The assistant's own reply text, from the model lane.
+    Model,
     SendMessage,
     SendFile,
     Notify,
@@ -276,11 +278,6 @@ fn slack_subject(args: &Value) -> Option<Subject> {
 }
 
 fn project(index: usize, entry: &Entry) -> Option<Activity> {
-    // Internal assistant text never becomes a delivered message. Execution
-    // failures still surface as errors, without a model-call row or token data.
-    if entry.lane == 1 && !matches!(entry.state.as_str(), "failed" | "timed_out") {
-        return None;
-    }
     let args = arguments(entry).unwrap_or(&Value::Null);
     let mut result = Activity {
         entry: index,
@@ -291,7 +288,16 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
         requested_wait_ms: None,
     };
     if entry.lane == 1 {
+        // The model lane is the assistant's own reply. A failed step is an
+        // error; a step still running has text that can still change, and a
+        // step without text already lists its calls on their own rows.
+        if matches!(entry.state.as_str(), "failed" | "timed_out") {
         result.kind = Kind::Error;
+        } else if entry.state == "succeeded" && !result.summary.is_empty() {
+            result.kind = Kind::Model;
+        } else {
+            return None;
+        }
         return Some(result);
     }
     if entry.action == "input" {
