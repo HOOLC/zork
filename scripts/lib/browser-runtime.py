@@ -92,7 +92,7 @@ def copy_framework(source: Path, destination: Path):
                 subprocess.run(['xattr', '-s', '-d', name, str(path)], check=True)
 
 
-def stage_runtime(binaries: Path, destination: Path):
+def stage_runtime(binaries: Path, destination: Path, prefix: str = 'ing.zork'):
     executable = binaries / 'zork-browser-runtime'
     helper = binaries / 'zork-browser-helper'
     cef = Path(subprocess.check_output([str(executable), '--cef-dir'], text=True).strip())
@@ -130,7 +130,7 @@ def stage_runtime(binaries: Path, destination: Path):
                           'NSSupportsAutomaticGraphicsSwitching': True,
                           'LSEnvironment': {'MallocNanoZone': '0'}}, output)
 
-    bundle(app, 'ZorkBrowser', executable, 'ing.zork.desktop.browser', 'Zork-Browser', 'ZorkBrowser.icns')
+    bundle(app, 'ZorkBrowser', executable, f'{prefix}.desktop.browser', 'Zork-Browser', 'ZorkBrowser.icns')
     # Like Station, register each helper's app identity before exec. PID, CEF
     # arguments and inherited sandbox/IPC descriptors survive that exec.
     with tempfile.TemporaryDirectory(prefix='zork-browser-launcher-') as scratch:
@@ -141,7 +141,7 @@ def stage_runtime(binaries: Path, destination: Path):
         # Keep CEF's executable/bundle layout and existing identifiers stable.
         for index, role in enumerate(['Helper', 'Alerts', 'GPU', 'Plugin', 'Renderer', 'Network', 'Storage']):
             name = 'ZorkBrowser Helper' + ('' if role == 'Helper' else f' ({role})')
-            bundle(frameworks / (name + '.app'), name, launcher, f'ing.zork.desktop.browser.helper{index}',
+            bundle(frameworks / (name + '.app'), name, launcher, f'{prefix}.desktop.browser.helper{index}',
                    'Zork-Browser-' + role, 'ZorkBrowser' + role + '.icns', helper)
     resources = contents / 'Resources'
     resources.mkdir(exist_ok=True)

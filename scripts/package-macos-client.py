@@ -31,8 +31,8 @@ def copy_binary(source, destination):
         shutil.copy2(source, destination)
 
 
-def app_info(version):
-    return {'CFBundleIdentifier': 'ing.zork.desktop', 'CFBundleName': 'Zork',
+def app_info(version, prefix):
+    return {'CFBundleIdentifier': prefix + '.desktop', 'CFBundleName': 'Zork',
             'CFBundleDisplayName': 'Zork', 'CFBundleIconFile': 'Zork.icns',
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': version, 'CFBundleVersion': version,
@@ -64,7 +64,7 @@ def sign_app(app, signer, identity):
     verify_app(app)
 
 
-def stage_binaries(app, binaries, assets, version, launcher):
+def stage_binaries(app, binaries, assets, version, launcher, prefix):
     mac = app / 'Contents/MacOS'
     helpers = []
     for name in COMPONENTS:
@@ -88,7 +88,7 @@ def stage_binaries(app, binaries, assets, version, launcher):
             shutil.copy2(launcher, executable_dir / entry)
         shutil.copy2(assets / (bundle_name + '.icns'), resources / (bundle_name + '.icns'))
         with (bundle / 'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'CFBundleIdentifier': 'ing.zork.desktop.' + role,
+            plistlib.dump({'CFBundleIdentifier': prefix + '.desktop.' + role,
                           'CFBundleName': display_name,
                           'CFBundleDisplayName': display_name,
                           'CFBundleExecutable': entry,
@@ -106,6 +106,7 @@ def stage_binaries(app, binaries, assets, version, launcher):
     return helpers
 
 def build_app(args, repo, app):
+    prefix = args.id_prefix
     version=json.loads((repo/'packages/zork/package.json').read_text())['version']
     mac=app/'Contents/MacOS';resources=app/'Contents/Resources'
     mac.mkdir(parents=True);resources.mkdir()
@@ -120,12 +121,12 @@ def build_app(args, repo, app):
         subprocess.run(['clang', '-arch', 'arm64', '-mmacosx-version-min=26.0',
                         str(repo/'scripts/build/macos-helper-launcher.m'),
                         '-framework', 'AppKit', '-framework', 'ApplicationServices', '-o', str(helper_launcher)], check=True)
-        helpers = stage_binaries(app, binaries, repo/'crates/zork-ui/assets/app', version, helper_launcher)
+        helpers = stage_binaries(app, binaries, repo/'crates/zork-ui/assets/app', version, helper_launcher, prefix)
     spec = importlib.util.spec_from_file_location('browser_runtime', repo / 'scripts/lib/browser-runtime.py')
     browser_runtime = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(browser_runtime)
     signing_identity = browser_runtime.signing_identity()
-    browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers')
+    browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
     if args.services_config:
         services=json.loads(args.services_config.read_text())
         assert isinstance(services,dict) and not set(services)-{'relay_urls','discovery_url','cue'}
@@ -133,7 +134,7 @@ def build_app(args, repo, app):
             assert not set(services['cue'])-{'issuer','client_id','redirect_uri'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
-        plistlib.dump(app_info(version), f)
+        plistlib.dump(app_info(version, prefix), f)
     (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Gateway running after quitting is available in Node settings; independently installed Gateways outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
@@ -145,6 +146,7 @@ def build_app(args, repo, app):
 def main():
     parser=argparse.ArgumentParser(description='Update the one persistent app for this worktree')
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
+    parser.add_argument('--id-prefix',default='ing.zork',help='Bundle identifier prefix; the app uses <prefix>.desktop')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
     parser.add_argument('--output',type=Path,help='Explicitly export an archive to this directory')
