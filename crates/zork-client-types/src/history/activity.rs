@@ -9,9 +9,14 @@ use std::collections::{BTreeSet, HashSet};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
-    Received,
+    /// The user's own message, read as the session input.
+    Input,
     /// The assistant's own reply text, from the model lane.
-    Model,
+    Output,
+    /// A live model call that has not produced text yet. Cue shows the same
+    /// live row before a reply exists, and only the runtime owns the reasoning
+    /// summary that would name it.
+    Thinking,
     SendMessage,
     SendFile,
     Notify,
@@ -297,20 +302,22 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
     };
     if entry.lane == 1 {
         // The model lane is the assistant's own reply. A failed step is an
-        // error; a step still running has text that can still change, and a
-        // step without text already lists its calls on their own rows.
+        // error; a completed step with text is the session output; a call that
+        // is still running without text reads as the live thinking row.
         if matches!(entry.state.as_str(), "failed" | "timed_out") {
         result.kind = Kind::Error;
         } else if entry.state == "succeeded" && !result.summary.is_empty() {
-            result.kind = Kind::Model;
+            result.kind = Kind::Output;
             result.summary = model_text(&entry.summary);
+        } else if entry.state == "running" && result.summary.is_empty() {
+            result.kind = Kind::Thinking;
         } else {
             return None;
         }
         return Some(result);
     }
     if entry.action == "input" {
-        result.kind = Kind::Received;
+        result.kind = Kind::Input;
         let receipt = input(entry).and_then(|input| input["request_id"].as_str());
         if let Some(payload) = entry
             .summary

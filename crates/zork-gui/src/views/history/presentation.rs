@@ -109,7 +109,7 @@ impl RootView {
         a: &Activity,
         e: &Entry,
     ) -> (Option<String>, Option<Jump>) {
-        if a.kind == Kind::Received && a.subject.is_none() {
+        if a.kind == Kind::Input && a.subject.is_none() {
             let receipt = activity::input(e).and_then(|input| input["request_id"].as_str());
             if receipt.is_some_and(|id| id.starts_with("assignment-") || id.starts_with("rework-"))
             {

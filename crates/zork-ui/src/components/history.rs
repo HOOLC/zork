@@ -5,18 +5,43 @@ use crate::{
     design::CUE_UI,
     history::Entry,
 };
-use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight};
+use gpui::{div, prelude::*, px, rgb, rgba, Context, Div, FontWeight};
 
 // Restrained semantic accents, shared by rows, destinations and the timeline.
 pub const SEND_COLOR: u32 = 0x536779;
 pub const RECEIVE_COLOR: u32 = 0x5A6D62;
 pub const MODEL_COLOR: u32 = 0x92969D;
 
+/// Cue's session-activity accents. Its session history paints a received row
+/// with the light-theme utility blue and a sent row with the utility purple,
+/// hues this repo owns no token for; a wait and a failure already map to the
+/// palette's warning and danger. The timeline keeps its own neutral accents.
+pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
+pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
+
+/// The 12% accent tint Cue puts behind a row icon, matching its `inset: 3px -2px`
+/// chip on the 16px icon box.
+fn accent_chip(color: u32) -> gpui::Rgba {
+    rgba((color << 8) | 0x1F)
+}
+
+/// Rows Cue marks with an observable activity kind carry the accent chip and the
+/// accented label; ordinary operation rows stay neutral.
+pub fn activity_accent(kind: Kind) -> bool {
+    matches!(
+        kind,
+        Kind::Input | Kind::SendMessage | Kind::SendFile | Kind::Notify | Kind::Wait
+    )
+}
+
 /// Shared two-line history geometry. The host resolves labels and destinations;
 /// no network, identity lookup or argument parsing occurs during row rendering.
 pub struct ActivityHeader {
     pub icon: &'static str,
     pub color: u32,
+    /// Cue marks rows with an observable activity kind by accenting the icon and
+    /// label and tinting a chip behind the icon; neutral operation rows stay muted.
+    pub accent: bool,
     pub action: String,
     pub connector: Option<String>,
     pub subject: Option<String>,
@@ -25,7 +50,6 @@ pub struct ActivityHeader {
     pub time: String,
     pub status: Option<String>,
     pub nested: bool,
-    pub group: bool,
     /// An optional body under the summary line. The model lane passes its
     /// Markdown document here, which then replaces the plain summary line.
     pub body: Option<gpui::AnyElement>,
@@ -95,14 +119,25 @@ pub fn activity_header_sources<V: 'static>(
         )
         .child(
             div()
+                .relative()
                 .w(px(16.))
                 .h(px(20.))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
-                .child(
-                    crate::controls::icon(header.icon, 14.).text_color(rgb(CUE_UI.palette.muted)),
-                ),
+                .justify_center()
+                .when(header.accent, |v| {
+                    v.child(
+                        div()
+                            .absolute()
+                            .left(px(-2.))
+                            .top(px(0.))
+                            .size(px(20.))
+                            .rounded(px(5.))
+                            .bg(accent_chip(header.color)),
+                    )
+                })
+                .child(crate::controls::icon(header.icon, 14.).text_color(rgb(header.color))),
         )
         .child(
             div()
@@ -118,7 +153,7 @@ pub fn activity_header_sources<V: 'static>(
                         .child(
                             div()
                                 .min_w_0()
-                                .text_size(px(if header.group { 11. } else { 12. }))
+                                .text_size(px(11.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(rgb(header.color))
                                 .truncate()
@@ -128,7 +163,7 @@ pub fn activity_header_sources<V: 'static>(
                             v.child(
                                 div()
                                     .flex_shrink_0()
-                                    .text_size(px(12.))
+                                    .text_size(px(11.))
                                     .font_weight(FontWeight::NORMAL)
                                     .text_color(rgb(CUE_UI.palette.muted))
                                     .child(text),
@@ -137,13 +172,9 @@ pub fn activity_header_sources<V: 'static>(
                         .when_some(header.subject, |v, text| {
                             let subject = div()
                                 .min_w_0()
-                                .text_size(px(12.))
+                                .text_size(px(11.))
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(if header.clickable_subject {
-                                    SEND_COLOR
-                                } else {
-                                    CUE_UI.palette.text
-                                }))
+                                .text_color(rgb(CUE_UI.palette.text))
                                 .truncate()
                                 .child(text);
                             if !header.clickable_subject {
@@ -204,7 +235,7 @@ pub fn activity_header_sources<V: 'static>(
                         .child(
                             div()
                                 .flex_shrink_0()
-                                .text_size(px(11.))
+                                .text_size(px(10.))
                                 .text_color(rgb(CUE_UI.palette.muted))
                                 .child(header.time),
                         ),
@@ -287,18 +318,20 @@ pub fn activity_color(kind: Kind, state: &str) -> u32 {
         return CUE_UI.palette.danger;
     }
     match kind {
-        Kind::Received => RECEIVE_COLOR,
-        Kind::Model => MODEL_COLOR,
-        Kind::SendMessage | Kind::SendFile | Kind::Notify => SEND_COLOR,
-        Kind::Assign | Kind::Rework | Kind::Wait | Kind::Cancel => CUE_UI.palette.muted,
+        Kind::Input => ACTIVITY_RECEIVE_COLOR,
+        Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
+        Kind::Wait => CUE_UI.palette.warning,
         Kind::Error => CUE_UI.palette.danger,
-        _ => CUE_UI.palette.text,
+        // Output, thinking and ordinary operations read neutral, as Cue's
+        // text-tertiary icon and secondary label do.
+        _ => CUE_UI.palette.muted,
     }
 }
 pub fn kind_label(kind: Kind) -> &'static str {
     match kind {
-        Kind::Received => "history_receive_message",
-        Kind::Model => "history_model_message",
+        Kind::Input => "history_item_input",
+        Kind::Output => "history_model_message",
+        Kind::Thinking => "history_item_thinking",
         Kind::SendMessage => "history_send_message",
         Kind::SendFile => "history_send_file",
         Kind::Notify => "history_notify",
@@ -324,8 +357,8 @@ pub fn kind_label(kind: Kind) -> &'static str {
 }
 pub fn kind_icon(kind: Kind) -> &'static str {
     match kind {
-        Kind::Received => "history/receive.svg",
-        Kind::Model => "cue/sparkles.svg",
+        Kind::Input => "history/receive.svg",
+        Kind::Output | Kind::Thinking => "cue/sparkles.svg",
         Kind::SendMessage => "history/send.svg",
         Kind::SendFile => "history/attachment.svg",
         Kind::Notify => "history/notify.svg",

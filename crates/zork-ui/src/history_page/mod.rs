@@ -1,7 +1,7 @@
 //! Complete history page. Native and Playground supply the same read-only
 //! snapshots, resolved destinations and typed event adapter.
 use crate::components::{
-    history::{activity_color, kind_icon, kind_label, ActivityHeader},
+    history::{activity_accent, activity_color, kind_icon, kind_label, ActivityHeader},
     loading,
     message::{render_document, MessageDocument},
 };
@@ -350,7 +350,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .items_center()
             .gap(px(4.))
             .cursor_pointer()
-            .text_size(px(12.))
+            .text_size(px(11.))
             .text_color(rgb(DIM))
             .hover(|v| v.underline())
             .child(disclosure_label.clone())
@@ -443,7 +443,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 != Some(self.history_text().text("history_source_unknown").as_str())
             && matches!(
                 a.kind,
-                Kind::Received
+                Kind::Input
                     | Kind::SendMessage
                     | Kind::SendFile
                     | Kind::Notify
@@ -452,7 +452,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             ))
         .then(|| {
             self.history_text()
-                .text(if a.kind == Kind::Received {
+                .text(if a.kind == Kind::Input {
                     "history_from"
                 } else {
                     "history_to"
@@ -497,6 +497,14 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 {
                     Some(self.history_text().text("history_sent").into())
                 }
+                // Only operations carry a terminal status. A reply, a live call
+                // and a finished wait read as their own label.
+                "succeeded"
+                    if matches!(a.kind, Kind::Output | Kind::Thinking | Kind::Wait) =>
+                {
+                    None
+                }
+                "succeeded" => Some(self.history_text().text("history_success").into()),
                 _ => None,
             }
         };
@@ -521,7 +529,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         let id = entry.id.clone();
         let selected = self.history().selected.as_ref() == Some(&id);
-        let body = (!group && a.kind == Kind::Model).then(|| {
+        let body = (!group && a.kind == Kind::Output).then(|| {
             self.render_history_output(index, &id, &a.summary, entry, cx)
                 .into_any_element()
         });
@@ -542,6 +550,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     } else {
                         activity_color(a.kind, &entry.state)
                     },
+                    accent: !group && activity_accent(a.kind),
                     action,
                     connector,
                     subject,
@@ -550,7 +559,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     time: relative_time(first.start.or(first.end), now, &self.history_text()),
                     status,
                     nested: row.activity.is_some() && block.is_group(),
-                    group,
                     body,
                 },
                 (

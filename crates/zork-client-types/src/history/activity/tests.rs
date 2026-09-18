@@ -116,16 +116,18 @@ fn assistant_replies_read_as_model_rows_and_failures_stay_errors() {
         .iter()
         .map(|a| (a.kind, a.summary.as_str()))
         .collect();
-    // A reply is readable, a failure stays an error, and a step that is still
-    // running or carries no text is not a row.
+    // A reply is readable, a failure stays an error, a step that finished
+    // without text is not a row, and a call that is still running reads as the
+    // live thinking row instead of inventing an empty output.
     assert_eq!(
         rows,
         [
             // A reply keeps its Markdown, so paragraph breaks are not collapsed.
-            (Kind::Model, "改好了 3 个文件。\n\n下一步跑测试。"),
-            (Kind::Model, "顺带说明一下。"),
+            (Kind::Output, "改好了 3 个文件。\n\n下一步跑测试。"),
+            (Kind::Output, "顺带说明一下。"),
             (Kind::Shell, "pwd"),
             (Kind::Error, "boom"),
+            (Kind::Thinking, ""),
         ]
     );
     // Replies are never folded into a routine group and have no destination.
@@ -148,7 +150,7 @@ fn model_replies_are_bounded_like_the_disclosure_they_render() {
     )]);
     let projection = Projection::new(&entries);
     assert_eq!(projection.activities.len(), 1);
-    assert_eq!(projection.activities[0].kind, Kind::Model);
+    assert_eq!(projection.activities[0].kind, Kind::Output);
     assert_eq!(projection.activities[0].summary.chars().count(), MODEL_TEXT_LIMIT);
 }
 

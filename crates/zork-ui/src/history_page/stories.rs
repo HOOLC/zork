@@ -34,9 +34,15 @@ impl Story {
         .into();
         let projection = Projection::new(entries.iter());
         let mut expanded = HashSet::new();
+        let mut output_expanded = HashSet::new();
         if state == "expanded" {
             if let Some(block) = projection.blocks.iter().find(|b| b.is_group()) {
                 expanded.insert(entries[projection.activities[block.start].entry].id.clone());
+            }
+            // The demo reply is the only row that owns a Markdown body, so the
+            // expanded state reveals its disclosure and token breakdown.
+            if let Some(activity) = projection.activities.iter().find(|a| a.kind == Kind::Output) {
+                output_expanded.insert(entries[activity.entry].id.clone());
             }
         }
         let rows = projection.rows(entries.iter(), &expanded);
@@ -53,6 +59,7 @@ impl Story {
                 projection,
                 rows,
                 expanded,
+                output_expanded,
                 scroll,
                 fixed_now: fixture["history"]["now"].as_i64(),
                 ..Default::default()
@@ -95,7 +102,7 @@ impl Host for Story {
                 (Some(id.clone()), Some(Jump::Entry(format!("tool:{id}"))))
             }
             Some(Subject::User) => (Some(self.text.text("history_user")), None),
-            _ if a.kind == Kind::Received => (Some(self.text.text("history_source_unknown")), None),
+            _ if a.kind == Kind::Input => (Some(self.text.text("history_source_unknown")), None),
             _ => (None, None),
         }
     }
