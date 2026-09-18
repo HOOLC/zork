@@ -42,6 +42,8 @@ pub(super) struct SubmittedScene {
     pub base: FrameScene,
     pub replacements: std::collections::BTreeMap<usize, (usize, FrameScene)>,
     pub generation: u64,
+    pub viewport: Size<Pixels>,
+    pub scale: f32,
 }
 
 /// A paint range in one completed UI frame. Playback expires on UI redraw;
@@ -59,6 +61,23 @@ pub struct PaintRegion {
 }
 
 impl Window {
+    /// Keep the already submitted scene for a layer handoff's first frame.
+    /// Layout and input still commit normally. Reusing the exact prepared
+    /// scene avoids raster changes caused by repacking identical paths into
+    /// different atlas cells. The next UI draw or paint-only update releases
+    /// this hold, and the submitted region/version baseline stays truthful.
+    pub fn retain_presented_frame(&mut self) -> bool {
+        self.invalidator.debug_assert_paint();
+        if self.submitted_scene.as_ref().is_some_and(|frame| {
+            frame.viewport == self.viewport_size() && frame.scale == self.scale_factor()
+        }) {
+            self.retain_submitted_frame = true;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Copy a bounded area of the actual last presentation. This fallback
     /// also works when an element was reused by an intervening UI frame and
     /// its original region token has expired.
@@ -169,6 +188,7 @@ impl Window {
         }
         let scratch = mem::take(&mut self.next_frame.scene);
         let old_opacity = mem::replace(&mut self.element_opacity, region.opacity);
+        self.retain_submitted_frame = false;
         self.invalidator.set_phase(DrawPhase::Paint);
         self.with_content_mask(Some(region.mask), paint);
         self.invalidator.set_phase(DrawPhase::None);
@@ -192,7 +212,11 @@ impl Window {
             &self.rendered_frame.scene,
         );
         composed.finish();
-        self.presentation_scene = Some(composed.into());
+        self.presentation_scene = if self.retain_submitted_frame {
+            self.submitted_scene.as_ref().map(|frame| frame.scene.clone())
+        } else {
+            Some(composed.into())
+        };
         self.needs_present.set(true);
         self.invalidator.wake_platform();
         true
@@ -313,10 +337,48 @@ mod tests {
     }
 
     #[gpui::test]
+    fn handoff_retains_the_submitted_picture_and_its_region_baseline(cx: &mut TestAppContext) {
+        let handle = cx.add_window(|_, _| RegionView::default());
+        let (old_region, old_generation, old_picture) = handle.update(cx, |view, window, _| {
+            window.present();
+            let region = view.regions.borrow()[0].clone();
+            (region, window.rendered_frame.generation, window.submitted_scene.as_ref().unwrap().scene.quads.clone())
+        }).unwrap();
+        cx.update_window(handle.into(), |root, window, cx| {
+            window.draw(cx).clear(cx);
+            let view = root.downcast::<RegionView>().unwrap();
+            let region = view.read(cx).regions.borrow()[0].clone();
+            let input_generation = window.rendered_frame.generation;
+            let listeners = window.rendered_frame.mouse_listeners.len();
+            assert_ne!(input_generation, old_generation);
+            assert!(window.repaint_region(&region, |window| {
+                window.paint_quad(fill(region.mask.bounds, rgb(0xabcdef)));
+                assert!(window.retain_presented_frame());
+            }));
+            assert_eq!(window.presentation_scene.as_ref().unwrap().quads, old_picture);
+            window.present();
+            assert_eq!(window.submitted_scene.as_ref().unwrap().generation, old_generation);
+            assert!(window.snapshot_paint_region(11, &old_region).is_some());
+            assert!(window.snapshot_paint_region(12, &region).is_none());
+            assert_eq!(window.rendered_frame.generation, input_generation);
+            assert_eq!(window.rendered_frame.mouse_listeners.len(), listeners);
+
+            assert!(window.repaint_region(&region, |window| {
+                window.paint_quad(fill(region.mask.bounds, rgb(0x123456)));
+            }));
+            assert!(!window.retain_submitted_frame);
+            window.present();
+            assert_eq!(window.submitted_scene.as_ref().unwrap().generation, input_generation);
+            assert!(window.snapshot_paint_region(13, &region).is_some());
+        }).unwrap();
+    }
+
+    #[gpui::test]
     fn invalidation_resize_and_other_windows_reject_old_regions(cx: &mut TestAppContext) {
         let handle = cx.add_window(|_, _| RegionView::default());
         let region = handle
             .update(cx, |view, window, _| {
+                window.present();
                 let region = view.regions.borrow()[0].clone();
                 assert!(window.paint_region_is_current(&region));
                 window.invalidator.set_dirty(true);
@@ -324,6 +386,9 @@ mod tests {
                 window.invalidator.set_dirty(false);
                 window.viewport_size.width += px(1.);
                 assert!(!window.paint_region_is_current(&region));
+                window.invalidator.set_phase(DrawPhase::Paint);
+                assert!(!window.retain_presented_frame());
+                window.invalidator.set_phase(DrawPhase::None);
                 window.viewport_size.width -= px(1.);
                 let mut scaled = region.clone();
                 scaled.scale += 1.;

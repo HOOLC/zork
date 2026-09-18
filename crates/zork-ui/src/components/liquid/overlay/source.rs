@@ -8,7 +8,7 @@ pub(super) struct Activation {
     pub trigger: DialogTrigger,
     pub drawing: Rc<RefCell<Option<PaintRegion>>>,
     pub priority: usize,
-    pub view: EntityId,
+    pub material: super::super::render::SourceMaterial,
 }
 
 #[derive(Clone, Default)]
@@ -36,6 +36,7 @@ impl SourceBinding {
             binding: self.clone(),
             focus: None,
             drawing: Default::default(),
+            material: None,
         }
     }
     pub(super) fn attach<E: ControlElement>(
@@ -46,6 +47,7 @@ impl SourceBinding {
         style: controls::ActionStyle,
         focus: FocusHandle,
         drawing: Rc<RefCell<Option<PaintRegion>>>,
+        material: super::super::render::SourceMaterial,
         window: &mut Window,
         cx: &mut App,
     ) -> E {
@@ -67,7 +69,7 @@ impl SourceBinding {
         let activation = self.activation.clone();
         let priority = Rc::new(Cell::new(0));
         let source_priority = priority.clone();
-        let source_view = window.current_view();
+        let source_material = material.clone();
         let activate: Rc<dyn Fn()> = Rc::new(move || {
             // A rich source may contain its own actions. Capture the candidate,
             // then commit it only if the host actually opens this dialog.
@@ -76,7 +78,7 @@ impl SourceBinding {
                 trigger: source.clone(),
                 drawing: drawing.clone(),
                 priority: source_priority.get(),
-                view: source_view,
+                material: source_material.clone(),
             });
             activation.set(activation.get().wrapping_add(1));
         });
@@ -85,7 +87,6 @@ impl SourceBinding {
         let notify = window.use_keyed_state(format!("overlay-source-{id:?}"), cx, |_, _| ());
         let trigger = self.trigger.clone();
         let anchor = self.anchor.clone();
-        let material = self.material.for_owner(key.clone());
         let follows_anchor = material.clone();
         let enabled = !style.disabled && !style.busy;
         element
@@ -115,7 +116,7 @@ impl SourceBinding {
                             .as_ref()
                             .is_some_and(|source| source.id == key)
                         {
-                            if anchor.update(bounds, window) && follows_anchor.relocated() {
+                            if anchor.update(bounds, window) && follows_anchor.follows_drawing() {
                                 notify.update(cx, |_, cx| cx.notify());
                             }
                         }
@@ -138,6 +139,7 @@ pub struct BoundTrigger<E: ControlElement> {
     binding: SourceBinding,
     focus: Option<FocusHandle>,
     drawing: Rc<RefCell<Option<PaintRegion>>>,
+    material: Option<super::super::render::SourceMaterial>,
 }
 impl<E: ControlElement> Styled for BoundTrigger<E> {
     fn style(&mut self) -> &mut StyleRefinement {
@@ -206,6 +208,8 @@ impl<E: ControlElement> Element for BoundTrigger<E> {
         let drawing = window.use_keyed_state(format!("overlay-source-drawing-{:?}", self.id), cx,
             |_, _| Rc::<RefCell<Option<PaintRegion>>>::default());
         self.drawing = drawing.read(cx).clone();
+        let material = self.binding.material.for_owner(format!("{:?}", self.id).into(), window, cx);
+        self.material = Some(material.clone());
         let mut child = self
             .binding
             .attach(
@@ -215,6 +219,7 @@ impl<E: ControlElement> Element for BoundTrigger<E> {
                 self.style,
                 focus,
                 self.drawing.clone(),
+                material,
                 window,
                 cx,
             )
@@ -238,14 +243,16 @@ impl<E: ControlElement> Element for BoundTrigger<E> {
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _: &mut (),
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
         let (_, region) = window.record_paint_region(|window| {
-            self.rendered.as_mut().unwrap().paint(window, cx);
+            self.material.as_ref().unwrap().paint_control(bounds, window, |window| {
+                self.rendered.as_mut().unwrap().paint(window, cx);
+            });
         });
         *self.drawing.borrow_mut() = region;
     }

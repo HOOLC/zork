@@ -1189,6 +1189,7 @@ pub struct Window {
     paint_replacements: std::collections::BTreeMap<usize, (usize, paint_region::FrameScene)>,
     presentation_scene: Option<paint_region::FrameScene>,
     submitted_scene: Option<paint_region::SubmittedScene>,
+    retain_submitted_frame: bool,
     deferred_draw_priority: usize,
     presentation_sequence: u64,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
@@ -1890,6 +1891,7 @@ impl Window {
             paint_replacements: Default::default(),
             presentation_scene: None,
             submitted_scene: None,
+            retain_submitted_frame: false,
             deferred_draw_priority: 0,
             presentation_sequence: 0,
             requested_autoscroll: None,
@@ -3009,6 +3011,7 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        self.retain_submitted_frame = false;
         let focus_generation_at_start = self.focus_generation;
         self.next_frame.generation = self.rendered_frame.generation.wrapping_add(1);
         // Drain every draw in profiler builds so a stale first-invalidation
@@ -3084,7 +3087,9 @@ impl Window {
         let previous_focus_path = self.rendered_frame.focus_path();
         let previous_window_active = self.rendered_frame.window_active;
         self.paint_replacements.clear();
-        self.presentation_scene = None;
+        self.presentation_scene = self.retain_submitted_frame
+            .then(|| self.submitted_scene.as_ref().map(|frame| frame.scene.clone()))
+            .flatten();
         mem::swap(&mut self.rendered_frame, &mut self.next_frame);
         self.next_frame.clear();
         let current_focus_path = self.rendered_frame.focus_path();
@@ -3191,12 +3196,16 @@ impl Window {
     fn present(&mut self) {
         let scene = self.presentation_scene.as_ref().unwrap_or(&self.rendered_frame.scene).clone();
         self.platform_window.draw(&scene);
-        self.submitted_scene = Some(paint_region::SubmittedScene {
-            scene,
-            base: self.rendered_frame.scene.clone(),
-            replacements: self.paint_replacements.clone(),
-            generation: self.rendered_frame.generation,
-        });
+        if !self.retain_submitted_frame {
+            self.submitted_scene = Some(paint_region::SubmittedScene {
+                scene,
+                base: self.rendered_frame.scene.clone(),
+                replacements: self.paint_replacements.clone(),
+                generation: self.rendered_frame.generation,
+                viewport: self.viewport_size(),
+                scale: self.scale_factor(),
+            });
+        }
         self.presentation_sequence = self.presentation_sequence.wrapping_add(1);
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
@@ -4289,6 +4298,17 @@ impl Window {
     pub fn paint_snapshot(&mut self, snapshot: &crate::PaintSnapshot) {
         self.invalidator.debug_assert_paint();
         self.next_frame.scene.paint_snapshot(snapshot);
+    }
+
+    /// Place one persistent drawing identity in this frame. If another layer
+    /// places it later, only that placement is composed. The normal control
+    /// keeps submitting its drawing; no visibility or restoration state is
+    /// required when the other placement is removed.
+    pub fn paint_node(&mut self, node: crate::PaintNode, snapshot: &crate::PaintSnapshot) {
+        self.invalidator.debug_assert_paint();
+        // A reference does not require another color texture. Small controls
+        // join ordinary batches; their enclosing content may still be cached.
+        self.next_frame.scene.paint_node(node, snapshot.0.clone());
     }
 
     /// Composite a captured color drawing with the same transparent-target

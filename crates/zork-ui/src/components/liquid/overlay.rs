@@ -1226,8 +1226,7 @@ impl Dialog {
         self.presentation.release_presented_initial(window);
         let mut motion = self.motion.borrow_mut();
         if !open && !motion.alive() && self.presentation.opacity() == 0. {
-            self.source_material
-                .relocate_drawing(false, None, window, cx);
+            self.source_material.release_drawing();
             self.presentation.region.borrow_mut().take();
             self.presentation.initial.borrow_mut().take();
             self.input_gate.set_state(false, false);
@@ -1248,7 +1247,7 @@ impl Dialog {
                 self.origin.set(source.bounds);
                 self.source_priority = source.priority;
                 source_drawing = source.drawing.borrow().clone();
-                self.source_material.register(source.trigger.id.clone(), source.view);
+                self.source_material.select_drawing(&source.material);
                 *self.trigger.borrow_mut() = Some(source.trigger);
             }
         }
@@ -1396,19 +1395,6 @@ impl Dialog {
             || motion.alive()
             || self.presentation.opacity() > 0.
             || self.presentation.backdrop.get().opacity() > 0.;
-        self.source_material.relocate_drawing(
-            floating && draw_material,
-            draw_material
-                .then(|| {
-                    self.trigger
-                        .borrow()
-                        .as_ref()
-                        .map(|trigger| trigger.id.clone())
-                })
-                .flatten(),
-            window,
-            cx,
-        );
         self.input_gate.set_state(draw_material, open);
         if !draw_material {
             self.source_material.clear();

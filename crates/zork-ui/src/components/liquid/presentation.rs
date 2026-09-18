@@ -331,6 +331,7 @@ impl Driver {
             if let Some(initial) = initial {
                 let updated = window.repaint_region(&region, |window| {
                     window.paint_snapshot_at(&initial, point(px(0.), px(0.)));
+                    window.retain_presented_frame();
                 });
                 if updated { Self::schedule(driver, region, window); }
                 else { (driver.notify)(cx); }
@@ -457,6 +458,7 @@ impl Element for Playback {
                 let bounds = Bounds::new(point(px(0.), px(0.)), window.viewport_size());
                 window.capture_paint_snapshot(0, bounds, None, |window| self.child.paint(window, cx));
                 window.paint_snapshot_at(&initial, point(px(0.), px(0.)));
+                window.retain_presented_frame();
             } else { self.child.paint(window, cx); }
         });
         *self.region.borrow_mut() = region.clone();

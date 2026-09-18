@@ -74,7 +74,9 @@ mod test_context;
 mod visual_test_context;
 
 /// The duration for which futures returned from [Context::on_app_quit] can run before the application fully quits.
-pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
+// The desktop owns background services and an embedded transport. Let their
+// bounded shutdown futures finish instead of abandoning them after one frame.
+pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Temporary(?) wrapper around [`RefCell<App>`] to help us debug any double borrows.
 /// Strongly consider removing after stabilization.

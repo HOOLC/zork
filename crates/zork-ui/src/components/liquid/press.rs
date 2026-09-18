@@ -205,7 +205,6 @@ pub(super) fn content_surface_with_source(
     cx: &mut App,
 ) -> Stateful<Div> {
     let source_binding = source;
-    let relocated = source_binding.as_ref().is_some_and(|source| source.relocated());
     let source = source_binding.as_ref().and_then(|source| source.resolve());
     let rest = Pose::rect(0., 0., width as f64, height as f64, radius as f64);
     let state = window.use_keyed_state(format!("liquid-pressure-{id:?}"), cx, |_, _| {
@@ -222,7 +221,7 @@ pub(super) fn content_surface_with_source(
             rest,
             enabled,
             colors.focused,
-            reduced || relocated,
+            reduced,
             visible,
             inside,
             rate,
@@ -266,9 +265,7 @@ pub(super) fn content_surface_with_source(
         .map_or(rest, |s| s.simulation.pose()), |source| Pose::rect(
             source.pose.left() - source.rest.left(), source.pose.top() - source.rest.top(),
             source.pose.w, source.pose.h, source.pose.r));
-    let (background, outline) = if relocated {
-        (gpui::Empty.into_any_element(), gpui::Empty.into_any_element())
-    } else if let Some(source) = &source {
+    let (background, outline) = if let Some(source) = &source {
         let offset = point(px(-source.rest.left() as f32), px(-source.rest.top() as f32));
         (source.part.background(Some(colors.fill), None, offset, false),
          source.part.background(None, colors.border, offset, colors.focused))
@@ -292,7 +289,7 @@ pub(super) fn content_surface_with_source(
     };
     // The material may be supplied by a paired overlay, but the original
     // control still owns its input contour at its current page position.
-    let input_placement = (source.is_some() || relocated).then(|| {
+    let input_placement = source.is_some().then(|| {
         if let Some(surface) = &motion.surface {
             surface.background_colors(None, None, point(px(0.), px(0.)), false).into_any_element()
         } else {

@@ -78,13 +78,17 @@ pub(crate) struct SourceFrame {
 pub struct SourceMaterial {
     frame: Rc<RefCell<Option<SourceFrame>>>,
     pub(super) owner: Option<SharedString>,
+    pub(super) drawing: Option<Rc<RefCell<super::presentation::SourceDrawing>>>,
     pub(super) presentation: Rc<RefCell<super::presentation::Presentation>>,
 }
 impl SourceMaterial {
-    pub(crate) fn for_owner(&self, owner: SharedString) -> Self {
+    pub(crate) fn for_owner(&self, owner: SharedString, window: &mut Window, cx: &mut App) -> Self {
+        let drawing = window.use_keyed_state(format!("liquid-source-node-{owner}"), cx,
+            |_, _| Rc::<RefCell<super::presentation::SourceDrawing>>::default());
         Self {
             frame: self.frame.clone(),
             owner: Some(owner),
+            drawing: Some(drawing.read(cx).clone()),
             presentation: self.presentation.clone(),
         }
     }
@@ -92,9 +96,6 @@ impl SourceMaterial {
         self.frame.borrow_mut().take();
     }
     pub(crate) fn resolve(&self) -> Option<SourceFrame> {
-        if self.presentation.borrow().enabled {
-            return None;
-        }
         self.frame
             .borrow()
             .as_ref()

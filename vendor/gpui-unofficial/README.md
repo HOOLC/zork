@@ -5,6 +5,9 @@
 GPUI is a hybrid immediate and retained mode, GPU accelerated, UI framework
 for Rust, designed to support a wide variety of applications.
 
+The Zork vendored build allows owned shutdown observers to finish within a
+bounded service-drain interval, including closing its embedded Mesh database.
+
 ## Getting Started
 
 GPUI is still in active development as we work on the Zed code editor, and is still pre-1.0. There will often be breaking changes between versions. You'll also need to use the latest version of stable Rust. Add `gpui`, and optionally `gpui_platform`, to your `Cargo.toml`:
@@ -107,4 +110,7 @@ Based on the unmodified crates.io `gpui-unofficial` 1.17.0-pre source.
 non-overlapping window-space bands without relaying out its children. The scene
 retains raw operations and effect boundaries for cached replay. Layout and input
 regions remain unchanged; callers own input handling during a transition.
+Persistent drawing references are resolved once per frame, including cached
+and paint-only replay. Layer changes preserve the original control's drawing
+and input records without duplicate alpha composition or visibility toggles.
 Original package metadata and Apache license are retained.
