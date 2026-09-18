@@ -18,10 +18,6 @@ impl RootView {
         }
         view
     }
-    pub(crate) fn focus_after_dialog(&mut self, cx: &mut Context<Self>) {
-        self.focus_initialized = false;
-        zork_ui::components::region::invalidate_all(cx);
-    }
     pub(crate) fn prepare_device_request(&mut self, cx: &mut Context<Self>) {
         let existing = self.composer_input.read(cx).value().to_owned();
         let request = "请帮我连接一台设备，先与我确认设备信息和接入方式。";
@@ -82,7 +78,11 @@ impl RootView {
             }
             Destination::Home => self.navigate_shell(ShellRoute::Home, cx),
             Destination::Leader(id) | Destination::PrepareDevice(id) => {
-                if let Some(agent) = self.node_agents.iter().find(|a| a["id"] == *id).cloned() {
+                // The sidebar can deliver input before this view's next frame
+                // applies its catalog batch. Resolve the ID from core's current
+                // read-only snapshot instead of the previous painted catalog.
+                let state = self.core_device.snapshot();
+                if let Some(agent) = state.agents.iter().find(|a| a["id"] == *id).cloned() {
                     self.open_leader(agent, cx);
                     if matches!(destination, Destination::PrepareDevice(_)) {
                         self.prepare_device_request(cx);
@@ -151,7 +151,22 @@ impl RootView {
     }
 
     pub(super) fn render_leader_home(&mut self, cx: &mut Context<Self>) -> Div {
-        let empty = !self.core_device.has_long_term_agents();
+        use zork_client_core::state::AgentAvailability;
+        let availability = self.core_device.agent_availability();
+        if matches!(availability, AgentAvailability::Loading | AgentAvailability::Unavailable) {
+            return div().flex_1().min_w_0().min_h_0().flex().items_center().justify_center()
+                .child(if availability == AgentAvailability::Loading {
+                    div().child(zork_ui::components::loading::status(
+                        "device-home-loading", self.locale.text("device_home_loading"),
+                    )).into_any_element()
+                } else {
+                    div().id("device-home-unavailable").max_w(px(460.)).px_8()
+                        .child(zork_ui::controls::heading(
+                            self.locale.text("device_home_unavailable"), self.locale.text("device_home_unavailable_detail"),
+                        )).automation(AutomationRole::Status, self.locale.text("device_home_unavailable")).into_any_element()
+                });
+        }
+        let empty = availability == AgentAvailability::Empty;
         let data = zork_ui::welcome::Data {
             title: if empty {
                 "创建你的第一位 领队"

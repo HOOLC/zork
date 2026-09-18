@@ -49,6 +49,7 @@ impl Device {
             s.info = Default::default();
             s.metadata_loaded = false;
             s.agents = Default::default();
+            s.agents_loaded = false;
             s.sessions = Default::default();
             s.sessions_loaded = false;
             s.tasks = Default::default();
@@ -71,7 +72,7 @@ impl Device {
             Some("设备访问权限已撤销".into()),
         );
         if let Some(agents) = self.agents.get() {
-            agents.seed_agents(Default::default());
+            agents.seed_agents(Default::default(), false);
             agents.sync_profiles(Default::default());
         }
         Ok(())
@@ -317,6 +318,7 @@ impl Device {
             s.sessions = Arc::new(sessions);
             s.sessions_loaded = true;
             s.agents = agents.clone();
+            s.agents_loaded = true;
             s.profiles = profiles.clone();
             s.tasks = catalog.by_leader.clone();
             s.chats = catalog.chats.clone();
@@ -337,7 +339,7 @@ impl Device {
             catalog.profile_state.error.clone(),
         );
         if let Some(source) = self.agents.get() {
-            source.seed_agents(agents);
+            source.seed_agents(agents, true);
             source.sync_profiles(profiles);
         }
         *self.replication.catalog.lock().unwrap() = Some(catalog);

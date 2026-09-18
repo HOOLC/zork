@@ -1,6 +1,7 @@
 //! Zork's bounded interface to the pinned, embedded Synchronicity runtime.
 //! Product state and command idempotency belong to the Gateway.
 pub mod bridge;
+mod clean_start;
 pub mod enrollment;
 pub mod feed;
 mod local_discovery;

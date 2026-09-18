@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Default, PartialEq)]
 pub struct AgentData {
     pub agents: Arc<Vec<Value>>,
+    pub loaded: bool,
     pub profiles: Arc<Vec<ProfileInfo>>,
     pub node_origin: Option<String>,
     pub error: Option<String>,
@@ -35,7 +36,7 @@ impl AgentSubscription {
         reset: bool,
     ) -> AgentUpdate {
         let update = AgentUpdate {
-            agents_changed: self.previous.agents != state.agents,
+            agents_changed: self.previous.agents != state.agents || self.previous.loaded != state.loaded,
             profiles_changed: self.previous.profiles != state.profiles,
             origin_changed: self.previous.node_origin != state.node_origin,
             error_changed: self.previous.error != state.error,
@@ -168,8 +169,8 @@ impl Agents {
         change(&mut state);
         self.state.publish(state.clone());
     }
-    pub(crate) fn seed_agents(&self, agents: Arc<Vec<Value>>) {
-        self.commit(|s| s.agents = agents);
+    pub(crate) fn seed_agents(&self, agents: Arc<Vec<Value>>, loaded: bool) {
+        self.commit(|s| { s.agents = agents; s.loaded = loaded; });
     }
     pub(crate) fn sync_profiles(&self, profiles: Arc<Vec<ProfileInfo>>) {
         self.commit(|s| s.profiles = profiles);
@@ -184,7 +185,7 @@ impl Agents {
         if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
             match device.refresh_replica_catalog().await {
                 Ok(true) => {
-                    self.commit(|s| s.error = None);
+                    self.commit(|s| { s.error = None; s.loaded = true; });
                     return Ok(());
                 }
                 Err(error) => {
@@ -202,6 +203,7 @@ impl Agents {
             Ok(value) => {
                 self.commit(|s| {
                     s.agents = Arc::new(value["items"].as_array().cloned().unwrap_or_default());
+                    s.loaded = true;
                     s.error = None;
                 });
                 Ok(())
@@ -396,7 +398,7 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = Arc::new(GatewayClient::new(format!("http://{address}"), None));
         let agents = Agents::new(client.clone(), Profiles::new(client));
-        agents.seed_agents(Arc::new(vec![current.lock().unwrap().clone()]));
+        agents.seed_agents(Arc::new(vec![current.lock().unwrap().clone()]), true);
         for _ in 0..2 {
             agents
                 .update_agent_settings(

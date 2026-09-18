@@ -575,36 +575,6 @@ impl Directory {
         self.commit(|s| s.preferences = preferences);
         Ok(())
     }
-    pub fn restore(&self) -> Result<Option<SavedNode>> {
-        super::trace_startup("client.restore_begin");
-        let mut selected = self
-            .selected()
-            .and_then(|id| self.snapshot().nodes.iter().find(|n| n.id == id).cloned());
-        if self.snapshot().local_enabled {
-            if self.snapshot().nodes.iter().any(|n| {
-                n.local
-                    && self
-                        .store
-                        .get::<String>(&n.id, "mesh-origin")
-                        .ok()
-                        .flatten()
-                        .is_some()
-            }) {
-                self.pair(None)?;
-            }
-            let local = self.start_local()?;
-            if selected.is_none() {
-                selected = Some(local);
-            }
-        } else {
-            selected = selected.filter(|n| !n.local);
-        }
-        if let Some(node) = selected.as_ref().filter(|n| n.mesh.is_some()) {
-            self.pair(Some(node.clone()))?;
-        }
-        super::trace_startup("client.restore_complete");
-        Ok(selected)
-    }
     pub async fn refresh_info(&self, node: &SavedNode) -> Result<()> {
         let (binding, client) = self.connection(&node.id)?;
         let result = client

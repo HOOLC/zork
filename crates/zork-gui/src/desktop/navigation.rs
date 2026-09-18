@@ -62,9 +62,21 @@ pub struct DeviceNavigation {
     pub resizing: bool,
     viewing: bool,
     shared_files: bool,
+    add_device_source: Option<zork_ui::components::liquid::overlay::SourceBinding>,
 }
 impl gpui::EventEmitter<Navigate> for DeviceNavigation {}
 impl DeviceNavigation {
+    pub fn bind_add_device_source(
+        &mut self,
+        source: zork_ui::components::liquid::overlay::SourceBinding,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(view) = &self.view {
+            view.update(cx, |view, cx| view.bind_add_device_source(source.clone(), cx));
+        }
+        self.add_device_source = Some(source);
+        cx.notify();
+    }
     pub fn set_shared_files(&mut self,selected:bool,cx:&mut Context<Self>) {
         if self.shared_files!=selected {self.shared_files=selected;cx.notify();}
     }
@@ -93,6 +105,7 @@ impl DeviceNavigation {
             resizing: false,
             viewing: true,
             shared_files: false,
+            add_device_source: None,
             devices: Vec::new(),
             active: None,
             collapsed,
@@ -422,6 +435,9 @@ impl Render for DeviceNavigation {
             let locale = self.locale;
             let view = cx.new(|cx| zork_ui::chat_navigation::Navigation::new(self.collapsed.clone(),
                 zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())), cx));
+            if let Some(source) = &self.add_device_source {
+                view.update(cx, |view, cx| view.bind_add_device_source(source.clone(), cx));
+            }
             cx.subscribe(&view, |v, _, event: &Action, cx| {
                 match event {
                     Action::Navigate { node, destination } => {

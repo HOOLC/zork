@@ -1,46 +1,166 @@
-//! App-owned startup, independent of window construction and rendering.
+//! App-owned recovery. Cached workspaces, local readiness and Mesh recovery are
+//! independent: a peer cannot be a prerequisite for starting our own Station.
 use super::directory::Directory;
-use crate::store::SavedNode;
-use anyhow::{Context, Result};
-use futures_util::{
-    future::{BoxFuture, Shared},
-    FutureExt,
+use crate::{
+    state::{Observable, Subscription},
+    store::SavedNode,
 };
+use anyhow::{Context, Result};
 use std::{
     future::Future,
-    pin::Pin,
-    sync::Arc,
-    task::{Context as TaskContext, Poll},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
-use tokio::sync::oneshot;
 
-type Restored = std::result::Result<Option<SavedNode>, Arc<str>>;
-
-#[derive(Clone)]
-pub struct Completion(Shared<BoxFuture<'static, Restored>>);
-
-fn restored(result: Restored) -> Result<Option<SavedNode>> {
-    result.map_err(|error| anyhow::anyhow!(error.to_string()))
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Phase {
+    #[default]
+    NotRequired,
+    Preparing,
+    Stopping,
+    Ready,
+    Failed(String),
+    StopFailed(String),
 }
 
-impl Completion {
-    pub fn try_ready(&self) -> Option<Result<Option<SavedNode>>> {
-        self.0.clone().now_or_never().map(restored)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct State {
+    /// A saved workspace can be opened before its runtime or network is ready.
+    pub selected: Option<String>,
+    /// Preserve a new activation request even if intermediate updates coalesce.
+    pub selection_generation: u64,
+    pub local: Phase,
+    pub mesh: Phase,
+}
+
+impl State {
+    /// Only the selected device's dependency belongs in its content area.
+    pub fn dependency(&self, node: &SavedNode) -> &Phase {
+        if node.local {
+            &self.local
+        } else if node.mesh.is_some() {
+            &self.mesh
+        } else {
+            &Phase::NotRequired
+        }
     }
 }
 
-impl Future for Completion {
-    type Output = Result<Option<SavedNode>>;
+#[derive(Clone, Copy)]
+enum Step {
+    Local,
+    Mesh,
+}
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.0).poll(cx).map(restored)
+impl Step {
+    fn phase(self, state: &mut State) -> &mut Phase {
+        match self {
+            Self::Local => &mut state.local,
+            Self::Mesh => &mut state.mesh,
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::Local => "zork-local-startup",
+            Self::Mesh => "zork-mesh-startup",
+        }
+    }
+}
+
+struct Recovery {
+    directory: Arc<Directory>,
+    state: Mutex<State>,
+    updates: Observable<State>,
+    stopping: AtomicBool,
+}
+
+impl Recovery {
+    fn new(directory: Arc<Directory>, state: State) -> Arc<Self> {
+        Arc::new(Self {
+            directory,
+            updates: Observable::new(state.clone()),
+            state: Mutex::new(state),
+            stopping: AtomicBool::new(false),
+        })
+    }
+
+    fn launch(self: &Arc<Self>, step: Step) {
+        let source = self.directory.clone();
+        self.launch_with(step, move || match step {
+            Step::Local => source.start_local().map(Some),
+            Step::Mesh => source.pair(None),
+        });
+    }
+
+    fn launch_with(
+        self: &Arc<Self>,
+        step: Step,
+        work: impl FnOnce() -> Result<Option<SavedNode>> + Send + 'static,
+    ) {
+        let mut state = self.state.lock().expect("startup state");
+        if self.stopping.load(Ordering::Acquire)
+            || matches!(
+                step.phase(&mut state),
+                Phase::Preparing | Phase::Stopping | Phase::Ready
+            )
+        {
+            return;
+        }
+        *step.phase(&mut state) = Phase::Preparing;
+        self.updates.publish(state.clone());
+        drop(state);
+        let owner = self.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name(step.name().into())
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    zork_config::service::clear_signal_mask()
+                        .map_err(anyhow::Error::from)
+                        .and_then(|_| work())
+                        .and_then(|node| {
+                            if let Some(node) = &node {
+                                owner.directory.connection(&node.id)?;
+                            }
+                            Ok(node)
+                        })
+                }))
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("设备准备任务意外结束，请重试")));
+                owner.finish(step, result);
+            })
+        {
+            self.finish(step, Err(error.into()));
+        }
+    }
+
+    fn finish(&self, step: Step, result: Result<Option<SavedNode>>) {
+        let mut state = self.state.lock().expect("startup state");
+        if self.stopping.load(Ordering::Acquire) {
+            return;
+        }
+        match result {
+            Ok(node) => {
+                if let Some(node) = node.filter(|_| state.selected.is_none()) {
+                    state.selected = Some(node.id);
+                    state.selection_generation = state.selection_generation.wrapping_add(1);
+                }
+                *step.phase(&mut state) = Phase::Ready;
+            }
+            Err(error) => *step.phase(&mut state) = Phase::Failed(format!("{error:#}")),
+        }
+        self.updates.publish(state.clone());
+        super::trace_startup(match step {
+            Step::Local => "client.local_restore_complete",
+            Step::Mesh => "client.mesh_restore_complete",
+        });
     }
 }
 
 /// Keep this handle for the app lifetime, including failure before a window exists.
 pub struct Startup {
     pub directory: Arc<Directory>,
-    completion: Completion,
+    recovery: Arc<Recovery>,
 }
 
 /// Directory IO can overlap native application setup. Dropping an unclaimed
@@ -77,45 +197,134 @@ impl Startup {
     }
 
     fn from_directory(directory: Arc<Directory>) -> Result<Self> {
-        let source = directory.clone();
-        let (sender, receiver) = oneshot::channel::<Restored>();
-        std::thread::Builder::new()
-            .name("zork-startup".into())
-            .spawn(move || {
-                let result = zork_config::service::clear_signal_mask()
-                    .map_err(anyhow::Error::from)
-                    .and_then(|_| source.restore())
-                    .and_then(|node| {
-                        if let Some(node) = &node {
-                            // HTTP/runtime setup belongs to startup, before the
-                            // view asks for this same retained connection.
-                            source.connection(&node.id)?;
-                        }
-                        super::trace_startup("client.startup_connection_ready");
-                        Ok(node)
-                    });
-                let _ = sender.send(result.map_err(|error| Arc::from(error.to_string())));
+        let snapshot = directory.snapshot();
+        let available = |node: &&SavedNode| !node.local || snapshot.local_enabled;
+        let selected = directory
+            .selected()
+            .and_then(|id| {
+                snapshot
+                    .nodes
+                    .iter()
+                    .filter(available)
+                    .find(|node| node.id == id)
             })
-            .context("启动客户端运行时")?;
+            .or_else(|| snapshot.nodes.iter().find(available));
+        if let Some(node) = selected {
+            directory.connection(&node.id)?;
+        }
+        let needs_mesh = snapshot.nodes.iter().any(|node| {
+            node.mesh.is_some()
+                || (node.local
+                    && directory
+                        .store
+                        .get::<String>(&node.id, "mesh-origin")
+                        .ok()
+                        .flatten()
+                        .is_some())
+        });
+        let recovery = Recovery::new(
+            directory.clone(),
+            State {
+                selected: selected.map(|node| node.id.clone()),
+                selection_generation: 1,
+                ..State::default()
+            },
+        );
+        // Launch independently. Mesh readoption can contact this same Station,
+        // or wait for an unavailable remote peer, without delaying local use.
+        if snapshot.local_enabled {
+            recovery.launch(Step::Local);
+        }
+        if needs_mesh {
+            recovery.launch(Step::Mesh);
+        }
+        super::trace_startup("client.cached_workspace_ready");
         Ok(Self {
             directory,
-            completion: Completion(
-                async move {
-                    receiver
-                        .await
-                        .unwrap_or_else(|_| Err(Arc::from("客户端启动任务中断")))
-                }
-                .boxed()
-                .shared(),
-            ),
+            recovery,
         })
     }
 
-    pub fn completion(&self) -> Completion {
-        self.completion.clone()
+    pub fn subscribe(&self) -> Subscription<State> {
+        self.recovery.updates.subscribe()
+    }
+
+    pub fn start_local(&self) {
+        let mut state = self.recovery.state.lock().expect("startup state");
+        if matches!(state.local, Phase::Preparing | Phase::Stopping)
+            || self.recovery.stopping.load(Ordering::Acquire)
+        {
+            return;
+        }
+        state.local = Phase::NotRequired;
+        state.selected = self
+            .directory
+            .snapshot()
+            .nodes
+            .iter()
+            .find(|node| node.local)
+            .map(|node| node.id.clone());
+        state.selection_generation = state.selection_generation.wrapping_add(1);
+        drop(state);
+        self.recovery.launch(Step::Local);
+    }
+
+    pub fn stop_local(&self) -> bool {
+        let mut state = self.recovery.state.lock().expect("startup state");
+        if matches!(state.local, Phase::Preparing | Phase::Stopping)
+            || self.recovery.stopping.load(Ordering::Acquire)
+        {
+            return false;
+        }
+        state.local = Phase::Stopping;
+        state.selected = None;
+        state.selection_generation = state.selection_generation.wrapping_add(1);
+        self.recovery.updates.publish(state.clone());
+        drop(state);
+        let owner = self.recovery.clone();
+        let finish = |owner: &Recovery, result: Result<()>| {
+            let mut state = owner.state.lock().expect("startup state");
+            if owner.stopping.load(Ordering::Acquire) {
+                return;
+            }
+            state.local = match result {
+                Ok(()) => Phase::NotRequired,
+                Err(error) => Phase::StopFailed(format!("{error:#}")),
+            };
+            owner.updates.publish(state.clone());
+        };
+        if let Err(error) = std::thread::Builder::new()
+            .name("zork-local-stop".into())
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    zork_config::service::clear_signal_mask()
+                        .map_err(anyhow::Error::from)
+                        .and_then(|_| owner.directory.stop_local())
+                }))
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("设备停止任务意外结束，请重试")));
+                finish(&owner, result);
+            })
+        {
+            finish(&self.recovery, Err(error.into()));
+        }
+        true
+    }
+
+    pub fn retry(&self) {
+        let state = self.recovery.updates.read();
+        if matches!(state.local, Phase::Failed(_)) {
+            self.recovery.launch(Step::Local);
+        }
+        if matches!(state.local, Phase::StopFailed(_)) {
+            self.stop_local();
+        }
+        if matches!(state.mesh, Phase::Failed(_)) {
+            self.recovery.launch(Step::Mesh);
+        }
     }
 
     pub fn shutdown(&self) -> impl Future<Output = ()> + Send + 'static {
+        self.recovery.stopping.store(true, Ordering::Release);
         self.directory.cancel_account();
         let local = self.directory.local.shutdown();
         let transport = self.directory.transport.shutdown();
@@ -126,9 +335,28 @@ impl Startup {
     }
 }
 
+impl Drop for Startup {
+    fn drop(&mut self) {
+        drop(self.shutdown());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn saved() -> SavedNode {
+        SavedNode {
+            id: "saved".into(),
+            name: "Saved device".into(),
+            url: "http://127.0.0.1:9".into(),
+            token: None,
+            local: false,
+            group: None,
+            mesh: None,
+        }
+    }
 
     #[test]
     fn abandoned_preparation_cancels_the_runtime_even_when_open_is_pending() {
@@ -143,9 +371,7 @@ mod tests {
         .unwrap();
         drop(preparation);
         release.send(()).unwrap();
-        // No window exists to drive cancellation; the detached preparation
-        // must relinquish ownership when its directory IO finishes.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while Arc::strong_count(&directory) != 1 {
             assert!(std::time::Instant::now() < deadline);
             std::thread::yield_now();
@@ -158,35 +384,19 @@ mod tests {
             .contains("客户端正在退出"));
     }
 
-    #[tokio::test]
-    async fn startup_completes_without_a_window_and_drop_fences_new_work() {
+    #[test]
+    fn cached_selection_is_available_without_a_window_and_drop_fences_new_work() {
         let root = tempfile::tempdir().unwrap();
         let directory = Directory::open(&root.path().join("client")).unwrap();
-        let node = SavedNode {
-            id: "saved".into(),
-            name: "Saved device".into(),
-            url: "http://127.0.0.1:9".into(),
-            token: None,
-            local: false,
-            group: None,
-            mesh: None,
-        };
+        let node = saved();
         directory.store.save_node(&node).unwrap();
-        // Reopen so the published directory includes the persisted selection.
         drop(directory);
         let directory = Directory::open(&root.path().join("client")).unwrap();
         directory.select(&node.id).unwrap();
         let startup = Startup::from_directory(directory.clone()).unwrap();
-        assert_eq!(startup.completion().await.unwrap().unwrap().id, node.id);
         assert_eq!(
-            startup
-                .completion()
-                .try_ready()
-                .unwrap()
-                .unwrap()
-                .unwrap()
-                .id,
-            node.id
+            startup.subscribe().snapshot().selected.as_deref(),
+            Some(node.id.as_str())
         );
         drop(startup);
         assert!(directory
@@ -202,10 +412,54 @@ mod tests {
             .to_string()
             .contains("客户端正在退出"));
     }
-}
 
-impl Drop for Startup {
-    fn drop(&mut self) {
-        drop(self.shutdown());
+    #[tokio::test]
+    async fn pending_mesh_does_not_block_local_recovery_and_failures_are_retryable() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = Directory::open(&root.path().join("client")).unwrap();
+        let recovery = Recovery::new(
+            directory,
+            State {
+                selected: Some("saved".into()),
+                ..State::default()
+            },
+        );
+        let mut updates = recovery.updates.subscribe();
+        let (release, pending) = std::sync::mpsc::channel();
+        recovery.launch_with(Step::Mesh, move || {
+            pending.recv()?;
+            anyhow::bail!("peer recovery failed")
+        });
+        recovery.launch_with(Step::Local, || Ok(None));
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while updates.snapshot().local != Phase::Ready {
+                updates.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(updates.snapshot().mesh, Phase::Preparing);
+        assert_eq!(updates.snapshot().selected.as_deref(), Some("saved"));
+        recovery.launch_with(Step::Mesh, || panic!("duplicate startup"));
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !matches!(updates.snapshot().mesh, Phase::Failed(_)) {
+                updates.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        recovery.launch_with(Step::Mesh, || Ok(None));
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while updates.snapshot().mesh != Phase::Ready {
+                updates.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(updates.snapshot().selected.as_deref(), Some("saved"));
+        recovery.stopping.store(true, Ordering::Release);
+        recovery.finish(Step::Mesh, Err(anyhow::anyhow!("late failure")));
+        assert_eq!(updates.snapshot().mesh, Phase::Ready);
     }
 }

@@ -235,6 +235,7 @@ impl AgentsView {
         view.profiles = vec![serde_json::from_value(fixture["profile"].clone()).unwrap()];
         view.source.seed(crate::api::AgentData {
             agents: Arc::new(view.agents.clone()),
+            loaded: true,
             profiles: Arc::new(view.profiles.clone()),
             ..Default::default()
         });
