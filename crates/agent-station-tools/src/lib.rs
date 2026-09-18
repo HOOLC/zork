@@ -11,7 +11,7 @@ mod slack;
 pub use shell::extend_shell;
 pub mod user_actions;
 use serde_json::{json, Value};
-use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
 use zork_agent::session::{
     events::ToolOutcome,
     tools::{
@@ -23,6 +23,7 @@ use zork_agent::session::{
 #[derive(Clone, Copy)]
 enum Kind {
     Browser,
+    Computer,
     ServiceOp(&'static str),
     Message,
     File,
@@ -38,6 +39,57 @@ struct StationTool {
     kind: Kind,
     base: String,
     http: reqwest::Client,
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    use base64::Engine as _;
+
+    fn captured(name: &str) -> (PathBuf, Value) {
+        let path = std::env::temp_dir().join(format!(
+            "zork-capture-test-{}-{name}.png",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"png-bytes").unwrap();
+        (
+            path.clone(),
+            json!({"path": path.display().to_string(), "mime_type": "image/png"}),
+        )
+    }
+
+    #[test]
+    fn captures_become_images_without_leaking_paths() {
+        let (path, entry) = captured("keep");
+        let mut result = ToolExecution::success(json!({"state": "succeeded", "images": [entry]}));
+        attach_captures(&mut result);
+        assert_eq!(result.images.len(), 1);
+        assert_eq!(result.images[0].media_type, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(result.images[0].base64.as_bytes())
+                .unwrap(),
+            b"png-bytes"
+        );
+        assert_eq!(result.data["images"]["count"], 1);
+        assert!(!path.exists());
+        assert!(!serde_json::to_string(&result.data)
+            .unwrap()
+            .contains("zork-capture-test"));
+    }
+
+    #[test]
+    fn missing_and_oversized_captures_are_skipped() {
+        let missing = std::env::temp_dir().join("zork-capture-test-missing.png");
+        let _ = std::fs::remove_file(&missing);
+        let mut result = ToolExecution::success(json!({"images": [
+            {"path": missing.display().to_string(), "mime_type": "image/png"},
+            {"mime_type": "image/png"},
+        ]}));
+        attach_captures(&mut result);
+        assert!(result.images.is_empty());
+        assert_eq!(result.data["images"][1]["mime_type"], "image/png");
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +184,7 @@ impl Kind {
                 // Typed text, selectors and opaque tab IDs are not display targets.
                 ToolActivity::field(zh, en, args, "/action/url")
             }
+            Self::Computer => ToolActivity::field("操作桌面", "Using desktop", args, "/tool"),
             Self::Message => ToolActivity::new("发送消息", "Sending message", ""),
             Self::File => ToolActivity::field("上传文件", "Uploading", args, "/file_path"),
             Self::History => ToolActivity::new("查看聊天记录", "Reading chat history", ""),
@@ -169,6 +222,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
         (Kind::Notify,"chat.notify","Compatibility alias for notify: send an asynchronous notification to the calling Agent Session mailbox. Prefer notify. This is not a Chat message.",json!({"text":string()}),vec!["text"]),
         (Kind::Job,"job.register","Register background shell work owned by this Session. Returns job id and status. restart_on_boot restores registered/running jobs after Station restart. Restartable jobs with kind=service have no batch-job time limit.",json!({"kind":string(),"script":string(),"cwd":{"type":"string"},"restart_on_boot":{"type":"boolean"}}),vec!["kind","script"]),
     ];
+    definitions.push((Kind::Computer,"computer.control","Observe and drive the desktop of this Station's device through the cua-driver daemon installed on it: screenshot, accessibility tree, click, type, key, scroll. The daemon must be running and its host must hold macOS Screen Recording and Accessibility grants. Call check_permissions first when a capture fails.",json!({"tool":string(),"arguments":{"type":"object"}}),vec!["tool"]));
     definitions.extend(service::definitions());
     for (kind, name, description, properties, required) in definitions {
         let compatibility: Arc<dyn ToolCompatibility> = Arc::new(history::Results);
@@ -197,6 +251,9 @@ impl ToolImplementation for StationTool {
                     if failed {
                         result.outcome = ToolOutcome::Failed;
                     }
+                    if matches!(self.kind, Kind::Computer) {
+                        attach_captures(&mut result);
+                    }
                     result
                 }
                 Err(error) => ToolExecution {
@@ -216,6 +273,59 @@ impl ToolImplementation for StationTool {
         })
     }
 }
+/// Move desktop captures the driver daemon wrote to disk into model image
+/// parts. The capture never carries bytes through the Station HTTP body.
+fn attach_captures(result: &mut ToolExecution) {
+    use base64::Engine as _;
+    use zork_agent::session::wire::ToolImage;
+    const MAX: usize = 4;
+    const LIMIT: u64 = 8 * 1024 * 1024;
+    let paths = result
+        .data
+        .get("images")
+        .and_then(Value::as_array)
+        .map(|images| {
+            images
+                .iter()
+                .filter_map(|image| {
+                    Some((
+                        PathBuf::from(image.get("path")?.as_str()?),
+                        image
+                            .get("mime_type")
+                            .and_then(Value::as_str)
+                            .unwrap_or("image/png")
+                            .to_owned(),
+                    ))
+                })
+                .take(MAX)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut attached = 0;
+    for (path, media_type) in paths {
+        let readable = std::fs::metadata(&path)
+            .map(|metadata| metadata.len() <= LIMIT)
+            .unwrap_or(false);
+        if !readable {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let _ = std::fs::remove_file(&path);
+        result.images.push(ToolImage {
+            media_type,
+            base64: base64::engine::general_purpose::STANDARD
+                .encode(bytes)
+                .into(),
+        });
+        attached += 1;
+    }
+    if attached > 0 {
+        result.data["images"] = json!({"count": attached});
+    }
+}
+
 impl StationTool {
     async fn run(&self, context: &ToolContext, args: &Value) -> anyhow::Result<Value> {
         let response = self
@@ -275,6 +385,11 @@ impl StationTool {
             Kind::Browser => self.http.post(format!("{}/v1/browser/command", self.base)).json(&json!({
                 "session_id":context.session_id,"client_id":args["client_id"],"command":{"request_id":context.invocation_id,"action":args["action"]}
             })),
+            Kind::Computer => self
+                .http
+                .post(format!("{}/v1/computer/command", self.base))
+                .header("x-zork-session-key", key)
+                .json(&json!({"tool":args["tool"],"arguments":args["arguments"].clone()})),
             Kind::Workers | Kind::Tasks => self
                 .http
                 .get(format!(

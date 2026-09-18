@@ -6,6 +6,7 @@ mod binshim;
 mod browser;
 mod business_cards;
 mod channels;
+mod computer;
 mod config;
 mod connections;
 mod control_db;

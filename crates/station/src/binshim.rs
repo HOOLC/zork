@@ -22,7 +22,7 @@ pub fn install(config: &mut RuntimeConfig) -> Result<()> {
     Ok(())
 }
 
-fn resolve_named_bin(name: &str, explicit: Option<&Path>) -> Result<PathBuf> {
+pub(crate) fn resolve_named_bin(name: &str, explicit: Option<&Path>) -> Result<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(path) = explicit {
         candidates.push(path.to_path_buf());
@@ -44,7 +44,7 @@ fn resolve_named_bin(name: &str, explicit: Option<&Path>) -> Result<PathBuf> {
             return Ok(candidate);
         }
     }
-    anyhow::bail!("{name} not found; cargo build -p zork-gh")
+    anyhow::bail!("{name} not found")
 }
 
 fn copy_bin(src: &Path, dest: &Path) -> Result<()> {

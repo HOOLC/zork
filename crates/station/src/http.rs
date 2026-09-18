@@ -241,6 +241,7 @@ pub fn router(state: AppState) -> Router {
             post(crate::node_tools::interrupt),
         )
         .route("/v1/mcp/interrupt", post(crate::mcp::interrupt))
+        .route("/v1/computer/command", post(crate::computer::call))
         .route("/v1/client/browser/events", post(crate::browser::events))
         .route(
             "/v1/client/browser/receipts",
