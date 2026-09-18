@@ -336,7 +336,7 @@ fn empty_agent(id: &str, actor: &str) -> NodeAgent {
     NodeAgent {
         id: id.into(),
         name: String::new(),
-        avatar: None,
+        avatar: Some(crate::node::default_avatar(id).into()),
         role: AgentRole::Worker,
         profile_id: String::new(),
         model: String::new(),
@@ -444,6 +444,9 @@ async fn candidate(state: &AppState, rpc: &Rpc, id: &str, fields: &Value) -> Res
         fields["selection"] = selection;
     }
     apply_configuration(state, &mut agent, &fields).await?;
+    if creating && agent.avatar.as_deref().is_none_or(str::is_empty) {
+        agent.avatar = Some(crate::node::default_avatar(id).to_string());
+    }
     ensure!(
         !agent.profile_id.is_empty() && !agent.model.is_empty() && !agent.thinking.is_empty(),
         "agent_selection_required"
@@ -474,14 +477,10 @@ async fn mutate(
     } else {
         state.db.node_agent(id)?.context("agent_not_found")?
     };
-    let needs_input = rpc.arguments["review"] == true
-        || (creating
-            && (original["name"]
-                .as_str()
-                .is_none_or(|s| s.trim().is_empty())
-                || ["profile_id", "model", "thinking"]
-                    .iter()
-                    .any(|k| original["selection"][*k].as_str().is_none_or(str::is_empty))));
+    // Creating an Agent is a user decision: a caller may prefill the
+    // parameters but never creates one silently. Updates still run directly
+    // unless the caller asks for review.
+    let needs_input = creating || rpc.arguments["review"] == true;
     let mut reviewed = None;
     let result: Result<Value> = async {
         let fields = if needs_input {

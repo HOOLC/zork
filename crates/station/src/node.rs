@@ -1328,6 +1328,30 @@ pub(crate) fn valid_avatar(avatar: &str) -> bool {
             | "octopus"
     )
 }
+/// Deterministic portrait for an Agent created without one: the same ID always
+/// receives the same portrait, so creation stays reproducible.
+pub(crate) fn default_avatar(id: &str) -> &'static str {
+    const AVATARS: [&str; 12] = [
+        "cat",
+        "bunny",
+        "bear",
+        "fox",
+        "panda",
+        "chick",
+        "dog",
+        "owl",
+        "koala",
+        "penguin",
+        "deer",
+        "octopus",
+    ];
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in id.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    AVATARS[(hash % AVATARS.len() as u64) as usize]
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct UpdateAvatar {
@@ -1624,11 +1648,15 @@ async fn create_agent(
         anyhow::ensure!(agents.len() < 64, "This node supports up to 64 Agents");
         validate_grants(&state, &agents, &body.allowed_leaders)?;
         let conversation = format!("leader-{}", body.id);
+        let avatar = body
+            .avatar
+            .clone()
+            .unwrap_or_else(|| default_avatar(&body.id).to_string());
         let leader = body.role == AgentRole::Leader;
         let agent = NodeAgent {
             id: body.id,
             name: body.name,
-            avatar: body.avatar,
+            avatar: Some(avatar),
             role: body.role,
             profile_id: body.profile_id,
             model: body.model,
@@ -2027,5 +2055,27 @@ async fn rework_task(
     match result {
         Ok(value) => Json(value).into_response(),
         Err(e) => error(StatusCode::CONFLICT, &e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn default_avatar_is_valid_and_stable() {
+        for id in ["01M2ST6J4ZRGCM7FAZ6XMEAJG5", "worker", "", "z"] {
+            let avatar = default_avatar(id);
+            assert!(valid_avatar(avatar), "{avatar} is not a known portrait");
+            assert_eq!(avatar, default_avatar(id));
+        }
+        let distinct = (0..64)
+            .map(|n| default_avatar(&format!("agent-{n}")))
+            .collect::<BTreeSet<_>>();
+        assert!(
+            distinct.len() > 1,
+            "every Agent would receive the same portrait"
+        );
     }
 }
