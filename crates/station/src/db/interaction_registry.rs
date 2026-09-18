@@ -1,6 +1,6 @@
 //! Durable registration identities and their lifecycle. Business state is stored
 //! by the registered owner; no card, submission or business result enters here.
-use super::{params, Connection, Context, GatewayDb, OptionalExtension, Result};
+use super::{params, Connection, Context, StationDb, OptionalExtension, Result};
 use crate::{db::chats::Topic, node_access::Subject};
 use serde::{Deserialize, Serialize};
 
@@ -180,7 +180,7 @@ pub(crate) fn cleanup_reason(conn: &Connection, id: &str) -> Result<Option<Clean
         .transpose()
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(crate) fn interaction_registration(&self, id: &str) -> Result<Registration> {
         read(&self.conn.lock().expect("db mutex"), id)
     }

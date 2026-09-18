@@ -91,7 +91,7 @@ mod result_tests {
 
 pub fn properties() -> Value {
     let string = || json!({"type":"string","minLength":1});
-    let env = json!({"type":"object","additionalProperties":{"type":"string"},"description":"Environment variable map. Secret fields map to Gateway environment variable NAMES, never their secret values."});
+    let env = json!({"type":"object","additionalProperties":{"type":"string"},"description":"Environment variable map. Secret fields map to Station environment variable NAMES, never their secret values."});
     json!({
         "config":{"type":"object","properties":{
             "name":string(),"description":{"type":"string"},"enabled":{"type":"boolean","description":"False disables use for all callers while preserving installation. Disabled services remain in mcp.list but are omitted from mcp.search."},"tool_allowlist":{"type":["array","null"],"items":string(),"description":"Restricts callable tools for local and remote callers. Use null to allow all; an empty array allows none. Omit to preserve the current value when updating."},

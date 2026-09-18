@@ -137,7 +137,7 @@ impl Device {
             if info["sync"]["protocol"].as_u64() != Some(PROTOCOL as u64) {
                 ensure!(
                     !self.replica_active(),
-                    "Gateway no longer advertises the stored replication protocol"
+                    "Station no longer advertises the stored replication protocol"
                 );
                 *self.replication.unsupported_until.lock().unwrap() =
                     Some(Instant::now() + Duration::from_secs(60));
@@ -154,7 +154,7 @@ impl Device {
                 .as_ref()
                 .is_some_and(|cursor| cursor.owner != owner)
             {
-                // A local authenticated Gateway can acquire its Mesh identity.
+                // A local authenticated Station can acquire its Mesh identity.
                 // Rebind that local connection explicitly; never do this for a
                 // remote key origin or reuse its prior cursor/uncertain writes.
                 store.revoke_replica(peer)?;

@@ -1,6 +1,6 @@
 use futures_util::StreamExt;
 use serde_json::json;
-use zork_gui::api::{GatewayClient, Role, TranscriptMessage};
+use zork_gui::api::{StationClient, Role, TranscriptMessage};
 #[test]
 #[ignore = "run scripts/test-client-mesh.py with isolated real node and Synch"]
 fn client_mesh() {
@@ -45,7 +45,7 @@ fn client_mesh() {
         "desktop Mesh started a child process"
     );
     let control = transport.control();
-    let client = std::sync::Arc::new(GatewayClient::new_mesh(control.clone(), origin.clone()));
+    let client = std::sync::Arc::new(StationClient::new_mesh(control.clone(), origin.clone()));
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         // Runtime readiness precedes asynchronous pkarr publication. Wait for a

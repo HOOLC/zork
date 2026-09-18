@@ -137,7 +137,7 @@ def build_app(args, repo, app):
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix), f)
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Gateway running after quitting is available in Node settings; independently installed Gateways outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.

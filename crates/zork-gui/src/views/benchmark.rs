@@ -152,7 +152,7 @@ impl RootView {
             crate::desktop::navigation::DeviceNavigation::new(store.clone(), &[node], cx)
         });
         let mut view = Self::new_desktop(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             store,
             "mini1".into(),
             cx,

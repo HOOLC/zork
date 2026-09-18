@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::config::RuntimeConfig;
 use crate::connections::ConnectionManager;
-use crate::db::GatewayDb;
-use crate::im_entry::ImEntryGateway;
+use crate::db::StationDb;
+use crate::im_entry::ImEntryStation;
 use crate::jobs::JobSupervisor;
 use crate::status_projection::AgentStatusProjector;
 
@@ -27,10 +27,10 @@ pub struct AppState {
     pub config: RuntimeConfig,
     pub agent: zork_agent::Agent,
     pub draining: Arc<std::sync::atomic::AtomicBool>,
-    pub db: Arc<GatewayDb>,
+    pub db: Arc<StationDb>,
     pub files: Arc<crate::files::Files>,
     pub connections: Arc<ConnectionManager>,
-    pub entries: ImEntryGateway,
+    pub entries: ImEntryStation,
     pub status_projection: AgentStatusProjector,
 
     pub jobs: Arc<JobSupervisor>,

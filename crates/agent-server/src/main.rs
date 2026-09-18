@@ -66,13 +66,13 @@ async fn run(
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
     let shutdown_signal = arm_shutdown_signal()?;
     let tools = Arc::new(ToolRegistry::default());
-    zork_agent_gateway_tools::register(&tools, zork_config::loopback_base_url(&file.bind.runtime))?;
+    zork_agent_station_tools::register(&tools, zork_config::loopback_base_url(&file.bind.runtime))?;
     let mut runtime = AgentRuntime::start(AgentOptions {
         data_root: data_root.clone(),
         fake_agent,
         no_streaming,
         context: file.context.clone(),
-        environment: zork_agent_gateway_tools::environment(
+        environment: zork_agent_station_tools::environment(
             &data_root,
             &zork_config::loopback_base_url(&file.bind.runtime),
         )?,

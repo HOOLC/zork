@@ -3,7 +3,7 @@ use futures_util::FutureExt;
 use serde_json::{json, Value};
 use std::{hint::black_box, sync::Arc, time::Instant};
 use zork_client_core::{
-    api::{GatewayClient, SseEvent},
+    api::{StationClient, SseEvent},
     state::{ConversationData, Device},
     store::ClientStore,
     subscriptions::{Key, WireSubscription},
@@ -35,7 +35,7 @@ pub(super) fn run(count: usize, readers: usize) -> Value {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(directory.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         None,
         true,
     );

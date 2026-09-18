@@ -450,10 +450,10 @@ provider text delta 是 transient SSE：客户端可以选择是否订阅；delt
 
 ### 12.1 宿主与传输边界（`EMBED-01`、`EMBED-02`）
 
-- `zork-agent` 是核心库，不依赖 `zork-agent-http`、Axum 或 gateway 集成。`AgentRuntime::start(AgentOptions)` 组装真实存储、provider、内置工具、会话服务和 profile 刷新任务；`Agent` 提供校验后的会话、profile、history 和事件接口。
+- `zork-agent` 是核心库，不依赖 `zork-agent-http`、Axum 或 station 集成。`AgentRuntime::start(AgentOptions)` 组装真实存储、provider、内置工具、会话服务和 profile 刷新任务；`Agent` 提供校验后的会话、profile、history 和事件接口。
 - `zork-agent-http` 依赖核心库，只处理路由、请求解析、鉴权、HTTP 状态映射和 SSE 编码。模型选择与 mailbox 校验、显式历史分页、snapshot 基线及广播落后恢复由核心库提供，两种调用方式不得复制这些语义。
-- `zork-agent-gateway-tools` 是可选宿主集成，由宿主通过 `ToolRegistry` 注入。核心库不推断 gateway URL，也不自动注册 gateway 工具。
-- `zork-agent-server` 是独立进程宿主，产物仍叫 `zork-agent`。它负责 CLI、配置文件、Tokio runtime、全局日志初始化、信号、监听器、ready PID，以及注入工具环境和 gateway 工具。
+- `zork-agent-station-tools` 是可选宿主集成，由宿主通过 `ToolRegistry` 注入。核心库不推断 station URL，也不自动注册 station 工具。
+- `zork-agent-server` 是独立进程宿主，产物仍叫 `zork-agent`。它负责 CLI、配置文件、Tokio runtime、全局日志初始化、信号、监听器、ready PID，以及注入工具环境和 station 工具。
 
 嵌入宿主必须提供 data root，并在有效的 Tokio runtime 内启动。库不绑定端口、不注册进程信号、不初始化全局日志、不修改进程环境。启动保持后台恢复语义，不等待全部历史 session 恢复完成。
 
@@ -492,7 +492,7 @@ async fn run(data_root: std::path::PathBuf) -> anyhow::Result<()> {
 
 `zork` supervisor 只启动、监控和重启 `zork-station`。Station 同时持有 AgentRuntime 和 Synch；没有独立 Agent PID 文件。`AppState.agent` 是共享应用接口，会话、profile、mailbox、取消、删除、history 和后台 job 事件均直接调用库。状态投影直接订阅库的 snapshot 与后续事件流，不再解析进程间 SSE，也不为聚合初始化回放历史。
 
-Station 在启动恢复前绑定监听器，让恢复中的工具回调可以等待监听器开始服务。原 Agent HTTP/SSE 路径和 `--agent-token` 鉴权由同一 gateway 进程提供，只用于外部客户端；Agent `/readyz` 返回 `embedded: true`，PID 与 Station 一致。Station readiness 包含 Agent 初始化，桌面端只需等待 Station ready。
+Station 在启动恢复前绑定监听器，让恢复中的工具回调可以等待监听器开始服务。原 Agent HTTP/SSE 路径和 `--agent-token` 鉴权由同一 station 进程提供，只用于外部客户端；Agent `/readyz` 返回 `embedded: true`，PID 与 Station 一致。Station readiness 包含 Agent 初始化，桌面端只需等待 Station ready。
 
 关闭顺序为：标记 draining、停止 IM 连接接收，等待 AgentRuntime 关闭，停止状态订阅，再排空并关闭 HTTP，最后关闭 Synch。HTTP 在 Agent 关闭期间保持可用，供工具回调完成。异常退出由 supervisor 重启整个 Station；`reload-mesh` 也会一起重启 Agent，不再提供 Agent 独立于 Station 的运行连续性。
 
@@ -545,7 +545,7 @@ zork-agent 的行为测试直接使用 Rust，不引入脚本语言、测试 DSL
 
 虚拟测试接管几乎全部副作用，但继续执行真实的 state、Decision、projection、runner、supervisor、ToolExecutor 和对应的工具编排。受控实现必须允许测试决定 provider、工具、mailbox 和 deadline 的发生顺序，允许在稳定的持久化边界检查后继续，并支持进程中断与恢复。虚拟环境不得进行真实等待、磁盘 I/O、网络 I/O 或子进程启动；其创建、重置和单步推进必须足够快，才能用于大量细粒度行为测试。
 
-真实组件综合测试只接管 provider 对端和 mailbox 输入。它在测试进程内装配 production `SessionService`、`ProfileStore`、`ProviderRouter` 和 HTTP router，使用真实 HTTP/SSE/WS adapter、时钟、data root、workspace、StreamStore 和 shell。进程边界由单独的真实二进制合同验证配置、监听、ready PID 和信号退出；Station 集成测试只启动真实 gateway 二进制，Agent 在其中执行；独立 Agent 二进制合同留在 server 包。接管 mailbox 只表示测试决定何时通过真实接口发送输入，不得绕过 mailbox 的持久化和 runner 路径。
+真实组件综合测试只接管 provider 对端和 mailbox 输入。它在测试进程内装配 production `SessionService`、`ProfileStore`、`ProviderRouter` 和 HTTP router，使用真实 HTTP/SSE/WS adapter、时钟、data root、workspace、StreamStore 和 shell。进程边界由单独的真实二进制合同验证配置、监听、ready PID 和信号退出；Station 集成测试只启动真实 station 二进制，Agent 在其中执行；独立 Agent 二进制合同留在 server 包。接管 mailbox 只表示测试决定何时通过真实接口发送输入，不得绕过 mailbox 的持久化和 runner 路径。
 
 真实组件测试数量保持很少。一次 production composition 生命周期使用多个相互独立的 session 和 workspace 覆盖尽量多的正向场景，并集中执行一次重启以验证恢复，避免为每个场景重复支付服务和 provider 对端的启动成本。只有进程边界或无法共享同一真实拓扑的行为才拆成另一项真实测试。
 

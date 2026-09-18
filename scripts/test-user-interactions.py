@@ -213,7 +213,7 @@ def main():
             passed('cancelling an external-action card stops the same production login invocation')
 
             restarting = start('agent.create', {'config': dict(config, name='Lost source worker'), 'review': True}, 'create-before-restart')
-            b.restart_gateway()
+            b.restart_station()
             fixture.wait(lambda: state(restarting) and state(restarting)['outcome'] == 'cancelled', 'source recovery cancels the remote wait')
             assert not channels.sql(a, "SELECT id FROM node_agents WHERE json_extract(value,'$.name')='Lost source worker'")
             passed('source crash recovery cancels the remote pending business operation without replay')

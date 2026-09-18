@@ -402,7 +402,7 @@ impl ClientStore {
         cached_message(&conn, node, session, id)
     }
 
-    /// A local cursor is private to this store and must never reach the Gateway.
+    /// A local cursor is private to this store and must never reach the Station.
     pub fn cached_messages(
         &self,
         node: &str,
@@ -806,10 +806,10 @@ mod tests {
     }
 
     #[test]
-    fn multiple_chats_survive_restart_and_page_locally_in_gateway_order() {
+    fn multiple_chats_survive_restart_and_page_locally_in_station_order() {
         let directory = tempfile::tempdir().unwrap();
         let store = ClientStore::open(directory.path()).unwrap();
-        // IDs deliberately sort differently from gateway history order.
+        // IDs deliberately sort differently from station history order.
         store
             .cache_message_page("node", "a", &page(&["z", "a", "m"], Some("remote")), None)
             .unwrap();

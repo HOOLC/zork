@@ -90,7 +90,7 @@ async fn folded_history_pages_advance_by_source_and_refresh_preserves_progress()
                     .unwrap();
             }
             let device = Device::open(
-                Arc::new(GatewayClient::new(&url, None)),
+                Arc::new(StationClient::new(&url, None)),
                 cached.then(|| (store.clone(), "node".into())),
                 false,
             );

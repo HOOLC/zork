@@ -1,5 +1,5 @@
 //! Shared GPUI component implementation for the desktop app, browser stories and design examples.
-//! Applications provide data and actions; this package does not own Gateway, persistence or account access.
+//! Applications provide data and actions; this package does not own Station, persistence or account access.
 pub mod assets;
 pub mod automation;
 pub mod comments;

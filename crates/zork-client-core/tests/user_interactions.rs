@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 use zork_client_core::{
-    api::{GatewayClient, MessagePage, TranscriptMessage},
+    api::{StationClient, MessagePage, TranscriptMessage},
     interactions::*,
     state::Device,
     store::ClientStore,
@@ -45,7 +45,7 @@ fn page(items: Vec<TranscriptMessage>) -> MessagePage {
 }
 fn device(url: &str, store: Arc<ClientStore>) -> Arc<Device> {
     Device::open(
-        Arc::new(GatewayClient::new(url, Some("node-token".into()))),
+        Arc::new(StationClient::new(url, Some("node-token".into()))),
         Some((store, "node".into())),
         false,
     )

@@ -385,7 +385,7 @@ mod tests {
                 "channel": "C123",
                 "thread_ts": "100.200",
                 "ts": "100.201",
-                "text": "<@UBOT> hello gateway"
+                "text": "<@UBOT> hello station"
             }
         });
         let (id, parsed) = parse_socket_payload("events_api", &payload, &bot()).unwrap();
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(parsed["conversationId"], "C123");
         assert_eq!(parsed["rootMessageId"], "100.200");
         assert_eq!(parsed["messageId"], "100.201");
-        assert_eq!(parsed["controlText"], "hello gateway");
+        assert_eq!(parsed["controlText"], "hello station");
         assert_eq!(parsed["mentionedUserIds"], json!(["UBOT"]));
         assert_eq!(parsed["sender"]["userId"], "U123");
         assert_eq!(parsed["self"]["userId"], "UBOT");

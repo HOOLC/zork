@@ -5,7 +5,7 @@ use zork_slack::SlackApi;
 use zork_slack::{chunk_slack_message, markdownish_to_mrkdwn};
 
 #[derive(Clone)]
-pub struct SlackGateway {
+pub struct SlackStation {
     api: SlackApi,
 }
 
@@ -15,7 +15,7 @@ pub struct BotSelf {
     pub raw: Value,
 }
 
-impl SlackGateway {
+impl SlackStation {
     pub fn new(config: &zork_config::SlackProviderConfig, http: reqwest::Client) -> Self {
         Self {
             api: SlackApi::new(

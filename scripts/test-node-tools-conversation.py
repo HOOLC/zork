@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive multi-turn real-LLM device/MCP/skill acceptance on isolated Gateways.
+"""Interactive multi-turn real-LLM device/MCP/skill acceptance on isolated Stations.
 
 Build current binaries first. Pass an existing profile and exact model explicitly.
 The model receives ordinary user requests; the harness only prepares fixtures and
@@ -90,7 +90,7 @@ def main():
     nodes, sessions, checks, phases = [], [], [], []
     report = {"model": args.model, "thinking": thinking, "provider": profile.get("provider"),
               "billing": profile.get("billing"), "fake_agent": False, "model_limits": model["limits"],
-              "topology": "two isolated Gateways on one host", "phases": phases, "checks": checks}
+              "topology": "two isolated Stations on one host", "phases": phases, "checks": checks}
     failure = None
     counter = 0
     started = time.monotonic()
@@ -195,7 +195,7 @@ def main():
             return ok(a.request("POST","/v1/node-tools",{"session_id":coordinator,"invocation_id":f"oracle-{counter}","tool":name,"arguments":arguments}))
         oracle = {"skill_files":{n.root.name:[str(p.relative_to(n.root)) for p in (n.root/"skills").rglob("SKILL.md") if ".zork" not in p.parts] for n in nodes}}
         for n in nodes:
-            with sqlite3.connect(n.root/"state/gateway.sqlite") as db:
+            with sqlite3.connect(n.root/"state/station.sqlite") as db:
                 oracle[n.root.name+"_agents"]=[json.loads(v[0]) for v in db.execute("SELECT value FROM node_agents")]
         oracle["attempts"] = (seed/"attempts.jsonl").read_text() if (seed/"attempts.jsonl").exists() else None
         oracle["report_exists"]=(seed/"report.txt").exists()

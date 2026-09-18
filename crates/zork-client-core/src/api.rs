@@ -1,6 +1,6 @@
-//! HTTP/SSE client for the gateway-owned local IM entry.
+//! HTTP/SSE client for the station-owned local IM entry.
 //!
-//! Visible `message` events exist only after gateway ingress or an explicit
+//! Visible `message` events exist only after station ingress or an explicit
 //! Agent `chat.post_message`. `status` events carry non-message activity.
 //! Durable execution records are available through the separate `/history`
 //! inspector endpoint; they never become delivered conversation messages.
@@ -18,7 +18,7 @@ pub use zork_config::{ContextConfig, ContextStrategy, MeshConfig};
 pub use zork_mesh::content_root;
 pub use zork_mesh::route::{ConnectionRoute, ConnectionScope};
 
-/// Roles deliberately delivered through the IM gateway.
+/// Roles deliberately delivered through the IM station.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -188,7 +188,7 @@ pub enum TaskAction {
     Cancel,
 }
 
-/// Optional identity supplied by the Gateway, never inferred from the current viewer.
+/// Optional identity supplied by the Station, never inferred from the current viewer.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,7 +232,7 @@ pub struct ConversationReadMarker {
     pub role: Role,
 }
 
-/// One item of a gateway `/messages` page or SSE `message` event.
+/// One item of a station `/messages` page or SSE `message` event.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TranscriptMessage {
@@ -261,7 +261,7 @@ pub enum ApiError {
     Request(#[from] reqwest::Error),
     #[error("api error {status}: {message}")]
     Api { status: u16, message: String },
-    #[error("gateway task failed: {0}")]
+    #[error("station task failed: {0}")]
     Task(std::io::Error),
 }
 
@@ -320,7 +320,7 @@ impl PublicToolCall {
     }
 }
 
-/// Rich Agent activity projected by the gateway's `status` SSE events.
+/// Rich Agent activity projected by the station's `status` SSE events.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum AgentStatus {
@@ -368,7 +368,7 @@ pub struct ParticipantStatus {
     pub activity: Option<AgentStatus>,
 }
 
-/// HTTP client for the gateway IM API.
+/// HTTP client for the station IM API.
 ///
 /// All requests run on a dedicated Tokio runtime because reqwest's
 /// connection pool requires a Tokio reactor, while the GUI's GPUI
@@ -378,7 +378,7 @@ struct Transport {
     http: reqwest::Client,
     mesh: Option<(zork_mesh::node::MeshNode, String)>,
 }
-pub struct GatewayClient {
+pub struct StationClient {
     #[cfg(feature = "headless-bench")]
     fixture: Option<std::sync::Arc<offline::Fixture>>,
     client_id: String,
@@ -513,7 +513,7 @@ async fn send_request(
 
 pub(crate) type ClientTask = tokio::task::JoinHandle<()>;
 
-impl GatewayClient {
+impl StationClient {
     #[cfg(feature = "headless-bench")]
     pub fn fixture(data: serde_json::Value, providers: serde_json::Value) -> Self {
         let mut client = Self::new(format!("fixture://{}", ulid::Ulid::new()), None);
@@ -1075,7 +1075,7 @@ impl GatewayClient {
     }
 
     /// Open the SSE event stream for a session. The stream ends when the
-    /// gateway closes the entry channel or the connection drops.
+    /// station closes the entry channel or the connection drops.
     pub async fn stream_events(&self, session_id: &str) -> Result<SseStream, ApiError> {
         self.stream_path(format!("/v1/im/sessions/{session_id}/events"))
             .await

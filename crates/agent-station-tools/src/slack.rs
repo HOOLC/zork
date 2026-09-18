@@ -91,7 +91,7 @@ impl ToolImplementation for SlackTool {
             };
             let mut response = match request.send().await {
                 Ok(r) => r,
-                Err(_) => return failed("slack_delivery_unknown: gateway transport failed"),
+                Err(_) => return failed("slack_delivery_unknown: station transport failed"),
             };
             let status = response.status();
             let mut bytes = Vec::new();
@@ -103,14 +103,14 @@ impl ToolImplementation for SlackTool {
                     Ok(None) => break,
                     _ => {
                         return failed(
-                            "slack_delivery_unknown: gateway response unavailable or too large",
+                            "slack_delivery_unknown: station response unavailable or too large",
                         )
                     }
                 }
             }
             let body: Value = match serde_json::from_slice(&bytes) {
                 Ok(v) => v,
-                Err(_) => return failed("slack_delivery_unknown: invalid gateway response"),
+                Err(_) => return failed("slack_delivery_unknown: invalid station response"),
             };
             let failure = !status.is_success() || body["ok"] == false;
             let mut result = ToolExecution::success(body);

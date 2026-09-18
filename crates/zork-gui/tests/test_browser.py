@@ -68,7 +68,7 @@ class BrowserTest(NativeAutomation):
                 if row: client_id = row[0]
         body = {'session_id': session, 'client_id': 'local/' + client_id,
                 'command': {'request_id': request_id, 'action': action}}
-        request = Request(self.gateway_url + '/v1/browser/command',
+        request = Request(self.station_url + '/v1/browser/command',
                           data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
         try:
             response = urlopen(request, timeout=25)

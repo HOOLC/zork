@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise GUI APIs against an isolated real Agent/Gateway with fake inference."""
+"""Exercise GUI APIs against an isolated real Agent/Station with fake inference."""
 import importlib.util
 import json
 import os
@@ -59,7 +59,7 @@ def main():
 
     try:
         node.start()
-        f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Gateway ready')
+        f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station ready')
         f.wait(lambda: urlopen(node.agent_url + '/readyz', timeout=2).status == 200, 'Agent ready')
         for path in ['/v1/node/info', '/v1/node/conversations/read-markers', '/v1/node/profiles/fixture', '/v1/node/profiles/fixture/discovered-models']:
             assert request('GET', path, token=False)[0] == 401
@@ -70,7 +70,7 @@ def main():
         assert refreshed['profile_id'] == 'fixture' and 'rateLimits' in refreshed
         assert 'sk-test' not in json.dumps(refreshed) and 'auth' not in refreshed
         info = ok('GET', '/v1/node/info')
-        assert info['gateway']['running'] and info['update']['supported'] is False
+        assert info['station']['running'] and info['update']['supported'] is False
         assert request('PUT', '/v1/node/profiles/fixture/name', {'name': 'renamed'}, token=False)[0] == 401
         assert request('PUT', '/v1/node/profiles/missing/name', {'name': 'renamed'})[0] == 404
         before_name = json.loads((node.root / 'profiles/fixture.json').read_text())
@@ -126,7 +126,7 @@ def main():
         marker = next(m for m in ok('GET', '/v1/node/conversations/read-markers')['items'] if m['session_id'] == task['session_id'])
         assert marker['last_message_id'] == first['id']
         def delivered():
-            with sqlite3.connect(node.root / 'state/gateway.sqlite') as db:
+            with sqlite3.connect(node.root / 'state/station.sqlite') as db:
                 return db.execute("SELECT delivered FROM leader_notifications WHERE id=?", ('comment-' + first['id'],)).fetchone()[0] == 1
         f.wait(delivered, 'Comment delivered to owning Leader')
         after = ok('GET', '/v1/tasks/' + task['task_id'])['task']

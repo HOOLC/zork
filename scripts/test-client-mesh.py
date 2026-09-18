@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One real node plus a transport-only client; no client Gateway/Agent."""
+"""One real node plus a transport-only client; no client Station/Agent."""
 import importlib.util,json,os,subprocess,tempfile
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('fixture',Path(__file__).with_name('test-mesh.py'));f=importlib.util.module_from_spec(spec);spec.loader.exec_module(f)
@@ -21,7 +21,7 @@ try:
     f.wait(lambda:urlopen(node.agent_url+'/readyz',timeout=2).status==200,'node Agent ready')
     env=dict(os.environ,ZORK_TEST_CLIENT_ROOT=str(client),ZORK_TEST_REMOTE_ORIGIN=node.origin,ZORK_TEST_REMOTE_CONFIG=str(node.root/'config.json'),CARGO_INCREMENTAL='0',CARGO_PROFILE_DEV_DEBUG='0',CARGO_BUILD_JOBS='4')
     subprocess.run(['cargo','test','--locked','-p','zork-gui','--test','client_mesh','--','--ignored','--nocapture'],cwd=f.ROOT,env=env,check=True)
-    assert not (client/'run/zork-agent.pid').exists() and not (client/'run/zork-gateway.pid').exists()
+    assert not (client/'run/zork-agent.pid').exists() and not (client/'run/zork-station.pid').exists()
     assert not (client/'client-mesh-ready.json').exists()
     print('PASS: in-process desktop transport, remote Leader tools and artifact transfer, client grants, forbidden routes, revocation, owned lifecycle')
 finally:

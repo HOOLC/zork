@@ -72,7 +72,7 @@ pub(super) fn set_legacy_title(conn: &Connection, key: &str) -> Result<()> {
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn chat_navigation(&self) -> Result<Vec<Channel>> {
         let conn = self.conn.lock().expect("db mutex");
         let rows = conn

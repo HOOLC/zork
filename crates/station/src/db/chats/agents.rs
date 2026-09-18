@@ -12,7 +12,7 @@ pub fn configuration_revision(agent: &NodeAgent) -> Result<String> {
     .to_string())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn client_agents(&self) -> Result<Vec<Value>> {
         self.node_agents()?
             .into_iter()

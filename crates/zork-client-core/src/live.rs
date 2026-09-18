@@ -1,6 +1,6 @@
 //! One reconnect policy for all clients. Subscribe before catch-up so messages
 //! delivered during the read remain buffered. Dropping the feed cancels its IO.
-use crate::api::{ApiError, GatewayClient, MessagePage, SseEvent};
+use crate::api::{ApiError, StationClient, MessagePage, SseEvent};
 use futures_channel::mpsc;
 use futures_util::{SinkExt, Stream, StreamExt};
 use std::{
@@ -50,7 +50,7 @@ impl Stream for LiveFeed {
         self.rx.poll_next_unpin(cx)
     }
 }
-impl GatewayClient {
+impl StationClient {
     pub fn live(self: &Arc<Self>, session: Option<String>, page_limit: u32) -> LiveFeed {
         self.live_from(session, page_limit, None)
     }
@@ -253,9 +253,9 @@ fn message_id(message: &crate::api::TranscriptMessage) -> Option<String> {
     let crate::api::TranscriptMessage::Message { metadata, .. } = message;
     metadata.id.clone()
 }
-impl GatewayClient {
+impl StationClient {
     /// Walk existing history cursors back to the last synchronized message. This
-    /// also repairs offline gaps against older Gateway versions without a new API.
+    /// also repairs offline gaps against older Station versions without a new API.
     pub async fn catch_up_messages(
         &self,
         session: &str,

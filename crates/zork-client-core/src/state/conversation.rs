@@ -7,7 +7,7 @@ mod login;
 mod pagination_tests;
 use crate::{
     api::{
-        AgentStatus, GatewayClient, MessagePage, ParticipantStatus, SessionSummary, SseEvent,
+        AgentStatus, StationClient, MessagePage, ParticipantStatus, SessionSummary, SseEvent,
         TranscriptMessage,
     },
     conversation::{apply_status, decode_sse_event, DecodedSseEvent},
@@ -82,7 +82,7 @@ mod tests {
     #[tokio::test]
     async fn overview_is_independent_of_message_and_history_rows_and_revocation_clears_it() {
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -160,7 +160,7 @@ mod tests {
     #[tokio::test]
     async fn activity_distinguishes_history_from_delivery_without_connection_heuristics() {
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -212,7 +212,7 @@ mod tests {
     #[tokio::test]
     async fn activity_coalesces_bursts_and_new_subscribers_do_not_replay_them() {
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -247,7 +247,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(directory.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             Some((store.clone(), "node".into())),
             true,
         );
@@ -314,7 +314,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(directory.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             Some((store.clone(), "node".into())),
             true,
         );
@@ -400,7 +400,7 @@ mod tests {
     #[tokio::test]
     async fn oversized_conversation_is_not_retained_after_its_view_closes() {
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -486,7 +486,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(directory.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new(url, None)),
+            Arc::new(StationClient::new(url, None)),
             Some((store.clone(), "node".into())),
             true,
         );
@@ -616,7 +616,7 @@ mod tests {
         let fault = rusqlite::Connection::open(root.path().join("client.db")).unwrap();
         fault.execute_batch("CREATE TRIGGER fail_message_commit BEFORE INSERT ON messages WHEN NEW.id='new-1' BEGIN SELECT RAISE(ABORT,'fixture persistence failure'); END;").unwrap();
         let device = Device::open(
-            Arc::new(GatewayClient::new(url, None)),
+            Arc::new(StationClient::new(url, None)),
             Some((store.clone(), "node".into())),
             false,
         );
@@ -828,7 +828,7 @@ impl ConversationSubscription {
 
 pub struct Conversation {
     device: Weak<Device>,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     id: String,
     owned: Mutex<Owned>,
     state: Source<ConversationData, ConversationChange>,

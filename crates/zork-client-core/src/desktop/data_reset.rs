@@ -358,7 +358,7 @@ mod tests {
         let layout = Layout::for_client(&client).unwrap();
         fs::create_dir_all(client.join("node/state")).unwrap();
         fs::write(
-            client.join("node/state/gateway.sqlite"),
+            client.join("node/state/station.sqlite"),
             "old source, cursor, mailbox",
         )
         .unwrap();

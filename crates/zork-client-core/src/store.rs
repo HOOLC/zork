@@ -1,4 +1,4 @@
-//! Device-local state exists independently of any running Gateway.
+//! Device-local state exists independently of any running Station.
 mod configuration_submissions;
 mod message_delivery;
 mod messages;

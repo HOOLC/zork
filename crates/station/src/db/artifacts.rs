@@ -65,7 +65,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn list_artifacts(&self, task_id: Option<&str>) -> Result<Vec<Artifact>> {
         let conn = self.conn.lock().expect("db mutex");
         let mut query = conn.prepare(&format!("{SELECT} WHERE (?1 IS NULL OR a.task_id = ?1) ORDER BY a.created_at DESC, a.artifact_id DESC"))?;
@@ -212,7 +212,7 @@ pub(super) fn prepare_file(
     };
     Ok((source_path, name, media_type, content))
 }
-impl GatewayDb {
+impl StationDb {
     pub fn register_conversation_artifact(
         &self,
         session_key: &str,
@@ -319,10 +319,10 @@ fn read_workspace_file(_: &Path, _: &[std::ffi::OsString]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn setup() -> (tempfile::TempDir, GatewayDb, String, PathBuf) {
+    fn setup() -> (tempfile::TempDir, StationDb, String, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let workspace = dir.path().join("project");
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let session = db
             .create_session_at_workspace(
                 EnsureSession {
@@ -390,7 +390,7 @@ mod tests {
             first.workspace
         );
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(db.list_artifacts(Some(&task)).unwrap().len(), 2);
         assert_eq!(
             db.artifact_content(&first.artifact_id).unwrap().unwrap(),

@@ -226,11 +226,11 @@ mod tests {
     fn rejects_unknown_or_incomplete_options() {
         assert!(parse_args_from(["--unknown".to_owned()]).is_err());
         assert!(parse_args_from([
-            "--gateway-url".to_owned(),
+            "--station-url".to_owned(),
             "http://localhost:3000".to_owned()
         ])
         .is_err());
-        assert!(parse_args_from(["--gateway-token".to_owned(), "token".to_owned()]).is_err());
+        assert!(parse_args_from(["--station-token".to_owned(), "token".to_owned()]).is_err());
         assert!(parse_args_from(["--dev-port".to_owned()]).is_err());
         assert!(parse_args_from(["--dev-port".to_owned(), "70000".to_owned()]).is_err());
     }

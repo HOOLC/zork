@@ -1,6 +1,6 @@
 //! Mesh configuration and invitation lifecycles, independent of the settings view.
 use super::{Observable, Subscription};
-use crate::api::{GatewayClient, MeshPeer};
+use crate::api::{StationClient, MeshPeer};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::{
@@ -33,7 +33,7 @@ pub enum MeshAction {
     RevokeInvite(bool),
 }
 pub struct MeshAdmin {
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     device: std::sync::Weak<super::Device>,
     owned: Mutex<MeshAdminData>,
     state: Observable<MeshAdminData>,
@@ -41,7 +41,7 @@ pub struct MeshAdmin {
 }
 impl MeshAdmin {
     pub(super) fn new(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         device: std::sync::Weak<super::Device>,
     ) -> Arc<Self> {
         let invitations = device
@@ -389,7 +389,7 @@ mod tests {
     async fn invitations_survive_controller_replacement_and_finished_tickets_are_removed() {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
-        let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let device =
             super::super::Device::open(client.clone(), Some((store.clone(), "node".into())), false);
         let source = device.mesh_admin();
@@ -426,7 +426,7 @@ mod tests {
             async { axum::Json(json!({"items":[{"id":"node","status":"waiting"},{"id":"phone","status":"waiting"}]})) }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let client = Arc::new(GatewayClient::new(
+        let client = Arc::new(StationClient::new(
             format!("http://{}", listener.local_addr().unwrap()),
             None,
         ));

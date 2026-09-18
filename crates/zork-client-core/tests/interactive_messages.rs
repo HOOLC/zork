@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use zork_client_core::{
-    api::{GatewayClient, MessagePage, TranscriptMessage},
+    api::{StationClient, MessagePage, TranscriptMessage},
     interactions::*,
     state::Device,
     store::ClientStore,
@@ -98,7 +98,7 @@ async fn server(
 
 fn core(url: &str, store: Arc<ClientStore>) -> Arc<Device> {
     Device::open(
-        Arc::new(GatewayClient::new(url, None)),
+        Arc::new(StationClient::new(url, None)),
         Some((store, "node".into())),
         false,
     )

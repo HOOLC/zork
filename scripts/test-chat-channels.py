@@ -46,7 +46,7 @@ def ok(node, method, path, body=None, agent=False):
 
 
 def sql(node, query, args=()):
-    with sqlite3.connect(node.root / 'state/gateway.sqlite') as db:
+    with sqlite3.connect(node.root / 'state/station.sqlite') as db:
         return db.execute(query, args).fetchall()
 
 
@@ -86,7 +86,7 @@ def settled(node, session):
 
 def start(node):
     node.start()
-    fixture.wait(lambda: request(node, 'GET', '/readyz')[0] == 200, 'Gateway ready')
+    fixture.wait(lambda: request(node, 'GET', '/readyz')[0] == 200, 'Station ready')
     fixture.wait(lambda: ok(node, 'GET', '/v1/node/mesh').get('origin'), 'Mesh ready')
 
 
@@ -231,9 +231,9 @@ def main():
             b.stop()
             backlog = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'While receiver is offline',
                 'mentions': [b.origin + '/caller-b']})
-            with sqlite3.connect(b.root / 'state/gateway.sqlite') as db:
+            with sqlite3.connect(b.root / 'state/station.sqlite') as db:
                 # Simulate a crash after durable Agent acceptance but before the
-                # Gateway marked its delivery receipt. The source cursor stays committed.
+                # Station marked its delivery receipt. The source cursor stays committed.
                 db.execute("UPDATE chat_mailbox SET delivered=0 WHERE json_extract(notice,'$.message.message_id')=?",
                     (mentioned['message_id'],))
             start(b)

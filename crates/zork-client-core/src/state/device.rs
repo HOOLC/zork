@@ -1,7 +1,7 @@
 use super::{NavigationData, Observable, Subscription};
 use crate::{
     api::{
-        Artifact, ConversationReadMarker, GatewayClient, MeshStatus, ProductTask, ProfileInfo,
+        Artifact, ConversationReadMarker, StationClient, MeshStatus, ProductTask, ProfileInfo,
         Role, SessionSummary,
     },
     live::LiveEvent,
@@ -164,7 +164,7 @@ struct Owned {
 /// observes it; no view-to-view business snapshot forwarding is necessary.
 pub struct Device {
     pub(super) replication: super::replication::Replication,
-    pub(super) client: Arc<GatewayClient>,
+    pub(super) client: Arc<StationClient>,
     profiles: std::sync::OnceLock<Arc<super::Profiles>>,
     mesh_admin: std::sync::OnceLock<Arc<super::MeshAdmin>>,
     profile_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -207,7 +207,7 @@ impl Drop for Device {
 }
 impl Device {
     pub fn open(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         cache: Option<(Arc<ClientStore>, String)>,
         agents_enabled: bool,
     ) -> Arc<Self> {
@@ -229,7 +229,7 @@ impl Device {
         }
     }
     fn create(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         cache: Option<(Arc<ClientStore>, String)>,
         agents_enabled: bool,
     ) -> Arc<Self> {
@@ -1088,7 +1088,7 @@ mod tests {
             }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let client = Arc::new(GatewayClient::new(
+        let client = Arc::new(StationClient::new(
             format!("http://{}", listener.local_addr().unwrap()),
             None,
         ));
@@ -1177,7 +1177,7 @@ mod tests {
     fn device() -> (tempfile::TempDir, Arc<ClientStore>, Arc<Device>) {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(directory.path()).unwrap());
-        let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let device = Device::open(client, Some((store.clone(), "node".into())), true);
         (directory, store, device)
     }
@@ -1189,7 +1189,7 @@ mod tests {
         initial.commit(|s| s.connection_error = Some("not connected".into()));
         assert_eq!(initial.agent_availability(), AgentAvailability::Unavailable);
         drop(initial);
-        let open = || Device::open(Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        let open = || Device::open(Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             Some((store.clone(), "node".into())), true);
         store.put("node", "agents", &serde_json::json!([])).unwrap();
         let cached = open();
@@ -1415,13 +1415,13 @@ mod tests {
     fn one_store_and_device_have_one_authority_and_credentials_replace_it() {
         let (_directory, store, device) = device();
         let again = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             Some((store.clone(), "node".into())),
             true,
         );
         assert!(Arc::ptr_eq(&again, &device));
         let replacement = Device::open(
-            Arc::new(GatewayClient::new(
+            Arc::new(StationClient::new(
                 "http://127.0.0.1:9",
                 Some("replacement".into()),
             )),

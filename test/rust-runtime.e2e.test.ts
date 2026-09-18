@@ -25,8 +25,8 @@ describe.sequential("rust runtime", () => {
     const dataRoot = path.join(tempRoot, "data");
 
     const posts: Array<{ url: string; body: string }> = [];
-    const gatewayPort = await getFreePort();
-    const gateway = http.createServer((request, response) => {
+    const stationPort = await getFreePort();
+    const station = http.createServer((request, response) => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       if (request.method === "POST" && url.pathname === "/api/auth.test") {
         response.setHeader("content-type", "application/json");
@@ -41,21 +41,21 @@ describe.sequential("rust runtime", () => {
         response.end(JSON.stringify({ ok: true, ts: "1.2" }));
       });
     });
-    await new Promise<void>((resolve) => gateway.listen(gatewayPort, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => station.listen(stationPort, "127.0.0.1", resolve));
     cleanups.push(
       async () =>
         await new Promise<void>((resolve, reject) => {
-          gateway.close((error) => (error ? reject(error) : resolve()));
+          station.close((error) => (error ? reject(error) : resolve()));
         }),
     );
 
     const runtimePort = await getFreePort();
     const controlPort = await getFreePort();
-    const publicGatewayPort = await getFreePort();
+    const publicStationPort = await getFreePort();
     await writeConfig(dataRoot, {
       bind: {
         runtime: `127.0.0.1:${runtimePort}`,
-        gateway: `127.0.0.1:${publicGatewayPort}`,
+        station: `127.0.0.1:${publicStationPort}`,
         control: `127.0.0.1:${controlPort}`,
       },
       im_connections: [
@@ -67,7 +67,7 @@ describe.sequential("rust runtime", () => {
           mode: "normal",
           app_token: "xapp-test",
           bot_token: "xoxb-test",
-          api_base_url: `http://127.0.0.1:${gatewayPort}/api`,
+          api_base_url: `http://127.0.0.1:${stationPort}/api`,
         },
       ],
     });
@@ -89,14 +89,14 @@ describe.sequential("rust runtime", () => {
 
     expect(posts.some((entry) => entry.url.includes("chat.postMessage"))).toBe(false);
 
-    const removedConnectionSelectedApi = await fetch(`http://127.0.0.1:${publicGatewayPort}/im/${connectionId}/slack/chat.postMessage`, {
+    const removedConnectionSelectedApi = await fetch(`http://127.0.0.1:${publicStationPort}/im/${connectionId}/slack/chat.postMessage`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ channel: "C123", thread_ts: "100.200", text: "hello from test" }),
     });
     expect(removedConnectionSelectedApi.status).toBe(404);
 
-    const unknownSessionApi = await fetch(`http://127.0.0.1:${publicGatewayPort}/sessions/${encodeURIComponent(`${connectionId}:C123:100.200`)}/im/raw/chat.postMessage`, {
+    const unknownSessionApi = await fetch(`http://127.0.0.1:${publicStationPort}/sessions/${encodeURIComponent(`${connectionId}:C123:100.200`)}/im/raw/chat.postMessage`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ channel: "C123", thread_ts: "100.200", text: "你好，这是中文回复 **加粗**" }),

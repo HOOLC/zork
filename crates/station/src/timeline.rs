@@ -1,15 +1,15 @@
 use anyhow::Result;
 use serde_json::{json, Value};
 
-use crate::db::{GatewayDb, SessionBindingRow};
+use crate::db::{StationDb, SessionBindingRow};
 
 pub fn load_page(
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &SessionBindingRow,
     limit: usize,
     before_sequence: Option<u64>,
 ) -> Result<Value> {
-    let events = gateway_events(db, binding)?;
+    let events = station_events(db, binding)?;
     let mut newest_first = events.clone();
     newest_first.reverse();
     let bounded: Vec<Value> = newest_first
@@ -35,16 +35,16 @@ pub fn load_page(
 }
 
 pub fn load_event(
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &SessionBindingRow,
     event_id: &str,
 ) -> Result<Option<Value>> {
-    Ok(gateway_events(db, binding)?
+    Ok(station_events(db, binding)?
         .into_iter()
         .find(|event| event["id"].as_str() == Some(event_id)))
 }
 
-fn gateway_events(db: &GatewayDb, binding: &SessionBindingRow) -> Result<Vec<Value>> {
+fn station_events(db: &StationDb, binding: &SessionBindingRow) -> Result<Vec<Value>> {
     let session_key = binding.key();
     let mut events = vec![json!({
         "id": "session-created",
@@ -126,7 +126,7 @@ fn summarize(events: &[Value]) -> Value {
         categories.insert(kind.to_owned(), json!(current + 1));
     }
     json!({
-        "source": "gateway_db",
+        "source": "station_db",
         "eventCount": events.len(),
         "categories": categories,
     })

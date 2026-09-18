@@ -102,7 +102,7 @@ impl LocalService {
                             match result {
                                 Ok((prefix, upstream)) => { let _ = upstream.forward(&mut socket, &prefix).await; }
                                 Err(_) => {
-                                    let _ = socket.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nService unavailable. Reopen the shared link or ask the agent to share it again.").await;
+                                    let _ = socket.write_all(b"HTTP/1.1 502 Bad Station\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nService unavailable. Reopen the shared link or ask the agent to share it again.").await;
                                 }
                             }
                         });

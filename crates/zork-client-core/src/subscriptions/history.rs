@@ -412,7 +412,7 @@ fn detail(entry: &Entry) -> Value {
 mod tests {
     use super::*;
     use crate::{
-        api::GatewayClient,
+        api::StationClient,
         store::ClientStore,
         subscriptions::{Key, WireSubscription},
     };
@@ -607,7 +607,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -777,7 +777,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -862,7 +862,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -946,7 +946,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );
@@ -1042,7 +1042,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new(format!("http://{address}"), None)),
+            Arc::new(StationClient::new(format!("http://{address}"), None)),
             None,
             true,
         );

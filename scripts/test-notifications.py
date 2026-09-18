@@ -78,7 +78,7 @@ def main():
             (artifacts / "settings-1280x800.json").write_bytes(native.ui("/v1/elements"))
             native.stop()
             # An unreachable fixture node exercises the selected-conversation mute
-            # control without connecting to any real Gateway or user data.
+            # control without connecting to any real Station or user data.
             with sqlite3.connect(client / "client.db") as db:
                 node = {"id": "notification-fixture", "name": "通知测试设备", "url": "http://127.0.0.1:9", "token": None, "local": False}
                 db.execute("INSERT INTO nodes VALUES(?,?)", (node["id"], json.dumps(node)))

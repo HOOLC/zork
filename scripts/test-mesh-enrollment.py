@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Three real Gateways, one-command enrollment, membership and task ownership."""
+"""Three real Stations, one-command enrollment, membership and task ownership."""
 import base64
 import zlib
 import importlib.util
@@ -52,14 +52,14 @@ def main():
                 relay_urls=[os.environ['ZORK_TEST_RELAY']],
                 discovery_url=os.environ.get('ZORK_TEST_DISCOVERY'))
         (node.root / 'config.json').write_text(json.dumps(node.config))
-    # Reusing an already-enabled, unpaired Gateway must import the invite's
+    # Reusing an already-enabled, unpaired Station must import the invite's
     # endpoints, including clearing stale overrides. Offline isolates this test.
     b.config['mesh']['offline'] = True
     b.config['mesh']['relay_urls'] = ['http://127.0.0.1:9']
     b.config['mesh']['discovery_url'] = 'http://127.0.0.1:9/pkarr'
     (b.root / 'config.json').write_text(json.dumps(b.config))
     def pids():
-        return [(node.root / 'run/zork-gateway.pid').read_text() for node in nodes]
+        return [(node.root / 'run/zork-station.pid').read_text() for node in nodes]
     def join(node, invitation):
         result = subprocess.run([str(f.TARGET / 'zork'), 'mesh', 'join', invitation['invitation'], '--data', str(node.root), '--json'],
             capture_output=True, text=True, timeout=65)
@@ -69,7 +69,7 @@ def main():
         for node in nodes:
             node.start()
         for node in nodes:
-            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Gateway ready')
+            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station ready')
             f.wait(lambda: urlopen(node.agent_url + '/readyz', timeout=2).status == 200, 'Agent ready')
             f.wait(lambda: node.get('/v1/mesh').get('origin') == node.origin, 'Mesh enrollment ready')
         before = pids()
@@ -93,7 +93,7 @@ def main():
         after = pids()
         assert after[0] == before[0] and after[2] == before[2]
         before = after
-        print('PASS: enabled unpaired Gateway adopts invitation transport and preserves identity', flush=True)
+        print('PASS: enabled unpaired Station adopts invitation transport and preserves identity', flush=True)
         # Simulate a committed intake whose reply never reached the joining node.
         # The transport identity remains durable, while its local membership was not saved.
         lost = json.loads((b.root / 'config.json').read_text())
@@ -113,8 +113,8 @@ def main():
         assert next_invite['invitation'].startswith('zj1_')
         assert join(c, next_invite)['joined']
         f.wait(lambda: len(admin(b, 'GET', '/v1/node/mesh')['config']['group']['members']) == 3, 'third member reaches existing peer')
-        assert pids() == before, 'enrollment restarted a Gateway or Agent'
-        print('PASS: CLI reuses running Gateways; one-use invitation, idempotent retry, third-device membership; no process restart', flush=True)
+        assert pids() == before, 'enrollment restarted a Station or Agent'
+        print('PASS: CLI reuses running Stations; one-use invitation, idempotent retry, third-device membership; no process restart', flush=True)
 
         # Rename a member through its own administrator API; authority propagates it.
         identities = [node.origin for node in nodes]
@@ -134,14 +134,14 @@ def main():
         admin(a, 'PUT', '/v1/node/name', {'name': '主设备'})
         for node in nodes:
             f.wait(lambda node=node: member_name(node, a.origin) == '主设备', 'authority rename reaches all devices')
-        b.restart_gateway()
+        b.restart_station()
         f.wait(lambda: admin(b, 'GET', '/v1/node/info')['name'] == '工作室小熊', 'rename survives restart')
         assert [node.origin for node in nodes] == identities
         before = pids()
         print('PASS: Unicode device rename synchronizes through authority, rejects invalid/unauthorized writes, and survives restart', flush=True)
 
         # An invitation changes no membership rows. Its authority notification
-        # must still reach settings opened through a different Gateway.
+        # must still reach settings opened through a different Station.
         f.wait(lambda: all(peer['online'] for peer in admin(b, 'GET', '/v1/mesh')['peers']), 'peer subscriptions online')
         time.sleep(.5)
         membership_revision = admin(b, 'GET', '/v1/node/mesh')['config']['group']['revision']

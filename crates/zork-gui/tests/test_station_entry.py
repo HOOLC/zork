@@ -24,11 +24,11 @@ def free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-class GatewayEntryContractTest(unittest.TestCase):
+class StationEntryContractTest(unittest.TestCase):
     temp: tempfile.TemporaryDirectory[str]
-    gateway: subprocess.Popen[bytes]
+    station: subprocess.Popen[bytes]
     agent_url: str
-    gateway_url: str
+    station_url: str
     workspace: Path
 
     @classmethod
@@ -72,7 +72,7 @@ class GatewayEntryContractTest(unittest.TestCase):
                 }
             )
         )
-        gateway_port, runtime_port, control_port, agent_port = (
+        station_port, runtime_port, control_port, agent_port = (
             free_port(),
             free_port(),
             free_port(),
@@ -83,7 +83,7 @@ class GatewayEntryContractTest(unittest.TestCase):
                 {
                     "im_connections": [],
                     "bind": {
-                        "gateway": f"127.0.0.1:{gateway_port}",
+                        "station": f"127.0.0.1:{station_port}",
                         "runtime": f"127.0.0.1:{runtime_port}",
                         "control": f"127.0.0.1:{control_port}",
                         "agent": f"127.0.0.1:{agent_port}",
@@ -94,26 +94,26 @@ class GatewayEntryContractTest(unittest.TestCase):
             )
         )
         cls.agent_url = f"http://127.0.0.1:{agent_port}"
-        cls.gateway_url = f"http://127.0.0.1:{runtime_port}"
-        cls.gateway = subprocess.Popen(
+        cls.station_url = f"http://127.0.0.1:{runtime_port}"
+        cls.station = subprocess.Popen(
             [str(TARGET / "zork-station"), "--data", str(data_root), "--fake-agent", "--no-streaming"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         try:
-            cls.wait_http(cls.gateway_url, "/readyz")
+            cls.wait_http(cls.station_url, "/readyz")
             cls.wait_http(cls.agent_url, "/readyz")
             _, agent_ready = cls.request_at(cls.agent_url, "GET", "/readyz")
-            assert agent_ready["pid"] == cls.gateway.pid and agent_ready["embedded"]
+            assert agent_ready["pid"] == cls.station.pid and agent_ready["embedded"]
             assert not (data_root / "run/zork-agent.pid").exists()
         except Exception:
-            cls.stop_process(cls.gateway)
+            cls.stop_process(cls.station)
             cls.temp.cleanup()
             raise
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.stop_process(cls.gateway)
+        cls.stop_process(cls.station)
         cls.temp.cleanup()
 
     @staticmethod
@@ -164,7 +164,7 @@ class GatewayEntryContractTest(unittest.TestCase):
     def request(
         cls, method: str, path: str, body: dict[str, object] | None = None
     ) -> tuple[int, dict[str, object]]:
-        return cls.request_at(cls.gateway_url, method, path, body)
+        return cls.request_at(cls.station_url, method, path, body)
 
     @classmethod
     def create_session(cls) -> str:
@@ -200,7 +200,7 @@ class GatewayEntryContractTest(unittest.TestCase):
             time.sleep(0.05)
         raise AssertionError(f"timed out waiting for {description}")
 
-    def test_only_gateway_delivery_becomes_a_message_and_same_cwd_is_exact(self) -> None:
+    def test_only_station_delivery_becomes_a_message_and_same_cwd_is_exact(self) -> None:
         profile_status, profiles = self.request("GET", "/v1/im/profiles")
         self.assertEqual(profile_status, 200)
         self.assertEqual(profiles["items"][0]["profile_id"], "fixture")
@@ -260,7 +260,7 @@ class GatewayEntryContractTest(unittest.TestCase):
             lambda: any(
                 item.get("role") == "assistant" for item in self.messages(second)
             ),
-            "explicit gateway reply",
+            "explicit station reply",
         )
 
         first_messages = self.messages(first)

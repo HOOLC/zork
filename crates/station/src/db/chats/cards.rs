@@ -231,7 +231,7 @@ pub(super) fn bind(
     })
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(crate) fn business_card(&self, id: &str) -> Result<CardRecord> {
         read(&self.conn.lock().expect("db mutex"), id)
     }

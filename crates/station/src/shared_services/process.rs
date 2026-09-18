@@ -1,4 +1,4 @@
-//! A small parent-lifetime guard reaps the process group even if Gateway crashes.
+//! A small parent-lifetime guard reaps the process group even if Station crashes.
 use super::{logs, Record};
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -188,7 +188,7 @@ impl Live {
     }
 }
 
-/// This path executes before constructing Gateway's Tokio runtime or opening state.
+/// This path executes before constructing Station's Tokio runtime or opening state.
 pub fn entry(json: &str) -> Result<i32> {
     let launch: Launch = serde_json::from_str(json)?;
     ensure!(!launch.command.is_empty(), "empty_service_command");

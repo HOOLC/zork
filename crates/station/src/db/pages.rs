@@ -148,7 +148,7 @@ pub(super) fn record_file_handoff(conn: &Connection, message: &VisibleMessageRow
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn page_catalog(&self) -> Result<PageCatalog> {
         let conn = self.published_messages()?;
         let mut catalog = PageCatalog::default();
@@ -348,7 +348,7 @@ fn receipt(conn: &Connection, owner: &str, id: &str, fingerprint: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn session(db: &GatewayDb, root: &Path, name: &str) -> SessionRow {
+    fn session(db: &StationDb, root: &Path, name: &str) -> SessionRow {
         let session = db
             .create_session_at_workspace(
                 EnsureSession {
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn delivery_publication_and_unpublication_have_independent_durable_membership() {
         let root = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+        let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
         let owner = session(&db, root.path(), "owner");
         let other = session(&db, root.path(), "other");
         let page = page_link(
@@ -424,14 +424,14 @@ mod tests {
         assert!(db.page_catalog().unwrap().applications.is_empty());
         assert_eq!(db.page_catalog().unwrap().references.len(), 1);
         drop(db);
-        let reopened = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+        let reopened = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
         assert_eq!(reopened.page_catalog().unwrap().references.len(), 1);
         assert!(reopened.page_catalog().unwrap().applications.is_empty());
     }
     #[test]
     fn worker_handoff_targets_only_its_own_leader_and_rejects_unowned_files() {
         let root = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+        let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
         let leader = session(&db, root.path(), "leader");
         let worker = session(&db, root.path(), "worker");
         let unrelated = session(&db, root.path(), "unrelated");

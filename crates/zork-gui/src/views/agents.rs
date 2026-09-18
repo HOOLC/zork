@@ -2,7 +2,7 @@ use super::*;
 use serde_json::Value;
 impl RootView {
     pub fn new_desktop(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         store: Arc<crate::desktop::store::ClientStore>,
         node_id: String,
         cx: &mut Context<Self>,
@@ -207,7 +207,7 @@ mod tests {
     fn selecting_leader_is_navigation_without_starting(cx: &mut gpui::TestAppContext) {
         let view = cx.new(|cx| {
             RootView::new(
-                Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
                 None,
                 cx,
             )

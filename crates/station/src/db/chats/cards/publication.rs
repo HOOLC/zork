@@ -55,7 +55,7 @@ pub(super) fn record_event(conn: &Connection, id: &str, result: &Resolution) -> 
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(crate) fn grant_user_publication(
         &self,
         id: &str,

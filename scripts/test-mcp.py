@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated real Gateway/Agent/Mesh MCP contract; fake model, no user credentials."""
+"""Isolated real Station/Agent/Mesh MCP contract; fake model, no user credentials."""
 import importlib.util
 import json
 import os
@@ -134,7 +134,7 @@ def main():
         # Fault injection: receipt lost before the caller durably records it.
         with sqlite3.connect(a.root/'state/mcp.sqlite') as db:
             db.execute("UPDATE routes SET call=NULL,request=? WHERE invocation='same-call'", (json.dumps({"op":"call","server_ref":ref,"tool":"echo","binding_revision":definition["binding_revision"],"arguments":{"text":"first"}}),))
-        a.restart_gateway()
+        a.restart_station()
         f.wait(lambda:a.get('/v1/mesh').get('origin')==a.origin,'caller Mesh identity after restart')
         recovered=ok(tool('recover'))
         assert recovered['calls'][0]['call_id']==callid and not recovered['pending_delivery'],recovered
@@ -152,14 +152,14 @@ def main():
         delayed=ok(call(text='cancel',delay=15));f.wait(lambda:len(log.read_text().splitlines())==3,'upstream dispatch')
         ok(tool('cancel',call_id=delayed['call_id']));assert f.wait(lambda:terminal(delayed['call_id']),'cancel result')['state']=='outcome_unknown'
         checks.append('cancel_never_claims_unexecuted')
-        # A persistent dispatch record survives a hard Gateway restart without replay.
+        # A persistent dispatch record survives a hard Station restart without replay.
         delayed=ok(call(iid='crash-call',text='crash',delay=15));f.wait(lambda:len(log.read_text().splitlines())==4,'crash dispatch')
-        b.restart_gateway()
+        b.restart_station()
         f.wait(lambda:b.get('/v1/mesh').get('origin')==b.origin,'server Mesh identity after restart')
         assert f.wait(lambda:terminal(delayed['call_id']),'crash recovery')['state']=='outcome_unknown'
         assert ok(call(iid='crash-call',text='crash',delay=15))['call_id']==delayed['call_id']
         assert len(log.read_text().splitlines())==4
-        checks.append('gateway_crash_does_not_repeat_effects')
+        checks.append('station_crash_does_not_repeat_effects')
         # Config revisions invalidate previously inspected definitions.
         config['description']='changed'
         server=ok(request(b,'PUT','/admin/api/mcp/'+ref['server_id'],{'expected_revision':server['config_revision'],'config':config},admin=True))
@@ -180,7 +180,7 @@ def main():
         assert cli(a,'disable',twin_id)['availability']=='disabled'
         assert cli(a,'enable',twin_id)['availability']=='unprobed'
         assert cli(a,'remove',twin_id)['ok']
-        # Actual model -> dynamic tool -> Gateway path, not just HTTP handlers.
+        # Actual model -> dynamic tool -> Station path, not just HTTP handlers.
         content=json.dumps({'fake_tools':[{'name':'mcp.search','input':{'query':'http'}}]})
         ok(request(a,'POST',f'/v1/im/sessions/{session}/messages',{'content':content,'request_id':'mcp-agent-fixture'}))
         def agent_result():

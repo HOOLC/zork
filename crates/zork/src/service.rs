@@ -15,11 +15,11 @@ pub async fn command(mut argv: Vec<String>) -> Result<()> {
     match action.as_str() {
         "install" => {
             manager::install(&args.data_root, &std::env::current_exe()?, at_login)?;
-            println!("Gateway background service enabled");
+            println!("Station background service enabled");
         }
         "uninstall" => {
             manager::uninstall(&args.data_root)?;
-            println!("Background service removed; use zork stop to stop the running Gateway");
+            println!("Background service removed; use zork stop to stop the running Station");
         }
         "status" => println!(
             "{}",
@@ -43,14 +43,14 @@ pub async fn stop(argv: Vec<String>) -> Result<()> {
             changes.checkpoint();
             events.refresh()?;
             if events.supervisor_exited()? && !manager::running(&args.data_root) {
-                println!("Gateway stopped");
+                println!("Station stopped");
                 return Ok::<_, anyhow::Error>(());
             }
             changes.changed().await?;
         }
     })
     .await
-    .context("Gateway has not confirmed shutdown")?
+    .context("Station has not confirmed shutdown")?
 }
 
 /// A service manager watches an existing supervisor in place. It does not
@@ -98,7 +98,7 @@ pub async fn run(argv: Vec<String>) -> Result<()> {
                 command.process_group(0);
             }
             manager::prepare_child(command.as_std_mut());
-            child = Some(command.spawn().context("start background Gateway")?);
+            child = Some(command.spawn().context("start background Station")?);
         }
         tokio::select! {
             changed = changes.changed() => { changed?; },

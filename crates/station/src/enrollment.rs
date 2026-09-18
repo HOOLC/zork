@@ -1,4 +1,4 @@
-//! Gateway-owned invitations and personal mesh membership. No model secrets
+//! Station-owned invitations and personal mesh membership. No model secrets
 //! leave this node. Enrollment is finalized by the joining Synch device key.
 use crate::state::AppState;
 use anyhow::{ensure, Context, Result};
@@ -122,7 +122,7 @@ impl EnrollmentService {
     }
 
     pub async fn create(&self, state: &AppState) -> Result<Value> {
-        self.create_kind(state, InviteKind::Gateway).await
+        self.create_kind(state, InviteKind::Station).await
     }
 
     pub async fn create_kind(&self, state: &AppState, kind: InviteKind) -> Result<Value> {
@@ -497,7 +497,7 @@ impl EnrollmentService {
             let device = claim.device.clone();
             if !enrolled(&group, record.kind, origin) {
                 if record.kind == InviteKind::Client {
-                    ensure!(!group.contains(origin), "device_is_a_gateway");
+                    ensure!(!group.contains(origin), "device_is_a_station");
                     group.clients.push(device);
                 } else {
                     ensure!(
@@ -538,11 +538,11 @@ impl EnrollmentService {
         let invitation = enrollment::ticket::resolve(
             &self.root.join("invite-bootstrap"),
             ticket,
-            InviteKind::Gateway,
+            InviteKind::Station,
         )
         .await?;
         ensure!(
-            invitation.kind == InviteKind::Gateway,
+            invitation.kind == InviteKind::Station,
             "client_invite_requires_client"
         );
         let service = state.mesh.get().context("mesh_not_ready")?;
@@ -733,7 +733,7 @@ impl EnrollmentService {
                 .group
                 .clone()
                 .context("mesh_membership_missing")?;
-            ensure!(!group.contains(&device.origin), "device_is_a_gateway");
+            ensure!(!group.contains(&device.origin), "device_is_a_station");
             if !group.clients.iter().any(|c| c == &device) {
                 group.clients.retain(|c| c.origin != device.origin);
                 group.clients.push(device);
@@ -812,7 +812,7 @@ impl EnrollmentService {
 
 fn enrolled(group: &MeshGroup, kind: InviteKind, origin: &str) -> bool {
     match kind {
-        InviteKind::Gateway => group.contains(origin),
+        InviteKind::Station => group.contains(origin),
         InviteKind::Client => group.clients.iter().any(|c| c.origin == origin),
     }
 }

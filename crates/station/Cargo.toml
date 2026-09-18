@@ -35,7 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ulid.workspace = true
 zork-agent = { path = "../agent" }
 zork-agent-http = { path = "../agent-http" }
-zork-agent-gateway-tools = { path = "../agent-gateway-tools" }
+zork-agent-station-tools = { path = "../agent-station-tools" }
 zork-agent-api = { path = "../agent-api" }
 zork-client-types = { path = "../zork-client-types" }
 zork-config = { path = "../zork-config" }

@@ -156,7 +156,7 @@ class InstallerTests(unittest.TestCase):
         self.tool('uname', 'case "$1" in -s) echo Darwin;; -m) echo arm64;; esac')
         self.run_installer(['--version', '../../unsafe'], success=False)
 
-    def test_compatible_gateway_reused_without_download(self):
+    def test_compatible_station_reused_without_download(self):
         self.tool('zork', 'if [ "$1" = capabilities ]; then echo \'{"mesh_join":1}\'; else printf "%s\\n" "$@" > "$ZORK_TEST_ARGS"; fi')
         (self.root / 'latest/download/VERSION').unlink()
         self.run_installer(['--', 'mesh', 'join', 'invitation'])

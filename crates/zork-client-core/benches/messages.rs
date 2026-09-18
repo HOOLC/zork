@@ -115,7 +115,7 @@ fn main() -> Result<()> {
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
     report["database_bytes"] = json!(std::fs::metadata(directory.path().join("client.db"))?.len());
     report["latest_page_at_million"] = measure(SAMPLES, |_| query(&store, "single", None))?;
-    // Select real local page cursors returned by the store, not gateway offsets.
+    // Select real local page cursors returned by the store, not station offsets.
     let midpoint = store
         .cached_messages(
             "node",

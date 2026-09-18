@@ -1,6 +1,6 @@
 use super::{profile_quota::QuotaPresentation, ui};
 #[cfg(feature = "headless-bench")]
-use crate::api::GatewayClient;
+use crate::api::StationClient;
 use crate::api::{compact_tokens, ConnectionInput, ModelInput, MODEL_APIS};
 use crate::i18n::Locale;
 use crate::{
@@ -172,10 +172,10 @@ impl ProfilesView {
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(detail: bool, cx: &mut Context<Self>) -> Self {
         #[cfg(not(target_family = "wasm"))]
-        let client = Arc::new(GatewayClient::fixture(zork_ui::stories::page_fixture(),
+        let client = Arc::new(StationClient::fixture(zork_ui::stories::page_fixture(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
         #[cfg(target_family = "wasm")]
-        let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
         view.catalog = serde_json::from_str::<Value>(include_str!(
             "../../tests/fixtures/provider_catalog.json"
@@ -342,7 +342,7 @@ impl ProfilesView {
         zork_ui::components::region::invalidate_all(cx);
     }
     #[cfg(feature = "headless-bench")]
-    pub fn headless_set_client(&mut self, client: Arc<GatewayClient>) {
+    pub fn headless_set_client(&mut self, client: Arc<StationClient>) {
         self.source = crate::api::Profiles::new(client);
         self.source_updates = None;
         self.accept_profiles(self.profiles.clone());

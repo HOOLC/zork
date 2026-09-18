@@ -208,7 +208,7 @@ def launch(app, root, client, output, case, trace_startup=False):
             milestone("supervisor_pid_observed")
         runtime_port = int(config["bind"]["runtime"].rsplit(":", 1)[1])
         agent_port = int(config["bind"]["agent"].rsplit(":", 1)[1])
-        pid = int((node / "run/zork-gateway.pid").read_text())
+        pid = int((node / "run/zork-station.pid").read_text())
         milestone("station_ready_file_observed")
         supervisor = json.loads(control(node, "status"))
         station = request(runtime_port, "/readyz")

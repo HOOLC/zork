@@ -1,4 +1,4 @@
-//! Synch runs inside the GUI process. No transport helper, Gateway or Agent
+//! Synch runs inside the GUI process. No transport helper, Station or Agent
 //! is started when the desktop connects to a remote node.
 use crate::store::{ClientStore, SavedNode};
 use anyhow::{ensure, Context, Result};
@@ -100,7 +100,7 @@ impl ClientMesh {
         config.mesh.peers = nodes
             .iter()
             .filter_map(|node| {
-                // The authenticated local Gateway snapshot records its Mesh
+                // The authenticated local Station snapshot records its Mesh
                 // identity even though its UI API uses HTTP. Synch still needs
                 // mutual trust for this separate same-host transport identity.
                 let remote = node.mesh.clone().or_else(|| {
@@ -186,18 +186,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn local_gateway_identity_is_trusted_only_from_its_saved_snapshot() -> Result<()> {
+    fn local_station_identity_is_trusted_only_from_its_saved_snapshot() -> Result<()> {
         let root = tempfile::tempdir()?;
         let network = zork_config::MeshConfig {
             offline: true,
             ..Default::default()
         };
-        let gateway = ClientMesh::new(root.path().join("gateway"));
-        let origin = gateway.start_on(&[], Some(&network))?;
+        let station = ClientMesh::new(root.path().join("station"));
+        let origin = station.start_on(&[], Some(&network))?;
         let store = Arc::new(ClientStore::open(&root.path().join("client"))?);
         let local = SavedNode {
             id: "local".into(),
-            name: "local Gateway".into(),
+            name: "local Station".into(),
             url: "http://127.0.0.1:9".into(),
             token: None,
             local: true,
@@ -217,14 +217,14 @@ mod tests {
         let peers = zork_config::load_config(&client_root)?.mesh.peers;
         ensure!(
             peers.len() == 1 && peers[0].origin == origin,
-            "local Gateway identity was omitted or inferred for a remote HTTP node"
+            "local Station identity was omitted or inferred for a remote HTTP node"
         );
         ensure!(
             peers[0].addr.is_none(),
             "ephemeral loopback address leaked into durable configuration"
         );
         client.shutdown().blocking_recv()?;
-        gateway.shutdown().blocking_recv()?;
+        station.shutdown().blocking_recv()?;
         Ok(())
     }
 

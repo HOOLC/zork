@@ -44,14 +44,14 @@ describe.sequential("zork update", () => {
     expect(commands).toEqual(["status"]);
   });
 
-  it("restarts Gateway and its embedded Agent without restarting the supervisor", async () => {
+  it("restarts Station and its embedded Agent without restarting the supervisor", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "zork-update-e2e-"));
     cleanups.push(async () => removeTempRoot(tempRoot));
     const dataRoot = path.join(tempRoot, "data");
-    const [gatewayPort, runtimePort, controlPort, agentPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
+    const [stationPort, runtimePort, controlPort, agentPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
     await writeConfig(dataRoot, {
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${controlPort}`,
         agent: `127.0.0.1:${agentPort}`,
@@ -68,14 +68,14 @@ describe.sequential("zork update", () => {
     cleanups.push(() => stopChild(supervisor));
 
     await Promise.all([
-      // One Gateway process serves all three public/control listeners.
-      waitForReady(`http://127.0.0.1:${gatewayPort}/readyz`),
+      // One Station process serves all three public/control listeners.
+      waitForReady(`http://127.0.0.1:${stationPort}/readyz`),
       waitForReady(`http://127.0.0.1:${runtimePort}/readyz`),
       waitForReady(`http://127.0.0.1:${controlPort}/readyz`),
       waitForReady(`http://127.0.0.1:${agentPort}/readyz`),
     ]);
 
-    const before = await readPids({ gatewayPort, runtimePort, controlPort, agentPort });
+    const before = await readPids({ stationPort, runtimePort, controlPort, agentPort });
     await expectAgentToken(agentPort);
     expect(before.runtime).toBeGreaterThan(0);
     expect(before.control).toBeGreaterThan(0);
@@ -89,7 +89,7 @@ describe.sequential("zork update", () => {
     expect(updated.status, `${updated.stdout}\n${updated.stderr}`).toBe(0);
     expect(updated.stdout).toContain("updated");
 
-    const after = await readPids({ gatewayPort, runtimePort, controlPort, agentPort });
+    const after = await readPids({ stationPort, runtimePort, controlPort, agentPort });
     await expectAgentToken(agentPort);
     expect(after.runtime).not.toBe(before.runtime);
     expect(after.control).not.toBe(before.control);
@@ -97,15 +97,15 @@ describe.sequential("zork update", () => {
     expect(after.agent).toBe(after.runtime);
     expect(supervisor.exitCode).toBeNull();
 
-    const [gateway, runtime, control, agent] = await Promise.all([readReady(`http://127.0.0.1:${gatewayPort}/readyz`), readReady(`http://127.0.0.1:${runtimePort}/readyz`), readReady(`http://127.0.0.1:${controlPort}/readyz`), readReady(`http://127.0.0.1:${agentPort}/readyz`)]);
-    expect(gateway).toMatchObject({ ok: true, service: "zork-station", pid: after.runtime });
+    const [station, runtime, control, agent] = await Promise.all([readReady(`http://127.0.0.1:${stationPort}/readyz`), readReady(`http://127.0.0.1:${runtimePort}/readyz`), readReady(`http://127.0.0.1:${controlPort}/readyz`), readReady(`http://127.0.0.1:${agentPort}/readyz`)]);
+    expect(station).toMatchObject({ ok: true, service: "zork-station", pid: after.runtime });
     expect(runtime).toMatchObject({ ok: true, service: "zork-station", pid: after.runtime });
     expect(control).toMatchObject({ ok: true, service: "zork-station", pid: after.control });
     expect(agent).toMatchObject({ ok: true, service: "zork-agent", pid: after.agent, embedded: true });
   }, 90_000);
 });
 
-async function readPids(ports: { readonly gatewayPort: number; readonly runtimePort: number; readonly controlPort: number; readonly agentPort: number }): Promise<{ runtime: number; control: number; agent: number }> {
+async function readPids(ports: { readonly stationPort: number; readonly runtimePort: number; readonly controlPort: number; readonly agentPort: number }): Promise<{ runtime: number; control: number; agent: number }> {
   const [runtime, control, agent] = await Promise.all([readPid(`http://127.0.0.1:${ports.runtimePort}/readyz`), readPid(`http://127.0.0.1:${ports.controlPort}/readyz`), readPid(`http://127.0.0.1:${ports.agentPort}/readyz`)]);
   return { runtime, control, agent };
 }

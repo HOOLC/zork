@@ -131,14 +131,14 @@ impl Registry {
     }
     fn record(&self, owner: &str, id: &str) -> Result<Record> {
         let state = self.state.lock().expect("service registry");
-        ensure!(!state.stopped, "gateway_stopping");
+        ensure!(!state.stopped, "station_stopping");
         let entry = state.entries.get(id).context("service_not_found")?;
         ensure!(entry.record.owner == owner, "service_owner_mismatch");
         Ok(entry.record.clone())
     }
     fn list(&self, owner: &str, origin: &str, shared_only: bool) -> Result<Vec<Value>> {
         let state = self.state.lock().expect("service registry");
-        ensure!(!state.stopped, "gateway_stopping");
+        ensure!(!state.stopped, "station_stopping");
         let mut entries = state
             .entries
             .values()
@@ -156,7 +156,7 @@ impl Registry {
     ) -> Result<Vec<zork_client_types::resources::Resource>> {
         use zork_client_types::resources::{Resource, ResourceKind};
         let state = self.state.lock().expect("service registry");
-        ensure!(!state.stopped, "gateway_stopping");
+        ensure!(!state.stopped, "station_stopping");
         let mut items = state
             .entries
             .values()
@@ -270,7 +270,7 @@ impl Registry {
             .to_hex()
             .to_string();
         let mut state = self.state.lock().expect("service registry");
-        ensure!(!state.stopped, "gateway_stopping");
+        ensure!(!state.stopped, "station_stopping");
         if let Some(key) = &request.request_id {
             ensure!(
                 !key.is_empty() && key.len() <= 128,
@@ -460,7 +460,7 @@ impl Registry {
     }
     fn target(&self, id: &str) -> Result<(u16, watch::Receiver<bool>)> {
         let mut state = self.state.lock().expect("service registry");
-        ensure!(!state.stopped, "gateway_stopping");
+        ensure!(!state.stopped, "station_stopping");
         let entry = state.entries.get(id).context("service_not_shared")?;
         ensure!(entry.record.shared, "service_not_shared");
         let port = entry.record.port;
@@ -637,7 +637,7 @@ fn check_port(state: &AppState, port: u16) -> Result<()> {
     ensure!(port > 0, "invalid_port");
     let config = zork_config::load_config(&state.config.data_root)?;
     for bind in [
-        &config.bind.gateway,
+        &config.bind.station,
         &config.bind.runtime,
         &config.bind.control,
         &config.bind.agent,

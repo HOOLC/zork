@@ -4,10 +4,10 @@ import json
 import subprocess
 import unittest
 
-from test_gateway_entry import GatewayEntryContractTest
+from test_station_entry import StationEntryContractTest
 
 
-class ProductTaskContractTest(GatewayEntryContractTest):
+class ProductTaskContractTest(StationEntryContractTest):
     def task_for(self, session_id):
         status, body = self.request('GET', '/v1/tasks')
         self.assertEqual(status, 200)
@@ -61,12 +61,12 @@ class ProductTaskContractTest(GatewayEntryContractTest):
         self.assertEqual(status, 409)
         self.assertEqual(len(self.messages(session_id)), 3)
 
-        # Restart only the gateway. Its product DB and projected run IDs must survive replay.
+        # Restart only the station. Its product DB and projected run IDs must survive replay.
         cls = type(self)
-        command = cls.gateway.args
-        cls.stop_process(cls.gateway)
-        cls.gateway = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        cls.wait_http(cls.gateway_url, '/readyz')
+        command = cls.station.args
+        cls.stop_process(cls.station)
+        cls.station = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.wait_http(cls.station_url, '/readyz')
         restored = self.task_for(session_id)
         self.assertEqual(restored['task_id'], accepted['task_id'])
         self.assertEqual(restored['state'], 'completed')

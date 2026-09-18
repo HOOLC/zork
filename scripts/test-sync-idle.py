@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real Gateway HTTP/SSE path: reads must never trigger more reads."""
+"""Exercise the real Station HTTP/SSE path: reads must never trigger more reads."""
 import json
 import os
 from pathlib import Path
@@ -21,7 +21,7 @@ def main():
         sockets = [socket.socket() for _ in range(4)]
         for sock in sockets:
             sock.bind(('127.0.0.1', 0))
-        bind = dict(zip(('gateway', 'runtime', 'control', 'agent'),
+        bind = dict(zip(('station', 'runtime', 'control', 'agent'),
                         (f'127.0.0.1:{sock.getsockname()[1]}' for sock in sockets)))
         for sock in sockets:
             sock.close()
@@ -45,8 +45,8 @@ def main():
             return reply['page']
 
         events = queue.Queue()
-        with (root / 'gateway.log').open('wb') as log:
-            gateway = subprocess.Popen([str(BINARY), '--data', str(root), '--fake-agent'], stdout=log, stderr=log)
+        with (root / 'station.log').open('wb') as log:
+            station = subprocess.Popen([str(BINARY), '--data', str(root), '--fake-agent'], stdout=log, stderr=log)
             try:
                 end = time.monotonic() + 30
                 while True:
@@ -54,8 +54,8 @@ def main():
                         initial = pull()
                         break
                     except (OSError, ValueError):
-                        if gateway.poll() is not None or time.monotonic() > end:
-                            raise AssertionError((root / 'gateway.log').read_text())
+                        if station.poll() is not None or time.monotonic() > end:
+                            raise AssertionError((root / 'station.log').read_text())
                         time.sleep(.05)
 
                 def subscribe():
@@ -65,7 +65,7 @@ def main():
                                 if line.startswith(b'data:'):
                                     events.put(json.loads(line[5:]))
                     except OSError:
-                        pass  # The fixture deliberately closes the Gateway at the end.
+                        pass  # The fixture deliberately closes the Station at the end.
 
                 reader = threading.Thread(target=subscribe, daemon=True)
                 reader.start()
@@ -123,12 +123,12 @@ def main():
                         break
                 print(f'PASS: 20 sync reads + 20 receipt reads stayed quiet; rename converged and stopped after {count} hints; model disable converged and repeated writes stayed quiet')
             finally:
-                gateway.terminate()
+                station.terminate()
                 try:
-                    assert gateway.wait(timeout=15) == 0
+                    assert station.wait(timeout=15) == 0
                 except subprocess.TimeoutExpired:
-                    gateway.kill()
-                    gateway.wait()
+                    station.kill()
+                    station.wait()
                     raise
 
 

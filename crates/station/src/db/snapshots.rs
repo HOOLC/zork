@@ -23,7 +23,7 @@ impl rusqlite::ToSql for Snapshot {
     }
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(super) fn snapshot_path(&self, snapshot: &Snapshot) -> Result<PathBuf> {
         let file = zork_client_types::files::FileRef {
             id: "file-snapshot".into(),

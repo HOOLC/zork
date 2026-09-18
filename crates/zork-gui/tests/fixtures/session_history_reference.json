@@ -86,7 +86,7 @@
       "id": "5",
       "kind": "assistant",
       "content": {
-        "content": "已读取配置，项目包含 Agent、Gateway 和桌面客户端。",
+        "content": "已读取配置，项目包含 Agent、Station 和桌面客户端。",
         "model": "fixture-model",
         "input_tokens": 3300,
         "output_tokens": 460

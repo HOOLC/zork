@@ -5,7 +5,7 @@ use super::{
     transport::ClientMesh,
 };
 use crate::{
-    api::GatewayClient,
+    api::StationClient,
     state::{Device, Observable, Subscription},
     store::{ClientStore, RemoteNode, SavedNode},
 };
@@ -61,7 +61,7 @@ struct HostConnection(std::os::unix::net::UnixStream);
 struct Connection {
     key: (String, Option<String>, Option<String>),
     binding: u64,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
 }
 impl Drop for HostConnection {
     fn drop(&mut self) {
@@ -242,7 +242,7 @@ impl Directory {
         }
         Ok(())
     }
-    fn resource_clients(&self) -> Vec<(String, String, Arc<GatewayClient>)> {
+    fn resource_clients(&self) -> Vec<(String, String, Arc<StationClient>)> {
         self.snapshot()
             .nodes
             .iter()
@@ -253,7 +253,7 @@ impl Directory {
             })
             .collect()
     }
-    fn shared_file_clients(&self) -> Vec<(String,String,bool,Arc<GatewayClient>)> {
+    fn shared_file_clients(&self) -> Vec<(String,String,bool,Arc<StationClient>)> {
         self.snapshot().nodes.iter().filter(|node| !self.store.replica_revoked(&node.id).unwrap_or(true)).filter_map(|node| {
             self.connection(&node.id).ok().map(|(_,client)|(node.id.clone(),node.name.clone(),node.local,client))
         }).collect()
@@ -362,7 +362,7 @@ impl Directory {
             .find(|node| node.id == id)
             .cloned()
     }
-    pub fn connection(&self, id: &str) -> Result<(u64, Arc<GatewayClient>)> {
+    pub fn connection(&self, id: &str) -> Result<(u64, Arc<StationClient>)> {
         let node = self.node(id).context("设备已移除")?;
         let key = (
             node.url.clone(),
@@ -374,8 +374,8 @@ impl Directory {
             return Ok((connection.binding, connection.client.clone()));
         }
         let client = Arc::new(match node.mesh.clone() {
-            Some(remote) => GatewayClient::new_mesh(self.transport.control(), remote.origin),
-            None => GatewayClient::new(node.url.clone(), node.token.clone())
+            Some(remote) => StationClient::new_mesh(self.transport.control(), remote.origin),
+            None => StationClient::new(node.url.clone(), node.token.clone())
                 .with_service_mesh(self.transport.control()),
         });
         let binding = self
@@ -395,7 +395,7 @@ impl Directory {
         anyhow::ensure!(self.connection(id)?.0 == binding, "设备连接已变化，请重试");
         Ok(())
     }
-    pub fn bind(self: &Arc<Self>, id: String, device: Arc<Device>, client: Arc<GatewayClient>) {
+    pub fn bind(self: &Arc<Self>, id: String, device: Arc<Device>, client: Arc<StationClient>) {
         let binding = self.connection(&id).ok().map(|(binding, _)| binding);
         let mut devices = self.devices.lock().unwrap();
         if devices

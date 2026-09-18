@@ -2,7 +2,7 @@ use futures_util::FutureExt;
 use serde_json::json;
 use std::sync::Arc;
 use zork_client_core::{
-    api::GatewayClient,
+    api::StationClient,
     state::Device,
     store::{ClientStore, SavedNode},
     subscriptions::{Key, WireSubscription},
@@ -55,7 +55,7 @@ async fn settings_subscription_notifies_only_committed_versions_and_hides_revoke
         .unwrap();
     let client = Client::open(root.path()).unwrap();
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         Some((store.clone(), "peer".into())),
         true,
     );

@@ -18,7 +18,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn session(db: &GatewayDb, root: &Path, name: &str) -> SessionRow {
+    fn session(db: &StationDb, root: &Path, name: &str) -> SessionRow {
         db.create_session_at_workspace(
             EnsureSession {
                 connection_id: "local_gui",
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn svg_uploads_preserve_image_media_type_and_bytes() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let owner = session(&db, dir.path(), "leader");
         let bytes = br#"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"/>"#;
         let mut file = reference(bytes);
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn upload_resumes_after_restart_and_retries_do_not_change_the_snapshot() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let owner = session(&db, dir.path(), "leader");
         let other = session(&db, dir.path(), "other");
         let bytes = vec![0xa7; CHUNK_BYTES + 37];
@@ -86,7 +86,7 @@ mod tests {
             .receive_file_chunk(&other, &file, 0, &bytes[..CHUNK_BYTES])
             .is_err());
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(
             db.receive_file_chunk(&owner, &file, 0, &bytes[..CHUNK_BYTES])
                 .unwrap(),
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn rejects_hash_mismatch_and_traversal_and_accepts_empty_file() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let owner = session(&db, dir.path(), "leader");
         let file = reference(b"one");
         assert!(db.receive_file_chunk(&owner, &file, 0, b"two").is_err());
@@ -137,7 +137,7 @@ mod tests {
     }
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn conversation_file_path(&self, key:&str, file:&FileRef)->Result<PathBuf> {
         ensure!(self.conversation_file_ref(key,&file.id)?==*file,"attachment_reference_mismatch");
         let snapshot=Snapshot{root:file.content_root.clone(),name:file.name.clone(),byte_len:file.byte_len};

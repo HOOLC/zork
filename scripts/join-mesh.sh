@@ -1,6 +1,6 @@
 #!/bin/sh
-# Run on the device being added. The native command discovers existing Gateways
-# and asks the selected Gateway to redeem the invitation.
+# Run on the device being added. The native command discovers existing Stations
+# and asks the selected Station to redeem the invitation.
 set -eu
 if [ "$#" -lt 1 ]; then
   echo 'Usage: join-mesh.sh INVITATION [--data DIRECTORY] [--name DEVICE_NAME]' >&2

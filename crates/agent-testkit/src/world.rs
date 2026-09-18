@@ -57,7 +57,7 @@ impl TestWorld {
         let query = store.query();
         let tools = Arc::new(ToolRegistry::default());
         let files = MemoryFileSystem::new();
-        let (process_gateway, processes) = ControlledProcesses::pair();
+        let (process_station, processes) = ControlledProcesses::pair();
         zork_agent::session::tools::register_builtin_tools(
             &tools,
             zork_agent::session::tools::BuiltinToolDependencies {
@@ -65,7 +65,7 @@ impl TestWorld {
                 query: Arc::new(query.clone()),
                 clock: Arc::new(clock.clone()),
                 files: Arc::new(files.clone()),
-                processes: process_gateway,
+                processes: process_station,
             },
         )
         .expect("the production built-in tool contracts are valid");

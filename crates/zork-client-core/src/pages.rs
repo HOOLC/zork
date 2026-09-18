@@ -470,7 +470,7 @@ mod markdown_tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
         let device = crate::state::Device::open(
-            Arc::new(crate::api::GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None)),
             Some((store.clone(), "node".into())),
             false,
         );

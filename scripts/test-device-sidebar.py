@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Approved native GUI against isolated real Gateways and fake model runtimes.
+"""Approved native GUI against isolated real Stations and fake model runtimes.
 
 Covers scoped drafts/comments, a single explicit send, ownership-preserving Task
 comments, device folds, full-width/resizable navigation, settings and reconnect.
@@ -88,7 +88,7 @@ def capture_brand_motion():
 
     try:
         node.start()
-        f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Gateway')
+        f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station')
         f.wait(lambda: urlopen(node.agent_url + '/readyz').status == 200, 'Agent')
         with sqlite3.connect(client / 'client.db') as db:
             db.executescript('CREATE TABLE nodes(id TEXT PRIMARY KEY,value TEXT NOT NULL);'
@@ -229,7 +229,7 @@ def main():
         leaders = []
         for i, node in enumerate(nodes):
             node.start()
-            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Gateway ready')
+            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station ready')
             f.wait(lambda: urlopen(node.agent_url + '/readyz', timeout=2).status == 200, 'Agent ready')
             selection = dict(profile_id='fixture', model='fixture-model', thinking='off')
             leaders.append(request(node, 'POST', '/v1/node/agents', dict(selection,
@@ -380,11 +380,11 @@ def main():
         click('desktop-return')
         click('device-add')
         ready('mesh-client-invite-create')
-        assert not native.element('mesh-invite-create'), 'Gateway command must not appear on phone tab'
+        assert not native.element('mesh-invite-create'), 'Station command must not appear on phone tab'
         capture('add-device')
         click('mesh-connect-device-tab')
         ready('mesh-invite-create')
-        assert not native.element('mesh-client-invite-create'), 'Phone action must not appear on Gateway tab'
+        assert not native.element('mesh-client-invite-create'), 'Phone action must not appear on Station tab'
         click('add-device-dialog-close')
         # Device folds remain; task rows stay visible without a fold arrow.
         click('leader-node-0-leader')
@@ -393,7 +393,7 @@ def main():
         click('device-node-1')
         assert not native.element('leader-node-1-leader')
         click(task_id)
-        ready('composer-input')  # Task comments are permitted by the owning Gateway.
+        ready('composer-input')  # Task comments are permitted by the owning Station.
         fill('composer-input', '请所属 Leader 检查这个任务的交付范围。')
         click('send-button')
         f.wait(lambda: any(m['content'] == '请所属 Leader 检查这个任务的交付范围。' for m in messages(a, task['session_id'])), 'Task human comment delivered once')

@@ -40,9 +40,9 @@ async fn runtime(root: &std::path::Path) -> zork_mesh::managed::Runtime {
     .await
     .unwrap()
 }
-fn bind(source: &Arc<SharedFiles>, client: Arc<GatewayClient>) {
+fn bind(source: &Arc<SharedFiles>, client: Arc<StationClient>) {
     source.replace_devices(vec![(
-        "gateway-binding".into(),
+        "station-binding".into(),
         "Station".into(),
         false,
         client,
@@ -88,7 +88,7 @@ async fn late_embedded_node_uses_all_api_paths_and_bounded_pages() {
         .await
         .unwrap();
     let handle = MeshNode::unbound(node.data_dir().to_path_buf());
-    let client = Arc::new(GatewayClient::new_mesh(
+    let client = Arc::new(StationClient::new_mesh(
         handle.clone(),
         node.identity().await.unwrap(),
     ));
@@ -276,7 +276,7 @@ async fn system_file_metadata_does_not_populate_an_empty_user_share() {
     ));
     bind(
         &source,
-        Arc::new(GatewayClient::new_mesh(
+        Arc::new(StationClient::new_mesh(
             node.clone(),
             node.identity().await.unwrap(),
         )),
@@ -321,7 +321,7 @@ async fn source_presence_and_save_capability_follow_the_selected_business_state(
     let origin = node.identity().await.unwrap();
     node.add_api_source(SPACE).await.unwrap();
     let small = node.put(SPACE, "report.txt", b"readable").await.unwrap();
-    let client = Arc::new(GatewayClient::new_mesh(node.clone(), origin.clone()));
+    let client = Arc::new(StationClient::new_mesh(node.clone(), origin.clone()));
     let source = SharedFiles::new(Arc::new(
         ClientStore::open(&root.path().join("client")).unwrap(),
     ));
@@ -331,10 +331,10 @@ async fn source_presence_and_save_capability_follow_the_selected_business_state(
     let mut state = crate::state::DeviceData::default();
     Arc::make_mut(&mut state.mesh).origin = Some(origin.clone());
     state.online = Some(false);
-    source.update_device("gateway-binding", &client, &state);
+    source.update_device("station-binding", &client, &state);
     assert_eq!(source.snapshot().devices[0].online, Some(false));
     state.online = Some(true);
-    source.update_device("gateway-binding", &client, &state);
+    source.update_device("station-binding", &client, &state);
     assert_eq!(source.snapshot().devices[0].online, Some(true));
     source
         .dispatch(Action::OpenEntry {
@@ -364,14 +364,14 @@ async fn source_presence_and_save_capability_follow_the_selected_business_state(
         .await
         .unwrap();
     assert!(source.snapshot().preview.as_ref().unwrap().can_save);
-    let replacement = Arc::new(GatewayClient::new_mesh(
+    let replacement = Arc::new(StationClient::new_mesh(
         node.clone(),
         "key:replacement".into(),
     ));
     bind(&source, replacement);
     state.revoked = true;
-    source.update_device("gateway-binding", &client, &state);
-    assert_eq!(source.access_peers(), vec!["gateway-binding"]);
+    source.update_device("station-binding", &client, &state);
+    assert_eq!(source.access_peers(), vec!["station-binding"]);
     source.pause();
     runtime.shutdown().await.unwrap();
 }
@@ -383,7 +383,7 @@ async fn immutable_copy_survives_path_update_and_binding_revoke_invalidates_pend
     let node = runtime.node();
     node.add_api_source(SPACE).await.unwrap();
     let old = node.put(SPACE, "report.txt", b"original").await.unwrap();
-    let client = Arc::new(GatewayClient::new_mesh(
+    let client = Arc::new(StationClient::new_mesh(
         node.clone(),
         node.identity().await.unwrap(),
     ));
@@ -426,7 +426,7 @@ async fn immutable_copy_survives_path_update_and_binding_revoke_invalidates_pend
     let ticket = source.snapshot().save.ticket.clone().unwrap();
     let mut updates = source.subscribe();
     let batch = updates.prepare().unwrap();
-    source.revoke("gateway-binding");
+    source.revoke("station-binding");
     assert!(!updates.valid(batch.id));
     assert!(source.snapshot().preview.is_none());
     assert!(source.snapshot().devices.is_empty());

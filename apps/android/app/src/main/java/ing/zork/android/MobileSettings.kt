@@ -139,7 +139,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                         Box(Modifier.size(6.dp).background(if (state.online) ZorkColors.Online else ZorkColors.Muted, androidx.compose.foundation.shape.CircleShape))
                         Text(if (state.online) "在线" else if (state.connectionState == "connecting") "连接中" else "离线", fontSize = 12.sp, color = ZorkColors.Muted)
                         Text("·", color = ZorkColors.Muted)
-                        Text(info?.optJSONObject("gateway")?.let { "v"+it.text("release_version",it.text("version","—")) } ?: "版本待获取", fontSize = 12.sp, color = ZorkColors.Muted)
+                        Text(info?.optJSONObject("station")?.let { "v"+it.text("release_version",it.text("version","—")) } ?: "版本待获取", fontSize = 12.sp, color = ZorkColors.Muted)
                     }
                 }
                 SectionTitle("管理")
@@ -158,7 +158,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                     }
                 }
                 if (latest.isNotBlank()) {
-                    val version=info?.optJSONObject("gateway")?.let { it.text("release_version",it.text("version")) }
+                    val version=info?.optJSONObject("station")?.let { it.text("release_version",it.text("version")) }
                     if (latest == version) Text("已是最新版本", color=ZorkColors.Muted, fontSize=13.sp)
                     else { Text("可升级至 $latest",fontSize=13.sp); SettingsButton("升级并重启",primary=true,enabled=supported && !updateBusy && !upgrading) { editor="upgrade" } }
                 }

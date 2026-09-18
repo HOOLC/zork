@@ -76,7 +76,7 @@ class ControlledProvider {
   }
 }
 
-describe.sequential("Gateway mailbox delivery", () => {
+describe.sequential("Station mailbox delivery", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
@@ -89,7 +89,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slack = new MockSlackServer("UBOT", { botId: "BBOT", appId: "AAPP" });
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -98,18 +98,18 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort, "proactive")],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "proactive Gateway readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "proactive Station readyz");
     await slack.waitForSocket();
 
     await slack.sendEvent("evt-proactive-root", {
@@ -170,14 +170,14 @@ describe.sequential("Gateway mailbox delivery", () => {
     );
     expect(agent.appends).toHaveLength(2);
 
-    await stopChild(gateway);
+    await stopChild(station);
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const restartedGateway = spawnBinary("zork-station", {
+    const restartedStation = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(restartedGateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "restarted proactive Gateway readyz");
+    cleanups.push(async () => stopChild(restartedStation));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "restarted proactive Station readyz");
     await slack.waitForSocket();
 
     await slack.sendEvent("evt-proactive-other-bot", {
@@ -240,7 +240,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(timelinePayload).toMatchObject({
       session: { key: testConnectionId, mode: "proactive" },
       events: expect.arrayContaining([expect.objectContaining({ type: "inbound_message", conversationId: "C-SECOND" })]),
-      trace: { source: "gateway_db", categories: { session_created: 1, inbound_message: 3 } },
+      trace: { source: "station_db", categories: { session_created: 1, inbound_message: 3 } },
     });
     const context = await fetch(`http://127.0.0.1:${runtimePort}/v1/tools/context?cwd=${encodeURIComponent(String(create.workspace))}`);
     expect(context.status).toBe(200);
@@ -263,13 +263,13 @@ describe.sequential("Gateway mailbox delivery", () => {
     });
   });
 
-  it("exposes Agent-owned profiles to Admin without a Gateway profile store", { timeout: 30_000 }, async () => {
+  it("exposes Agent-owned profiles to Admin without a Station profile store", { timeout: 30_000 }, async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "zork-station-profile-proxy-"));
     cleanups.push(async () => removeTempRoot(tempRoot));
     const slack = new MockSlackServer("UBOT");
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -278,19 +278,19 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
+    cleanups.push(async () => stopChild(station));
     const adminBaseUrl = `http://127.0.0.1:${adminPort}`;
-    await waitForReady(`${adminBaseUrl}/readyz`, "Gateway Admin readyz");
+    await waitForReady(`${adminBaseUrl}/readyz`, "Station Admin readyz");
 
     const listed = await fetch(`${adminBaseUrl}/admin/api/profiles`);
     expect(listed.status).toBe(200);
@@ -343,7 +343,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slack = new MockSlackServer("UBOT");
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -382,18 +382,18 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "selection Gateway readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "selection Station readyz");
     await waitForReady(`http://127.0.0.1:${adminPort}/readyz`, "selection Admin readyz");
     await slack.waitForSocket();
 
@@ -440,9 +440,9 @@ describe.sequential("Gateway mailbox delivery", () => {
       { profile_id: "auto", model: "grok-4.6", thinking: "high" },
     ]);
 
-    const gatewayDb = new DatabaseSync(path.join(tempRoot, "state", "gateway.sqlite"));
-    gatewayDb.prepare("UPDATE sessions SET id = NULL WHERE key = ?").run(selectionKey);
-    gatewayDb.close();
+    const stationDb = new DatabaseSync(path.join(tempRoot, "state", "station.sqlite"));
+    stationDb.prepare("UPDATE sessions SET id = NULL WHERE key = ?").run(selectionKey);
+    stationDb.close();
     expect((await fetch(contextUrl)).status).toBe(409);
     expect((await agent.request("/profiles/usage", "DELETE")).status).toBe(204);
     const rejectedFreshSelection = await fetch(`${adminBaseUrl}/admin/api/sessions/${encodeURIComponent(selectionKey)}/selection`, {
@@ -462,7 +462,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
 
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -471,18 +471,18 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "Gateway broker readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "Station broker readyz");
     await slack.waitForSocket();
 
     const ackSessionKey = testSessionKey("C-ACK", "800.100");
@@ -586,7 +586,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(mismatchedJobTarget.status).toBe(400);
     expect(agent.appends).toHaveLength(3);
 
-    expect(gatewayTableNames(stateDir)).not.toEqual(expect.arrayContaining(["inbound_events", "processed_events"]));
+    expect(stationTableNames(stateDir)).not.toEqual(expect.arrayContaining(["inbound_events", "processed_events"]));
   });
 
   it("does not turn an auth-blocked input into an automatic Slack reply", { timeout: 30_000 }, async () => {
@@ -597,7 +597,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
 
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -606,18 +606,18 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "auth-blocked Gateway readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "auth-blocked Station readyz");
     await slack.waitForSocket();
 
     await slack.sendEvent("evt-mailbox-auth-block", {
@@ -639,7 +639,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(slack.postedMessages).toHaveLength(0);
   });
 
-  it("ignores previous database names and delivers through a fresh Gateway database", { timeout: 30_000 }, async () => {
+  it("ignores previous database names and delivers through a fresh Station database", { timeout: 30_000 }, async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "zork-station-mailbox-legacy-"));
     cleanups.push(async () => removeTempRoot(tempRoot));
     const stateDir = path.join(tempRoot, "state");
@@ -652,7 +652,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slack = new MockSlackServer("UBOT");
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
@@ -661,18 +661,18 @@ describe.sequential("Gateway mailbox delivery", () => {
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "legacy Gateway readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "legacy Station readyz");
     await slack.waitForSocket();
 
     await slack.sendEvent("evt-mailbox-legacy", {
@@ -693,14 +693,14 @@ describe.sequential("Gateway mailbox delivery", () => {
       "legacy Slack acknowledgement after mailbox receipt",
     );
 
-    const current = readGatewaySession(path.join(stateDir, "gateway.sqlite"), testSessionKey("C-LEGACY", "900.100"));
+    const current = readStationSession(path.join(stateDir, "station.sqlite"), testSessionKey("C-LEGACY", "900.100"));
     expect(current).toMatchObject({
       id: append.sessionId,
     });
     expect(current?.workspace_path).not.toBe(legacyWorkspace);
     expect(current?.workspace_path).toBe(testNormalWorkspace(tempRoot, "C-LEGACY", "900.100"));
     expect(agent.creates[0]?.workspace).toBe(current?.workspace_path);
-    expect(gatewaySessionIdentityConstraints(stateDir, append.sessionId)).toEqual({
+    expect(stationSessionIdentityConstraints(stateDir, append.sessionId)).toEqual({
       nullIdRejected: false,
       duplicateIdRejected: true,
     });
@@ -708,7 +708,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     for (const forbiddenColumn of ["agent_session_id", "active_turn_id", "active_turn_started_at", "last_turn_signal_kind"]) {
       expect(columns).not.toContain(forbiddenColumn);
     }
-    const tables = gatewayTableNames(stateDir);
+    const tables = stationTableNames(stateDir);
     for (const forbiddenTable of ["schema_migrations", "agent_session_bindings", "inbound_events", "processed_events", "slack_events", "agent_turn_bindings", "agent_turn_usage"]) {
       expect(tables).not.toContain(forbiddenTable);
     }
@@ -732,14 +732,14 @@ describe.sequential("Gateway mailbox delivery", () => {
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
 
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const adminPort = await getFreePort();
     const agentPort = await getFreePort();
     await writeConfig(tempRoot, {
       im_connections: [testSlackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
@@ -769,14 +769,14 @@ describe.sequential("Gateway mailbox delivery", () => {
       })}\n`,
     );
 
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
+    cleanups.push(async () => stopChild(station));
 
     await waitForReady(`http://127.0.0.1:${agentPort}/readyz`, "mailbox Agent readyz");
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "mailbox Gateway readyz");
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "mailbox Station readyz");
     await slack.waitForSocket();
 
     const firstSlackEvent = {
@@ -830,10 +830,10 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(slack.postedMessages.some((message) => message.text.includes("internal first answer"))).toBe(false);
     expect(slack.postedMessages.some((message) => message.text.includes("internal second answer"))).toBe(false);
 
-    const gatewaySession = readGatewaySession(path.join(stateDir, "gateway.sqlite"), testSessionKey("C-MAILBOX", "700.100"));
+    const stationSession = readStationSession(path.join(stateDir, "station.sqlite"), testSessionKey("C-MAILBOX", "700.100"));
     const agentMessages = await waitFor(
       async () =>
-        (await fetch(`http://127.0.0.1:${agentPort}/sessions/${gatewaySession?.id}/messages`, {
+        (await fetch(`http://127.0.0.1:${agentPort}/sessions/${stationSession?.id}/messages`, {
           headers: { authorization: `Bearer ${agentToken}` },
         }).then((response) => response.json())) as {
           items?: Array<{ type?: string; role?: string; content?: string }>;
@@ -871,7 +871,7 @@ describe.sequential("Gateway mailbox delivery", () => {
     cleanups.push(async () => normalSlack.stop());
     cleanups.push(async () => proactiveSlack.stop());
 
-    const [gatewayPort, runtimePort, adminPort, agentPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
+    const [stationPort, runtimePort, adminPort, agentPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
     const agent = new EmbeddedAgent();
     await agent.configure(tempRoot, agentPort);
     await writeConfig(tempRoot, {
@@ -898,18 +898,18 @@ describe.sequential("Gateway mailbox delivery", () => {
         },
       ],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${adminPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "multi IM Gateway readyz");
+    cleanups.push(async () => stopChild(station));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "multi IM Station readyz");
     await Promise.all([normalSlack.waitForSocket(), proactiveSlack.waitForSocket()]);
 
     await normalSlack.sendEvent("same-message", {
@@ -985,14 +985,14 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(normalSlack.conversationsRepliesCalls).toBe(1);
     expect(proactiveSlack.conversationsRepliesCalls).toBe(1);
 
-    const normalRaw = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/raw/auth.test`, {
+    const normalRaw = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/raw/auth.test`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "",
     });
     expect(normalRaw.status).toBe(200);
     await expect(normalRaw.json()).resolves.toMatchObject({ ok: true, user_id: "U-NORMAL" });
-    const proactiveRaw = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(proactiveSessionKey)}/im/raw/auth.test`, {
+    const proactiveRaw = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(proactiveSessionKey)}/im/raw/auth.test`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "",
@@ -1005,13 +1005,13 @@ describe.sequential("Gateway mailbox delivery", () => {
 
     const normalFileUrl = normalSlack.addDownloadableFile("normal-only", Buffer.from("normal bytes"));
     const proactiveFileUrl = proactiveSlack.addDownloadableFile("proactive-only", Buffer.from("proactive bytes"));
-    const normalDownload = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/download?${new URLSearchParams({ url: normalFileUrl })}`);
+    const normalDownload = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/download?${new URLSearchParams({ url: normalFileUrl })}`);
     expect(normalDownload.status).toBe(200);
     expect(await normalDownload.text()).toBe("normal bytes");
-    const proactiveDownload = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(proactiveSessionKey)}/im/download?${new URLSearchParams({ url: proactiveFileUrl })}`);
+    const proactiveDownload = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(proactiveSessionKey)}/im/download?${new URLSearchParams({ url: proactiveFileUrl })}`);
     expect(proactiveDownload.status).toBe(200);
     expect(await proactiveDownload.text()).toBe("proactive bytes");
-    const crossConnectionDownload = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/download?${new URLSearchParams({ url: proactiveFileUrl })}`);
+    const crossConnectionDownload = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(normalSessionKey)}/im/download?${new URLSearchParams({ url: proactiveFileUrl })}`);
     expect(crossConnectionDownload.status).toBe(400);
 
     await normalSlack.sendEvent("ambient-normal", {
@@ -1069,7 +1069,7 @@ describe.sequential("Gateway mailbox delivery", () => {
 });
 
 function readInboundStatus(stateDir: string, sessionKey: string, messageTs: string): string | undefined {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     const row = db.prepare("SELECT status FROM inbound_messages WHERE session_key = ? AND message_ts = ?").get(sessionKey, messageTs) as { status?: string } | undefined;
     return row?.status;
@@ -1079,7 +1079,7 @@ function readInboundStatus(stateDir: string, sessionKey: string, messageTs: stri
 }
 
 function readInboundSources(stateDir: string, sessionKey: string): string[] {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     return (db.prepare("SELECT source FROM inbound_messages WHERE session_key = ? ORDER BY created_at, message_ts").all(sessionKey) as Array<{ source: string }>).map((row) => row.source);
   } finally {
@@ -1088,7 +1088,7 @@ function readInboundSources(stateDir: string, sessionKey: string): string[] {
 }
 
 function sessionColumns(stateDir: string): string[] {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     return (db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>).map((column) => column.name);
   } finally {
@@ -1096,8 +1096,8 @@ function sessionColumns(stateDir: string): string[] {
   }
 }
 
-function gatewayTableNames(stateDir: string): string[] {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+function stationTableNames(stateDir: string): string[] {
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     return (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
@@ -1117,7 +1117,7 @@ function insertBackgroundJob(
     workspacePath: string;
   },
 ): void {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"));
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"));
   try {
     db.prepare(
       `INSERT INTO background_jobs (
@@ -1187,7 +1187,7 @@ function createOriginBrokerDatabase(databasePath: string, workspacePath: string)
   }
 }
 
-function readGatewaySession(databasePath: string, key: string): { id: string; workspace_path: string } | undefined {
+function readStationSession(databasePath: string, key: string): { id: string; workspace_path: string } | undefined {
   const db = new DatabaseSync(databasePath, { readOnly: true });
   try {
     return db.prepare("SELECT id, workspace_path FROM sessions WHERE key = ?").get(key) as { id: string; workspace_path: string } | undefined;
@@ -1224,8 +1224,8 @@ function readOriginBrokerSession(databasePath: string, key: string): { agent_ses
   }
 }
 
-function gatewaySessionIdentityConstraints(stateDir: string, existingId: string): { nullIdRejected: boolean; duplicateIdRejected: boolean } {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"));
+function stationSessionIdentityConstraints(stateDir: string, existingId: string): { nullIdRejected: boolean; duplicateIdRejected: boolean } {
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"));
   const insert = db.prepare(
     `INSERT INTO sessions (key, id, connection_id, platform, channel_id, root_thread_ts, workspace_path, created_at, updated_at)
      VALUES (?, ?, ?, 'slack', ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,

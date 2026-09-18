@@ -3,14 +3,14 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::{stream, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use zork_gui::api::{ApiError, GatewayClient, MessagePage, Role, SseStream, TranscriptMessage};
+use zork_gui::api::{ApiError, StationClient, MessagePage, Role, SseStream, TranscriptMessage};
 
 #[test]
-fn gateway_history_accepts_only_delivered_user_and_assistant_messages() {
+fn station_history_accepts_only_delivered_user_and_assistant_messages() {
     let page: MessagePage = serde_json::from_str(
         r#"{"items":[{"type":"message","role":"user","content":"hello"},{"type":"message","role":"assistant","content":"deliberate reply"}],"older_cursor":null}"#,
     )
-    .expect("gateway-delivered messages must deserialize");
+    .expect("station-delivered messages must deserialize");
 
     assert!(matches!(
         page.items.as_slice(),
@@ -78,9 +78,9 @@ fn opening_sse_returns_and_delivers_data_while_connection_is_still_open() {
         .block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))
         .expect("bind test server");
     let address = listener.local_addr().expect("test server address");
-    // GatewayClient also owns a blocking client; construct and drop it outside
+    // StationClient also owns a blocking client; construct and drop it outside
     // the async runtime while exercising its streaming API inside the runtime.
-    let client = GatewayClient::new(format!("http://{address}"), None);
+    let client = StationClient::new(format!("http://{address}"), None);
     runtime.block_on(async {
     let (close, until_client_receives) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
@@ -96,7 +96,7 @@ fn opening_sse_returns_and_delivers_data_while_connection_is_still_open() {
         }
         assert!(
             String::from_utf8_lossy(&request).contains("/v1/im/sessions/live/events"),
-            "GUI must subscribe to gateway-owned IM events"
+            "GUI must subscribe to station-owned IM events"
         );
         socket
             .write_all(

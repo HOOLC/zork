@@ -52,7 +52,7 @@ fn write_result(conn: &Connection, record: &CardRecord, result: Resolution) -> R
     Ok(result)
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(crate) fn create_provider_login_card(
         &self,
         origin: &str,

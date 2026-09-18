@@ -52,7 +52,7 @@ def main():
         (bundle / 'zork-gh').write_text('#!/bin/sh\nexit 0\n')
         (bundle / 'zork-gh').chmod(0o755)
         (bundle / 'VERSION').write_text('0.1.30')
-        binds = {name: f'127.0.0.1:{port()}' for name in ['gateway', 'runtime', 'control', 'agent']}
+        binds = {name: f'127.0.0.1:{port()}' for name in ['station', 'runtime', 'control', 'agent']}
         (node / 'config.json').write_text(json.dumps({'bind': binds, 'mesh': {'enabled': False}, 'im_connections': []}))
         (node / 'service.json').write_text('{"enabled":true,"start_at_login":false}')
         (node / 'user-data').write_text('preserve me')
@@ -118,17 +118,17 @@ shutil.copyfile(source,args[args.index('-o')+1])
                 assert request()[1]['update']['supported']
                 assert request('POST', '/v1/node/update', {'version': '0.1.31'}, False)[0] == 401
                 assert request('POST', '/v1/node/update', {'version': '../bad'})[0] == 400
-                before = (node / 'run/zork-gateway.pid').read_text()
+                before = (node / 'run/zork-station.pid').read_text()
                 assert request('POST', '/v1/node/update', {'version': '0.1.31'})[0] == 202
                 assert request('POST', '/v1/node/update', {'version': '0.1.31'})[0] == 409
                 wait(lambda: request()[1]['update']['status']['phase'] == 'failed')
-                assert (node / 'run/zork-gateway.pid').read_text() == before
+                assert (node / 'run/zork-station.pid').read_text() == before
                 assert (bundle / 'VERSION').read_text() == '0.1.30'
                 assert request('POST', '/v1/node/update', {'version': '0.1.32'})[0] == 202
                 wait(lambda: request()[1]['update']['status']['phase'] == 'complete')
                 info = request()[1]
-                assert info['gateway']['release_version'] == '0.1.32', info
-                assert (node / 'run/zork-gateway.pid').read_text() != before
+                assert info['station']['release_version'] == '0.1.32', info
+                assert (node / 'run/zork-station.pid').read_text() != before
                 assert int((node / 'zork.pid').read_text()) == process.pid
                 assert (node / 'user-data').read_text() == 'preserve me'
                 assert (next((node / 'run').glob('update-previous-*')) / 'VERSION').read_text() == '0.1.30'

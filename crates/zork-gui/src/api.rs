@@ -1,4 +1,4 @@
-//! Shared Gateway protocol, DTOs and event transport.
+//! Shared Station protocol, DTOs and event transport.
 pub use zork_client_core::api::*;
 
 pub use zork_client_core::state::{AgentData, AgentUpdate, Agents};

@@ -6,7 +6,7 @@ members = [
   "crates/agent",
   "crates/agent-http",
   "crates/agent-server",
-  "crates/agent-gateway-tools",
+  "crates/agent-station-tools",
   "crates/agent-api",
   "crates/agent-testkit",
   "crates/profile",

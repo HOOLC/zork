@@ -40,7 +40,7 @@ class DesktopBrowserTest(BrowserTest, unittest.TestCase):
             'addr': f'127.0.0.1:{transport.udp}', 'client': True, 'execute': []})
         (cls.node.root / 'config.json').write_text(json.dumps(cls.node.config))
         cls.node.start()
-        cls.gateway_url = cls.node.url
+        cls.station_url = cls.node.url
         cls.gui = None
         cls.gui_log = (cls.root / 'gui.log').open('wb')
         cls.ui_url = f'http://127.0.0.1:{fixture.port()}'

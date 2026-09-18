@@ -1,8 +1,8 @@
 //! zork-gui: a GPUI desktop client for zork-station's local IM entry.
 //!
-//! The transcript contains only gateway-delivered user/assistant messages.
+//! The transcript contains only station-delivered user/assistant messages.
 //! Agent tools, waits, deltas, and transcript text remain internal; activity
-//! reaches the UI separately through gateway-projected status events.
+//! reaches the UI separately through station-projected status events.
 
 pub mod api;
 pub mod assets;

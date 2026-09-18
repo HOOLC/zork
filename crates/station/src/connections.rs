@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use tokio::sync::{watch, Mutex, RwLock};
 
 use crate::config::now_rfc3339;
-use crate::slack::{BotSelf, SlackGateway};
+use crate::slack::{BotSelf, SlackStation};
 
 #[derive(Clone)]
 pub struct ConnectionRuntime {
     pub config: zork_config::ImConnectionConfig,
-    pub slack: SlackGateway,
+    pub slack: SlackStation,
     pub status: zork_slack::AssistantStatusHub,
     pub bot: Arc<Mutex<Option<BotSelf>>>,
 }
@@ -277,7 +277,7 @@ impl ConnectionManager {
                 connection.id.clone(),
                 Arc::new(ConnectionRuntime {
                     config: connection.clone(),
-                    slack: SlackGateway::new(slack, self.http.clone()),
+                    slack: SlackStation::new(slack, self.http.clone()),
                     status: zork_slack::AssistantStatusHub::new(
                         self.http.clone(),
                         slack.bot_token.trim(),

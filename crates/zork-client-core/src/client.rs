@@ -675,7 +675,7 @@ pub struct Client {
     root: PathBuf,
     store: Arc<ClientStore>,
     runtime: Option<managed::Runtime>,
-    gateways: Mutex<std::collections::HashMap<String, Arc<api::GatewayClient>>>,
+    stations: Mutex<std::collections::HashMap<String, Arc<api::StationClient>>>,
     devices: std::collections::HashMap<String, Arc<state::Device>>,
 }
 
@@ -721,7 +721,7 @@ impl Client {
             store,
             runtime: None,
             services: Default::default(),
-            gateways: Mutex::new(std::collections::HashMap::new()),
+            stations: Mutex::new(std::collections::HashMap::new()),
             devices: Default::default(),
         })
     }
@@ -792,7 +792,7 @@ impl Client {
             if self.devices.contains_key(&peer.id) {
                 continue;
             }
-            let client = self.gateway(&peer.id)?;
+            let client = self.station(&peer.id)?;
             let device = state::Device::open(
                 client.clone(),
                 Some((self.store.clone(), peer.id.clone())),
@@ -840,7 +840,7 @@ impl Client {
                     return None;
                 }
                 Some(
-                    self.gateway(&peer.id)
+                    self.station(&peer.id)
                         .map(|client| (peer.id, peer.name, client)),
                 )
             })
@@ -876,7 +876,7 @@ impl Client {
             device.stop_sync();
         }
         self.devices.clear();
-        self.gateways.lock().expect("Gateway clients").clear();
+        self.stations.lock().expect("Station clients").clear();
         if let Some(mut runtime) = self.runtime.take() {
             runtime.shutdown().await?;
         }
@@ -918,9 +918,9 @@ impl Client {
         );
         ensure!(
             path.starts_with("/v1/") && !path.contains('#') && path.len() < 4096,
-            "invalid Gateway path"
+            "invalid Station path"
         );
-        let client = self.gateway(peer)?;
+        let client = self.station(peer)?;
         let device = state::Device::open(
             client.clone(),
             Some((self.store.clone(), peer.into())),
@@ -948,8 +948,8 @@ impl Client {
         Ok(result)
     }
 
-    fn gateway(&self, peer: &str) -> Result<Arc<api::GatewayClient>> {
-        let mut clients = self.gateways.lock().expect("Gateway clients");
+    fn station(&self, peer: &str) -> Result<Arc<api::StationClient>> {
+        let mut clients = self.stations.lock().expect("Station clients");
         if let Some(client) = clients.get(peer) {
             return Ok(client.clone());
         }
@@ -957,7 +957,7 @@ impl Client {
         Ok(clients
             .entry(peer.into())
             .or_insert_with(|| {
-                Arc::new(api::GatewayClient::mesh_on(
+                Arc::new(api::StationClient::mesh_on(
                     node,
                     peer.into(),
                     tokio::runtime::Handle::current(),
@@ -1046,13 +1046,13 @@ impl Client {
                     .nodes()?
                     .into_iter()
                     .map(|node| {
-                        let gateway = self.gateway(&node.id);
-                        (node.name, gateway)
+                        let station = self.station(&node.id);
+                        (node.name, station)
                     })
                     .collect::<Vec<_>>();
                 let items = futures_util::future::join_all(connections.into_iter().map(
-                    |(name, gateway)| async move {
-                        let reachable = match gateway {
+                    |(name, station)| async move {
+                        let reachable = match station {
                             Ok(client) => client
                                 .node_request(http::Method::GET, "/v1/node/info".into(), None)
                                 .await
@@ -1166,7 +1166,7 @@ impl Client {
                 }
                 self.store.remove_node(&peer)?;
                 self.adb.peer_revoked(&peer);
-                self.gateways.lock().expect("Gateway clients").remove(&peer);
+                self.stations.lock().expect("Station clients").remove(&peer);
                 self.resource_watchers.remove(&peer);
                 self.sync_resources()?;
                 self.snapshot()
@@ -1176,7 +1176,7 @@ impl Client {
                 if cached_only {
                     return settings::snapshot(&self.store, &peer);
                 }
-                settings::refresh(self.gateway(&peer)?, self.store.clone(), &peer).await
+                settings::refresh(self.station(&peer)?, self.store.clone(), &peer).await
             }
             Command::Read {
                 peer,
@@ -1207,7 +1207,7 @@ impl Client {
                     let generation = self.store.replica_generation(&peer)?;
                     let result: Result<_> = async {
                         let page = self
-                            .gateway(&peer)?
+                            .station(&peer)?
                             .catch_up_messages(session, anchor.as_deref(), 100)
                             .await?;
                         self.store
@@ -1229,7 +1229,7 @@ impl Client {
                         }
                     } else {
                         let device = state::Device::open(
-                            self.gateway(&peer)?,
+                            self.station(&peer)?,
                             Some((self.store.clone(), peer.clone())),
                             true,
                         );
@@ -1298,7 +1298,7 @@ impl Client {
             | Command::DeleteFailed { .. }) => self.local().execute(command),
             Command::Flush { peer } => {
                 self.peer(&peer)?;
-                let client = self.gateway(&peer)?;
+                let client = self.station(&peer)?;
                 let report = delivery::flush(&client, &self.store, &peer).await;
                 let mut result = serde_json::to_value(report)?;
                 result["outbox"] = serde_json::to_value(self.store.outbox(&peer)?)?;

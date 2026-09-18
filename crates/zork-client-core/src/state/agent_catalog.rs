@@ -1,6 +1,6 @@
 //! Shared agent catalog and edit commands, independent of any UI executor.
 use super::{Observable, Profiles, Subscription};
-use crate::api::{GatewayClient, ProfileInfo};
+use crate::api::{StationClient, ProfileInfo};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
@@ -104,7 +104,7 @@ impl AgentSubscription {
 pub struct Agents {
     #[cfg(not(target_family = "wasm"))]
     device: std::sync::OnceLock<std::sync::Weak<super::Device>>,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     profiles: Arc<Profiles>,
     owned: Mutex<AgentData>,
     state: Observable<AgentData>,
@@ -139,7 +139,7 @@ impl Agents {
             Ok(json!({}))
         }
     }
-    pub fn new(client: Arc<GatewayClient>, profiles: Arc<Profiles>) -> Arc<Self> {
+    pub fn new(client: Arc<StationClient>, profiles: Arc<Profiles>) -> Arc<Self> {
         Arc::new(Self {
             #[cfg(not(target_family = "wasm"))]
             device: Default::default(),
@@ -348,7 +348,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let client = Arc::new(GatewayClient::new(format!("http://{address}"), None));
+        let client = Arc::new(StationClient::new(format!("http://{address}"), None));
         let agents = Agents::new(client.clone(), Profiles::new(client));
         agents
             .create_agent(json!({"id": "leader", "role": "leader"}))
@@ -396,7 +396,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let client = Arc::new(GatewayClient::new(format!("http://{address}"), None));
+        let client = Arc::new(StationClient::new(format!("http://{address}"), None));
         let agents = Agents::new(client.clone(), Profiles::new(client));
         agents.seed_agents(Arc::new(vec![current.lock().unwrap().clone()]), true);
         for _ in 0..2 {

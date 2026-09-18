@@ -1,5 +1,5 @@
 //! Station file consumers read the same published tree as the file browser.
-use crate::{db::GatewayDb, mesh::MeshService};
+use crate::{db::StationDb, mesh::MeshService};
 use anyhow::{Context, Result};
 use std::{
     path::{Path, PathBuf},
@@ -15,13 +15,13 @@ mod materialize;
 
 pub struct Files {
     root: PathBuf,
-    db: Arc<GatewayDb>,
+    db: Arc<StationDb>,
     mesh: Arc<OnceLock<Arc<MeshService>>>,
     materialized: tokio::sync::Mutex<materialize::Cache>,
     catalog_snapshots: std::sync::Mutex<std::collections::HashMap<String, Reference>>,
 }
 impl Files {
-    pub fn new(root: PathBuf, db: Arc<GatewayDb>, mesh: Arc<OnceLock<Arc<MeshService>>>) -> Self {
+    pub fn new(root: PathBuf, db: Arc<StationDb>, mesh: Arc<OnceLock<Arc<MeshService>>>) -> Self {
         Self {
             root,
             db,

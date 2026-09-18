@@ -1,4 +1,4 @@
-//! Root view driven by the gateway-owned local IM entry.
+//! Root view driven by the station-owned local IM entry.
 //!
 //! Device-owned conversations with virtualized messages, comments, files and history.
 //! Event subscriptions drive live messages and activity; disconnected streams reconnect with backoff.
@@ -15,7 +15,7 @@ use gpui::{
 
 #[cfg(feature = "headless-bench")]
 use crate::api::SessionStatus;
-use crate::api::{AgentStatus, GatewayClient, ProductTask, Role, SessionSummary};
+use crate::api::{AgentStatus, StationClient, ProductTask, Role, SessionSummary};
 use crate::automation::{AutomationElementExt, AutomationRole};
 use crate::components::text_input::{
     ComposerEdited, ComposerFilesPasted, ComposerInput, ComposerLayoutChanged, ComposerSubmit,
@@ -96,7 +96,7 @@ pub struct RootView {
     active_leader: Option<String>,
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
     core_conversation: Option<Arc<zork_client_core::state::Conversation>>,
@@ -239,7 +239,7 @@ impl RootView {
             .update(cx, |browser, _| browser.set_visible(false));
     }
     fn new(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         local_cache: Option<(Arc<crate::desktop::store::ClientStore>, String)>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -1925,7 +1925,7 @@ mod tests {
     ) {
         let view = cx.new(|cx| {
             RootView::new(
-                Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
                 None,
                 cx,
             )
@@ -1957,7 +1957,7 @@ mod tests {
     fn selecting_current_task_keeps_inflight_message_request(cx: &mut gpui::TestAppContext) {
         let view = cx.new(|cx| {
             RootView::new(
-                Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
                 None,
                 cx,
             )

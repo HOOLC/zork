@@ -386,5 +386,5 @@ pub const LEADER_AVATAR_COLORS: [(u32, u32); 6] = [
 ];
 pub const LEADER_SIDEBAR_WIDTH: f32 = 264.;
 
-/// Unified desktop device navigation; the legacy gateway shell keeps its rail.
+/// Unified desktop device navigation; the legacy station shell keeps its rail.
 pub const DEVICE_SIDEBAR_WIDTH: f32 = 240.;

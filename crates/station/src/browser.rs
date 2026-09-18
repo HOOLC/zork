@@ -1,5 +1,5 @@
 //! Reverse browser RPC. The client subscribes over its existing authenticated
-//! HTTP/Mesh connection; Gateway never receives browser credentials.
+//! HTTP/Mesh connection; Station never receives browser credentials.
 use crate::state::AppState;
 use anyhow::{ensure, Context, Result};
 use axum::{
@@ -250,7 +250,7 @@ impl Hub {
                     self.finish(session, request, reply.result.clone())?;
                 }
             } else {
-                // A surviving client may finish after the Gateway restarts.
+                // A surviving client may finish after the Station restarts.
                 // Recover the receipt without reconstructing/re-executing a command.
                 let conn = self.receipts.lock().unwrap();
                 let device: Option<String> = conn

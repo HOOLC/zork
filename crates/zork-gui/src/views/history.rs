@@ -418,7 +418,7 @@ mod canvas_tests {
     ) {
         let view = cx.new(|cx| {
             RootView::new(
-                Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
                 None,
                 cx,
             )

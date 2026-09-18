@@ -25,7 +25,7 @@ def click(id):visible(id);native.click(id)
 def fill(id,text):click(id);native.type(text)
 try:
     for node in (a,b):node.start()
-    for node in (a,b):f.wait(lambda:node.request('GET','/readyz')[0]==200,'Gateway ready');f.wait(lambda:urlopen(node.agent_url+'/readyz',timeout=2).status==200,'Agent ready')
+    for node in (a,b):f.wait(lambda:node.request('GET','/readyz')[0]==200,'Station ready');f.wait(lambda:urlopen(node.agent_url+'/readyz',timeout=2).status==200,'Agent ready')
     selection={'profile_id':'fixture','model':'fixture-model','thinking':'off'}
     leader=admin(a,'POST','/v1/node/agents',dict(selection,id='leader',name='产品 Leader',role='leader'))
     admin(a,'POST','/v1/node/agents',dict(selection,id='engineering',name='开发助手',role='leader'))

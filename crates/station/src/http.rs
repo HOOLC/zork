@@ -904,14 +904,14 @@ fn local_im_session_json(session: &crate::db::SessionRow, status: &str) -> Value
     })
 }
 
-pub fn gateway_router(state: AppState) -> Router {
+pub fn station_router(state: AppState) -> Router {
     Router::new()
         .route("/readyz", get(readyz))
         .route("/healthz", get(readyz))
         .route("/sessions/{session_key}/im/bot", get(bot_identity))
         .route(
             "/sessions/{session_key}/im/threads/{conversation_id}/{root_message_id}",
-            get(gateway_thread_history),
+            get(station_thread_history),
         )
         .route("/sessions/{session_key}/im/download", get(slack_download))
         .route(
@@ -948,7 +948,7 @@ struct ThreadHistoryQuery {
     limit: Option<i64>,
 }
 
-async fn gateway_thread_history(
+async fn station_thread_history(
     State(state): State<AppState>,
     Path((session_key, conversation_id, root_message_id)): Path<(String, String, String)>,
     Query(query): Query<ThreadHistoryQuery>,

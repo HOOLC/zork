@@ -386,13 +386,13 @@ mod tests {
         );
     }
     #[test]
-    fn finishing_preserves_exact_quote_and_gateway_source() {
+    fn finishing_preserves_exact_quote_and_station_source() {
         let mut selection = TranscriptSelection::default();
         selection.dragging = true;
         selection.drag = Some(Drag {
             key: "m".into(),
             source: CommentSource {
-                message_id: Some("gateway-id".into()),
+                message_id: Some("station-id".into()),
                 ..Default::default()
             },
             text: "前句\n选中 原文\n后句".into(),
@@ -400,7 +400,7 @@ mod tests {
             end: 20,
         });
         let source = selection.finish().unwrap();
-        assert_eq!(source.message_id.as_deref(), Some("gateway-id"));
+        assert_eq!(source.message_id.as_deref(), Some("station-id"));
         assert_eq!(source.quote, "选中 原文");
         assert!(!selection.dragging);
     }

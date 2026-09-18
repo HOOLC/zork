@@ -37,7 +37,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn prepare_send_files(
         &self,
         key: &str,

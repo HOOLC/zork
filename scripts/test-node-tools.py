@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real two-Gateway device -> MCP -> managed-skill workflow with a fake model."""
+"""Real two-Station device -> MCP -> managed-skill workflow with a fake model."""
 import base64
 import importlib.util
 import json
@@ -152,7 +152,7 @@ def main():
         f.wait(lambda:b.get('/v1/mesh').get('origin')==b.origin,'executor restarts after graceful shutdown')
         restored=f.wait(lambda:(v[1] if (v:=raw('device.status',{'operation_id':shutdown['operation_id']}))[0]==200 else None),'shutdown receipt readable')
         assert restored['state']=='cancelled' and restored['result']['process_state']=='exited',restored
-        checks.append('graceful_gateway_shutdown_waits_for_device_process_termination')
+        checks.append('graceful_station_shutdown_waits_for_device_process_termination')
 
         config={'name':'echo-mcp','transport':{'kind':'stdio','command':'python3','args':[str(cwd/'mcp-server.py'),str(cwd/'calls')]}}
         installed=agent('mcp.install',{'target':b.origin,'config':config})['data'];server_id=installed['server_id'];assert installed['target']==b.origin
@@ -258,7 +258,7 @@ def main():
         f.wait(lambda:crash_file.exists(),'crash command dispatched')
         running=ok(raw('device.status',{'operation_id':crashing['data']['operation_id']}))
         pid=running['result']['pid']
-        b.restart_gateway();f.wait(lambda:b.get('/v1/mesh').get('origin')==b.origin,'executor Mesh restored')
+        b.restart_station();f.wait(lambda:b.get('/v1/mesh').get('origin')==b.origin,'executor Mesh restored')
         unknown=ok(raw('device.status',{'operation_id':crashing['data']['operation_id']}));assert unknown['state']=='outcome_unknown',unknown
         same=ok(raw('device.exec',crash_args,iid=crashing['invocation_id']));assert same['operation_id']==unknown['operation_id'] and same['state']=='outcome_unknown',same
         assert crash_file.read_text()=='once\n'

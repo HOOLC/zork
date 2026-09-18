@@ -31,7 +31,7 @@ pub(super) fn notice(conn: &Connection, agent: &str, message: &str) -> Result<Op
         .optional()?)
 }
 
-impl GatewayDb {
+impl StationDb {
     /// Returns only a recorded allocation. Calling this cannot allocate a runtime.
     pub fn chat_execution(
         &self,

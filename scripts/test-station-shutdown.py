@@ -20,11 +20,11 @@ def main():
     fixture.TARGET = args.bin_dir.resolve()
     root = Path(tempfile.mkdtemp(prefix='zork-sse-shutdown-', dir='/tmp'))
     node = fixture.Node(root / 'node')
-    with (root / 'gateway.log').open('wb') as log:
-        gateway = subprocess.Popen([str(fixture.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'], stdout=log, stderr=log)
+    with (root / 'station.log').open('wb') as log:
+        station = subprocess.Popen([str(fixture.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'], stdout=log, stderr=log)
         streams = []
         try:
-            fixture.wait(lambda: node.get('/v1/mesh').get('origin') == node.origin, 'Gateway ready')
+            fixture.wait(lambda: node.get('/v1/mesh').get('origin') == node.origin, 'Station ready')
             body = json.dumps({'profile_id':'fixture','model':'fixture-model','thinking':'off','workspace':str(node.workspace)}).encode()
             with urlopen(Request(node.agent_url + '/sessions', data=body, headers={'Content-Type':'application/json'}), timeout=3) as response:
                 session = json.load(response)['session_id']
@@ -33,21 +33,21 @@ def main():
                 assert response.headers.get('Content-Type', '').startswith('text/event-stream')
                 streams.append(response)
             started = time.monotonic()
-            gateway.terminate()
-            assert gateway.wait(timeout=5) == 0
+            station.terminate()
+            assert station.wait(timeout=5) == 0
             elapsed = time.monotonic() - started
             assert elapsed < 1, f'Idle event streams delayed shutdown by {elapsed:.3f}s'
             # A properly terminated chunked stream returns EOF, rather than
             # being force-aborted after the grace period with IncompleteRead.
             for stream in streams:
                 stream.read()
-            print(f'PASS: desktop/admin/Agent SSE ended cleanly; Gateway shutdown {elapsed:.3f}s; {root}')
+            print(f'PASS: desktop/admin/Agent SSE ended cleanly; Station shutdown {elapsed:.3f}s; {root}')
         finally:
             for stream in streams:
                 stream.close()
-            if gateway.poll() is None:
-                gateway.kill()
-                gateway.wait()
+            if station.poll() is None:
+                station.kill()
+                station.wait()
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-//! Gateway-owned MCP services and durable Mesh invocation routing.
+//! Station-owned MCP services and durable Mesh invocation routing.
 mod api;
 mod calls;
 mod management;

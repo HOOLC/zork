@@ -18,7 +18,7 @@ fn invitation_replacement_rejects_an_unapplied_old_claim_without_a_device_contro
     assert!(observer.prepare().unwrap().is_none());
 }
 use crate::{
-    api::{GatewayClient, MessageMetadata, Role, SseEvent},
+    api::{StationClient, MessageMetadata, Role, SseEvent},
     state::ConversationData,
     transcript::TranscriptLine,
 };
@@ -71,7 +71,7 @@ fn wire_retries_from_applied_window_and_encodes_only_changed_rows() {
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         None,
         true,
     );
@@ -157,7 +157,7 @@ fn saved_echo_updates_pending_wire_message_without_another_receive_callback() {
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         Some((store.clone(), "peer".into())),
         true,
     );
@@ -212,7 +212,7 @@ fn reading_window_keeps_its_anchor_through_a_burst_and_pages_in_both_directions(
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         None,
         true,
     );
@@ -256,7 +256,7 @@ async fn settings_wake_on_committed_changes_and_revocation_interrupts_prepared_d
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         Some((store.clone(), "peer".into())),
         true,
     );

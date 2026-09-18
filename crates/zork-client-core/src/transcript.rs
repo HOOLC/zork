@@ -1,6 +1,6 @@
 //! Pure transcript projection and reconciliation helpers.
 //!
-//! The HTTP/SSE client exposes Gateway-delivered message identities; internal
+//! The HTTP/SSE client exposes Station-delivered message identities; internal
 //! execution events remain separate. These helpers keep ordering and optimistic-send
 //! rules explicit and testable without constructing a GPUI window.
 
@@ -19,7 +19,7 @@ pub enum TranscriptLine {
     },
 }
 
-/// Convert a gateway-delivered message into a renderable line.
+/// Convert a station-delivered message into a renderable line.
 pub fn transcript_line_from(item: &TranscriptMessage) -> Option<TranscriptLine> {
     let TranscriptMessage::Message { metadata, .. } = item;
     if crate::interactions::result(metadata).is_some() {
@@ -93,7 +93,7 @@ pub fn begin_optimistic_user(
     pending_user.push(content);
 }
 
-/// Consume the matching pending entry when the gateway user-message echo arrives.
+/// Consume the matching pending entry when the station user-message echo arrives.
 /// `true` means the caller must suppress that echo because the local row is
 /// already visible.
 pub fn take_pending_user_echo(pending_user: &mut Vec<String>, content: &str) -> bool {
@@ -104,7 +104,7 @@ pub fn take_pending_user_echo(pending_user: &mut Vec<String>, content: &str) -> 
     true
 }
 
-/// Remove the pending optimistic row after a failed gateway send.
+/// Remove the pending optimistic row after a failed station send.
 pub fn rollback_optimistic_user(
     lines: &mut Vec<TranscriptLine>,
     pending_user: &mut Vec<String>,
@@ -131,7 +131,7 @@ pub fn rollback_optimistic_user(
 }
 
 /// Reconcile a retried SSE delivery or an optimistic local row with the durable
-/// Gateway identity. Equal prose in two distinct delivered messages stays distinct.
+/// Station identity. Equal prose in two distinct delivered messages stays distinct.
 pub fn reconcile_delivery(
     lines: &mut [TranscriptLine],
     pending: &mut Vec<String>,

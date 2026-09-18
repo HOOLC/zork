@@ -1,5 +1,5 @@
 //! Platform-independent conversation rules. UI adapters own selection and scroll,
-//! while both apply these reducers to Gateway messages and live activity.
+//! while both apply these reducers to Station messages and live activity.
 use crate::api::{AgentStatus, ParticipantStatus, SessionSummary, SseEvent, TranscriptMessage};
 
 #[derive(Debug, PartialEq)]

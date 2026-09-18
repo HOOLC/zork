@@ -28,7 +28,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS node_agents(id TEXT PRIMARY KEY,value TEXT NOT NULL,session_key TEXT UNIQUE,session_id TEXT UNIQUE); CREATE TABLE IF NOT EXISTS worker_tasks(request_id TEXT NOT NULL,leader_id TEXT NOT NULL,worker_id TEXT NOT NULL,session_key TEXT NOT NULL UNIQUE,session_id TEXT NOT NULL UNIQUE,goal TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'allocated',PRIMARY KEY(leader_id,request_id)); CREATE TABLE IF NOT EXISTS leader_notifications(id TEXT PRIMARY KEY,leader_id TEXT NOT NULL,content TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0);")?;
     Ok(())
 }
-impl GatewayDb {
+impl StationDb {
     pub fn agent_id_for_session(&self, session_id: &str) -> Result<Option<String>> {
         Ok(self.conn.lock().expect("db mutex").query_row(
             "SELECT id FROM node_agents WHERE session_id=?1 UNION ALL SELECT worker_id FROM worker_tasks WHERE session_id=?1
@@ -307,7 +307,7 @@ impl GatewayDb {
             .transpose()
     }
     /// Insert the Agent before creating its binding. Its role is authoritative
-    /// even if Gateway stops between allocation and runtime acknowledgement.
+    /// even if Station stops between allocation and runtime acknowledgement.
     pub fn insert_node_agent(&self, agent: &NodeAgent) -> Result<()> {
         self.conn.lock().expect("db mutex").execute(
             "INSERT INTO node_agents(id,value,session_key,session_id) VALUES (?1,?2,?3,?4)",
@@ -354,7 +354,7 @@ impl GatewayDb {
     }
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn tasks_for_leader(&self, leader: &str) -> Result<Vec<super::tasks::ProductTask>> {
         let keys = {
             let conn = self.conn.lock().expect("db mutex");
@@ -370,7 +370,7 @@ impl GatewayDb {
     }
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn pending_leader_notifications(&self) -> Result<Vec<(String, String, String)>> {
         let conn = self.conn.lock().expect("db mutex");
         let rows=conn.prepare("SELECT id,leader_id,content FROM leader_notifications WHERE delivered=0 ORDER BY rowid LIMIT 32")?.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -392,7 +392,7 @@ impl GatewayDb {
         Ok(self.conn.lock().expect("db mutex").query_row("SELECT w.leader_id,w.worker_id,w.session_key FROM worker_tasks w JOIN product_tasks t ON w.session_key=t.session_key WHERE t.task_id=?1",[task_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?)
     }
 }
-impl GatewayDb {
+impl StationDb {
     pub fn has_message_receipt(&self, id: &str, key: &str, content: &str) -> Result<bool> {
         let conn = self.conn.lock().expect("db mutex");
         let previous: Option<(String, String)> = conn
@@ -452,7 +452,7 @@ mod gui_contract_tests {
     fn remote_worker_skill_paths_resolve_on_executor_after_recovery() {
         use crate::db::mesh::{Assignment, WorkerTarget};
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         db.insert_node_agent(&definition("worker", AgentRole::Worker))
             .unwrap();
         db.update_agent_skill_paths("worker", vec!["executor-only".into()])
@@ -478,7 +478,7 @@ mod gui_contract_tests {
             vec![std::path::PathBuf::from("executor-only")]
         );
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(
             db.selection_for_session(&session).unwrap().unwrap().model,
             "remote-new-model"
@@ -506,7 +506,7 @@ mod gui_contract_tests {
     #[test]
     fn skill_paths_persist_and_worker_sessions_use_executor_configuration() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let mut leader = definition("leader", AgentRole::Leader);
         leader.session_id = Some("leader-session".into());
         leader.session_key = Some("leader-key".into());
@@ -533,7 +533,7 @@ mod gui_contract_tests {
             .update_agent_skill_paths("worker", vec!["".into()])
             .is_err());
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(
             db.skill_paths_for_session(&worker_session).unwrap(),
             vec![std::path::PathBuf::from("device/skills")]
@@ -551,7 +551,7 @@ mod gui_contract_tests {
     #[test]
     fn model_change_updates_worker_selection_and_keeps_identity_grants_workspace() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let worker = definition("worker", AgentRole::Worker);
         db.insert_node_agent(&worker).unwrap();
         let (key, id, _) = db
@@ -598,7 +598,7 @@ mod gui_contract_tests {
     #[test]
     fn task_comment_is_atomic_idempotent_and_only_queues_its_own_leader() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         db.insert_node_agent(&definition("leader", AgentRole::Leader))
             .unwrap();
         let (key, id, _) = db
@@ -668,7 +668,7 @@ mod gui_contract_tests {
     #[test]
     fn read_markers_project_only_owned_leader_assignment_and_rework_ids() {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         db.insert_node_agent(&definition("leader", AgentRole::Leader))
             .unwrap();
         let (key, id, _) = db

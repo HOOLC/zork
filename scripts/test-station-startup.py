@@ -32,16 +32,16 @@ def main():
         for attempt in range(2):
             with (root / f'start-{attempt}.log').open('wb') as log:
                 started = time.monotonic()
-                gateway = subprocess.Popen([str(fixture.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'], stdout=log, stderr=log)
+                station = subprocess.Popen([str(fixture.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'], stdout=log, stderr=log)
                 try:
                     def ready():
-                        assert gateway.poll() is None, 'Gateway exited during startup'
+                        assert station.poll() is None, 'Station exited during startup'
                         try:
                             with urlopen(node.url + '/readyz', timeout=.2) as response:
                                 return response.status == 200
                         except OSError:
                             return False
-                    fixture.wait(ready, 'local Gateway readiness', timeout=3)
+                    fixture.wait(ready, 'local Station readiness', timeout=3)
                     elapsed = time.monotonic() - started
                     assert elapsed < 3, elapsed
                     assert node.request('GET', '/v1/tasks')[0] == 200
@@ -54,12 +54,12 @@ def main():
                     fixture.wait(lambda: node.get('/v1/mesh').get('origin') == node.origin,
                                  'Mesh recovery completes independently', timeout=20)
                 finally:
-                    gateway.terminate()
+                    station.terminate()
                     try:
-                        gateway.wait(timeout=30)
+                        station.wait(timeout=30)
                     except subprocess.TimeoutExpired:
-                        gateway.kill()
-                        gateway.wait()
+                        station.kill()
+                        station.wait()
                         raise
     print(f'PASS: local startup {measurements}s; persisted offline peer does not block local APIs; Mesh recovery completes; {root}')
 

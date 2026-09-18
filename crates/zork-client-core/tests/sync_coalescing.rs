@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use zork_client_core::{api::GatewayClient, store::ClientStore, sync::Coordinator};
+use zork_client_core::{api::StationClient, store::ClientStore, sync::Coordinator};
 use zork_client_types::sync::{Cursor, Page, Pull, Reply, Scope};
 
 #[tokio::test]
@@ -42,7 +42,7 @@ async fn concurrent_scope_refreshes_share_work_and_newer_requests_catch_up() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(dir.path()).unwrap());
     let coordinator = Coordinator::new(
-        Arc::new(GatewayClient::new(url, None)),
+        Arc::new(StationClient::new(url, None)),
         store.clone(),
         "peer".into(),
         "owner".into(),

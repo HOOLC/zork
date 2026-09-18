@@ -107,7 +107,7 @@ async fn perform(root: &Path, version: &str) -> Result<()> {
                 let verify = async {
                     let info: serde_json::Value = client.get(format!("{base}/v1/node/info"))
                         .bearer_auth(&token).send().await?.error_for_status()?.json().await?;
-                    ensure!(info["gateway"]["release_version"] == version, "设备尚未切换到目标版本");
+                    ensure!(info["station"]["release_version"] == version, "设备尚未切换到目标版本");
                     let agent_base = zork_config::loopback_base_url(&config.bind.agent);
                     client.get(format!("{agent_base}/readyz")).send().await?.error_for_status()?;
                     Ok::<_, anyhow::Error>(())

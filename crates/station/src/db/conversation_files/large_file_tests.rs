@@ -1,7 +1,7 @@
 //! Explicit capacity regression; keep hundreds of MiB out of routine unit runs.
 use super::*;
 use std::{sync::Arc, time::Instant};
-use zork_client_core::{api::GatewayClient, state::Device, store::ClientStore};
+use zork_client_core::{api::StationClient, state::Device, store::ClientStore};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "300 MiB client/storage/Mesh capacity regression; run explicitly"]
@@ -22,7 +22,7 @@ async fn large_file_round_trip_at_300_mib() -> anyhow::Result<()> {
     };
     let store = Arc::new(ClientStore::open(&root.path().join("client"))?);
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         Some((store.clone(), "node".into())),
         false,
     );
@@ -51,7 +51,7 @@ async fn large_file_round_trip_at_300_mib() -> anyhow::Result<()> {
     );
 
     let server_root = root.path().join("server");
-    let db = GatewayDb::open(&server_root, &server_root.join("workspaces"))?;
+    let db = StationDb::open(&server_root, &server_root.join("workspaces"))?;
     let session = db.create_session_at_workspace(
         EnsureSession {
             connection_id: "local_gui",
@@ -72,7 +72,7 @@ async fn large_file_round_trip_at_300_mib() -> anyhow::Result<()> {
         );
     }
     drop(db);
-    let db = GatewayDb::open(&server_root, &server_root.join("workspaces"))?;
+    let db = StationDb::open(&server_root, &server_root.join("workspaces"))?;
     {
         let restored = db.conversation_file_bytes(&session.key, &file)?;
         ensure!(

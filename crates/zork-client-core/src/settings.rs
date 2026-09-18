@@ -1,6 +1,6 @@
 //! A platform settings snapshot reads the same committed product replica.
 //! Legacy owners have one explicitly scoped public cache, never arbitrary HTTP.
-use crate::{api::GatewayClient, state::Device, store::ClientStore};
+use crate::{api::StationClient, state::Device, store::ClientStore};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -135,7 +135,7 @@ pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
 }
 
 pub(crate) async fn refresh(
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     store: Arc<ClientStore>,
     peer: &str,
 ) -> Result<Value> {

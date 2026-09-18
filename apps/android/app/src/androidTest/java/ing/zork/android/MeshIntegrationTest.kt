@@ -15,7 +15,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 
 /** All peers are created by scripts/android/test_mesh.py in a temporary fixture.
- * No production Gateway, model key or account is used. Each test invocation is
+ * No production Station, model key or account is used. Each test invocation is
  * a fresh Android process sharing the app-private client database.
  */
 @RunWith(AndroidJUnit4::class)
@@ -68,7 +68,7 @@ class MeshIntegrationTest {
         val queued = call("enqueue", "peer" to peer, "session" to session, "content" to content)
         val body = JSONObject().put("content", content).put("request_id", queued.getString("request_id"))
         // Replay the identical command before flushing the durable outbox. The
-        // Gateway must reconcile it to one visible user message and one run.
+        // Station must reconcile it to one visible user message and one run.
         request(peer, "POST", "/v1/im/sessions/$session/messages", body)
         request(peer, "POST", "/v1/im/sessions/$session/messages", body)
         assertFalse(call("flush", "peer" to peer).has("error"))
@@ -78,7 +78,7 @@ class MeshIntegrationTest {
         assertEquals(1, items.count { it.text("role") == "assistant" })
         val denied = JSONObject(NativeBridge.call(root, JSONObject().put("op", "request").put("peer", peer)
             .put("method", "GET").put("path", "/v1/tools/context").put("body", JSONObject.NULL).toString()))
-        assertFalse("Client escaped Gateway route allowlist", denied.getBoolean("ok"))
+        assertFalse("Client escaped Station route allowlist", denied.getBoolean("ok"))
         call("pause")
         val cached = call("read", "peer" to peer, "path" to "/v1/im/sessions/$session/messages")
         assertTrue(cached.getBoolean("cached"))
