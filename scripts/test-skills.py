@@ -124,9 +124,11 @@ def main():
                         assert all(not (node.root / "files" / name).exists() for name in ("bundled-skills", "custom-skills", "managed-skills"))
                         guide = tool("file.read", {"path": guide_path})
                         assert guide["content"] == Path(guide_path).read_text()
-                        slack_path = next(s["path"] for s in catalog["skills"] if s["name"] == "slack")
+                        slack_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "slack")
                         assert tool("file.read", {"path": slack_path})["content"] == Path(slack_path).read_text()
                         tool("shell.run", {"command": "test \"$SKILLS_ROOT\" = " + shlex.quote(str(node.root / "skills"))})
+                        added = tool("skill.sources", {"action": "add", "path": "agent-skills"})
+                        assert added["agent_id"] == "leader" and added["agent_paths"] == ["agent-skills"]
                         content = "---\nname: managed\ndescription: Managed skill\n---\nManaged body\n"
                         directory = node.root / "skills/managed"
                         tool("shell.run", {"command": "mkdir -p " + shlex.quote(str(directory))})

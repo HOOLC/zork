@@ -49,6 +49,10 @@ use tracing::info;
 use zork_agent::{session::tools::ToolRegistry, AgentOptions, AgentRuntime};
 
 fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| anyhow::anyhow!("rustls crypto provider already installed"))?;
+
     zork_config::startup::mark("station.main");
     if std::env::args().nth(1).as_deref() == Some("--service-process") {
         let input = std::env::args()

@@ -125,6 +125,9 @@ describe.sequential("Gateway mailbox delivery", () => {
     expect(create.workspace).toBe(path.join(tempRoot, "shared-files", "workspaces", "im", testConnectionId, "proactive"));
     expect(create.system_prompt).toContain("You are Zork observing Slack");
     expect(create.system_prompt).toContain("Publishing a Slack message is an explicit external action");
+    expect(create.system_prompt).toEqual(expect.stringContaining("Use the Slack Skill"));
+    expect(create.system_prompt).toEqual(expect.stringContaining("Use tool.help"));
+    expect(create.system_prompt).not.toContain("slack.post_message");
     expect(first.body.content).toContain('"channel_id": "C-FIRST"');
     expect(first.body.content).toContain('"thread_ts": "100.001"');
     await waitFor(
