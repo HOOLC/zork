@@ -183,11 +183,6 @@ impl Node {
             if let Err(e) = self.push_head(head).await {
                 tracing::debug!(error = %e, "could not push the new head");
             }
-            // This node's own origin's tree just moved, and both checkouts
-            // and the replicas follow the unified tree — which
-            // includes it.
-            self.checkout_wake().notify_one();
-            self.replica_wake().notify_one();
         }
         Ok(head)
     }
@@ -198,7 +193,7 @@ impl Node {
     /// The half of a flush that is this node's own business. Peers learn the
     /// head from the push in [`Node::flush_staged`], or from the next
     /// anti-entropy round if nobody pushes it.
-    async fn publish_staged(&self) -> Result<Option<SignedHead>> {
+    pub async fn publish_staged(&self) -> Result<Option<SignedHead>> {
         let batch = self.publisher().take();
         if batch.is_empty() {
             return Ok(None);
@@ -226,6 +221,10 @@ impl Node {
             }
         })
         .await?;
+        if head.is_some() {
+            self.checkout_wake().notify_one();
+            self.replica_wake().notify_one();
+        }
         Ok(head)
     }
 
