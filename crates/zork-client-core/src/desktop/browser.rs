@@ -1,6 +1,6 @@
 //! Browser authorization owns a read stream and idempotent result receipts.
 use super::browser_worker::Worker;
-use crate::{api::GatewayClient, live::LiveEvent};
+use crate::{api::StationClient, live::LiveEvent};
 use anyhow::{ensure, Result};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -19,7 +19,7 @@ pub struct Grant {
     connected: Arc<AtomicBool>,
     error: Arc<Mutex<Option<String>>>,
     task: Option<zork_notify::Task<()>>,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     path: String,
     registration: Value,
     worker: Worker,
@@ -50,7 +50,7 @@ impl Drop for Grant {
 impl Grant {
     pub fn start(
         worker: Worker,
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         _session: String,
         host: String,
     ) -> Self {
@@ -101,7 +101,7 @@ impl Grant {
 }
 async fn run(
     worker: &Worker,
-    client: &Arc<GatewayClient>,
+    client: &Arc<StationClient>,
     host: &str,
     registration: &Value,
     allowed: &Arc<AtomicBool>,
@@ -216,7 +216,7 @@ async fn run(
     anyhow::bail!("浏览器订阅已结束")
 }
 async fn deliver_receipts(
-    client: &GatewayClient,
+    client: &StationClient,
     path: &str,
     registration: &Value,
     replies: &mut Vec<Value>,
@@ -295,7 +295,7 @@ mod tests {
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let client = GatewayClient::new(format!("http://{}", listener.local_addr().unwrap()), None);
+        let client = StationClient::new(format!("http://{}", listener.local_addr().unwrap()), None);
         let server = zork_notify::Task(tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         }));

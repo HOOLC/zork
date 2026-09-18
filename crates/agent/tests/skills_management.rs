@@ -10,7 +10,7 @@ fn service_sharing_skill_is_shipped_and_discoverable() {
         .skills
         .iter()
         .find(|skill| skill.name == "service-sharing")
-        .expect("service-sharing must be available to Gateway Agents");
+        .expect("service-sharing must be available to Station Agents");
     assert!(service
         .path
         .starts_with(temp.path().canonicalize().unwrap()));

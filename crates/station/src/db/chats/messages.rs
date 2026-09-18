@@ -9,7 +9,7 @@ pub struct PreparedFile {
     pub content: Vec<u8>,
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn record_receiving_policy(
         &self,
         agent: &str,

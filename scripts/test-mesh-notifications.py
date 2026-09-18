@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real core invitation observation and browser streams against an isolated Gateway."""
+"""Real core invitation observation and browser streams against an isolated Station."""
 import concurrent.futures
 import importlib.util
 import json
@@ -90,7 +90,7 @@ def main():
         (node.root / 'config.json').write_text(json.dumps(node.config))
         node.start()
         try:
-            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Gateway ready')
+            f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station ready')
             f.wait(lambda: admin(node, 'GET', '/v1/node/mesh').get('origin'), 'Mesh ready')
             for cancel in (False, True):
                 invitation = admin(node, 'POST', '/v1/node/mesh/client-invites')

@@ -190,7 +190,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn admin_records_use_gateway_sequence_identity_in_gateway_database() {
+    fn admin_records_use_station_sequence_identity_in_station_database() {
         let root = tempfile::tempdir().expect("temporary state directory");
         let db = ControlDb::open(root.path()).expect("control db");
 
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(audit[0]["id"], 2);
         assert_eq!(audit[1]["id"], 1);
         assert_eq!(audit[0]["operationId"], 1);
-        assert!(root.path().join("gateway.sqlite").exists());
+        assert!(root.path().join("station.sqlite").exists());
         assert!(!root.path().join("control.sqlite").exists());
     }
 }

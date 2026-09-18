@@ -201,7 +201,7 @@ class Desktop:
         config = self.config()
         runtime = int(config["bind"]["runtime"].rsplit(":", 1)[1])
         agent = int(config["bind"]["agent"].rsplit(":", 1)[1])
-        pid = int((node / "run/zork-gateway.pid").read_text())
+        pid = int((node / "run/zork-station.pid").read_text())
         token = config["admin"].get("token") or json.loads((node / "run/node-token.json").read_text())
         critical.validate_node(node, json.loads(critical.control(node, "status")),
             critical.request(runtime, "/readyz"), critical.request(agent, "/readyz"),
@@ -244,7 +244,7 @@ class Desktop:
                     detail = {"model_received_ms": ((model.received_at[text] - self.started) * 1000) if text in model.received_at else None,
                               "outbox": [dict(zip(("status", "attempted", "error", "value"), row))
                                          for row in db.execute("SELECT status,attempted,error,value FROM messages WHERE status!='sent'")]}
-                    for label, pid in [("gui", self.process.pid), ("station", int((self.client / "node/run/zork-gateway.pid").read_text()))]:
+                    for label, pid in [("gui", self.process.pid), ("station", int((self.client / "node/run/zork-station.pid").read_text()))]:
                         self.diagnostics.append(subprocess.Popen(["sample", str(pid), "1", "10", "-mayDie", "-file",
                             str(self.output / (self.case + "-" + label + "-sample.txt"))], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
                     try:
@@ -283,7 +283,7 @@ class Desktop:
         self.sample["kind"] = "paired-startup-performance"
         def mesh():
             self.wait(lambda: int((self.client / "node/run/zork-mesh.pid").read_text()) ==
-                      int((self.client / "node/run/zork-gateway.pid").read_text()) and self.origin(),
+                      int((self.client / "node/run/zork-station.pid").read_text()) and self.origin(),
                       "Station Mesh bridge and sources ready")
             self.mark("station_mesh")
             self.wait(self.transport_ready, "client Mesh transport ready")

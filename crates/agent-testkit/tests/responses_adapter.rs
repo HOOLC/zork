@@ -522,14 +522,14 @@ async fn arbitrary_http_400_stops_streaming_and_non_streaming_after_one_request(
     agent.shutdown().await;
 }
 
-struct DisconnectingGateway {
+struct DisconnectingStation {
     url: String,
     disconnect: Arc<AtomicBool>,
     stop: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
-impl DisconnectingGateway {
+impl DisconnectingStation {
     async fn start(upstream: &str) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -600,9 +600,9 @@ async fn wait_for_failure_count(agent: &RealAgent, session: &str, count: usize) 
 async fn network_disconnect_and_truncated_output_recover_without_repeating_tools() {
     let mut agent = RealAgent::new().unwrap();
     for streaming in [true, false] {
-        let gateway = DisconnectingGateway::start(agent.provider_base_url()).await;
+        let station = DisconnectingStation::start(agent.provider_base_url()).await;
         let profile_id = format!("go-disconnect-{streaming}");
-        let mut settings = profile(&gateway.url, streaming);
+        let mut settings = profile(&station.url, streaming);
         settings["provider"] = json!("opencode-go");
         settings["billing"] = json!("subscription");
         settings["models"][0]["id"] = json!("deepseek-flash");
@@ -618,7 +618,7 @@ async fn network_disconnect_and_truncated_output_recover_without_repeating_tools
             .await
             .unwrap();
         wait_for_failure_count(&agent, &session, 2).await;
-        gateway.disconnect.store(false, Ordering::SeqCst);
+        station.disconnect.store(false, Ordering::SeqCst);
         let first = tokio::time::timeout(Duration::from_secs(10), agent.request())
             .await
             .unwrap();
@@ -759,7 +759,7 @@ async fn network_disconnect_and_truncated_output_recover_without_repeating_tools
             "once\n"
         );
         assert!(!workspace.join("must-not-exist.txt").exists());
-        gateway.shutdown().await;
+        station.shutdown().await;
     }
     agent.shutdown().await;
 }

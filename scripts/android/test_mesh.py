@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Android JNI -> embedded Synch -> isolated real Gateway/fake-model Agent.
+"""Android JNI -> embedded Synch -> isolated real Station/fake-model Agent.
 
 Requires an already running arm64 emulator (default emulator-5554), debug APK
 and instrumentation APK. No user node, model account or workspace is accessed.
@@ -74,7 +74,7 @@ def main():
     keep = False
     try:
         node.start()
-        fixture.wait(lambda: node.request("GET", "/readyz")[0] == 200, "Gateway ready")
+        fixture.wait(lambda: node.request("GET", "/readyz")[0] == 200, "Station ready")
         fixture.wait(lambda: urlopen(node.agent_url + "/readyz", timeout=2).status == 200, "Agent ready")
         admin("POST", "/v1/node/agents", {"id":"android-leader", "name":"Android Leader", "role":"leader",
               "avatar":"panda", "profile_id":"fixture", "model":"fixture-model", "thinking":"off"})
@@ -107,7 +107,7 @@ def main():
         (node.root / "config.json").write_text(json.dumps(node.config))
         summary = {"fixture":str(root), "node_origin":node.origin, "node_udp":node.udp,
                    "supervisor_pid":node.process.pid, "serial":args.serial,
-                   "checks":["JNI and Android TLS initialization", "real QUIC Gateway requests", "live subscription",
+                   "checks":["JNI and Android TLS initialization", "real QUIC Station requests", "live subscription",
                              "stable-ID deduplication", "shared Rust delivery and projection", "offline cache", "process restart and pending send",
                              "local drafts while a real network request is stalled", "revocation"]}
         (artifacts / "mesh-result.json").write_text(json.dumps(summary, indent=2) + "\n")

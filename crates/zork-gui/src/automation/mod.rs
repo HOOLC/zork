@@ -2,7 +2,7 @@
 //!
 //! The API observes rendered geometry and can only mutate the app by dispatching
 //! mouse and keyboard input. It intentionally has no access to `RootView` or to
-//! gateway/business methods.
+//! station/business methods.
 
 mod driver;
 mod element;

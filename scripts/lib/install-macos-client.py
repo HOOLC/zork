@@ -112,7 +112,7 @@ def main():
     expect_node = any(
         executable in line
         for line in running
-        for executable in ('/zork-station ', '/zork-gateway ')
+        for executable in ('/zork-station ', '/zork-station ')
     )
     database = Path.home() / 'Library/Application Support/Zork/client/client.db'
     expect_node = local_node_enabled(database, expect_node)

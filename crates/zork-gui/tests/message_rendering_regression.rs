@@ -95,7 +95,7 @@ fn incomplete_streaming_markdown_and_long_unicode_remain_readable() {
 }
 
 #[test]
-fn transcript_projection_keeps_gateway_delivered_user_and_assistant_roles() {
+fn transcript_projection_keeps_station_delivered_user_and_assistant_roles() {
     let user = TranscriptMessage::Message {
         role: Role::User,
         content: "你好\nsecond line".to_owned(),

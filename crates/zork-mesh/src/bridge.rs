@@ -1,6 +1,6 @@
 //! A private loopback ingress accepting exactly one authenticated peer and one
 //! bounded request per connection. The eBPF bridge supplies the prelude before
-//! forwarding any caller bytes. This is not a general Gateway HTTP listener.
+//! forwarding any caller bytes. This is not a general Station HTTP listener.
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::{ensure, Context, Result};

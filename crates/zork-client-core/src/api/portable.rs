@@ -1,4 +1,4 @@
-//! Public, offline Gateway adapter for portable core contracts and UI fixtures.
+//! Public, offline Station adapter for portable core contracts and UI fixtures.
 #[path = "profile_types.rs"]
 mod profile_types;
 pub use profile_types::{ProfileInfo, ProfileModel, ProfileQuota};
@@ -37,11 +37,11 @@ impl ClientTask {
 }
 #[path = "offline.rs"]
 mod offline;
-pub struct GatewayClient {
+pub struct StationClient {
     fixture: offline::Fixture,
     executor: Arc<dyn Executor>,
 }
-impl GatewayClient {
+impl StationClient {
     pub fn new(_: &str, _: Option<String>) -> Self {
         let (fixture, providers, executor) = FIXTURE
             .with(|fixture| fixture.borrow().clone())

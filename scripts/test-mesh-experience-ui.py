@@ -91,7 +91,7 @@ def main():
     print('isolated native mesh experience:', root, flush=True)
     try:
         b.start()
-        ui.wait(lambda: b.request('GET', '/readyz')[0] == 200, 'remote Gateway ready')
+        ui.wait(lambda: b.request('GET', '/readyz')[0] == 200, 'remote Station ready')
         ui.wait(lambda: urlopen(b.agent_url + '/readyz', timeout=2).status == 200, 'remote Agent ready')
         selection = {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'}
         leader = enrollment.admin(b, 'POST', '/v1/node/agents', dict(selection, id='remote-leader', name='mini2 Leader', role='leader'))
@@ -114,7 +114,7 @@ def main():
         config['mesh']['name'] = 'mini1'
         (client / 'node/config.json').write_text(json.dumps(config))
         pid = int((client / 'node/zork.pid').read_text())
-        pids=','.join([str(pid),(client/'node/run/zork-gateway.pid').read_text().strip()])
+        pids=','.join([str(pid),(client/'node/run/zork-station.pid').read_text().strip()])
         (root/'process-masks.txt').write_text(subprocess.check_output(['ps','-p',pids,'-o','pid,blocked,pending,stat,command'],text=True))
         click('desktop-manage')
         local_settings_id = next(e['id'] for e in json.loads(native.ui('/v1/elements'))['elements']
@@ -137,7 +137,7 @@ def main():
         click('desktop-return')
         remote_id = 'leader-' + b.origin + '-remote-leader'
         ui.wait(lambda: native.element(remote_id, True), 'new device and Leader appear without manual identity exchange', 90)
-        assert len(saved_nodes()) == 2, 'one physical local Gateway appeared twice in the sidebar'
+        assert len(saved_nodes()) == 2, 'one physical local Station appeared twice in the sidebar'
         click(remote_id)
         ui.wait(lambda: native.element('conversation-device') and 'mini2' in native.element('conversation-device')['label'], 'execution location')
         native.screenshot(screenshots / 'remote-conversation.png')
@@ -184,22 +184,22 @@ def main():
         ui.wait(lambda: settings()['enabled'] and native.element('local-node-background', True), 'background service enabled')
         assert int((client / 'node/zork.pid').read_text()) == pid
         assert not (client / 'node/run/zork-agent.pid').exists()
-        native.screenshot(screenshots / 'background-gateway.png')
+        native.screenshot(screenshots / 'background-station.png')
         kill_gui()
         time.sleep(2)
         assert alive(pid)
         assert urlopen('http://' + local_config()['bind']['runtime'] + '/readyz', timeout=3).status == 200
         launch('900x600')
-        ui.wait(lambda: native.element('desktop-manage'), 'client reattaches existing background Gateway', 60)
+        ui.wait(lambda: native.element('desktop-manage'), 'client reattaches existing background Station', 60)
         assert int((client / 'node/zork.pid').read_text()) == pid
         manage_local()
-        native.screenshot(screenshots / 'background-gateway-small.png')
+        native.screenshot(screenshots / 'background-station-small.png')
         click('local-node-foreground')
         ui.wait(lambda: not settings()['enabled'] and native.element('local-node-background', True), 'return ownership to client')
         assert alive(pid)
         kill_gui()
-        ui.wait(lambda: not alive(pid), 'client lease closes Gateway after background mode disabled')
-        print('PASS: launchd adopts existing PID, GUI crash leaves Gateway running, reattach at 900×600, client lease resumes without task restart', flush=True)
+        ui.wait(lambda: not alive(pid), 'client lease closes Station after background mode disabled')
+        print('PASS: launchd adopts existing PID, GUI crash leaves Station running, reattach at 900×600, client lease resumes without task restart', flush=True)
         (screenshots / 'result.json').write_text(json.dumps({'root': str(root), 'checks': ['native_invite', 'auto_devices', 'execution_location', 'offline_draft', 'cancel_pending', 'reconnect_once', 'background_adoption', 'client_crash', 'service_reattach', 'lease_cleanup', 'small_window']}, indent=2))
     finally:
         if native.process and native.process.poll() is None:

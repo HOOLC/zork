@@ -121,7 +121,7 @@ impl Ticket {
             (InviteKind::Client, raw)
         } else {
             (
-                InviteKind::Gateway,
+                InviteKind::Station,
                 value
                     .strip_prefix("zj1_")
                     .context("unsupported_mesh_invite")?,
@@ -255,7 +255,7 @@ mod tests {
     use super::*;
     #[test]
     fn short_ticket_is_68_chars_and_preserves_bootstrap() {
-        for kind in [InviteKind::Client, InviteKind::Gateway] {
+        for kind in [InviteKind::Client, InviteKind::Station] {
             let addr = EndpointAddr::new(SecretKey::generate().public());
             let ticket = Ticket::new(kind, addr, &MeshConfig::default()).unwrap();
             let value = ticket.encode().unwrap();
@@ -272,12 +272,12 @@ mod tests {
         };
         let addr = EndpointAddr::new(SecretKey::generate().public())
             .with_ip_addr("127.0.0.1:2345".parse().unwrap());
-        let ticket = Ticket::new(InviteKind::Gateway, addr, &config).unwrap();
+        let ticket = Ticket::new(InviteKind::Station, addr, &config).unwrap();
         let multi = EndpointAddr::new(SecretKey::generate().public())
             .with_ip_addr("100.67.165.110:2345".parse().unwrap())
             .with_ip_addr("192.168.20.158:2345".parse().unwrap());
         assert_eq!(
-            Ticket::new(InviteKind::Gateway, multi, &config)
+            Ticket::new(InviteKind::Station, multi, &config)
                 .unwrap()
                 .bootstrap
                 .address

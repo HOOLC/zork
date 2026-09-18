@@ -53,11 +53,11 @@ def main():
         assert (result.returncode == 0) == success, result.stderr
         return result
     def current_pids():
-        return [(fresh / p).read_text() for p in ['zork.pid', 'run/zork-gateway.pid']]
+        return [(fresh / p).read_text() for p in ['zork.pid', 'run/zork-station.pid']]
     server = None
     print('isolated native installer:', root, flush=True)
     try:
-        # Existing operators may have started Gateway from a relative --data path.
+        # Existing operators may have started Station from a relative --data path.
         source.log=(source.root/'supervisor.log').open('ab')
         source.process=subprocess.Popen([str(f.TARGET/'zork'),'start','--data','source','--fake-agent'],
             cwd=root,env=env,stdout=source.log,stderr=source.log,start_new_session=True)
@@ -67,7 +67,7 @@ def main():
         standalone_config = json.loads((standalone / 'config.json').read_text())
         assert standalone_config['mesh']['name'] == 'standalone'
         assert not standalone_config['mesh'].get('group')
-        assert (standalone / 'run/zork-gateway.pid').is_file()
+        assert (standalone / 'run/zork-station.pid').is_file()
         run(['stop', '--data', str(standalone)])
         print('PASS: standalone installation starts a node without creating an invitation', flush=True)
         invitation = e.admin(source, 'POST', '/v1/node/mesh/invites')['invitation']
@@ -87,7 +87,7 @@ def main():
         assert len(set(config['bind'].values())) == 4
         print('PASS: fresh native installation from verified download, paths with spaces, background service, idempotent reuse', flush=True)
 
-        # Root selection is deliberately explicit when several Gateways are live.
+        # Root selection is deliberately explicit when several Stations are live.
         ambiguous = run(['mesh', 'join', invitation], success=False)
         assert 'Multiple Station installations' in ambiguous.stderr, ambiguous.stderr
         assert current_pids() == pids
@@ -100,7 +100,7 @@ def main():
         assert json.loads((fresh / 'config.json').read_text())['context']['keep_recent_tokens'] == 30000
         print('PASS: multiple-instance detection and stopped installation reuse preserve identity and existing settings', flush=True)
 
-        class OlderGateway(http.server.BaseHTTPRequestHandler):
+        class OlderStation(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 self.send_response(200 if self.path == '/readyz' else 404)
                 self.send_header('Content-Type', 'application/json')
@@ -108,7 +108,7 @@ def main():
                 self.wfile.write(b'{}')
             def log_message(self, *_):
                 pass
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), OlderGateway)
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), OlderStation)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         older = root / 'older'
         older.mkdir()
@@ -118,8 +118,8 @@ def main():
         incompatible = run(['mesh', 'join', invitation, '--data', str(older)], success=False)
         assert 'does not support mesh enrollment' in incompatible.stderr
         assert (older / 'config.json').read_bytes() == before and not (older / 'zork.pid').exists()
-        print('PASS: incompatible running Gateway gets an actionable error without replacement or configuration reset', flush=True)
-        (assets / 'installer-result.json').write_text(json.dumps({'root': str(root), 'platform': os.uname().sysname, 'archive_sha256': release.sha256(mirror / package.name), 'checks': ['fresh_native_download', 'standalone_install', 'install_command', 'all_components', 'background', 'repeat', 'ambiguous_instances', 'stopped_install', 'identity', 'preserve_config', 'old_gateway']}, indent=2))
+        print('PASS: incompatible running Station gets an actionable error without replacement or configuration reset', flush=True)
+        (assets / 'installer-result.json').write_text(json.dumps({'root': str(root), 'platform': os.uname().sysname, 'archive_sha256': release.sha256(mirror / package.name), 'checks': ['fresh_native_download', 'standalone_install', 'install_command', 'all_components', 'background', 'repeat', 'ambiguous_instances', 'stopped_install', 'identity', 'preserve_config', 'old_station']}, indent=2))
     finally:
         if (fresh / 'bin/zork').exists():
             subprocess.run([str(fresh / 'bin/zork'), 'stop', '--data', str(fresh)], env=env, capture_output=True, timeout=30)

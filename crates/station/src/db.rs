@@ -22,10 +22,10 @@ mod sync_commands;
 mod tasks;
 pub use tasks::{TaskAction, TaskTransitionError};
 
-pub(crate) const GATEWAY_DB: &str = "gateway.sqlite";
+pub(crate) const GATEWAY_DB: &str = "station.sqlite";
 const BUSY_TIMEOUT_MS: u32 = 5_000;
 
-pub struct GatewayDb {
+pub struct StationDb {
     pub realtime: crate::realtime::Realtime,
     pub chat_topics: zork_notify::Hub<chats::Topic>,
     conn: Mutex<Connection>,
@@ -209,7 +209,7 @@ pub struct JobRow {
     pub updated_at: String,
 }
 
-impl GatewayDb {
+impl StationDb {
     #[cfg(test)]
     pub fn open(state_dir: &Path, workspaces_root: &Path) -> Result<Self> {
         Self::open_with_paths(
@@ -1634,7 +1634,7 @@ mod tests {
     #[test]
     fn ensure_session_is_idempotent() {
         let dir = tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let first = db
             .ensure_session(EnsureSession {
                 connection_id: "connection-a",
@@ -1678,7 +1678,7 @@ mod tests {
     fn proactive_binding_and_message_identity_are_durable() {
         let dir = tempdir().unwrap();
         let workspaces = dir.path().join("workspaces");
-        let db = GatewayDb::open(dir.path(), &workspaces).unwrap();
+        let db = StationDb::open(dir.path(), &workspaces).unwrap();
         let first = db
             .ensure_proactive_binding("connection-a", "slack")
             .unwrap();
@@ -1723,7 +1723,7 @@ mod tests {
     fn visible_message_history_contains_only_explicit_im_delivery() {
         let dir = tempdir().unwrap();
         let workspace = dir.path().join("project");
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let session = db
             .create_session_at_workspace(
                 EnsureSession {

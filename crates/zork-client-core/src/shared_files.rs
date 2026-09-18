@@ -6,7 +6,7 @@ mod projection;
 #[cfg(test)]
 mod tests;
 use crate::{
-    api::GatewayClient,
+    api::StationClient,
     state::{Observable, Subscription},
     store::ClientStore,
 };
@@ -23,7 +23,7 @@ struct Binding {
     id: String,
     name: String,
     generation: u64,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     origin: Option<String>,
     online: Option<bool>,
 }
@@ -116,7 +116,7 @@ impl SharedFiles {
     }
     pub fn replace_devices(
         self: &Arc<Self>,
-        devices: Vec<(String, String, bool, Arc<GatewayClient>)>,
+        devices: Vec<(String, String, bool, Arc<StationClient>)>,
     ) {
         let mut s = self.owned.lock().unwrap();
         let old = std::mem::take(&mut s.bindings);
@@ -189,7 +189,7 @@ impl SharedFiles {
     pub(crate) fn update_device(
         self: &Arc<Self>,
         id: &str,
-        client: &GatewayClient,
+        client: &StationClient,
         data: &crate::state::DeviceData,
     ) {
         if data.revoked {
@@ -219,7 +219,7 @@ impl SharedFiles {
     pub fn revoke(self: &Arc<Self>, peer: &str) {
         self.revoke_connection(peer, None);
     }
-    fn revoke_connection(self: &Arc<Self>, peer: &str, client: Option<&GatewayClient>) {
+    fn revoke_connection(self: &Arc<Self>, peer: &str, client: Option<&StationClient>) {
         let mut s = self.owned.lock().unwrap();
         if !s
             .bindings

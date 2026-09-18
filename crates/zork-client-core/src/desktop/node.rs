@@ -122,7 +122,7 @@ impl LocalNode {
         super::trace_startup("client.local_layout_ready");
         let already_running = self.await_supervisor()?;
         super::trace_startup("client.supervisor_checked");
-        let previous_gateway = if already_running {
+        let previous_station = if already_running {
             None
         } else {
             zork_config::read_ready_pid(&self.root, "zork-station")?
@@ -143,7 +143,7 @@ impl LocalNode {
             if fresh {
                 let mut listeners = vec![];
                 for binding in [
-                    &mut config.bind.gateway,
+                    &mut config.bind.station,
                     &mut config.bind.runtime,
                     &mut config.bind.control,
                     &mut config.bind.agent,
@@ -244,7 +244,7 @@ impl LocalNode {
             }
             let ready_pid = zork_config::read_ready_pid(&self.root, "zork-station")?;
             let announced =
-                ready_pid.is_some() && (already_running || ready_pid != previous_gateway);
+                ready_pid.is_some() && (already_running || ready_pid != previous_station);
             if announced
                 && http
                     .get(format!("{}/readyz", node.url))
@@ -305,7 +305,7 @@ impl LocalNode {
             if events.supervisor_exited()? && !manager::running(&self.root) {
                 break;
             }
-            ensure!(changes.blocking_changed(until)?, "Gateway 尚未确认停止");
+            ensure!(changes.blocking_changed(until)?, "Station 尚未确认停止");
         }
         if let Some(mut child) = process.take() {
             let _ = child.wait();
@@ -333,7 +333,7 @@ impl LocalNode {
                 manager::connect_with_timeout(&self.root, "status", Duration::from_millis(100))
             {
                 let status: serde_json::Value = serde_json::from_str(&reply)?;
-                ensure!(status["protocol"] == 1, "未知的 Gateway supervisor 协议");
+                ensure!(status["protocol"] == 1, "未知的 Station supervisor 协议");
                 if status["client_owned"] == true && status["background"] != true {
                     // Take over a still-live desktop lease before its former
                     // client exits. Independent services keep their lifetime.

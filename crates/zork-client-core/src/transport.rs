@@ -1,5 +1,5 @@
 //! Shared embedded client-only Mesh startup. Hosts supply paths, configuration
-//! and a Tokio executor; no Gateway, Agent, workspace scanner or socket pool.
+//! and a Tokio executor; no Station, Agent, workspace scanner or socket pool.
 use std::path::Path;
 use zork_config::MeshConfig;
 use zork_mesh::managed;

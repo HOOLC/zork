@@ -1,4 +1,4 @@
-//! Channel facts and durable Agent delivery. All writes share the Gateway
+//! Channel facts and durable Agent delivery. All writes share the Station
 //! transaction; subscriptions are preferences, never posting permissions.
 use super::*;
 pub(crate) mod agent_configuration;
@@ -448,7 +448,7 @@ pub(super) fn record_with_client(
     Ok(topics)
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn chat(&self, id: &str) -> Result<ChatRow> {
         self.published_messages()?.query_row(&format!("{CHANNEL_SELECT} WHERE chat_id=?1 OR session_key=?1 OR session_key IN(SELECT session_key FROM product_tasks WHERE task_id=?1) OR session_key IN(SELECT key FROM sessions WHERE id=?1)"),[id],map_channel).context("chat_not_found")
     }

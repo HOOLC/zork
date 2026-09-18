@@ -43,9 +43,9 @@ def violations(source, kotlin=False, platform_io=False):
     code, literals = mask(source), mask(source, strings=False)
     rules = [
         (code, r"\b(?:reqwest|rusqlite|zork_config|zork_mesh|openidconnect)::", "service implementation imported by UI"),
-        (code, r"\bnode_request\s*\(", "raw Gateway request in UI"),
+        (code, r"\bnode_request\s*\(", "raw Station request in UI"),
         (code, r"\b(?:Command|Self)::Request\s*\{", "raw request intent in UI"),
-        (literals, r"/v1/(?:im|node|agent|tasks|profiles|mesh)(?:[/\"?])", "Gateway business route in UI"),
+        (literals, r"/v1/(?:im|node|agent|tasks|profiles|mesh)(?:[/\"?])", "Station business route in UI"),
         (code, r"\backnowledgedMessages\b", "second delivery reducer in UI"),
     ]
     if not platform_io:
@@ -98,7 +98,7 @@ def check(root):
             if any(path == fixture or fixture in path.parents for fixture in fixtures):
                 continue
             # Automation implements platform input, screenshot and profiler
-            # artifact ports. Business routes and Gateway calls remain forbidden there.
+            # artifact ports. Business routes and Station calls remain forbidden there.
             platform_io = name in {"zork-ui", "zork-gui"} and "automation" in path.relative_to(package / "src").parts
             for line, reason in violations(path.read_text(), platform_io=platform_io):
                 failures.append(f"{path.relative_to(root)}:{line}: {reason}")
@@ -133,7 +133,7 @@ class BoundaryTests(unittest.TestCase):
     def test_renaming_a_dependency_does_not_bypass_manifest_check(self):
         self.assertEqual(dependencies({"dependencies": {"http_alias": {"package": "reqwest"}}, "dev-dependencies": {"rusqlite": "1"}}), {"reqwest"})
 
-    def test_os_port_is_not_a_gateway_escape_hatch(self):
+    def test_os_port_is_not_a_station_escape_hatch(self):
         self.assertFalse(violations('resolver.openInputStream(uri)', kotlin=True, platform_io=True))
         self.assertTrue(violations('repo.command("request", peer)', kotlin=True, platform_io=True))
         self.assertTrue(violations('client.node_request(method, path, body)', platform_io=True))

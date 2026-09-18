@@ -10,7 +10,7 @@ on:
       - "scripts/install*.sh"
       - "scripts/test-native-installer.py"
       - "scripts/test-native-upgrade.py"
-      - "scripts/test-gateway-upgrade.py"
+      - "scripts/test-station-upgrade.py"
       - "crates/station/src/node.rs"
       - "scripts/test-mesh-installer.py"
       - "crates/zork/**"
@@ -88,13 +88,13 @@ jobs:
         run: cargo build --locked --release -p zork -p zork-station -p zork-agent-server -p zork-gh
       - name: Test native installation dependencies
         run: cargo test --locked --release -p zork -p zork-config -p zork-mesh
-      - name: Test complete native Gateway upgrade
+      - name: Test complete native Station upgrade
         env:
           ZORK_TEST_BINARY: target/release/zork
           ZORK_TEST_TARGET: target/release
         run: |
           python3 scripts/test-native-upgrade.py
-          python3 scripts/test-gateway-upgrade.py
+          python3 scripts/test-station-upgrade.py
       - name: Package node with embedded Synch
         run: python3 scripts/build/native-release.py stage
       - name: Test real installation, reuse and mesh enrollment

@@ -1,6 +1,6 @@
 //! Durable delivery shared by desktop and mobile. Commit attempted before IO;
 //! source echo updates the same local row. Every manual resend has a new ID.
-use crate::{api::GatewayClient, store::ClientStore};
+use crate::{api::StationClient, store::ClientStore};
 use serde::Serialize;
 #[derive(Clone, Default, Serialize)]
 pub struct DeliveryReport {
@@ -8,7 +8,7 @@ pub struct DeliveryReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
-pub async fn flush(client: &GatewayClient, store: &ClientStore, node: &str) -> DeliveryReport {
+pub async fn flush(client: &StationClient, store: &ClientStore, node: &str) -> DeliveryReport {
     let _serial = client.delivery_gate.lock().await;
     let mut report = DeliveryReport::default();
     let result: anyhow::Result<()> = async {
@@ -104,7 +104,7 @@ fn delivery_timeout(message: &crate::store::QueuedMessage) -> std::time::Duratio
 }
 
 async fn deliver(
-    client: &GatewayClient,
+    client: &StationClient,
     store: &ClientStore,
     node: &str,
     message: &crate::store::QueuedMessage,
@@ -163,7 +163,7 @@ impl Drop for DeliveryPump {
 }
 impl DeliveryPump {
     pub fn start(
-        client: std::sync::Arc<GatewayClient>,
+        client: std::sync::Arc<StationClient>,
         store: std::sync::Arc<ClientStore>,
         node: String,
     ) -> Self {

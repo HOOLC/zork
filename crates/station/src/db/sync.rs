@@ -190,7 +190,7 @@ fn install_projection(
             {insert} END;
         CREATE TRIGGER IF NOT EXISTS sync_{table}_delete BEFORE DELETE ON {table} BEGIN {remove} END;"))?;
     // A fresh projection imports once; subsequent starts use its durable
-    // triggers and avoid scanning all message bodies on every Gateway boot.
+    // triggers and avoid scanning all message bodies on every Station boot.
     if !installed {
         let seed=format!("INSERT INTO sync_entities(scope,kind,id,value) SELECT {scope},'{kind}',NEW.{id},{value} FROM {table} NEW WHERE {visible} ON CONFLICT(scope,kind,id) DO UPDATE SET value=excluded.value WHERE sync_entities.value IS NOT excluded.value;");
         conn.execute_batch(&seed)?;
@@ -248,7 +248,7 @@ struct Watermark {
     sequence: u64,
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(super) fn sync_check_lineage(&self, conn: &Connection) -> Result<()> {
         let current = Self::sync_watermark_value(conn)?;
         match fs::read(&self.sync_watermark) {
@@ -645,11 +645,11 @@ mod tests {
         );
     }
 
-    fn open(dir: &tempfile::TempDir) -> GatewayDb {
-        GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap()
+    fn open(dir: &tempfile::TempDir) -> StationDb {
+        StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap()
     }
     fn pull(
-        db: &GatewayDb,
+        db: &StationDb,
         after: Option<Cursor>,
         continuation: Option<zork_client_types::sync::Continuation>,
     ) -> Page {
@@ -936,7 +936,7 @@ mod client_tests {
     };
     use std::sync::Arc;
     use zork_client_core::{
-        api::GatewayClient,
+        api::StationClient,
         state::{Device, Domains},
         store::ClientStore,
     };
@@ -950,7 +950,7 @@ mod client_tests {
             time::Duration,
         };
         let root = tempfile::tempdir().unwrap();
-        let db = Arc::new(GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap());
+        let db = Arc::new(StationDb::open(root.path(), &root.path().join("workspaces")).unwrap());
         db.sync_reconcile_catalog(Some(json!({"name":"Before"})), Some(&[]))
             .unwrap();
         let pulls = Arc::new(AtomicUsize::new(0));
@@ -970,7 +970,7 @@ mod client_tests {
             .route(
                 "/v1/node/sync",
                 post(
-                    move |State(db): State<Arc<GatewayDb>>, Json(pull): Json<Pull>| {
+                    move |State(db): State<Arc<StationDb>>, Json(pull): Json<Pull>| {
                         let count = count.clone();
                         let fail_once = fail_once.clone();
                         async move {
@@ -1013,7 +1013,7 @@ mod client_tests {
             )
             .with_state(db.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let client = Arc::new(GatewayClient::new(
+        let client = Arc::new(StationClient::new(
             format!("http://{}", listener.local_addr().unwrap()),
             None,
         ));
@@ -1089,7 +1089,7 @@ mod client_tests {
     #[tokio::test]
     async fn two_clients_converge_and_reopen_offline_from_the_same_replica() {
         let root = tempfile::tempdir().unwrap();
-        let db = Arc::new(GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap());
+        let db = Arc::new(StationDb::open(root.path(), &root.path().join("workspaces")).unwrap());
         db.sync_reconcile_catalog(Some(json!({"name":"Fixture"})), Some(&[]))
             .unwrap();
         let write = |name: &str| {
@@ -1104,7 +1104,7 @@ mod client_tests {
             .route(
                 "/v1/node/sync",
                 post(
-                    |State(db): State<Arc<GatewayDb>>, Json(pull): Json<Pull>| async move {
+                    |State(db): State<Arc<StationDb>>, Json(pull): Json<Pull>| async move {
                         Json(db.sync_pull("owner", &pull).unwrap())
                     },
                 ),
@@ -1117,7 +1117,7 @@ mod client_tests {
         let b = tempfile::tempdir().unwrap();
         let store_a = Arc::new(ClientStore::open(a.path()).unwrap());
         let store_b = Arc::new(ClientStore::open(b.path()).unwrap());
-        let client = Arc::new(GatewayClient::new(&url, None));
+        let client = Arc::new(StationClient::new(&url, None));
         let one = Device::open(client.clone(), Some((store_a.clone(), "peer".into())), true);
         let two = Device::open(client.clone(), Some((store_b.clone(), "peer".into())), true);
         tokio::join!(one.refresh(Domains::AGENTS), two.refresh(Domains::AGENTS));

@@ -65,7 +65,7 @@ fn write_result(
     Ok(result)
 }
 
-impl GatewayDb {
+impl StationDb {
     pub(crate) fn create_configuration_review(
         &self,
         origin: &str,

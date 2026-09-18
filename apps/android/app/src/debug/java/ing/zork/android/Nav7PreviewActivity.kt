@@ -125,7 +125,7 @@ private fun fixtureSettings(): MobileSettingsState {
         obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()))
     val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))))
     return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,
-        info=obj("name" to "工作室的 MacBook Air","gateway" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
+        info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
 
 internal const val literalUserFixture = "# 标题\n**中文🐈** `代码`\n[链接](https://example.test) &amp;\n```rust\nlet x = 1;\n```"

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use crate::connections::ConnectionRuntime;
-use crate::db::{EnsureSession, GatewayDb, SessionRow};
+use crate::db::{EnsureSession, StationDb, SessionRow};
 use crate::inbound::InboundEvent;
 use crate::jobs::JobEvent;
 use crate::slack::BotSelf;
@@ -234,7 +234,7 @@ async fn handle_proactive_inbound(
 
 pub async fn handle_job_event(
     agent: &zork_agent::Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     event: JobEvent,
 ) -> Result<()> {
     let binding = db
@@ -404,7 +404,7 @@ async fn format_proactive_event(connection: &ConnectionRuntime, event: &InboundE
         "provider_message": event.slack_message,
     });
     format!(
-        "An IM message was observed by the proactive Gateway. It is context for triage, not automatically a request addressed to you. Decide whether to remain silent or provide useful help according to the proactive system instructions.\nobserved_message_json:\n```json\n{}\n```",
+        "An IM message was observed by the proactive Station. It is context for triage, not automatically a request addressed to you. Decide whether to remain silent or provide useful help according to the proactive system instructions.\nobserved_message_json:\n```json\n{}\n```",
         serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
     )
 }

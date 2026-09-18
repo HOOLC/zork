@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove Gateway owns Synch without a supervisor, daemon, or local control service."""
+"""Prove Station owns Synch without a supervisor, daemon, or local control service."""
 import importlib.util
 import json
 import os
@@ -16,8 +16,8 @@ spec.loader.exec_module(f)
 
 
 def main():
-    root = Path(tempfile.mkdtemp(prefix='zgateway-embed-', dir='/tmp'))
-    node = f.Node(root / 'node')  # Also bootstraps with Gateway alone.
+    root = Path(tempfile.mkdtemp(prefix='zstation-embed-', dir='/tmp'))
+    node = f.Node(root / 'node')  # Also bootstraps with Station alone.
     origin = node.origin
     session_id = None
     shell_pid = None
@@ -27,19 +27,19 @@ def main():
             raw = response.read()
             return json.loads(raw) if raw else None
     for index in range(3):
-        with (node.root / f'gateway-{index}.log').open('wb') as log:
-            gateway = subprocess.Popen([str(f.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'],
+        with (node.root / f'station-{index}.log').open('wb') as log:
+            station = subprocess.Popen([str(f.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'],
                                        stdout=log, stderr=log)
             try:
-                f.wait(lambda: node.get('/v1/mesh').get('origin') == origin, 'standalone Gateway Synch ready')
+                f.wait(lambda: node.get('/v1/mesh').get('origin') == origin, 'standalone Station Synch ready')
                 assert not (node.root / 'zork.pid').exists(), 'Supervisor was required'
                 assert not (node.root / 'run/zork-agent.pid').exists(), 'Agent was started'
                 assert not (node.root / 'mesh/synch/control.sock').exists(), 'daemon control socket created'
                 assert not (node.root / 'mesh/synch/control.token').exists(), 'daemon control token created'
-                children = subprocess.run(['pgrep', '-P', str(gateway.pid)], capture_output=True, text=True)
+                children = subprocess.run(['pgrep', '-P', str(station.pid)], capture_output=True, text=True)
                 assert children.returncode == 1 and not children.stdout.strip(), children.stdout
                 ready = agent('GET', '/readyz')
-                assert ready['embedded'] and ready['pid'] == gateway.pid
+                assert ready['embedded'] and ready['pid'] == station.pid
                 if session_id is None:
                     session_id = agent('POST','/sessions',{'profile_id':'fixture','model':'fixture-model','thinking':'off','workspace':str(node.workspace)})['session_id']
                     command = "echo $$ > child.pid; printf 'started\\n' >> executions.txt; sleep 60"
@@ -55,19 +55,19 @@ def main():
                                                capture_output=True, text=True, timeout=20)
                     assert duplicate.returncode != 0, 'duplicate node ownership was accepted'
                     assert node.get('/v1/mesh')['origin'] == origin, 'duplicate stopped the owner'
-                gateway.send_signal(signal.SIGINT if index == 1 else signal.SIGTERM)
-                assert gateway.wait(timeout=30) == 0, 'Gateway did not drain its Synch tasks'
-                assert not (node.root / 'run/zork-gateway.pid').exists(), 'Gateway readiness leaked'
+                station.send_signal(signal.SIGINT if index == 1 else signal.SIGTERM)
+                assert station.wait(timeout=30) == 0, 'Station did not drain its Synch tasks'
+                assert not (node.root / 'run/zork-station.pid').exists(), 'Station readiness leaked'
                 if shell_pid is not None:
                     try: os.kill(shell_pid, 0)
                     except ProcessLookupError: pass
-                    else: raise AssertionError('embedded shell survived Gateway shutdown')
+                    else: raise AssertionError('embedded shell survived Station shutdown')
                     shell_pid = None
             finally:
-                if gateway.poll() is None:
-                    gateway.kill()
-                    gateway.wait()
-    print(f'PASS: Gateway owns Agent and Synch; no sidecar/control service; Agent PID equals Gateway; shell shutdown and session recovery; duplicate exclusion; stable identity and UDP bind across SIGTERM/SIGINT restarts; {root}')
+                if station.poll() is None:
+                    station.kill()
+                    station.wait()
+    print(f'PASS: Station owns Agent and Synch; no sidecar/control service; Agent PID equals Station; shell shutdown and session recovery; duplicate exclusion; stable identity and UDP bind across SIGTERM/SIGINT restarts; {root}')
 
 
 if __name__ == '__main__':

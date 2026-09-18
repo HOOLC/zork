@@ -171,7 +171,7 @@ impl SessionSupervisor {
             .await
     }
 
-    /// Gateway allocates a durable ID before the RPC. Retrying after a lost
+    /// Station allocates a durable ID before the RPC. Retrying after a lost
     /// acknowledgement can only recover this session, never allocate a second.
     pub async fn ensure_session(
         self: &Arc<Self>,

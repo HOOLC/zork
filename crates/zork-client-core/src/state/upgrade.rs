@@ -11,7 +11,7 @@ pub(crate) fn upgrade_status<'a>(info: &'a Value, version: &str) -> Option<&'a V
 
 impl Device {
     /// Submit once, then observe. Dropping a monitor never repeats or cancels the
-    /// remote installation. Its durable receipt survives the Gateway restart.
+    /// remote installation. Its durable receipt survives the Station restart.
     pub async fn upgrade(
         self: &Arc<Self>,
         version: &str,

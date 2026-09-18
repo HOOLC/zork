@@ -14,7 +14,7 @@ export async function verifyContextConfiguration(contextUrl: string, agent: Embe
   expect(savedContext.status).toBe(200);
   expect(await savedContext.json()).toEqual({ strategy: "handoff", keep_recent_tokens: 8_000 });
   // A direct Agent-side change is visible on the next read, without a
-  // Gateway database copy masking the authoritative setting.
+  // Station database copy masking the authoritative setting.
   expect((await agent.request(`/sessions/${sessionId}/context`, "PUT", { strategy: "compaction", keep_recent_tokens: 4000 })).status).toBe(200);
   expect(await (await fetch(contextUrl)).json()).toEqual({ strategy: "compaction", keep_recent_tokens: 4_000 });
   const invalidContext = await fetch(contextUrl, {

@@ -199,7 +199,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             zork_mesh::enrollment::ticket::resolve(
                 &root.join("invite-bootstrap"),
                 ticket.as_deref().context("join requires an invitation")?,
-                zork_mesh::enrollment::InviteKind::Gateway,
+                zork_mesh::enrollment::InviteKind::Station,
             )
             .await?,
         )
@@ -249,7 +249,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                     // local application must not make first-time setup fail.
                     let mut listeners = vec![];
                     for binding in [
-                        &mut config.bind.gateway,
+                        &mut config.bind.station,
                         &mut config.bind.runtime,
                         &mut config.bind.control,
                         &mut config.bind.agent,

@@ -809,9 +809,9 @@ impl DesktopRoot {
             name: node.name.clone(),
             version: info
                 .and_then(|i| {
-                    i["gateway"]["release_version"]
+                    i["station"]["release_version"]
                         .as_str()
-                        .or(i["gateway"]["version"].as_str())
+                        .or(i["station"]["version"].as_str())
                 })
                 .unwrap_or("尚未获取")
                 .into(),

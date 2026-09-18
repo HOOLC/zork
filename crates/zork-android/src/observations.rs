@@ -248,7 +248,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zork_client_core::{api::GatewayClient, state::Device, store::ClientStore, Client};
+    use zork_client_core::{api::StationClient, state::Device, store::ClientStore, Client};
     #[test]
     fn callbacks_coalesce_without_command_locks_and_reject_a_b_a_stale_results() {
         let root = tempfile::tempdir().unwrap();
@@ -266,7 +266,7 @@ mod tests {
         });
         let store = Arc::new(ClientStore::open(root.path()).unwrap());
         let device = Device::open(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             None,
             true,
         );

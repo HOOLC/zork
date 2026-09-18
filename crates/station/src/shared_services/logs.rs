@@ -1,4 +1,4 @@
-//! Byte-oriented capture: long/binary lines cannot grow the Gateway's memory.
+//! Byte-oriented capture: long/binary lines cannot grow the Station's memory.
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};

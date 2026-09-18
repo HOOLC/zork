@@ -28,7 +28,7 @@ function sessionKey(channelId: string, rootMessageId: string): string {
   return `${connectionId}:${channelId}:${rootMessageId}`;
 }
 
-describe.sequential("Gateway and Agent mailbox integration", () => {
+describe.sequential("Station and Agent mailbox integration", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
@@ -47,30 +47,30 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
 
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const controlPort = await getFreePort();
     const agentPort = await getFreePort();
     await writeConfig(tempRoot, {
       im_connections: [slackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${controlPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
 
-    const gateway = spawnBinary("zork-station", {
+    const station = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(gateway));
+    cleanups.push(async () => stopChild(station));
 
     const agentBase = `http://127.0.0.1:${agentPort}`;
     await waitForReady(`${agentBase}/readyz`, "Agent readyz");
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "Gateway broker readyz");
-    await waitForReady(`http://127.0.0.1:${gatewayPort}/readyz`, "Gateway Slack readyz");
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "Station broker readyz");
+    await waitForReady(`http://127.0.0.1:${stationPort}/readyz`, "Station Slack readyz");
     await slack.waitForSocket();
 
     await slack.sendEvent("evt-merged-1", {
@@ -88,7 +88,7 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
       "mailbox receipt",
     );
     const identity = readSessionIdentity(stateDir, sessionKey("C123", "100.200"));
-    const bot = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/im/bot`);
+    const bot = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/im/bot`);
     expect(bot.status).toBe(200);
     await expect(bot.json()).resolves.toMatchObject({ ok: true, self: { userId: "UBOT" } });
     const workspace = path.join(tempRoot, "shared-files", "workspaces", "im", connectionId, "normal", "C123", "100.200");
@@ -134,7 +134,7 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     expect(countdown[1]!.atMs - countdown[0]!.atMs).toBeLessThan(6_500);
     expect(countdown[0]!.status).not.toBe(countdown[1]!.status);
 
-    const removedStatusApi = await fetch(`http://127.0.0.1:${gatewayPort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/im/threads/C123/100.200/status`, {
+    const removedStatusApi = await fetch(`http://127.0.0.1:${stationPort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/im/threads/C123/100.200/status`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status: "must not be accepted" }),
@@ -150,16 +150,16 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
 
     const files = await fs.readdir(stateDir);
     expect(files.some((name) => name.startsWith("spool.sqlite"))).toBe(false);
-    expect(files).toContain("gateway.sqlite");
+    expect(files).toContain("station.sqlite");
     expect(files).not.toContain("runtime.sqlite");
     expect(files).not.toContain("control.sqlite");
-    const gatewayDb = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
-    const gatewayTables = gatewayDb
+    const stationDb = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
+    const stationTables = stationDb
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('admin_operations', 'admin_audit_events') ORDER BY name")
       .all()
       .map((row) => String(row.name));
-    gatewayDb.close();
-    expect(gatewayTables).toEqual(["admin_audit_events", "admin_operations"]);
+    stationDb.close();
+    expect(stationTables).toEqual(["admin_audit_events", "admin_operations"]);
 
     const reset = await fetch(`http://127.0.0.1:${runtimePort}/sessions/${encodeURIComponent(sessionKey("C123", "100.200"))}/reset`, {
       method: "POST",
@@ -172,7 +172,7 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     expect(slack.postedMessages.some((message) => message.text.includes("admin_session_reset"))).toBe(false);
 
     // Deletion now uses the embedded Agent; removing the canonical runtime
-    // session first must still allow idempotent Gateway binding cleanup.
+    // session first must still allow idempotent Station binding cleanup.
     const directDelete = await fetch(`${agentBase}/sessions/${resetIdentity.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${agentToken}` },
@@ -186,7 +186,7 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     expect((await fs.stat(workspace)).isDirectory()).toBe(true);
   });
 
-  it("deduplicates a Slack redelivery across Gateway restart before appending a second mailbox message", { timeout: 60_000 }, async () => {
+  it("deduplicates a Slack redelivery across Station restart before appending a second mailbox message", { timeout: 60_000 }, async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "merged-mailbox-replay-"));
     cleanups.push(async () => removeTempRoot(tempRoot));
     const stateDir = path.join(tempRoot, "state");
@@ -195,25 +195,25 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
     const slack = new MockSlackServer("UBOT");
     const slackPort = await slack.start();
     cleanups.push(async () => slack.stop());
-    const gatewayPort = await getFreePort();
+    const stationPort = await getFreePort();
     const runtimePort = await getFreePort();
     const controlPort = await getFreePort();
     const agentPort = await getFreePort();
     await writeConfig(tempRoot, {
       im_connections: [slackConnection(slackPort)],
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${controlPort}`,
         agent: `127.0.0.1:${agentPort}`,
       },
     });
 
-    const firstGateway = spawnBinary("zork-station", {
+    const firstStation = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "first Gateway readyz");
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "first Station readyz");
     await slack.waitForSocket();
     await slack.sendEvent("evt-replay-1", {
       type: "app_mention",
@@ -229,15 +229,15 @@ describe.sequential("Gateway and Agent mailbox integration", () => {
       "first mailbox receipt",
     );
     const identity = readSessionIdentity(stateDir, sessionKey("C223", "200.200"));
-    firstGateway.kill("SIGKILL");
-    await new Promise<void>((resolve) => firstGateway.once("exit", () => resolve()));
+    firstStation.kill("SIGKILL");
+    await new Promise<void>((resolve) => firstStation.once("exit", () => resolve()));
 
-    const secondGateway = spawnBinary("zork-station", {
+    const secondStation = spawnBinary("zork-station", {
       cwd: brokerRoot,
       args: ["--data", tempRoot, "--fake-agent", "--agent-token", agentToken],
     });
-    cleanups.push(async () => stopChild(secondGateway));
-    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "second Gateway readyz");
+    cleanups.push(async () => stopChild(secondStation));
+    await waitForReady(`http://127.0.0.1:${runtimePort}/readyz`, "second Station readyz");
     await slack.waitForSocket();
     await slack.sendEvent("evt-replay-2", {
       type: "app_mention",
@@ -302,7 +302,7 @@ function readSessionIdentity(stateDir: string, key: string): { id: string; works
 }
 
 function readOptionalSessionIdentity(stateDir: string, key: string): { id: string; workspace_path: string } | undefined {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     return db.prepare("SELECT id, workspace_path FROM sessions WHERE key = ?").get(key) as { id: string; workspace_path: string } | undefined;
   } finally {
@@ -311,7 +311,7 @@ function readOptionalSessionIdentity(stateDir: string, key: string): { id: strin
 }
 
 function readInboundMessages(stateDir: string, sessionKey: string): Array<{ message_ts: string; source: string; status: string }> {
-  const db = new DatabaseSync(path.join(stateDir, "gateway.sqlite"), { readOnly: true });
+  const db = new DatabaseSync(path.join(stateDir, "station.sqlite"), { readOnly: true });
   try {
     return db.prepare("SELECT message_ts, source, status FROM inbound_messages WHERE session_key = ? ORDER BY created_at, message_ts").all(sessionKey) as Array<{ message_ts: string; source: string; status: string }>;
   } finally {

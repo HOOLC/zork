@@ -49,7 +49,7 @@ pub(super) fn resolution(conn: &Connection, root: &str) -> Result<Option<Message
     id.map(|id| message(conn, &id)).transpose()
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn interaction_result(&self, chat: &str, root: &str) -> Result<Option<Message>> {
         let conn = self.conn.lock().expect("db mutex");
         let request = message(&conn, root)?;

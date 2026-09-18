@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Real Agent/Gateway contract for immutable local file submissions."""
+"""Real Agent/Station contract for immutable local file submissions."""
 import json
 import os
 import subprocess
 import unittest
 from urllib.request import urlopen
 
-from test_gateway_entry import GatewayEntryContractTest, TARGET
+from test_station_entry import StationEntryContractTest, TARGET
 
 
-class DriveArtifactContractTest(GatewayEntryContractTest):
+class DriveArtifactContractTest(StationEntryContractTest):
     def test_z_file_submissions_versions_restart_and_offline_bytes(self):
         session_id = self.create_session()
         self.assertEqual(self.request('POST', f'/v1/im/sessions/{session_id}/messages', {'content': 'Prepare a report file'})[0], 202)
@@ -40,15 +40,15 @@ class DriveArtifactContractTest(GatewayEntryContractTest):
         self.assertEqual(self.request('POST', f"/v1/tasks/{task['task_id']}/artifacts", {'path': '/etc/hosts'})[0], 400)
         path.unlink()
         cls = type(self)
-        command = cls.gateway.args
-        cls.stop_process(cls.gateway)
-        cls.gateway = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        cls.wait_http(cls.gateway_url, '/readyz')
-        # Agent now runs inside the gateway; the deleted source proves snapshot independence.
+        command = cls.station.args
+        cls.stop_process(cls.station)
+        cls.station = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.wait_http(cls.station_url, '/readyz')
+        # Agent now runs inside the station; the deleted source proves snapshot independence.
         _, artifacts = self.request('GET', '/v1/artifacts')
         self.assertEqual({a['artifact_id'] for a in artifacts['items']}, {first['artifact_id'], second['artifact_id']})
         self.assertTrue(all('content' not in a for a in artifacts['items']))
-        with urlopen(f"{self.gateway_url}/v1/artifacts/{first['artifact_id']}/content") as response:
+        with urlopen(f"{self.station_url}/v1/artifacts/{first['artifact_id']}/content") as response:
             self.assertEqual(response.read(), first_bytes)
             self.assertEqual(response.headers['Content-Disposition'], 'attachment')
         _, detail = self.request('GET', f"/v1/tasks/{task['task_id']}")

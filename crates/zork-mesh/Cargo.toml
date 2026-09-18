@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 default = ["server"]
-# Only hosts serving the Gateway bridge need the C-to-eBPF compiler.
+# Only hosts serving the Station bridge need the C-to-eBPF compiler.
 server = ["dep:synch-cc", "dep:synch-sock"]
 
 [[example]]

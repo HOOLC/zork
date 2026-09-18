@@ -52,7 +52,7 @@ pub struct ToolRequest {
     interrupt: bool,
 }
 fn validate(tool: &str, args: &Value) -> Result<()> {
-    let definition = zork_agent_gateway_tools::channels::definitions()
+    let definition = zork_agent_station_tools::channels::definitions()
         .into_iter()
         .find(|d| d.name == tool)
         .context("unknown_channel_tool")?;
@@ -92,13 +92,13 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     let mut args = input.arguments.clone();
     args.as_object_mut().unwrap().remove("target");
     let key = format!("outgoing-{}", fingerprint(&(&who, &input.invocation_id))?);
-    let mutation = zork_agent_gateway_tools::channels::mutating(&input.tool);
+    let mutation = zork_agent_station_tools::channels::mutating(&input.tool);
     if ordinary_send(&input.tool, &args) {
         if input.interrupt {
             return Ok(json!({"status":"delivery_unknown","operation_id":input.invocation_id}));
         }
         let key = format!("send-{}", ulid::Ulid::new());
-        let files = if zork_agent_gateway_tools::channels::sends_message(&input.tool) {
+        let files = if zork_agent_station_tools::channels::sends_message(&input.tool) {
             attachments::prepare(state, &who, &target, &args).await?
         } else {
             vec![]
@@ -334,7 +334,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         "channel_request_too_large"
     );
     let mut schema_args = rpc.arguments.clone();
-    if zork_agent_gateway_tools::channels::sends_message(&rpc.tool) {
+    if zork_agent_station_tools::channels::sends_message(&rpc.tool) {
         schema_args["attachments"] = json!([]);
     }
     validate(&rpc.tool, &schema_args)?;
@@ -343,7 +343,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         fingerprint(&(&rpc.subject, &rpc.invocation_id))?
     );
     let ordinary = ordinary_send(&rpc.tool, &rpc.arguments);
-    let mutation = zork_agent_gateway_tools::channels::mutating(&rpc.tool) && !ordinary;
+    let mutation = zork_agent_station_tools::channels::mutating(&rpc.tool) && !ordinary;
     if rpc.interrupt {
         if mutation {
             let signature =
@@ -628,10 +628,10 @@ pub(super) fn cursor(args: &Value, scope: &str) -> Result<Option<String>> {
 }
 
 fn ordinary_send(tool: &str, args: &Value) -> bool {
-    zork_agent_gateway_tools::channels::ordinary_send(tool, args)
+    zork_agent_station_tools::channels::ordinary_send(tool, args)
 }
 struct SendFiles<'a> {
-    db: &'a crate::db::GatewayDb,
+    db: &'a crate::db::StationDb,
     key: String,
 }
 impl Drop for SendFiles<'_> {

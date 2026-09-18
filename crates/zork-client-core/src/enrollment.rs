@@ -145,7 +145,7 @@ async fn connect_invitation(
     pending: &Pending,
 ) -> Result<Option<zork_mesh::feed::Watch>> {
     let invitation = &pending.invitation;
-    // Still attempt the same receipt after expiry: the Gateway permits recovery
+    // Still attempt the same receipt after expiry: the Station permits recovery
     // only if this exact identity already completed enrollment and remains granted.
     let identity = node.identity().await?;
     ensure!(identity != invitation.device.origin, "不能连接到自己");

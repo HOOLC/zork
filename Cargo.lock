@@ -13745,22 +13745,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zork-agent-gateway-tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
- "ulid",
- "zork-agent",
- "zork-client-types",
- "zork-slack",
-]
-
-[[package]]
 name = "zork-agent-http"
 version = "0.1.0"
 dependencies = [
@@ -13786,9 +13770,25 @@ dependencies = [
  "tokio",
  "tracing-subscriber",
  "zork-agent",
- "zork-agent-gateway-tools",
  "zork-agent-http",
+ "zork-agent-station-tools",
  "zork-config",
+]
+
+[[package]]
+name = "zork-agent-station-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "ulid",
+ "zork-agent",
+ "zork-client-types",
+ "zork-slack",
 ]
 
 [[package]]
@@ -14092,8 +14092,8 @@ dependencies = [
  "ulid",
  "zork-agent",
  "zork-agent-api",
- "zork-agent-gateway-tools",
  "zork-agent-http",
+ "zork-agent-station-tools",
  "zork-browser",
  "zork-client-core",
  "zork-client-types",

@@ -26,7 +26,7 @@ fn add(
         .collect();
     let owned = name.to_owned();
     let activity_name = owned.clone();
-    registry.register(Arc::new(ToolInstance::new(ToolContract{name:owned.clone(),version:ToolVersion::new(if name.starts_with("mcp.") { "node-tools-6" } else { "node-tools-4" })?,initial_description:description.into(),detailed_description:format!("{description} target is the exact Gateway identity returned by device.list, not a display name. Omit target for this execution node. Identity and delivery deduplication come from ToolContext. Operations complete through ordinary tool completion events. Use tool.cancel with the invocation ID to interrupt pending work. Live output is available at .zork/live-<invocation_id>.log in this session workspace; read it with file.read. The completion result includes output_path. Do not repeat effects when the result says outcome_unknown."),input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(Named{base:base.into(),http:http.clone(),name:owned,fields}),compatibility)?.with_activity(move|args|activity(&activity_name,args))));
+    registry.register(Arc::new(ToolInstance::new(ToolContract{name:owned.clone(),version:ToolVersion::new(if name.starts_with("mcp.") { "node-tools-6" } else { "node-tools-4" })?,initial_description:description.into(),detailed_description:format!("{description} target is the exact Station identity returned by device.list, not a display name. Omit target for this execution node. Identity and delivery deduplication come from ToolContext. Operations complete through ordinary tool completion events. Use tool.cancel with the invocation ID to interrupt pending work. Live output is available at .zork/live-<invocation_id>.log in this session workspace; read it with file.read. The completion result includes output_path. Do not repeat effects when the result says outcome_unknown."),input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(Named{base:base.into(),http:http.clone(),name:owned,fields}),compatibility)?.with_activity(move|args|activity(&activity_name,args))));
     Ok(())
 }
 pub fn register(
@@ -37,8 +37,8 @@ pub fn register(
     let string = || json!({"type":"string","minLength":1});
     let target = json!({"target":string()});
     for (name,description,extra,required) in [
-        ("device.list","Discover Mesh Gateways, their identity, environment and connectivity. Use this before selecting a device.",json!({}),vec![]),
-        ("device.inspect","Inspect the target Gateway's OS, commands and managed workspace location.",json!({}),vec![]),
+        ("device.list","Discover Mesh Stations, their identity, environment and connectivity. Use this before selecting a device.",json!({}),vec![]),
+        ("device.inspect","Inspect the target Station's OS, commands and managed workspace location.",json!({}),vec![]),
     ]{let mut props=target.clone();props.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());add(registry,base,name,description,props,required,http)?;}
     let properties = mcp::properties();
     for (op,description,fields,required) in [

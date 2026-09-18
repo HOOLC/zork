@@ -1,4 +1,4 @@
-//! Gateway capabilities are ordinary dynamic tools. Session coordinates are
+//! Station capabilities are ordinary dynamic tools. Session coordinates are
 //! resolved from ToolContext; model arguments cannot impersonate another task.
 pub mod agent_configuration;
 pub mod channels;
@@ -34,7 +34,7 @@ enum Kind {
     Notify,
     Job,
 }
-struct GatewayTool {
+struct StationTool {
     kind: Kind,
     base: String,
     http: reqwest::Client,
@@ -167,12 +167,12 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
         (Kind::Rework,"agent.rework","Ask a Worker to revise an existing task in the same Session. Inspect its current revision with agent.tasks. A closed task must first be reopened by the user.",json!({"task_id":string(),"goal":string(),"expected_revision":{"type":"integer","minimum":0}}),vec!["task_id","goal","expected_revision"]),
         (Kind::Notify,"notify","Send an asynchronous notification to this Agent Session, for PTC or background monitoring. The notification enters this Session mailbox and can wake it. It does not publish a Chat message or invoke OS notifications.",json!({"text":string()}),vec!["text"]),
         (Kind::Notify,"chat.notify","Compatibility alias for notify: send an asynchronous notification to the calling Agent Session mailbox. Prefer notify. This is not a Chat message.",json!({"text":string()}),vec!["text"]),
-        (Kind::Job,"job.register","Register background shell work owned by this Session. Returns job id and status. restart_on_boot restores registered/running jobs after Gateway restart. Restartable jobs with kind=service have no batch-job time limit.",json!({"kind":string(),"script":string(),"cwd":{"type":"string"},"restart_on_boot":{"type":"boolean"}}),vec!["kind","script"]),
+        (Kind::Job,"job.register","Register background shell work owned by this Session. Returns job id and status. restart_on_boot restores registered/running jobs after Station restart. Restartable jobs with kind=service have no batch-job time limit.",json!({"kind":string(),"script":string(),"cwd":{"type":"string"},"restart_on_boot":{"type":"boolean"}}),vec!["kind","script"]),
     ];
     definitions.extend(service::definitions());
     for (kind, name, description, properties, required) in definitions {
         let compatibility: Arc<dyn ToolCompatibility> = Arc::new(history::Results);
-        registry.register(Arc::new(ToolInstance::new(ToolContract{name:name.into(),version:ToolVersion::new(if matches!(kind,Kind::ServiceOp(_)){"gateway-service-3"}else{"gateway-2"})?,initial_description:description.into(),detailed_description:if matches!(kind,Kind::ServiceOp(_)){format!("{description} Session identity is supplied by the runtime.")}else{format!("{description} Session identity comes from the runtime and cannot be overridden. Use tool.help for the current TypeScript parameter type.")},input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(GatewayTool{kind,base:base.clone(),http:http.clone()}),compatibility)?.with_activity(move |args| kind.activity(args)).advertise(name != "chat.notify" && !matches!(kind,Kind::Message|Kind::File|Kind::History|Kind::Workers|Kind::Assign|Kind::Tasks|Kind::Rework))));
+        registry.register(Arc::new(ToolInstance::new(ToolContract{name:name.into(),version:ToolVersion::new(if matches!(kind,Kind::ServiceOp(_)){"station-service-3"}else{"station-2"})?,initial_description:description.into(),detailed_description:if matches!(kind,Kind::ServiceOp(_)){format!("{description} Session identity is supplied by the runtime.")}else{format!("{description} Session identity comes from the runtime and cannot be overridden. Use tool.help for the current TypeScript parameter type.")},input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(StationTool{kind,base:base.clone(),http:http.clone()}),compatibility)?.with_activity(move |args| kind.activity(args)).advertise(name != "chat.notify" && !matches!(kind,Kind::Message|Kind::File|Kind::History|Kind::Workers|Kind::Assign|Kind::Tasks|Kind::Rework))));
     }
     slack::register(registry, &base)?;
     history::register(registry);
@@ -180,7 +180,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
     channels::register(registry, &base, &http)?;
     Ok(())
 }
-impl ToolImplementation for GatewayTool {
+impl ToolImplementation for StationTool {
     fn execute<'a>(
         &'a self,
         context: &'a ToolContext,
@@ -216,7 +216,7 @@ impl ToolImplementation for GatewayTool {
         })
     }
 }
-impl GatewayTool {
+impl StationTool {
     async fn run(&self, context: &ToolContext, args: &Value) -> anyhow::Result<Value> {
         let response = self
             .http
@@ -226,7 +226,7 @@ impl GatewayTool {
             .await?;
         anyhow::ensure!(
             response.status().is_success(),
-            "This Session is not bound to a Gateway Conversation"
+            "This Session is not bound to a Station Conversation"
         );
         let binding: Value = response.json().await?;
         let key = binding["sessionKey"]
@@ -379,7 +379,7 @@ impl GatewayTool {
         while let Some(chunk) = response.chunk().await? {
             anyhow::ensure!(
                 bytes.len() + chunk.len() <= 1024 * 1024,
-                "Gateway result exceeds 1 MiB"
+                "Station result exceeds 1 MiB"
             );
             bytes.extend_from_slice(&chunk);
         }
@@ -387,7 +387,7 @@ impl GatewayTool {
             .unwrap_or_else(|_| json!({"text":String::from_utf8_lossy(&bytes)}));
         anyhow::ensure!(
             status.is_success(),
-            "Gateway tool failed ({status}): {value}"
+            "Station tool failed ({status}): {value}"
         );
         if matches!(self.kind, Kind::Browser) {
             if let Some(error) = value.get("error") {
@@ -412,17 +412,17 @@ impl GatewayTool {
     }
 }
 
-/// Shell environment injected by a Gateway-capable host.
+/// Shell environment injected by a Station-capable host.
 pub fn environment(
     data_root: &std::path::Path,
-    gateway_base: &str,
+    station_base: &str,
 ) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
     let mut paths = vec![data_root.join("bin")];
     if let Some(inherited) = std::env::var_os("PATH") {
         paths.extend(std::env::split_paths(&inherited));
     }
     Ok(std::collections::BTreeMap::from([
-        ("BROKER_API_BASE".into(), gateway_base.into()),
+        ("BROKER_API_BASE".into(), station_base.into()),
         (
             "REPOS_ROOT".into(),
             data_root.join("repos").to_string_lossy().into_owned(),

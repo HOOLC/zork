@@ -8,7 +8,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS sync_receipts(id TEXT PRIMARY KEY,owner TEXT NOT NULL,intent TEXT NOT NULL,receipt TEXT NOT NULL,created TEXT NOT NULL);")?;
     Ok(())
 }
-impl GatewayDb {
+impl StationDb {
     pub fn sync_receipt(&self, owner: &str, id: &str) -> Result<Option<Receipt>> {
         let value: Option<String> = self
             .conn
@@ -145,9 +145,9 @@ impl GatewayDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn fixture() -> (tempfile::TempDir, GatewayDb, Mutation) {
+    fn fixture() -> (tempfile::TempDir, StationDb, Mutation) {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         db.conn.lock().unwrap().execute("INSERT INTO node_agents(id,value) VALUES('a',?1)",[json!({"id":"a","name":"A","role":"leader","profile_id":"p","model":"m","thinking":"off","instructions":"","allowed_leaders":[],"avatar":"cat"}).to_string()]).unwrap();
         let (epoch,revision)=db.conn.lock().unwrap().query_row("SELECT m.epoch,e.revision FROM sync_meta m,sync_entities e WHERE e.kind='agent' AND e.id='a'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
         let intent = Mutation {
@@ -203,12 +203,12 @@ mod recovery_tests {
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
-    use zork_client_core::{api::GatewayClient, store::ClientStore, sync::Coordinator};
+    use zork_client_core::{api::StationClient, store::ClientStore, sync::Coordinator};
     use zork_client_types::sync::{Kind, Pull};
     #[tokio::test]
     async fn lost_ack_is_queried_after_restart_without_resubmitting() {
         let dir = tempfile::tempdir().unwrap();
-        let db = Arc::new(GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap());
+        let db = Arc::new(StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap());
         db.conn.lock().unwrap().execute("INSERT INTO node_agents(id,value) VALUES('a',?1)",[json!({"id":"a","name":"A","role":"leader","profile_id":"p","model":"m","thinking":"off","instructions":"","allowed_leaders":[],"avatar":"cat"}).to_string()]).unwrap();
         let writes = Arc::new(AtomicUsize::new(0));
         let count = writes.clone();
@@ -216,7 +216,7 @@ mod recovery_tests {
             .route(
                 "/v1/node/sync",
                 post(
-                    |State(db): State<Arc<GatewayDb>>, Json(p): Json<Pull>| async move {
+                    |State(db): State<Arc<StationDb>>, Json(p): Json<Pull>| async move {
                         Json(db.sync_pull("owner", &p).unwrap())
                     },
                 ),
@@ -224,7 +224,7 @@ mod recovery_tests {
             .route(
                 "/v1/node/sync/commands",
                 post(
-                    move |State(db): State<Arc<GatewayDb>>, Json(intent): Json<Mutation>| {
+                    move |State(db): State<Arc<StationDb>>, Json(intent): Json<Mutation>| {
                         let count = count.clone();
                         async move {
                             db.sync_mutate("owner", &intent).unwrap();
@@ -237,7 +237,7 @@ mod recovery_tests {
             .route(
                 "/v1/node/sync/receipt",
                 post(
-                    |State(db): State<Arc<GatewayDb>>, Json(value): Json<Value>| async move {
+                    |State(db): State<Arc<StationDb>>, Json(value): Json<Value>| async move {
                         Json(
                             db.sync_receipt("owner", value["request_id"].as_str().unwrap())
                                 .unwrap(),
@@ -251,7 +251,7 @@ mod recovery_tests {
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let local = tempfile::tempdir().unwrap();
         let store = Arc::new(ClientStore::open(local.path()).unwrap());
-        let client = Arc::new(GatewayClient::new(url, None));
+        let client = Arc::new(StationClient::new(url, None));
         let coordinator =
             Coordinator::new(client.clone(), store.clone(), "peer".into(), "owner".into()).unwrap();
         coordinator.refresh(Scope::Catalog {}).await.unwrap();

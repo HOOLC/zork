@@ -23,19 +23,19 @@ pub const PROTOCOL: u32 = 1;
 #[serde(rename_all = "snake_case")]
 pub enum InviteKind {
     #[default]
-    Gateway,
+    Station,
     Client,
 }
 impl InviteKind {
-    pub fn is_gateway(&self) -> bool {
-        *self == Self::Gateway
+    pub fn is_station(&self) -> bool {
+        *self == Self::Station
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Invitation {
-    #[serde(default, skip_serializing_if = "InviteKind::is_gateway")]
+    #[serde(default, skip_serializing_if = "InviteKind::is_station")]
     pub kind: InviteKind,
     pub version: u32,
     pub id: String,
@@ -166,7 +166,7 @@ impl Invitation {
                     ),
                 ): (u32, CompactTicket) = serde_json::from_slice(&decoded)?;
                 Self {
-                    kind: InviteKind::Gateway,
+                    kind: InviteKind::Station,
                     version,
                     id,
                     secret,
@@ -183,7 +183,7 @@ impl Invitation {
                 .strip_prefix("zork-mesh1-")
                 .context("unsupported_mesh_invite")?;
             let invite: Self = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(raw)?)?;
-            ensure!(invite.kind == InviteKind::Gateway, "invite_kind_mismatch");
+            ensure!(invite.kind == InviteKind::Station, "invite_kind_mismatch");
             invite
         };
         ensure!(invite.version == PROTOCOL, "unsupported_mesh_protocol");
@@ -377,7 +377,7 @@ mod tests {
         let server = Arc::new(Enrollment::bind(a.path(), &config).await.unwrap());
         let client = Enrollment::bind(b.path(), &config).await.unwrap();
         let invitation = Invitation {
-            kind: InviteKind::Gateway,
+            kind: InviteKind::Station,
             version: 1,
             id: ulid::Ulid::new().to_string(),
             secret: secret(),

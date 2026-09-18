@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resource placement and page delivery through real native/core/Gateway contracts."""
+"""Resource placement and page delivery through real native/core/Station contracts."""
 import importlib.util
 import json
 import os
@@ -96,7 +96,7 @@ def main():
         assert not catalog['references'], 'Markdown indexing belongs to client core'
         f.wait(lambda: url + '/remote' in json.dumps(request(nodes[1], 'GET', f'/v1/im/sessions/{sessions[1]}/messages')), 'Markdown delivery over Mesh')
         checks.append('ordinary_markdown_messages_and_registered_service_application')
-        nodes[0].restart_gateway()
+        nodes[0].restart_station()
         assert request(nodes[0], 'GET', '/v1/node/pages') == catalog
         checks.append('service_application_survives_restart')
         with sqlite3.connect(client / 'client.db') as db:

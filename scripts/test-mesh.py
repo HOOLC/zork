@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Two real Zork supervisors with isolated Synchronicity identities and fake models.
 
-The Agent executes real shell and registered Gateway tools; no model network
+The Agent executes real shell and registered Station tools; no model network
 request or user workspace is used. Keep the temp directory for failure diagnosis.
 """
 import argparse
@@ -57,7 +57,7 @@ class Node:
                         'limits': {'context_window_tokens': 100000, 'max_output_tokens': 10000}, 'default': True}],
         }))
         self.udp = port(True)
-        bindings = {name: f'127.0.0.1:{port()}' for name in ('gateway', 'runtime', 'control', 'agent')}
+        bindings = {name: f'127.0.0.1:{port()}' for name in ('station', 'runtime', 'control', 'agent')}
         self.url = 'http://' + bindings['runtime']
         self.agent_url = 'http://' + bindings['agent']
         self.config = {'im_connections': [], 'bind': bindings, 'urls': {}, 'admin': {}, 'mesh': {
@@ -66,24 +66,24 @@ class Node:
         }}
         self.process = None
         (root / 'config.json').write_text(json.dumps(self.config))
-        # Gateway itself owns Synch. No supervisor or transport helper is
+        # Station itself owns Synch. No supervisor or transport helper is
         # involved in identity initialization, network startup or shutdown.
         with (root / 'bootstrap.log').open('wb') as log:
             bootstrap = subprocess.Popen([str(TARGET / 'zork-station'), '--data', str(root)],
                                          stdout=log, stderr=log)
             try:
                 def identity():
-                    assert bootstrap.poll() is None, f'Gateway exited during bootstrap; see {root / "bootstrap.log"}'
+                    assert bootstrap.poll() is None, f'Station exited during bootstrap; see {root / "bootstrap.log"}'
                     return self.get('/v1/mesh').get('origin')
-                self.origin = wait(identity, 'Gateway-owned Synch initialization')
+                self.origin = wait(identity, 'Station-owned Synch initialization')
                 children = subprocess.run(['pgrep', '-P', str(bootstrap.pid)], capture_output=True, text=True)
-                assert children.returncode == 1 and not children.stdout.strip(), 'Gateway spawned a transport helper'
-                assert not (root / 'zork.pid').exists(), 'Gateway required a supervisor'
-                assert not (root / 'mesh/synch/control.sock').exists(), 'Gateway created a Synch control socket'
-                assert not (root / 'mesh/synch/control.token').exists(), 'Gateway created a Synch control token'
+                assert children.returncode == 1 and not children.stdout.strip(), 'Station spawned a transport helper'
+                assert not (root / 'zork.pid').exists(), 'Station required a supervisor'
+                assert not (root / 'mesh/synch/control.sock').exists(), 'Station created a Synch control socket'
+                assert not (root / 'mesh/synch/control.token').exists(), 'Station created a Synch control token'
             finally:
                 bootstrap.terminate()
-                assert bootstrap.wait(timeout=30) == 0, 'Gateway did not close its Synch tasks cleanly'
+                assert bootstrap.wait(timeout=30) == 0, 'Station did not close its Synch tasks cleanly'
 
     def pair(self, other):
         self.config['mesh']['peers'] = [{'origin': other.origin, 'name': other.root.name,
@@ -130,12 +130,12 @@ class Node:
         assert status == 201, (status, session)
         return next(task for task in self.get('/v1/tasks')['items'] if task['session_id'] == session['session_id'])
 
-    def restart_gateway(self):
-        pid_file = self.root / 'run/zork-gateway.pid'
+    def restart_station(self):
+        pid_file = self.root / 'run/zork-station.pid'
         old = int(pid_file.read_text())
         os.kill(old, signal.SIGKILL)
         wait(lambda: int(pid_file.read_text()) != old and self.request('GET', '/readyz')[0] == 200,
-             'supervisor restores Gateway')
+             'supervisor restores Station')
 
 
 def main():
@@ -169,9 +169,9 @@ def main():
         assert a.request('POST', route, changed)[0] == 409
         wait(lambda: (b.workspace / 'executions.txt').exists(), 'remote runtime actually starts')
         # Fault injection: B committed intake, but A did not persist its ACK.
-        with sqlite3.connect(a.root/'state/gateway.sqlite') as db:
+        with sqlite3.connect(a.root/'state/station.sqlite') as db:
             db.execute("UPDATE mesh_links SET state='queued' WHERE assignment_id='mesh-fixture-1'")
-        b.restart_gateway()
+        b.restart_station()
         wait(lambda: a.task(task['task_id'])['state'] == 'review' and a.task(task['task_id'])['last_run_status'] == 'finished', 'remote result and run completion', 90)
         owner = a.task(task['task_id'])
         assert owner['run_count'] == 1, owner
@@ -188,9 +188,9 @@ def main():
         remote_task = next(t for t in b.get('/v1/tasks')['items'] if t['mesh'])
         assert b.request('POST', f"/v1/tasks/{remote_task['task_id']}/transitions", {'expected_revision': remote_task['revision'], 'action': 'accept'})[0] == 409
         assert a.request('POST', f"/v1/im/sessions/{task['session_id']}/messages", {'content': 'must not run locally'})[0] == 409
-        print('PASS: remote Agent + registered tool result/file delivery; duplicate command and Gateway restart do not duplicate the run', flush=True)
+        print('PASS: remote Agent + registered tool result/file delivery; duplicate command and Station restart do not duplicate the run', flush=True)
 
-        a.restart_gateway()
+        a.restart_station()
         restored = a.task(task['task_id'])
         assert restored['result_message_id'] == owner['result_message_id'] and restored['run_count'] == 1
         assert a.request('POST', f"/v1/tasks/{task['task_id']}/transitions", {'expected_revision': task['revision'], 'action': 'accept'})[0] == 409
@@ -207,7 +207,7 @@ def main():
         long_goal=json.dumps({'fake_tool':{'name':'shell.run','input':{'command':"printf 'started\\n' >> cancelled-executions.txt\nsleep 30\nprintf 'unexpected\\n' > should-not-exist.txt"}}})
         command2={'command_id':'mesh-fixture-cancel','expected_revision':queued['revision'],'executor_origin':b.origin,'workspace_id':'lab','goal':long_goal}
         assert a.request('POST',f"/v1/tasks/{queued['task_id']}/delegate",command2)[0]==202
-        a.restart_gateway()
+        a.restart_station()
         assert a.task(queued['task_id'])['mesh']['state']=='queued'
         b.start()
         wait(lambda:b.request('GET','/readyz')[0]==200,'executor restarted')

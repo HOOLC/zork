@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommentSource {
     pub session_id: String,
-    /// A durable Gateway message ID. Old gateways may not provide one.
+    /// A durable Station message ID. Old stations may not provide one.
     pub message_id: Option<String>,
     pub author: Option<String>,
     pub author_agent_id: Option<String>,
@@ -38,7 +38,7 @@ struct CommentBatch {
 const PREFIX: &str = "<zork-message-comments version=\"1\">\n";
 const SUFFIX: &str = "\n</zork-message-comments>";
 
-/// A single compatible text payload keeps the existing Gateway send boundary.
+/// A single compatible text payload keeps the existing Station send boundary.
 /// JSON escaping prevents quotes or user comments from changing the envelope.
 pub fn compose(text: &str, comments: &[DraftComment]) -> String {
     compose_document(text, comments, &[])

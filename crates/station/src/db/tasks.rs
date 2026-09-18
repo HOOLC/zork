@@ -304,7 +304,7 @@ pub(super) fn record_message(
     super::chats::record(conn, message, None, None, &[], true)
 }
 
-impl GatewayDb {
+impl StationDb {
     /// Rebuild the actionable queue from durable task/run state, including detached tasks.
     pub fn list_inbox_tasks(&self) -> Result<Vec<ProductTask>> {
         Ok(self
@@ -537,9 +537,9 @@ impl GatewayDb {
 mod tests {
     use super::*;
 
-    fn setup() -> (tempfile::TempDir, GatewayDb, SessionRow) {
+    fn setup() -> (tempfile::TempDir, StationDb, SessionRow) {
         let dir = tempfile::tempdir().unwrap();
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let session = db
             .create_session_at_workspace(
                 EnsureSession {
@@ -566,7 +566,7 @@ mod tests {
         (dir, db, session)
     }
     fn message(
-        db: &GatewayDb,
+        db: &StationDb,
         session: &SessionRow,
         id: &str,
         role: &str,
@@ -584,10 +584,10 @@ mod tests {
             kind,
         )
     }
-    fn task(db: &GatewayDb, session: &SessionRow) -> ProductTask {
+    fn task(db: &StationDb, session: &SessionRow) -> ProductTask {
         db.product_task_for_session(&session.key).unwrap().unwrap()
     }
-    fn event(db: &GatewayDb, session: &SessionRow, seq: u32, value: Value) {
+    fn event(db: &StationDb, session: &SessionRow, seq: u32, value: Value) {
         db.project_task_run(&session.key, "agent-1", &format!("{seq:016}"), &value)
             .unwrap();
     }
@@ -661,11 +661,11 @@ mod tests {
         db.project_task_snapshot(&session.key, &snapshot).unwrap();
         assert_eq!(task(&db, &session).run_count, 101);
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(task(&db, &session).run_count, 101);
     }
 
-    fn historical_review(db: &GatewayDb, session: &SessionRow, message: &str) {
+    fn historical_review(db: &StationDb, session: &SessionRow, message: &str) {
         db.conn.lock().unwrap().execute("UPDATE product_tasks SET state='review',result_sequence=(SELECT sequence FROM visible_message_content WHERE message_id=?2),revision=revision+1 WHERE session_key=?1",params![session.key,message]).unwrap();
     }
 
@@ -685,7 +685,7 @@ mod tests {
             .transition_task(&candidate.task_id, candidate.revision, TaskAction::Accept)
             .unwrap();
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let restored = task(&db, &session);
         assert_eq!(restored.task_id, done.task_id);
         assert_eq!(restored.state, TaskState::Completed);
@@ -808,7 +808,7 @@ mod tests {
         assert!(item.goal.is_empty());
         assert!(item.result_text.is_none());
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(db.list_inbox_tasks().unwrap()[0].task_id, item.task_id);
         db.transition_task(&item.task_id, item.revision, TaskAction::Accept)
             .unwrap();
@@ -1009,7 +1009,7 @@ mod tests {
         .unwrap();
         db.conn.lock().unwrap().execute_batch("DROP TABLE task_decisions; DROP TABLE task_event_cursors; DROP TABLE task_runs; DROP TABLE product_tasks;").unwrap();
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let migrated = task(&db, &session);
         assert_eq!(migrated.goal, "Existing goal");
         assert_eq!(migrated.state, TaskState::Open);
@@ -1020,7 +1020,7 @@ mod tests {
             2
         );
         drop(db);
-        let db = GatewayDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
+        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         assert_eq!(task(&db, &session).task_id, migrated.task_id);
     }
 }

@@ -352,8 +352,8 @@ async fn review_choices(
     state: &AppState,
     subject: &Subject,
     values: &Value,
-) -> Result<zork_agent_gateway_tools::agent_configuration::ReviewChoices> {
-    use zork_agent_gateway_tools::agent_configuration::{selection_value, ReviewChoices};
+) -> Result<zork_agent_station_tools::agent_configuration::ReviewChoices> {
+    use zork_agent_station_tools::agent_configuration::{selection_value, ReviewChoices};
     use zork_client_types::interaction::Choice;
     let profiles = crate::agent::list_profiles(&state.agent).await?;
     let mut choices = ReviewChoices::default();
@@ -425,7 +425,7 @@ async fn candidate(state: &AppState, rpc: &Rpc, id: &str, fields: &Value) -> Res
     } else {
         state.db.node_agent(id)?.context("agent_not_found")?
     };
-    let schema = zork_agent_gateway_tools::agent_configuration::schema(creating, creating);
+    let schema = zork_agent_station_tools::agent_configuration::schema(creating, creating);
     ensure!(
         jsonschema::validator_for(&schema)?.is_valid(fields),
         "invalid_agent_configuration"
@@ -494,7 +494,7 @@ async fn mutate(
                 let mut values = configuration(&initial);
                 merge_configuration(&mut values, original);
                 let choices = review_choices(state, &rpc.subject, &values).await?;
-                let mut spec = zork_agent_gateway_tools::agent_configuration::form(
+                let mut spec = zork_agent_station_tools::agent_configuration::form(
                     creating, &values, original, choices,
                 );
                 if let zork_client_types::interaction::Request::AgentConfiguration {
@@ -509,7 +509,7 @@ async fn mutate(
             loop {
                 let submitted =
                     crate::agent_configuration::next_submission(state, &request.request_id).await?;
-                let parsed = zork_agent_gateway_tools::agent_configuration::submitted(
+                let parsed = zork_agent_station_tools::agent_configuration::submitted(
                     creating,
                     original,
                     &request.request,

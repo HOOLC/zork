@@ -746,7 +746,7 @@ fn responses_input_from_transcript(
                     continue;
                 }
                 // DeepSeek requires nonempty reasoning for each assistant tool
-                // turn, including through OpenCode Go. Limit the gateway policy
+                // turn, including through OpenCode Go. Limit the station policy
                 // to its DeepSeek model family, not every model on that provider.
                 // Only synthetic calls get a marker; real output stays opaque.
                 if message.runtime_generated

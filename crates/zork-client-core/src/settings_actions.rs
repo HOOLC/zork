@@ -168,9 +168,9 @@ impl Client {
         action: SettingsAction,
     ) -> Result<Value> {
         self.peer(&peer)?;
-        let gateway = self.gateway(&peer)?;
+        let station = self.station(&peer)?;
         let device = crate::state::Device::open(
-            gateway.clone(),
+            station.clone(),
             Some((self.store.clone(), peer.clone())),
             true,
         );
@@ -297,7 +297,7 @@ impl Client {
                 )?;
                 let store = self.store.clone();
                 let job_id = id.clone();
-                gateway.spawn(async move {
+                station.spawn(async move {
                     let outcome = device.upgrade(&version, |state| {
                             let status = upgrade_status(&state.info, &version).unwrap_or(&Value::Null);
                             let message = status["message"].as_str().filter(|s| !s.is_empty()).unwrap_or("等待设备恢复连接…");
@@ -320,9 +320,9 @@ mod tests {
         Arc,
     };
     fn save_node(client: &Client, url: String) {
-        client.gateways.lock().unwrap().insert(
+        client.stations.lock().unwrap().insert(
             "node".into(),
-            Arc::new(crate::api::GatewayClient::new(url.clone(), None)),
+            Arc::new(crate::api::StationClient::new(url.clone(), None)),
         );
         client
             .store

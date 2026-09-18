@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Skill sources through a rebuilt Gateway, isolated files and the fake provider."""
+"""Skill sources through a rebuilt Station, isolated files and the fake provider."""
 import importlib.util
 import json
 import os
@@ -59,7 +59,7 @@ def main():
             with log_path.open("ab") as log:
                 process = subprocess.Popen([str(fixture.TARGET / "zork-station"), "--data", str(node.root), "--fake-agent"], stdout=log, stderr=log)
                 try:
-                    fixture.wait(lambda: request(node.url, "GET", "/readyz"), "Gateway ready")
+                    fixture.wait(lambda: request(node.url, "GET", "/readyz"), "Station ready")
                     endpoint = "/v1/node/agents/leader/skills"
                     if restart == 0:
                         selection = {"profile_id": "fixture", "model": "fixture-model", "thinking": "off"}
@@ -158,7 +158,7 @@ def main():
                     if process.poll() is None:
                         process.kill()
                         process.wait()
-    print("PASS: Skill API authorization/validation, ordered sources, live Agent/node updates, ordinary file read/write and shell, preserved resources, durable catalogs and Gateway restart; temporary data cleaned")
+    print("PASS: Skill API authorization/validation, ordered sources, live Agent/node updates, ordinary file read/write and shell, preserved resources, durable catalogs and Station restart; temporary data cleaned")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 //! On-demand read-only Mesh inventory. All UI surfaces observe this projection.
 use crate::{
-    api::GatewayClient,
+    api::StationClient,
     state::{Observable, Subscription},
 };
 use std::{
@@ -12,7 +12,7 @@ use std::{
 pub use zork_client_types::resources::*;
 
 pub struct Resources {
-    clients: Mutex<Vec<(String, u64, Arc<GatewayClient>)>>,
+    clients: Mutex<Vec<(String, u64, Arc<StationClient>)>>,
     next: AtomicU64,
     state: Mutex<ResourcesData>,
     changes: Observable<ResourcesData>,
@@ -26,7 +26,7 @@ impl Resources {
         source.changes.publish(data);
         source
     }
-    pub fn new(devices: Vec<(String, String, Arc<GatewayClient>)>) -> Arc<Self> {
+    pub fn new(devices: Vec<(String, String, Arc<StationClient>)>) -> Arc<Self> {
         let state = ResourcesData {
             devices: devices
                 .iter()
@@ -56,7 +56,7 @@ impl Resources {
     pub fn subscribe(&self) -> Subscription<ResourcesData> {
         self.changes.subscribe()
     }
-    pub fn replace_devices(&self, devices: Vec<(String, String, Arc<GatewayClient>)>) {
+    pub fn replace_devices(&self, devices: Vec<(String, String, Arc<StationClient>)>) {
         let mut clients = self.clients.lock().unwrap();
         let mut state = self.state.lock().unwrap();
         let invalidated = clients.iter().any(|(id, _, old)| {
@@ -482,7 +482,7 @@ mod tests {
         let core = Resources::new(vec![(
             "node".into(),
             "Device".into(),
-            Arc::new(GatewayClient::new(format!("http://{address}"), None)),
+            Arc::new(StationClient::new(format!("http://{address}"), None)),
         )]);
         let request = core.clone();
         let task = tokio::spawn(async move {
@@ -557,7 +557,7 @@ mod tests {
         let core = Resources::new(vec![(
             "node".into(),
             "Device".into(),
-            Arc::new(GatewayClient::new(format!("http://{address}"), None)),
+            Arc::new(StationClient::new(format!("http://{address}"), None)),
         )]);
         core.refresh().await;
         assert!(core.snapshot().devices[0].catalog.is_some());

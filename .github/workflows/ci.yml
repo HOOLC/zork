@@ -120,11 +120,11 @@ jobs:
           python3 scripts/test-slack-forwarding.py
           python3 scripts/test-skills.py
 
-      - name: Test Gateway sync reaches idle
+      - name: Test Station sync reaches idle
         run: python3 scripts/test-sync-idle.py
 
       - name: Run desktop entry contract
-        run: python3 crates/zork-gui/tests/test_gateway_entry.py
+        run: python3 crates/zork-gui/tests/test_station_entry.py
 
   backend:
     name: Rust (${{ matrix.suite }})

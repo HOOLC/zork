@@ -1,7 +1,7 @@
 //! One coordinator per authenticated peer. Network awaits never hold the local
 //! database mutex. Only committed batches generate observer notifications.
 use crate::{
-    api::GatewayClient,
+    api::StationClient,
     store::{ClientStore, ReplicaApply},
 };
 use anyhow::{ensure, Result};
@@ -22,7 +22,7 @@ pub struct SyncStatus {
 }
 
 pub struct Coordinator {
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     store: Arc<ClientStore>,
     peer: String,
     owner: String,
@@ -34,7 +34,7 @@ pub struct Coordinator {
 }
 impl Coordinator {
     pub fn new(
-        client: Arc<GatewayClient>,
+        client: Arc<StationClient>,
         store: Arc<ClientStore>,
         peer: String,
         authenticated_owner: String,

@@ -19,7 +19,7 @@ def admin(node,method,path,body=None):
 def tasks(node):return node.get('/v1/tasks')['items']
 def start():
     for node in (a,b):node.start()
-    for node in (a,b):f.wait(lambda:node.request('GET','/readyz')[0]==200,'Gateway ready');f.wait(lambda:urlopen(node.agent_url+'/readyz',timeout=2).status==200,'Agent ready')
+    for node in (a,b):f.wait(lambda:node.request('GET','/readyz')[0]==200,'Station ready');f.wait(lambda:urlopen(node.agent_url+'/readyz',timeout=2).status==200,'Agent ready')
 try:
     start()
     selection={'profile_id':'fixture','model':'fixture-model','thinking':'off'}
@@ -46,10 +46,10 @@ try:
     assert all((Path(t['workspace'])/'executions.txt').read_text().splitlines()==['one'] for t in tasks(b))
     runtime_ids={s['session_id'] for s in json.load(urlopen(a.agent_url+'/sessions'))['items']};assert runtime_ids=={leader['session_id']},runtime_ids
     remote_sessions={t['session_id'] for t in tasks(b)}
-    with sqlite3.connect(a.root/'state/gateway.sqlite') as db:
+    with sqlite3.connect(a.root/'state/station.sqlite') as db:
         f.wait(lambda:db.execute('SELECT COUNT(*) FROM leader_notifications WHERE delivered=1').fetchone()[0]==2,'remote results notify original Leader')
         db.execute("UPDATE mesh_links SET state='queued'")
-    with sqlite3.connect(b.root/'state/gateway.sqlite') as db:db.execute("UPDATE mesh_links SET state='dispatching'")
+    with sqlite3.connect(b.root/'state/station.sqlite') as db:db.execute("UPDATE mesh_links SET state='dispatching'")
     a.stop();b.stop();start();time.sleep(3)
     assert len(tasks(a))==2 and {t['session_id'] for t in tasks(b)}==remote_sessions
     assert all(t['run_count']==1 for t in tasks(a)),tasks(a)

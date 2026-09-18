@@ -198,7 +198,7 @@ fn export(conn: &Connection, assignment: &str, key: &str, body: &EventBody) -> R
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     pub fn mesh_queue_rework(
         &self,
         task_id: &str,
@@ -961,10 +961,10 @@ mod tests {
             matches!(serde_json::from_value::<EventBody>(old).unwrap(), EventBody::Message {pages, ..} if pages.is_empty())
         );
     }
-    fn fixture(root: &Path) -> (GatewayDb, SessionRow) {
+    fn fixture(root: &Path) -> (StationDb, SessionRow) {
         let workspace = root.join("workspace");
         std::fs::create_dir_all(&workspace).unwrap();
-        let db = GatewayDb::open(&root.join("state"), &workspace).unwrap();
+        let db = StationDb::open(&root.join("state"), &workspace).unwrap();
         let session = db
             .create_session_at_workspace(
                 EnsureSession {
@@ -981,7 +981,7 @@ mod tests {
             .unwrap();
         (db, session)
     }
-    fn assignment(db: &GatewayDb, session: &SessionRow) -> Assignment {
+    fn assignment(db: &StationDb, session: &SessionRow) -> Assignment {
         Assignment {
             assignment_id: "fixture-assignment".into(),
             task_id: db
@@ -1011,7 +1011,7 @@ mod tests {
             .unwrap();
         drop(db);
         let db =
-            GatewayDb::open(&root.path().join("state"), &root.path().join("workspace")).unwrap();
+            StationDb::open(&root.path().join("state"), &root.path().join("workspace")).unwrap();
         db.mesh_recover_dispatch().unwrap();
         db.mesh_recover_dispatch().unwrap();
         assert_eq!(db.mesh_links().unwrap().len(), 1);
@@ -1092,7 +1092,7 @@ mod tests {
         assert_eq!(db.mesh_link(&a.assignment_id).unwrap().unwrap().cursor, 3);
         drop(db);
         let db =
-            GatewayDb::open(&root.path().join("state"), &root.path().join("workspace")).unwrap();
+            StationDb::open(&root.path().join("state"), &root.path().join("workspace")).unwrap();
         assert_eq!(
             db.mesh_pending_decision(&a.assignment_id).unwrap(),
             Some(decision)

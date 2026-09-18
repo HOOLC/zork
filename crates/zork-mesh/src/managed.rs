@@ -88,7 +88,7 @@ pub fn validate(config: &MeshConfig) -> Result<()> {
     Ok(())
 }
 
-/// The Gateway owns this task and awaits it on shutdown. Library handles are
+/// The Station owns this task and awaits it on shutdown. Library handles are
 /// cloned into its services; none can start or address an independent daemon.
 pub struct Runtime {
     node: MeshNode,
@@ -783,7 +783,7 @@ mod tests {
             .put(
                 "test-artifacts",
                 "receipt",
-                b"persist across Gateway restart",
+                b"persist across Station restart",
             )
             .await?;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -812,7 +812,7 @@ mod tests {
             "identity replaced"
         );
         ensure!(
-            reopened.node().read(&object).await? == b"persist across Gateway restart",
+            reopened.node().read(&object).await? == b"persist across Station restart",
             "publication lost"
         );
         reopened.shutdown().await?;
@@ -853,7 +853,7 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(30), runtime.wait()).await?;
         ensure!(
             result.is_err(),
-            "background loop exit was hidden from the Gateway"
+            "background loop exit was hidden from the Station"
         );
         ensure!(
             node.identity().await.is_err(),

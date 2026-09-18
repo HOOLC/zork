@@ -2,7 +2,7 @@
 //! Build first, then run this fixed binary without compiler or UI load.
 use serde_json::{json, Value};
 use std::{hint::black_box, sync::Arc, time::Instant};
-use zork_client_core::{api::GatewayClient, state::Device};
+use zork_client_core::{api::StationClient, state::Device};
 #[path = "support/history.rs"]
 mod input;
 use input::{fixture, record};
@@ -17,7 +17,7 @@ fn distribution(mut samples: Vec<f64>) -> Value {
 
 fn run(count: usize, readers: usize) -> Value {
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         None,
         true,
     );

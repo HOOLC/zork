@@ -314,8 +314,8 @@ impl SlackProviderConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BindConfig {
-    #[serde(default = "default_gateway_bind")]
-    pub gateway: String,
+    #[serde(default = "default_station_bind")]
+    pub station: String,
     #[serde(default = "default_runtime_bind")]
     pub runtime: String,
     #[serde(default = "default_control_bind")]
@@ -327,7 +327,7 @@ pub struct BindConfig {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UrlConfig {
     #[serde(default)]
-    pub gateway: String,
+    pub station: String,
     #[serde(default)]
     pub runtime: String,
     #[serde(default)]
@@ -343,7 +343,7 @@ pub struct AdminConfig {
 impl Default for BindConfig {
     fn default() -> Self {
         Self {
-            gateway: default_gateway_bind(),
+            station: default_station_bind(),
             runtime: default_runtime_bind(),
             control: default_control_bind(),
             agent: default_agent_bind(),
@@ -351,7 +351,7 @@ impl Default for BindConfig {
     }
 }
 
-fn default_gateway_bind() -> String {
+fn default_station_bind() -> String {
     DEFAULT_GATEWAY_BIND.into()
 }
 fn default_runtime_bind() -> String {
@@ -449,9 +449,9 @@ pub fn zork_pid_path(data_root: &Path) -> PathBuf {
 
 pub fn ready_pid_path(data_root: &Path, name: &str) -> PathBuf {
     // Preserve the readiness contract with already installed supervisors and
-    // clients when the executable is renamed from Gateway to Station.
+    // clients when the executable is renamed from Station to Station.
     let name = if name == "zork-station" {
-        "zork-gateway"
+        "zork-station"
     } else {
         name
     };
@@ -572,7 +572,7 @@ pub fn save_config(data_root: &Path, config: &FileConfig) -> Result<()> {
     Ok(())
 }
 
-/// Serialize read-modify-write operations across the Gateway, CLI and client.
+/// Serialize read-modify-write operations across the Station, CLI and client.
 pub fn update_config<T>(root: &Path, edit: impl FnOnce(&mut FileConfig) -> Result<T>) -> Result<T> {
     use fs2::FileExt;
     fs::create_dir_all(root)?;
@@ -590,7 +590,7 @@ pub fn update_config<T>(root: &Path, edit: impl FnOnce(&mut FileConfig) -> Resul
 }
 
 pub fn apply_listen(config: &mut FileConfig, host: &str) {
-    config.bind.gateway = replace_host(&config.bind.gateway, host);
+    config.bind.station = replace_host(&config.bind.station, host);
     config.bind.runtime = replace_host(&config.bind.runtime, host);
     config.bind.control = replace_host(&config.bind.control, host);
 }
@@ -607,11 +607,11 @@ pub fn loopback_base_url(bind: &str) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-pub fn gateway_base_url(config: &FileConfig) -> String {
-    if !config.urls.gateway.trim().is_empty() {
-        return config.urls.gateway.trim_end_matches('/').to_string();
+pub fn station_base(config: &FileConfig) -> String {
+    if !config.urls.station.trim().is_empty() {
+        return config.urls.station.trim_end_matches('/').to_string();
     }
-    loopback_base_url(&config.bind.gateway)
+    loopback_base_url(&config.bind.station)
 }
 
 pub fn runtime_base_url(config: &FileConfig) -> String {
@@ -756,7 +756,7 @@ mod tests {
     fn listen_rewrites_hosts() {
         let mut config = FileConfig::default();
         apply_listen(&mut config, "0.0.0.0");
-        assert_eq!(config.bind.gateway, "0.0.0.0:18790");
+        assert_eq!(config.bind.station, "0.0.0.0:18790");
         assert_eq!(
             loopback_base_url(&config.bind.control),
             "http://127.0.0.1:3001"
@@ -795,7 +795,7 @@ mod tests {
     fn station_readiness_remains_visible_to_existing_clients() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir(dir.path().join("run")).unwrap();
-        let legacy = dir.path().join("run/zork-gateway.pid");
+        let legacy = dir.path().join("run/zork-station.pid");
         fs::write(&legacy, std::process::id().to_string()).unwrap();
         assert_eq!(
             read_ready_pid(dir.path(), "zork-station").unwrap(),
@@ -805,7 +805,7 @@ mod tests {
         assert!(!legacy.exists());
         write_ready_pid(dir.path(), "zork-station").unwrap();
         assert_eq!(
-            read_ready_pid(dir.path(), "zork-gateway").unwrap(),
+            read_ready_pid(dir.path(), "zork-station").unwrap(),
             Some(std::process::id())
         );
     }

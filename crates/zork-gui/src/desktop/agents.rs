@@ -1,6 +1,6 @@
 use super::ui;
 #[cfg(feature = "headless-bench")]
-use crate::api::GatewayClient;
+use crate::api::StationClient;
 use crate::{
     api::ProfileInfo,
     automation::{AutomationElementExt, AutomationRole},
@@ -223,10 +223,10 @@ impl AgentsView {
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(cx: &mut Context<Self>) -> Self {
         #[cfg(not(target_family = "wasm"))]
-        let client = Arc::new(GatewayClient::fixture(zork_ui::stories::page_fixture(),
+        let client = Arc::new(StationClient::fixture(zork_ui::stories::page_fixture(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
         #[cfg(target_family = "wasm")]
-        let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
         let mut view = Self::new_inner(source, cx);
         let fixture = zork_ui::stories::page_fixture();

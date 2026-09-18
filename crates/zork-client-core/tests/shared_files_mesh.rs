@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 use zork_client_core::{
-    api::GatewayClient,
+    api::StationClient,
     shared_files::{Action, SharedFiles, SharedFilesData},
     store::ClientStore,
 };
@@ -88,7 +88,7 @@ async fn start(
 ) -> Result<Station> {
     let mut listeners = vec![];
     let mut bind = serde_json::Map::new();
-    for name in ["gateway", "runtime", "control", "agent"] {
+    for name in ["station", "runtime", "control", "agent"] {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         bind.insert(name.into(), json!(listener.local_addr()?.to_string()));
         listeners.push(listener);
@@ -458,10 +458,10 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     for origin in &ids {
         node.trust(origin, "unified tree fixture", None).await?;
     }
-    // A single saved Gateway binding suffices: the tree comes from the one
+    // A single saved Station binding suffices: the tree comes from the one
     // embedded Synch node, not from an HTTP catalog fanout to saved Stations.
     let source = SharedFiles::new(Arc::new(ClientStore::open(&root.join("client"))?));
-    let client = Arc::new(GatewayClient::new_mesh(node.clone(), third.origin.clone()));
+    let client = Arc::new(StationClient::new_mesh(node.clone(), third.origin.clone()));
     source.replace_devices(vec![(
         "empty-station".into(),
         "Third Station".into(),
@@ -953,7 +953,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     .await?;
     ensure!(node.tree_read(&object).await? == attachment);
     let database = rusqlite::Connection::open_with_flags(
-        third.root.join("state/gateway.sqlite"),
+        third.root.join("state/station.sqlite"),
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?;
     let metadata: String = database.query_row(

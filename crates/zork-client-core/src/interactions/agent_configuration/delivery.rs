@@ -1,9 +1,9 @@
 //! Durable transport of Agent configuration responses. Login uses its own
 //! transient private requests and cannot enter this submission queue.
-use crate::{api::GatewayClient, store::ClientStore};
+use crate::{api::StationClient, store::ClientStore};
 
 pub(crate) async fn flush(
-    client: &GatewayClient,
+    client: &StationClient,
     store: &ClientStore,
     node: &str,
 ) -> anyhow::Result<Option<String>> {
@@ -59,7 +59,7 @@ pub(crate) fn has_pending(store: &ClientStore, node: &str) -> bool {
 struct InteractionRejected(String);
 
 async fn deliver(
-    client: &GatewayClient,
+    client: &StationClient,
     store: &ClientStore,
     node: &str,
     pending: &crate::store::ConfigurationDelivery,

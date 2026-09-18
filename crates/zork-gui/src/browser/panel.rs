@@ -108,7 +108,7 @@ pub struct BrowserPanel {
     resize_offset: f32,
     resize_max_width: f32,
     chrome: zork_ui::browser_chrome::Chrome,
-    connection: Option<(Arc<crate::api::GatewayClient>, String)>,
+    connection: Option<(Arc<crate::api::StationClient>, String)>,
     grants: HashMap<String, super::bridge::Grant>,
     grant_connected: bool,
     worker: Worker,
@@ -408,7 +408,7 @@ impl BrowserPanel {
     }
     pub fn set_connection(
         &mut self,
-        client: Arc<crate::api::GatewayClient>,
+        client: Arc<crate::api::StationClient>,
         session: Option<String>,
     ) {
         self.connection = session.map(|s| (client, s));

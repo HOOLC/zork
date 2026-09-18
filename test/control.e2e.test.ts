@@ -23,10 +23,10 @@ describe.sequential("admin plane (in-process)", () => {
     await fs.writeFile(path.join(dataRoot, "ui", "index.html"), "legacy admin page");
     await fs.writeFile(path.join(dataRoot, "ui", "assets", "main.js"), "legacy admin script");
 
-    const [gatewayPort, runtimePort, controlPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort()]);
+    const [stationPort, runtimePort, controlPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort()]);
     await writeConfig(dataRoot, {
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${controlPort}`,
       },
@@ -108,10 +108,10 @@ describe.sequential("admin plane (in-process)", () => {
   it("manages multiple IM connections of the same provider with independent modes", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "control-im-connections-"));
     cleanups.push(async () => removeTempRoot(tempRoot));
-    const [gatewayPort, runtimePort, controlPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort()]);
+    const [stationPort, runtimePort, controlPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort()]);
     await writeConfig(tempRoot, {
       bind: {
-        gateway: `127.0.0.1:${gatewayPort}`,
+        station: `127.0.0.1:${stationPort}`,
         runtime: `127.0.0.1:${runtimePort}`,
         control: `127.0.0.1:${controlPort}`,
       },

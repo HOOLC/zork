@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 use crate::connections::ConnectionManager;
-use crate::db::{GatewayDb, SessionBindingRow, SessionRow, VisibleMessageRow};
+use crate::db::{StationDb, SessionBindingRow, SessionRow, VisibleMessageRow};
 
 pub const LOCAL_GUI_ENTRY_ID: &str = "local_gui";
 pub const LOCAL_GUI_PLATFORM: &str = "local_gui";
@@ -65,20 +65,20 @@ impl LocalGuiEntry {
     }
 }
 
-/// Provider-neutral gateway boundary for deliberate messages and activity.
+/// Provider-neutral station boundary for deliberate messages and activity.
 ///
 /// Configured external connections and the built-in desktop entry both pass
 /// through this type. Adding an external provider extends this dispatch point;
 /// it does not change the Agent transcript or GUI message contract.
 #[derive(Clone)]
-pub struct ImEntryGateway {
-    db: Arc<GatewayDb>,
+pub struct ImEntryStation {
+    db: Arc<StationDb>,
     connections: Arc<ConnectionManager>,
     local_gui: LocalGuiEntry,
     task_locks: LocalTaskLocks,
 }
 
-impl ImEntryGateway {
+impl ImEntryStation {
     pub(crate) fn activity_target(
         &self,
         target: &zork_agent::session::tools::ActivityTarget,
@@ -101,7 +101,7 @@ impl ImEntryGateway {
         Some(zork_agent::session::tools::activity::bounded(&name))
     }
 
-    pub fn new(db: Arc<GatewayDb>, connections: Arc<ConnectionManager>) -> Self {
+    pub fn new(db: Arc<StationDb>, connections: Arc<ConnectionManager>) -> Self {
         Self {
             db,
             connections,
@@ -588,7 +588,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         zork_config::ensure_layout(dir.path()).unwrap();
         let db = Arc::new(
-            GatewayDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
+            StationDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
         );
         let connections = Arc::new(
             ConnectionManager::load(
@@ -598,7 +598,7 @@ mod tests {
             .await
             .unwrap(),
         );
-        let entries = ImEntryGateway::new(db.clone(), connections);
+        let entries = ImEntryStation::new(db.clone(), connections);
         let local = db
             .create_session_at_workspace(
                 EnsureSession {

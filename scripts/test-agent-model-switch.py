@@ -30,7 +30,7 @@ def main():
             'auth': {'type': 'api_key', 'key': 'sk-fixture'}, 'models': [old],
         }))
         bindings = {name: f'127.0.0.1:{f.port()}'
-                    for name in ('gateway', 'runtime', 'control', 'agent')}
+                    for name in ('station', 'runtime', 'control', 'agent')}
         (root / 'config.json').write_text(json.dumps({
             'bind': bindings, 'admin': {'token': 'isolated-test'},
         }))
@@ -57,7 +57,7 @@ def main():
             process = subprocess.Popen(
                 [str(f.TARGET / 'zork'), 'start', '--data', str(root), '--fake-agent'],
                 stdout=log, stderr=log, start_new_session=True)
-            f.wait(lambda: request('GET', '/readyz'), 'Gateway ready')
+            f.wait(lambda: request('GET', '/readyz'), 'Station ready')
 
         def stop():
             nonlocal process

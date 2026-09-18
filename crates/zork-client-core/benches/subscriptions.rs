@@ -8,7 +8,7 @@ mod wire;
 use serde_json::{json, Value};
 use std::{hint::black_box, sync::Arc, time::Instant};
 use zork_client_core::{
-    api::{GatewayClient, MessageMetadata, Role, SseEvent},
+    api::{StationClient, MessageMetadata, Role, SseEvent},
     state::{ConversationData, Device},
     transcript::TranscriptLine,
 };
@@ -49,7 +49,7 @@ fn distribution(mut samples: Vec<f64>) -> Value {
 
 fn run(count: usize, readers: usize) -> Value {
     let device = Device::open(
-        Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+        Arc::new(StationClient::new("http://127.0.0.1:9", None)),
         None,
         true,
     );

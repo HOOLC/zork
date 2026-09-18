@@ -1,4 +1,4 @@
-use crate::api::GatewayClient;
+use crate::api::StationClient;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
@@ -247,7 +247,7 @@ impl Pending {
     }
 }
 pub struct History {
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     session: String,
     owned: Mutex<Pending>,
     state: Source<HistoryData, HistoryChange>,
@@ -289,7 +289,7 @@ impl History {
         self.state.replace(state);
     }
 
-    pub(super) fn new(client: Arc<GatewayClient>, session: String) -> Arc<Self> {
+    pub(super) fn new(client: Arc<StationClient>, session: String) -> Arc<Self> {
         Arc::new(Self {
             client,
             session,
@@ -505,7 +505,7 @@ mod tests {
     fn paged_results_move_by_id_and_readers_converge_after_cancel_and_journal_reset() {
         use serde_json::json;
         let history = History::new(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             "pages".into(),
         );
         let records = (0..1000).map(|i| {
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn sparse_history_changes_replay_after_cancel_and_revoke_invalidates_in_flight_rows() {
         let history = History::new(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             "test".into(),
         );
         let records = (0..10_000).map(|i| Record { event_id: format!("e{i}"), metadata: Default::default(),
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn runtime_changes_publish_without_changing_the_history_rows() {
         let history = History::new(
-            Arc::new(GatewayClient::new("http://127.0.0.1:9", None)),
+            Arc::new(StationClient::new("http://127.0.0.1:9", None)),
             "test".into(),
         );
         let mut subscription = history.subscribe();

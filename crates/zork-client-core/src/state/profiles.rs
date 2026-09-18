@@ -1,7 +1,7 @@
 //! Connection state and refresh policy shared by native and the in-memory Web
 //! adapter. Platforms supply execution/clock only, never business comparison.
 use super::{Observable, Subscription};
-use crate::api::{GatewayClient, ProfileInfo};
+use crate::api::{StationClient, ProfileInfo};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -164,7 +164,7 @@ struct Owned {
 pub struct Profiles {
     #[cfg(not(target_family = "wasm"))]
     device: std::sync::OnceLock<std::sync::Weak<super::Device>>,
-    client: Arc<GatewayClient>,
+    client: Arc<StationClient>,
     owned: Mutex<Owned>,
     state: Observable<ProfileData>,
     authorization_task: Mutex<Option<crate::api::ClientTask>>,
@@ -607,7 +607,7 @@ impl Profiles {
                 .await;
         }
     }
-    pub fn new(client: Arc<GatewayClient>) -> Arc<Self> {
+    pub fn new(client: Arc<StationClient>) -> Arc<Self> {
         Arc::new(Self {
             #[cfg(not(target_family = "wasm"))]
             device: Default::default(),
@@ -954,7 +954,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
         let device = super::super::Device::open(
-            Arc::new(GatewayClient::new(url.clone(), None)),
+            Arc::new(StationClient::new(url.clone(), None)),
             Some((store.clone(), "node".into())),
             false,
         );
@@ -973,7 +973,7 @@ mod tests {
         drop(profiles);
         drop(device);
         let next = super::super::Device::open(
-            Arc::new(GatewayClient::new(url, None)),
+            Arc::new(StationClient::new(url, None)),
             Some((store.clone(), "node".into())),
             false,
         );
@@ -1016,7 +1016,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let source = Profiles::new(Arc::new(GatewayClient::new(url, None)));
+        let source = Profiles::new(Arc::new(StationClient::new(url, None)));
         let first = tokio::spawn({
             let source = source.clone();
             async move { source.refresh_statuses().await }

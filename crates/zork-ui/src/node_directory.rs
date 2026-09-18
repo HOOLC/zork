@@ -132,13 +132,13 @@ pub trait Host: Sized + 'static {
                     .text_size(px(12.))
                     .text_color(rgb(p.muted))
                     .pb_4()
-                    .child(if data.background{"Gateway 由后台服务管理，退出客户端后继续运行。"}else{"由客户端启动的 Gateway 随客户端退出。连接已有的独立 Gateway 不改变它的运行方式。"}),
+                    .child(if data.background{"Station 由后台服务管理，退出客户端后继续运行。"}else{"由客户端启动的 Station 随客户端退出。连接已有的独立 Station 不改变它的运行方式。"}),
             )
             .when(enabled||running,|v|{
                 let background=data.background;let at_login=data.start_at_login;
                 v.child(ui::section()
                     .child(div().flex().items_center().justify_between().gap_4()
-                        .child(div().flex_1().child("退出客户端后保持 Gateway 运行"))
+                        .child(div().flex_1().child("退出客户端后保持 Station 运行"))
                         .child(ui::button("local-node-background",if background{"已开启"}else{"开启"},false,!data.busy)
                             .on_click(cx.listener(move|v,_,_,cx|v.node_action(Action::Background { enabled: !background, at_login }, cx)))
                             .automation_enabled(!data.busy,AutomationRole::Button,if background{"关闭后台运行"}else{"开启后台运行"})))
@@ -147,7 +147,7 @@ pub trait Host: Sized + 'static {
                         .child(ui::button("local-node-login",if at_login{"已开启"}else{"开启"},false,!data.busy)
                             .on_click(cx.listener(move|v,_,_,cx|v.node_action(Action::Background { enabled: true, at_login: !at_login }, cx)))
                             .automation_enabled(!data.busy,AutomationRole::Button,"登录系统后自动启动"))))
-                    .child(div().pt_3().text_size(px(12.)).text_color(rgb(p.muted)).child("切换后台运行不会重启任务。关闭设备会停止此设备的 Gateway，其他设备将暂时无法访问它。")))
+                    .child(div().pt_3().text_size(px(12.)).text_color(rgb(p.muted)).child("切换后台运行不会重启任务。关闭设备会停止此设备的 Station，其他设备将暂时无法访问它。")))
             })
             .child(
                 ui::section()

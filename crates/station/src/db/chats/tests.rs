@@ -1,12 +1,12 @@
 use super::*;
 use zork_client_types::chat::{MessageFilter, PreferenceChanges};
 
-fn database() -> (tempfile::TempDir, GatewayDb) {
+fn database() -> (tempfile::TempDir, StationDb) {
     let root = tempfile::tempdir().unwrap();
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     (root, db)
 }
-fn channel(db: &GatewayDb, key: &str) -> Channel {
+fn channel(db: &StationDb, key: &str) -> Channel {
     let receipt = db.chat_begin(key, key).unwrap();
     db.create_chat(key, &receipt.object_id, key).unwrap()
 }
@@ -18,7 +18,7 @@ fn author(id: &str) -> Author {
     }
 }
 fn preferences(
-    db: &GatewayDb,
+    db: &StationDb,
     key: &str,
     chat: &str,
     agent: &str,
@@ -39,7 +39,7 @@ fn preferences(
     .unwrap()
 }
 fn post(
-    db: &GatewayDb,
+    db: &StationDb,
     key: &str,
     chat: &str,
     who: &str,
@@ -340,7 +340,7 @@ fn client_message_identity_and_receipt_survive_recovery() {
     .unwrap();
     drop(db);
 
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     let recovered = db
         .chat_begin_with_id("send", "content", "replacement")
         .unwrap();
@@ -377,7 +377,7 @@ fn message_file_receipt_and_delivery_commit_together() {
     );
     let path = root.path().join("file.txt");
     std::fs::write(&path, "original").unwrap();
-    let file = GatewayDb::prepare_chat_file(root.path(), &path).unwrap();
+    let file = StationDb::prepare_chat_file(root.path(), &path).unwrap();
     let receipt = db.chat_begin("send", "fingerprint").unwrap();
     assert!(db
         .post_chat_message(
@@ -394,7 +394,7 @@ fn message_file_receipt_and_delivery_commit_together() {
     assert_eq!(db.chat(&chat.chat_id).unwrap().channel.message_count, 0);
     assert!(db.list_artifacts(None).unwrap().is_empty());
     assert!(db.chat_receipt("send").unwrap().is_none());
-    let file = GatewayDb::prepare_chat_file(root.path(), &path).unwrap();
+    let file = StationDb::prepare_chat_file(root.path(), &path).unwrap();
     let reference = file.reference.clone();
     let sent = db
         .post_chat_message(
@@ -489,7 +489,7 @@ fn peer_feed_multiplexes_agents_and_receiver_cursor_commits_with_mailbox() {
         .is_err());
     assert_eq!(receiver.chat_sources().unwrap()[0].3, page.through);
     drop(receiver);
-    let receiver = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let receiver = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert_eq!(receiver.pending_chat_inputs().unwrap().len(), 2);
     assert_eq!(receiver.chat_sources().unwrap()[0].3, page.through);
     assert!(receiver
@@ -506,7 +506,7 @@ fn prepared_files_survive_source_edits_and_are_scoped_to_destination() {
     let (root, db) = database();
     let path = root.path().join("file.txt");
     std::fs::write(&path, "original").unwrap();
-    let file = GatewayDb::prepare_chat_file(root.path(), &path).unwrap();
+    let file = StationDb::prepare_chat_file(root.path(), &path).unwrap();
     let id = file.reference.id.clone();
     db.chat_begin("command", "fingerprint").unwrap();
     db.save_chat_outgoing("command", "peer", &json!({"frozen":true}), &[file])
@@ -518,7 +518,7 @@ fn prepared_files_survive_source_edits_and_are_scoped_to_destination() {
     );
     assert!(db.prepared_chat_chunk("command", "other", &id, 0).is_err());
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert_eq!(
         db.chat_outgoing("command").unwrap(),
         Some(json!({"frozen":true}))
@@ -564,7 +564,7 @@ fn receiving_policy_rejects_in_flight_old_pages_and_pending_inputs_after_unsubsc
         .accepts_chat_input("a", "publisher", &page.items[0])
         .unwrap());
     drop(receiver);
-    let receiver = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let receiver = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert!(!receiver
         .accepts_chat_input("a", "publisher", &page.items[0])
         .unwrap());
@@ -663,7 +663,7 @@ fn navigation_creator_is_immutable_and_independent_of_authorship_and_receiving()
 }
 
 fn assigned_chat(
-    db: &GatewayDb,
+    db: &StationDb,
     creator: &str,
     request: &str,
     worker: &str,
@@ -777,7 +777,7 @@ fn creator_migration_preserves_unknown_sources_and_remains_quiet_on_reopen() {
             .unwrap();
     }
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert_eq!(
         db.chat(&assigned.chat_id)
             .unwrap()
@@ -799,7 +799,7 @@ fn creator_migration_preserves_unknown_sources_and_remains_quiet_on_reopen() {
         .sync_cursor(&owner, zork_client_types::sync::Scope::Catalog {})
         .unwrap();
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert_eq!(
         before,
         db.sync_cursor(&owner, zork_client_types::sync::Scope::Catalog {})

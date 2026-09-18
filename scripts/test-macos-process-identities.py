@@ -67,7 +67,7 @@ for value in CommandLine.arguments.dropFirst() {
         bindings = {}
         reservations = []
         try:
-            for name in ('gateway', 'runtime', 'control', 'agent'):
+            for name in ('station', 'runtime', 'control', 'agent'):
                 reservation = socket.socket()
                 reservation.bind(('127.0.0.1', 0))
                 reservations.append(reservation)

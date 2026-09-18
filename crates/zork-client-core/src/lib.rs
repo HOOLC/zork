@@ -1,4 +1,4 @@
-//! Client-owned identity, offline state and bounded Gateway operations.
+//! Client-owned identity, offline state and bounded Station operations.
 //! The platform reports host visibility and service lifetime; core decides when
 //! to retain or release connections according to the user's background preference.
 #[cfg(not(target_family = "wasm"))]

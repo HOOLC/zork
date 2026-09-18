@@ -313,7 +313,7 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
                 return Some(result);
             }
         }
-        // Direct user messages have a Gateway request receipt. Do not interpret
+        // Direct user messages have a Station request receipt. Do not interpret
         // user-authored JSON or prose as authoritative sender metadata.
         if receipt.is_some_and(|id| id.starts_with("worker-result-comment-")) {
             if let Some(body) = entry.summary.strip_prefix("Human comment on Task ") {
@@ -515,7 +515,7 @@ pub fn routine_command(command: &str) -> bool {
     }
 }
 
-/// Gateway's current IM envelope. Do not guess a sender from arbitrary prose.
+/// Station's current IM envelope. Do not guess a sender from arbitrary prose.
 fn incoming_envelope(content: &str) -> Option<Value> {
     for marker in [
         "structured_message_json:\n```json\n",

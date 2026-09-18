@@ -111,7 +111,7 @@ impl Worker {
     }
     pub async fn open_service(
         &self,
-        client: Arc<crate::api::GatewayClient>,
+        client: Arc<crate::api::StationClient>,
         host: String,
         url: String,
     ) -> anyhow::Result<serde_json::Value> {
@@ -136,7 +136,7 @@ impl Worker {
             }
         };
         let worker = self.clone();
-        let gateway = client.clone();
+        let station = client.clone();
         client
             .spawn(async move {
                 let _guard = gate.lock().await;
@@ -164,7 +164,7 @@ impl Worker {
                     return Ok(serde_json::json!({"tab":tab}));
                 }
                 if parsed.scheme() == "zork" {
-                    return worker.open_service_new(gateway, host, url).await;
+                    return worker.open_service_new(station, host, url).await;
                 }
                 let page_key = (host.clone(), url.clone());
                 let browser_host = host.clone();
@@ -187,7 +187,7 @@ impl Worker {
     }
     async fn open_service_new(
         &self,
-        client: Arc<crate::api::GatewayClient>,
+        client: Arc<crate::api::StationClient>,
         host: String,
         url: String,
     ) -> anyhow::Result<serde_json::Value> {
@@ -201,11 +201,11 @@ impl Worker {
             services.pending.insert(id.clone());
         }
         let worker = self.clone();
-        let gateway = client.clone();
+        let station = client.clone();
         client
             .spawn(async move {
                 let result = async {
-                    let service = gateway.open_shared_service(&url).await?;
+                    let service = station.open_shared_service(&url).await?;
                     let local_url = service.url.clone();
                     let browser_host = host.clone();
                     let receiver = worker.submit(move |browser| {

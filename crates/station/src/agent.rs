@@ -1,4 +1,4 @@
-use crate::db::{GatewayDb, ProactiveBindingRow, SessionBindingRow, SessionRow};
+use crate::db::{StationDb, ProactiveBindingRow, SessionBindingRow, SessionRow};
 use anyhow::{Context, Result};
 use axum::http::StatusCode;
 #[cfg(test)]
@@ -22,7 +22,7 @@ pub fn system_prompt_for_binding(binding: &SessionBindingRow) -> &'static str {
 }
 pub type CreatedSession = SessionView;
 
-/// Gateway response semantics for errors from its local Agent.
+/// Station response semantics for errors from its local Agent.
 #[derive(Debug)]
 pub struct AgentError {
     pub status: StatusCode,
@@ -143,7 +143,7 @@ pub fn resolve_selection(
 
 pub async fn ensure_session(
     agent: &zork_agent::Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     session: &SessionRow,
 ) -> Result<String> {
     ensure_binding_session(agent, db, &SessionBindingRow::Normal(session.clone())).await
@@ -151,7 +151,7 @@ pub async fn ensure_session(
 
 pub async fn ensure_proactive_session(
     agent: &zork_agent::Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &ProactiveBindingRow,
 ) -> Result<String> {
     ensure_binding_session(agent, db, &SessionBindingRow::Proactive(binding.clone())).await
@@ -159,7 +159,7 @@ pub async fn ensure_proactive_session(
 
 pub async fn ensure_binding_session(
     agent: &zork_agent::Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &SessionBindingRow,
 ) -> Result<String> {
     if let Some(session_id) = binding.id() {
@@ -194,7 +194,7 @@ pub async fn ensure_binding_session(
 
 pub async fn create_binding_session(
     agent: &zork_agent::Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &SessionBindingRow,
     selection: &SessionSelection,
 ) -> std::result::Result<CreatedSession, AgentError> {
@@ -245,7 +245,7 @@ pub async fn create_session(
 }
 pub async fn ensure_allocated_session(
     agent: &Agent,
-    db: &GatewayDb,
+    db: &StationDb,
     binding: &SessionBindingRow,
     runtime_id: &str,
     selection: &SessionSelection,

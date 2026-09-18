@@ -12,7 +12,7 @@ use tracing::{info, warn};
 use ulid::Ulid;
 
 use crate::config::{now_rfc3339, RuntimeConfig};
-use crate::db::{GatewayDb, JobRow};
+use crate::db::{StationDb, JobRow};
 
 const MAX_RUNTIME_MS: u64 = 12 * 60 * 60 * 1000;
 
@@ -26,14 +26,14 @@ pub struct JobEvent {
 }
 
 pub struct JobSupervisor {
-    db: Arc<GatewayDb>,
+    db: Arc<StationDb>,
     config: RuntimeConfig,
     agent: zork_agent::Agent,
     running: Mutex<HashMap<String, Child>>,
 }
 
 impl JobSupervisor {
-    pub fn new(db: Arc<GatewayDb>, config: RuntimeConfig, agent: zork_agent::Agent) -> Self {
+    pub fn new(db: Arc<StationDb>, config: RuntimeConfig, agent: zork_agent::Agent) -> Self {
         Self {
             db,
             config,

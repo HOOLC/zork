@@ -79,7 +79,7 @@ LAN 发现独立于同机缓存。诊断可分别关闭 `ZORK_MESH_LOCAL_DISCOVE
 
 ## 命名、升级与诊断
 
-节点服务称 Station。旧数据和 wire 中保留的 gateway 名称不应机械替换：readiness 文件、序列化字段、macOS bundle 标识及授权枚举承载兼容身份。改可执行名称不迁移数据库、重写 ID 或轮换凭据。
+节点服务称 Station。旧数据和 wire 中保留的 station 名称不应机械替换：readiness 文件、序列化字段、macOS bundle 标识及授权枚举承载兼容身份。改可执行名称不迁移数据库、重写 ID 或轮换凭据。
 
 更新使用完整匹配的包与 bootstrap，不能只换一个新名称二进制。macOS 的正式安装、开发固定 app、临时测试包分别管理；具体打包与清理按 [验证规则](../../.agents/skills/zork-validation/SKILL.md)，不在这里复制机器路径或构建参数。
 

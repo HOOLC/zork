@@ -176,7 +176,7 @@ impl MeshService {
     }
 
     pub async fn channel_call(&self, origin: &str, body: crate::channels::Rpc) -> Result<Value> {
-        if zork_agent_gateway_tools::channels::participating(&body.tool, &body.arguments) {
+        if zork_agent_station_tools::channels::participating(&body.tool, &body.arguments) {
             self.peer(origin)?;
             let reply = self
                 .node
@@ -713,7 +713,7 @@ async fn membership_request(
                 .enrollment
                 .create_kind(
                     state,
-                    serde_json::from_value(body.get("kind").cloned().unwrap_or(json!("gateway")))?,
+                    serde_json::from_value(body.get("kind").cloned().unwrap_or(json!("station")))?,
                 )
                 .await
         }
@@ -983,7 +983,7 @@ pub fn start(prepared: Prepared, state: AppState) {
                             .pointer("/request/body/tool")
                             .and_then(Value::as_str)
                             .is_some_and(|tool| {
-                                zork_agent_gateway_tools::channels::participating(
+                                zork_agent_station_tools::channels::participating(
                                     tool,
                                     &request["request"]["body"]["arguments"],
                                 )

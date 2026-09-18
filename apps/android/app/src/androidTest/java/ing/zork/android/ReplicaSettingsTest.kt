@@ -48,7 +48,7 @@ class ReplicaSettingsTest {
             fun entity(kind: String, id: String, revision: Int, value: JSONObject) {
                 database.execSQL("INSERT OR REPLACE INTO replica_entities(peer,scope,kind,id,revision,value) VALUES(?,?,?,?,?,?)", arrayOf(peer,scope,kind,id,revision,value.toString()))
             }
-            entity("device", "self", 1, JSONObject().put("name", "离线工作站").put("gateway",JSONObject().put("version","fixture")))
+            entity("device", "self", 1, JSONObject().put("name", "离线工作站").put("station",JSONObject().put("version","fixture")))
             entity("agent", "offline-agent", 2, JSONObject().put("id","offline-agent").put("name","离线领队").put("role","leader").put("avatar","fox").put("profile_id","offline-profile").put("model","cached-model"))
             entity("profile", "offline-profile", 3, JSONObject().put("profile_id","offline-profile").put("name","已保存的模型连接").put("provider","openai").put("billing","subscription").put("models",JSONArray().put(JSONObject().put("id","cached-model"))))
             entity("provider", "openai", 3, JSONObject().put("id","openai").put("label","OpenAI").put("billing",JSONArray()))

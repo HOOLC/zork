@@ -75,7 +75,7 @@ async fn snapshot_precedes_chat_catchup_and_only_explicit_detail_reads_fetch_his
         }))
     ).await;
     let device =
-        zork_client_core::state::Device::open(Arc::new(GatewayClient::new(url, None)), None, false);
+        zork_client_core::state::Device::open(Arc::new(StationClient::new(url, None)), None, false);
     let chat = device.conversation("chat");
     chat.start();
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -145,7 +145,7 @@ async fn device_feed_observes_each_new_connection_route() {
         }),
     ))
     .await;
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let mut feed = client.live(None, 100);
     let mut routes = vec![];
     let mut connected = false;
@@ -210,7 +210,7 @@ async fn reconnect_subscribes_before_catchup_and_revocation_ends_feed() {
             Json(json!({"items":[message(if page == 0 { "first" } else { "missed-while-offline" })],"older_cursor":null}))
         }
     }))).await;
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let mut feed = client.live(Some("chat".into()), 100);
     let mut pages = vec![];
     let mut revoked = false;
@@ -258,7 +258,7 @@ async fn feed_distinguishes_live_imports_from_history_recovery() {
             ),
     )
     .await;
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let mut feed = client.live(Some("chat".into()), 100);
     let mut sources = vec![];
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -302,7 +302,7 @@ async fn shared_delivery_attempts_each_send_once_and_manual_resend_has_a_new_ide
         }),
     ))
     .await;
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let queued = QueuedMessage {
@@ -416,7 +416,7 @@ async fn incompatible_message_endpoint_keeps_the_body_and_explains_the_failure()
             },
         )
         .unwrap();
-    let report = delivery::flush(&GatewayClient::new(url, None), &store, "node").await;
+    let report = delivery::flush(&StationClient::new(url, None), &store, "node").await;
     assert_eq!(
         report.error.as_deref(),
         Some("目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。")
@@ -499,7 +499,7 @@ async fn long_message_manual_resend_keeps_file_bytes_and_creates_a_new_message()
             ),
     )
     .await;
-    let client = Arc::new(GatewayClient::new(&url, None));
+    let client = Arc::new(StationClient::new(&url, None));
     let root = tempfile::tempdir().unwrap();
     let text = format!("  {}\n", "完整文本 🐈\n".repeat(4000));
     let queued;
@@ -578,7 +578,7 @@ async fn catchup_crosses_multiple_pages_and_merge_preserves_loaded_history() {
         let start = end.saturating_sub(100).max(1);
         Json(json!({"items":(start..end).map(|id| message(&id.to_string())).collect::<Vec<_>>(),"older_cursor":if start > 1 { Some(start.to_string()) } else { None }}))
     }))).await;
-    let client = GatewayClient::new(url, None);
+    let client = StationClient::new(url, None);
     let page = client
         .catch_up_messages("chat", Some("90"), 100)
         .await
@@ -622,7 +622,7 @@ async fn sending_is_visible_immediately_and_abort_becomes_manual_failure() {
             },
         )
         .unwrap();
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let pump = DeliveryPump::start(client, store.clone(), "node".into());
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
@@ -668,7 +668,7 @@ async fn transcript_ack_settles_a_lost_post_response_without_retry() {
             },
         )
         .unwrap();
-    let client = Arc::new(GatewayClient::new(url, None));
+    let client = Arc::new(StationClient::new(url, None));
     let tx_store = store.clone();
     let sending = tokio::spawn(async move { delivery::flush(&client, &tx_store, "node").await });
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -747,7 +747,7 @@ async fn core_receives_confirmation_after_all_chat_views_are_gone() {
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
     let device = Device::open(
-        Arc::new(GatewayClient::new(url, None)),
+        Arc::new(StationClient::new(url, None)),
         Some((store.clone(), "node".into())),
         false,
     );

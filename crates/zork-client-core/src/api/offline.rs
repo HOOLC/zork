@@ -1,4 +1,4 @@
-//! In-memory Gateway responses shared by native and portable development hosts.
+//! In-memory Station responses shared by native and portable development hosts.
 use super::ProfileInfo;
 use serde_json::{json, Value};
 use std::sync::Mutex;
@@ -170,7 +170,7 @@ mod tests {
     use std::sync::Arc;
     #[tokio::test]
     async fn native_fixture_runs_the_real_profile_and_agent_controllers() {
-        let client = Arc::new(super::super::GatewayClient::fixture(
+        let client = Arc::new(super::super::StationClient::fixture(
             json!({"profile":{"profile_id":"existing","provider":"demo","models":[]},"agents":[]}),
             json!({"providers":[{"id":"demo","billing":[{"id":"key","base_url":"https://example.invalid"}]}]}),
         ));

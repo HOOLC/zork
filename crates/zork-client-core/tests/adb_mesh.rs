@@ -215,7 +215,7 @@ impl Host {
     ) -> Result<Self> {
         let mut bind = serde_json::Map::new();
         let mut reservations = vec![];
-        for name in ["gateway", "runtime", "control", "agent"] {
+        for name in ["station", "runtime", "control", "agent"] {
             let socket = std::net::TcpListener::bind("127.0.0.1:0")?;
             bind.insert(name.into(), json!(socket.local_addr()?.to_string()));
             reservations.push(socket);

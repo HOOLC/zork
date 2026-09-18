@@ -1,7 +1,7 @@
 use super::*;
 use zork_client_types::interaction::{Content, Field, Outcome};
 
-fn finish_cleanup(db: &GatewayDb) {
+fn finish_cleanup(db: &StationDb) {
     for (entry, reason) in db.pending_registration_cleanup().unwrap() {
         match entry.handler.as_str() {
             zork_client_types::interaction::AGENT_CONFIGURATION => db
@@ -17,9 +17,9 @@ fn finish_cleanup(db: &GatewayDb) {
     }
 }
 
-fn setup() -> (tempfile::TempDir, GatewayDb, Channel, Subject) {
+fn setup() -> (tempfile::TempDir, StationDb, Channel, Subject) {
     let root = tempfile::tempdir().unwrap();
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     let receipt = db.chat_begin("chat", "chat").unwrap();
     let chat = db.create_chat("chat", &receipt.object_id, "Work").unwrap();
     let owner = Subject {
@@ -29,7 +29,7 @@ fn setup() -> (tempfile::TempDir, GatewayDb, Channel, Subject) {
     };
     (root, db, chat, owner)
 }
-fn create(db: &GatewayDb, owner: &Subject, invocation: &str) -> CardRecord {
+fn create(db: &StationDb, owner: &Subject, invocation: &str) -> CardRecord {
     db.create_configuration_review(
         "node",
         owner,
@@ -54,7 +54,7 @@ fn response(id: &str, value: &str) -> Response {
         values: [("name".into(), value.into())].into(),
     }
 }
-fn publish(db: &GatewayDb, chat: &str, request: &CardRecord, actor: &str) -> Message {
+fn publish(db: &StationDb, chat: &str, request: &CardRecord, actor: &str) -> Message {
     let command = ulid::Ulid::new().to_string();
     let receipt = db.chat_begin(&command, &command).unwrap();
     db.post_chat_content(
@@ -80,7 +80,7 @@ fn publish(db: &GatewayDb, chat: &str, request: &CardRecord, actor: &str) -> Mes
     )
     .unwrap()
 }
-fn accept(db: &GatewayDb, request: &CardRecord) -> SubmittedResponse {
+fn accept(db: &StationDb, request: &CardRecord) -> SubmittedResponse {
     db.submit_configuration_response(
         &request.request_id,
         &response("accepted", "User value"),
@@ -247,7 +247,7 @@ fn restart_distinguishes_unanswered_waits_from_accepted_business_operations() {
     let accepted = create(&db, &owner, "accepted");
     accept(&db, &accepted);
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     db.recover_interaction_registrations().unwrap();
     finish_cleanup(&db);
     assert_eq!(
@@ -276,7 +276,7 @@ fn source_cancellation_is_durable_before_remote_request_registration() {
     let calls = db.cancel_user_calls(&owner, "invocation").unwrap();
     assert_eq!(calls.len(), 2);
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     assert_eq!(db.pending_user_call_cancellations().unwrap().len(), 2);
     assert!(db.begin_user_call(&remote, "invocation", "remote").is_err());
     for call in calls {
@@ -524,7 +524,7 @@ fn restart_during_unfinished_cleanup_preserves_uncertain_login_effects() {
     db.revoke_interaction_registrations(&owner, "login")
         .unwrap();
     drop(db);
-    let db = GatewayDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
     db.recover_interaction_registrations().unwrap();
     db.revoke_interaction_registrations(&owner, "login")
         .unwrap();

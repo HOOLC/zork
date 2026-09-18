@@ -185,7 +185,7 @@ impl Owned {
             if !legacy {
                 return None;
             }
-            // Old cached anonymous rows can acquire a gateway identity from a
+            // Old cached anonymous rows can acquire a station identity from a
             // history page. Modern ID-bearing records never need this scan.
             return self
                 .anonymous

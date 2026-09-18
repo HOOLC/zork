@@ -30,7 +30,7 @@ mod tests {
     use zork_client_types::chat::{Author, AuthorKind};
     use zork_client_types::sync::{Kind, Pull, Reply, Scope};
 
-    fn chat(db: &GatewayDb) -> String {
+    fn chat(db: &StationDb) -> String {
         db.chat_begin("create", "create").unwrap();
         db.create_chat("create", "owned-chat", "Message archive")
             .unwrap()
@@ -43,7 +43,7 @@ mod tests {
             name: Some("Writer".into()),
         }
     }
-    fn send(db: &GatewayDb, chat: &str, id: &str) -> Message {
+    fn send(db: &StationDb, chat: &str, id: &str) -> Message {
         db.post_chat_content(
             None,
             id,
@@ -63,7 +63,7 @@ mod tests {
     fn local_script_cards_survive_source_rebuild_without_user_action_registration() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         let script: zork_client_types::local_script::Card = serde_json::from_value(json!({
             "title":"Developer options", "source":"await android.startActivity({action:'android.settings.APPLICATION_DEVELOPMENT_SETTINGS'});"
@@ -78,7 +78,7 @@ mod tests {
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 1);
         drop(db);
         fs::remove_dir_all(root.path().join("cache")).unwrap();
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         assert_eq!(db.chat_message(&chat, "script").unwrap().interaction, Some(payload));
         assert!(db.interaction_result(&chat, "script").unwrap().is_none());
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 1);
@@ -88,7 +88,7 @@ mod tests {
     fn ordinary_sends_read_source_and_rebuild_both_location_and_message_indexes() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         let first = send(&db, &chat, "first");
         let second = send(&db, &chat, "second");
@@ -143,7 +143,7 @@ mod tests {
         }
         drop(db);
         fs::remove_dir_all(root.path().join("cache")).unwrap();
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         assert_eq!(db.chat_message(&chat, "first").unwrap(), first);
         assert_eq!(db.chat_message(&chat, "second").unwrap(), second);
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 2);
@@ -155,7 +155,7 @@ mod tests {
     fn migration_and_interrupted_publication_keep_the_physical_source_prefix() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         let binding = db.chat(&chat).unwrap();
         let now = now_rfc3339();
@@ -186,7 +186,7 @@ mod tests {
             // The rebuildable page catalog no longer carries this older page.
         }
         drop(db);
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         assert_eq!(db.message_log.positions(0, 100).unwrap(), vec![1, 2]);
         assert_eq!(
             db.message_log.get(1).unwrap().pages[0].page.title,
@@ -224,7 +224,7 @@ mod tests {
     fn source_cursors_are_scoped_to_chat_and_lineage_and_survive_index_rebuild() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         send(&db, &chat, "message");
         let cursor = db.message_cursor(&chat, 1).unwrap();
@@ -237,7 +237,7 @@ mod tests {
         assert!(db.parse_message_cursor(&chat, "0").is_err());
         drop(db);
         fs::remove_dir_all(root.path().join("cache")).unwrap();
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         assert_eq!(db.parse_message_cursor(&chat, &cursor).unwrap(), 1);
         drop(db);
         // A restored older lineage explicitly receives a fresh source epoch.
@@ -249,7 +249,7 @@ mod tests {
         let mut metadata: Value = serde_json::from_reader(fs::File::open(&path).unwrap()).unwrap();
         metadata["epoch"] = json!(ulid::Ulid::new().to_string());
         fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         assert!(db.parse_message_cursor(&chat, &cursor).is_err());
         assert_eq!(
             db.chat_message(&chat, "message").unwrap().text,
@@ -261,7 +261,7 @@ mod tests {
     fn failed_source_write_keeps_staging_private_until_storage_recovers() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         let blocked = root
             .path()
@@ -310,7 +310,7 @@ mod tests {
     fn recovering_an_older_page_message_keeps_the_latest_page_projection() {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         for (id, title) in [("old", "Old title"), ("latest", "Latest title")] {
             let page = pages::page_link(title, "https://example.com/page", "description").unwrap();
@@ -335,7 +335,7 @@ mod tests {
             conn.execute_batch("DELETE FROM chat_notices WHERE message_id='old'; DELETE FROM chat_message_facts WHERE message_id='old'; DELETE FROM visible_messages WHERE message_id='old';").unwrap();
         }
         drop(db);
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let conn = db.conn.lock().unwrap();
         assert_eq!(
             conn.query_row("SELECT message_id FROM conversation_pages", [], |r| r
@@ -364,7 +364,7 @@ mod tests {
         use std::time::Instant;
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("workspaces");
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let chat = chat(&db);
         let key = db.chat(&chat).unwrap().session_key;
         for start in (1..=100_000).step_by(128) {
@@ -401,7 +401,7 @@ mod tests {
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 100000);
         drop(db);
         let started = Instant::now();
-        let db = GatewayDb::open(root.path(), &work).unwrap();
+        let db = StationDb::open(root.path(), &work).unwrap();
         let reopen_ms = started.elapsed().as_secs_f64() * 1000.0;
         let mut native = Vec::new();
         let mut agent = Vec::new();
@@ -459,7 +459,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-impl GatewayDb {
+impl StationDb {
     fn message_stream(&self, session: &str) -> Result<(String, String)> {
         let (key,chat): (String,Option<String>) = self.conn.lock().expect("db mutex").query_row(
             "SELECT s.key,COALESCE(c.chat_id,s.id) FROM sessions s LEFT JOIN chat_channels c ON c.session_key=s.key WHERE s.key=?1 OR s.id=?1 OR c.chat_id=?1",

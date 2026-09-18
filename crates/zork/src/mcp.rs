@@ -1,4 +1,4 @@
-//! Node-local MCP administration. Secrets are resolved by the serving Gateway.
+//! Node-local MCP administration. Secrets are resolved by the serving Station.
 use anyhow::{ensure, Context, Result};
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -40,7 +40,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             let response = r
                 .send()
                 .await
-                .context("Cannot reach the configured Gateway MCP administration API")?;
+                .context("Cannot reach the configured Station MCP administration API")?;
             let status = response.status();
             let value: Value = response.json().await?;
             ensure!(

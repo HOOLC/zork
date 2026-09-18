@@ -443,7 +443,7 @@ mod tests {
     }
     #[cfg(unix)]
     #[test]
-    fn gateway_children_do_not_inherit_a_gui_worker_signal_mask() {
+    fn station_children_do_not_inherit_a_gui_worker_signal_mask() {
         use std::os::unix::process::ExitStatusExt;
         std::thread::spawn(|| {
             unsafe {

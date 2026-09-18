@@ -12,7 +12,7 @@ tokio.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 zork-agent = { path = "../agent" }
 zork-agent-http = { path = "../agent-http" }
-zork-agent-gateway-tools = { path = "../agent-gateway-tools" }
+zork-agent-station-tools = { path = "../agent-station-tools" }
 zork-config = { path = "../zork-config" }
 
 [[bin]]

@@ -114,7 +114,7 @@ def main():
         # after a restart and after deletion. None may repeat its old mutation.
         replay = ok(raw('install', installed_event['invocation_id'], owner=b.origin, config=config))
         assert replay['config_revision'] == installed['config_revision']
-        a.restart_gateway(); b.restart_gateway()
+        a.restart_station(); b.restart_station()
         for node in nodes: f.wait(lambda n=node: n.get('/v1/mesh').get('origin') == n.origin, 'Mesh restored')
         current = agent('inspect', **target)['data']
         assert current['config_revision'] == enabled['config_revision']

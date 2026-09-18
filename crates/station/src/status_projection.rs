@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::im_entry::ImEntryGateway;
+use crate::im_entry::ImEntryStation;
 use anyhow::Result;
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -19,7 +19,7 @@ const WAIT_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 pub struct AgentStatusProjector {
     agent: Agent,
     stopping: Arc<std::sync::atomic::AtomicBool>,
-    entries: ImEntryGateway,
+    entries: ImEntryStation,
     subscriptions: Arc<Mutex<HashMap<String, Subscription>>>,
 }
 
@@ -41,7 +41,7 @@ struct ProjectionTarget {
 }
 
 impl AgentStatusProjector {
-    pub fn new(agent: Agent, entries: ImEntryGateway) -> Self {
+    pub fn new(agent: Agent, entries: ImEntryStation) -> Self {
         Self {
             agent,
             entries,
@@ -162,7 +162,7 @@ impl AgentStatusProjector {
 
 async fn run_subscription(
     agent: Agent,
-    entries: ImEntryGateway,
+    entries: ImEntryStation,
     target: ProjectionTarget,
     agent_session_id: String,
     ready: tokio::sync::watch::Sender<bool>,
@@ -215,7 +215,7 @@ async fn run_subscription(
 
 async fn consume_stream(
     events: impl futures_util::Stream<Item = std::result::Result<LiveSessionEvent, AgentError>>,
-    entries: &ImEntryGateway,
+    entries: &ImEntryStation,
     target: &ProjectionTarget,
     agent_session_id: &str,
     cursor: &mut Option<String>,
@@ -446,7 +446,7 @@ struct AgentFailure {
 }
 
 impl AgentEvent {
-    fn resolve_activity_targets(&mut self, entries: &ImEntryGateway) {
+    fn resolve_activity_targets(&mut self, entries: &ImEntryStation) {
         if let Self::StepCompleted { invocations, .. } = self {
             for invocation in invocations {
                 if let Some(activity) = &mut invocation.activity {
@@ -633,7 +633,7 @@ impl ProjectionState {
     fn seed(
         &mut self,
         snapshot: &zork_agent_api::SessionSnapshot,
-        entries: &ImEntryGateway,
+        entries: &ImEntryStation,
         now: i64,
     ) -> Result<()> {
         *self = Self::default();
@@ -911,20 +911,20 @@ mod tests {
     async fn concurrent_subscribers_wait_for_the_shared_initial_snapshot() {
         use crate::{
             connections::ConnectionManager,
-            db::{EnsureSession, GatewayDb},
+            db::{EnsureSession, StationDb},
             im_entry::{LOCAL_GUI_ENTRY_ID, LOCAL_GUI_PLATFORM},
         };
         let dir = tempfile::tempdir().unwrap();
         zork_config::ensure_layout(dir.path()).unwrap();
         let db = Arc::new(
-            GatewayDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
+            StationDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
         );
         let connections = Arc::new(
             ConnectionManager::load(dir.path().to_owned(), reqwest::Client::new())
                 .await
                 .unwrap(),
         );
-        let entries = ImEntryGateway::new(db.clone(), connections);
+        let entries = ImEntryStation::new(db.clone(), connections);
         let session = db
             .create_session_at_workspace(
                 EnsureSession {
@@ -1015,20 +1015,20 @@ mod tests {
     async fn assert_requesting_after_action_grace(request_age_ms: i64) {
         use crate::{
             connections::ConnectionManager,
-            db::{EnsureSession, GatewayDb},
+            db::{EnsureSession, StationDb},
             im_entry::{LOCAL_GUI_ENTRY_ID, LOCAL_GUI_PLATFORM},
         };
         let dir = tempfile::tempdir().unwrap();
         zork_config::ensure_layout(dir.path()).unwrap();
         let db = Arc::new(
-            GatewayDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
+            StationDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
         );
         let connections = Arc::new(
             ConnectionManager::load(dir.path().to_owned(), reqwest::Client::new())
                 .await
                 .unwrap(),
         );
-        let entries = ImEntryGateway::new(db.clone(), connections);
+        let entries = ImEntryStation::new(db.clone(), connections);
         let session = db
             .create_session_at_workspace(
                 EnsureSession {

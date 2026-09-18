@@ -2,7 +2,7 @@
 
 A GPUI (Zed UI framework) desktop client for zork-station's built-in
 `local_gui` IM entry, with a native light task shell grounded in the current
-approved Zork Fold v2 assets and layout. The gateway owns conversations and deliberate message
+approved Zork Fold v2 assets and layout. The station owns conversations and deliberate message
 delivery; `zork-agent` remains an internal execution service.
 
 The default native client follows the approved Zork design: **Device → Leader → Task** in a two-pane conversation workspace. The sidebar starts at 240 px, can be dragged from 200 to 420 px (also constrained by the available content width), and remembers its pixel width. Every navigation row uses the same 32 px geometry and full-width hover/active background; indentation changes only the content position.
@@ -108,17 +108,17 @@ center and then dispatch the same events as coordinate actions. The API is not
 started without `--dev`, does not bind a non-loopback interface, and does not
 enable CORS.
 
-The real-process fixture starts a fake-model Agent plus the production gateway
+The real-process fixture starts a fake-model Agent plus the production station
 on isolated ports and verifies the explicit-message boundary:
 
 ```sh
 cargo build --locked -p zork-agent-server -p zork-station -p zork-gh
-python3 crates/zork-gui/tests/test_gateway_entry.py
+python3 crates/zork-gui/tests/test_station_entry.py
 ```
 
 The fixture proves that ordinary assistant transcript text stays hidden, an
 explicit `chat.post_message` becomes one persistent assistant row,
-and two tasks sharing one workspace still resolve their exact gateway binding.
+and two tasks sharing one workspace still resolve their exact station binding.
 
 ## Station-owned conversation API
 
@@ -132,7 +132,7 @@ and two tasks sharing one workspace still resolve their exact gateway binding.
 
 ### Status projection
 
-The gateway projects `clear`, `thinking`, `tools_started`, `tool_finished`,
+The station projects `clear`, `thinking`, `tools_started`, `tool_finished`,
 `waiting`, `failed`, `finished`, and `interrupted` as activity. These events may
 change the task status label/footer but never add chat rows. Successful
 `finished` updates task/header state only and does not render inline activity.
@@ -180,7 +180,7 @@ The palette and geometry are defined in `src/design.rs`.
 cargo test --locked -p zork-gui
 cargo clippy --locked -p zork-gui --all-targets -- -D warnings
 cargo build --locked -p zork-agent-server -p zork-station -p zork-gh
-python3 crates/zork-gui/tests/test_gateway_entry.py
+python3 crates/zork-gui/tests/test_station_entry.py
 ```
 
 ## Desktop UI and retained contracts

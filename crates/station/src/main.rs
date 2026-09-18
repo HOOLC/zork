@@ -38,7 +38,7 @@ mod status_projection;
 mod timeline;
 mod tool_stream;
 
-use crate::{config::RuntimeConfig, db::GatewayDb, jobs::JobSupervisor, state::AppState};
+use crate::{config::RuntimeConfig, db::StationDb, jobs::JobSupervisor, state::AppState};
 use anyhow::Result;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -101,7 +101,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     let (db, prepared_agent) = std::thread::scope(|scope| -> Result<_> {
         let database = scope.spawn(|| -> Result<_> {
             zork_config::service::clear_signal_mask()?;
-            GatewayDb::open_with_paths(
+            StationDb::open_with_paths(
                 &config.state_dir,
                 &config.workspaces_root,
                 &zork_config::files_root(&config.data_root),
@@ -135,7 +135,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     let control_db = Arc::new(control_db::ControlDb::open(&config.state_dir)?);
     zork_config::startup::mark("station.control_database_opened");
     control_db.attach_realtime(&db.realtime);
-    // Bind before recovery starts: recovered tools may immediately call back into Gateway.
+    // Bind before recovery starts: recovered tools may immediately call back into Station.
     let mut listeners = vec![
         (
             http::bind_listener(config.bind_addr).await?,
@@ -150,15 +150,15 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
             ListenerKind::Agent,
         ),
     ];
-    if let Some(bind) = gateway_bind(&config).filter(|bind| *bind != config.bind_addr.to_string()) {
+    if let Some(bind) = station_bind(&config).filter(|bind| *bind != config.bind_addr.to_string()) {
         listeners.push((
             http::bind_listener(zork_config::parse_bind(&bind)?).await?,
-            ListenerKind::Gateway,
+            ListenerKind::Station,
         ));
     }
     zork_config::startup::mark("station.listeners_bound");
     let tools = Arc::new(ToolRegistry::default());
-    zork_agent_gateway_tools::register(&tools, config.broker_http_base_url.clone())?;
+    zork_agent_station_tools::register(&tools, config.broker_http_base_url.clone())?;
     let mesh = Arc::new(std::sync::OnceLock::new());
     let files = Arc::new(files::Files::new(
         config.data_root.clone(),
@@ -169,7 +169,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
         files: Some(files.clone()),
         configure_tools: Some({
             let base = config.broker_http_base_url.clone();
-            Arc::new(move |registry| zork_agent_gateway_tools::extend_shell(registry, &base))
+            Arc::new(move |registry| zork_agent_station_tools::extend_shell(registry, &base))
         }),
         skill_catalog: Some({
             let files = files.clone();
@@ -204,7 +204,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
         context: file.context.clone(),
         tools,
         environment: {
-            let mut environment = zork_agent_gateway_tools::environment(
+            let mut environment = zork_agent_station_tools::environment(
                 &config.data_root,
                 &config.broker_http_base_url,
             )?;
@@ -233,7 +233,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     })?;
     zork_config::startup::mark("station.agent_started");
     let agent = runtime.agent().clone();
-    let entries = im_entry::ImEntryGateway::new(db.clone(), connections.clone());
+    let entries = im_entry::ImEntryStation::new(db.clone(), connections.clone());
     let state = AppState {
         files,
         provider_auth: Arc::new(node::auth::Hub::new()?),
@@ -325,7 +325,7 @@ async fn run_mesh(state: AppState, mut stopped: watch::Receiver<bool>) -> Result
     zork_config::write_ready_pid(&state.config.data_root, "zork-mesh")?;
     let result = tokio::select! {
         _ = stopped.wait_for(|stop| *stop) => Ok(()),
-        result = service.wait() => Err(result.err().unwrap_or_else(|| anyhow::anyhow!("Gateway Synch tasks stopped"))),
+        result = service.wait() => Err(result.err().unwrap_or_else(|| anyhow::anyhow!("Station Synch tasks stopped"))),
     };
     zork_config::clear_ready_pid(&state.config.data_root, "zork-mesh");
     service.shutdown().await?;
@@ -334,7 +334,7 @@ async fn run_mesh(state: AppState, mut stopped: watch::Receiver<bool>) -> Result
 
 enum ListenerKind {
     Runtime,
-    Gateway,
+    Station,
     Admin,
     Agent,
 }
@@ -351,7 +351,7 @@ async fn serve(
     for (listener, kind) in listeners {
         let router = match kind {
             ListenerKind::Runtime => http::router(state.clone()),
-            ListenerKind::Gateway => http::gateway_router(state.clone()),
+            ListenerKind::Station => http::station_router(state.clone()),
             ListenerKind::Admin => admin::router(state.clone()),
             ListenerKind::Agent => axum::Router::new()
                 .route(
@@ -365,7 +365,7 @@ async fn serve(
         };
         zork_config::startup::mark(match kind {
             ListenerKind::Runtime => "station.runtime_router_built",
-            ListenerKind::Gateway => "station.gateway_router_built",
+            ListenerKind::Station => "station.station_router_built",
             ListenerKind::Admin => "station.admin_router_built",
             ListenerKind::Agent => "station.agent_router_built",
         });
@@ -478,9 +478,9 @@ async fn agent_readyz(
 
 /// Optional Slack-facing listener. Test roots can omit it and use only the
 /// broker API listener.
-fn gateway_bind(config: &RuntimeConfig) -> Option<String> {
+fn station_bind(config: &RuntimeConfig) -> Option<String> {
     let file = zork_config::load_config(&config.data_root).ok()?;
-    let bind = file.bind.gateway.trim().to_string();
+    let bind = file.bind.station.trim().to_string();
     if bind.is_empty() {
         None
     } else {

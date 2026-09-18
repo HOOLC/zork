@@ -1,7 +1,7 @@
 use super::*;
 use crate::db::{
     chats::{ChatRow, PreparedFile},
-    GatewayDb,
+    StationDb,
 };
 use api::{FileRequest, Rpc};
 use base64::Engine;
@@ -22,7 +22,7 @@ pub(super) async fn prepare(
     let mut result = Vec::new();
     for attachment in args["attachments"].as_array().into_iter().flatten() {
         let mut file = if let Some(path) = attachment["file_path"].as_str() {
-            GatewayDb::prepare_chat_file(workspace, Path::new(path))?
+            StationDb::prepare_chat_file(workspace, Path::new(path))?
         } else if attachment["source_target"]
             .as_str()
             .is_some_and(|source| !local(state, source))

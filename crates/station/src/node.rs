@@ -41,7 +41,7 @@ struct Attempt {
     completed: bool,
 }
 pub fn router(app: AppState) -> Router {
-    let local_token = local_token(&app.config.data_root).expect("Gateway local control token");
+    let local_token = local_token(&app.config.data_root).expect("Station local control token");
     let state = NodeState {
         http: app.provider_auth.http.clone(),
         app,
@@ -233,7 +233,7 @@ async fn reconcile_catalog(state: NodeState) {
         .ok()
         .and_then(|result| result.ok());
         let device = zork_config::load_config(&state.app.config.data_root).ok().zip(sync_owner(&state).ok()).map(|(config, owner)| {
-            json!({"name":if config.mesh.name.trim().is_empty(){zork_config::device_name()}else{config.mesh.name},"origin":owner,"gateway":{"version":env!("CARGO_PKG_VERSION")},"update":update_info(&state)})
+            json!({"name":if config.mesh.name.trim().is_empty(){zork_config::device_name()}else{config.mesh.name},"origin":owner,"station":{"version":env!("CARGO_PKG_VERSION")},"update":update_info(&state)})
         });
         let projected_profiles = profiles.is_some();
         let complete = projected_profiles && device.is_some();
@@ -502,7 +502,7 @@ async fn node_info(State(state): State<NodeState>, headers: HeaderMap) -> Respon
         });
     Json(json!({
         "name":zork_config::load_config(&state.app.config.data_root).ok().map(|c|c.mesh.name).filter(|n|!n.is_empty()).unwrap_or_else(zork_config::device_name),
-        "gateway":{"version":env!("CARGO_PKG_VERSION"),"release_version":release_version,"running":true},
+        "station":{"version":env!("CARGO_PKG_VERSION"),"release_version":release_version,"running":true},
         "update":update_info(&state),
         "sync":{"protocol":zork_client_types::sync::PROTOCOL,"owner":sync_owner(&state).ok()}
     })).into_response()
@@ -612,8 +612,8 @@ async fn start_update(
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("Update acknowledgement unavailable"))?;
-        // The helper owns the lock and survives Gateway replacement. Reap it on
-        // download failure while this Gateway is still alive.
+        // The helper owns the lock and survives Station replacement. Reap it on
+        // download failure while this Station is still alive.
         tokio::spawn(async move {
             let _ = child.wait().await;
         });

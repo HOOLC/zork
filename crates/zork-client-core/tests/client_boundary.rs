@@ -12,14 +12,14 @@ use std::{
     time::Duration,
 };
 use zork_client_core::{
-    api::GatewayClient,
+    api::StationClient,
     state::{Device, DraftAction, Profiles},
     store::ClientStore,
 };
 
-async fn serve(router: Router) -> (Arc<GatewayClient>, tokio::task::JoinHandle<()>) {
+async fn serve(router: Router) -> (Arc<StationClient>, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let client = Arc::new(GatewayClient::new(
+    let client = Arc::new(StationClient::new(
         format!("http://{}", listener.local_addr().unwrap()),
         None,
     ));
@@ -117,7 +117,7 @@ async fn detail_refresh_replaces_every_business_field_and_publishes_the_record()
 fn text_edits_preserve_attachments_across_reopen_and_invalid_input_does_not_mutate_the_draft() {
     let root = tempfile::tempdir().unwrap();
     let store = Arc::new(ClientStore::open(root.path()).unwrap());
-    let client = Arc::new(GatewayClient::new("http://127.0.0.1:9", None));
+    let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
     let device = Device::open(client.clone(), Some((store.clone(), "node".into())), true);
     device
         .edit_draft_action(

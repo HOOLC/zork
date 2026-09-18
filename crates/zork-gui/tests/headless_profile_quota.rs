@@ -391,7 +391,7 @@ fn verify_refresh() -> anyhow::Result<()> {
         net::TcpListener,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    use zork_gui::{api::GatewayClient, desktop::HeadlessProfilesView as CurrentProfilesView};
+    use zork_gui::{api::StationClient, desktop::HeadlessProfilesView as CurrentProfilesView};
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     let address = listener.local_addr()?;
@@ -413,7 +413,7 @@ fn verify_refresh() -> anyhow::Result<()> {
     let window = cx.open_window(gpui::size(px(900.), px(600.)), |_, cx| {
         let view = cx.new(|cx| {
             let mut view = CurrentProfilesView::headless_fixture(true, cx);
-            view.headless_set_client(Arc::new(GatewayClient::new(
+            view.headless_set_client(Arc::new(StationClient::new(
                 &format!("http://{address}"),
                 Some("quota-fixture".into()),
             )));

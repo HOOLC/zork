@@ -1,4 +1,4 @@
-//! Run with the isolated Gateway from scripts/android/test_enrollment.py.
+//! Run with the isolated Station from scripts/android/test_enrollment.py.
 use serde_json::{json, Value};
 use zork_client_core::{Client, Command};
 use zork_mesh::enrollment::InviteKind;
@@ -61,7 +61,7 @@ async fn begin(client: &mut Client, invite: &Value) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires isolated Gateway; use scripts/android/test_enrollment.py"]
+#[ignore = "requires isolated Station; use scripts/android/test_enrollment.py"]
 async fn phone_requires_approval_and_survives_restart_without_node_privileges() {
     let dir = tempfile::tempdir().unwrap();
     let mut client = Client::open(dir.path()).unwrap();
@@ -224,12 +224,12 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     )
     .await
     .is_err());
-    let gateway_invite = admin(reqwest::Method::POST, "/v1/node/mesh/invites", None)
+    let station_invite = admin(reqwest::Method::POST, "/v1/node/mesh/invites", None)
         .await
         .unwrap();
     assert!(command(
         &mut denied_client,
-        json!({"op":"begin_invitation","ticket":gateway_invite["invitation"],"name":"Phone"})
+        json!({"op":"begin_invitation","ticket":station_invite["invitation"],"name":"Phone"})
     )
     .await
     .is_err());

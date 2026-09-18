@@ -7,7 +7,7 @@ impl ToolCompatibility for Results {
     fn migrate_result(&self, version: u32, value: Value) -> Result<Value, String> {
         match version {
             1 | 2 => Ok(value),
-            _ => Err(format!("unsupported gateway result version {version}")),
+            _ => Err(format!("unsupported station result version {version}")),
         }
     }
     fn migrate_state(&self, state: ToolState) -> Result<ToolState, String> {
