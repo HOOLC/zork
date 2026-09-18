@@ -97,7 +97,7 @@ for value in CommandLine.arguments.dropFirst() {
             raise AssertionError('Station did not become ready')
         report['node_processes'] = identities([supervisor.pid, ready['pid']])
         assert {item['name'] for item in report['node_processes']} == {'Zork-Supervisor', 'Zork-Station'}, report
-        assert {item['bundle'] for item in report['node_processes']} == {'ing.zork.desktop.supervisor', 'ing.zork.desktop.gateway'}, report
+        assert {item['bundle'] for item in report['node_processes']} == {'ing.zork.desktop.supervisor', 'ing.zork.desktop.station'}, report
         assert all(item['icon'] and item['activation_policy'] == 2 for item in report['node_processes']), report
         supervisor.stdin.close()
         assert supervisor.wait(timeout=10) == 0

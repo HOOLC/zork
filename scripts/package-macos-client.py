@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
 
-# Keep the installed helper's bundle identifier stable across the product rename.
-HELPERS = [('zork', 'ZorkSupervisor', 'supervisor'), ('zork-station', 'ZorkStation', 'gateway'),
+# Helper identifiers follow the product name. This pass moves them to the project
+# domain and to the Station wording, so an installed app re-registers its helpers
+# once; the binary names stay as they are.
+HELPERS = [('zork', 'ZorkSupervisor', 'supervisor'), ('zork-station', 'ZorkStation', 'station'),
            ('zork-service-watch', 'ZorkServiceWatch', 'service-watch')]
 COMPONENTS = ['zork-gui', 'zork', 'zork-station', 'zork-agent', 'zork-gh']
 RUNTIME_ALIASES = {'zork-service-watch': 'zork-station'}
