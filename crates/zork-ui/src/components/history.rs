@@ -26,6 +26,9 @@ pub struct ActivityHeader {
     pub status: Option<String>,
     pub nested: bool,
     pub group: bool,
+    /// An optional body under the summary line. The model lane passes its
+    /// Markdown document here, which then replaces the plain summary line.
+    pub body: Option<gpui::AnyElement>,
 }
 
 pub fn activity_header<V: 'static>(
@@ -206,7 +209,7 @@ pub fn activity_header_sources<V: 'static>(
                                 .child(header.time),
                         ),
                 )
-                .when(!header.summary.is_empty(), |v| {
+                .when(header.body.is_none() && !header.summary.is_empty(), |v| {
                     v.child(
                         div()
                             .h(px(20.))
@@ -216,7 +219,8 @@ pub fn activity_header_sources<V: 'static>(
                             .truncate()
                             .child(header.summary),
                     )
-                }),
+                })
+                .when_some(header.body, |v, body| v.child(body)),
         )
         .map(|header| match sources.0 {
             Some(source) => source

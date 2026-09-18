@@ -375,18 +375,21 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         })
         .expect("routine summary visible");
     let group_id = group.id.clone();
+    // An output row carries a Markdown body, so it legitimately exceeds the
+    // two-line row height; every other row still has to stay compact.
     anyhow::ensure!(
         snapshot
             .elements
             .iter()
             .filter(|e| e.id.starts_with("history-record-"))
+            .filter(|e| !e.label.starts_with("输出"))
             .all(|e| e.bounds.height <= 46.),
         "history item exceeded two lines"
     );
     let reply = snapshot
         .elements
         .iter()
-        .find(|e| e.id.starts_with("history-record-") && e.label.contains("模型请求"))
+        .find(|e| e.id.starts_with("history-record-") && e.label.starts_with("输出"))
         .expect("assistant reply is a history row");
     anyhow::ensure!(
         reply.label.contains("我先读一遍历史投影"),

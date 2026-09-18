@@ -67,7 +67,7 @@ pub struct Activity {
     pub entry: usize,
     pub kind: Kind,
     pub subject: Option<Subject>,
-    /// Bounded, plain-text preview. Full content remains in the original entry.
+    /// Bounded, plain-text preview; a model reply keeps its Markdown intact.
     pub summary: String,
     pub routine: Option<Routine>,
     pub requested_wait_ms: Option<i64>,
@@ -248,6 +248,14 @@ fn field(value: &Value, name: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// A model reply is rendered as Markdown, so it keeps its text intact up to the
+/// same bound Cue's output disclosure uses, instead of the one-line preview.
+pub const MODEL_TEXT_LIMIT: usize = 65_536;
+
+pub fn model_text(text: &str) -> String {
+    text.chars().take(MODEL_TEXT_LIMIT).collect()
+}
+
 /// Collapse whitespace without allocating or shaping an entire tool response.
 pub fn preview(text: &str) -> String {
     let mut output = String::new();
@@ -295,6 +303,7 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
         result.kind = Kind::Error;
         } else if entry.state == "succeeded" && !result.summary.is_empty() {
             result.kind = Kind::Model;
+            result.summary = model_text(&entry.summary);
         } else {
             return None;
         }

@@ -121,7 +121,8 @@ fn assistant_replies_read_as_model_rows_and_failures_stay_errors() {
     assert_eq!(
         rows,
         [
-            (Kind::Model, "改好了 3 个文件。 下一步跑测试。"),
+            // A reply keeps its Markdown, so paragraph breaks are not collapsed.
+            (Kind::Model, "改好了 3 个文件。\n\n下一步跑测试。"),
             (Kind::Model, "顺带说明一下。"),
             (Kind::Shell, "pwd"),
             (Kind::Error, "boom"),
@@ -131,6 +132,24 @@ fn assistant_replies_read_as_model_rows_and_failures_stay_errors() {
     assert!(p.activities.iter().all(|a| a.routine.is_none()));
     assert!(p.activities.iter().all(|a| a.subject.is_none()));
     assert_eq!(p.blocks.len(), p.activities.len());
+}
+
+#[test]
+fn model_replies_are_bounded_like_the_disclosure_they_render() {
+    assert_eq!(
+        model_text(&"a".repeat(MODEL_TEXT_LIMIT + 10)),
+        "a".repeat(MODEL_TEXT_LIMIT)
+    );
+    assert_eq!(model_text("short"), "short");
+    let entries = entries(&[record(
+        "1",
+        json!({"kind":"step_completed","step_id":"s","purpose":"conversation",
+        "assistant_text":"x".repeat(MODEL_TEXT_LIMIT + 10),"completed_at_ms":4,"invocations":[]}),
+    )]);
+    let projection = Projection::new(&entries);
+    assert_eq!(projection.activities.len(), 1);
+    assert_eq!(projection.activities[0].kind, Kind::Model);
+    assert_eq!(projection.activities[0].summary.chars().count(), MODEL_TEXT_LIMIT);
 }
 
 #[test]

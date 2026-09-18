@@ -3,6 +3,7 @@
 use crate::components::{
     history::{activity_color, kind_icon, kind_label, ActivityHeader},
     loading,
+    message::{render_document, MessageDocument},
 };
 use crate::history::{
     self as model,
@@ -50,6 +51,8 @@ pub struct State {
     pub rows: Vec<Row>,
     pub selected: Option<String>,
     pub expanded: HashSet<String>,
+    /// Model rows whose Markdown body is expanded past its clipped preview.
+    pub output_expanded: HashSet<String>,
     pub rendered_width: f32,
     pub scroll: ListState,
     pub scroll_observed: bool,
@@ -65,6 +68,7 @@ impl Default for State {
             rows: vec![],
             selected: None,
             expanded: Default::default(),
+            output_expanded: Default::default(),
             rendered_width: 440.,
             scroll: ListState::new(1, ListAlignment::Top, px(200.)),
             scroll_observed: false,
@@ -297,6 +301,82 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         timeline.into_any_element()
     }
+    /// A model reply reads as a bounded Markdown document. `MessagePreview`
+    /// measures it once per layout, clips it to roughly five lines and only
+    /// offers the disclosure when the text actually overflows that clip; the
+    /// token breakdown stays behind the disclosure.
+    fn render_history_output(
+        &self,
+        index: usize,
+        id: &str,
+        text: &str,
+        entry: &Entry,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let expanded = self.history().output_expanded.contains(id);
+        let width = (self.history().rendered_width - 40.).max(1.);
+        let document = MessageDocument::parse(text);
+        let disclosure_label = self.history_text().text(if expanded {
+            "history_output_show_less"
+        } else {
+            "history_output_show_more"
+        });
+        let toggle = id.to_owned();
+        let mut footer = div().w_full().flex().flex_col().gap(px(2.)).pt(px(2.));
+        if expanded {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(model) = entry.model.as_ref().filter(|model| !model.is_empty()) {
+                parts.push(format!("{} {model}", self.history_text().text("history_model")));
+            }
+            if let Some(usage) = entry.usage.as_ref() {
+                let input = usage["input_tokens"].as_u64().unwrap_or(0);
+                let output = usage["output_tokens"].as_u64().unwrap_or(0);
+                parts.push(
+                    self.history_text()
+                        .text("history_token_breakdown")
+                        .replace("{input}", &input.to_string())
+                        .replace("{output}", &output.to_string()),
+                );
+            }
+            if !parts.is_empty() {
+                footer = footer.child(div().text_size(px(11.)).text_color(rgb(DIM)).child(
+                    parts.join(" \u{b7} "),
+                ));
+            }
+        }
+        let disclosure = div()
+            .id(format!("history-output-disclosure-{index}"))
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(rgb(DIM))
+            .hover(|v| v.underline())
+            .child(disclosure_label.clone())
+            .when(expanded, |v| {
+                v.child(crate::controls::icon("cue/chevron-down.svg", 12.))
+            })
+            .on_click(cx.listener(move |v, _, _, cx| {
+                cx.stop_propagation();
+                if !v.history_mut().output_expanded.remove(&toggle) {
+                    v.history_mut().output_expanded.insert(toggle.clone());
+                }
+                crate::components::region::invalidate_all(cx);
+            }))
+            .automation(AutomationRole::Button, disclosure_label);
+        footer = footer.child(disclosure);
+        crate::components::message_preview::MessagePreview {
+            body: render_document(&format!("history-output-document-{index}"), &document),
+            footer: footer.into_any_element(),
+            width,
+            limit: 110.,
+            more: false,
+            expanded,
+            background: rgb(CUE_UI.palette.canvas).into(),
+        }
+    }
+
     fn render_history_activity(
         &self,
         index: usize,
@@ -441,6 +521,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         let id = entry.id.clone();
         let selected = self.history().selected.as_ref() == Some(&id);
+        let body = (!group && a.kind == Kind::Model).then(|| {
+            self.render_history_output(index, &id, &a.summary, entry, cx)
+                .into_any_element()
+        });
         div()
             .id(("history-row", index))
             .when(selected, |v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
@@ -467,6 +551,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     status,
                     nested: row.activity.is_some() && block.is_group(),
                     group,
+                    body,
                 },
                 (
                     (!group).then(|| self.history_source(cx)),
