@@ -277,7 +277,9 @@ fn reference(path: &str, origin: &str) -> Reference {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires ZORK_TEST_STATION_BIN pointing to a freshly built Station"]
+#[ignore = "requires ZORK_TEST_STATION_BIN pointing to a freshly built Station; currently fails on \
+            the publish wait for both space kinds (checked against the revision before the business \
+            tree stopped being published), so a red run is not yet a signal about either space"]
 async fn three_stations_publish_generic_tree_and_execute_remote_skills_without_installation(
 ) -> Result<()> {
     let binary =
