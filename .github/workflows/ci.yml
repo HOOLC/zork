@@ -30,6 +30,8 @@ on:
       - "vite.config.ts"
       - "scripts/check-runtime.sh"
       - "scripts/lib/build_env.py"
+      - "scripts/lib/ci_source_stamps.py"
+      - "scripts/test-ci-source-stamps.py"
       - "scripts/test-mesh.py"
       - "scripts/test-skills.py"
       - "scripts/test-slack-forwarding.py"
@@ -99,15 +101,12 @@ jobs:
           node-version: 22.15
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Restore timestamps of unchanged build inputs
+        run: python3 scripts/lib/ci_source_stamps.py restore
       - name: Build shared runtime and test binaries
         run: bash scripts/check-runtime.sh build
-      - name: Preserve native Mesh startup diagnostic
-        if: inputs.prime_cache
-        uses: actions/upload-artifact@v4
-        with:
-          name: mesh-startup-diagnostic
-          path: target/debug/deps/zork_mesh-*
-          retention-days: 1
+      - name: Capture build input timestamps with content hashes
+        run: python3 scripts/lib/ci_source_stamps.py capture
       - name: Save compiled target cache
         if: steps.target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

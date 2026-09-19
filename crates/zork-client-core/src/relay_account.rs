@@ -13,7 +13,6 @@ use anyhow::{ensure, Context, Result};
 use reqwest::{Client, Method, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
-    fs::File,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -94,7 +93,7 @@ impl Account {
         &self.root
     }
 
-    async fn lock(&self) -> Result<File> {
+    async fn lock(&self) -> Result<storage::AccountLock> {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
         loop {
             if let Some(lock) = storage::try_lock(&self.root)? {

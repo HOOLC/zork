@@ -92,8 +92,10 @@ pnpm cache:prune           # 显式执行回收
 CI 可通过仓库变量 `KACHE_S3_ENDPOINT`、可选 `KACHE_S3_BUCKET` 及对应的 `KACHE_S3_ACCESS_KEY` / `KACHE_S3_SECRET_KEY` secrets 接入 R2 缓存。未配置时普通构建仍可运行，容器构建使用同一显式配置。账号端点和秘密不写入共享源码。
 
 依赖或工具链变化、缓存丢失后，可手工引导运行时缓存：
-`gh workflow run ci.yml --ref main -f prime_cache=true`。这条路径只构建并保存库、程序和测试产物，不执行运行时契约，不能算作 CI 验证通过；完成后仍运行普通 main 检查。配置 R2 时由 kache 统一保存产物与清单，未配置时使用 GitHub target 缓存。使用 GitHub target 缓存时，引导须在 main 上执行，分支缓存不能反向供 main 使用。R2 按构建命名空间共享，可在受信任分支引导相同构建输入，之后仍验证 main。
+`gh workflow run ci.yml --ref main -f prime_cache=true`。这条路径只构建并保存库、程序和测试产物，不执行运行时契约，不能算作 CI 验证通过；完成后仍运行普通 main 检查。main 的 GitHub target 缓存须在 main 上引导，分支缓存不能反向供 main 使用。R2 按构建命名空间共享，可在受信任分支引导相同构建输入，之后仍验证 main。
 
 即使启用 kache，CI 也在构建成功后、测试之前保存完整 Cargo target；两者分别复用编译产物与 Cargo 指纹/本地构建脚本输出。target 键包含锁文件与源码提交，并可回退到兼容的旧版本，避免不可变缓存键永远保留旧源码产物。手动 workflow dispatch 可在指定分支做预热或完整验证；分支缓存仍不能供 main 使用。
 
 CI 在同一次 Cargo target 选择中构建运行程序和测试，避免两次命令切换开发依赖 feature 后反复生成同一依赖的不同变体；后续测试仍校验当前源码指纹。
+
+target 同时保存受版本控制的输入文件哈希、权限与构建时的修改时间。新 checkout 只对内容及权限完全相同的普通文件恢复原时间，避免 checkout 时间导致 Cargo 重建全部路径依赖；变更文件、符号链接和缺失记录保留当前状态，继续由 Cargo 判断。不能统一回写提交时间或无条件信任缓存中的路径。

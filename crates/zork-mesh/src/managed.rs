@@ -201,8 +201,6 @@ async fn start_owned(
     client_only: bool,
     control: Option<Arc<dyn crate::control::ControlHandler>>,
 ) -> Result<Runtime> {
-    #[cfg(test)]
-    let startup_started = std::time::Instant::now();
     validate(config)?;
     let channel = zork_config::channel::activate_for_data(root)?;
     ensure!(
@@ -239,11 +237,6 @@ async fn start_owned(
         Ok((lock, clean_start))
     })
     .await??;
-    #[cfg(test)]
-    eprintln!(
-        "Mesh startup receipt clean={clean_start} elapsed={:?}",
-        startup_started.elapsed()
-    );
     synch_net::tls::install_crypto_provider();
     let mut options = synch_engine::NodeConfig::new(data.clone());
     // Zork serves native control; no node executes published socket programs.
@@ -258,8 +251,6 @@ async fn start_owned(
     });
     options.dns.no_tuf = config.offline;
     let engine = synch_engine::Node::open(options).await?;
-    #[cfg(test)]
-    eprintln!("Mesh engine opened after {:?}", startup_started.elapsed());
     // Publish the bound loopback endpoint before readoption: two same-host
     // peers must be able to find each other while both are still starting.
     let local_registration = match crate::local_discovery::install(engine.net().endpoint()).await {
@@ -304,8 +295,6 @@ async fn start_owned(
         if !clean_start {
             engine.readopt_self_on_startup().await?;
         }
-        #[cfg(test)]
-        eprintln!("Mesh history checked after {:?}", startup_started.elapsed());
         tracing::info!(clean_start, "Mesh startup history checked");
         Ok(())
     }
@@ -324,19 +313,11 @@ async fn start_owned(
                 _ = stop_push.recv() => break,
                 request = pending_publish.recv() => {
                     let Some(request) = request else { break; };
-                    tokio::select! {
-                        _ = stop_push.recv() => break,
-                        result = async {
-                            // Queue initial source scans without coupling local
-                            // readiness to a peer's network availability.
-                            pushing.scan_source_and_stage_async(&request.space).await?;
-                            Ok::<_, synch_engine::EngineError>(())
-                        } => {
-                            let result = result.map_err(anyhow::Error::from);
-                            if let Err(error) = &result {
-                                tracing::warn!(%error, "startup Mesh publication failed");
-                            }
-                        }
+                    // This local scan owns a non-cancellable blocking task.
+                    // Drain it before releasing the database or recording a
+                    // clean close; dropping its future would detach the write.
+                    if let Err(error) = pushing.scan_source_and_stage_async(&request.space).await {
+                        tracing::warn!(%error, "startup Mesh publication failed");
                     }
                 }
             }
@@ -416,10 +397,14 @@ async fn start_owned(
             elapsed_ms = draining_started.elapsed().as_millis() as u64,
             "Synch transport and loops drained"
         );
+        // A scanner may stage its final batch after the publisher loop has
+        // flushed on stop. Commit it locally after every producer has drained.
+        let final_publication = engine.publish_staged().await;
         drop(local_registration);
         closing.release_engine();
         drop(engine);
         let clean_close = shutdown?;
+        final_publication?;
         if let Some(error) = failure {
             anyhow::bail!(error);
         }

@@ -46,8 +46,8 @@ pre-push:
         - "vendor/{synch*,rustls*}/**"
         - "{Cargo.toml,Cargo.lock,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts,lefthook.yml}"
         - "{packages,test}/**"
-        - "scripts/{check-runtime.sh,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
-        - "scripts/lib/build_env.py"
+        - "scripts/{check-runtime.sh,test-ci-source-stamps.py,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
+        - "scripts/lib/{build_env,ci_source_stamps}.py"
         - "crates/zork-gui/tests/test_station_entry.py"
         - ".github/workflows/ci.yml"
       run: bash scripts/check-runtime.sh
