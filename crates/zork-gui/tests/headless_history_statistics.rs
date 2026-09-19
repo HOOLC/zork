@@ -208,8 +208,10 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "records lost their primary reading space: {}",
         ledger.bounds.height
     );
+    // Cue's heading is the session identity, the 18px-gap facts grid and the
+    // usage scope, so it is taller than the old compact card.
     assert!(
-        stats.bounds.height <= 110.,
+        stats.bounds.height <= 210.,
         "statistics are not compact: {}",
         stats.bounds.height
     );

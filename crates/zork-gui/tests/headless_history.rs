@@ -213,7 +213,10 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"click","target":{"element_id":disclosure_id}}),
     )?;
-    let expanded = driver.snapshot(false);
+    // The expanded reply is taller than the narrow window, so its disclosure and
+    // clock sit below the fold there. Their state is what this checks, so read
+    // the snapshot with hidden elements included.
+    let expanded = driver.snapshot(true);
         anyhow::ensure!(
         expanded
                 .elements
@@ -233,6 +236,19 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         );
     cx.capture_screenshot(window.into())?
         .save(out.join("expanded-reply.png"))?;
+    // The expanded reply outgrows the narrow window, so its disclosure sits
+    // below the fold there; scroll the page back onto it before toggling.
+    let ledger = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|e| e.id == "history-ledger")
+        .map(|e| e.bounds)
+        .expect("history ledger");
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"x":ledger.x + ledger.width * 0.5,"y":ledger.y + ledger.height * 0.5},"delta_y":-800}),
+    )?;
     action(
         &mut cx,
         json!({"type":"click","target":{"element_id":disclosure_id}}),
@@ -279,9 +295,11 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         );
     }
     let older = bounds("history-older");
-    let activity = bounds("history-page");
+    // Cue pads the scroll region 16px, so the page state spans the padded list
+    // rather than the whole page.
+    let activity = bounds("history-ledger");
     anyhow::ensure!(
-        (older.width - activity.width).abs() < 1.,
+        (older.width - activity.width).abs() < 34.,
         "paging status is not centered across the list"
     );
     if std::env::var_os("ZORK_SCROLL_ALL_MESSAGES").is_some() {

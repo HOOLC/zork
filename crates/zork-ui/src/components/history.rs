@@ -5,7 +5,7 @@ use crate::{
     design::CUE_UI,
     history::Entry,
 };
-use gpui::{div, prelude::*, px, rgb, rgba, Context, Div, FontWeight};
+use gpui::{div, prelude::*, px, relative, rgb, rgba, Context, Div, FontWeight};
 
 // Restrained semantic accents, shared by rows, destinations and the timeline.
 pub const SEND_COLOR: u32 = 0x536779;
@@ -24,6 +24,12 @@ pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
 /// chip on the 16px icon box.
 fn accent_chip(color: u32) -> gpui::Rgba {
     rgba((color << 8) | 0x1F)
+}
+
+/// `font-variant-numeric: tabular-nums`, which Cue puts on its clocks, waits
+/// and overview facts. gpui exposes the OpenType `tnum` feature instead.
+pub fn tabular_nums() -> gpui::FontFeatures {
+    gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".to_owned(), 1)]))
 }
 
 /// Rows Cue marks with an observable activity kind carry the accent chip and the
@@ -56,6 +62,12 @@ pub struct ActivityHeader {
     pub failed: bool,
     /// A live row spins Cue's loading ring in place of its static icon.
     pub live: bool,
+    /// Cue's wait label and record clocks use tabular figures.
+    pub tabular: bool,
+    /// A group heading is `.cue-session-group-summary`: it shrinks and ellipsises.
+    pub group_summary: bool,
+    /// An expanded group heading carries Cue's 12px rotated chevron.
+    pub chevron: bool,
 }
 
 pub fn activity_header<V: 'static>(
@@ -99,6 +111,18 @@ pub fn activity_header_sources<V: 'static>(
     } else {
         CUE_UI.palette.subtle
     };
+    // `.cue-session-icon` is tertiary; an accent row tints it with the action
+    // colour, a failed tool paints it error and a live row without an activity
+    // kind reads primary.
+    let icon_color = if header.failed {
+        ACTIVITY_ERROR_COLOR
+    } else if header.accent {
+        header.color
+    } else if header.live {
+        CUE_UI.palette.text
+    } else {
+        CUE_UI.palette.subtle
+    };
     let status_color = if header.failed {
         ACTIVITY_ERROR_COLOR
     } else {
@@ -111,14 +135,12 @@ pub fn activity_header_sources<V: 'static>(
         .flex()
         .items_center()
         .gap(px(8.))
-        .px(px(8.))
         .w_full()
         .min_h(px(26.))
         .min_w_0()
         .text_size(px(12.))
         .text_color(rgb(CUE_UI.palette.muted))
         .cursor_pointer()
-        .hover(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
         .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
         .on_click(cx.listener(move |v, _, window, cx| open(v, window, cx)))
         .on_key_down(
@@ -153,7 +175,7 @@ pub fn activity_header_sources<V: 'static>(
                     })
                     .child(if header.live {
                         div()
-                            .text_color(rgb(header.color))
+                            .text_color(rgb(icon_color))
                             .child(
                                 crate::components::loading::indicator(spinner.clone(), 14.)
                                     .without_delay(),
@@ -161,13 +183,23 @@ pub fn activity_header_sources<V: 'static>(
                             .into_any_element()
                     } else {
                         crate::controls::icon(path, 14.)
-                            .text_color(rgb(header.color))
+                            .text_color(rgb(icon_color))
                             .into_any_element()
                     }),
             )
         })
-        .child(
-            div()
+        .child(match header.group_summary {
+            // `.cue-session-group-summary` shrinks and ellipsises its counts.
+            true => div()
+                .min_w_0()
+                .text_size(px(11.))
+                .text_color(rgb(label_color))
+                .whitespace_nowrap()
+                .truncate()
+                .when(header.tabular, |v| v.font_features(tabular_nums()))
+                .child(header.action),
+            // `.cue-session-label` is `flex: none` at 11px, medium when accented.
+            false => div()
                 .flex_shrink_0()
                 .text_size(px(11.))
                 .font_weight(if header.accent {
@@ -177,11 +209,21 @@ pub fn activity_header_sources<V: 'static>(
                 })
                 .text_color(rgb(label_color))
                 .whitespace_nowrap()
+                .when(header.tabular, |v| v.font_features(tabular_nums()))
                 .child(header.action),
-        )
+        })
+        .when(header.chevron, |v| {
+            v.child(
+                crate::controls::icon("cue/chevron-down.svg", 12.)
+                    .text_color(rgb(CUE_UI.palette.subtle))
+                    .flex_shrink_0(),
+            )
+        })
         .when_some(header.subject, |v, text| {
+            // `.cue-session-record-target` may shrink (`flex: 0 1 auto`) so a
+            // long target ellipsises instead of pushing the status off the line.
             let subject = div()
-                .flex_shrink_0()
+                .min_w_0()
                 .text_size(px(11.))
                 .text_color(rgb(if header.clickable_subject {
                     CUE_UI.palette.text
@@ -220,19 +262,36 @@ pub fn activity_header_sources<V: 'static>(
             )
         })
         .when(!header.summary.is_empty(), |v| {
-            let summary = div()
-                .min_w_0()
-                .text_size(px(if header.tail { 12. } else { 11. }))
-                .text_color(rgb(CUE_UI.palette.muted))
-                .truncate()
-                .child(header.summary);
-            // A tail fills the line to its right edge; an operation target keeps
-            // its own width and lets the status follow it directly.
-            v.child(if header.tail {
-                summary.flex_1().into_any_element()
-            } else {
-                summary.into_any_element()
-            })
+            // `.cue-session-tail` right-aligns and clips a text row's trailing
+            // prose; an operation target keeps its own width before the status.
+            if header.tail {
+                return v.child(
+                    div()
+                        .flex()
+                        .flex_shrink(1.)
+                        .min_w_0()
+                        .overflow_hidden()
+                        .justify_end()
+                        .text_size(px(12.))
+                        .text_color(rgb(CUE_UI.palette.muted))
+                        .child(
+                            div()
+                                .flex_none()
+                                .min_w(relative(1.))
+                                .pl(px(12.))
+                                .whitespace_nowrap()
+                                .child(header.summary),
+                        ),
+                );
+            }
+            v.child(
+                div()
+                    .min_w_0()
+                    .text_size(px(11.))
+                    .text_color(rgb(CUE_UI.palette.muted))
+                    .truncate()
+                    .child(header.summary),
+            )
         })
         .when_some(header.status, |v, text| {
             v.child(

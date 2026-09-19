@@ -155,16 +155,18 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             crate::components::region::invalidate(cx, &["history", "header"]);
         }
     }
+    /// `.cue-session-page-state`: a centred 11px tertiary line 10px above the
+    /// records, holding the loading, failed, paging, start and empty states.
     fn render_history_older(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let paging = self.history_paging();
+        let empty = paging.loaded && self.history().rows.is_empty() && !paging.error;
         div()
             .id("history-older")
             .w_full()
-            .py(px(3.))
-            .line_height(px(16.5))
+            .mb(px(10.))
             .text_center()
             .text_size(px(11.))
-            .text_color(rgb(DIM))
+            .text_color(rgb(SUBTLE))
             .when(!paging.busy && (paging.older || paging.error), |v| {
                 v.cursor_pointer()
             })
@@ -181,6 +183,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     "history_loading"
                 } else if paging.error {
                     "history_failed"
+                } else if empty {
+                    "history_empty"
                 } else if paging.older {
                     "history_older"
                 } else {
@@ -200,7 +204,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             )
     }
     fn render_history_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let paging = self.history_paging();
         if !self.history().scroll_observed {
             let list = self.history().scroll.clone();
             let owner = cx.entity().downgrade();
@@ -215,46 +218,51 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .h_full()
             .flex_shrink_0()
             .min_h_0()
+            .min_w_0()
             .flex()
             .flex_col()
-            .font_weight(FontWeight(450.))
             .child(self.history_statistics().render(self.history_text()))
             .child(
+                // `.cue-session-body` holds the scroll region the follow button
+                // floats over; `.cue-session-timeline` pads the records 12/16/24.
                 div()
-                    .id("history-ledger")
-                    .when(
-                        paging.loaded && self.history().rows.is_empty() && !paging.error,
-                        |v| {
-                            v.child(
-                                div()
-                                    .p_4()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(DIM))
-                                    .child(self.history_text().text("history_empty")),
-                            )
-                        },
-                    )
+                    .relative()
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
                     .flex()
-                    .flex_col()
                     .child(
-                        gpui::list(
-                            self.history().scroll.clone(),
-                            cx.processor(move |v, index, window, cx| {
-                                if index == 0 {
-                                    v.render_history_older(cx).into_any_element()
-                                } else if index <= v.history_mut().rows.len() {
-                                    live::row(v, index - 1, window, cx)
-                                } else {
-                                    div().into_any_element()
-                                }
-                            }),
-                        )
-                        .flex_1()
-                        .min_h_0(),
-                    )
-                    .automation(AutomationRole::ScrollArea, self.history_text().text("history_records")),
+                        div()
+                            .id("history-ledger")
+                            .flex_1()
+                            .min_h_0()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .px(px(16.))
+                            .pt(px(12.))
+                            .pb(px(24.))
+                            .child(
+                                gpui::list(
+                                    self.history().scroll.clone(),
+                                    cx.processor(move |v, index, window, cx| {
+                                        if index == 0 {
+                                            v.render_history_older(cx).into_any_element()
+                                        } else if index <= v.history_mut().rows.len() {
+                                            live::row(v, index - 1, window, cx)
+                                        } else {
+                                            div().into_any_element()
+                                        }
+                                    }),
+                                )
+                                .flex_1()
+                                .min_h_0(),
+                            )
+                            .automation(
+                                AutomationRole::ScrollArea,
+                                self.history_text().text("history_records"),
+                            ),
+                    ),
             )
     }
 
@@ -270,7 +278,9 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let expanded = self.history().output_expanded.contains(id);
-        let width = (self.history().rendered_width - 40.).max(1.);
+        // `.cue-session-timeline` pads the records 16px on both sides, so the
+        // document lays out at the panel width minus that inset.
+        let width = (self.history().rendered_width - 32.).max(1.);
         let document = MessageDocument::parse(text);
         let disclosure_label = self.history_text().text(if expanded {
             "history_output_show_less"
@@ -278,7 +288,9 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             "history_output_show_more"
         });
         let toggle = id.to_owned();
-        let mut footer = div().w_full().flex().flex_col().gap(px(2.)).pt(px(2.));
+        // `.cue-session-output-disclosure` sits 8px under the document; the
+        // record clock, when revealed, carries Cue's 6px bottom margin.
+        let mut footer = div().w_full().flex().flex_col();
         if expanded {
             footer = footer.child(record_time(index, entry.start.or(entry.end)));
         }
@@ -287,13 +299,17 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .flex()
             .items_center()
             .gap(px(4.))
+            .mt(px(8.))
             .cursor_pointer()
             .text_size(px(11.))
             .text_color(rgb(SUBTLE))
-            .hover(|v| v.underline())
             .child(disclosure_label.clone())
             .when(expanded, |v| {
-                v.child(crate::controls::icon("cue/chevron-down.svg", 12.))
+                v.child(
+                    crate::controls::icon("cue/chevron-down.svg", 12.).with_transformation(
+                        gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI)),
+                    ),
+                )
             })
             .on_click(cx.listener(move |v, _, _, cx| {
                 cx.stop_propagation();
@@ -305,12 +321,23 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .automation(AutomationRole::Button, disclosure_label);
         footer = footer.child(disclosure);
         crate::components::message_preview::MessagePreview {
-            body: render_document(&format!("history-output-document-{index}"), &document),
+            // `.cue-session-output-document` is a 14px/22px flow root, but the
+            // MarkdownStream inside it renders `text-sm leading-[22px]`, so the
+            // visible document is 13px on 22px lines.
+            body: div()
+                .text_size(px(13.))
+                .line_height(px(22.))
+                .child(render_document(
+                    &format!("history-output-document-{index}"),
+                    &document,
+                ))
+                .into_any_element(),
             footer: footer.into_any_element(),
             width,
             limit: 110.,
             more: false,
             expanded,
+            fade: false,
             background: rgb(CUE_UI.palette.canvas).into(),
         }
     }
@@ -537,6 +564,9 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     status,
                     failed: matches!(entry.state.as_str(), "failed" | "timed_out"),
                     live,
+                    tabular: !group && a.kind == Kind::Wait,
+                    group_summary: group,
+                    chevron: group && self.history().expanded.contains(&group_id),
                 },
                 (
                     (!group).then(|| self.history_source(cx)),
@@ -582,6 +612,7 @@ fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
         .mb(px(6.))
         .text_size(px(9.))
         .text_color(rgb(SUBTLE))
+        .font_features(crate::components::history::tabular_nums())
         .child(clock.clone())
         .automation(AutomationRole::Status, clock)
 }

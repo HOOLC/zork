@@ -13,6 +13,9 @@ pub struct MessagePreview {
     pub limit: f32,
     pub more: bool,
     pub expanded: bool,
+    /// Cue clips a session reply with `overflow: clip` and no gradient; the
+    /// chat transcript still paints its clip fade.
+    pub fade: bool,
     pub background: gpui::Hsla,
 }
 impl IntoElement for MessagePreview {
@@ -111,7 +114,7 @@ impl Element for MessagePreview {
             |w| self.body.paint(w, cx),
         );
         if state.1 {
-            if !self.expanded {
+            if !self.expanded && self.fade {
                 let fade_height = px(40.).min(state.0);
                 w.paint_quad(gpui::fill(
                     Bounds {

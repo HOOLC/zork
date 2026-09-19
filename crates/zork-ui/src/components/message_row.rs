@@ -167,6 +167,7 @@ impl Row<'_> {
             limit: preview_limit,
             more: document.is_truncated(),
             expanded,
+            fade: true,
             background: rgb(if user { CUE_UI.thread.user_fill } else { BG }).into(),
         };
         match user {
