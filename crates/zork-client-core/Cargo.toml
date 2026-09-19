@@ -19,6 +19,9 @@ serde_json = "1"
 zork-observe = { path = "../zork-observe" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+base64 = "0.22"
+getrandom.workspace = true
+sha2 = "0.10.9"
 zork-agent-api = { path = "../agent-api" }
 bytes = "1"
 reqwest.workspace = true

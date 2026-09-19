@@ -206,24 +206,31 @@ impl Ticket {
             bootstrap,
         })
     }
-    pub async fn resolve(&self, root: &Path) -> Result<Invitation> {
-        let config = MeshConfig {
+    pub fn network_config(&self) -> MeshConfig {
+        MeshConfig {
             offline: self.bootstrap.offline,
             discovery_url: self.bootstrap.discovery_url.clone(),
             bind: Some("0.0.0.0:0".into()),
             ..Default::default()
-        };
+        }
+    }
+    pub async fn resolve(&self, root: &Path) -> Result<Invitation> {
+        let config = self.network_config();
         let transport =
             tokio::time::timeout(Duration::from_secs(15), Enrollment::bind(root, &config))
                 .await
                 .context("bootstrap_bind_timeout")??;
+        let result = self.resolve_using(&transport).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), transport.close()).await;
+        result
+    }
+    pub async fn resolve_using(&self, transport: &Enrollment) -> Result<Invitation> {
         let result = transport
             .exchange_endpoint(
                 self.endpoint.clone(),
                 &json!({"op":"resolve","id":self.id(),"secret":self.secret(),"kind":self.kind}),
             )
             .await;
-        let _ = tokio::time::timeout(Duration::from_secs(3), transport.close()).await;
         let value = result?;
         let invite: Invitation = serde_json::from_value(value["invitation"].clone())?;
         ensure!(

@@ -28,7 +28,7 @@ pub struct MeshService {
     pub shared_files: std::sync::OnceLock<Arc<crate::shared_files::SharedFiles>>,
     pub services: Arc<crate::shared_services::Registry>,
     node: MeshNode,
-    runtime: tokio::sync::Mutex<Option<managed::Runtime>>,
+    runtime: tokio::sync::Mutex<Option<zork_client_core::transport::Runtime>>,
     tasks: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
     origin: String,
     root: std::path::PathBuf,
@@ -420,12 +420,14 @@ impl MeshService {
         self.node.clone()
     }
     pub async fn prepare(root: &Path) -> Result<Option<Prepared>> {
-        let config = zork_config::load_config(root)?.mesh;
+        let mut config = zork_config::load_config(root)?.mesh;
         if !config.enabled {
             return Ok(None);
         }
+        zork_config::services::ServicesConfig::load_from_install()?.apply_network(&mut config)?;
         managed::validate(&config)?;
         let runtime = managed::start(root, &config).await?;
+        let runtime = zork_client_core::transport::own(root, &config, runtime)?;
         let node = runtime.node();
         let origin = node.identity().await?;
         ensure!(

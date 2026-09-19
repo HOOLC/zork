@@ -1,7 +1,8 @@
 //! Client invitation bootstrap; platform hosts only scan/paste and display state.
 use super::*;
+use crate::transport::Enrollment;
 use zork_config::membership::{MeshDevice, MeshGroup};
-use zork_mesh::enrollment::{Enrollment, Invitation, InviteKind};
+use zork_mesh::enrollment::{Invitation, InviteKind};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Pending {
@@ -57,13 +58,10 @@ impl Client {
         Ok(self.pending_invitation()?.map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})).unwrap_or(Value::Null))
     }
     pub(crate) async fn begin_invitation(&mut self, ticket: &str, name: &str) -> Result<Value> {
-        let invitation = zork_mesh::enrollment::ticket::resolve(
-            &self.root.join("invite-bootstrap"),
-            ticket.trim(),
-            InviteKind::Client,
-        )
-        .await
-        .context("无法识别连接邀请，请扫描 Zork 的手机连接二维码")?;
+        let invitation =
+            crate::transport::resolve_invitation(&self.root, ticket.trim(), InviteKind::Client)
+                .await
+                .context("无法识别连接邀请，请扫描 Zork 的手机连接二维码")?;
         ensure!(
             invitation.kind == InviteKind::Client,
             "这是执行设备邀请，请在桌面选择连接手机"

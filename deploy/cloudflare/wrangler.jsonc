@@ -4,11 +4,15 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-08",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "workers_dev": false,
+  "routes": [{ "pattern": "relay.zork.ing", "custom_domain": true }],
   "preview_urls": false,
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": {
+    "enabled": false,
+  },
   "vars": {
-    "ALLOWED_KEYS": "",
+    "PUBLIC_ORIGIN": "https://relay.zork.ing",
+    "GOOGLE_CLIENT_ID": "",
   },
   "containers": [
     {
@@ -20,9 +24,36 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "RELAY", "class_name": "Relay" },
-      { "name": "RECORDS", "class_name": "DiscoveryRecord" },
+      {
+        "name": "RELAY",
+        "class_name": "Relay",
+      },
+      {
+        "name": "RECORDS",
+        "class_name": "DiscoveryRecord",
+      },
+      {
+        "name": "ACCOUNTS",
+        "class_name": "Account",
+      },
+      {
+        "name": "LOGINS",
+        "class_name": "LoginAttempt",
+      },
+      {
+        "name": "LOGIN_LIMITS",
+        "class_name": "LoginLimiter",
+      },
     ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Relay", "DiscoveryRecord"] }],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Relay", "DiscoveryRecord"],
+    },
+    {
+      "tag": "v2-sessions",
+      "new_sqlite_classes": ["Account", "LoginAttempt", "LoginLimiter"],
+    },
+  ],
 }

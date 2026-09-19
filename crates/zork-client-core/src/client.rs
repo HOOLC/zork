@@ -192,7 +192,8 @@ impl Command {
     pub fn is_local(&self) -> bool {
         matches!(
             self,
-            Self::LocalScript { .. } | Self::Adb { .. }
+            Self::LocalScript { .. }
+                | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
                 | Self::SharedFiles { .. }
                 | Self::TestNotification
@@ -249,10 +250,14 @@ impl LocalClient {
     /// command executor lock or starts a second device controller.
     pub fn observe(&self, key: subscriptions::Key) -> Result<subscriptions::WireSubscription> {
         if matches!(key, subscriptions::Key::DataReset) {
-            return Ok(subscriptions::WireSubscription::from_data_reset(&self.data_reset.source));
+            return Ok(subscriptions::WireSubscription::from_data_reset(
+                &self.data_reset.source,
+            ));
         }
         if matches!(key, subscriptions::Key::LocalScripts) {
-            return Ok(subscriptions::WireSubscription::from_local_scripts(&self.local_scripts.source));
+            return Ok(subscriptions::WireSubscription::from_local_scripts(
+                &self.local_scripts.source,
+            ));
         }
         if matches!(key, subscriptions::Key::Adb) {
             return Ok(subscriptions::WireSubscription::from_adb(self.adb.clone()));
@@ -453,10 +458,20 @@ impl LocalClient {
             } => {
                 self.peer(&peer)?;
                 valid_session(&session)?;
-                if let crate::interactions::Command::Activate { message_id, choice, values } = &operation {
+                if let crate::interactions::Command::Activate {
+                    message_id,
+                    choice,
+                    values,
+                } = &operation
+                {
                     if choice == "run_local_script" {
-                        ensure!(values.is_empty(), "Script activation does not accept parameters");
-                        return self.local_scripts.start_message(&peer, &session, message_id);
+                        ensure!(
+                            values.is_empty(),
+                            "Script activation does not accept parameters"
+                        );
+                        return self
+                            .local_scripts
+                            .start_message(&peer, &session, message_id);
                     }
                 }
                 let device = self
@@ -674,7 +689,7 @@ pub struct Client {
     services: Arc<services::Views>,
     root: PathBuf,
     store: Arc<ClientStore>,
-    runtime: Option<managed::Runtime>,
+    runtime: Option<transport::Runtime>,
     stations: Mutex<std::collections::HashMap<String, Arc<api::StationClient>>>,
     devices: std::collections::HashMap<String, Arc<state::Device>>,
 }

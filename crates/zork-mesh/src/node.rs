@@ -1,17 +1,18 @@
 //! Bounded product operations on an owned Synch engine node. No daemon, local
 //! control protocol, command interpreter or control socket is involved.
 mod folders;
+mod relay;
 mod tree;
 use crate::{MAX_ARTIFACT, MAX_FRAME};
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
-        Arc, RwLock,
         atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
     },
     time::Duration,
 };
@@ -40,6 +41,7 @@ struct ActiveNode {
     node: Arc<RwLock<Option<Node>>>,
     alive: Arc<AtomicBool>,
     startup_publish: tokio::sync::mpsc::Sender<StartupPublication>,
+    relay_configs: Arc<crate::relay_access::RelayAccess>,
 }
 
 /// A direct library handle. Desktop clients can retain this handle across a
@@ -91,6 +93,7 @@ impl MeshNode {
                 node: Arc::new(RwLock::new(Some(node))),
                 alive,
                 startup_publish,
+                relay_configs: Arc::default(),
             }))),
         }
     }
@@ -498,11 +501,19 @@ impl MeshNode {
     }
     /// One authenticated control handshake, followed by an unframed service stream.
     pub async fn connect_service(&self, origin: &str, id: &str) -> Result<ServiceStream> {
-        self.connect_tunnel(origin, &serde_json::json!({"v":1,"request":{"kind":"service","id":id}})).await
+        self.connect_tunnel(
+            origin,
+            &serde_json::json!({"v":1,"request":{"kind":"service","id":id}}),
+        )
+        .await
     }
 
     /// Open a typed, peer-authorized tunnel; the remote handler selects its endpoint.
-    pub async fn connect_tunnel(&self, origin: &str, payload: &serde_json::Value) -> Result<ServiceStream> {
+    pub async fn connect_tunnel(
+        &self,
+        origin: &str,
+        payload: &serde_json::Value,
+    ) -> Result<ServiceStream> {
         self.refresh_peer_route(origin).await?;
         let connection = tokio::time::timeout(
             Duration::from_secs(10),
@@ -513,7 +524,10 @@ impl MeshNode {
         let mut socket = Subscription::new(connection);
         tokio::time::timeout(Duration::from_secs(25), async {
             let request = serde_json::to_vec(payload)?;
-            ensure!(!request.is_empty() && request.len() <= MAX_FRAME, "mesh request too large");
+            ensure!(
+                !request.is_empty() && request.len() <= MAX_FRAME,
+                "mesh request too large"
+            );
             socket.send.write_u32(request.len() as u32).await?;
             socket.send.write_all(&request).await?;
             let reply = crate::bridge::read_frame(&mut socket.recv).await?;

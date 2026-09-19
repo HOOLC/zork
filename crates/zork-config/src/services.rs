@@ -38,10 +38,24 @@ pub fn validate_cue_redirect(value: &str) -> Result<()> {
     Ok(())
 }
 impl ServicesConfig {
+    pub fn packaged_defaults() -> Self {
+        serde_json::from_str(include_str!("services.default.json"))
+            .expect("packaged service defaults")
+    }
+    pub fn load_from_install() -> Result<Self> {
+        let bundled = std::env::current_exe().ok().and_then(|exe| {
+            exe.parent()
+                .map(|dir| dir.join("../Resources/services.json"))
+        });
+        let user = std::env::var_os("ZORK_SERVICES_CONFIG").map(std::path::PathBuf::from);
+        Self::load(bundled.as_deref(), user.as_deref())
+    }
+
     /// The override replaces individual top-level fields. In particular `cue`
     /// is replaced atomically so an issuer never inherits another client's ID.
     pub fn load(bundled: Option<&Path>, user: Option<&Path>) -> Result<Self> {
-        let mut merged = serde_json::json!({});
+        let mut merged =
+            serde_json::to_value(Self::packaged_defaults()).context("packaged service defaults")?;
         for path in [bundled, user].into_iter().flatten() {
             if !path.exists() {
                 continue;

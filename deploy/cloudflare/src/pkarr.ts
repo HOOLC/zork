@@ -25,19 +25,6 @@ export function decodeKey(value: string): Uint8Array<ArrayBuffer> {
   return result;
 }
 
-export function allowedKeys(value: string): Set<string> {
-  if (!value) return new Set();
-  const keys = value.split(",");
-  if (keys.length > 128 || keys.some((key) => !/^[0-9a-f]{64}$/.test(key))) {
-    throw new Error("invalid ALLOWED_KEYS configuration");
-  }
-  return new Set(keys);
-}
-
-export function hexKey(key: Uint8Array): string {
-  return Buffer.from(key).toString("hex");
-}
-
 export async function readPayload(request: Request): Promise<Uint8Array<ArrayBuffer>> {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("missing payload");
