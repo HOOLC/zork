@@ -13,6 +13,8 @@ mod account;
 mod mcp;
 mod mesh;
 mod service;
+#[cfg(all(test, unix))]
+mod tests;
 mod upgrade;
 
 fn usage() -> &'static str {
