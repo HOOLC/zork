@@ -92,4 +92,4 @@ pnpm cache:prune           # 显式执行回收
 CI 可通过仓库变量 `KACHE_S3_ENDPOINT`、可选 `KACHE_S3_BUCKET` 及对应的 `KACHE_S3_ACCESS_KEY` / `KACHE_S3_SECRET_KEY` secrets 接入 R2 缓存。未配置时普通构建仍可运行，容器构建使用同一显式配置。账号端点和秘密不写入共享源码。
 
 依赖或工具链变化、缓存丢失后，可手工引导运行时缓存：
-`gh workflow run ci.yml --ref main -f prime_cache=true`。这条路径只构建并保存库、程序和测试产物，不执行运行时契约，不能算作 CI 验证通过；完成后仍运行普通 main 检查。配置 R2 时由 kache 统一保存产物与清单，未配置时使用 GitHub target 缓存。分支上的 GitHub 缓存不能反向供 main 使用，因此引导应在 main 上执行。
+`gh workflow run ci.yml --ref main -f prime_cache=true`。这条路径只构建并保存库、程序和测试产物，不执行运行时契约，不能算作 CI 验证通过；完成后仍运行普通 main 检查。配置 R2 时由 kache 统一保存产物与清单，未配置时使用 GitHub target 缓存。使用 GitHub target 缓存时，引导须在 main 上执行，分支缓存不能反向供 main 使用。R2 按构建命名空间共享，可在受信任分支引导相同构建输入，之后仍验证 main。
