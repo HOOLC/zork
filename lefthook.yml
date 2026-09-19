@@ -5,11 +5,14 @@ pre-commit:
       run: vp staged
     format-check:
       glob:
-        - "*.{json,md,yml,yaml}"
-        - "**/*.{json,md,yml,yaml}"
+        - "*.{json,jsonc,toml,md,yml,yaml}"
+        - "**/*.{json,jsonc,toml,md,yml,yaml}"
       run: vp fmt --check {staged_files}
     rust-format:
-      glob: "**/*.rs"
+      glob:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - "{Cargo.toml,Cargo.lock,rustfmt.toml}"
       run: cargo fmt --all -- --check
     client-boundary:
       glob:
@@ -17,9 +20,68 @@ pre-commit:
         - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui,crates/zork-gui-web}/**/*"
         - "apps/android/app/src/main/java/**/*.kt"
         - "scripts/check-client-boundary.py"
-      run: python3 scripts/check-client-boundary.py
+        - "Cargo.toml"
+      run: python3 scripts/check-client-boundary.py --self-test && python3 scripts/check-client-boundary.py
     design-check:
       glob:
         - "apps/zork-design/*"
         - "apps/zork-design/**/*"
+        - "{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts}"
       run: pnpm design:check && pnpm design:test
+    hook-config:
+      glob: "lefthook.yml"
+      run: pnpm exec lefthook validate
+
+pre-push:
+  parallel: false
+  commands:
+    static-checks:
+      glob:
+        - "*.{js,ts,tsx,mjs,json,jsonc,toml,yml,yaml}"
+        - "**/*.{js,ts,tsx,mjs,json,jsonc,toml,yml,yaml}"
+      run: pnpm format:check && pnpm lint
+    runtime-tests:
+      glob:
+        - "crates/{agent*,profile,slack,station,zork,zork-android,zork-browser,zork-client-core,zork-client-types,zork-config,zork-gh,zork-mesh,zork-notify,zork-observe}/**"
+        - "vendor/{synch*,rustls*}/**"
+        - "{Cargo.toml,Cargo.lock,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts,lefthook.yml}"
+        - "{packages,test}/**"
+        - "scripts/{check-runtime.sh,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
+        - "scripts/lib/build_env.py"
+        - "crates/zork-gui/tests/test_station_entry.py"
+        - ".github/workflows/ci.yml"
+      run: bash scripts/check-runtime.sh
+    desktop-tests:
+      glob:
+        - "crates/{agent-api,zork-gui,zork-ui,zork-liquid,zork-client-core,zork-client-types,zork-config,zork-mesh,zork-notify,zork-observe,zork-browser,zork-browser-runtime}/**"
+        - "vendor/**"
+        - "{Cargo.toml,Cargo.lock,lefthook.yml}"
+        - "scripts/lib/build_env.py"
+      skip:
+        - run: test "$(uname -s)" != Darwin
+      run: >-
+        CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0}
+        CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+        python3 scripts/lib/build_env.py -- cargo test --locked -p zork-gui -p zork-ui --lib --tests
+    benchmark-adapters:
+      glob:
+        - "benchmarks/deep-swe/**"
+        - "{package.json,lefthook.yml}"
+      run: pnpm benchmark:deep-swe:test
+    native-installer:
+      glob:
+        - "scripts/{build/native-release.py,install*.sh,test-native-installer.py,test-native-upgrade.py,test-station-upgrade.py,test-mesh-installer.py}"
+        - "crates/{zork,zork-config,zork-mesh}/**"
+        - "crates/station/src/{node.rs,enrollment.rs}"
+        - "{Cargo.toml,Cargo.lock,package.json,lefthook.yml}"
+        - ".github/workflows/release.yml"
+      run: python3 -m py_compile scripts/build/native-release.py scripts/test-native-installer.py && python3 scripts/test-native-installer.py
+    cloudflare:
+      glob:
+        - "deploy/cloudflare/**"
+        - ".github/workflows/cloudflare-network.yml"
+        - "lefthook.yml"
+      run: >-
+        pnpm --dir deploy/cloudflare install --frozen-lockfile &&
+        pnpm --dir deploy/cloudflare types && pnpm --dir deploy/cloudflare check &&
+        pnpm --dir deploy/cloudflare test && pnpm --dir deploy/cloudflare exec wrangler deploy --dry-run

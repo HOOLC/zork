@@ -159,12 +159,18 @@ for platform requirements.
 
 ### Development checks
 
+Install local checks with `pnpm hooks:install`. Commit hooks run fast static and
+design checks; push hooks run the affected test suites. Branches and PRs do not
+start automatic CI. Main runs the shared runtime contracts and path-scoped
+Cloudflare validation; native packaging and upgrade checks remain in tag releases.
+
 ```sh
 pnpm format:check
 pnpm lint
 pnpm build              # rebuild binaries before process tests
 pnpm test               # JS and process contracts
 pnpm test:rust          # backend Rust tests
+bash scripts/check-runtime.sh # the same runtime suite used on main
 pnpm test:desktop       # native desktop tests
 python3 scripts/check-client-boundary.py
 ```

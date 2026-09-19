@@ -630,12 +630,31 @@ async fn cancel_interrupts_either_context_step_without_committing_a_generation()
     for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
         let mut world = TestWorld::with_options(options(strategy));
         let (session, pending) = begin(&mut world).await;
-        world.cancel(&session).await.unwrap();
-        let state = world
-            .wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Cancelled)
+        let turn_id = world
+            .events(&session)
+            .into_iter()
+            .find_map(|event| match event.event {
+                SessionEvent::StepStarted {
+                    step_id, turn_id, ..
+                } if step_id == pending.step_id => Some(turn_id),
+                _ => None,
             })
-            .await;
+            .expect("the context request has a durable owning turn");
+        world
+            .send_mail(&session, "Continue after cancellation.")
+            .await
+            .unwrap();
+        world.cancel(&session).await.unwrap();
+        // Queued input can start another turn before cancellation is inspected.
+        // Observe its request, then assert the cancelled turn's durable outcome.
+        let _resumed = request(&mut world).await;
+        assert!(world.events(&session).iter().any(|event| matches!(
+            &event.event,
+            SessionEvent::TurnFinished { turn_id: finished, outcome: TurnOutcome::Cancelled, .. }
+                if finished == &turn_id
+        )));
+        let state = world.state(&session).await.unwrap();
+        assert_ne!(state.active_turn.as_ref().unwrap().turn_id, turn_id);
         assert_eq!(state.generation.number, 1);
         assert!(pending.respond_text("too late").is_err());
         assert!(!world

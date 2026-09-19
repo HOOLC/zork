@@ -13,6 +13,8 @@ description: 为 zork 代码改动选择并执行回归验证，或诊断构建�
 
 Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow 为准。客户端另跑 `scripts/check-client-boundary.py` 并审查实际业务调用链；静态扫描或截图不能证明边界正确。
 
+分支与 PR 不自动运行 CI；提交和推送前使用仓库 hooks 完成对应验证。main 只承担必要的运行时契约与部署输入检查，其他回归留在本地；不为替代本地验证而反复触发远端任务。发布和已批准关键门禁仍按各自入口执行。
+
 - 桌面普通逻辑：`pnpm test:desktop`。完整桌面/发布验证：`scripts/test-desktop-headless.py`；先读覆盖，避免重复运行。原生显示性能用 `scripts/test-desktop-performance.py`，需要解锁桌面。
 - 启动恢复与聊天可用：`scripts/test-desktop-startup.py --app /path/to/Zork.app`，覆盖已有 Mesh 身份、返回导航、用户发送及 Agent 实际回复回到客户端，以及离线缓存、准备失败与重试。首屏、节点 ready、用户消息送达或模型收到输入都不能代替完整聊天往返；同时覆盖 Mesh 未就绪时的本地回复，记录首屏后的操作时间。缓存探针只读，正常退出与强制终止分别取证，不把强杀后的恢复冒充普通重启。它不更改关键门禁的阈值。
 - Agent/Station：[执行合同](../../../docs/design/agent-runtime.md) 及相关 mailbox、嵌入与升级测试；生产 Agent 在 Station 内。真实供应商验证使用显式提供的私有 Profile 和隔离 Session/workspace，覆盖生产调用链的工具往返、后续 turn 与重启回放；裸 HTTP 成功不能代替该链路验收。[Go 真实回归入口](../../../crates/agent-testkit/tests/opencode_live.rs) 默认不运行，不向在用会话提交测试输入。
