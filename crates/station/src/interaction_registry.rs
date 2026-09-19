@@ -224,7 +224,7 @@ async fn deliver_local(state: &AppState, notice: &Notice) -> Result<()> {
             notice.owner.session.clone(),
             source,
             notice.sequence,
-            serde_json::to_string(&json!({"kind":"user_action_required","request_id":notice.request_id,"target":notice.origin,"invocation_id":notice.invocation_id,"instruction":"Publish this registered interaction with chat.send and interaction: {request_id}. It belongs to the referenced original tool invocation; do not repeat the operation or poll its status."}))?,
+            serde_json::to_string(&json!({"kind":"user_action_required","request_id":notice.request_id,"target":notice.origin,"invocation_id":notice.invocation_id,"instruction":"Publish this registered interaction with chat.post_message and interaction: {request_id}. It belongs to the referenced original tool invocation; do not repeat the operation or poll its status."}))?,
             true,
         )
         .await?;

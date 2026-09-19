@@ -43,7 +43,7 @@ try:
     assert tasks()==[],'Leader conversation must never become a product Task'
     summary=next(s for s in req('GET','/v1/im/sessions')[1]['items'] if s['session_id']==session)
     report=Path(summary['workspace'])/'leader-report.md';report.write_text('# Leader report\n')
-    file_input=json.dumps({'fake_tool':{'name':'chat.post_file','input':{'file_path':str(report),'initial_comment':'Conversation file'}}})
+    file_input=json.dumps({'fake_tool':{'name':'chat.post_file','input':{'attachments':[{'file_path':str(report)}],'text':'Conversation file'}}})
     assert req('POST',f'/v1/im/sessions/{session}/messages',{'content':file_input})[0]==202
     artifact=f.wait(lambda:next(iter(req('GET','/v1/artifacts')[1]['items']),None),'Leader file tool')
     assert artifact['task_id'] is None and artifact['session_id']==session
@@ -56,7 +56,7 @@ try:
     assert [v['id'] for v in req('GET','/v1/agent/workers',headers=headers)[1]['items']]==['worker']
     assert req('GET','/v1/agent/workers',headers={'x-zork-session-key':other['session_key']})[1]['items']==[]
     # Leader's model invokes a dynamic logical tool, not a shell subprocess.
-    goal=json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'Worker delivered via dynamic tool','kind':'final'}}})
+    goal=json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'Worker delivered via dynamic tool'}}})
     body={'worker_id':'worker','goal':goal}
     dynamic=json.dumps({'fake_tool':{'name':'agent.assign','input':body}})
     assert req('POST',f'/v1/im/sessions/{session}/messages',{'content':dynamic})[0]==202
@@ -90,7 +90,7 @@ try:
     time.sleep(2)
     assert all(t['run_count']==1 for t in tasks()),'replayed mailbox input executed twice'
     current=next(t for t in tasks() if t['session_id']==first_session)
-    revised_goal=json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'Reworked in the original Worker Session','kind':'final'}}})
+    revised_goal=json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'Reworked in the original Worker Session'}}})
     rework={'request_id':'revision-one','expected_revision':current['revision'],'goal':revised_goal}
     route='/v1/agent/tasks/'+current['task_id']+'/rework'
     assert req('POST',route,rework,headers)[0]==200

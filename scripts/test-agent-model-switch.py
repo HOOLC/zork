@@ -81,7 +81,7 @@ def main():
                 request('POST', f'/v1/im/sessions/{session_id}/messages',
                         {'content': json.dumps({'fake_tools': [{
                             'name': 'chat.post_message',
-                            'input': {'kind': 'progress', 'text': 'Preserve this conversation'},
+                            'input': {'text': 'Preserve this conversation'},
                         }]})}, 202)
                 def messages():
                     return request('GET', f'/v1/im/sessions/{session_id}/messages')['items']

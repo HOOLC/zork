@@ -28,7 +28,7 @@ pub(super) async fn prepare(
             .is_some_and(|source| !local(state, source))
         {
             let source = field(attachment, "source_target")?;
-            let chat = field(attachment, "source_chat_id")?;
+            let chat = source_chat(attachment, args)?;
             let id = field(attachment, "attachment_id")?;
             let (mut reference, media_type, content) = fetch(
                 state,
@@ -51,7 +51,7 @@ pub(super) async fn prepare(
             }
         } else {
             state.db.copy_chat_file(
-                field(attachment, "source_chat_id")?,
+                source_chat(attachment, args)?,
                 field(args, "chat_id")?,
                 field(attachment, "attachment_id")?,
             )?
@@ -81,6 +81,14 @@ pub(super) async fn prepare(
         "invalid_attachments"
     );
     Ok(result)
+}
+
+/// A resent attachment names its source chat, or refers to the destination chat itself.
+fn source_chat<'a>(attachment: &'a Value, args: &'a Value) -> Result<&'a str> {
+    attachment["source_chat_id"]
+        .as_str()
+        .or_else(|| args["chat_id"].as_str())
+        .context("attachment_id requires a source_chat_id or a destination chat_id")
 }
 
 pub(super) fn chunk(state: &AppState, peer: &str, request: FileRequest) -> Result<Value> {

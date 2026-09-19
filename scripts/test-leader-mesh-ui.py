@@ -38,7 +38,7 @@ try:
     fill('remote-name','Leader 节点');fill('remote-origin',a.origin);fill('remote-addr',f'127.0.0.1:{a.udp}');click('connect-remote')
     f.wait(lambda:native.element('leader-'+a.origin+'-leader',True),'remote Leader home');native.screenshot(art/'remote-leader-home.png');click('leader-'+a.origin+'-leader');f.wait(lambda:native.element('composer-input'),'remote Leader conversation')
     worker_goal='复核最新交付，检查遗漏并整理待处理事项。'
-    goal=json.dumps({'fake_tools':[{'name':'agent.assign','input':{'worker_id':b.origin+'/worker','goal':worker_goal}},{'name':'chat.post_message','input':{'kind':'progress','text':'已指派给远端 Worker。'}}]},ensure_ascii=False)
+    goal=json.dumps({'fake_tools':[{'name':'agent.assign','input':{'worker_id':b.origin+'/worker','goal':worker_goal}},{'name':'chat.post_message','input':{'text':'已指派给远端 Worker。'}}]},ensure_ascii=False)
     fill('composer-input','帮我检查今天的交付，安排 Worker 做一次复核。');native.ui('/v1/actions',{'type':'key','keystroke':'enter'})
     f.wait(lambda:a.get('/v1/im/sessions/'+leader['session_id']+'/messages')['items'],'visible user delivery')
     def mailbox(node,session,content):
@@ -50,8 +50,8 @@ try:
     report = Path(execution['workspace']) / 'review.md'
     report.write_text('# 交付复核\n\n交付内容齐全，建议补充一段安装说明。\n')
     mailbox(b, execution['session_id'], json.dumps({'fake_tools': [
-        {'name': 'chat.post_file', 'input': {'file_path': 'review.md', 'initial_comment': '复核报告'}},
-        {'name': 'chat.post_message', 'input': {'kind': 'final', 'text': '检查已完成。交付内容齐全，建议补充一段安装说明。'}},
+        {'name': 'chat.post_file', 'input': {'attachments': [{'file_path': 'review.md'}], 'text': '复核报告'}},
+        {'name': 'chat.post_message', 'input': {'text': '检查已完成。交付内容齐全，建议补充一段安装说明。'}},
     ]}, ensure_ascii=False))
     task=f.wait(lambda:next((t for t in a.get('/v1/tasks')['items'] if t['state']=='review'),None),'remote Worker completes',90)
     f.wait(lambda:native.element('leader-task-'+a.origin+'-'+task['task_id']),'Leader related Task card');native.screenshot(art/'remote-leader-tasks.png');click('leader-task-'+a.origin+'-'+task['task_id']);f.wait(lambda:native.element('composer-input') and native.element('header-member-'+b.origin+'/worker'),'remote Worker conversation');native.screenshot(art/'remote-worker-task.png')

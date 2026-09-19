@@ -863,7 +863,7 @@ fn builtin_contracts() -> Result<Vec<(BuiltinKind, ToolContract)>, ToolDefinitio
                 name: super::events::SHELL_RUN_NAME.into(),
                 version: version()?,
                 initial_description: "Run a shell command in the session workspace. Full output is retained in a live file.".into(),
-                detailed_description: "Run command through /bin/sh in the session workspace with the agent process environment plus configured overrides. The workspace is not a sandbox. stdout and stderr are combined and streamed to .zork/live-<invocation-id>.log. The same file remains available after completion; the result contains its path and a bounded tail. Execution continues until completion or cancellation.".into(),
+                detailed_description: "Run command through /bin/sh in the session workspace with the agent process environment plus configured overrides. SESSION_WORKSPACE names that workspace root. The workspace is not a sandbox. stdout and stderr are combined and streamed to .zork/live-<invocation-id>.log. The same file remains available after completion; the result contains its path and a bounded tail. Execution continues until completion or cancellation.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -1289,6 +1289,12 @@ async fn shell_run(
         .map(|cwd| workspace.join(cwd))
         .unwrap_or_else(|| workspace.to_owned());
     let mut environment = dependencies.environment.clone();
+    // The Session workspace is the file root that Station-side file delivery and
+    // workspace-relative paths resolve against; commands can read it without guessing.
+    environment.insert(
+        "SESSION_WORKSPACE".into(),
+        workspace.to_string_lossy().into_owned(),
+    );
     if let Some(overrides) = input["env"].as_object() {
         for (key, value) in overrides {
             environment.insert(

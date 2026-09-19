@@ -170,7 +170,7 @@ def main():
                     phase["outstanding"] = terminal.get("outstanding", [])
                     assert not phase["outstanding"], terminal
                     invocations = [i for e in current if e["kind"] == "step_completed" for i in e.get("invocations", [])]
-                    sent = [e for e in current if e["kind"] == "tool_result" and e["result"]["tool"] == "chat.send" and e["result"]["outcome"] == "succeeded"]
+                    sent = [e for e in current if e["kind"] == "tool_result" and e["result"]["tool"] == "chat.post_message" and e["result"]["outcome"] == "succeeded"]
                     assert sent, "expected a user-visible Chat reply"
                     phase["chat_sends"] = len(sent)
                     for e in current:

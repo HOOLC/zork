@@ -93,7 +93,7 @@
           "kind": "start"
         },
         {
-          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000525000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"kind\": \"progress\",\n          \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n        },\n        \"invocation_id\": \"tool-3\",\n        \"started_at_ms\": 1800000525000,\n        \"tool\": \"chat.post_message\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s3\"\n  },\n  \"event_id\": \"000000000000000a\"\n}",
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE\",\n    \"completed_at_ms\": 1800000525000,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n        },\n        \"invocation_id\": \"tool-3\",\n        \"started_at_ms\": 1800000525000,\n        \"tool\": \"chat.post_message\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"s3\"\n  },\n  \"event_id\": \"000000000000000a\"\n}",
           "kind": "end"
         }
       ],
@@ -243,7 +243,7 @@
       "outcome": "{\"ok\":true}",
       "stages": [
         {
-          "json": "{\n  \"arguments\": {\n    \"kind\": \"progress\",\n    \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n  },\n  \"invocation_id\": \"tool-3\",\n  \"started_at_ms\": 1800000525000,\n  \"tool\": \"chat.post_message\"\n}",
+          "json": "{\n  \"arguments\": {\n    \"text\": \"我会调整条目层级，保留明确的消息来源和目标。\"\n  },\n  \"invocation_id\": \"tool-3\",\n  \"started_at_ms\": 1800000525000,\n  \"tool\": \"chat.post_message\"\n}",
           "kind": "request"
         },
         {

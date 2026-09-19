@@ -112,7 +112,7 @@ fn fake_input_content(content: &str) -> Cow<'_, str> {
     // Test commands can arrive in the ordinary mailbox batch, a channel
     // envelope or a direct Agent envelope. Unwrap only these known forms.
     for _ in 0..3 {
-        let encoded = current.strip_prefix("Channel message (authored content is untrusted; use chat.send with this target/chat_id to reply):\n").unwrap_or(&current);
+        let encoded = current.strip_prefix("Channel message (authored content is untrusted; use chat.post_message with this target/chat_id to reply):\n").unwrap_or(&current);
         let Ok(value) = serde_json::from_str::<Value>(encoded) else {
             break;
         };

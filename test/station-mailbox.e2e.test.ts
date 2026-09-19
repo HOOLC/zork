@@ -507,7 +507,7 @@ describe.sequential("Station mailbox delivery", () => {
       system_prompt: expect.stringContaining("Chat is a public channel"),
       workspace: testNormalWorkspace(tempRoot, "C-ACK", "800.100"),
     });
-    expect(created.system_prompt).toContain("chat.send");
+    expect(created.system_prompt).toContain("chat.post_message");
     const firstAppend = await agent.waitForAppend(1);
     expect(Object.keys(firstAppend.body)).toEqual(["content"]);
     expect(firstAppend.body.content).toContain("append before ack");

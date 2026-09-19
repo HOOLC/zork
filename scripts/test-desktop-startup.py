@@ -51,11 +51,11 @@ class ModelEndpoint:
                     if model.expected not in model.helped:
                         model.helped.add(model.expected)
                         call = {"tool": "tool.help", "action": "Read the reply tool contract",
-                                "arguments": {"tool": "chat.send"}}
+                                "arguments": {"tool": "chat.post_message"}}
                         call_id = "help-" + str(len(model.helped))
                     else:
                         model.replied.add(model.expected)
-                        call = {"tool": "chat.send", "action": "Reply in the startup conversation",
+                        call = {"tool": "chat.post_message", "action": "Reply in the startup conversation",
                                 "arguments": {"chat_id": model.session, "text": "Reply: " + model.expected}}
                         call_id = "reply-" + str(len(model.replied))
                     message = {"role": "assistant", "content": None, "tool_calls": [{
@@ -265,7 +265,7 @@ class Desktop:
             assert not model.errors, model.errors
             return confirmed("Reply: " + text)
         try:
-            self.wait(reply_received, "Agent chat.send reply reaches the client")
+            self.wait(reply_received, "Agent chat.post_message reply reaches the client")
         except Exception:
             (self.output / (self.case + "-model.json")).write_text(json.dumps(model.inputs, indent=2))
             raise
@@ -554,7 +554,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     report = {"passed": False, "samples": [], "paired_startup_budget_ms": 1000, "cached_navigation_budget_ms": 1000,
               "preferred_ms": 500, "tracing": args.trace_startup,
-              "measurement": "external wall time; real UI conversation input/send, source echo, and real embedded Agent chat.send reply reaching the client; deterministic external model HTTP provider; OS caches uncontrolled",
+              "measurement": "external wall time; real UI conversation input/send, source echo, and real embedded Agent chat.post_message reply reaching the client; deterministic external model HTTP provider; OS caches uncontrolled",
               "first_launch": "welcome records the first application launch as a functional check, including OS assessment; its latency is not covered by the paired-startup budget; the approved all-startup gate remains in smoke-critical.py"}
     try:
         with (app.parent / "owner.lock").open("a+") as lock:

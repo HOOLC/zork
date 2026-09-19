@@ -88,9 +88,9 @@ def main():
         request(nodes[1], 'POST', '/v1/services', {'session_id':sessions[1],'action':'attach','request_id':'resource-service','name':'报告服务','port':server.server_port})
         url = f'http://127.0.0.1:{server.server_port}/redirect'
         request(nodes[0], 'POST', f'/v1/im/sessions/{sessions[0]}/messages', {'content':json.dumps({'fake_tools':[
-            {'name':'chat.send','input':{'chat_id':sessions[0],'text':f'[项目研究报告]({url})'}},
+            {'name':'chat.post_message','input':{'chat_id':sessions[0],'text':f'[项目研究报告]({url})'}},
             {'name':'service.attach','input':{'name':'团队看板','port':server.server_port}},
-            {'name':'chat.send','input':{'chat_id':sessions[1],'target':nodes[1].origin,'text':f'[跨设备报告]({url}/remote)'}}]}),'request_id':'resource-pages'})
+            {'name':'chat.post_message','input':{'chat_id':sessions[1],'target':nodes[1].origin,'text':f'[跨设备报告]({url}/remote)'}}]}),'request_id':'resource-pages'})
         catalog = f.wait(lambda: (c if len((c := request(nodes[0], 'GET', '/v1/node/pages'))['applications']) == 1 else None), 'service application')
         assert catalog['applications'][0]['page']['title'] == '团队看板'
         assert not catalog['references'], 'Markdown indexing belongs to client core'

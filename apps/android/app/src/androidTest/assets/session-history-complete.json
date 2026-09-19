@@ -101,7 +101,7 @@
           "kind": "start"
         },
         {
-          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200020900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"file_path\": \"notes.md\",\n          \"initial_comment\": \"执行报告\"\n        },\n        \"invocation_id\": \"call-10\",\n        \"started_at_ms\": 1789200020950,\n        \"tool\": \"chat.post_file\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-10\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"10-model-end\"\n}",
+          "json": "{\n  \"event\": {\n    \"assistant_text\": \"模型内部推理仅在执行详情中查看。\",\n    \"completed_at_ms\": 1789200020900,\n    \"invocations\": [\n      {\n        \"arguments\": {\n          \"attachments\": [\n            {\n              \"file_path\": \"notes.md\"\n            }\n          ],\n          \"text\": \"执行报告\"\n        },\n        \"invocation_id\": \"call-10\",\n        \"started_at_ms\": 1789200020950,\n        \"tool\": \"chat.post_file\"\n      }\n    ],\n    \"kind\": \"step_completed\",\n    \"step_id\": \"step-10\",\n    \"usage\": {\n      \"cached_input_tokens\": 600,\n      \"input_tokens\": 1200,\n      \"output_tokens\": 100\n    }\n  },\n  \"event_id\": \"10-model-end\"\n}",
           "kind": "end"
         }
       ],
@@ -713,7 +713,7 @@
       "outcome": "完成操作 10",
       "stages": [
         {
-          "json": "{\n  \"arguments\": {\n    \"file_path\": \"notes.md\",\n    \"initial_comment\": \"执行报告\"\n  },\n  \"invocation_id\": \"call-10\",\n  \"started_at_ms\": 1789200020950,\n  \"tool\": \"chat.post_file\"\n}",
+          "json": "{\n  \"arguments\": {\n    \"attachments\": [\n      {\n        \"file_path\": \"notes.md\"\n      }\n    ],\n    \"text\": \"执行报告\"\n  },\n  \"invocation_id\": \"call-10\",\n  \"started_at_ms\": 1789200020950,\n  \"tool\": \"chat.post_file\"\n}",
           "kind": "request"
         },
         {

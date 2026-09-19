@@ -70,7 +70,7 @@ def main():
             def oauth(profile_id, label):
                 login_chat = channels.operation(a, caller_a, 'chat.create', {'title': 'Connect account'})['chat_id']
                 before = {row[0] for row in channels.sql(a, 'SELECT request_id FROM provider_login_cards')}
-                send_tool(b, home_b, 'chat.send', {'target': a.origin, 'chat_id': login_chat, 'oauth': {
+                send_tool(b, home_b, 'chat.post_message', {'target': a.origin, 'chat_id': login_chat, 'oauth': {
                     'kind': 'profile', 'profile_id': profile_id, 'provider': 'anthropic', 'billing': 'subscription'}}, label)
                 row = fixture.wait(lambda: next((row for row in channels.sql(a,
                     'SELECT p.request_id,r.invocation_id,b.message_id FROM provider_login_cards p JOIN interaction_registrations r USING(request_id) JOIN business_card_bindings b USING(request_id)')
@@ -81,7 +81,7 @@ def main():
                 assert message['interaction']['request']['action'] == 'oauth', message
                 return {'request_id': request_id, 'invocation_id': invocation_id}, f'/v1/node/chats/{login_chat}/messages/{message_id}/provider-login'
             def publish(notice, label):
-                send_tool(b, home_b, 'chat.send', {'chat_id': chat_b, 'text': 'Review this pending business operation',
+                send_tool(b, home_b, 'chat.post_message', {'chat_id': chat_b, 'text': 'Review this pending business operation',
                     'interaction': {'request_id': notice['request_id']}}, label)
                 card = fixture.wait(lambda: next(iter(channels.sql(b,
                     'SELECT message_id FROM business_card_bindings WHERE request_id=?', (notice['request_id'],))), None), 'publish card')[0]
@@ -182,7 +182,7 @@ def main():
             send_tool(b, home_b, 'tool.cancel', {'invocation_id': cancelled['invocation_id']}, 'cancel-business')
             fixture.wait(lambda: state(cancelled) and state(cancelled)['outcome'] == 'cancelled', 'cancel remote business wait')
             assert not channels.sql(a, "SELECT id FROM node_agents WHERE json_extract(value,'$.name')='Cancelled worker'")
-            late = channels.operation(b, caller_b, 'chat.send', {'chat_id': chat_b, 'interaction': {'request_id': cancelled['request_id']}})
+            late = channels.operation(b, caller_b, 'chat.post_message', {'chat_id': chat_b, 'interaction': {'request_id': cancelled['request_id']}})
             assert late['interaction']['snapshot']['outcome'] == 'cancelled'
             passed('tool.cancel reaches the same invocation and a late card shows its settled state')
 
@@ -205,7 +205,7 @@ def main():
                 encoded = json.dumps(persisted)
                 assert bad_callback not in encoded and challenge['verification_url'] not in encoded
             assert 'authorization' not in channels.ok(a, 'GET', private_path)
-            passed('chat.send OAuth card owns private callbacks and rejects a mismatched OAuth state without publishing private material')
+            passed('chat.post_message OAuth card owns private callbacks and rejects a mismatched OAuth state without publishing private material')
 
             login_cancel, cancel_path = oauth('isolated-cancel-login', 'login-cancel')
             channels.ok(a, 'DELETE', cancel_path)
@@ -226,7 +226,7 @@ def main():
                 assert channels.request(a, 'POST', '/v1/channels/tools', {'session_id': caller_a, 'invocation_id': removed,
                     'tool': removed, 'arguments': {'request': {'action': 'input', 'title': 'Removed', 'fields': []}}})[0] == 400
             assert channels.request(b, 'POST', '/v1/channels/tools', {'session_id': caller_b, 'invocation_id': 'inline-rejected',
-                'tool': 'chat.send', 'arguments': {'chat_id': chat_b, 'interaction': {'action': 'agent.create', 'config': config}}})[0] == 400
+                'tool': 'chat.post_message', 'arguments': {'chat_id': chat_b, 'interaction': {'action': 'agent.create', 'config': config}}})[0] == 400
             passed('authorized complete calls execute directly; standalone and inline business-form entry points are unavailable')
         finally:
             for node in nodes:

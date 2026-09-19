@@ -140,7 +140,7 @@ def main():
                     phase["failures"] = [e["result"] for e in current if e["kind"] == "tool_result" and e["result"]["outcome"] != "succeeded"]
                     assert terminal["outcome"] == "finished" and not terminal.get("outstanding"), terminal
                     assert any(e["kind"] == "step_completed" and e.get("usage") for e in current), "no real provider usage"
-                    assert any(e["kind"] == "tool_result" and e["result"]["tool"] == "chat.send"
+                    assert any(e["kind"] == "tool_result" and e["result"]["tool"] in ("chat.post_message", "chat.post_file")
                                and e["result"]["outcome"] == "succeeded" for e in current), "no user-visible Chat reply"
                     return current
                 time.sleep(1)
@@ -186,11 +186,11 @@ def main():
 
         attached = run_phase("chat_attachment_is_separate",
             "把当前工作区的 attachment-only.txt 作为文件附件发到当前聊天。")
-        sent = [e["result"]["data"] for e in attached if e["kind"] == "tool_result" and e["result"]["tool"] == "chat.send"]
+        sent = [e["result"]["data"] for e in attached if e["kind"] == "tool_result" and e["result"]["tool"] == "chat.post_file"]
         assert any(any(v.get("name") == "attachment-only.txt" for v in result.get("attachments", [])) for result in sent), sent
         assert sorted(str(p.relative_to(a.root / "shared")) for p in (a.root / "shared").rglob("*") if p.is_file()) == ["summary.txt"]
         assert (workspace / "scratch-notes.txt").read_text() == "INTERNAL-DRAFT-DO-NOT-PUBLISH\n"
-        checks.append("chat_attachment_uses_chat_send_without_extra_shared_copy_or_draft_leak")
+        checks.append("chat_attachment_uses_chat_post_file_without_extra_shared_copy_or_draft_leak")
         (args.output / "summary.txt").write_bytes(data)
         active_catalog = next(e["tools"] for e in events(a, session) if e["kind"] == "session_created")
         names = {tool["name"] for tool in active_catalog}

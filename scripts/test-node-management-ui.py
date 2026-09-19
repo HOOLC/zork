@@ -43,7 +43,7 @@ try:
     native.screenshot(artifacts/'agents-settings.png');click('manage-tab-2');ui.wait(lambda:native.element('node-mesh-toggle'),'device controls');native.screenshot(artifacts/'device-settings.png');click('manage-tab-4');native.screenshot(artifacts/'account-settings.png');click('manage-tab-3');native.screenshot(artifacts/'node-settings.png');click('desktop-return')
     ui.wait(lambda:native.element(leader_element(leader['id']),True),'Leader visible on home');assert not native.element(leader_element(worker['id']))
     native.screenshot(artifacts/'leaders-home.png');click(leader_element(leader['id']));ui.wait(lambda:native.element('composer-input'),'Leader conversation')
-    fill('composer-input',json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'原生客户端已连接到固定 Leader 会话。','kind':'final'}}},ensure_ascii=False))
+    fill('composer-input',json.dumps({'fake_tool':{'name':'chat.post_message','input':{'text':'原生客户端已连接到固定 Leader 会话。'}}},ensure_ascii=False))
     # Existing conversation submit button uses the send-message automation ID.
     elements=json.loads(native.ui('/v1/elements'))['elements'];(artifacts/'conversation-elements.json').write_text(json.dumps(elements,ensure_ascii=False,indent=2))
     native.ui('/v1/actions',{'type':'key','keystroke':'enter'})

@@ -136,14 +136,14 @@ def main():
             channel = operation(a, caller_a, 'chat.create', {'title': 'Shared channel'})['chat_id']
             assert operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants'] == []
             assert not sql(a, 'SELECT 1 FROM product_tasks t JOIN chat_channels c ON c.session_key=t.session_key WHERE c.chat_id=?', (channel,))
-            first = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'Post without subscription'})
+            first = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'Post without subscription'})
             assert operation(a, caller_a, 'chat.preferences', {'chat_id': channel})['subscribed'] is False
             passed('posting needs no membership or subscription; Chat has no Task lifecycle')
 
             operation(b, caller_b, 'chat.update_preferences', {'target': a.origin, 'chat_id': channel,
                 'changes': {'subscribed': True, 'delivery': 'on_next_turn'}})
             assert len(operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants']) == 1
-            second = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'Quiet cross-node input'})
+            second = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'Quiet cross-node input'})
             fixture.wait(lambda: received(b, caller_b, second['message_id']) == 1, 'quiet Mesh input')
             assert settled(b, caller_b)
             assert received(b, caller_b, first['message_id']) == 0
@@ -156,9 +156,9 @@ def main():
             invocation = 'file-' + uuid.uuid4().hex
             file_args = {'target': a.origin, 'chat_id': channel, 'text': 'Reply with a file',
                 'reply_to': first['message_id'], 'attachments': [{'file_path': str(path)}]}
-            sent = operation(b, caller_b, 'chat.send', file_args, invocation)
+            sent = operation(b, caller_b, 'chat.post_file', file_args, invocation)
             path.unlink()
-            resent = operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': channel,
+            resent = operation(b, caller_b, 'chat.post_file', {'target': a.origin, 'chat_id': channel,
                 'text': 'Reply with a file', 'reply_to': first['message_id'],
                 'attachments': [{'source_target': a.origin, 'source_chat_id': channel,
                     'attachment_id': sent['attachments'][0]['id']}]}, invocation)
@@ -174,7 +174,7 @@ def main():
             assert next(p for p in participants if p['author']['id'] == b.origin + '/caller-b')['subscribed']
             passed('remote file sends retain fixed bytes and separate messages; sender does not wake on its own output')
 
-            local_copy = operation(b, caller_b, 'chat.send', {'chat_id': home_b, 'text': 'Copy from another node',
+            local_copy = operation(b, caller_b, 'chat.post_file', {'chat_id': home_b, 'text': 'Copy from another node',
                 'attachments': [{'source_target': a.origin, 'source_chat_id': channel,
                     'attachment_id': sent['attachments'][0]['id']}]})
             copied = operation(b, caller_b, 'chat.read', {'chat_id': home_b,
@@ -187,21 +187,21 @@ def main():
                 'source': 'console.log("本机操作");\nawait android.startActivity({action: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS"});'}
             expected_card = dict(script, kind='local_script', version=1, platform='android')
             for tool, args in [
-                ('chat.send', {'chat_id': script_chat, 'script': script}),
-                ('chat.send.android_script', {'chat_id': script_chat, 'script': script}),
-                ('chat.send.android_script', dict(script, chat_id=script_chat, oauth={'kind': 'profile'})),
+                ('chat.post_message', {'chat_id': script_chat, 'script': script}),
+                ('chat.post_message.android_script', {'chat_id': script_chat, 'script': script}),
+                ('chat.post_message.android_script', dict(script, chat_id=script_chat, oauth={'kind': 'profile'})),
             ]:
                 status, _ = request(a, 'POST', '/v1/channels/tools', {'session_id': caller_a,
                     'invocation_id': 'invalid-' + uuid.uuid4().hex, 'tool': tool, 'arguments': args})
                 assert status == 400, (tool, status)
-            local_script = operation(a, caller_a, 'chat.send.android_script', dict(script, chat_id=script_chat))
+            local_script = operation(a, caller_a, 'chat.post_message.android_script', dict(script, chat_id=script_chat))
             assert local_script['status'] == 'committed' and local_script['interaction'] == expected_card
             script_invocation = 'android-script-' + uuid.uuid4().hex
             script_args = dict(script, target=a.origin, chat_id=script_chat,
                 reply_to=local_script['message_id'], attachments=[{'source_target': a.origin,
                     'source_chat_id': channel, 'attachment_id': sent['attachments'][0]['id']}])
-            remote_script = operation(b, caller_b, 'chat.send.android_script', script_args, script_invocation)
-            resent_script = operation(b, caller_b, 'chat.send.android_script', script_args, script_invocation)
+            remote_script = operation(b, caller_b, 'chat.post_message.android_script', script_args, script_invocation)
+            resent_script = operation(b, caller_b, 'chat.post_message.android_script', script_args, script_invocation)
             assert remote_script['interaction'] == expected_card
             assert remote_script['attachments'][0]['content_root'] == sent['attachments'][0]['content_root']
             assert remote_script['reply_to'] == local_script['message_id']
@@ -220,8 +220,8 @@ def main():
 
             operation(b, caller_b, 'chat.update_preferences', {'target': a.origin, 'chat_id': channel,
                 'changes': {'filter': 'mentions', 'delivery': 'immediate'}})
-            ignored = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'No mention'})
-            mentioned = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'For the subscriber',
+            ignored = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'No mention'})
+            mentioned = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'For the subscriber',
                 'mentions': [b.origin + '/caller-b']})
             fixture.wait(lambda: received(b, caller_b, mentioned['message_id']) == 1, 'mentioned input')
             fixture.wait(lambda: settled(b, caller_b), 'mentioned turn finished')
@@ -229,7 +229,7 @@ def main():
             passed('per-Agent channel filters control automatic delivery')
 
             b.stop()
-            backlog = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'While receiver is offline',
+            backlog = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'While receiver is offline',
                 'mentions': [b.origin + '/caller-b']})
             with sqlite3.connect(b.root / 'state/station.sqlite') as db:
                 # Simulate a crash after durable Agent acceptance but before the
@@ -249,7 +249,7 @@ def main():
 
             operation(b, caller_b, 'chat.update_preferences', {'target': a.origin, 'chat_id': channel,
                 'changes': {'subscribed': False}})
-            unsubscribed = operation(a, caller_a, 'chat.send', {'chat_id': channel, 'text': 'After unsubscribe',
+            unsubscribed = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'After unsubscribe',
                 'mentions': [b.origin + '/caller-b']})
             assert not sql(a, 'SELECT 1 FROM chat_notices WHERE message_id=?', (unsubscribed['message_id'],))
             participants = operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants']
@@ -274,19 +274,19 @@ def main():
             subscribe = json.dumps({'fake_tool': {'name': 'chat.update_preferences', 'input': {
                 'chat_id': channel, 'changes': {'subscribed': True}}}})
             agent_home = ok(a, 'POST', f'/v1/node/agents/{identity}/open', {})['chat_id']
-            operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': agent_home, 'text': subscribe})
+            operation(b, caller_b, 'chat.post_message', {'target': a.origin, 'chat_id': agent_home, 'text': subscribe})
             fixture.wait(lambda: sql(a, 'SELECT 1 FROM chat_preferences WHERE chat_id=? AND agent_ref=?',
                 (channel, identity)), 'new Agent subscribes through its own ToolContext')
             assert all(p['author']['id'] != identity for p in operation(a, caller_a, 'chat.inspect',
                 {'chat_id': channel})['participants'])
-            reply = json.dumps({'fake_tool': {'name': 'chat.send', 'input': {
+            reply = json.dumps({'fake_tool': {'name': 'chat.post_message', 'input': {
                 'chat_id': channel, 'text': 'New Agent speaks', 'reply_to': first['message_id']}}})
-            operation(b, caller_b, 'chat.send', {'target': a.origin, 'chat_id': agent_home, 'text': reply})
+            operation(b, caller_b, 'chat.post_message', {'target': a.origin, 'chat_id': agent_home, 'text': reply})
             fixture.wait(lambda: any(p['author']['id'] == identity for p in operation(a, caller_a,
                 'chat.inspect', {'chat_id': channel})['participants']), 'actual authored participation')
             passed('Chat messages continue the Agent; only its subsequent post creates participation')
 
-            dynamic = json.dumps({'fake_tool': {'name': 'chat.send', 'input': {'chat_id': channel,
+            dynamic = json.dumps({'fake_tool': {'name': 'chat.post_message', 'input': {'chat_id': channel,
                 'text': 'Dynamic tool pipeline'}}})
             ok(a, 'POST', f'/v1/im/sessions/{home_a}/messages', {'content': dynamic, 'request_id': 'dynamic-channel-send'})
             fixture.wait(lambda: any(item['text'] == 'Dynamic tool pipeline' for item in operation(a, caller_a, 'chat.history', {'chat_id': channel})['items']), 'registered dynamic channel tool')
@@ -294,7 +294,7 @@ def main():
                 assert all(s['kind'] != 'agent_control' for s in ok(node, 'GET', '/v1/im/sessions')['items'])
             passed('native ingress, registered tools and Mesh consumers share the same business transaction')
 
-            dynamic_script = json.dumps({'fake_tool': {'name': 'chat.send.android_script',
+            dynamic_script = json.dumps({'fake_tool': {'name': 'chat.post_message.android_script',
                 'input': dict(script, chat_id=script_chat, title='Registered Android script')}})
             ok(a, 'POST', f'/v1/im/sessions/{home_a}/messages',
                 {'content': dynamic_script, 'request_id': 'dynamic-android-script'})
@@ -302,7 +302,7 @@ def main():
                 for item in operation(a, caller_a, 'chat.history', {'chat_id': script_chat})['items']),
                 'registered Android script tool')
             fixture.wait(lambda: settled(a, caller_a), 'Android script publication completes without a device response')
-            passed('Agent runtime discovers and completes chat.send.android_script with flat script fields')
+            passed('Agent runtime discovers and completes chat.post_message.android_script with flat script fields')
 
             legacy = ok(a, 'POST', '/v1/im/sessions', {'profile_id': 'fixture', 'model': 'fixture-model',
                 'thinking': 'off', 'workspace': str(a.workspace)})['session_id']
@@ -313,7 +313,7 @@ def main():
                 ok(a, 'GET', f'/sessions/{legacy}/messages?limit=200', agent=True)['items']), 'legacy tool contract learned')
             fixture.wait(lambda: settled(a, legacy), 'legacy help turn ends')
             aliases = json.dumps({'fake_tools': [
-                {'name': 'chat.post_message', 'input': {'text': 'Legacy visible post', 'kind': 'final'}},
+                {'name': 'chat.post_message', 'input': {'text': 'Legacy visible post'}},
                 {'name': 'notify', 'input': {'text': 'PTC self notification'}}]})
             ok(a, 'POST', f'/v1/im/sessions/{legacy}/messages', {'content': aliases, 'request_id': 'legacy-aliases'})
             def aliases_arrived():

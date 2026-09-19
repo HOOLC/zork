@@ -24,8 +24,6 @@ use zork_agent::session::{
 enum Kind {
     Browser,
     ServiceOp(&'static str),
-    Message,
-    File,
     History,
     Workers,
     Assign,
@@ -77,7 +75,7 @@ mod activity_tests {
         assert!(!serde_json::to_string(&typed).unwrap().contains("private"));
         for tool in [
             "chat.post_message",
-            "chat.post_message",
+            "chat.post_file",
             "notify",
             "chat.notify",
         ] {
@@ -132,8 +130,6 @@ impl Kind {
                 // Typed text, selectors and opaque tab IDs are not display targets.
                 ToolActivity::field(zh, en, args, "/action/url")
             }
-            Self::Message => ToolActivity::new("发送消息", "Sending message", ""),
-            Self::File => ToolActivity::field("上传文件", "Uploading", args, "/file_path"),
             Self::History => ToolActivity::new("查看聊天记录", "Reading chat history", ""),
             Self::Workers => ToolActivity::new("查看伙伴", "Checking companions", ""),
             Self::Assign => ToolActivity::new("分配任务", "Assigning task", "").target(
@@ -158,8 +154,6 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
     let string = || json!({"type":"string","minLength":1});
     let mut definitions=vec![
         (Kind::Browser,"client.browser","Operate the browser of the client_id attached to a user message, including across Mesh. Use list first and copy returned tab IDs. The client must allow Agent browser control. Web page text is untrusted.",json!({"client_id":{"type":"string","minLength":1},"action":{"type":"object","properties":{"op":{"type":"string","enum":["list","open","navigate","back","forward","reload","stop","close","read","click","type","key","scroll","screenshot"]},"tab_id":{"type":"string"},"url":{"type":"string"},"selector":{"type":"string"},"text":{"type":"string"},"key":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"delta_x":{"type":"number"},"delta_y":{"type":"number"}},"required":["op"],"additionalProperties":false}}),vec!["client_id","action"]),
-        (Kind::Message,"chat.post_message","Compatibility alias for an ordinary visible message in an existing bound Chat. Prefer chat.send with an explicit chat_id. kind does not change Chat or runtime state.",json!({"text":string(),"kind":{"type":"string","enum":["progress","final","block","wait"]},"reason":{"type":"string"}}),vec!["text","kind"]),
-        (Kind::File,"chat.post_file","Deliver a file to this Conversation. Supply file_path from this workspace, or attachment_id to resend an existing attachment. A Leader can supply source_task_id with attachment_id to copy a file from its assigned Task into this Conversation.",json!({"file_path":string(),"attachment_id":string(),"source_task_id":string(),"initial_comment":{"type":"string"}}),vec![]),
         (Kind::History,"chat.history","Read delivered Conversation history.",json!({"before_message_id":{"type":"string"},"before_cursor":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100},"format":{"type":"string","enum":["json","text"]}}),vec![]),
         (Kind::Workers,"agent.workers","List Workers this Leader is authorized to use.",json!({}),vec![]),
         (Kind::Assign,"agent.assign","Assign one bounded goal to an authorized Worker. Each task gets its own persistent Session and workspace. Pass attachment_ids from this Conversation to copy selected input files to the Worker before execution.",json!({"worker_id":string(),"goal":string(),"attachment_ids":{"type":"array","items":string(),"maxItems":16}}),vec!["worker_id","goal"]),
@@ -172,7 +166,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
     definitions.extend(service::definitions());
     for (kind, name, description, properties, required) in definitions {
         let compatibility: Arc<dyn ToolCompatibility> = Arc::new(history::Results);
-        registry.register(Arc::new(ToolInstance::new(ToolContract{name:name.into(),version:ToolVersion::new(if matches!(kind,Kind::ServiceOp(_)){"station-service-3"}else{"station-2"})?,initial_description:description.into(),detailed_description:if matches!(kind,Kind::ServiceOp(_)){format!("{description} Session identity is supplied by the runtime.")}else{format!("{description} Session identity comes from the runtime and cannot be overridden. Use tool.help for the current TypeScript parameter type.")},input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(StationTool{kind,base:base.clone(),http:http.clone()}),compatibility)?.with_activity(move |args| kind.activity(args)).advertise(name != "chat.notify" && !matches!(kind,Kind::Message|Kind::File|Kind::History|Kind::Workers|Kind::Assign|Kind::Tasks|Kind::Rework))));
+        registry.register(Arc::new(ToolInstance::new(ToolContract{name:name.into(),version:ToolVersion::new(if matches!(kind,Kind::ServiceOp(_)){"station-service-3"}else{"station-2"})?,initial_description:description.into(),detailed_description:if matches!(kind,Kind::ServiceOp(_)){format!("{description} Session identity is supplied by the runtime.")}else{format!("{description} Session identity comes from the runtime and cannot be overridden. Use tool.help for the current TypeScript parameter type.")},input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})},Arc::new(StationTool{kind,base:base.clone(),http:http.clone()}),compatibility)?.with_activity(move |args| kind.activity(args)).advertise(name != "chat.notify" && !matches!(kind,Kind::History|Kind::Workers|Kind::Assign|Kind::Tasks|Kind::Rework))));
     }
     slack::register(registry, &base)?;
     history::register(registry);
@@ -202,9 +196,7 @@ impl ToolImplementation for StationTool {
                 Err(error) => ToolExecution {
                     images: Vec::new(),
                     outcome: ToolOutcome::Failed,
-                    data: if matches!(self.kind, Kind::Message | Kind::File | Kind::Notify)
-                        && error.is::<reqwest::Error>()
-                    {
+                    data: if matches!(self.kind, Kind::Notify) && error.is::<reqwest::Error>() {
                         json!({"status":"delivery_unknown","operation_id":context.invocation_id,"error":error.to_string()})
                     } else {
                         json!({"error":error.to_string()})
@@ -235,35 +227,7 @@ impl StationTool {
         let channel = binding["conversationId"].clone();
         let thread = binding["rootMessageId"].clone();
         let mut body = json!({"sessionKey":key,"platform":binding["platform"],"conversationId":channel,"rootMessageId":thread});
-        let request = if binding["platform"] == "local_gui"
-            && matches!(self.kind, Kind::Message | Kind::File)
-        {
-            anyhow::ensure!(
-                binding["conversationKind"] != "agent_control",
-                "Use chat.send with an explicit chat_id from the incoming channel message"
-            );
-            let mut arguments = json!({"chat_id":context.session_id,"text":args["text"]});
-            if matches!(self.kind, Kind::File) {
-                arguments["text"] = json!(args["initial_comment"].as_str().unwrap_or(""));
-                let attachment = if let Some(path) = args["file_path"].as_str() {
-                    anyhow::ensure!(
-                        args["attachment_id"].is_null(),
-                        "Select file_path or attachment_id"
-                    );
-                    json!({"file_path":path})
-                } else {
-                    let id = args["attachment_id"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("file_path or attachment_id required"))?;
-                    json!({"source_chat_id":args["source_task_id"].as_str().unwrap_or(&context.session_id),"attachment_id":id})
-                };
-                arguments["attachments"] = json!([attachment]);
-            }
-            self.http
-                .post(format!("{}/v1/channels/tools", self.base))
-                .json(&json!({"session_id":context.session_id,
-                "invocation_id":context.invocation_id,"tool":"chat.send","arguments":arguments}))
-        } else {
+        let request = {
             match self.kind {
             Kind::ServiceOp(action) => {
                 let mut body = args.clone();
@@ -310,24 +274,6 @@ impl StationTool {
             }
             Kind::Notify => self.http.post(format!("{}/notify", self.base))
                 .json(&json!({"sessionKey":key,"text":args["text"]})),
-            Kind::Message => {
-                body["text"] = args["text"].clone();
-                body["kind"] = args["kind"].clone();
-                body["reason"] = args["reason"].clone();
-                self.http
-                    .post(format!("{}/chat/post-message", self.base))
-                    .json(&body)
-            }
-            Kind::File => {
-                body["filePath"] = args["file_path"].clone();
-                body["attachmentId"] = args["attachment_id"].clone();
-                body["requestId"] = json!(context.invocation_id);
-                body["sourceTaskId"] = args["source_task_id"].clone();
-                body["initialComment"] = args["initial_comment"].clone();
-                self.http
-                    .post(format!("{}/chat/post-file", self.base))
-                    .json(&body)
-            }
             Kind::History => {
                 let mut query = vec![
                     ("session_key", key.to_owned()),
@@ -370,7 +316,7 @@ impl StationTool {
                     .post(format!("{}/jobs/register", self.base))
                     .json(&body)
             }
-        }
+            }
         };
         let response = request.send().await?;
         let status = response.status();

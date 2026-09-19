@@ -40,7 +40,7 @@ class MeshIntegrationTest {
         call("settings_action", "peer" to peer, "operation" to fields.put("action", action))
     private fun fakeMessage(text: String) = JSONObject().put("fake_tools", org.json.JSONArray().put(
         JSONObject().put("name", "chat.post_message").put("input",
-            JSONObject().put("kind", "final").put("text", text))))
+            JSONObject().put("text", text))))
 
     @Test fun bootstrap() {
         // The fixture owns only this directory, never the normal client data.

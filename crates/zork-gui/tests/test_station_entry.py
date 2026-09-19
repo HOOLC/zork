@@ -245,7 +245,7 @@ class StationEntryContractTest(unittest.TestCase):
         explicit = json.dumps(
             {
                 "fake_tool": {
-                    "name": "chat.send",
+                    "name": "chat.post_message",
                     "input": {"chat_id": second, "text": "reply for task two"},
                 }
             }
