@@ -1180,12 +1180,30 @@ impl StateInner {
         while leading_overdraw < self.overdraw {
             cursor.prev();
             if let Some(item) = cursor.item() {
-                let size = if let ListItem::Measured { size, .. } = item {
-                    *size
-                } else {
-                    let mut element = render_item(cursor.start().0, window, cx);
-                    element.layout_as_root(available_item_space, window, cx)
-                };
+                // A preserved anchor can sit below the viewport's top (for
+                // example when older rows replace a paging control). Those
+                // preceding items are visible, not merely leading overdraw.
+                let visible = leading_overdraw < px(0.);
+                let mut element = (visible || item.size().is_none())
+                    .then(|| render_item(cursor.start().0, window, cx));
+                let size = element.as_mut().map_or_else(
+                    || item.size().unwrap(),
+                    |element| element.layout_as_root(available_item_space, window, cx),
+                );
+
+                if visible {
+                    item_layouts.push_front(ItemLayout {
+                        index: cursor.start().0,
+                        element: element.unwrap(),
+                        size,
+                    });
+                    scroll_top.item_ix = cursor.start().0;
+                    scroll_top.offset_in_item += size.height;
+                    if self.logical_scroll_top.is_some() {
+                        self.logical_scroll_top = Some(scroll_top);
+                    }
+                    rendered_focused_item |= item.contains_focused(window, cx);
+                }
 
                 leading_overdraw += size.height;
                 measured_items.push_front(ListItem::Measured {
@@ -1547,7 +1565,10 @@ impl Element for List {
         {
             let new_items = SumTree::from_iter(
                 state.items.iter().map(|item| ListItem::Unmeasured {
-                    size_hint: None,
+                    // Width changes invalidate exact measurements, not the
+                    // estimate. Zero-height unseen prefixes cannot be reached
+                    // by scrolling from an initial tail position.
+                    size_hint: item.size_hint(),
                     focus_handle: item.focus_handle(),
                 }),
                 (),

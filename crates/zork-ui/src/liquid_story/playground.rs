@@ -493,7 +493,7 @@ impl Render for BackgroundView {
             content = content.child(
                 self.parent
                     .update(cx, |v, cx| v.benchmark_controls(window, cx))
-                    .unwrap_or_else(|_| div()),
+                    .unwrap_or_else(|_| wb::column(0.)),
             );
         }
         let mut grid = wb::grid();
@@ -552,11 +552,11 @@ impl Render for BackgroundView {
                                     cx,
                                 )
                             })
-                            .unwrap_or_else(|_| div()),
+                            .unwrap_or_else(|_| wb::column(0.)),
                     ),
             ));
         }
-        div().size_full().flex().child(body).into_any_element()
+        wb::body().size_full().child(body).into_any_element()
     }
 }
 
@@ -738,7 +738,7 @@ impl Render for Gallery {
             self.regions
                 .gpu_uncached("playground-body", cx, render_background)
         };
-        let body = div().w_full().flex_1().min_h_0().child(background);
+        let body = wb::body().w_full().child(background);
         let overlay = self.presented_panel.and_then(|panel| {
             let (id, title, contents) = match panel {
                 Panel::Library => (

@@ -246,8 +246,11 @@ impl RootView {
                 let index = self.history.entries.iter().position(|e| e.id == id);
                 if let Some(index) = index {
                     self.history_select(index, cx);
-                    self.history.detail = Some(id);
                 }
+            }
+            Jump::File(id) => {
+                self.history.detail = Some(id);
+                self.history.agent_detail = None;
             }
         }
         zork_ui::components::region::invalidate_all(cx);

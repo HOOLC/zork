@@ -2,12 +2,11 @@
 //! snapshots, resolved destinations and typed event adapter.
 use crate::components::{
     history::{activity_accent, activity_color, kind_icon, kind_label, ActivityHeader},
-    loading,
     message::{render_document, MessageDocument},
 };
 use crate::history::{
     self as model,
-    activity::{self, Activity, Kind, Projection, Row},
+    activity::{Activity, Kind, Projection, Row},
     Entry,
 };
 use crate::{
@@ -16,10 +15,16 @@ use crate::{
     resources::Text,
 };
 use gpui::{prelude::*, *};
-use std::{collections::HashSet, time::Duration};
-const DIM: u32 = CUE_UI.palette.muted;
-const TEXT: u32 = CUE_UI.palette.text;
-const SUBTLE: u32 = CUE_UI.palette.subtle;
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    time::Duration,
+};
+const DIM: u32 = 0x4C4C4C;
+const TEXT: u32 = 0x1B1B1B;
+const SUBTLE: u32 = 0x5E5E5E;
+const BORDER: u32 = 0xF1F1F1;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
@@ -30,6 +35,7 @@ pub enum Jump {
     Conversation(String),
     Agent(String),
     Entry(String),
+    File(String),
 }
 pub enum Action {
     Scroll,
@@ -54,6 +60,15 @@ pub struct State {
     pub expanded: HashSet<String>,
     /// Model rows whose Markdown body is expanded past its clipped preview.
     pub output_expanded: HashSet<String>,
+    pub records_expanded: HashSet<String>,
+    pub following_latest: bool,
+    pub follow_locked: bool,
+    pub positioned: bool,
+    pub documents: RefCell<HashMap<String, (String, Rc<MessageDocument>)>>,
+    pub previews: RefCell<HashMap<String, Rc<std::cell::Cell<f32>>>>,
+    pub loaded_usage: model::usage::UsageSummary,
+    pub model_calls: usize,
+    pub models: Vec<String>,
     pub rendered_width: f32,
     pub scroll: ListState,
     pub scroll_observed: bool,
@@ -69,8 +84,18 @@ impl Default for State {
             selected: None,
             expanded: Default::default(),
             output_expanded: Default::default(),
+            records_expanded: Default::default(),
+            following_latest: true,
+            follow_locked: false,
+            positioned: false,
+            documents: Default::default(),
+            previews: Default::default(),
+            loaded_usage: Default::default(),
+            model_calls: 0,
+            models: Vec::new(),
             rendered_width: 440.,
-            scroll: ListState::new(1, ListAlignment::Top, px(200.)),
+            scroll: ListState::new(1, ListAlignment::Top, px(200.))
+                .with_uniform_item_height(px(26.)),
             scroll_observed: false,
             fixed_now: None,
             clock_offset: 0,
@@ -78,6 +103,17 @@ impl Default for State {
     }
 }
 impl State {
+    pub fn with_metrics(mut self) -> Self {
+        self.update_metrics();
+        self
+    }
+    pub fn update_metrics(&mut self) {
+        let metrics = model::usage::LoadedUsage::new(self.entries.iter());
+        self.loaded_usage = metrics.usage;
+        self.model_calls = metrics.calls;
+        self.models = metrics.models;
+    }
+
     pub fn now(&self) -> i64 {
         self.fixed_now
             .unwrap_or_else(|| model::now() + self.clock_offset)
@@ -113,8 +149,47 @@ impl State {
 
     pub fn rebuild_rows(&mut self) {
         let previous = self.rows.len();
+        let offset = self.scroll.logical_scroll_top();
+        let anchor = offset
+            .item_ix
+            .checked_sub(1)
+            .and_then(|i| self.rows.get(i))
+            .copied();
         self.rows = self.projection.rows(self.entries.iter(), &self.expanded);
         self.scroll.splice(1..previous + 1, self.rows.len());
+        self.scroll.clone().with_uniform_item_height(px(26.));
+        if let Some(index) = anchor.and_then(|anchor| self.rows.iter().position(|r| *r == anchor)) {
+            self.scroll.scroll_to(ListOffset {
+                item_ix: index + 1,
+                ..offset
+            });
+        } else {
+            self.scroll.scroll_to(offset);
+        }
+    }
+
+    pub fn hold_disclosure(&mut self, _row: usize) {
+        self.following_latest = false;
+        self.follow_locked = true;
+        // A virtual list must retain the first visible row. A negative offset
+        // anchored at the clicked row would leave its preceding rows unpainted.
+        let offset = self.scroll.logical_scroll_top();
+        self.scroll.scroll_to(offset);
+    }
+
+    fn document(&self, id: &str, text: &str) -> Rc<MessageDocument> {
+        let mut cache = self.documents.borrow_mut();
+        if let Some((source, document)) = cache.get(id) {
+            if source == text {
+                return document.clone();
+            }
+        }
+        if cache.len() >= 128 {
+            cache.clear();
+        }
+        let document = Rc::new(MessageDocument::parse(text));
+        cache.insert(id.to_owned(), (text.to_owned(), document.clone()));
+        document
     }
 }
 
@@ -133,6 +208,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         if let Some(e) = self.history().entries.get(index) {
             let id = e.id.clone();
             self.history_mut().selected = Some(id.clone());
+            self.history_mut().following_latest = false;
+            self.history_mut().follow_locked = true;
+            self.history_mut().records_expanded.insert(id.clone());
+            self.history_mut().output_expanded.insert(id.clone());
             if let Some(block) = self
                 .history()
                 .projection
@@ -159,59 +238,79 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
     /// records, holding the loading, failed, paging, start and empty states.
     fn render_history_older(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let paging = self.history_paging();
-        let empty = paging.loaded && self.history().rows.is_empty() && !paging.error;
+        let busy = paging.busy && (!paging.loaded || paging.loading_older);
+        let label = self.history_text().text(if busy {
+            "history_loading"
+        } else if paging.error {
+            "history_failed"
+        } else if self.history().rows.is_empty() {
+            "history_empty"
+        } else {
+            "history_start"
+        });
         div()
             .id("history-older")
             .w_full()
-            .mb(px(10.))
+            .pb(px(10.))
+            .flex()
+            .flex_col()
+            .items_center()
             .text_center()
             .text_size(px(11.))
+            .line_height(px(16.5))
             .text_color(rgb(SUBTLE))
-            .when(!paging.busy && (paging.older || paging.error), |v| {
-                v.cursor_pointer()
+            .when(busy || paging.error || !paging.older, |v| {
+                v.child(div().when(!busy, |v| v.mt(px(6.))).child(label.clone()))
             })
-            .flex()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .when(
-                paging.busy && (!paging.loaded || paging.loading_older),
-                |v| v.child(loading::indicator("history-loading", 14.)),
-            )
-            .child(self.history_text().text(
-                if paging.busy && (!paging.loaded || paging.loading_older) {
-                    "history_loading"
-                } else if paging.error {
-                    "history_failed"
-                } else if empty {
-                    "history_empty"
-                } else if paging.older {
-                    "history_older"
-                } else {
-                    "history_start"
-                },
-            ))
-            .on_click(cx.listener(|v, _, _, cx| {
-                let paging = v.history_paging();
-                if !paging.busy && (paging.older || paging.error) {
-                    v.history_action(Action::LoadOlder, cx);
-                }
-            }))
-            .automation_enabled(
-                !paging.busy && (paging.older || paging.error),
-                AutomationRole::Button,
-                self.history_text().text("history_older"),
-            )
+            .when(!paging.busy && (paging.older || paging.error), |v| {
+                v.child(
+                    crate::controls::button(
+                        "history-load-page",
+                        self.history_text().text(if paging.error {
+                            "history_retry"
+                        } else {
+                            "history_older"
+                        }),
+                        false,
+                        true,
+                    )
+                    .on_click(cx.listener(|v, _, _, cx| {
+                        v.history_mut().following_latest = false;
+                        v.history_action(Action::LoadOlder, cx);
+                        cx.notify();
+                    })),
+                )
+            })
+            .automation_enabled(false, AutomationRole::Status, label)
     }
-    fn render_history_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn render_history_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         if !self.history().scroll_observed {
             let list = self.history().scroll.clone();
             let owner = cx.entity().downgrade();
             list.set_scroll_handler(move |_, _, cx| {
-                let _ = owner.update(cx, |v, cx| v.history_action(Action::Scroll, cx));
+                let owner = owner.clone();
+                cx.defer(move |cx| {
+                    let _ = owner.update(cx, |v, cx| {
+                        if !v.history().follow_locked {
+                            v.history_mut().following_latest =
+                                v.history().scroll.is_scrolled_to_end().unwrap_or(true);
+                        }
+                        v.history_action(Action::Scroll, cx);
+                        crate::components::region::invalidate(cx, &["history"]);
+                        cx.notify();
+                    });
+                });
             });
             self.history_mut().scroll_observed = true;
         }
+        if !self.history().positioned && self.history_paging().loaded {
+            self.history_mut().positioned = true;
+            self.history().scroll.scroll_to_end();
+        }
+        let owner = cx.entity().downgrade();
+        let width = self.history().rendered_width;
+        let follow_focus =
+            crate::components::history::focus_for("history-follow-focus".into(), window, cx);
         div()
             .relative()
             .w_full()
@@ -221,7 +320,24 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .min_w_0()
             .flex()
             .flex_col()
-            .child(self.history_statistics().render(self.history_text()))
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        let measured = bounds.size.width.as_f32();
+                        if (width - measured).abs() > 0.5 {
+                            let _ = owner.update(cx, |v, cx| {
+                                v.history_mut().rendered_width = measured;
+                                cx.emit(HistoryChanged::clock());
+                                cx.notify();
+                            });
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(self.history_statistics().render(self.history_text(), width))
             .child(
                 // `.cue-session-body` holds the scroll region the follow button
                 // floats over; `.cue-session-timeline` pads the records 12/16/24.
@@ -262,8 +378,57 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                 AutomationRole::ScrollArea,
                                 self.history_text().text("history_records"),
                             ),
-                    ),
+                    )
+                    .when(!self.history().following_latest, |body| {
+                        body.child(
+                            div()
+                                .absolute()
+                                .bottom(px(16.))
+                                .left_0()
+                                .right_0()
+                                .flex()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .id("history-follow-latest")
+                                        .block_mouse_except_scroll()
+                                        .track_focus(&follow_focus)
+                                        .tab_stop(true)
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .px(px(12.))
+                                        .py(px(7.))
+                                        .rounded_full()
+                                        .border_1()
+                                        .border_color(rgb(BORDER))
+                                        .bg(rgb(CUE_UI.palette.canvas))
+                                        .shadow_sm()
+                                        .text_size(px(11.))
+                                        .text_color(rgb(DIM))
+                                        .cursor_pointer()
+                                        .child(crate::controls::icon("cue/chevron-down.svg", 12.))
+                                        .child(self.history_text().text("history_latest"))
+                                        .on_click(cx.listener(|v, _, _, cx| {
+                                            cx.stop_propagation();
+                                            v.follow_history_latest(cx);
+                                        }))
+                                        .automation(
+                                            AutomationRole::Button,
+                                            self.history_text().text("history_latest"),
+                                        ),
+                                ),
+                        )
+                    }),
             )
+    }
+
+    fn follow_history_latest(&mut self, cx: &mut Context<Self>) {
+        self.history_mut().following_latest = true;
+        self.history_mut().follow_locked = false;
+        self.history().scroll.scroll_to_end();
+        crate::components::region::invalidate(cx, &["history"]);
+        cx.notify();
     }
 
     /// A model reply is the row: Cue paints no icon and no label on it, so the
@@ -275,19 +440,34 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         id: &str,
         text: &str,
         entry: &Entry,
+        focus: FocusHandle,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let expanded = self.history().output_expanded.contains(id);
         // `.cue-session-timeline` pads the records 16px on both sides, so the
         // document lays out at the panel width minus that inset.
         let width = (self.history().rendered_width - 32.).max(1.);
-        let document = MessageDocument::parse(text);
+        let document = self.history().document(id, text);
+        let height = {
+            let mut previews = self.history().previews.borrow_mut();
+            if previews.len() > 128 {
+                previews.clear();
+            }
+            previews
+                .entry(format!("{id}:{width}"))
+                .or_insert_with(|| Rc::new(std::cell::Cell::new(110.)))
+                .clone()
+        };
+        let limit = height.get();
+        let owner = cx.entity().downgrade();
         let disclosure_label = self.history_text().text(if expanded {
             "history_output_show_less"
         } else {
             "history_output_show_more"
         });
         let toggle = id.to_owned();
+        let click_focus = focus.clone();
         // `.cue-session-output-disclosure` sits 8px under the document; the
         // record clock, when revealed, carries Cue's 6px bottom margin.
         let mut footer = div().w_full().flex().flex_col();
@@ -301,6 +481,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .gap(px(4.))
             .mt(px(8.))
             .cursor_pointer()
+            .track_focus(&focus)
+            .tab_stop(true)
             .text_size(px(11.))
             .text_color(rgb(SUBTLE))
             .child(disclosure_label.clone())
@@ -311,35 +493,52 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     ),
                 )
             })
-            .on_click(cx.listener(move |v, _, _, cx| {
+            .on_click(cx.listener(move |v, _, window, cx| {
+                window.focus(&click_focus, cx);
                 cx.stop_propagation();
-                if !v.history_mut().output_expanded.remove(&toggle) {
-                    v.history_mut().output_expanded.insert(toggle.clone());
-                }
-                crate::components::region::invalidate_all(cx);
+                v.toggle_history_output(index, &toggle, cx);
             }))
             .automation(AutomationRole::Button, disclosure_label);
         footer = footer.child(disclosure);
         crate::components::message_preview::MessagePreview {
-            // `.cue-session-output-document` is a 14px/22px flow root, but the
-            // MarkdownStream inside it renders `text-sm leading-[22px]`, so the
-            // visible document is 13px on 22px lines.
+            lines: Some(crate::components::message_preview::LinePreview {
+                height,
+                notify: Rc::new(move |cx| {
+                    let _ = owner.update(cx, |_, cx| {
+                        cx.emit(HistoryChanged::clock());
+                        crate::components::region::invalidate(cx, &["history"]);
+                        cx.notify();
+                    });
+                }),
+            }),
+            // History keeps the shared Zork Markdown presentation. Only the
+            // preview and disclosure belong to the history page.
             body: div()
                 .text_size(px(13.))
                 .line_height(px(22.))
                 .child(render_document(
                     &format!("history-output-document-{index}"),
-                    &document,
+                    document.as_ref(),
                 ))
                 .into_any_element(),
             footer: footer.into_any_element(),
             width,
-            limit: 110.,
+            limit,
             more: false,
             expanded,
             fade: false,
             background: rgb(CUE_UI.palette.canvas).into(),
         }
+    }
+
+    fn toggle_history_output(&mut self, index: usize, id: &str, cx: &mut Context<Self>) {
+        self.history_mut().hold_disclosure(index);
+        if !self.history_mut().output_expanded.remove(id) {
+            self.history_mut().output_expanded.insert(id.to_owned());
+        }
+        crate::components::region::invalidate_all(cx);
+        cx.emit(HistoryChanged::clock());
+        cx.notify();
     }
 
     /// The model reply alone owns a Markdown body, so it is the one row with no
@@ -349,28 +548,26 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         index: usize,
         activity: &Activity,
         entry: &Entry,
+        focus: FocusHandle,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let mut row = div()
-            .id(("history-row", index))
-            .my(px(18.))
-            .child(
-                // Cue's reply row is a plain document: no icon, no label, no
-                // status. The automation surface still names it by its text.
-                div()
-                    .id(("history-record", index))
-                    .child(self.render_history_output(
-                        index,
-                        &entry.id,
-                        &activity.summary,
-                        entry,
-                        cx,
-                    ))
-                    .automation(AutomationRole::Status, activity.summary.clone()),
-            );
-        if self.history().selected.as_deref() == Some(entry.id.as_str()) {
-            row = row.bg(rgb(CUE_UI.palette.sidebar_hover));
-        }
+        let row = div().id(("history-row", index)).py(px(18.)).child(
+            // Cue's reply row is a plain document: no icon, no label, no
+            // status. The automation surface still names it by its text.
+            div()
+                .id(("history-record", index))
+                .child(self.render_history_output(
+                    index,
+                    &entry.id,
+                    &activity.summary,
+                    entry,
+                    focus,
+                    window,
+                    cx,
+                ))
+                .automation(AutomationRole::Status, activity.summary.clone()),
+        );
         row
     }
 
@@ -378,6 +575,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         &self,
         index: usize,
         now: i64,
+        focus: FocusHandle,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         self.history_row_built();
@@ -398,11 +597,16 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             &self.history().entries[self.history().projection.activities[block.start].entry];
         let group_id = first_entry.id.clone();
         let group = row.activity.is_none();
-        let (mut subject, jump) = if group {
+        let (mut subject, mut jump) = if group {
             (None, None)
         } else {
             self.history_subject(a, entry)
         };
+        if !group && !a.details.files.is_empty() {
+            subject = Some(a.details.files[0].path.clone());
+            jump = Some(Jump::File(entry.id.clone()));
+        }
+        let expanded = self.history().records_expanded.contains(&entry.id);
         let action = if group {
             let counts = &block.counts;
             [
@@ -411,6 +615,9 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 (counts.edited, "history_group_edit"),
                 (counts.shell, "history_group_command"),
                 (counts.queries, "history_group_query"),
+                (counts.thinking, "history_group_thinking"),
+                (counts.other, "history_group_operation"),
+                (counts.failed, "history_group_failed"),
             ]
             .into_iter()
             .filter(|(count, _)| *count > 0)
@@ -433,16 +640,19 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 .text("history_message_received_from")
                 .replace("{name}", &name)
         } else if a.kind == Kind::Thinking {
-            match entry.start.or(entry.end) {
-                Some(start) => self
-                    .history_text()
-                    .text("history_thinking_duration")
-                    .replace("{seconds}", &thinking_seconds(now.saturating_sub(start))),
-                None => self.history_text().text("history_thinking_unmeasured").to_owned(),
-            }
+            entry
+                .start
+                .map(|start| {
+                    self.history_text()
+                        .text("history_thinking_duration")
+                        .replace("{seconds}", &thinking_seconds(now.saturating_sub(start)))
+                })
+                .unwrap_or_else(|| self.history_text().text("history_thinking_unmeasured"))
         } else if matches!(a.kind, Kind::SendMessage | Kind::SendFile) {
             if subject.is_some() {
-                self.history_text().text("history_message_send_to").to_owned()
+                self.history_text()
+                    .text("history_message_send_to")
+                    .to_owned()
             } else {
                 self.history_text()
                     .text("history_message_send_to_name")
@@ -471,7 +681,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             label.push_str(&wait_time(a, entry, now, &self.history_text()));
             label
         } else if a.kind == Kind::UnknownTool {
-            activity::preview(&entry.action)
+            self.history_text().text("history_action_tool")
         } else {
             self.history_text().text(kind_label(a.kind)).to_owned()
         };
@@ -492,7 +702,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         if !group && subject.as_ref() == Some(&summary) {
             summary.clear();
         }
-        let tail = matches!(a.kind, Kind::Input);
+        if a.kind == Kind::Input && expanded {
+            summary.clear();
+        }
+        let tail = matches!(a.kind, Kind::Input | Kind::Thinking);
         let status = if group {
             None
         } else {
@@ -508,32 +721,43 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 "succeeded"
                     if matches!(a.kind, Kind::SendMessage | Kind::SendFile | Kind::Notify) =>
                 {
-                    Some(self.history_text().text("history_sent").into())
+                    None
                 }
                 // Only operations carry a terminal status. A reply, a live call
                 // and a finished wait read as their own label.
-                "succeeded"
-                    if matches!(a.kind, Kind::Output | Kind::Thinking | Kind::Wait) =>
-                {
-                    None
-                }
+                "succeeded" if matches!(a.kind, Kind::Output | Kind::Thinking | Kind::Wait) => None,
                 "succeeded" => Some(self.history_text().text("history_success").into()),
                 _ => None,
             }
         };
         let id = entry.id.clone();
-        let selected = self.history().selected.as_ref() == Some(&id);
         if !group && a.kind == Kind::Output {
-            return self.render_history_reply(index, a, entry, cx).into_any_element();
+            return self
+                .render_history_reply(index, a, entry, focus, window, cx)
+                .into_any_element();
         }
         let live = entry.state == "running"
             && !matches!(a.kind, Kind::SendMessage | Kind::SendFile | Kind::Notify);
         div()
             .id(("history-row", index))
-            .when(selected, |v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
+            .when(
+                !group
+                    && block.is_group()
+                    && block.end - block.start - usize::from(block.active.is_some()) > 1
+                    && block.active != Some(a_index),
+                |v| {
+                    let first = (block.start..block.end).find(|i| Some(*i) != block.active);
+                    let last = (block.start..block.end)
+                        .rev()
+                        .find(|i| Some(*i) != block.active);
+                    v.when(first == Some(a_index), |v| v.pt(px(2.)))
+                        .when(last == Some(a_index), |v| v.pb(px(4.)))
+                },
+            )
             .child(crate::components::history::activity_header_sources(
                 ("history-record", index),
                 ActivityHeader {
+                    focus,
                     // Cue paints a group with a console when every member is a
                     // command and with a folder otherwise.
                     icon: Some(if group {
@@ -547,6 +771,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         } else {
                             "cue/folder1.svg"
                         }
+                    } else if matches!(entry.state.as_str(), "failed" | "timed_out") {
+                        "cue/x.svg"
                     } else {
                         kind_icon(a.kind)
                     }),
@@ -566,33 +792,33 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     live,
                     tabular: !group && a.kind == Kind::Wait,
                     group_summary: group,
-                    chevron: group && self.history().expanded.contains(&group_id),
+                    chevron: if group {
+                        self.history().expanded.contains(&group_id)
+                    } else {
+                        expanded
+                    },
                 },
                 (
-                    (!group).then(|| self.history_source(cx)),
-                    matches!(jump, Some(Jump::Agent(_) | Jump::Entry(_)))
+                    None,
+                    matches!(jump, Some(Jump::Agent(_) | Jump::File(_)))
                         .then(|| self.history_source(cx)),
                 ),
+                window,
                 cx,
                 move |v, _, cx| {
+                    v.history_mut().hold_disclosure(index);
                     if group {
                         if !v.history_mut().expanded.remove(&group_id) {
                             v.history_mut().expanded.insert(group_id.clone());
                         }
                         v.history_mut().rebuild_rows();
-                        if let Some(row) = v.history_mut().row_for_id(&group_id) {
-                            // Keep the group heading visible rather than jumping to its last child.
-                            let summary = v.history_mut().rows[..=row]
-                                .iter()
-                                .rposition(|r| r.activity.is_none())
-                                .unwrap_or(row);
-                            v.history_mut().scroll.scroll_to_reveal_item(summary + 1);
-                        }
                     } else {
-                        v.history_action(Action::OpenEntry(id.clone()), cx);
-                        v.history_mut().selected = Some(id.clone());
+                        if !v.history_mut().records_expanded.remove(&id) {
+                            v.history_mut().records_expanded.insert(id.clone());
+                        }
                     }
                     crate::components::region::invalidate_all(cx);
+                    cx.emit(HistoryChanged::clock());
                 },
                 move |v, _, cx| {
                     if let Some(jump) = jump.clone() {
@@ -600,7 +826,102 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     }
                 },
             ))
+            .when(!group && expanded, |row| {
+                row.child(self.render_history_details(index, a, entry, cx))
+            })
             .into_any_element()
+    }
+
+    fn render_history_details(
+        &self,
+        index: usize,
+        activity: &Activity,
+        entry: &Entry,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let detail = &activity.details;
+        let file_id = entry.id.clone();
+        div()
+            .id(("history-inline-detail", index))
+            .min_w_0()
+            .mt(px(3.))
+            .mb(px(8.))
+            .ml(px(24.))
+            .pt(px(4.))
+            .pb(px(6.))
+            .pl(px(12.))
+            .border_l_1()
+            .border_color(rgb(BORDER))
+            .text_size(px(12.))
+            .line_height(px(21.6))
+            .text_color(rgb(DIM))
+            .child(record_time(index, entry.start.or(entry.end)))
+            .when(!detail.command.is_empty(), |body| {
+                body.child(
+                    div()
+                        .font_family(crate::assets::CODE_FONT_FAMILY)
+                        .text_size(px(11.))
+                        .line_height(px(19.8))
+                        .child(format!("$ {}", detail.command)),
+                )
+            })
+            .when(!detail.text.is_empty(), |body| {
+                body.child(div().whitespace_normal().child(detail.text.clone()))
+            })
+            .when(!detail.output.is_empty(), |body| {
+                body.child(
+                    div()
+                        .mt(px(4.))
+                        .font_family(crate::assets::CODE_FONT_FAMILY)
+                        .text_size(px(11.))
+                        .line_height(px(19.8))
+                        .child(detail.output.clone()),
+                )
+            })
+            .children(detail.files.iter().enumerate().map(|(i, file)| {
+                let file_id = file_id.clone();
+                div()
+                    .id(format!("history-file-{index}-{i}"))
+                    .mt(px(6.))
+                    .text_size(px(11.))
+                    .text_color(rgb(TEXT))
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .cursor_pointer()
+                    .focusable()
+                    .tab_stop(true)
+                    .child(crate::controls::icon("cue/file.svg", 13.))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .underline()
+                            .child(file.path.clone()),
+                    )
+                    .on_click(cx.listener(move |v, _, _, cx| {
+                        v.history_action(Action::Jump(Jump::File(file_id.clone())), cx)
+                    }))
+                    .automation(AutomationRole::Button, file.path.clone())
+            }))
+            .when(detail.truncated, |body| {
+                body.child(
+                    div()
+                        .mt(px(8.))
+                        .text_size(px(11.))
+                        .text_color(rgb(SUBTLE))
+                        .child(self.history_text().text("history_content_truncated")),
+                )
+            })
+            .automation(
+                AutomationRole::Status,
+                [
+                    detail.text.as_str(),
+                    detail.command.as_str(),
+                    detail.output.as_str(),
+                ]
+                .join("\n"),
+            )
     }
 }
 /// Cue's record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
@@ -633,7 +954,9 @@ fn wait_time(a: &Activity, entry: &Entry, now: i64, text: &Text) -> String {
     let maximum = a
         .requested_wait_ms
         .map(|ms| (ms.max(0) as f64 / 1000.).round() as i64);
-    let elapsed = entry.duration(now).map(|ms| (ms.max(0) as f64 / 1000.).floor() as i64);
+    let elapsed = entry
+        .duration(now)
+        .map(|ms| (ms.max(0) as f64 / 1000.).floor() as i64);
     match (elapsed, maximum) {
         (Some(elapsed), _) if entry.state != "running" => text
             .text("history_wait_finished")
@@ -697,6 +1020,7 @@ mod tests {
             summary: String::new(),
             routine: None,
             requested_wait_ms: seconds.map(|seconds| (seconds * 1000.) as i64),
+            details: Default::default(),
         }
     }
 

@@ -108,106 +108,283 @@
     ]
   },
   "history": {
-    "now": 1788687730000,
+    "now": 1789824600000,
     "records": [
       {
-        "event_id": "history-0",
+        "event_id": "history-000",
         "event": {
           "kind": "session_created",
           "selection": {
-            "model": "fixture-model"
+            "model": "gpt-5.4"
           }
         }
       },
       {
-        "event_id": "history-1",
+        "event_id": "history-001",
         "event": {
           "kind": "input_appended",
           "input": {
-            "content": "检查项目配置并运行测试。",
-            "received_at_ms": 1788687720000
+            "content": "检查 Session History 的宽窄布局，保留代码、分组和完整执行结果。",
+            "received_at_ms": 1789824510000
           }
         }
       },
       {
-        "event_id": "history-2",
-        "event": {
-          "kind": "step_started",
-          "step_id": "step-1",
-          "purpose": "conversation",
-          "started_at_ms": 1788687721000
-        }
-      },
-      {
-        "event_id": "history-3",
+        "event_id": "history-002",
         "event": {
           "kind": "step_completed",
-          "step_id": "step-1",
-          "purpose": "conversation",
-          "completed_at_ms": 1788687723000,
-          "assistant_text": "## 检查结果\n\n配置已就绪，测试跑完有 1 个用例没过。\n\n- `pnpm test`：1 个用例失败，断言超时\n- 失败用例：sessionHistory 的行高断言\n\n```ts\nexpect(rows.every((row) => row.height <= 46)).toBe(true);\n```\n\n下一步：修这条断言，然后重跑。",
-          "usage": {
-            "input_tokens": 1200,
-            "output_tokens": 180,
-            "cached_input_tokens": 600
-          },
+          "step_id": "call-read-1",
+          "completed_at_ms": 1789824515000,
           "invocations": [
             {
               "invocation_id": "read-1",
               "tool": "file.read",
               "arguments": {
-                "path": "package.json"
+                "path": "src/session-history.ts"
               },
-              "started_at_ms": 1788687723000
-            },
-            {
-              "invocation_id": "test-1",
-              "tool": "shell.run",
-              "arguments": {
-                "command": "pnpm test"
-              },
-              "started_at_ms": 1788687724000
+              "started_at_ms": 1789824515000
             }
           ]
         }
       },
       {
-        "event_id": "history-4",
+        "event_id": "history-003",
         "event": {
           "kind": "tool_result",
           "result": {
             "invocation_id": "read-1",
             "tool": "file.read",
             "outcome": "succeeded",
-            "finished_at_ms": 1788687723500,
+            "finished_at_ms": 1789824515500,
             "data": {
-              "content": "配置文件读取成功。"
+              "content": "export const history = { followLatest: true };\n// 同一组数据，验证原生与 Cue。"
             }
           }
         }
       },
       {
-        "event_id": "history-5",
+        "event_id": "history-004",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "call-read-2",
+          "completed_at_ms": 1789824516000,
+          "invocations": [
+            {
+              "invocation_id": "read-2",
+              "tool": "file.read",
+              "arguments": {
+                "path": "src/session-history.ts"
+              },
+              "started_at_ms": 1789824516000
+            }
+          ]
+        }
+      },
+      {
+        "event_id": "history-005",
+        "event": {
+          "kind": "tool_result",
+          "result": {
+            "invocation_id": "read-2",
+            "tool": "file.read",
+            "outcome": "succeeded",
+            "finished_at_ms": 1789824516500,
+            "data": {
+              "content": "export const history = { followLatest: true };"
+            }
+          }
+        }
+      },
+      {
+        "event_id": "history-006",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "call-write-1",
+          "completed_at_ms": 1789824517000,
+          "invocations": [
+            {
+              "invocation_id": "write-1",
+              "tool": "file.write",
+              "arguments": {
+                "path": "src/history-layout.ts",
+                "content": "export const compactWidth = 330;\nexport const rowHeight = 30;"
+              },
+              "started_at_ms": 1789824517000
+            }
+          ]
+        }
+      },
+      {
+        "event_id": "history-007",
+        "event": {
+          "kind": "tool_result",
+          "result": {
+            "invocation_id": "write-1",
+            "tool": "file.write",
+            "outcome": "succeeded",
+            "finished_at_ms": 1789824517500,
+            "data": {
+              "message": "已写入 src/history-layout.ts"
+            }
+          }
+        }
+      },
+      {
+        "event_id": "history-008",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "call-test-1",
+          "completed_at_ms": 1789824518000,
+          "invocations": [
+            {
+              "invocation_id": "test-1",
+              "tool": "shell.run",
+              "arguments": {
+                "command": "pnpm test -- session-history"
+              },
+              "started_at_ms": 1789824518000
+            }
+          ]
+        }
+      },
+      {
+        "event_id": "history-009",
         "event": {
           "kind": "tool_result",
           "result": {
             "invocation_id": "test-1",
             "tool": "shell.run",
             "outcome": "failed",
-            "finished_at_ms": 1788687727000,
+            "finished_at_ms": 1789824518500,
             "data": {
-              "error": "一个用例未通过，正在检查断言。"
+              "stdout": "Session History: 7 passed, 1 failed\n",
+              "stderr": "reader_anchor: expected stable position; received +32 px"
             }
           }
         }
       },
       {
-        "event_id": "history-6",
+        "event_id": "history-010",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "call-send-1",
+          "completed_at_ms": 1789824520000,
+          "invocations": [
+            {
+              "invocation_id": "send-1",
+              "tool": "chat.post_message",
+              "arguments": {
+                "text": "布局检查已完成，正在修复阅读位置。",
+                "kind": "progress"
+              },
+              "started_at_ms": 1789824520000
+            }
+          ]
+        }
+      },
+      {
+        "event_id": "history-011",
+        "event": {
+          "kind": "tool_result",
+          "result": {
+            "invocation_id": "send-1",
+            "tool": "chat.post_message",
+            "outcome": "succeeded",
+            "finished_at_ms": 1789824520500,
+            "data": {
+              "ok": true
+            }
+          }
+        }
+      },
+      {
+        "event_id": "history-012",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "call-wait-1",
+          "completed_at_ms": 1789824520500,
+          "invocations": [
+            {
+              "invocation_id": "wait-1",
+              "tool": "wait",
+              "arguments": {
+                "seconds": 20,
+                "reason": "等待后台测试结果"
+              },
+              "started_at_ms": 1789824520500
+            }
+          ]
+        }
+      },
+      {
+        "event_id": "history-013",
+        "event": {
+          "kind": "tool_result",
+          "result": {
+            "invocation_id": "wait-1",
+            "tool": "wait",
+            "outcome": "succeeded",
+            "finished_at_ms": 1789824521000,
+            "data": {
+              "until_ms": 1789824540500
+            }
+          }
+        }
+      },
+      {
+        "event_id": "history-014",
+        "event": {
+          "kind": "input_appended",
+          "input": {
+            "input_id": "wake",
+            "content": "后台测试已完成。请给出完整结果。",
+            "received_at_ms": 1789824540000
+          }
+        }
+      },
+      {
+        "event_id": "history-015",
         "event": {
           "kind": "step_started",
-          "step_id": "step-2",
+          "step_id": "reply",
+          "consumed_inputs": [
+            "wake"
+          ],
+          "started_at_ms": 1789824540100
+        }
+      },
+      {
+        "event_id": "history-016",
+        "event": {
+          "kind": "step_completed",
+          "step_id": "reply",
           "purpose": "conversation",
-          "started_at_ms": 1788687727500
+          "completed_at_ms": 1789824550000,
+          "assistant_text": "## 检查结果\n\n布局已对齐，**阅读位置保持稳定**。这段中英文文本用于检查窄窗口的换行：Session History keeps the current reading position.\n\n- 行内详情支持独立展开。\n- 分组中保留失败状态。\n- 使用 `followLatest` 回到最新。\n- 第四项仍然可读。\n- 第五项显示完整结果。\n- 第六项验证展开后的尾部。\n\n```ts\nconst history = { followLatest: true };\nfunction reveal(id: string) {\n  return history.followLatest ? id : null;\n}\n```\n\n> 已显示记录的统计只包含本次加载的模型调用。\n\n| 布局 | 结果 |\n| --- | --- |\n| 宽窗口 | 通过 |\n| 窄窗口 | 通过 |\n\n[查看说明](https://example.com/history)\n\n完成。",
+          "usage": {
+            "input_tokens": 1200,
+            "output_tokens": 180,
+            "cached_input_tokens": 600
+          }
+        }
+      },
+      {
+        "event_id": "history-017",
+        "event": {
+          "kind": "input_appended",
+          "input": {
+            "content": "继续验证键盘展开、收起，以及回到最新按钮。",
+            "received_at_ms": 1789824560000
+          }
+        }
+      },
+      {
+        "event_id": "history-018",
+        "event": {
+          "kind": "step_started",
+          "step_id": "next",
+          "purpose": "conversation",
+          "started_at_ms": 1789824561000
         }
       }
     ]

@@ -673,27 +673,7 @@ fn render_blocks<'a>(
     let children = blocks
         .iter()
         .enumerate()
-        .map(|(index, block)| {
-            let element = render_block(&format!("{id}-{index}"), block, selection, code_cache);
-            // Cue's document flow adds to the 12px node gap: a heading follows a
-            // block 20px below, a code block 16px and a thematic break 32px.
-            let previous = index.checked_sub(1).and_then(|i| blocks.get(i));
-            let extra = match (block, previous) {
-                (_, Some(MessageBlock::Rule)) | (MessageBlock::Rule, Some(_)) => 20.,
-                (MessageBlock::Heading { .. }, Some(MessageBlock::Heading { .. }))
-                | (MessageBlock::Heading { .. }, None) => 0.,
-                (MessageBlock::Heading { .. }, Some(_)) => 8.,
-                (MessageBlock::CodeBlock { .. }, Some(MessageBlock::Heading { .. }))
-                | (MessageBlock::CodeBlock { .. }, None) => 0.,
-                (MessageBlock::CodeBlock { .. }, Some(_)) => 4.,
-                _ => 0.,
-            };
-            if extra > 0. {
-                div().mt(px(extra)).child(element).into_any_element()
-            } else {
-                element
-            }
-        })
+        .map(|(index, block)| render_block(&format!("{id}-{index}"), block, selection, code_cache))
         .collect::<Vec<_>>();
     div()
         .w_full()
@@ -718,19 +698,17 @@ fn render_block<'a>(
             .child(render_inline(id, content, selection))
             .into_any_element(),
         MessageBlock::Heading { level, content } => {
-            // Cue's document headings: `text-xl/lg/md/sm`, all semibold, so
-            // 20/30, 18/28, 15/24 and 13/20.
-            let (size, line, weight) = match level {
-                1 => (20.0, 30.0, FontWeight::SEMIBOLD),
-                2 => (18.0, 28.0, FontWeight::SEMIBOLD),
-                3 => (15.0, 24.0, FontWeight::SEMIBOLD),
-                _ => (13.0, 20.0, FontWeight::SEMIBOLD),
+            let (size, weight) = match level {
+                1 => (20.0, FontWeight::BOLD),
+                2 => (18.0, FontWeight::SEMIBOLD),
+                3 => (16.0, FontWeight::SEMIBOLD),
+                _ => (14.0, FontWeight::SEMIBOLD),
             };
             div()
                 .w_full()
                 .min_w_0()
                 .text_size(px(size))
-                .line_height(px(line))
+                .line_height(px(size + 8.0))
                 .font_weight(weight)
                 .child(render_inline(id, content, selection))
                 .into_any_element()
@@ -774,7 +752,7 @@ fn render_block<'a>(
                                     marker.font_family(crate::assets::CODE_FONT_FAMILY)
                                 })
                                 .flex_shrink_0()
-                                .text_color(rgb(TEXT))
+                                .text_color(rgb(MUTED))
                                 .child(marker),
                         )
                         .child(div().flex_1().min_w_0().child(render_blocks(
@@ -809,6 +787,7 @@ fn render_block<'a>(
         MessageBlock::Rule => div()
             .w_full()
             .h(px(1.))
+            .my_1()
             .bg(rgb(BORDER))
             .into_any_element(),
         MessageBlock::Table { rows } => {
@@ -1044,7 +1023,7 @@ fn render_code(
     div()
         .w_full()
         .min_w_0()
-        .rounded(px(10.))
+        .rounded(px(8.))
         .overflow_hidden()
         .border(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(BORDER))

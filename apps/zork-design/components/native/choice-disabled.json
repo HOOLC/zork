@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 8,
+  "revision": 16,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -10,25 +10,25 @@
   "elements": [
     {
       "id": "story-choice-0",
-      "role": "option",
+      "role": "button",
       "label": "订阅账号",
       "enabled": false,
       "visible": true,
       "bounds": {
         "x": 28.0,
-        "y": 28.0,
+        "y": 24.0,
         "width": 251.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 28.0,
-        "y": 28.0,
+        "y": 24.0,
         "width": 251.0,
         "height": 32.0
       },
       "center": {
         "x": 153.5,
-        "y": 44.0
+        "y": 40.0
       },
       "actions": [
         "click",
@@ -37,25 +37,25 @@
     },
     {
       "id": "story-choice-1",
-      "role": "option",
+      "role": "button",
       "label": "API 接入",
       "enabled": false,
       "visible": true,
       "bounds": {
         "x": 281.0,
-        "y": 28.0,
+        "y": 24.0,
         "width": 251.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 281.0,
-        "y": 28.0,
+        "y": 24.0,
         "width": 251.0,
         "height": 32.0
       },
       "center": {
         "x": 406.5,
-        "y": 44.0
+        "y": 40.0
       },
       "actions": [
         "click",
@@ -98,17 +98,17 @@
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 40.0
+        "height": 32.0
       },
       "visible_bounds": {
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 40.0
+        "height": 32.0
       },
       "center": {
         "x": 280.0,
-        "y": 44.0
+        "y": 40.0
       },
       "actions": [
         "move"

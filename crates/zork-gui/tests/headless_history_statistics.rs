@@ -177,12 +177,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     let stats = find("history-usage-overview");
     if std::env::var("ZORK_GUI_LOCALE").as_deref() == Ok("en") {
         assert!(
-            stats.label.starts_with("Total:"),
+            stats.label.starts_with("Tokens:"),
             "fixture ignored English locale: {}",
             stats.label
         );
     }
-    let runtime_element = find("history-runtime");
+    let model_element = find("history-model");
     assert!(!snapshot
         .elements
         .iter()
@@ -194,7 +194,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "incorrect totals: {}",
         stats.label
     );
-    assert!(runtime_element.label.contains("128432 / 256000"));
+    assert!(model_element.label.contains("gpt-5.4"));
     assert!(
         stats.bounds.y + stats.bounds.height <= ledger.bounds.y + 0.1,
         "the overview must precede the records"
@@ -208,13 +208,15 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "records lost their primary reading space: {}",
         ledger.bounds.height
     );
-    // Cue's heading is the session identity, the 18px-gap facts grid and the
-    // usage scope, so it is taller than the old compact card.
-    assert!(
-        stats.bounds.height <= 210.,
-        "statistics are not compact: {}",
-        stats.bounds.height
-    );
+    // Cue moves the model above the token/cache pair at this breakpoint.
+    let tokens = find("history-tokens").bounds;
+    let cache = find("history-cache").bounds;
+    assert!((tokens.y - cache.y).abs() < 1.);
+    if stats.bounds.width <= 330. {
+        assert!(model_element.bounds.y + model_element.bounds.height < tokens.y);
+    } else {
+        assert!((model_element.bounds.y - tokens.y).abs() < 1.);
+    }
     std::fs::write(
         out.join("layout.json"),
         serde_json::to_vec_pretty(&json!({
@@ -289,15 +291,22 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     );
     pump(&mut cx)?;
     let paged = driver.snapshot(false);
-    assert_eq!(
+    let loaded = paged
+        .elements
+        .iter()
+        .find(|e| e.id == "history-usage-overview")
+        .unwrap();
+    assert!(
+        loaded.label.contains("1130832"),
+        "paging must include the older loaded call in the displayed scope: {}",
+        loaded.label
+    );
+    assert!(
         paged
             .elements
             .iter()
-            .find(|e| e.id == "history-usage-overview")
-            .unwrap()
-            .label,
-        stats.label,
-        "loading older execution details must not change the snapshot's session totals"
+            .any(|e| e.id == "history-cache" && e.label == "—"),
+        "partial cache reports must not imply a complete rate"
     );
     let records = (0..600).map(|i| record(i, json!({"kind":"input_appended","input":{
         "input_id":format!("scroll-{i}"),"content":format!("历史记录 {i} · rolling history"),"received_at_ms":NOW-600000+i as i64*1000
@@ -345,7 +354,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     )?;
     assert!(p95 < 8.33, "history draw p95 exceeded budget: {p95}");
     println!(
-        "history statistics {width}x{height}: totals, API context, layout, scrolling passed; p95 {p95:.2} ms / p99 {p99:.2} ms"
+        "history statistics {width}x{height}: loaded-call totals, model identity, layout, scrolling passed; p95 {p95:.2} ms / p99 {p99:.2} ms"
     );
     Ok(())
 }

@@ -31,6 +31,7 @@ struct Leaf<H: Host> {
     revision: u64,
     _subscription: gpui::Subscription,
     clock: Option<Task<()>>,
+    focus: FocusHandle,
 }
 
 fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) -> gpui::AnyElement {
@@ -63,6 +64,7 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
                 revision: 0,
                 _subscription: subscription,
                 clock: None,
+                focus: cx.focus_handle().tab_stop(true),
             }
         })
     });
@@ -96,7 +98,7 @@ pub(super) fn row<H: Host>(
 }
 
 impl<H: Host> Render for Leaf<H> {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.clock = None;
         let mut delay = None;
         let mut observed = std::mem::take(&mut self.observed);
@@ -124,7 +126,6 @@ impl<H: Host> Render for Leaf<H> {
                         let row = v.history().rows[*index];
                         let block = &v.history().projection.blocks[row.block];
                         let entry = v.history().row_entry(*index).unwrap();
-                        delay = next_relative_tick(entry.start.or(entry.end), now);
                         if *group && source_changed {
                             observed.extend(
                                 v.history().projection.activities[block.start..block.end]
@@ -135,15 +136,17 @@ impl<H: Host> Render for Leaf<H> {
                             if source_changed {
                                 observed.push(id.clone());
                             }
-                            if entry.state == "running" && entry.end.is_none() {
-                                delay = Some(
-                                    delay
-                                        .unwrap_or(Duration::from_secs(1))
-                                        .min(Duration::from_secs(1)),
-                                );
+                            if entry.state == "running"
+                                && entry.end.is_none()
+                                && matches!(
+                                    v.history().projection.activities[row.activity.unwrap()].kind,
+                                    Kind::Thinking | Kind::Wait
+                                )
+                            {
+                                delay = Some(Duration::from_secs(1));
                             }
                         }
-                        v.render_history_activity(*index, now, cx)
+                        v.render_history_activity(*index, now, self.focus.clone(), window, cx)
                             .into_any_element()
                     }
                 }
@@ -167,47 +170,5 @@ impl<H: Host> Render for Leaf<H> {
             }));
         }
         content
-    }
-}
-
-fn next_relative_tick(timestamp: Option<i64>, now: i64) -> Option<Duration> {
-    let age = now.saturating_sub(timestamp?);
-    let wait = if age < 0 {
-        age.saturating_neg()
-    } else if age < 5000 {
-        5000 - age
-    } else {
-        let unit = match age {
-            0..=59999 => 1000,
-            60000..=3599999 => 60000,
-            3600000..=86399999 => 3600000,
-            _ => 86400000,
-        };
-        unit - age % unit
-    };
-    Some(Duration::from_millis(wait.max(1) as u64))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{next_relative_tick, Duration};
-
-    #[test]
-    fn relative_clock_wakes_at_the_next_visible_boundary() {
-        for (age, delay) in [
-            (-1000, 1000),
-            (0, 5000),
-            (4900, 100),
-            (5500, 500),
-            (59999, 1),
-            (61000, 59000),
-            (3600000, 3600000),
-        ] {
-            assert_eq!(
-                next_relative_tick(Some(0), age),
-                Some(Duration::from_millis(delay))
-            );
-        }
-        assert_eq!(next_relative_tick(None, 1000), None);
     }
 }

@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 15,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -11,7 +11,7 @@
     {
       "id": "story-attachment",
       "role": "button",
-      "label": "查看附件 agent-avatar.svg",
+      "label": "查看附件 角色插图.svg",
       "enabled": true,
       "visible": true,
       "bounds": {

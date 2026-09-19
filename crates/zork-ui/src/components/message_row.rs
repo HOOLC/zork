@@ -161,6 +161,7 @@ impl Row<'_> {
             )
             .into_any_element();
         let prose = crate::components::message_preview::MessagePreview {
+            lines: None,
             body: prose,
             footer,
             width: width.max(1.),

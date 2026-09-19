@@ -22,7 +22,7 @@ fn fixture() -> Vec<Record> {
     let mut rows = vec![record(
         0,
         json!({"kind":"input_appended", "input":{
-        "input_id":"input-0", "request_id":"fixture-user-message", "content":"保留时间线，连续常规操作合并；等待独立显示。", "received_at_ms":NOW-90000}}),
+        "input_id":"input-0", "request_id":"fixture-user-message", "content":"查看执行历史，连续工具操作分组；等待独立显示。", "received_at_ms":NOW-90000}}),
     )];
     rows.push(record(
         1,
@@ -118,7 +118,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             view.benchmark_replace_messages(
                 vec![zork_gui::views::TranscriptLine::Message {
                     role: zork_gui::api::Role::User,
-                    content: "保留时间线，连续常规操作合并；等待独立显示。".into(),
+                    content: "查看执行历史，连续工具操作分组；等待独立显示。".into(),
                     metadata: serde_json::from_value(
                         json!({"id":"fixture-user-message","author_name":"测试用户"}),
                     )
@@ -150,6 +150,10 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         pump(cx)
     };
     pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     cx.capture_screenshot(window.into())?
         .save(out.join("initial.png"))?;
     std::fs::write(
@@ -161,8 +165,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     // page that loses its rows, its state or its disclosure fails here.
     let page = driver.snapshot(false);
     let older = page
-            .elements
-            .iter()
+        .elements
+        .iter()
         .find(|e| e.id == "history-older")
         .expect("the page state control is missing");
     anyhow::ensure!(!older.enabled, "an idle page offered paging");
@@ -170,7 +174,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         page.elements
             .iter()
             .filter(|e| e.id.starts_with("history-record-"))
-            .count() >= 3,
+            .count()
+            >= 3,
         "the page lost its records"
     );
     let disclosure_id = page
@@ -183,32 +188,30 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     let reply_id = page
         .elements
         .iter()
-        .find(|e| {
-            e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影")
-        })
+        .find(|e| e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影"))
         .expect("assistant reply is a history row")
         .id
         .clone();
     let reply_label = || {
-            driver
-                .snapshot(false)
-                .elements
-                .into_iter()
+        driver
+            .snapshot(false)
+            .elements
+            .into_iter()
             .find(|e| e.id == reply_id)
             .expect("assistant reply is a history row")
             .label
-        };
+    };
     let reply_before = reply_label();
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
     // Cue stamps the reply with an absolute clock, so the row holds still while
     // the page keeps ticking; a relative clock would rewrite the line.
-        anyhow::ensure!(
+    anyhow::ensure!(
         reply_label() == reply_before,
         "the reply row moved without new data: {reply_before} -> {}",
         reply_label()
-        );
+    );
     action(
         &mut cx,
         json!({"type":"click","target":{"element_id":disclosure_id}}),
@@ -217,23 +220,23 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     // clock sit below the fold there. Their state is what this checks, so read
     // the snapshot with hidden elements included.
     let expanded = driver.snapshot(true);
-        anyhow::ensure!(
+    anyhow::ensure!(
         expanded
-                .elements
-                .iter()
+            .elements
+            .iter()
             .any(|e| e.id == disclosure_id && e.label == "收起"),
         "the reply disclosure did not open"
-        );
+    );
     let clock = expanded
-                .elements
-                .iter()
+        .elements
+        .iter()
         .find(|e| e.id.starts_with("history-output-clock-"))
         .map(|e| e.label.clone())
         .expect("the expanded reply hid its absolute clock");
-        anyhow::ensure!(
+    anyhow::ensure!(
         clock.len() == 8 && clock.matches(":").count() == 2,
         "the record clock is not absolute wall time: {clock}"
-        );
+    );
     cx.capture_screenshot(window.into())?
         .save(out.join("expanded-reply.png"))?;
     // The expanded reply outgrows the narrow window, so its disclosure sits
@@ -252,7 +255,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     action(
         &mut cx,
         json!({"type":"click","target":{"element_id":disclosure_id}}),
-        )?;
+    )?;
     // An empty snapshot is a page state, not an error: no rows, no paging.
     root_view.update(&mut cx, |v, cx| v.benchmark_story_history(vec![], NOW, cx));
     pump(&mut cx)?;
@@ -271,8 +274,14 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .any(|e| e.id == "history-older" && !e.enabled),
         "the empty page lost its state"
     );
-    root_view.update(&mut cx, |v, cx| v.benchmark_story_history(fixture(), NOW, cx));
+    root_view.update(&mut cx, |v, cx| {
+        v.benchmark_story_history(fixture(), NOW, cx)
+    });
     pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     let snapshot = driver.snapshot(false);
     let bounds = |id: &str| {
         snapshot
@@ -345,9 +354,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     let reply = snapshot
         .elements
         .iter()
-        .find(|e| {
-            e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影")
-        })
+        .find(|e| e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影"))
         .expect("assistant reply is a history row");
     anyhow::ensure!(
         snapshot
@@ -369,11 +376,11 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .any(|e| e.id.starts_with("history-record-") && e.label.contains("已等待 15s")),
         "wait duration did not end on mailbox wake"
     );
-    if !snapshot
-        .elements
-        .iter()
-        .any(|e| e.id.starts_with("history-record-") && e.label.contains("history_empty_state"))
-    {
+    if !snapshot.elements.iter().any(|e| {
+        e.id.starts_with("history-record-")
+            && e.label.contains("cargo test --locked")
+            && e.label.contains("失败")
+    }) {
         action(
             &mut cx,
             json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":-400}),
@@ -384,7 +391,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .any(|e| e.id.starts_with("history-record-")
-                    && e.label.contains("history_empty_state")),
+                    && e.label.contains("cargo test --locked")
+                    && e.label.contains("失败")),
             "failed command was folded or unreachable"
         );
         cx.capture_screenshot(window.into())?
@@ -438,6 +446,24 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
                 && e.label.contains("rg -n history")
         })
         .expect("expanding the group revealed the invocation");
+    let ledger = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|e| e.id == "history-ledger")
+        .expect("history viewport")
+        .bounds;
+    // Expanding a group preserves its anchor, so a narrow viewport may leave
+    // the last child below the fold. Reach it with the same scroll as a user.
+    if shell.bounds.y + shell.bounds.height > ledger.y + ledger.height - 48.
+        || shell.bounds.y < ledger.y
+    {
+        action(
+            &mut cx,
+            json!({"type":"scroll","target":{"element_id":"history-ledger"},
+                "delta_y":ledger.y + ledger.height * 0.5 - shell.bounds.y - shell.bounds.height * 0.5}),
+        )?;
+    }
     cx.capture_screenshot(window.into())?
         .save(out.join("expanded.png"))?;
     action(
@@ -449,35 +475,19 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-detail-dialog"),
-        "details did not open"
+            .any(|e| e.id.starts_with("history-inline-detail-") && e.label.contains("matches")),
+        "tool details did not expand inline"
     );
     cx.capture_screenshot(window.into())?
         .save(out.join("details.png"))?;
-    action(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
-    let modal_state = cx.update_window(window.into(), |_, w, cx| {
-        root_view.read(cx).benchmark_history_modal(w, cx)
-    })?;
-    if driver
-        .snapshot(false)
-        .elements
-        .iter()
-        .any(|e| e.id == "history-detail-dialog")
-    {
-        cx.capture_screenshot(window.into())?
-            .save(out.join("failed-detail-escape.png"))?;
-        std::fs::write(
-            out.join("failed-detail-escape.json"),
-            serde_json::to_vec_pretty(&modal_state)?,
-        )?;
-    }
+    action(&mut cx, json!({"type":"key","keystroke":"enter"}))?;
     anyhow::ensure!(
         !driver
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-detail-dialog"),
-        "Escape did not close details: {modal_state}"
+            .any(|e| e.id.starts_with("history-inline-detail-")),
+        "Enter did not collapse the focused tool"
     );
     // Collapse first so the target stays in the compact viewport.
     action(
@@ -531,12 +541,24 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .map(|e| e.bounds.y)
             .ok_or_else(|| anyhow::anyhow!("anchor disappeared: {text}"))
     };
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
+    std::fs::write(
+        out.join("pagination-top.json"),
+        serde_json::to_vec_pretty(&driver.snapshot(true))?,
+    )?;
     let original_y = row_y("分页锚点 030")?;
     for start in [20, 10] {
         root_view.update(&mut cx, |v, cx| {
             v.benchmark_prepend_history(page_records(start), cx)
         });
         pump(&mut cx)?;
+        std::fs::write(
+            out.join(format!("pagination-{start}.json")),
+            serde_json::to_vec_pretty(&driver.snapshot(true))?,
+        )?;
         anyhow::ensure!(
             (row_y("分页锚点 030")? - original_y).abs() < 0.5,
             "paging from the top moved the existing record"
@@ -574,6 +596,10 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         v.benchmark_story_history(writes(false), NOW, cx)
     });
     pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     let write_y = row_y("anchor-file-1.txt")?;
     root_view.update(&mut cx, |v, cx| {
         v.benchmark_prepend_history(writes(true), cx)
@@ -688,7 +714,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     );
     anyhow::ensure!(
         live_page
-        .elements
+            .elements
             .iter()
             .all(|e| !e.id.starts_with("history-record-")),
         "an emptied source still painted records"

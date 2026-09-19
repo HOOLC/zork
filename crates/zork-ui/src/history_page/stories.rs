@@ -38,14 +38,18 @@ impl Story {
             if let Some(block) = projection.blocks.iter().find(|b| b.is_group()) {
                 expanded.insert(entries[projection.activities[block.start].entry].id.clone());
             }
-            // The demo reply is the only row that owns a Markdown body, so the
-            // expanded state reveals its disclosure and token breakdown.
-            if let Some(activity) = projection.activities.iter().find(|a| a.kind == Kind::Output) {
+            // The expanded story reveals the complete shared Markdown body.
+            if let Some(activity) = projection
+                .activities
+                .iter()
+                .find(|a| a.kind == Kind::Output)
+            {
                 output_expanded.insert(entries[activity.entry].id.clone());
             }
         }
         let rows = projection.rows(entries.iter(), &expanded);
-        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.));
+        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.))
+            .with_uniform_item_height(px(26.));
         let details = cx.new(|cx| Details::new(text.clone(), cx));
         cx.subscribe(&details, |v, _, _: &crate::history_details::Closed, cx| {
             v.presentation = None;
@@ -62,7 +66,8 @@ impl Story {
                 scroll,
                 fixed_now: fixture["history"]["now"].as_i64(),
                 ..Default::default()
-            },
+            }
+            .with_metrics(),
             text,
             details,
             presentation: None,
@@ -89,13 +94,12 @@ impl Host for Story {
         self.details.read(cx).source()
     }
     fn history_subject(&self, a: &Activity, _: &Entry) -> (Option<String>, Option<Jump>) {
-        use activity::Subject;
+        use crate::history::activity::Subject;
         match &a.subject {
             Some(Subject::Agent(id)) => (Some("产品领队".into()), Some(Jump::Agent(id.clone()))),
-            Some(Subject::Conversation) => (
-                Some("组件复用会话".into()),
-                Some(Jump::Conversation("demo".into())),
-            ),
+            Some(Subject::Conversation) => {
+                (Some("聊天".into()), Some(Jump::Conversation("demo".into())))
+            }
             Some(Subject::Invocation(id)) => {
                 (Some(id.clone()), Some(Jump::Entry(format!("tool:{id}"))))
             }
@@ -112,7 +116,7 @@ impl Host for Story {
                 self.paging.busy = false;
                 self.paging.loaded = true;
             }
-            Action::OpenEntry(id) | Action::Jump(Jump::Entry(id)) => {
+            Action::OpenEntry(id) | Action::Jump(Jump::File(id)) => {
                 self.presentation = self
                     .state
                     .entries
@@ -120,6 +124,12 @@ impl Host for Story {
                     .find(|e| e.id == id)
                     .cloned()
                     .map(Presentation::Entry);
+            }
+            Action::Jump(Jump::Entry(id)) => {
+                let index = self.state.entries.iter().position(|e| e.id == id);
+                if let Some(index) = index {
+                    self.history_select(index, cx);
+                }
             }
             Action::Jump(Jump::Agent(id)) => {
                 self.presentation = Some(Presentation::Agent {
@@ -138,15 +148,16 @@ impl Host for Story {
     }
     fn history_statistics(&mut self) -> Statistics {
         Statistics {
-            usage: model::usage::UsageSummary::new(self.state.entries.iter()),
-            complete: !self.paging.busy,
-            loaded: self.paging.loaded,
+            usage: self.state.loaded_usage.clone(),
+            calls: self.state.model_calls,
+            models: self.state.models.clone(),
             runtime: Runtime {
-                profile: Some("演示连接".into()),
-                model: Some("演示模型".into()),
-                thinking: Some("high".into()),
-                context_tokens: Some(32000),
-                context_limit: Some(128000),
+                name: "产品领队".into(),
+                avatar: Some("fox".into()),
+                role: Some("领队".into()),
+                environment: Some("Studio Mac".into()),
+                provider: Some("Codex".into()),
+                model: Some("gpt-5.4".into()),
                 ..Default::default()
             },
         }
@@ -165,6 +176,10 @@ impl Render for Story {
         });
         div()
             .size_full()
+            .font_family("Inter Variable")
+            .text_size(px(12.))
+            .line_height(px(18.))
+            .bg(rgb(CUE_UI.palette.canvas))
             .child(self.render_history_page(window, cx))
             .child(self.details.clone())
     }

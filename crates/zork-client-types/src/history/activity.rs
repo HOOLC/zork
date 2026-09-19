@@ -66,6 +66,24 @@ pub enum Routine {
     Edit(String),
     Shell,
     Query,
+    Thinking,
+    Other,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Details {
+    pub text: String,
+    pub command: String,
+    pub output: String,
+    pub files: Vec<File>,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct File {
+    pub path: String,
+    pub content: String,
+    pub previous: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +95,7 @@ pub struct Activity {
     pub summary: String,
     pub routine: Option<Routine>,
     pub requested_wait_ms: Option<i64>,
+    pub details: Details,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -86,6 +105,9 @@ pub struct Counts {
     pub edited: usize,
     pub shell: usize,
     pub queries: usize,
+    pub thinking: usize,
+    pub other: usize,
+    pub failed: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +119,8 @@ pub struct Block {
     pub start_at: Option<i64>,
     pub end_at: Option<i64>,
     pub running: bool,
+    /// Cue keeps the latest active operation outside the collapsed group.
+    pub active: Option<usize>,
 }
 impl Block {
     pub fn is_group(&self) -> bool {
@@ -129,6 +153,12 @@ impl Projection {
         let mut entry_to_block = vec![None; entries.len()];
         let mut start = 0;
         while start < activities.len() {
+            if activities[start].kind == Kind::End
+                && entries[activities[start].entry].state == "succeeded"
+            {
+                start += 1;
+                continue;
+            }
             let mut end = start + 1;
             if activities[start].routine.is_some() {
                 while end < activities.len() && activities[end].routine.is_some() {
@@ -143,7 +173,10 @@ impl Projection {
             let mut start_at = None;
             let mut end_at = None;
             let mut running = false;
-            for activity in &activities[start..end] {
+            let active = (start..end).rev().find(|&i| {
+                activities[i].routine.is_some() && entries[activities[i].entry].state == "running"
+            });
+            for (i, activity) in activities.iter().enumerate().take(end).skip(start) {
                 entry_to_block[activity.entry] = Some(blocks.len());
                 let entry = &entries[activity.entry];
                 if let Some(time) = entry.start.or(entry.end) {
@@ -153,6 +186,11 @@ impl Projection {
                     end_at = Some(end_at.map_or(time, |previous: i64| previous.max(time)));
                 }
                 running |= entry.state == "running";
+                if active == Some(i) {
+                    continue;
+                }
+                counts.failed +=
+                    usize::from(matches!(entry.state.as_str(), "failed" | "timed_out"));
                 match &activity.routine {
                     Some(Routine::Read(path)) => {
                         reads.insert(path);
@@ -165,6 +203,8 @@ impl Projection {
                     }
                     Some(Routine::Shell) => counts.shell += 1,
                     Some(Routine::Query) => counts.queries += 1,
+                    Some(Routine::Thinking) => counts.thinking += 1,
+                    Some(Routine::Other) => counts.other += 1,
                     None => {}
                 }
                 if labels.len() < 3 && !activity.summary.is_empty() {
@@ -182,6 +222,7 @@ impl Projection {
                 start_at,
                 end_at,
                 running,
+                active,
             });
             start = end;
         }
@@ -200,22 +241,33 @@ impl Projection {
         let entries = entries.into_iter().collect::<Vec<_>>();
         let mut rows = Vec::with_capacity(self.blocks.len());
         for (index, block) in self.blocks.iter().enumerate() {
-            if block.is_group() {
+            let grouped = block.end - block.start - usize::from(block.active.is_some());
+            if grouped > 1 {
                 rows.push(Row {
                     block: index,
                     activity: None,
                 });
                 let first = &entries[self.activities[block.start].entry];
                 if expanded.contains(&first.id) {
-                    rows.extend((block.start..block.end).map(|activity| Row {
-                        block: index,
-                        activity: Some(activity),
-                    }));
+                    rows.extend(
+                        (block.start..block.end)
+                            .filter(|i| Some(*i) != block.active)
+                            .map(|activity| Row {
+                                block: index,
+                                activity: Some(activity),
+                            }),
+                    );
                 }
-            } else {
+            } else if grouped == 1 {
                 rows.push(Row {
                     block: index,
-                    activity: Some(block.start),
+                    activity: (block.start..block.end).find(|i| Some(*i) != block.active),
+                });
+            }
+            if let Some(active) = block.active {
+                rows.push(Row {
+                    block: index,
+                    activity: Some(active),
                 });
             }
         }
@@ -298,6 +350,12 @@ fn slack_subject(args: &Value) -> Option<Subject> {
 }
 
 fn project(index: usize, entry: &Entry) -> Option<Activity> {
+    let mut activity = project_summary(index, entry)?;
+    activity.details = details(entry, &activity);
+    Some(activity)
+}
+
+fn project_summary(index: usize, entry: &Entry) -> Option<Activity> {
     let args = arguments(entry).unwrap_or(&Value::Null);
     let mut result = Activity {
         entry: index,
@@ -306,18 +364,20 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
         summary: preview(&entry.summary),
         routine: None,
         requested_wait_ms: None,
+        details: Details::default(),
     };
     if entry.lane == 1 {
         // The model lane is the assistant's own reply. A failed step is an
         // error; a completed step with text is the session output; a call that
         // is still running without text reads as the live thinking row.
         if matches!(entry.state.as_str(), "failed" | "timed_out") {
-        result.kind = Kind::Error;
+            result.kind = Kind::Error;
         } else if entry.state == "succeeded" && !result.summary.is_empty() {
             result.kind = Kind::Output;
             result.summary = model_text(&entry.summary);
         } else if entry.state == "running" && result.summary.is_empty() {
             result.kind = Kind::Thinking;
+            result.routine = Some(Routine::Thinking);
         } else {
             return None;
         }
@@ -379,11 +439,10 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
         return Some(result);
     }
     if entry.lane != 2 {
-        result.kind = if entry.action.ends_with("failed") || entry.action == "runtime_fault" {
-            Kind::Error
-        } else {
-            Kind::Notice
-        };
+        if !(entry.action.ends_with("failed") || entry.action == "runtime_fault") {
+            return None;
+        }
+        result.kind = Kind::Error;
         return Some(result);
     }
     let conversation = Some(Subject::Conversation);
@@ -483,70 +542,135 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
     result.subject = subject;
     if let Some(body) = body {
         result.summary = preview(&body);
-    } else if arguments(entry).is_some() {
+    } else {
         // Tools without a user-facing body should not show their argument JSON
         // as prose. Their real result/status remains available in the detail.
         result.summary = String::new();
     }
-    if matches!(entry.state.as_str(), "failed" | "timed_out" | "cancelled") {
-        if let Some(outcome) = entry.outcome_summary.as_ref().filter(|s| !s.is_empty()) {
-            result.summary = preview(outcome);
+    // Group ordinary tools regardless of their outcome. Failure counts remain
+    // visible on the heading and the latest active member stays outside it.
+    result.routine = match kind {
+        Kind::Read => field(args, "path").map(|p| {
+            if p.starts_with("zork://history/") {
+                Routine::Query
+            } else {
+                Routine::Read(p)
+            }
+        }),
+        Kind::Write => field(args, "path").map(Routine::Write),
+        Kind::Edit => field(args, "path").map(Routine::Edit),
+        Kind::Help | Kind::History | Kind::ChatHistory | Kind::Workers | Kind::Tasks => {
+            Some(Routine::Query)
         }
-    }
-    // Unknown, unfinished, failed, externally visible, and waiting operations
-    // are never swallowed by a routine group.
-    if entry.state == "succeeded" {
-        result.routine = match kind {
-            Kind::Read => field(args, "path").map(|p| {
-                if p.starts_with("zork://history/") {
-                    Routine::Query
-                } else {
-                    Routine::Read(p)
-                }
-            }),
-            Kind::Write => field(args, "path").map(Routine::Write),
-            Kind::Edit => field(args, "path").map(Routine::Edit),
-            Kind::Help | Kind::History | Kind::ChatHistory | Kind::Workers | Kind::Tasks => {
-                Some(Routine::Query)
-            }
-            Kind::Shell if args["command"].as_str().is_some_and(routine_command) => {
-                Some(Routine::Shell)
-            }
-            _ => None,
-        };
-    }
+        Kind::Shell => Some(Routine::Shell),
+        Kind::UnknownTool | Kind::Cancel | Kind::Job => Some(Routine::Other),
+        _ => None,
+    };
     Some(result)
 }
 
-/// Only known simple inspection commands are eligible. A successful shell tool
-/// is not in itself low importance (tests, installs and deployments stay visible).
-pub fn routine_command(command: &str) -> bool {
-    if command.chars().any(|c| {
-        matches!(
-            c,
-            '\n' | '\r' | ';' | '&' | '|' | '>' | '<' | '`' | '$' | '(' | ')' | '\\'
-        )
-    }) {
-        return false;
+/// Only named public fields become prose. Arbitrary JSON stays out of the UI.
+fn readable(value: &Value) -> String {
+    if let Some(text) = value.as_str() {
+        if text.trim_start().starts_with(['{', '[']) {
+            if text.len() > 128_000 {
+                return String::new();
+            }
+            return serde_json::from_str::<Value>(text)
+                .ok()
+                .map(|v| readable(&v))
+                .unwrap_or_default();
+        }
+        return model_text(text);
     }
-    let words: Vec<_> = command.split_whitespace().collect();
-    if words.iter().any(|w| {
-        w.contains("--pre")
-            || w.starts_with("--exec")
-            || w.starts_with("--output")
-            || w.starts_with("--ext-diff")
-            || w.starts_with("--textconv")
-    }) {
-        return false;
+    ["text", "message", "summary", "content", "error"]
+        .into_iter()
+        .find_map(|key| value[key].as_str())
+        .map(model_text)
+        .unwrap_or_default()
+}
+
+fn details(entry: &Entry, activity: &Activity) -> Details {
+    let args = arguments(entry).unwrap_or(&Value::Null);
+    let output = entry
+        .raw
+        .iter()
+        .rev()
+        .find_map(|r| (r["event"]["kind"] == "tool_result").then(|| &r["event"]["result"]["data"]))
+        .unwrap_or(&Value::Null);
+    let mut detail = Details::default();
+    match activity.kind {
+        Kind::Input => {
+            detail.text = incoming_envelope(&entry.summary)
+                .and_then(|v| field(&v, "text"))
+                .unwrap_or_else(|| entry.summary.clone());
+            if matches!(activity.subject, Some(Subject::Agent(_) | Subject::User)) {
+                if let Ok(payload) = serde_json::from_str::<Value>(&entry.summary) {
+                    if payload["event"] == "worker_result" {
+                        detail.text = field(&payload, "result").unwrap_or(detail.text);
+                    }
+                } else if let Some((_, body)) = entry.summary.split_once("):\n") {
+                    detail.text = body
+                        .split_once("\n\nReview this comment in the context of the Task.")
+                        .map_or(body, |(content, _)| content)
+                        .to_owned();
+                }
+            }
+        }
+        Kind::Output | Kind::Error | Kind::Notice => detail.text = entry.summary.clone(),
+        Kind::Shell => {
+            detail.command = field(args, "command").unwrap_or_default();
+            detail.output = [output["stdout"].as_str(), output["stderr"].as_str()]
+                .into_iter()
+                .flatten()
+                .map(model_text)
+                .collect::<Vec<_>>()
+                .join("\n");
+            if detail.output.is_empty() {
+                detail.output = readable(output);
+            }
+        }
+        Kind::Read | Kind::Write | Kind::Edit => {
+            let content = if activity.kind == Kind::Read {
+                output
+                    .as_str()
+                    .or_else(|| output["content"].as_str())
+                    .map(model_text)
+                    .unwrap_or_default()
+            } else {
+                field(args, "content")
+                    .or_else(|| field(args, "new"))
+                    .unwrap_or_default()
+            };
+            if let Some(path) = field(args, "path") {
+                if !content.is_empty() {
+                    detail.files.push(File {
+                        path,
+                        content: model_text(&content),
+                        previous: field(args, "old").map(|s| model_text(&s)),
+                    });
+                }
+            }
+            if detail.files.is_empty() {
+                detail.output = readable(output);
+            }
+        }
+        Kind::SendMessage | Kind::Notify => detail.text = field(args, "text").unwrap_or_default(),
+        Kind::SendFile => detail.text = field(args, "initial_comment").unwrap_or_default(),
+        Kind::Assign | Kind::Rework => detail.text = field(args, "goal").unwrap_or_default(),
+        Kind::Wait => detail.text = field(args, "reason").unwrap_or_default(),
+        _ => detail.text = readable(output),
     }
-    match words.first().copied() {
-        Some("pwd" | "ls" | "rg" | "grep" | "cat" | "head" | "tail" | "wc") => true,
-        Some("git") => matches!(
-            words.get(1).copied(),
-            Some("status" | "diff" | "log" | "show" | "ls-files")
-        ),
-        _ => false,
+    if matches!(entry.state.as_str(), "failed" | "timed_out") && detail.output.is_empty() {
+        detail.output = readable(output);
     }
+    detail.truncated = [&detail.text, &detail.command, &detail.output]
+        .into_iter()
+        .any(|s| s.chars().count() > MODEL_TEXT_LIMIT);
+    detail.text = model_text(&detail.text);
+    detail.command = model_text(&detail.command);
+    detail.output = model_text(&detail.output);
+    detail
 }
 
 /// Station's current IM envelope. Do not guess a sender from arbitrary prose.

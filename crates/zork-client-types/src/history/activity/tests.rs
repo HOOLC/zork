@@ -131,7 +131,11 @@ fn assistant_replies_read_as_model_rows_and_failures_stay_errors() {
         ]
     );
     // Replies are never folded into a routine group and have no destination.
-    assert!(p.activities.iter().all(|a| a.routine.is_none()));
+    assert!(p
+        .activities
+        .iter()
+        .filter(|a| a.kind == Kind::Output)
+        .all(|a| a.routine.is_none()));
     assert!(p.activities.iter().all(|a| a.subject.is_none()));
     assert_eq!(p.blocks.len(), p.activities.len());
 }
@@ -151,7 +155,10 @@ fn model_replies_are_bounded_like_the_disclosure_they_render() {
     let projection = Projection::new(&entries);
     assert_eq!(projection.activities.len(), 1);
     assert_eq!(projection.activities[0].kind, Kind::Output);
-    assert_eq!(projection.activities[0].summary.chars().count(), MODEL_TEXT_LIMIT);
+    assert_eq!(
+        projection.activities[0].summary.chars().count(),
+        MODEL_TEXT_LIMIT
+    );
 }
 
 #[test]
@@ -200,22 +207,22 @@ fn routine_groups_count_files_per_operation_and_stop_at_important_events() {
     ));
     let entries = entries(&records);
     let p = Projection::new(&entries);
-    assert_eq!(p.blocks.len(), 3);
+    assert_eq!(p.blocks.len(), 1);
     assert_eq!(
         p.blocks[0].counts,
         Counts {
             written: 1,
             edited: 1,
             queries: 1,
-            shell: 1,
-            read: 0
+            shell: 2,
+            read: 1,
+            failed: 1,
+            ..Default::default()
         }
     );
-    assert_eq!(p.blocks[0].end, 4);
-    assert!(!p.blocks[1].is_group());
-    assert!(!p.blocks[2].is_group());
+    assert_eq!(p.blocks[0].end, 6);
     let collapsed = p.rows(&entries, &HashSet::new());
-    assert_eq!(collapsed.len(), 3);
+    assert_eq!(collapsed.len(), 1);
     let first_id = entries[p.activities[0].entry].id.clone();
     let expanded = p.rows(&entries, &HashSet::from([first_id]));
     assert_eq!(expanded.len(), 7);
@@ -225,27 +232,32 @@ fn routine_groups_count_files_per_operation_and_stop_at_important_events() {
 }
 
 #[test]
-fn commands_with_side_effects_or_shell_control_stay_visible() {
-    for cmd in [
-        "cargo test",
-        "pnpm install",
-        "git push",
-        "rg --pre=evil foo",
-        "ls; rm x",
-        "cat x > y",
-        "git diff --output=x",
-        "rg foo $(touch x)",
-    ] {
-        assert!(!routine_command(cmd), "{cmd}");
-    }
-    for cmd in [
-        "ls -la",
-        "pwd",
-        "rg -n 'history' crates",
-        "git status --short",
-    ] {
-        assert!(routine_command(cmd), "{cmd}");
-    }
+fn latest_running_operation_stays_outside_the_collapsed_group() {
+    let mut records = tool("read", "file.read", json!({"path":"a"}), "succeeded", 1);
+    records.extend(tool(
+        "test",
+        "shell.run",
+        json!({"command":"cargo test"}),
+        "failed",
+        3,
+    ));
+    records.extend(tool(
+        "live",
+        "shell.run",
+        json!({"command":"pnpm install"}),
+        "running",
+        5,
+    ));
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    let rows = p.rows(&entries, &HashSet::new());
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].activity.is_none());
+    assert_eq!(
+        entries[p.activities[rows[1].activity.unwrap()].entry].id,
+        "tool:live"
+    );
+    assert_eq!(p.blocks[0].counts.failed, 1);
 }
 
 #[test]
@@ -347,8 +359,10 @@ fn every_current_registered_tool_has_a_semantic_presentation() {
         assert_eq!(p.activities.len(), 1, "{name}");
         assert_ne!(p.activities[0].kind, Kind::UnknownTool, "{name}");
         assert!(
-            p.activities[0].routine.is_none(),
-            "running {name} was folded"
+            p.rows(&entries, &HashSet::new())
+                .iter()
+                .any(|row| row.activity == Some(0)),
+            "running {name} must remain visible"
         );
     }
 }
@@ -385,9 +399,10 @@ fn prepending_into_a_group_keeps_a_previously_standalone_reading_row_visible() {
     let p = Projection::new(&entries);
     let expanded = p.restore_expansion(&entries, &HashSet::new(), Some("tool:b"));
     assert_eq!(expanded, HashSet::from(["tool:a".to_owned()]));
-    assert!(p.rows(&entries, &expanded).iter().any(|row| row
-        .activity
-        .is_some_and(|a| entries[p.activities[a].entry].id == "tool:b")));
+    assert!(p.rows(&entries, &expanded).iter().any(|row| {
+        row.activity
+            .is_some_and(|a| entries[p.activities[a].entry].id == "tool:b")
+    }));
     // A collapsed group stays collapsed when no individual row is being read.
     assert!(p
         .restore_expansion(&entries, &HashSet::new(), None)
@@ -462,8 +477,74 @@ fn prepending_history_keeps_group_expansion_anchor_and_unknown_tools_visible() {
     ));
     let entries = entries(&all);
     let p = Projection::new(&entries);
-    assert_eq!(p.blocks.len(), 2);
+    assert_eq!(p.blocks.len(), 1);
     assert_eq!(p.blocks[0].counts.read, 2);
+    assert_eq!(p.blocks[0].counts.other, 1);
     assert_eq!(p.activities.last().unwrap().kind, Kind::UnknownTool);
-    assert!(p.activities.last().unwrap().routine.is_none());
+    assert_eq!(p.activities.last().unwrap().routine, Some(Routine::Other));
+}
+
+#[test]
+fn inline_details_keep_command_output_and_structured_file_bytes_out_of_labels() {
+    let mut records = tool(
+        "shell",
+        "shell.run",
+        json!({"command":"pnpm test"}),
+        "failed",
+        1,
+    );
+    records[1].event["result"]["data"] = json!({"stdout":"seven passed\n", "stderr":"one failed"});
+    records.extend(tool(
+        "read",
+        "file.read",
+        json!({"path":"config.json"}),
+        "succeeded",
+        3,
+    ));
+    records[3].event["result"]["data"] = json!({"content":"{\"enabled\":true}"});
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    assert_eq!(p.activities[0].summary, "pnpm test");
+    assert_eq!(p.activities[0].details.command, "pnpm test");
+    assert!(p.activities[0].details.output.contains("one failed"));
+    assert_eq!(
+        p.activities[1].details.files[0].content,
+        "{\"enabled\":true}"
+    );
+    assert!(!p.activities[1].summary.contains("enabled"));
+}
+
+#[test]
+fn accepted_end_splits_groups_without_an_extra_visible_record() {
+    let mut records = tool(
+        "a",
+        "shell.run",
+        json!({"command":"cargo test"}),
+        "succeeded",
+        1,
+    );
+    records.extend(tool(
+        "b",
+        "shell.run",
+        json!({"command":"pnpm test"}),
+        "succeeded",
+        3,
+    ));
+    records.extend(tool("end", "end", json!({}), "succeeded", 5));
+    records.extend(tool(
+        "c",
+        "shell.run",
+        json!({"command":"cargo test"}),
+        "succeeded",
+        7,
+    ));
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    let rows = p.rows(&entries, &HashSet::new());
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].activity.is_none());
+    assert_eq!(
+        p.activities[rows[1].activity.unwrap()].summary,
+        "cargo test"
+    );
 }

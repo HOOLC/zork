@@ -246,12 +246,11 @@ impl Element for RetainedText {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        self.0
-            .borrow_mut()
-            .element
-            .as_mut()
-            .unwrap()
-            .prepaint(id, inspector, bounds, request, window, cx)
+        let mut state = self.0.borrow_mut();
+        let element = state.element.as_mut().unwrap();
+        let result = element.prepaint(id, inspector, bounds, request, window, cx);
+        super::super::message_preview::record_lines(element.layout());
+        result
     }
     fn paint(
         &mut self,

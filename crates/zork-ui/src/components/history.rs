@@ -44,6 +44,7 @@ pub fn activity_accent(kind: Kind) -> bool {
 /// Shared history geometry. The host resolves labels and destinations; no
 /// network, identity lookup or argument parsing occurs during row rendering.
 pub struct ActivityHeader {
+    pub focus: gpui::FocusHandle,
     /// A model reply carries only its Markdown document: it gets no icon box
     /// and no label, so the whole line is absent.
     pub icon: Option<&'static str>,
@@ -73,28 +74,33 @@ pub struct ActivityHeader {
 pub fn activity_header<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    cx: &Context<V>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    activity_header_sources(id, header, (None, None), cx, open, navigate)
+    activity_header_sources(id, header, (None, None), window, cx, open, navigate)
 }
 
 pub fn activity_header_sources<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    sources: (Option<crate::components::liquid::overlay::SourceBinding>, Option<crate::components::liquid::overlay::SourceBinding>),
-    cx: &Context<V>,
+    sources: (
+        Option<crate::components::liquid::overlay::SourceBinding>,
+        Option<crate::components::liquid::overlay::SourceBinding>,
+    ),
+    _window: &mut gpui::Window,
+    cx: &mut Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
     let face = header.action.clone();
     let icon = header.icon;
     let open = std::rc::Rc::new(open);
-    let keyboard_open = open.clone();
     let navigate = std::rc::Rc::new(navigate);
-    let keyboard_navigate = navigate.clone();
     let id = id.into();
+    let focus = header.focus.clone();
+    let click_focus = focus.clone();
     let spinner = format!("history-spinner-{id:?}");
     let accessible = format!(
         "{} {} {} {}",
@@ -108,8 +114,10 @@ pub fn activity_header_sources<V: 'static>(
     // Cue accents an activity label and leaves an operation label tertiary.
     let label_color = if header.accent {
         header.color
+    } else if !header.tail && !header.group_summary {
+        0x4C4C4C
     } else {
-        CUE_UI.palette.subtle
+        0x5E5E5E
     };
     // `.cue-session-icon` is tertiary; an accent row tints it with the action
     // colour, a failed tool paints it error and a live row without an activity
@@ -119,38 +127,37 @@ pub fn activity_header_sources<V: 'static>(
     } else if header.accent {
         header.color
     } else if header.live {
-        CUE_UI.palette.text
+        0x1B1B1B
     } else {
-        CUE_UI.palette.subtle
+        0x5E5E5E
     };
     let status_color = if header.failed {
         ACTIVITY_ERROR_COLOR
     } else {
-        CUE_UI.palette.subtle
+        0x5E5E5E
     };
     div()
         .id(id)
-        .focusable()
+        .track_focus(&focus)
         .tab_stop(true)
         .flex()
         .items_center()
         .gap(px(8.))
         .w_full()
-        .min_h(px(26.))
+        .min_h(px(if header.tail || header.group_summary {
+            26.
+        } else {
+            30.
+        }))
         .min_w_0()
         .text_size(px(12.))
-        .text_color(rgb(CUE_UI.palette.muted))
+        .text_color(rgb(0x4C4C4C))
         .cursor_pointer()
         .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
-        .on_click(cx.listener(move |v, _, window, cx| open(v, window, cx)))
-        .on_key_down(
-            cx.listener(move |v, event: &gpui::KeyDownEvent, window, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    cx.stop_propagation();
-                    keyboard_open(v, window, cx);
-                }
-            }),
-        )
+        .on_click(cx.listener(move |v, _, window, cx| {
+            window.focus(&click_focus, cx);
+            open(v, window, cx);
+        }))
         .when_some(icon, |v, path| {
             v.child(
                 div()
@@ -200,7 +207,9 @@ pub fn activity_header_sources<V: 'static>(
                 .child(header.action),
             // `.cue-session-label` is `flex: none` at 11px, medium when accented.
             false => div()
-                .flex_shrink_0()
+                .min_w_0()
+                .when(header.tail, |v| v.flex_shrink_0())
+                .when(!header.tail, |v| v.truncate())
                 .text_size(px(11.))
                 .font_weight(if header.accent {
                     FontWeight::MEDIUM
@@ -215,7 +224,7 @@ pub fn activity_header_sources<V: 'static>(
         .when(header.chevron, |v| {
             v.child(
                 crate::controls::icon("cue/chevron-down.svg", 12.)
-                    .text_color(rgb(CUE_UI.palette.subtle))
+                    .text_color(rgb(0x5E5E5E))
                     .flex_shrink_0(),
             )
         })
@@ -226,9 +235,9 @@ pub fn activity_header_sources<V: 'static>(
                 .min_w_0()
                 .text_size(px(11.))
                 .text_color(rgb(if header.clickable_subject {
-                    CUE_UI.palette.text
+                    0x1B1B1B
                 } else {
-                    CUE_UI.palette.muted
+                    0x4C4C4C
                 }))
                 .truncate()
                 .child(text);
@@ -247,17 +256,21 @@ pub fn activity_header_sources<V: 'static>(
                         cx.stop_propagation();
                         navigate(v, window, cx);
                     }))
-                    .on_key_down(cx.listener(
-                        move |v, event: &gpui::KeyDownEvent, window, cx| {
-                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                cx.stop_propagation();
-                                keyboard_navigate(v, window, cx);
-                            }
-                        },
-                    ))
                     .map(|subject| match sources.1 {
-                        Some(source) => source.bind(subject, subject_label.clone(), crate::controls::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, subject_label).into_any_element(),
-                        None => subject.automation(AutomationRole::Button, subject_label).into_any_element(),
+                        Some(source) => source
+                            .bind(
+                                subject,
+                                subject_label.clone(),
+                                crate::controls::ActionStyle {
+                                    quiet: true,
+                                    ..Default::default()
+                                },
+                            )
+                            .automation(AutomationRole::Button, subject_label)
+                            .into_any_element(),
+                        None => subject
+                            .automation(AutomationRole::Button, subject_label)
+                            .into_any_element(),
                     }),
             )
         })
@@ -267,13 +280,14 @@ pub fn activity_header_sources<V: 'static>(
             if header.tail {
                 return v.child(
                     div()
+                        .relative()
                         .flex()
                         .flex_shrink(1.)
                         .min_w_0()
                         .overflow_hidden()
                         .justify_end()
                         .text_size(px(12.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(0x4C4C4C))
                         .child(
                             div()
                                 .flex_none()
@@ -281,14 +295,21 @@ pub fn activity_header_sources<V: 'static>(
                                 .pl(px(12.))
                                 .whitespace_nowrap()
                                 .child(header.summary),
-                        ),
+                        )
+                        .child(div().absolute().left_0().top_0().bottom_0().w(px(12.)).bg(
+                            gpui::linear_gradient(
+                                90.,
+                                gpui::linear_color_stop(rgb(0xFFFFFF), 0.),
+                                gpui::linear_color_stop(rgba(0xFFFFFF00), 1.),
+                            ),
+                        )),
                 );
             }
             v.child(
                 div()
                     .min_w_0()
                     .text_size(px(11.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(0x4C4C4C))
                     .truncate()
                     .child(header.summary),
             )
@@ -302,10 +323,30 @@ pub fn activity_header_sources<V: 'static>(
                     .child(text),
             )
         })
-         .map(|header| match sources.0 {
-            Some(source) => source.bind(header, face, crate::controls::ActionStyle { quiet: true, icon, ..Default::default() }).automation(AutomationRole::Button, accessible).into_any_element(),
-            None => header.automation(AutomationRole::Button, accessible).into_any_element(),
+        .map(|header| match sources.0 {
+            Some(source) => source
+                .bind(
+                    header,
+                    face,
+                    crate::controls::ActionStyle {
+                        quiet: true,
+                        icon,
+                        ..Default::default()
+                    },
+                )
+                .automation(AutomationRole::Button, accessible)
+                .into_any_element(),
+            None => header
+                .automation(AutomationRole::Button, accessible)
+                .into_any_element(),
         })
+}
+
+pub fn focus_for(id: String, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::FocusHandle {
+    window
+        .use_keyed_state(id, cx, |_, cx| cx.focus_handle().tab_stop(true))
+        .read(cx)
+        .clone()
 }
 pub fn color(entry: &Entry) -> u32 {
     if matches!(entry.state.as_str(), "failed" | "timed_out") {

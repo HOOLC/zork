@@ -329,25 +329,28 @@ fn row(entry: &Entry, metadata: &state::DeviceData, session: &str) -> Value {
         "kind":activity.map(|a| a.kind),
         "subject":activity.and_then(|a| a.subject.as_ref()).map(|subject| subject_value(subject, metadata, session)),
         "requested_wait_ms":activity.and_then(|a| a.requested_wait_ms),
-        "preview":activity.map(|a| a.summary.clone()).unwrap_or_else(|| activity::preview(&entry.summary)),
+        "preview":activity::preview(activity.map_or(entry.summary.as_str(), |a| a.summary.as_str())),
         "start":entry.start,"end":entry.end,"model":entry.model})
 }
 
 fn blocks(entries: &List<Entry>) -> Value {
     let projection = activity::Projection::new(entries.iter());
     json!(projection
-        .blocks
+        .rows(entries.iter(), &Default::default())
         .iter()
-        .map(|block| {
-            let members = projection.activities[block.start..block.end]
-                .iter()
-                .map(|a| entries[a.entry].id.as_str())
+        .map(|row| {
+            let block = &projection.blocks[row.block];
+            let members = (block.start..block.end)
+                .filter(|&i| row.activity.map_or(Some(i) != block.active, |a| i == a))
+                .map(|i| entries[projection.activities[i].entry].id.as_str())
                 .collect::<Vec<_>>();
-            json!({"id":members[0],"members":members,"grouped":block.is_group(),
+            let entry = row.activity.map(|i| &entries[projection.activities[i].entry]);
+            json!({"id":members[0],"members":members,"grouped":row.activity.is_none(),
             "summary":block.summary,"read":block.counts.read,"written":block.counts.written,
             "edited":block.counts.edited,
             "shell":block.counts.shell,"queries":block.counts.queries,
-            "start":block.start_at,"end":block.end_at})
+            "thinking":block.counts.thinking,"other":block.counts.other,"failed":block.counts.failed,
+            "start":entry.map_or(block.start_at, |e| e.start),"end":entry.map_or(block.end_at, |e| e.end)})
         })
         .collect::<Vec<_>>())
 }
@@ -428,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn reading_groups_share_the_native_rules_and_leave_waits_errors_and_unknown_tools_visible() {
+    fn reading_groups_share_native_counts_and_keep_live_activity_outside_collapsed_groups() {
         let entry = |id: &str, tool: &str, arguments: Value, state: &str| Entry {
             id: id.into(),
             lane: 2,
@@ -462,21 +465,53 @@ mod tests {
                 lane: 1,
                 ..entry("model", "model", json!({}), "succeeded")
             },
+            Entry {
+                lane: 1,
+                end: None,
+                ..entry("thinking", "model", json!({}), "running")
+            },
+            Entry {
+                lane: 1,
+                summary: format!("## Reply\n{}", "答复".repeat(1000)),
+                ..entry("output", "model", json!({}), "succeeded")
+            },
+            Entry {
+                lane: 0,
+                summary: "Hello".into(),
+                ..entry("input", "input", json!({}), "received")
+            },
         ]
         .into();
         let groups = blocks(&entries);
         let groups = groups.as_array().unwrap();
-        assert_eq!(groups.len(), 5);
+        assert_eq!(groups.len(), 6);
         assert_eq!(groups[0]["members"].as_array().unwrap().len(), 6);
         assert_eq!(groups[0]["read"], 1);
         assert_eq!(groups[0]["written"], 1);
         assert_eq!(groups[0]["edited"], 1);
         assert_eq!(groups[0]["shell"], 1);
         assert_eq!(groups[0]["queries"], 1);
-        assert!(groups[1..].iter().all(|g| g["grouped"] == false));
+        assert_eq!(groups[1]["members"], json!(["wait"]));
+        assert_eq!(groups[2]["grouped"], true);
+        assert_eq!(groups[2]["members"], json!(["test", "error", "custom"]));
+        assert_eq!(groups[2]["failed"], 1);
+        assert_eq!(groups[2]["other"], 1);
+        assert_eq!(groups[3]["members"], json!(["thinking"]));
+        assert!(groups[3]["end"].is_null());
+        assert_eq!(groups[4]["members"], json!(["output"]));
+        assert_eq!(groups[5]["members"], json!(["input"]));
+        assert!(groups[3..].iter().all(|g| g["grouped"] == false));
         let model = row(&entries[10], &state::DeviceData::default(), "chat");
         assert_eq!(model["visible"], false);
         assert_eq!(model["lane"], 1, "model calls remain on the timeline");
+        for (entry, kind) in entries.iter().skip(11).zip(["thinking", "output", "input"]) {
+            let value = row(entry, &state::DeviceData::default(), "chat");
+            assert_eq!(value["kind"], kind);
+            assert_eq!(value["visible"], true);
+        }
+        let output = row(&entries[12], &state::DeviceData::default(), "chat");
+        assert!(output["preview"].as_str().unwrap().chars().count() <= 513);
+        assert_eq!(detail(&entries[12])["summary"], entries[12].summary);
         assert!(subject_value(
             &activity::Subject::Agent("missing".into()),
             &state::DeviceData::default(),
