@@ -33,6 +33,7 @@ describe.sequential("zork update", () => {
     await new Promise<void>((resolve) => server.listen(path.join(root, "run/sup.sock"), resolve));
     cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
     const command = spawnBinary("zork", { cwd: brokerRoot, args: ["update", "--data", root] });
+    cleanups.push(() => stopChild(command));
     let stderr = "";
     command.stderr?.on("data", (data) => {
       stderr += data.toString();
@@ -42,7 +43,10 @@ describe.sequential("zork update", () => {
     expect(code).not.toBe(0);
     expect(stderr).toContain("restart the zork supervisor once");
     expect(commands).toEqual(["status"]);
-  });
+    // This checks refusal before reload, not startup performance. A fresh macOS
+    // executable can take several seconds to enter the protocol's own 5s wait;
+    // the separate critical startup gate retains its 100ms product budget.
+  }, 15_000);
 
   it("restarts Station and its embedded Agent without restarting the supervisor", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "zork-update-e2e-"));
