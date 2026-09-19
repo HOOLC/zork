@@ -19,13 +19,16 @@ async fn binary_serves_readyz_and_shuts_down_cleanly() {
     )
     .unwrap();
 
+    let log_path = root.path().join("agent.log");
+    let log = std::fs::File::create(&log_path).unwrap();
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
     let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_zork-agent"))
         .arg("--data")
         .arg(&data_root)
         .arg("--fake-agent")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(log))
         .kill_on_drop(true)
         .spawn()
         .unwrap();
@@ -33,7 +36,13 @@ async fn binary_serves_readyz_and_shuts_down_cleanly() {
     let base_url = format!("http://127.0.0.1:{port}");
     let ready = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(response) = reqwest::get(format!("{base_url}/readyz")).await {
+            if let Some(status) = child.try_wait().unwrap() {
+                panic!(
+                    "zork-agent exited {status}: {}",
+                    std::fs::read_to_string(&log_path).unwrap_or_default()
+                );
+            }
+            if let Ok(response) = client.get(format!("{base_url}/readyz")).send().await {
                 if response.status().is_success() {
                     break response;
                 }
@@ -42,7 +51,12 @@ async fn binary_serves_readyz_and_shuts_down_cleanly() {
         }
     })
     .await
-    .expect("zork-agent became ready");
+    .unwrap_or_else(|error| {
+        panic!(
+            "zork-agent did not become ready: {error}; {}",
+            std::fs::read_to_string(&log_path).unwrap_or_default()
+        )
+    });
     assert_eq!(
         ready.json::<serde_json::Value>().await.unwrap()["service"],
         "zork-agent"
