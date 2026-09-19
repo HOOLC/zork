@@ -11,8 +11,8 @@ packages=(--workspace --exclude zork-gui --exclude zork-browser-runtime --exclud
           --features zork-client-core/desktop)
 
 build() {
-  cargo build --locked "${packages[@]}" --bins
-  cargo test --locked "${packages[@]}" --lib --tests --no-fail-fast --no-run
+  # One target selection unifies development features for programs and tests.
+  cargo build --locked "${packages[@]}" --lib --bins --tests
 }
 
 tests() {

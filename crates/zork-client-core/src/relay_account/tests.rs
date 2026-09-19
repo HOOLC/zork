@@ -15,10 +15,11 @@ fn saved(origin: &str, expires: i64) -> RelaySession {
         pending_refresh: None,
     }
 }
-fn save(root: &Path, current: Option<RelaySession>) {
-    let _lock = storage::try_lock(root).unwrap().unwrap();
+async fn save(root: &Path, current: RelaySession) {
+    let account = Account::new(root, &current.origin).unwrap();
+    let _lock = account.lock().await.unwrap();
     let file = AccountFile {
-        current,
+        current: Some(current),
         ..Default::default()
     };
     storage::write(root, &file).unwrap();
@@ -28,8 +29,9 @@ async fn credentials_never_follow_an_origin_change() {
     let root = tempfile::tempdir().unwrap();
     save(
         root.path(),
-        Some(saved("https://old.example", storage::now() + 300)),
-    );
+        saved("https://old.example", storage::now() + 300),
+    )
+    .await;
     let account = Account::new(root.path(), "https://new.example").unwrap();
     assert!(account.cached_access().unwrap().is_none());
     assert!(account.access(true).await.unwrap().is_none());
@@ -58,7 +60,7 @@ async fn expiry_reaches_transport_while_refresh_is_stalled() {
         axum::serve(listener, app).await.unwrap();
     });
     let expires = storage::now() + 2;
-    save(root.path(), Some(saved(&origin, expires)));
+    save(root.path(), saved(&origin, expires)).await;
     let account = Account::new(root.path(), &origin).unwrap();
     let (sender, mut receiver) = mpsc::unbounded_channel();
     let task = account
@@ -110,7 +112,7 @@ async fn atomic_login_and_offline_logout_hot_apply_without_idle_polling() {
             .unwrap(),
         Some(false)
     );
-    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    save(root.path(), saved(&origin, storage::now() + 300)).await;
     assert_eq!(
         tokio::time::timeout(Duration::from_secs(2), receiver.recv())
             .await
@@ -155,7 +157,7 @@ async fn rejected_logout_does_not_claim_remote_revocation() {
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    save(root.path(), saved(&origin, storage::now() + 300)).await;
     let account = Account::new(root.path(), &origin).unwrap();
     assert_eq!(account.logout(false).await.unwrap(), 1);
     assert!(storage::load(root.path()).unwrap().is_none());
@@ -178,7 +180,7 @@ async fn profile_account_is_shared_without_copying_refresh_credentials() {
     let client = Account::new(root.path().join("transport"), origin).unwrap();
     let station = Account::new(root.path().join("node"), origin).unwrap();
     assert_eq!(client.data_root(), station.data_root());
-    save(root.path(), Some(saved(origin, storage::now() + 300)));
+    save(root.path(), saved(origin, storage::now() + 300)).await;
     assert!(client.cached_access().unwrap().is_some());
     assert!(station.cached_access().unwrap().is_some());
     client.logout(false).await.unwrap();
@@ -247,20 +249,7 @@ async fn account_controller_cancellation_fences_a_late_device_start_and_observer
     assert!(state.login_url.is_none());
     assert!(!state.authenticated);
     assert!(storage::load(root.path()).unwrap().is_none());
-    // Maintenance may still hold the account lock after cancellation completes.
-    // Seed through the same serialized write boundary as another account owner.
-    {
-        let account = Account::new(root.path(), &origin).unwrap();
-        let _lock = account.lock().await.unwrap();
-        storage::write(
-            root.path(),
-            &AccountFile {
-                current: Some(saved(&origin, storage::now() + 300)),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    }
+    save(root.path(), saved(&origin, storage::now() + 300)).await;
     tokio::time::timeout(Duration::from_secs(2), async {
         while !controller.snapshot().authenticated {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -301,7 +290,7 @@ async fn malformed_private_and_remote_values_never_escape_through_error_chains()
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    save(root.path(), saved(&origin, storage::now() + 300)).await;
     let account = Account::new(root.path(), &origin).unwrap();
     let error = account.sessions().await.unwrap_err();
     assert!(!format!("{error:#}").contains("sensitive-test-marker"));

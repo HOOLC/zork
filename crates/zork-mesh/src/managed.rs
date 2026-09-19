@@ -201,6 +201,8 @@ async fn start_owned(
     client_only: bool,
     control: Option<Arc<dyn crate::control::ControlHandler>>,
 ) -> Result<Runtime> {
+    #[cfg(test)]
+    let startup_started = std::time::Instant::now();
     validate(config)?;
     let channel = zork_config::channel::activate_for_data(root)?;
     ensure!(
@@ -237,6 +239,11 @@ async fn start_owned(
         Ok((lock, clean_start))
     })
     .await??;
+    #[cfg(test)]
+    eprintln!(
+        "Mesh startup receipt clean={clean_start} elapsed={:?}",
+        startup_started.elapsed()
+    );
     synch_net::tls::install_crypto_provider();
     let mut options = synch_engine::NodeConfig::new(data.clone());
     // Zork serves native control; no node executes published socket programs.
@@ -251,6 +258,8 @@ async fn start_owned(
     });
     options.dns.no_tuf = config.offline;
     let engine = synch_engine::Node::open(options).await?;
+    #[cfg(test)]
+    eprintln!("Mesh engine opened after {:?}", startup_started.elapsed());
     // Publish the bound loopback endpoint before readoption: two same-host
     // peers must be able to find each other while both are still starting.
     let local_registration = match crate::local_discovery::install(engine.net().endpoint()).await {
@@ -295,6 +304,8 @@ async fn start_owned(
         if !clean_start {
             engine.readopt_self_on_startup().await?;
         }
+        #[cfg(test)]
+        eprintln!("Mesh history checked after {:?}", startup_started.elapsed());
         tracing::info!(clean_start, "Mesh startup history checked");
         Ok(())
     }

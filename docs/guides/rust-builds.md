@@ -95,3 +95,5 @@ CI 可通过仓库变量 `KACHE_S3_ENDPOINT`、可选 `KACHE_S3_BUCKET` 及对�
 `gh workflow run ci.yml --ref main -f prime_cache=true`。这条路径只构建并保存库、程序和测试产物，不执行运行时契约，不能算作 CI 验证通过；完成后仍运行普通 main 检查。配置 R2 时由 kache 统一保存产物与清单，未配置时使用 GitHub target 缓存。使用 GitHub target 缓存时，引导须在 main 上执行，分支缓存不能反向供 main 使用。R2 按构建命名空间共享，可在受信任分支引导相同构建输入，之后仍验证 main。
 
 即使启用 kache，CI 也在构建成功后、测试之前保存完整 Cargo target；两者分别复用编译产物与 Cargo 指纹/本地构建脚本输出。target 键包含锁文件与源码提交，并可回退到兼容的旧版本，避免不可变缓存键永远保留旧源码产物。手动 workflow dispatch 可在指定分支做预热或完整验证；分支缓存仍不能供 main 使用。
+
+CI 在同一次 Cargo target 选择中构建运行程序和测试，避免两次命令切换开发依赖 feature 后反复生成同一依赖的不同变体；后续测试仍校验当前源码指纹。

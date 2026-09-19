@@ -101,6 +101,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build shared runtime and test binaries
         run: bash scripts/check-runtime.sh build
+      - name: Preserve native Mesh startup diagnostic
+        if: inputs.prime_cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh-startup-diagnostic
+          path: target/debug/deps/zork_mesh-*
+          retention-days: 1
       - name: Save compiled target cache
         if: steps.target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
