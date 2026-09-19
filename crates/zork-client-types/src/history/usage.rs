@@ -1,6 +1,35 @@
 //! Aggregates canonical, deduplicated step usage from the history projection.
 use super::Entry;
 
+/// Read-only statistics for the explicitly loaded history window. Cumulative
+/// session aggregates keep their separate snapshot authority and coverage.
+pub struct LoadedUsage {
+    pub usage: UsageSummary,
+    pub calls: usize,
+    pub models: Vec<String>,
+}
+impl LoadedUsage {
+    pub fn new<'a>(entries: impl DoubleEndedIterator<Item = &'a Entry> + Clone) -> Self {
+        let usage = UsageSummary::new(entries.clone());
+        let calls = entries
+            .clone()
+            .filter(|e| e.lane == 1 && e.state != "running")
+            .count();
+        let mut seen = std::collections::HashSet::new();
+        let models = entries
+            .rev()
+            .filter_map(|entry| entry.model.as_ref())
+            .filter(|model| !model.is_empty() && seen.insert((*model).clone()))
+            .cloned()
+            .collect();
+        Self {
+            usage,
+            calls,
+            models,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct UsageSummary {
     pub input: u64,
@@ -44,9 +73,12 @@ impl UsageSummary {
             result.reported_steps += 1;
             result.input = result.input.saturating_add(input);
             result.output = result.output.saturating_add(output);
-            if let Some(cached) = usage["cached_input_tokens"].as_u64() {
+            if let Some(cached) = usage["cached_input_tokens"]
+                .as_u64()
+                .filter(|cached| *cached <= input)
+            {
                 result.cache_reported_steps += 1;
-                result.cached = result.cached.saturating_add(cached.min(input));
+                result.cached = result.cached.saturating_add(cached);
                 result.cache_input = result.cache_input.saturating_add(input);
             }
         }

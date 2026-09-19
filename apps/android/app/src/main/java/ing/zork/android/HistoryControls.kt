@@ -59,12 +59,12 @@ internal fun HistorySubjectLink(subject: HistorySubject, modifier: Modifier = Mo
 }
 
 internal fun historyIcon(kind: String): Int = when (kind) {
-    "received" -> R.drawable.history_receive; "send_message" -> R.drawable.history_send
+    "input", "received" -> R.drawable.history_receive; "output", "send_message" -> R.drawable.history_send
     "send_file" -> R.drawable.history_attachment; "notify" -> R.drawable.history_notify
     "assign", "rework", "tasks" -> R.drawable.history_assign; "workers" -> R.drawable.history_agents
     "read" -> R.drawable.history_file_read; "write" -> R.drawable.history_file_write
     "edit" -> R.drawable.history_file_edit; "shell" -> R.drawable.history_terminal
-    "browser" -> R.drawable.history_browser; "wait" -> R.drawable.history_clock
+    "browser" -> R.drawable.history_browser; "wait", "thinking" -> R.drawable.history_clock
     "end" -> R.drawable.history_end; "cancel" -> R.drawable.history_stop
     "help" -> R.drawable.history_help; "history", "chat_history" -> R.drawable.history_history
     "job" -> R.drawable.history_job; "error" -> R.drawable.ic_attention

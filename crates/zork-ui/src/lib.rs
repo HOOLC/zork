@@ -37,8 +37,6 @@ pub mod history_details;
 
 pub mod member_activity;
 
-pub mod history_timeline;
-
 pub mod history_page;
 
 pub mod welcome;

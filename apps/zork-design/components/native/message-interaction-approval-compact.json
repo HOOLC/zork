@@ -1,0 +1,118 @@
+{
+  "api_version": "v1",
+  "revision": 13,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 420.0,
+    "height": 760.0
+  },
+  "elements": [
+    {
+      "id": "interaction-card-preview",
+      "role": "status",
+      "label": "批准发布预览版本 · 等待你的确认",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 24.0,
+        "y": 24.0,
+        "width": 372.0,
+        "height": 212.0
+      },
+      "visible_bounds": {
+        "x": 24.0,
+        "y": 24.0,
+        "width": 372.0,
+        "height": 212.0
+      },
+      "center": {
+        "x": 210.0,
+        "y": 130.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "interaction-preview-decline",
+      "role": "button",
+      "label": "暂不执行",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 105.0,
+        "y": 188.0,
+        "width": 81.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 105.0,
+        "y": 188.0,
+        "width": 81.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 145.5,
+        "y": 204.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "interaction-preview-submit",
+      "role": "button",
+      "label": "批准",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 40.0,
+        "y": 188.0,
+        "width": 57.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 40.0,
+        "y": 188.0,
+        "width": 57.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 68.5,
+        "y": 204.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 420.0,
+        "height": 760.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 420.0,
+        "height": 760.0
+      },
+      "center": {
+        "x": 210.0,
+        "y": 380.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

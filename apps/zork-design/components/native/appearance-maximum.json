@@ -1,0 +1,92 @@
+{
+  "api_version": "v1",
+  "revision": 12,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 640.0,
+    "height": 880.0
+  },
+  "elements": [
+    {
+      "id": "message-preview-reset",
+      "role": "button",
+      "label": "恢复自动",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 559.0,
+        "y": 17.5,
+        "width": 81.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 559.0,
+        "y": 17.5,
+        "width": 81.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 599.5,
+        "y": 33.5
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "message-preview-resize",
+      "role": "button",
+      "label": "拖动调整消息高度",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.5,
+        "y": 831.5,
+        "width": 639.0,
+        "height": 20.0
+      },
+      "visible_bounds": {
+        "x": 0.5,
+        "y": 831.5,
+        "width": 639.0,
+        "height": 20.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 841.5
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 880.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 880.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 440.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

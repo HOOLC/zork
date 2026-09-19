@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 9,
+  "revision": 15,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,19 +15,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 47.0,
+        "x": 69.0,
         "y": 27.5,
-        "width": 487.0,
+        "width": 465.0,
         "height": 16.0
       },
       "visible_bounds": {
-        "x": 47.0,
+        "x": 69.0,
         "y": 27.5,
-        "width": 487.0,
+        "width": 465.0,
         "height": 16.0
       },
       "center": {
-        "x": 290.5,
+        "x": 301.5,
         "y": 35.5
       },
       "actions": [

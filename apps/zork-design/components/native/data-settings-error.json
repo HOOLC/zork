@@ -1,0 +1,198 @@
+{
+  "api_version": "v1",
+  "revision": 16,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 640.0,
+    "height": 640.0
+  },
+  "elements": [
+    {
+      "id": "clear-client-data",
+      "role": "button",
+      "label": "清空数据",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 38.0,
+        "width": 152.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 38.0,
+        "width": 152.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 76.0,
+        "y": 54.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "clear-client-data-dialog",
+      "role": "status",
+      "label": "清空客户端数据？",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 110.0,
+        "y": 181.0,
+        "width": 420.0,
+        "height": 278.0
+      },
+      "visible_bounds": {
+        "x": 110.0,
+        "y": 181.0,
+        "width": 420.0,
+        "height": 278.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 320.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "clear-client-data-dialog-cancel",
+      "role": "button",
+      "label": "取消",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 318.0,
+        "y": 403.0,
+        "width": 76.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 318.0,
+        "y": 403.0,
+        "width": 76.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 356.0,
+        "y": 419.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "clear-client-data-dialog-close",
+      "role": "button",
+      "label": "关闭清空客户端数据？",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 474.0,
+        "y": 203.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 474.0,
+        "y": 203.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 490.0,
+        "y": 219.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "clear-client-data-dialog-confirm",
+      "role": "button",
+      "label": "确认清空",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 402.0,
+        "y": 403.0,
+        "width": 104.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 402.0,
+        "y": 403.0,
+        "width": 104.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 454.0,
+        "y": 419.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "clear-client-data-dialog-footer",
+      "role": "status",
+      "label": "弹窗操作区",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 134.0,
+        "y": 403.0,
+        "width": 372.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 134.0,
+        "y": 403.0,
+        "width": 372.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 419.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 640.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 640.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 320.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

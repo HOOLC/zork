@@ -229,6 +229,9 @@ impl RootView {
                 })
                 .collect();
             view.history = history::HistoryState::benchmark(records, NOW);
+            let host = view.browser_host();
+            view.browser
+                .update(cx, |panel, cx| panel.set_host(host, cx));
             view.open_history_tab(cx);
         } else {
             let all_types = std::env::var_os("ZORK_SCROLL_ALL_MESSAGES").is_some();

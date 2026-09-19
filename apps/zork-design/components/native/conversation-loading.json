@@ -1,0 +1,64 @@
+{
+  "api_version": "v1",
+  "revision": 13,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 900.0,
+    "height": 700.0
+  },
+  "elements": [
+    {
+      "id": "messages-loading",
+      "role": "status",
+      "label": "正在加载消息…",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 393.0,
+        "y": 0.0,
+        "width": 114.0,
+        "height": 21.0
+      },
+      "visible_bounds": {
+        "x": 393.0,
+        "y": 0.0,
+        "width": 114.0,
+        "height": 21.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 10.5
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 700.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 700.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 350.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

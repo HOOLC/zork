@@ -161,12 +161,14 @@ impl Row<'_> {
             )
             .into_any_element();
         let prose = crate::components::message_preview::MessagePreview {
+            lines: None,
             body: prose,
             footer,
             width: width.max(1.),
             limit: preview_limit,
             more: document.is_truncated(),
             expanded,
+            fade: true,
             background: rgb(if user { CUE_UI.thread.user_fill } else { BG }).into(),
         };
         match user {

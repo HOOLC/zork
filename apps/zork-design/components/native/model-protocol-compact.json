@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 31,
+  "revision": 34,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,20 +15,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
-        "height": 204.5
+        "width": 790.0,
+        "height": 210.0
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
-        "height": 204.5
+        "width": 790.0,
+        "height": 210.0
       },
       "center": {
-        "x": 570.0,
-        "y": 102.25
+        "x": 450.0,
+        "y": 105.0
       },
       "actions": [
         "move"
@@ -41,20 +41,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 209.0,
-        "y": 286.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 262.0,
+        "width": 480.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 209.0,
-        "y": 286.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 262.0,
+        "width": 480.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 302.0
+        "y": 278.0
       },
       "actions": [
         "click",
@@ -68,20 +68,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 209.0,
-        "y": 320.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 296.0,
+        "width": 480.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 209.0,
-        "y": 320.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 296.0,
+        "width": 480.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 336.0
+        "y": 312.0
       },
       "actions": [
         "click",
@@ -95,20 +95,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 209.0,
-        "y": 354.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 330.0,
+        "width": 480.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 209.0,
-        "y": 354.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 330.0,
+        "width": 480.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 370.0
+        "y": 346.0
       },
       "actions": [
         "click",
@@ -122,20 +122,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 209.0,
-        "y": 388.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 364.0,
+        "width": 480.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 209.0,
-        "y": 388.0,
-        "width": 482.0,
+        "x": 210.0,
+        "y": 364.0,
+        "width": 480.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 404.0
+        "y": 380.0
       },
       "actions": [
         "click",
@@ -150,19 +150,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 239.0,
+        "y": 216.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 239.0,
+        "y": 216.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 255.0
+        "y": 232.0
       },
       "actions": [
         "click",
@@ -176,22 +176,49 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 200.0,
-        "y": 277.0,
-        "width": 500.0,
-        "height": 152.0
+        "x": 204.0,
+        "y": 256.0,
+        "width": 492.0,
+        "height": 146.0
       },
       "visible_bounds": {
-        "x": 200.0,
-        "y": 277.0,
-        "width": 500.0,
-        "height": 152.0
+        "x": 204.0,
+        "y": 256.0,
+        "width": 492.0,
+        "height": 146.0
       },
       "center": {
         "x": 450.0,
-        "y": 353.0
+        "y": 329.0
       },
       "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "model-copy-select",
+      "role": "button",
+      "label": "复制配置",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 204.0,
+        "y": 508.0,
+        "width": 180.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 204.0,
+        "y": 508.0,
+        "width": 180.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 294.0,
+        "y": 524.0
+      },
+      "actions": [
+        "click",
         "move"
       ]
     },
@@ -203,15 +230,15 @@
       "visible": true,
       "bounds": {
         "x": 180.0,
-        "y": 56.0,
+        "y": 36.0,
         "width": 540.0,
-        "height": 488.0
+        "height": 528.0
       },
       "visible_bounds": {
         "x": 180.0,
-        "y": 56.0,
+        "y": 36.0,
         "width": 540.0,
-        "height": 488.0
+        "height": 528.0
       },
       "center": {
         "x": 450.0,
@@ -229,19 +256,19 @@
       "visible": true,
       "bounds": {
         "x": 664.0,
-        "y": 78.0,
+        "y": 58.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 664.0,
-        "y": 78.0,
+        "y": 58.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 680.0,
-        "y": 94.0
+        "y": 74.0
       },
       "actions": [
         "click",
@@ -255,20 +282,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 180.0,
-        "y": 468.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 204.0,
+        "y": 508.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "visible_bounds": {
-        "x": 180.0,
-        "y": 468.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 204.0,
+        "y": 508.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 506.0
+        "y": 524.0
       },
       "actions": [
         "move"
@@ -281,23 +308,49 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 773.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 708.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 773.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 708.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "center": {
-        "x": 819.5,
-        "y": 56.0
+        "x": 759.5,
+        "y": 55.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-avatar-fixture",
+      "role": "status",
+      "label": "openai",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 89.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "visible_bounds": {
+        "x": 89.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "center": {
+        "x": 109.0,
+        "y": 138.0
+      },
+      "actions": [
         "move"
       ]
     },
@@ -309,19 +362,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 314.5,
+        "y": 290.0,
         "width": 240.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 314.5,
+        "y": 290.0,
         "width": 240.0,
         "height": 32.0
       },
       "center": {
         "x": 324.0,
-        "y": 330.5
+        "y": 306.0
       },
       "actions": [
         "click",
@@ -337,19 +390,19 @@
       "visible": true,
       "bounds": {
         "x": 456.0,
-        "y": 390.0,
+        "y": 364.0,
         "width": 240.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 456.0,
-        "y": 390.0,
+        "y": 364.0,
         "width": 240.0,
         "height": 32.0
       },
       "center": {
         "x": 576.0,
-        "y": 406.0
+        "y": 380.0
       },
       "actions": [
         "click",
@@ -364,20 +417,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 274.0,
-        "y": 100.5,
-        "width": 592.0,
-        "height": 72.0
+        "x": 77.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "visible_bounds": {
-        "x": 274.0,
-        "y": 100.5,
-        "width": 592.0,
-        "height": 72.0
+        "x": 77.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "center": {
-        "x": 570.0,
-        "y": 136.5
+        "x": 450.0,
+        "y": 138.0
       },
       "actions": [
         "click",
@@ -392,19 +445,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 163.5,
+        "y": 142.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 163.5,
+        "y": 142.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 179.5
+        "y": 158.0
       },
       "actions": [
         "click",
@@ -419,20 +472,47 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 546.0,
-        "y": 488.0,
-        "width": 59.0,
+        "x": 550.0,
+        "y": 508.0,
+        "width": 57.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 546.0,
-        "y": 488.0,
-        "width": 59.0,
+        "x": 550.0,
+        "y": 508.0,
+        "width": 57.0,
         "height": 32.0
       },
       "center": {
-        "x": 575.5,
-        "y": 504.0
+        "x": 578.5,
+        "y": 524.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-model-image-input",
+      "role": "option",
+      "label": "可读取图片：开启",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 648.0,
+        "y": 454.0,
+        "width": 48.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 648.0,
+        "y": 454.0,
+        "width": 48.0,
+        "height": 22.0
+      },
+      "center": {
+        "x": 672.0,
+        "y": 465.0
       },
       "actions": [
         "click",
@@ -446,20 +526,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 613.0,
-        "y": 488.0,
-        "width": 83.0,
+        "x": 615.0,
+        "y": 508.0,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 613.0,
-        "y": 488.0,
-        "width": 83.0,
+        "x": 615.0,
+        "y": 508.0,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 654.5,
-        "y": 504.0
+        "x": 655.5,
+        "y": 524.0
       },
       "actions": [
         "click",
@@ -474,24 +554,50 @@
       "visible": true,
       "bounds": {
         "x": 456.0,
-        "y": 314.5,
+        "y": 290.0,
         "width": 240.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 456.0,
-        "y": 314.5,
+        "y": 290.0,
         "width": 240.0,
         "height": 32.0
       },
       "center": {
         "x": 576.0,
-        "y": 330.5
+        "y": 306.0
       },
       "actions": [
         "click",
         "move",
         "type_text"
+      ]
+    },
+    {
+      "id": "profile-quota-summary-fixture",
+      "role": "status",
+      "label": "5小时 剩余 72% · 7天 剩余 38%",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 141.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "visible_bounds": {
+        "x": 141.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "center": {
+        "x": 418.5,
+        "y": 158.5
+      },
+      "actions": [
+        "move"
       ]
     },
     {
@@ -502,19 +608,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 390.0,
+        "y": 364.0,
         "width": 240.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 390.0,
+        "y": 364.0,
         "width": 240.0,
         "height": 32.0
       },
       "center": {
         "x": 324.0,
-        "y": 406.0
+        "y": 380.0
       },
       "actions": [
         "click",

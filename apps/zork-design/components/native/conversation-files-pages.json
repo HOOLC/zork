@@ -1,0 +1,227 @@
+{
+  "api_version": "v1",
+  "revision": 13,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 640.0,
+    "height": 600.0
+  },
+  "elements": [
+    {
+      "id": "content-page-demo-0",
+      "role": "button",
+      "label": "产品原型",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 138.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 138.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 162.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "content-page-demo-1",
+      "role": "button",
+      "label": "接口参考",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 190.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 190.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 214.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "content-page-demo-2",
+      "role": "button",
+      "label": "研究资料",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 242.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 242.0,
+        "width": 624.0,
+        "height": 48.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 266.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "content-search-pages",
+      "role": "text_input",
+      "label": "搜索名称",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 90.0,
+        "width": 608.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 90.0,
+        "width": 608.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 106.0
+      },
+      "actions": [
+        "click",
+        "move",
+        "type_text"
+      ]
+    },
+    {
+      "id": "conversation-content-pages",
+      "role": "status",
+      "label": "页面",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 40.0,
+        "width": 640.0,
+        "height": 560.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 40.0,
+        "width": 640.0,
+        "height": 560.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 320.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "conversation-files-button",
+      "role": "button",
+      "label": "文件与页面",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 28.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 28.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 14.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "conversation-pages-list",
+      "role": "scroll_area",
+      "label": "页面",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 138.0,
+        "width": 640.0,
+        "height": 462.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 138.0,
+        "width": 640.0,
+        "height": 462.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 369.0
+      },
+      "actions": [
+        "move",
+        "scroll"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 600.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 640.0,
+        "height": 600.0
+      },
+      "center": {
+        "x": 320.0,
+        "y": 300.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

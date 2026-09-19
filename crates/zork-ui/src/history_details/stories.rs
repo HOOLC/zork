@@ -3,7 +3,6 @@ use crate::components::workbench as wb;
 pub struct Story {
     view: Entity<Details>,
     presentation: Presentation,
-    tree: json_tree::State,
     text: Text,
 }
 impl Story {
@@ -25,14 +24,13 @@ impl Story {
                 .next()
                 .unwrap();
             if state == "long" {
-                entry.raw = (0..20).map(|i| serde_json::json!({"step":i,"details":{"inputs":["需求","资料"],"status":"completed"}})).collect();
+                entry.summary = "这一段会完整展开：先梳理历史页的数据来源与投影，再逐行核对记录行、分组与展开的呈现，然后检查时长、状态与绝对时钟，最后确认末级操作的详情与目标。".into();
             }
             Presentation::Entry(entry)
         };
         Self {
             view,
             presentation,
-            tree: Default::default(),
             text,
         }
     }
@@ -46,9 +44,7 @@ impl Render for Story {
                         "demo".into(),
                         Some(v.presentation.clone()),
                         None,
-                        v.tree.clone(),
                         v.text.clone(),
-                        Rc::new(|_| {}),
                         cx,
                     )
                 });

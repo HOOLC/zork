@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 16,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -11,7 +11,7 @@
     {
       "id": "story-attachment",
       "role": "button",
-      "label": "查看附件 组件规范.md",
+      "label": "查看附件 设计说明.md",
       "enabled": true,
       "visible": true,
       "bounds": {
