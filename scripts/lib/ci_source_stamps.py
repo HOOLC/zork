@@ -10,7 +10,10 @@ import sys
 
 
 def inputs(root):
-    paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+    # Hooks export repository-local Git variables; never let those redirect a
+    # fixture or an explicit checkout to another index/worktree.
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root, env=env).split(b"\0")
     for raw in paths:
         if not raw:
             continue
