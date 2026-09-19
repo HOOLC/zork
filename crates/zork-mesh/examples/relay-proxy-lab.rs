@@ -17,11 +17,18 @@ use tokio::{
 struct Policy {
     expected: Mutex<HashMap<EndpointId, String>>,
     accepted: Mutex<Vec<(EndpointId, String)>>,
+    attempts: Mutex<HashMap<EndpointId, u64>>,
     active: Mutex<HashMap<ConnectionId, EndpointId>>,
     changed: tokio::sync::Notify,
 }
 impl AccessControl for Policy {
     async fn on_connect(&self, request: &ClientRequest) -> Access {
+        *self
+            .attempts
+            .lock()
+            .unwrap()
+            .entry(request.endpoint_id())
+            .or_default() += 1;
         let expected = self
             .expected
             .lock()
@@ -252,6 +259,22 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
         "logout closed another endpoint"
     );
     connection.close(0u32.into(), b"test reconnect");
+    let attempts = policy.attempts.lock().unwrap().get(&a.id()).copied();
+    ensure!(
+        !matches!(
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                a.connect(target.clone(), synch_net::ALPN_CONTROL)
+            )
+            .await,
+            Ok(Ok(_))
+        ),
+        "logged-out endpoint connected through a stale relay hint"
+    );
+    ensure!(
+        policy.attempts.lock().unwrap().get(&a.id()).copied() == attempts,
+        "stale peer hints recreated an anonymous relay after logout"
+    );
     access_a.set(&relay_url, Some("second")).await?;
     let connection = tokio::time::timeout(
         Duration::from_secs(20),
