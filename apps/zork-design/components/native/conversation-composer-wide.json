@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 12,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -9,52 +9,53 @@
   },
   "elements": [
     {
-      "id": "brand-header",
-      "role": "status",
-      "label": "Zork",
+      "id": "liquid-composer-attach",
+      "role": "button",
+      "label": "添加文件",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 72.0,
-        "y": 0.0,
-        "width": 120.0,
-        "height": 48.0
+        "x": 24.0,
+        "y": 658.0,
+        "width": 24.0,
+        "height": 24.0
       },
       "visible_bounds": {
-        "x": 72.0,
-        "y": 0.0,
-        "width": 120.0,
-        "height": 48.0
+        "x": 24.0,
+        "y": 658.0,
+        "width": 24.0,
+        "height": 24.0
       },
       "center": {
-        "x": 132.0,
-        "y": 24.0
+        "x": 36.0,
+        "y": 670.0
       },
       "actions": [
+        "click",
         "move"
       ]
     },
     {
-      "id": "composer-input",
+      "id": "liquid-composer-editor",
       "role": "text_input",
       "label": "做任何事",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 307.0,
-        "y": 707.0,
-        "width": 906.0,
+        "x": 38.0,
+        "y": 632.0,
+        "width": 824.0,
         "height": 24.0
       },
       "visible_bounds": {
-        "x": 307.0,
-        "y": 707.0,
-        "width": 906.0,
+        "x": 38.0,
+        "y": 632.0,
+        "width": 824.0,
         "height": 24.0
       },
       "center": {
-        "x": 760.0,
-        "y": 719.0
+        "x": 450.0,
+        "y": 644.0
       },
       "actions": [
         "click",
@@ -63,26 +64,26 @@
       ]
     },
     {
-      "id": "composer-options",
+      "id": "liquid-composer-member-fox",
       "role": "button",
-      "label": "添加",
+      "label": "fox · 活动记录",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 299.0,
-        "y": 739.0,
-        "width": 32.0,
-        "height": 32.0
+        "x": 45.0,
+        "y": 609.0,
+        "width": 22.5,
+        "height": 22.5
       },
       "visible_bounds": {
-        "x": 299.0,
-        "y": 739.0,
-        "width": 32.0,
-        "height": 32.0
+        "x": 45.0,
+        "y": 609.0,
+        "width": 22.5,
+        "height": 22.5
       },
       "center": {
-        "x": 315.0,
-        "y": 755.0
+        "x": 56.25,
+        "y": 620.25
       },
       "actions": [
         "click",
@@ -90,291 +91,79 @@
       ]
     },
     {
-      "id": "composer-surface",
-      "role": "status",
-      "label": "消息输入区",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 286.0,
-        "y": 686.0,
-        "width": 948.0,
-        "height": 98.0
-      },
-      "visible_bounds": {
-        "x": 286.0,
-        "y": 686.0,
-        "width": 948.0,
-        "height": 98.0
-      },
-      "center": {
-        "x": 760.0,
-        "y": 735.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "conversation-device",
-      "role": "status",
-      "label": "mini1",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 1190.0,
-        "y": 12.5,
-        "width": 44.0,
-        "height": 18.0
-      },
-      "visible_bounds": {
-        "x": 1190.0,
-        "y": 12.5,
-        "width": 44.0,
-        "height": 18.0
-      },
-      "center": {
-        "x": 1212.0,
-        "y": 21.5
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "conversation-header",
-      "role": "status",
-      "label": "对话成员",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 240.0,
-        "y": 0.0,
-        "width": 1040.0,
-        "height": 44.0
-      },
-      "visible_bounds": {
-        "x": 240.0,
-        "y": 0.0,
-        "width": 1040.0,
-        "height": 44.0
-      },
-      "center": {
-        "x": 760.0,
-        "y": 22.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "desktop-manage",
-      "role": "button",
-      "label": "设置",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 8.0,
-        "y": 760.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "visible_bounds": {
-        "x": 8.0,
-        "y": 760.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "center": {
-        "x": 120.0,
-        "y": 776.0
-      },
-      "actions": [
-        "click",
-        "move"
-      ]
-    },
-    {
-      "id": "device-add",
-      "role": "button",
-      "label": "连接设备",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 8.0,
-        "y": 724.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "visible_bounds": {
-        "x": 8.0,
-        "y": 724.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "center": {
-        "x": 120.0,
-        "y": 740.0
-      },
-      "actions": [
-        "click",
-        "move"
-      ]
-    },
-    {
-      "id": "device-mini1",
-      "role": "button",
-      "label": "mini1 · 在线",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 8.0,
-        "y": 56.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "visible_bounds": {
-        "x": 8.0,
-        "y": 56.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "center": {
-        "x": 120.0,
-        "y": 72.0
-      },
-      "actions": [
-        "click",
-        "move"
-      ]
-    },
-    {
-      "id": "header-member-leader",
-      "role": "button",
-      "label": "产品 Leader，查看成员",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 286.0,
-        "y": 8.5,
-        "width": 26.0,
-        "height": 26.0
-      },
-      "visible_bounds": {
-        "x": 286.0,
-        "y": 8.5,
-        "width": 26.0,
-        "height": 26.0
-      },
-      "center": {
-        "x": 299.0,
-        "y": 21.5
-      },
-      "actions": [
-        "click",
-        "move"
-      ]
-    },
-    {
-      "id": "leader-mini1-leader",
-      "role": "button",
-      "label": "产品 Leader · 当前 领队",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 8.0,
-        "y": 90.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "visible_bounds": {
-        "x": 8.0,
-        "y": 90.0,
-        "width": 224.0,
-        "height": 32.0
-      },
-      "center": {
-        "x": 120.0,
-        "y": 106.0
-      },
-      "actions": [
-        "click",
-        "move"
-      ]
-    },
-    {
-      "id": "message-0-0-selection",
-      "role": "status",
-      "label": "请先统一图标与头像，并保留原生界面的紧凑感。",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 320.0,
-        "y": 89.0,
-        "width": 914.0,
-        "height": 20.0
-      },
-      "visible_bounds": {
-        "x": 320.0,
-        "y": 89.0,
-        "width": 914.0,
-        "height": 20.0
-      },
-      "center": {
-        "x": 777.0,
-        "y": 99.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "message-1-0-selection",
-      "role": "status",
-      "label": "收到，先把共同组件统一。",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 1059.0,
-        "y": 133.0,
-        "width": 159.0,
-        "height": 20.0
-      },
-      "visible_bounds": {
-        "x": 1059.0,
-        "y": 133.0,
-        "width": 159.0,
-        "height": 20.0
-      },
-      "center": {
-        "x": 1138.5,
-        "y": 143.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "send-button",
+      "id": "liquid-composer-send",
       "role": "button",
       "label": "发送消息",
       "enabled": false,
       "visible": true,
       "bounds": {
-        "x": 1189.0,
-        "y": 739.0,
-        "width": 32.0,
+        "x": 852.0,
+        "y": 658.0,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 852.0,
+        "y": 658.0,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 864.0,
+        "y": 670.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "liquid-composer-surface",
+      "role": "status",
+      "label": "消息输入区",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 18.0,
+        "y": 612.0,
+        "width": 864.0,
+        "height": 76.0
+      },
+      "visible_bounds": {
+        "x": 18.0,
+        "y": 612.0,
+        "width": 864.0,
+        "height": 76.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 650.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "liquid-composer-variant-select",
+      "role": "button",
+      "label": "空白",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 400.0,
+        "width": 70.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 1189.0,
-        "y": 739.0,
-        "width": 32.0,
+        "x": 0.0,
+        "y": 400.0,
+        "width": 70.0,
         "height": 32.0
       },
       "center": {
-        "x": 1205.0,
-        "y": 755.0
+        "x": 35.0,
+        "y": 416.0
       },
       "actions": [
         "click",
@@ -402,32 +191,6 @@
       "center": {
         "x": 640.0,
         "y": 400.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "zork-brand",
-      "role": "status",
-      "label": "Zork",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 8.0,
-        "y": 0.0,
-        "width": 224.0,
-        "height": 48.0
-      },
-      "visible_bounds": {
-        "x": 8.0,
-        "y": 0.0,
-        "width": 224.0,
-        "height": 48.0
-      },
-      "center": {
-        "x": 120.0,
-        "y": 24.0
       },
       "actions": [
         "move"

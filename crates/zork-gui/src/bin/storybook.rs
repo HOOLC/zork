@@ -143,11 +143,16 @@ struct Gallery {
     benchmark_started: bool,
 }
 impl Gallery {
-    fn new(catalog: Vec<Story>, driver: HeadlessAutomation, cx: &mut Context<Self>) -> Self {
-        let host = cx.new(|cx| StoryHost::new(catalog[0].clone(), cx));
+    fn new(
+        catalog: Vec<Story>,
+        selected: usize,
+        driver: HeadlessAutomation,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let host = cx.new(|cx| StoryHost::new(catalog[selected].clone(), cx));
         Self {
             catalog,
-            selected: 0,
+            selected,
             host,
             driver,
             pending: true,
@@ -329,9 +334,32 @@ fn main() -> anyhow::Result<()> {
             .cloned()
     };
     let mut catalog = stories::catalog();
+    if let Some(family) = value("--family") {
+        catalog.retain(|s| s.family == family);
+        anyhow::ensure!(!catalog.is_empty(), "unknown story family {family}");
+    }
     if let Some(filter) = value("--story") {
         catalog.retain(|s| s.id == filter);
         anyhow::ensure!(!catalog.is_empty(), "unknown story {filter}");
+    }
+    for (flag, width) in [("--width", true), ("--height", false)] {
+        if let Some(value) = value(flag) {
+            let value: f32 = value.parse()?;
+            anyhow::ensure!(value.is_finite() && value >= 100., "invalid story size");
+            for story in &mut catalog {
+                if width {
+                    story.width = value;
+                } else {
+                    story.height = value;
+                }
+            }
+        }
+    }
+    if let Some(path) = value("--actions") {
+        let actions: Vec<Value> = serde_json::from_slice(&std::fs::read(path)?)?;
+        for story in &mut catalog {
+            story.actions.extend(actions.clone());
+        }
     }
     if let Some(target) = value("--hover") {
         for story in &mut catalog {
@@ -347,45 +375,121 @@ fn main() -> anyhow::Result<()> {
     if let Some(output) = value("--export") {
         let output = PathBuf::from(output);
         std::fs::create_dir_all(&output)?;
+        // A failed story must not leave a gallery containing images from two
+        // builds. Render the complete catalog before publishing its evidence.
+        let staging = tempfile::tempdir_in(&output)?;
         let mut rendered = vec![];
+        let mut failures = vec![];
         for story in &catalog {
-            rendered.push(export_story(story, &output)?);
-            println!("{}", story.id);
+            match export_story(story, staging.path()) {
+                Ok(story) => {
+                    println!("{}", story["id"]);
+                    rendered.push(story);
+                }
+                Err(error) => {
+                    eprintln!("{}: {error:#}", story.id);
+                    failures.push(format!("{}: {error:#}", story.id));
+                }
+            }
+        }
+        anyhow::ensure!(
+            failures.is_empty(),
+            "gallery was not replaced; {} stories failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+        let generation = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_millis();
+        for story in &mut rendered {
+            story["native"]["generation"] = json!(generation);
         }
         std::fs::write(
-            output.join("manifest.json"),
+            staging.path().join("manifest.json"),
             serde_json::to_vec_pretty(
-                &json!({"version":1,"stories":rendered,"isolated":true,"network":"none","reference_status":"provided by the design capture step"}),
+                &json!({"version":1,"generation":generation,"stories":rendered,"isolated":true,"network":"none","reference_status":"provided by the design capture step"}),
             )?,
         )?;
+        let native = output.join("native");
+        let previous = staging.path().join("previous-native");
+        if native.exists() {
+            std::fs::rename(&native, &previous)?;
+        }
+        if let Err(error) = std::fs::rename(staging.path().join("native"), &native) {
+            if previous.exists() {
+                std::fs::rename(previous, native)?;
+            }
+            return Err(error.into());
+        }
+        std::fs::rename(
+            staging.path().join("manifest.json"),
+            output.join("manifest.json"),
+        )?;
         return Ok(());
+    }
+    let initial = value("--start-story")
+        .map(|id| {
+            catalog
+                .iter()
+                .position(|s| s.id == id)
+                .ok_or_else(|| anyhow::anyhow!("unknown story {id}"))
+        })
+        .transpose()?
+        .unwrap_or(0);
+    let automation = args
+        .iter()
+        .any(|a| a == "--dev")
+        .then(|| {
+            zork_gui::automation::DevAutomation::bind(
+                value("--dev-port")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0),
+                value("--dev-token"),
+            )
+        })
+        .transpose()?;
+    if let Some(automation) = &automation {
+        println!(
+            "{}",
+            json!({"storybook_automation":automation.address().to_string(),"token":automation.token()})
+        );
     }
     gpui_platform::application()
         .with_assets(EmbeddedAssets)
         .run(move |cx| {
             zork_gui::assets::init_fonts(cx);
             zork_gui::components::init(cx);
-            let driver = HeadlessAutomation::install(cx);
-            cx.open_window(
-                gpui::WindowOptions {
-                    window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
-                        None,
-                        size(px(1320.), px(860.)),
-                        cx,
-                    ))),
-                    titlebar: Some(zork_gui::window_chrome::native_titlebar_options()),
-                    ..Default::default()
-                },
-                |w, cx| {
-                    w.on_window_should_close(cx, |_, cx| {
-                        cx.quit();
-                        true
-                    });
-                    let gallery = cx.new(|cx| Gallery::new(catalog, driver, cx));
-                    cx.new(|_| AutomationRoot::new(gallery))
-                },
-            )
-            .expect("open component gallery");
+            let driver = if let Some(automation) = &automation {
+                automation.install(cx);
+                automation.in_process_driver()
+            } else {
+                HeadlessAutomation::install(cx)
+            };
+            let window = cx
+                .open_window(
+                    gpui::WindowOptions {
+                        window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
+                            None,
+                            size(px(1320.), px(860.)),
+                            cx,
+                        ))),
+                        titlebar: Some(zork_gui::window_chrome::native_titlebar_options()),
+                        ..Default::default()
+                    },
+                    |w, cx| {
+                        w.set_window_title("Zork Storybook");
+                        w.on_window_should_close(cx, |_, cx| {
+                            cx.quit();
+                            true
+                        });
+                        let gallery = cx.new(|cx| Gallery::new(catalog, initial, driver, cx));
+                        cx.new(|_| AutomationRoot::new(gallery))
+                    },
+                )
+                .expect("open component gallery");
+            if let Some(automation) = automation {
+                automation.attach(window.into(), cx);
+            }
             cx.activate(true);
         });
     Ok(())

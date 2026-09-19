@@ -109,7 +109,7 @@ impl RootView {
         a: &Activity,
         e: &Entry,
     ) -> (Option<String>, Option<Jump>) {
-        if a.kind == Kind::Received && a.subject.is_none() {
+        if a.kind == Kind::Input && a.subject.is_none() {
             let receipt = activity::input(e).and_then(|input| input["request_id"].as_str());
             if receipt.is_some_and(|id| id.starts_with("assignment-") || id.starts_with("rework-"))
             {
@@ -246,8 +246,11 @@ impl RootView {
                 let index = self.history.entries.iter().position(|e| e.id == id);
                 if let Some(index) = index {
                     self.history_select(index, cx);
-                    self.history.detail = Some(id);
                 }
+            }
+            Jump::File(id) => {
+                self.history.detail = Some(id);
+                self.history.agent_detail = None;
             }
         }
         zork_ui::components::region::invalidate_all(cx);
@@ -317,20 +320,13 @@ impl RootView {
             }
             _ => None,
         };
-        let root = cx.entity().downgrade();
         let locale = self.locale;
         self.history_details.update(cx, |view, cx| {
             view.configure(
                 self.selected_session.clone().unwrap_or_default(),
                 presentation,
                 resource,
-                self.history.json_open.clone(),
                 zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
-                Rc::new(move |cx| {
-                    let _ = root.update(cx, |_, cx| {
-                        zork_ui::components::region::invalidate(cx, &["history", "header"])
-                    });
-                }),
                 cx,
             )
         });

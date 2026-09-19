@@ -1,37 +1,461 @@
 {
   "api_version": "v1",
-  "revision": 8,
+  "revision": 13,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
     "width": 560.0,
-    "height": 360.0
+    "height": 600.0
   },
   "elements": [
     {
-      "id": "history-error-retry",
-      "role": "button",
-      "label": "重试",
+      "id": "history-cache",
+      "role": "status",
+      "label": "50%",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 24.0,
-        "y": 68.0,
-        "width": 59.0,
-        "height": 32.0
+        "x": 376.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
       },
       "visible_bounds": {
-        "x": 24.0,
-        "y": 68.0,
-        "width": 59.0,
-        "height": 32.0
+        "x": 376.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
       },
       "center": {
-        "x": 53.5,
-        "y": 84.0
+        "x": 460.0,
+        "y": 97.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-identity",
+      "role": "status",
+      "label": "产品领队",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 26.0,
+        "width": 528.0,
+        "height": 16.5
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 26.0,
+        "width": 528.0,
+        "height": 16.5
+      },
+      "center": {
+        "x": 280.0,
+        "y": 34.25
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-ledger",
+      "role": "scroll_area",
+      "label": "执行记录",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 169.0,
+        "width": 560.0,
+        "height": 431.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 169.0,
+        "width": 560.0,
+        "height": 431.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 384.5
+      },
+      "actions": [
+        "move",
+        "scroll"
+      ]
+    },
+    {
+      "id": "history-model",
+      "role": "status",
+      "label": "gpt-5.4",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 97.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-older",
+      "role": "status",
+      "label": "暂时无法加载 Session 历史。",
+      "enabled": false,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 149.5,
+        "width": 528.0,
+        "height": 64.5
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 181.0,
+        "width": 528.0,
+        "height": 33.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 197.5
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-output-disclosure-5",
+      "role": "button",
+      "label": "展开更多",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 519.0,
+        "width": 528.0,
+        "height": 18.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 519.0,
+        "width": 528.0,
+        "height": 18.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 528.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-0",
+      "role": "button",
+      "label": "收到来自 关联会话 的消息  检查 Session History 的宽窄布局，保留代码、分组和完整执行结果。 ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 214.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 214.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 227.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-1",
+      "role": "button",
+      "label": "读取 1 个文件 · 写入 1 个文件 · 执行 1 条命令 · 1 项失败   ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 240.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 240.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 253.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-2",
+      "role": "button",
+      "label": "发送消息到 聊天  ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 266.0,
+        "width": 528.0,
+        "height": 30.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 266.0,
+        "width": 528.0,
+        "height": 30.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 281.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-3",
+      "role": "button",
+      "label": "等待后台测试结果 已等待 19s   ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 296.0,
+        "width": 528.0,
+        "height": 30.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 296.0,
+        "width": 528.0,
+        "height": 30.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 311.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-4",
+      "role": "button",
+      "label": "收到来自 关联会话 的消息  后台测试已完成。请给出完整结果。 ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 326.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 326.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 339.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-5",
+      "role": "status",
+      "label": "## 检查结果\n\n布局已对齐，**阅读位置保持稳定**。这段中英文文本用于检查窄窗口的换行：Session History keeps the current reading position.\n\n- 行内详情支持独立展开。\n- 分组中保留失败状态。\n- 使用 `followLatest` 回到最新。\n- 第四项仍然可读。\n- 第五项显示完整结果。\n- 第六项验证展开后的尾部。\n\n```ts\nconst history = { followLatest: true };\nfunction reveal(id: string) {\n  return history.followLatest ? id : null;\n}\n```\n\n> 已显示记录的统计只包含本次加载的模型调用。\n\n| 布局 | 结果 |\n| --- | --- |\n| 宽窗口 | 通过 |\n| 窄窗口 | 通过 |\n\n[查看说明](https://example.com/history)\n\n完成。",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 370.0,
+        "width": 528.0,
+        "height": 167.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 370.0,
+        "width": 528.0,
+        "height": 167.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 453.5
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-record-6",
+      "role": "button",
+      "label": "收到来自 关联会话 的消息  继续验证键盘展开、收起，以及回到最新按钮。 ",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 16.0,
+        "y": 555.0,
+        "width": 528.0,
+        "height": 26.0
+      },
+      "visible_bounds": {
+        "x": 16.0,
+        "y": 555.0,
+        "width": 528.0,
+        "height": 21.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 565.5
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-runtime",
+      "role": "status",
+      "label": "Studio Mac",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 122.0,
+        "y": 26.0,
+        "width": 70.0,
+        "height": 16.5
+      },
+      "visible_bounds": {
+        "x": 122.0,
+        "y": 26.0,
+        "width": 70.0,
+        "height": 16.5
+      },
+      "center": {
+        "x": 157.0,
+        "y": 34.25
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-target-NamedInteger(\"history-record\", 2)",
+      "role": "button",
+      "label": "聊天",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 104.0,
+        "y": 272.0,
+        "width": 23.0,
+        "height": 18.0
+      },
+      "visible_bounds": {
+        "x": 104.0,
+        "y": 272.0,
+        "width": 23.0,
+        "height": 18.0
+      },
+      "center": {
+        "x": 115.5,
+        "y": 281.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "history-tokens",
+      "role": "status",
+      "label": "1.4K",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 196.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
+      },
+      "visible_bounds": {
+        "x": 196.0,
+        "y": 60.5,
+        "width": 168.0,
+        "height": 73.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 97.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "history-usage-overview",
+      "role": "status",
+      "label": "Token 用量: 1380 · 缓存命中率: 50%",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 560.0,
+        "height": 169.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 560.0,
+        "height": 169.0
+      },
+      "center": {
+        "x": 280.0,
+        "y": 84.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -45,43 +469,17 @@
         "x": 0.0,
         "y": 0.0,
         "width": 560.0,
-        "height": 360.0
+        "height": 600.0
       },
       "visible_bounds": {
         "x": 0.0,
         "y": 0.0,
         "width": 560.0,
-        "height": 360.0
+        "height": 600.0
       },
       "center": {
         "x": 280.0,
-        "y": 180.0
-      },
-      "actions": [
-        "move"
-      ]
-    },
-    {
-      "id": "story-sample",
-      "role": "status",
-      "label": "执行历史",
-      "enabled": true,
-      "visible": true,
-      "bounds": {
-        "x": 24.0,
-        "y": 24.0,
-        "width": 512.0,
-        "height": 312.0
-      },
-      "visible_bounds": {
-        "x": 24.0,
-        "y": 24.0,
-        "width": 512.0,
-        "height": 312.0
-      },
-      "center": {
-        "x": 280.0,
-        "y": 180.0
+        "y": 300.0
       },
       "actions": [
         "move"

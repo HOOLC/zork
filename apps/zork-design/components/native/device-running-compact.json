@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 12,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,20 +15,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
-        "height": 382.0
+        "width": 790.0,
+        "height": 373.5
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
-        "height": 382.0
+        "width": 790.0,
+        "height": 373.5
       },
       "center": {
-        "x": 570.0,
-        "y": 191.0
+        "x": 450.0,
+        "y": 186.75
       },
       "actions": [
         "move"
@@ -41,20 +41,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 783.0,
-        "y": 318.0,
-        "width": 83.0,
+        "x": 730.0,
+        "y": 309.5,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 783.0,
-        "y": 318.0,
-        "width": 83.0,
+        "x": 730.0,
+        "y": 309.5,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 824.5,
-        "y": 334.0
+        "x": 770.5,
+        "y": 325.5
       },
       "actions": [
         "click",
@@ -68,19 +68,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 723.0,
+        "x": 670.0,
         "y": 63.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 723.0,
+        "x": 670.0,
         "y": 63.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
-        "x": 739.0,
+        "x": 686.0,
         "y": 79.0
       },
       "actions": [
@@ -95,19 +95,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 396.0,
+        "x": 213.0,
         "y": 50.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 396.0,
+        "x": 213.0,
         "y": 50.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
-        "x": 412.0,
+        "x": 229.0,
         "y": 66.0
       },
       "actions": [
@@ -118,24 +118,24 @@
     {
       "id": "local-node-background",
       "role": "button",
-      "label": "后台运行 · 已选中",
+      "label": "后台运行",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 571.0,
-        "y": 189.0,
-        "width": 291.0,
+        "x": 451.0,
+        "y": 185.0,
+        "width": 356.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 571.0,
-        "y": 189.0,
-        "width": 291.0,
+        "x": 451.0,
+        "y": 185.0,
+        "width": 356.0,
         "height": 32.0
       },
       "center": {
-        "x": 716.5,
-        "y": 205.0
+        "x": 629.0,
+        "y": 201.0
       },
       "actions": [
         "click",
@@ -149,20 +149,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 278.0,
-        "y": 189.0,
-        "width": 291.0,
+        "x": 93.0,
+        "y": 185.0,
+        "width": 356.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 278.0,
-        "y": 189.0,
-        "width": 291.0,
+        "x": 93.0,
+        "y": 185.0,
+        "width": 356.0,
         "height": 32.0
       },
       "center": {
-        "x": 423.5,
-        "y": 205.0
+        "x": 271.0,
+        "y": 201.0
       },
       "actions": [
         "click",
@@ -176,20 +176,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 818.0,
-        "y": 241.0,
+        "x": 763.0,
+        "y": 233.0,
         "width": 48.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 818.0,
-        "y": 241.0,
+        "x": 763.0,
+        "y": 233.0,
         "width": 48.0,
         "height": 32.0
       },
       "center": {
-        "x": 842.0,
-        "y": 257.0
+        "x": 787.0,
+        "y": 249.0
       },
       "actions": [
         "click",
@@ -203,19 +203,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 763.0,
+        "x": 710.0,
         "y": 63.0,
-        "width": 83.0,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 763.0,
+        "x": 710.0,
         "y": 63.0,
-        "width": 83.0,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 804.5,
+        "x": 750.5,
         "y": 79.0
       },
       "actions": [

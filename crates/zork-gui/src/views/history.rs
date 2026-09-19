@@ -1,25 +1,24 @@
-//! Native participant session history page.
+//! Native history backed by the core's durable execution projection.
 use super::*;
-use crate::session_history::{self as model, Entry, Record};
-use gpui::{ListAlignment, ListOffset, ListState};
+#[cfg(feature = "headless-bench")]
+use crate::session_history as model;
+use crate::session_history::{Entry, Record};
+use gpui::ListOffset;
+#[cfg(feature = "headless-bench")]
+use gpui::{ListAlignment, ListState};
 use zork_ui::history::activity::{self, Activity, Kind, Projection, Subject};
 use zork_ui::history_page::Host as HistoryHost;
 
 mod live;
 mod presentation;
 mod statistics;
-use model::usage::UsageSummary;
 
 pub(super) struct HistoryState {
     ui: zork_ui::history_page::State,
     pub open: bool,
     session: Option<String>,
     records: zork_client_core::observe::List<Record>,
-    usage: UsageSummary,
-    usage_complete: bool,
-    overview_loaded: bool,
     runtime: Option<zork_client_core::state::HistoryRuntime>,
-    quota: Option<(Locale, crate::desktop::profile_quota::QuotaPresentation)>,
     pub(super) detail: Option<String>,
     pub(super) agent_detail: Option<String>,
     source: Option<Arc<zork_client_core::state::Conversation>>,
@@ -35,7 +34,6 @@ pub(super) struct HistoryState {
     loading_older: bool,
     loaded: bool,
     error: Option<String>,
-    json_open: zork_ui::components::json_tree::State,
 }
 impl Default for HistoryState {
     fn default() -> Self {
@@ -44,11 +42,7 @@ impl Default for HistoryState {
             open: false,
             session: None,
             records: Default::default(),
-            usage: UsageSummary::default(),
-            usage_complete: false,
-            overview_loaded: false,
             runtime: None,
-            quota: None,
             detail: None,
             agent_detail: None,
             source: None,
@@ -64,7 +58,6 @@ impl Default for HistoryState {
             loading_older: false,
             loaded: false,
             error: None,
-            json_open: Default::default(),
         }
     }
 }
@@ -90,14 +83,12 @@ impl HistoryState {
         let entries = model::entries(&records);
         let projection = Projection::new(&entries);
         let rows = projection.rows(&entries, &Default::default());
-        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.));
+        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.))
+            .with_uniform_item_height(px(26.));
         Self {
             open: true,
             session: Some("render-fixture".into()),
             records: records.into(),
-            usage: UsageSummary::new(&entries),
-            usage_complete: true,
-            overview_loaded: true,
             ui: zork_ui::history_page::State {
                 entries: entries.into(),
                 projection,
@@ -105,7 +96,8 @@ impl HistoryState {
                 scroll,
                 fixed_now: Some(now),
                 ..Default::default()
-            },
+            }
+            .with_metrics(),
             loaded: true,
             ..Self::default()
         }
@@ -115,7 +107,8 @@ impl HistoryState {
         let entries = model::entries(&records);
         let projection = Projection::new(&entries);
         let rows = projection.rows(&entries, &Default::default());
-        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.));
+        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.))
+            .with_uniform_item_height(px(26.));
         scroll.scroll_to(ListOffset {
             item_ix: 100,
             offset_in_item: px(0.),
@@ -124,17 +117,17 @@ impl HistoryState {
             open: true,
             session: Some("render-fixture".into()),
             records: records.into(),
-            usage: UsageSummary::new(&entries),
-            usage_complete: true,
-            overview_loaded: true,
             ui: zork_ui::history_page::State {
                 entries: entries.into(),
                 projection,
                 rows,
                 scroll,
                 fixed_now: Some(now),
+                positioned: true,
+                following_latest: false,
                 ..Default::default()
-            },
+            }
+            .with_metrics(),
             loaded: true,
             ..Self::default()
         }
@@ -148,7 +141,6 @@ impl RootView {
         self.history.overview_subscription = None;
         self.history.overview_updates = None;
         self.history.source = None;
-        self.history.timeline = None;
         self.chat_histories
             .insert(self.browser_host(), std::mem::take(&mut self.history));
     }
@@ -159,7 +151,9 @@ impl RootView {
             .update(cx, |panel, cx| panel.set_host(host, cx));
         if self.history.open {
             self.load_history(false, cx);
-            self.history.scroll.scroll_to_end();
+            if self.history.following_latest {
+                self.history.scroll.scroll_to_end();
+            }
         }
     }
     pub(super) fn reset_history(&mut self) {
@@ -172,7 +166,6 @@ impl RootView {
         self.history.overview_subscription = None;
         self.history.overview_updates = None;
         self.history.source = None;
-        self.history.timeline = None;
         self.history.detail = None;
         self.history.agent_detail = None;
     }
@@ -197,7 +190,9 @@ impl RootView {
         self.history.open = true;
         self.open_history_tab(cx);
         self.load_history(false, cx);
-        self.history.scroll.scroll_to_end();
+        if self.history.following_latest {
+            self.history.scroll.scroll_to_end();
+        }
         zork_ui::components::region::invalidate(cx, &["history", "header"]);
     }
     pub(super) fn open_history_tab(&mut self, cx: &mut Context<Self>) {
@@ -318,7 +313,7 @@ impl RootView {
     ) {
         let h = &mut self.history;
         let changed = live::from_update(&update, h.clock_offset != update.state.clock_offset_ms);
-        let follow = !h.loaded || h.scroll.is_scrolled_to_end().unwrap_or(true);
+        let follow = !h.loaded || h.following_latest;
         let anchor_offset = h.scroll.logical_scroll_top();
         // The paging control occupies row zero. Anchor the first real record
         // while it is visible, retaining the space above it as a negative offset.
@@ -349,6 +344,7 @@ impl RootView {
         h.error = update.state.error.clone();
         h.clock_offset = update.state.clock_offset_ms;
         if update.reset || update.entries.is_some() {
+            h.update_metrics();
             h.projection = Projection::new(h.entries.iter());
             h.expanded = h.projection.restore_expansion(
                 h.entries.iter(),
@@ -361,6 +357,7 @@ impl RootView {
             );
             h.rows = h.projection.rows(h.entries.iter(), &h.expanded);
             h.scroll.splice(1..previous_count + 1, h.rows.len());
+            h.scroll.clone().with_uniform_item_height(px(26.));
             if update.prepended || !follow {
                 if let Some(index) = anchor.and_then(|id| h.row_for_id(&id)) {
                     h.scroll.scroll_to(ListOffset {
@@ -383,13 +380,7 @@ impl RootView {
         overview: &zork_client_core::state::SessionOverview,
         cx: &mut Context<Self>,
     ) {
-        if self.history.runtime != overview.runtime {
-            self.history.quota = None;
-        }
         self.history.runtime = overview.runtime.clone();
-        self.history.usage = overview.usage();
-        self.history.usage_complete = overview.aggregates.complete;
-        self.history.overview_loaded = overview.loaded;
         zork_ui::components::region::invalidate(cx, &["history"]);
     }
     fn history_name(&self) -> String {
@@ -506,7 +497,6 @@ impl RootView {
         cx: &mut Context<Self>,
     ) {
         self.history.runtime = Some(runtime);
-        self.history.quota = None;
         zork_ui::components::region::invalidate(cx, &["history"]);
     }
 
@@ -539,6 +529,8 @@ impl RootView {
     }
 
     pub fn benchmark_scroll_history(&mut self, item: usize, offset: f32, cx: &mut Context<Self>) {
+        self.history.positioned = true;
+        self.history.following_latest = false;
         self.history.scroll.scroll_to(gpui::ListOffset {
             item_ix: item,
             offset_in_item: px(offset),

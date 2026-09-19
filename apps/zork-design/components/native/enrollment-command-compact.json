@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 12,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -16,15 +16,15 @@
       "visible": true,
       "bounds": {
         "x": 180.0,
-        "y": 119.0,
+        "y": 123.0,
         "width": 540.0,
-        "height": 361.5
+        "height": 353.5
       },
       "visible_bounds": {
         "x": 180.0,
-        "y": 119.0,
+        "y": 123.0,
         "width": 540.0,
-        "height": 361.5
+        "height": 353.5
       },
       "center": {
         "x": 450.0,
@@ -42,19 +42,19 @@
       "visible": true,
       "bounds": {
         "x": 664.0,
-        "y": 141.0,
+        "y": 145.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 664.0,
-        "y": 141.0,
+        "y": 145.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 680.0,
-        "y": 157.0
+        "y": 161.0
       },
       "actions": [
         "click",
@@ -68,19 +68,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 94.0
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 94.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 47.0
       },
       "actions": [
@@ -90,7 +90,7 @@
     {
       "id": "mesh-connect-device-tab",
       "role": "button",
-      "label": "连接其它设备 · 已选中",
+      "label": "连接其它设备",
       "enabled": true,
       "visible": true,
       "bounds": {
@@ -149,19 +149,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 324.5,
+        "y": 320.5,
         "width": 492.0,
         "height": 84.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 324.5,
+        "y": 320.5,
         "width": 492.0,
         "height": 84.0
       },
       "center": {
         "x": 450.0,
-        "y": 366.5
+        "y": 362.5
       },
       "actions": [
         "move"
@@ -174,20 +174,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 613.0,
-        "y": 424.5,
-        "width": 83.0,
+        "x": 615.0,
+        "y": 420.5,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 613.0,
-        "y": 424.5,
-        "width": 83.0,
+        "x": 615.0,
+        "y": 420.5,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 654.5,
-        "y": 440.5
+        "x": 655.5,
+        "y": 436.5
       },
       "actions": [
         "click",
@@ -201,20 +201,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 522.0,
-        "y": 424.5,
-        "width": 83.0,
+        "x": 526.0,
+        "y": 420.5,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 522.0,
-        "y": 424.5,
-        "width": 83.0,
+        "x": 526.0,
+        "y": 420.5,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 563.5,
-        "y": 440.5
+        "x": 566.5,
+        "y": 436.5
       },
       "actions": [
         "click",
@@ -229,19 +229,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 289.0,
+        "y": 285.0,
         "width": 492.0,
         "height": 19.5
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 289.0,
+        "y": 285.0,
         "width": 492.0,
         "height": 19.5
       },
       "center": {
         "x": 450.0,
-        "y": 298.75
+        "y": 294.75
       },
       "actions": [
         "move"

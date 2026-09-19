@@ -72,6 +72,9 @@ jobs:
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
+          # Publish namespaced shards explicitly after compilation; avoid the
+          # duplicate manifest and full remote sync in the action's post step.
+          save-cache: false
           manifest-key: zork-main-runtime-${{ runner.os }}-${{ runner.arch }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
           s3-region: auto
@@ -90,6 +93,8 @@ jobs:
         run: bash scripts/check-runtime.sh build
       - name: Record compiled dependencies
         if: env.KACHE_CONFIGURED == 'true'
+        env:
+          KACHE_REMOTE_READONLY: "0"
         run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
       - name: Save compiled target cache
         if: steps.target.outputs.cache-hit != 'true'

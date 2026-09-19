@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 8,
+  "revision": 13,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -41,20 +41,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 29.0,
-        "y": 71.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 70.0,
+        "width": 500.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 29.0,
-        "y": 71.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 70.0,
+        "width": 500.0,
         "height": 32.0
       },
       "center": {
         "x": 280.0,
-        "y": 87.0
+        "y": 86.0
       },
       "actions": [
         "click",
@@ -68,20 +68,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 29.0,
-        "y": 105.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 104.0,
+        "width": 500.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 29.0,
-        "y": 105.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 104.0,
+        "width": 500.0,
         "height": 32.0
       },
       "center": {
         "x": 280.0,
-        "y": 121.0
+        "y": 120.0
       },
       "actions": [
         "click",
@@ -95,20 +95,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 29.0,
-        "y": 139.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 138.0,
+        "width": 500.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 29.0,
-        "y": 139.0,
-        "width": 502.0,
+        "x": 30.0,
+        "y": 138.0,
+        "width": 500.0,
         "height": 32.0
       },
       "center": {
         "x": 280.0,
-        "y": 155.0
+        "y": 154.0
       },
       "actions": [
         "click",
@@ -175,20 +175,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 20.0,
-        "y": 62.0,
-        "width": 520.0,
-        "height": 118.0
+        "x": 24.0,
+        "y": 64.0,
+        "width": 512.0,
+        "height": 112.0
       },
       "visible_bounds": {
-        "x": 20.0,
-        "y": 62.0,
-        "width": 520.0,
-        "height": 118.0
+        "x": 24.0,
+        "y": 64.0,
+        "width": 512.0,
+        "height": 112.0
       },
       "center": {
         "x": 280.0,
-        "y": 121.0
+        "y": 120.0
       },
       "actions": [
         "move"

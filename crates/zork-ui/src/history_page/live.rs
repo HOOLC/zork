@@ -20,9 +20,7 @@ enum Target {
         id: String,
         group: bool,
         index: usize,
-        selection: Option<(i64, i64)>,
     },
-    Timeline,
 }
 
 struct Leaf<H: Host> {
@@ -33,12 +31,12 @@ struct Leaf<H: Host> {
     revision: u64,
     _subscription: gpui::Subscription,
     clock: Option<Task<()>>,
+    focus: FocusHandle,
 }
 
 fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) -> gpui::AnyElement {
     let key = match &target {
         Target::Row { id, group, .. } => format!("history-live-row-{group}-{id}"),
-        Target::Timeline => "history-live-timeline".into(),
     };
     let root = cx.entity();
     let initial = target.clone();
@@ -51,7 +49,6 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
                 cx.subscribe(&root, |v: &mut Leaf<H>, _, update: &HistoryChanged, cx| {
                     if update.structure
                         || update.clock
-                        || matches!(v.target, Target::Timeline)
                         || v.observed.iter().any(|id| update.entries.contains(id))
                     {
                         v.revision = v.revision.wrapping_add(1);
@@ -67,6 +64,7 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
                 revision: 0,
                 _subscription: subscription,
                 clock: None,
+                focus: cx.focus_handle().tab_stop(true),
             }
         })
     });
@@ -85,7 +83,6 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
 pub(super) fn row<H: Host>(
     view: &H,
     index: usize,
-    selection: Option<(i64, i64)>,
     window: &mut Window,
     cx: &mut Context<H>,
 ) -> gpui::AnyElement {
@@ -94,15 +91,10 @@ pub(super) fn row<H: Host>(
             id: view.history().row_entry(index).unwrap().id.clone(),
             group: view.history().rows[index].activity.is_none(),
             index,
-            selection,
         },
         window,
         cx,
     )
-}
-
-pub(super) fn timeline<H: Host>(window: &mut Window, cx: &mut Context<H>) -> gpui::AnyElement {
-    element(Target::Timeline, window, cx)
 }
 
 impl<H: Host> Render for Leaf<H> {
@@ -119,12 +111,7 @@ impl<H: Host> Render for Leaf<H> {
             .update(cx, |v, cx| {
                 let now = v.history().now();
                 match &mut self.target {
-                    Target::Row {
-                        id,
-                        group,
-                        index,
-                        selection,
-                    } => {
+                    Target::Row { id, group, index } => {
                         let matches = |i: usize| {
                             v.history().row_entry(i).is_some_and(|e| &e.id == id)
                                 && v.history().rows[i].activity.is_none() == *group
@@ -139,7 +126,6 @@ impl<H: Host> Render for Leaf<H> {
                         let row = v.history().rows[*index];
                         let block = &v.history().projection.blocks[row.block];
                         let entry = v.history().row_entry(*index).unwrap();
-                        delay = next_relative_tick(entry.start.or(entry.end), now);
                         if *group && source_changed {
                             observed.extend(
                                 v.history().projection.activities[block.start..block.end]
@@ -150,26 +136,17 @@ impl<H: Host> Render for Leaf<H> {
                             if source_changed {
                                 observed.push(id.clone());
                             }
-                            if entry.state == "running" && entry.end.is_none() {
-                                delay = Some(
-                                    delay
-                                        .unwrap_or(Duration::from_secs(1))
-                                        .min(Duration::from_secs(1)),
-                                );
+                            if entry.state == "running"
+                                && entry.end.is_none()
+                                && matches!(
+                                    v.history().projection.activities[row.activity.unwrap()].kind,
+                                    Kind::Thinking | Kind::Wait
+                                )
+                            {
+                                delay = Some(Duration::from_secs(1));
                             }
                         }
-                        v.render_history_activity(*index, now, *selection, cx)
-                            .into_any_element()
-                    }
-                    Target::Timeline => {
-                        if v.history()
-                            .entries
-                            .iter()
-                            .any(|e| e.state == "running" && e.end.is_none())
-                        {
-                            delay = Some(Duration::from_secs(1));
-                        }
-                        v.render_history_timeline_panel(window, cx)
+                        v.render_history_activity(*index, now, self.focus.clone(), window, cx)
                             .into_any_element()
                     }
                 }
@@ -193,47 +170,5 @@ impl<H: Host> Render for Leaf<H> {
             }));
         }
         content
-    }
-}
-
-fn next_relative_tick(timestamp: Option<i64>, now: i64) -> Option<Duration> {
-    let age = now.saturating_sub(timestamp?);
-    let wait = if age < 0 {
-        age.saturating_neg()
-    } else if age < 5000 {
-        5000 - age
-    } else {
-        let unit = match age {
-            0..=59999 => 1000,
-            60000..=3599999 => 60000,
-            3600000..=86399999 => 3600000,
-            _ => 86400000,
-        };
-        unit - age % unit
-    };
-    Some(Duration::from_millis(wait.max(1) as u64))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{next_relative_tick, Duration};
-
-    #[test]
-    fn relative_clock_wakes_at_the_next_visible_boundary() {
-        for (age, delay) in [
-            (-1000, 1000),
-            (0, 5000),
-            (4900, 100),
-            (5500, 500),
-            (59999, 1),
-            (61000, 59000),
-            (3600000, 3600000),
-        ] {
-            assert_eq!(
-                next_relative_tick(Some(0), age),
-                Some(Duration::from_millis(delay))
-            );
-        }
-        assert_eq!(next_relative_tick(None, 1000), None);
     }
 }

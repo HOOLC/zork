@@ -33,7 +33,7 @@ specimens = (ROOT/'crates/zork-ui/src/liquid_story/render.rs').read_text()
 assert not re.search(r'\bfn\s+smooth_(?:button|icon_button|quiet_button|choice|segment|busy_button)', controls), 'parallel playground controls returned'
 assert 'liquid::controls' in playground and 'component::action(' in playground
 gallery = (ROOT/'crates/zork-ui/src/liquid_story/mod.rs').read_text()
-assert 'navigation: liquid::navigation::Navigation' in gallery and 'self.navigation.render(' in playground, 'playground bypassed shared navigation'
+assert 'navigation: liquid::navigation::Navigation' in gallery and 'self.navigation.render(' in (ROOT/'crates/zork-ui/src/liquid_story/library.rs').read_text(), 'playground bypassed shared navigation'
 assert 'controls::segmented_with_surface(' in specimens and 'controls::segmented(' in specimens
 assert 'controls::toggle_with_surface(' in specimens and 'component::toggle(' in playground
 overlay = (ROOT/'crates/zork-ui/src/components/liquid/overlay.rs').read_text()

@@ -103,29 +103,43 @@ pub fn run(name: &str, output: &Path) -> anyhow::Result<()> {
                 cx.background_executor().timer(Duration::from_millis(200)).await;
             }
             if files {
-                let _ = window.update(cx, |_, window, cx| {
-                    let action: UserAction = serde_json::from_value(serde_json::json!({"type":"click","target":{"element_id":"conversation-browser"}})).unwrap();
-                    driver.dispatch(action, window, cx)
-                });
-                cx.background_executor().timer(Duration::from_millis(150)).await;
-                let _ = window.update(cx, |_, window, cx| {
-                    let action: UserAction = serde_json::from_value(serde_json::json!({"type":"click","target":{"element_id":"conversation-files-button"}})).unwrap();
-                    driver.dispatch(action, window, cx)
-                });
-                cx.background_executor().timer(Duration::from_millis(150)).await;
-                let result = window.update(cx, |_, window, cx| {
-                    let action: UserAction = serde_json::from_value(serde_json::json!({"type":"click","target":{"element_id":"conversation-files-all"}})).unwrap();
-                    driver.dispatch(action, window, cx)
-                });
-                if let Err(error) = result.and_then(|result| result) {
-                    eprintln!("native file-list setup: {error:#}");
-                    std::process::exit(1);
+                let mut targets = Vec::new();
+                if !driver.snapshot(false).elements.iter().any(|e| e.visible && e.id == "browser-tabs") {
+                    targets.push("conversation-browser");
                 }
-                cx.background_executor().timer(Duration::from_millis(150)).await;
+                targets.extend(["conversation-files-button", "conversation-files-all"]);
+                for target in targets {
+                    // Setup waits for the real overlay's input surface. These
+                    // frames are outside the continuous scrolling measurement.
+                    for _ in 0..120 {
+                        if driver.snapshot(false).elements.iter().any(|e| e.visible && e.id == target) {
+                            break;
+                        }
+                        cx.background_executor().timer(Duration::from_millis(16)).await;
+                    }
+                    let result = window.update(cx, |_, window, cx| {
+                        let action: UserAction = serde_json::from_value(serde_json::json!({"type":"click","target":{"element_id":target}})).unwrap();
+                        driver.dispatch(action, window, cx)
+                    });
+                    if let Err(error) = result.and_then(|result| result) {
+                        eprintln!("native file-list setup ({target}): {error:#}");
+                        std::process::exit(1);
+                    }
+                }
+                for _ in 0..120 {
+                    if driver.snapshot(false).elements.iter().any(|e| e.visible && e.id == "conversation-artifacts") {
+                        break;
+                    }
+                    cx.background_executor().timer(Duration::from_millis(16)).await;
+                }
+            }
+            if history && !driver.snapshot(false).elements.iter().any(|e| e.visible && e.id == "history-ledger") {
+                eprintln!("native history fixture did not mount its history page");
+                std::process::exit(1);
             }
             let result=window.update(cx,|_,window,cx| {
                 cold_capture.set(window.frame_duration_snapshot().draw_duration_histogram.value_at_quantile(1.) as f64/1e6);
-                let action:UserAction=serde_json::from_value(serde_json::json!({"type":"scroll_measure","target":if files {serde_json::json!({"element_id":"conversation-artifacts"})} else {serde_json::json!({"x":if history {1100}else{700},"y":550})},"duration_ms":10000,"pixels_per_second":speed,"start_down":all_types&&anchor==0})).unwrap();
+                let action:UserAction=serde_json::from_value(serde_json::json!({"type":"scroll_measure","target":if files {serde_json::json!({"element_id":"conversation-artifacts"})} else if history {serde_json::json!({"element_id":"history-ledger"})} else {serde_json::json!({"x":700,"y":550})},"duration_ms":10000,"pixels_per_second":speed,"start_down":all_types&&anchor==0})).unwrap();
                 driver.dispatch(action,window,cx)
             });
             if let Err(error)=result.and_then(|result|result){eprintln!("native benchmark: {error:#}");}

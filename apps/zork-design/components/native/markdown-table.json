@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 8,
+  "revision": 15,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -44,17 +44,17 @@
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 91.0
+        "height": 89.0
       },
       "visible_bounds": {
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 91.0
+        "height": 89.0
       },
       "center": {
         "x": 280.0,
-        "y": 69.5
+        "y": 68.5
       },
       "actions": [
         "move"
@@ -67,20 +67,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 33.0,
-        "y": 29.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 28.5,
+        "width": 239.0,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 33.0,
-        "y": 29.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 28.5,
+        "width": 239.0,
         "height": 21.0
       },
       "center": {
-        "x": 152.25,
-        "y": 39.5
+        "x": 152.0,
+        "y": 39.0
       },
       "actions": [
         "move"
@@ -93,20 +93,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 288.5,
-        "y": 29.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 28.5,
+        "width": 239.5,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 288.5,
-        "y": 29.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 28.5,
+        "width": 239.5,
         "height": 21.0
       },
       "center": {
         "x": 407.75,
-        "y": 39.5
+        "y": 39.0
       },
       "actions": [
         "move"
@@ -119,20 +119,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 33.0,
-        "y": 59.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 58.0,
+        "width": 239.0,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 33.0,
-        "y": 59.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 58.0,
+        "width": 239.0,
         "height": 21.0
       },
       "center": {
-        "x": 152.25,
-        "y": 69.5
+        "x": 152.0,
+        "y": 68.5
       },
       "actions": [
         "move"
@@ -145,20 +145,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 288.5,
-        "y": 59.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 58.0,
+        "width": 239.5,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 288.5,
-        "y": 59.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 58.0,
+        "width": 239.5,
         "height": 21.0
       },
       "center": {
         "x": 407.75,
-        "y": 69.5
+        "y": 68.5
       },
       "actions": [
         "move"
@@ -171,20 +171,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 33.0,
-        "y": 89.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 87.5,
+        "width": 239.0,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 33.0,
-        "y": 89.0,
-        "width": 238.5,
+        "x": 32.5,
+        "y": 87.5,
+        "width": 239.0,
         "height": 21.0
       },
       "center": {
-        "x": 152.25,
-        "y": 99.5
+        "x": 152.0,
+        "y": 98.0
       },
       "actions": [
         "move"
@@ -197,20 +197,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 288.5,
-        "y": 89.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 87.5,
+        "width": 239.5,
         "height": 21.0
       },
       "visible_bounds": {
-        "x": 288.5,
-        "y": 89.0,
-        "width": 238.5,
+        "x": 288.0,
+        "y": 87.5,
+        "width": 239.5,
         "height": 21.0
       },
       "center": {
         "x": 407.75,
-        "y": 99.5
+        "y": 98.0
       },
       "actions": [
         "move"

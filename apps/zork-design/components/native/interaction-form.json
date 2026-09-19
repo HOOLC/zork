@@ -124,19 +124,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 627.0,
+        "x": 629.0,
         "y": 346.0,
-        "width": 83.0,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 627.0,
+        "x": 629.0,
         "y": 346.0,
-        "width": 83.0,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 668.5,
+        "x": 669.5,
         "y": 362.0
       },
       "actions": [
@@ -180,17 +180,17 @@
         "x": 24.0,
         "y": 24.0,
         "width": 752.0,
-        "height": 541.0
+        "height": 540.5
       },
       "visible_bounds": {
         "x": 24.0,
         "y": 24.0,
         "width": 752.0,
-        "height": 541.0
+        "height": 540.5
       },
       "center": {
         "x": 400.0,
-        "y": 294.5
+        "y": 294.25
       },
       "actions": [
         "move"

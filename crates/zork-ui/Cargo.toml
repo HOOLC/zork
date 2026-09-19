@@ -41,3 +41,9 @@ raw-window-handle = "0.6"
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 zork-client-core = { path = "../zork-client-core" }
 gpui-platform = { package = "gpui-platform-gpui-unofficial", version = "=1.17.0-pre", features = ["font-kit", "test-support", "wayland", "x11"] }
+
+[[test]]
+name = "history_parity"
+path = "tests/history_parity.rs"
+harness = false
+required-features = ["headless-bench", "stories"]
