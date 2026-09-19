@@ -1332,17 +1332,7 @@ pub(crate) fn valid_avatar(avatar: &str) -> bool {
 /// receives the same portrait, so creation stays reproducible.
 pub(crate) fn default_avatar(id: &str) -> &'static str {
     const AVATARS: [&str; 12] = [
-        "cat",
-        "bunny",
-        "bear",
-        "fox",
-        "panda",
-        "chick",
-        "dog",
-        "owl",
-        "koala",
-        "penguin",
-        "deer",
+        "cat", "bunny", "bear", "fox", "panda", "chick", "dog", "owl", "koala", "penguin", "deer",
         "octopus",
     ];
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;

@@ -1,8 +1,8 @@
 use super::{NavigationData, Observable, Subscription};
 use crate::{
     api::{
-        Artifact, ConversationReadMarker, StationClient, MeshStatus, ProductTask, ProfileInfo,
-        Role, SessionSummary,
+        Artifact, ConversationReadMarker, MeshStatus, ProductTask, ProfileInfo, Role,
+        SessionSummary, StationClient,
     },
     live::LiveEvent,
     store::ClientStore,
@@ -237,22 +237,23 @@ impl Device {
             cache: &Option<(Arc<ClientStore>, String)>,
             key: &str,
         ) -> Option<T> {
-            cache
-                .as_ref()
-                .and_then(|(store, node)| {
-                    if let Some(value) = store.get(node, key).ok().flatten() {
-                        return Some(value);
-                    }
-                    let path = match key {
-                        "agents" => "/v1/node/agents",
-                        "sessions" => "/v1/im/sessions",
-                        _ => return None,
-                    };
-                    let value: Value = store.get(node, &format!("http:{path}")).ok().flatten()?;
-                    serde_json::from_value(value["body"]["items"].clone()).ok()
-                })
+            cache.as_ref().and_then(|(store, node)| {
+                if let Some(value) = store.get(node, key).ok().flatten() {
+                    return Some(value);
+                }
+                let path = match key {
+                    "agents" => "/v1/node/agents",
+                    "sessions" => "/v1/im/sessions",
+                    _ => return None,
+                };
+                let value: Value = store.get(node, &format!("http:{path}")).ok().flatten()?;
+                serde_json::from_value(value["body"]["items"].clone()).ok()
+            })
         }
-        fn cached<T: DeserializeOwned + Default>(cache: &Option<(Arc<ClientStore>, String)>, key: &str) -> T {
+        fn cached<T: DeserializeOwned + Default>(
+            cache: &Option<(Arc<ClientStore>, String)>,
+            key: &str,
+        ) -> T {
             cached_value(cache, key).unwrap_or_default()
         }
         let agents = cached_value::<Vec<Value>>(&cache, "agents");
@@ -400,7 +401,9 @@ impl Device {
     }
     pub fn agent_availability(&self) -> AgentAvailability {
         let state = self.snapshot();
-        if state.revoked { return AgentAvailability::Unavailable; }
+        if state.revoked {
+            return AgentAvailability::Unavailable;
+        }
         if !state.agents_loaded && state.agents.is_empty() {
             return if state.connection_error.is_some() || state.online == Some(false) {
                 AgentAvailability::Unavailable
@@ -408,7 +411,11 @@ impl Device {
                 AgentAvailability::Loading
             };
         }
-        if self.has_long_term_agents() { AgentAvailability::Available } else { AgentAvailability::Empty }
+        if self.has_long_term_agents() {
+            AgentAvailability::Available
+        } else {
+            AgentAvailability::Empty
+        }
     }
     pub fn navigation(&self) -> Subscription<NavigationData> {
         self.navigation.subscribe()
@@ -465,7 +472,9 @@ impl Device {
                     continue;
                 }
                 if update.agents_changed {
-                    if update.state.loaded { device.persist("agents", &update.state.agents); }
+                    if update.state.loaded {
+                        device.persist("agents", &update.state.agents);
+                    }
                     device.commit(|s| {
                         s.agents = update.state.agents.clone();
                         s.agents_loaded = update.state.loaded;
@@ -886,7 +895,10 @@ impl Device {
             if source.refresh_agents().await.is_ok() {
                 let agents = source.snapshot().agents.clone();
                 self.persist("agents", &agents);
-                self.commit(|s| { s.agents = agents; s.agents_loaded = true; });
+                self.commit(|s| {
+                    s.agents = agents;
+                    s.agents_loaded = true;
+                });
                 for conversation in self
                     .conversations
                     .lock()
@@ -1047,27 +1059,46 @@ mod tests {
 
     #[test]
     fn navigation_wakeup_can_resolve_the_advertised_agent_from_device_state() {
-        use std::{sync::atomic::{AtomicBool, Ordering}, task::{Context, Wake, Waker}};
-        struct Observe { device: Arc<Device>, ready: AtomicBool }
+        use std::{
+            sync::atomic::{AtomicBool, Ordering},
+            task::{Context, Wake, Waker},
+        };
+        struct Observe {
+            device: Arc<Device>,
+            ready: AtomicBool,
+        }
         impl Wake for Observe {
             fn wake(self: Arc<Self>) {
                 let state = self.device.snapshot();
-                self.ready.store(state.online == Some(true)
-                    && state.agents.iter().any(|a| a["id"] == "new-partner"), Ordering::SeqCst);
+                self.ready.store(
+                    state.online == Some(true)
+                        && state.agents.iter().any(|a| a["id"] == "new-partner"),
+                    Ordering::SeqCst,
+                );
             }
         }
         let (_root, _store, device) = device();
         let mut navigation = device.navigation();
         navigation.snapshot();
         let mut readiness = navigation.readiness();
-        let observed = Arc::new(Observe { device: device.clone(), ready: AtomicBool::new(false) });
+        let observed = Arc::new(Observe {
+            device: device.clone(),
+            ready: AtomicBool::new(false),
+        });
         let waker = Waker::from(observed.clone());
-        assert!(readiness.poll_changed(&mut Context::from_waker(&waker)).is_pending());
+        assert!(readiness
+            .poll_changed(&mut Context::from_waker(&waker))
+            .is_pending());
         device.commit(|state| {
             state.online = Some(true);
-            state.agents = Arc::new(vec![serde_json::json!({"id":"new-partner", "role":"leader"})]);
+            state.agents = Arc::new(vec![
+                serde_json::json!({"id":"new-partner", "role":"leader"}),
+            ]);
         });
-        assert!(observed.ready.load(Ordering::SeqCst), "navigation advertised an agent before its authoritative device snapshot");
+        assert!(
+            observed.ready.load(Ordering::SeqCst),
+            "navigation advertised an agent before its authoritative device snapshot"
+        );
     }
 
     #[tokio::test]
@@ -1189,15 +1220,22 @@ mod tests {
         initial.commit(|s| s.connection_error = Some("not connected".into()));
         assert_eq!(initial.agent_availability(), AgentAvailability::Unavailable);
         drop(initial);
-        let open = || Device::open(Arc::new(StationClient::new("http://127.0.0.1:9", None)),
-            Some((store.clone(), "node".into())), true);
+        let open = || {
+            Device::open(
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
+                Some((store.clone(), "node".into())),
+                true,
+            )
+        };
         store.put("node", "agents", &serde_json::json!([])).unwrap();
         let cached = open();
         assert_eq!(cached.agent_availability(), AgentAvailability::Empty);
         cached.commit(|s| s.connection_error = Some("offline".into()));
         assert_eq!(cached.agent_availability(), AgentAvailability::Empty);
         drop(cached);
-        store.put("node", "agents", &serde_json::json!({"invalid":"catalog"})).unwrap();
+        store
+            .put("node", "agents", &serde_json::json!({"invalid":"catalog"}))
+            .unwrap();
         assert_eq!(open().agent_availability(), AgentAvailability::Loading);
     }
     #[tokio::test]

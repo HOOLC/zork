@@ -539,13 +539,22 @@ fn modal_playback_retires_the_invisible_tail_without_cutting_reversals() {
     let mass = simulation.mass();
     let particles = simulation.particles().map(|p| p.id).collect::<Vec<_>>();
     simulation.set_open(true);
-    for _ in 0..12 { simulation.advance(1. / 120., false); }
+    for _ in 0..12 {
+        simulation.advance(1. / 120., false);
+    }
     let moving = simulation.pose();
     assert!(moving.vx.abs() + moving.vy.abs() > 100.);
     simulation.set_open(false);
-    assert_eq!(simulation.pose(), moving, "reversal reset the live velocity");
+    assert_eq!(
+        simulation.pose(),
+        moving,
+        "reversal reset the live velocity"
+    );
     simulation.advance(1. / 120., false);
-    assert!(simulation.moving(), "target crossing prematurely stopped the animation");
+    assert!(
+        simulation.moving(),
+        "target crossing prematurely stopped the animation"
+    );
     for open in [false, true, false] {
         simulation.set_open(open);
         let mut last = simulation.pose();
@@ -554,15 +563,22 @@ fn modal_playback_retires_the_invisible_tail_without_cutting_reversals() {
             last = simulation.pose();
             simulation.advance(1. / 120., false);
             frames += 1;
-            assert!(frames < 180, "fixed modal fixture retained an invisible numeric tail");
+            assert!(
+                frames < 180,
+                "fixed modal fixture retained an invisible numeric tail"
+            );
         }
         let final_pose = simulation.pose();
-        let edge = (last.cx-final_pose.cx).abs() + (last.cy-final_pose.cy).abs()
-            + 0.5*((last.w-final_pose.w).abs() + (last.h-final_pose.h).abs());
+        let edge = (last.cx - final_pose.cx).abs()
+            + (last.cy - final_pose.cy).abs()
+            + 0.5 * ((last.w - final_pose.w).abs() + (last.h - final_pose.h).abs());
         assert!(edge < 0.15, "visible jump at retirement: {edge}");
         assert_eq!(final_pose, if open { target } else { source });
         assert_eq!(simulation.mass(), mass);
-        assert_eq!(simulation.particles().map(|p| p.id).collect::<Vec<_>>(), particles);
+        assert_eq!(
+            simulation.particles().map(|p| p.id).collect::<Vec<_>>(),
+            particles
+        );
     }
 }
 
@@ -782,9 +798,16 @@ fn moving_composer_member_does_not_move_distant_bottom_edge() {
 fn paired_dialog_preserves_separation_and_fusion_necks() {
     let source = Pose::rect(638., 10., 64., 32., 16.);
     let target = Pose::rect(129., 95., 540., 646., 32.);
-    let mut simulation = Simulation::pair(source, target, Material::default(), Options {
-        anchor: [0.5, 0.5], capacity: target.w * target.h, ..Default::default()
-    });
+    let mut simulation = Simulation::pair(
+        source,
+        target,
+        Material::default(),
+        Options {
+            anchor: [0.5, 0.5],
+            capacity: target.w * target.h,
+            ..Default::default()
+        },
+    );
     assert_eq!(simulation.pose(), source);
     for open in [true, false] {
         simulation.set_open(open);
@@ -798,7 +821,10 @@ fn paired_dialog_preserves_separation_and_fusion_necks() {
         }
         assert!(connected && separate, "missing separation/fusion: {open}");
         simulation.finish();
-        assert_eq!(trace(&simulation).unwrap().loops.len(), if open { 2 } else { 1 });
+        assert_eq!(
+            trace(&simulation).unwrap().loops.len(),
+            if open { 2 } else { 1 }
+        );
     }
     assert_eq!(simulation.pose().w, source.w);
     assert_eq!(simulation.pose().h, source.h);
@@ -806,10 +832,16 @@ fn paired_dialog_preserves_separation_and_fusion_necks() {
 
 #[test]
 fn layout_translation_preserves_live_shapes_and_future_motion() {
-    let poses = [Pose::rect(0., 40., 600., 80., 32.), Pose::rect(24., 8., 120., 32., 16.)];
+    let poses = [
+        Pose::rect(0., 40., 600., 80., 32.),
+        Pose::rect(24., 8., 120., 32., 16.),
+    ];
     let mut original = Simulation::compound(&poses, 4., Material::default(), Options::default());
     original.finish();
-    original.set_compound_targets(&[Pose::rect(0., 20., 520., 100., 32.), Pose::rect(64., -12., 160., 32., 16.)]);
+    original.set_compound_targets(&[
+        Pose::rect(0., 20., 520., 100., 32.),
+        Pose::rect(64., -12., 160., 32., 16.),
+    ]);
     original.advance(0.05, false);
     let mut shifted = original.clone();
     let moving = shifted.moving();
@@ -823,7 +855,16 @@ fn layout_translation_preserves_live_shapes_and_future_motion() {
             let b = shifted.group_pose(index);
             assert!((b.cx - a.cx + 106.).abs() < 1e-7);
             assert!((b.cy - a.cy - 24.).abs() < 1e-7);
-            for (a, b) in [(a.w,b.w),(a.h,b.h),(a.vx,b.vx),(a.vy,b.vy),(a.vw,b.vw),(a.vh,b.vh)] { assert!((a-b).abs() < 1e-7); }
+            for (a, b) in [
+                (a.w, b.w),
+                (a.h, b.h),
+                (a.vx, b.vx),
+                (a.vy, b.vy),
+                (a.vw, b.vw),
+                (a.vh, b.vh),
+            ] {
+                assert!((a - b).abs() < 1e-7);
+            }
         }
         original.advance(1. / 60., false);
         shifted.advance(1. / 60., false);

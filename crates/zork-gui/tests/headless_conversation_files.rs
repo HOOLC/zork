@@ -434,8 +434,11 @@ fn main() -> anyhow::Result<()> {
     )?;
     anyhow::ensure!(core.draft("render-fixture").files == vec![file.clone()]);
     let overlay = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
-    anyhow::ensure!(overlay["destinationLayer"] == "modal" && overlay["anchor"]["w"].as_f64().is_some_and(|w| w > 40.),
-        "attachment preview did not bind the real file source: {overlay}");
+    anyhow::ensure!(
+        overlay["destinationLayer"] == "modal"
+            && overlay["anchor"]["w"].as_f64().is_some_and(|w| w > 40.),
+        "attachment preview did not bind the real file source: {overlay}"
+    );
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
     cx.update(|cx| cx.set_reduce_motion(false));
     act(
@@ -443,13 +446,28 @@ fn main() -> anyhow::Result<()> {
         json!({"type":"click","target":{"element_id":"attachment-preview-dialog-close"}}),
     )?;
     let retiring = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
-    anyhow::ensure!(retiring["destinationLayer"] == "source" && retiring["progress"].as_f64().is_some_and(|p| p > 0.),
-        "closing attachment skipped its retained exit: {retiring}");
-    anyhow::ensure!(!driver.snapshot(false).elements.iter().any(|e| e.id == "drive-save" && e.enabled),
-        "retiring preview kept an active save action");
-    act(&mut cx, json!({"type":"click","target":{"element_id":format!("message-file-0-{}",file.id)}}))?;
+    anyhow::ensure!(
+        retiring["destinationLayer"] == "source"
+            && retiring["progress"].as_f64().is_some_and(|p| p > 0.),
+        "closing attachment skipped its retained exit: {retiring}"
+    );
+    anyhow::ensure!(
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "drive-save" && e.enabled),
+        "retiring preview kept an active save action"
+    );
+    act(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":format!("message-file-0-{}",file.id)}}),
+    )?;
     let reversed = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
-    anyhow::ensure!(reversed["destinationLayer"] == "modal", "attachment did not reverse into the modal layer");
+    anyhow::ensure!(
+        reversed["destinationLayer"] == "modal",
+        "attachment did not reverse into the modal layer"
+    );
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     cx.update(|cx| cx.set_reduce_motion(true));
     pump(&mut cx)?;
@@ -736,11 +754,18 @@ fn main() -> anyhow::Result<()> {
     // The shared composer retains the changing opening until its contour also
     // settles. Verify that lifetime explicitly before testing idle redraws.
     let mut settling_frames = 0;
-    while view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == true) && settling_frames < 30 {
+    while view.read_with(&cx, |v, _| {
+        v.benchmark_composer_material()["moving"] == true
+    }) && settling_frames < 30
+    {
         pump(&mut cx)?;
         settling_frames += 1;
     }
-    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false), "attachment material did not settle");
+    anyhow::ensure!(
+        view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"]
+            == false),
+        "attachment material did not settle"
+    );
     pump(&mut cx)?;
     let stable = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     for _ in 0..4 {

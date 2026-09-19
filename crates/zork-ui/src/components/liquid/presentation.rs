@@ -94,7 +94,12 @@ impl Presentation {
         backdrop.last = None;
         self.backdrop.set(backdrop);
     }
-    pub fn transfer(&self, source: Option<&PaintRegion>, fallback: Bounds<Pixels>, window: &Window) {
+    pub fn transfer(
+        &self,
+        source: Option<&PaintRegion>,
+        fallback: Bounds<Pixels>,
+        window: &Window,
+    ) {
         use std::hash::{Hash, Hasher};
         let mut key = std::collections::hash_map::DefaultHasher::new();
         "liquid-destination-picture".hash(&mut key);
@@ -102,14 +107,24 @@ impl Presentation {
         self.epoch.get().hash(&mut key);
         let region = self.region.borrow();
         self.initial_frame.set(None);
-        *self.initial.borrow_mut() = region.as_ref()
+        *self.initial.borrow_mut() = region
+            .as_ref()
             .and_then(|region| window.snapshot_paint_region(key.finish(), region))
-            .or_else(|| source.and_then(|region| window.snapshot_paint_region(key.finish(), region)))
+            .or_else(|| {
+                source.and_then(|region| window.snapshot_paint_region(key.finish(), region))
+            })
             .or_else(|| Some(window.snapshot_presented(key.finish(), fallback)));
         self.hold();
     }
     pub fn record(&self, child: AnyElement) -> AnyElement {
-        Playback { child, driver: None, initial: self.initial.clone(), initial_frame: self.initial_frame.clone(), region: self.region.clone() }.into_any_element()
+        Playback {
+            child,
+            driver: None,
+            initial: self.initial.clone(),
+            initial_frame: self.initial_frame.clone(),
+            region: self.region.clone(),
+        }
+        .into_any_element()
     }
     pub fn opacity(&self) -> f32 {
         self.content.get().opacity()
@@ -205,7 +220,9 @@ pub(super) struct FramePaint {
 impl FramePaint {
     fn background(&self, viewport: Bounds<Pixels>, window: &mut Window) {
         let motion = self.motion.borrow();
-        let Some(surface) = &motion.surface else { return; };
+        let Some(surface) = &motion.surface else {
+            return;
+        };
         let bounds = Bounds::new(viewport.origin + self.offset.get(), viewport.size);
         let paint = |window: &mut Window| {
             if let Some(part) = &self.part {
@@ -213,42 +230,84 @@ impl FramePaint {
             } else {
                 surface.paint_geometry(bounds, Some(self.recipe.fill), None, window);
             }
-            if let Some(source) = &self.source { source.paint_ink(window); }
+            if let Some(source) = &self.source {
+                source.paint_ink(window);
+            }
             let alpha = self.recipe.backdrop_alpha(self.backdrop.get().opacity());
             if alpha > 0 {
                 surface.paint_geometry(bounds, None, self.recipe.border, window);
                 window.paint_barrier(viewport);
-                window.paint_quad(gpui::fill(viewport, rgba((self.recipe.backdrop.unwrap() & 0xffffff00) | alpha)));
+                window.paint_quad(gpui::fill(
+                    viewport,
+                    rgba((self.recipe.backdrop.unwrap() & 0xffffff00) | alpha),
+                ));
                 window.paint_barrier(viewport);
             }
             if let Some(body) = &self.body {
                 // The body is a whole material parcel. Its content surface
                 // naturally covers source ink as content becomes visible.
-                window.with_scaled_alpha_paint_clip(point(px(0.), px(0.)), 1., self.content.get().opacity(), &[viewport], |window| {
-                    body.borrow_mut().paint(surface, bounds, Some(self.recipe.fill), None, window);
-                });
+                window.with_scaled_alpha_paint_clip(
+                    point(px(0.), px(0.)),
+                    1.,
+                    self.content.get().opacity(),
+                    &[viewport],
+                    |window| {
+                        body.borrow_mut().paint(
+                            surface,
+                            bounds,
+                            Some(self.recipe.fill),
+                            None,
+                            window,
+                        );
+                    },
+                );
             }
         };
         if self.recipe.fade_material {
-            window.with_scaled_alpha_paint_clip(point(px(0.), px(0.)), 1., motion.progress() as f32, &[viewport], paint);
-        } else { paint(window); }
+            window.with_scaled_alpha_paint_clip(
+                point(px(0.), px(0.)),
+                1.,
+                motion.progress() as f32,
+                &[viewport],
+                paint,
+            );
+        } else {
+            paint(window);
+        }
         window.paint_barrier(viewport);
     }
     fn border(&self, viewport: Bounds<Pixels>, window: &mut Window) {
         window.paint_barrier(viewport);
         let motion = self.motion.borrow();
-        let Some(surface) = &motion.surface else { return; };
+        let Some(surface) = &motion.surface else {
+            return;
+        };
         let bounds = Bounds::new(viewport.origin + self.offset.get(), viewport.size);
         let paint = |window: &mut Window| {
-            if let Some(body) = self.body.as_ref().filter(|_| self.recipe.backdrop_alpha(self.backdrop.get().opacity()) > 0) {
-                body.borrow_mut().paint(surface, bounds, None, self.recipe.border, window);
+            if let Some(body) = self
+                .body
+                .as_ref()
+                .filter(|_| self.recipe.backdrop_alpha(self.backdrop.get().opacity()) > 0)
+            {
+                body.borrow_mut()
+                    .paint(surface, bounds, None, self.recipe.border, window);
             } else if let Some(part) = &self.part {
                 part.paint_geometry(bounds, None, self.recipe.border, window);
-            } else { surface.paint_geometry(bounds, None, self.recipe.border, window); }
+            } else {
+                surface.paint_geometry(bounds, None, self.recipe.border, window);
+            }
         };
         if self.recipe.fade_material {
-            window.with_scaled_alpha_paint_clip(point(px(0.), px(0.)), 1., motion.progress() as f32, &[viewport], paint);
-        } else { paint(window); }
+            window.with_scaled_alpha_paint_clip(
+                point(px(0.), px(0.)),
+                1.,
+                motion.progress() as f32,
+                &[viewport],
+                paint,
+            );
+        } else {
+            paint(window);
+        }
     }
     pub fn underlay(&self) -> AnyElement {
         let paint = self.clone();
@@ -299,7 +358,10 @@ fn release_presented_initial(
     recorded: &Cell<Option<u64>>,
     window: &Window,
 ) {
-    if recorded.get().is_some_and(|sequence| sequence != window.presentation_sequence()) {
+    if recorded
+        .get()
+        .is_some_and(|sequence| sequence != window.presentation_sequence())
+    {
         initial.borrow_mut().take();
         recorded.set(None);
     }
@@ -333,8 +395,11 @@ impl Driver {
                     window.paint_snapshot_at(&initial, point(px(0.), px(0.)));
                     window.retain_presented_frame();
                 });
-                if updated { Self::schedule(driver, region, window); }
-                else { (driver.notify)(cx); }
+                if updated {
+                    Self::schedule(driver, region, window);
+                } else {
+                    (driver.notify)(cx);
+                }
                 return;
             }
             let target = driver.target;
@@ -456,16 +521,21 @@ impl Element for Playback {
                 // Visit the one live input tree, but present the exact old
                 // drawing at the new layer before advancing any motion.
                 let bounds = Bounds::new(point(px(0.), px(0.)), window.viewport_size());
-                window.capture_paint_snapshot(0, bounds, None, |window| self.child.paint(window, cx));
+                window
+                    .capture_paint_snapshot(0, bounds, None, |window| self.child.paint(window, cx));
                 window.paint_snapshot_at(&initial, point(px(0.), px(0.)));
                 window.retain_presented_frame();
-            } else { self.child.paint(window, cx); }
+            } else {
+                self.child.paint(window, cx);
+            }
         });
         *self.region.borrow_mut() = region.clone();
         if let Some(driver) = &self.driver {
             if let Some(region) = region.filter(|_| driver.snapshot.borrow().is_some()) {
                 Driver::schedule(driver.clone(), region, window);
-            } else { (driver.notify)(cx); }
+            } else {
+                (driver.notify)(cx);
+            }
         }
     }
 }

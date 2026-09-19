@@ -9,9 +9,11 @@ pub(super) struct CommentPopover {
 impl RootView {
     pub(super) fn dismiss_selection(&mut self, cx: &mut Context<Self>) {
         self.comment_popover = None;
-        self.comment_editor.update(cx, |editor, cx| editor.dismiss(cx));
+        self.comment_editor
+            .update(cx, |editor, cx| editor.dismiss(cx));
         self.transcript_selection.borrow_mut().clear();
-        self.message_reader.update(cx, |reader, cx| reader.clear_selection(cx));
+        self.message_reader
+            .update(cx, |reader, cx| reader.clear_selection(cx));
         zork_ui::components::region::invalidate(
             cx,
             &["composer", "transcript", "message-reader", "overlays"],
@@ -26,17 +28,31 @@ impl RootView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.transcript_selection.borrow().dragging { return; }
+        if !self.transcript_selection.borrow().dragging {
+            return;
+        }
         let selection_bounds = self.transcript_selection.borrow().selected_bounds();
         let source = self.transcript_selection.borrow_mut().finish();
         if let Some(source) =
             source.filter(|s| Some(&s.session_id) == self.selected_session.as_ref())
         {
-            let bounds = selection_bounds.unwrap_or_else(|| gpui::Bounds::new(event.position, gpui::size(px(1.), px(1.))));
+            let bounds = selection_bounds
+                .unwrap_or_else(|| gpui::Bounds::new(event.position, gpui::size(px(1.), px(1.))));
             let focus = window.focused(cx);
-            self.comment_editor.update(cx, |editor, cx| editor.open_at(EditorRequest {
-                source: source.clone(), editing: None, text: String::new(), toolbar: true,
-            }, bounds, focus, window, cx));
+            self.comment_editor.update(cx, |editor, cx| {
+                editor.open_at(
+                    EditorRequest {
+                        source: source.clone(),
+                        editing: None,
+                        text: String::new(),
+                        toolbar: true,
+                    },
+                    bounds,
+                    focus,
+                    window,
+                    cx,
+                )
+            });
             self.comment_popover = Some(CommentPopover { source });
             zork_ui::components::region::invalidate(cx, &["composer", "transcript", "overlays"]);
         }
@@ -50,13 +66,15 @@ impl RootView {
             return;
         };
         if Some(&event.source.session_id) != self.selected_session.as_ref()
-            || popover.source != event.source {
+            || popover.source != event.source
+        {
             return;
         }
         let session = event.source.session_id.clone();
         let comment = DraftComment {
             id: event
-                .editing.clone()
+                .editing
+                .clone()
                 .unwrap_or_else(|| ulid::Ulid::new().to_string()),
             source: event.source.clone(),
             comment,
@@ -66,12 +84,18 @@ impl RootView {
         }
         self.draft_state = self.core_device.draft(&session);
         self.transcript_selection.borrow_mut().clear();
-        self.message_reader.update(cx, |reader, cx| reader.clear_selection(cx));
-        self.comment_editor.update(cx, |editor, cx| editor.dismiss(cx));
+        self.message_reader
+            .update(cx, |reader, cx| reader.clear_selection(cx));
+        self.comment_editor
+            .update(cx, |editor, cx| editor.dismiss(cx));
         self.save_draft(cx);
         zork_ui::components::region::invalidate(cx, &["composer", "transcript", "overlays"]);
     }
-    pub(super) fn render_comment_queue(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+    pub(super) fn render_comment_queue(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         zork_ui::components::comments::queue(
             "",
             self.current_comments(),
@@ -79,10 +103,23 @@ impl RootView {
             cx,
             |v, comment, _, bounds, w, cx| {
                 let focus = w.focused(cx);
-                v.comment_editor.update(cx, |editor, cx| editor.open_at(EditorRequest {
-                    source: comment.source.clone(), editing: Some(comment.id), text: comment.comment, toolbar: false,
-                }, bounds, focus, w, cx));
-                v.comment_popover = Some(CommentPopover { source: comment.source });
+                v.comment_editor.update(cx, |editor, cx| {
+                    editor.open_at(
+                        EditorRequest {
+                            source: comment.source.clone(),
+                            editing: Some(comment.id),
+                            text: comment.comment,
+                            toolbar: false,
+                        },
+                        bounds,
+                        focus,
+                        w,
+                        cx,
+                    )
+                });
+                v.comment_popover = Some(CommentPopover {
+                    source: comment.source,
+                });
                 zork_ui::components::region::invalidate(
                     cx,
                     &["composer", "transcript", "overlays"],
@@ -104,7 +141,9 @@ impl RootView {
         )
     }
     pub(super) fn render_comment_popover(
-        &mut self, _: &mut Window, _: &mut Context<Self>,
+        &mut self,
+        _: &mut Window,
+        _: &mut Context<Self>,
     ) -> gpui::AnyElement {
         self.comment_editor.clone().into_any_element()
     }

@@ -164,9 +164,17 @@ fn main() -> anyhow::Result<()> {
         cx.advance_clock(Duration::from_millis(16));
         cx.run_until_parked();
         cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
-        if view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false) { break; }
+        if view.read_with(&cx, |v, _| {
+            v.benchmark_composer_material()["moving"] == false
+        }) {
+            break;
+        }
     }
-    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"] == false), "composer did not settle after core binding");
+    anyhow::ensure!(
+        view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"]
+            == false),
+        "composer did not settle after core binding"
+    );
     cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
     let motion_before_message = view.read_with(&cx, |v, _| v.benchmark_message_motion());
     let before_message = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
@@ -184,10 +192,13 @@ fn main() -> anyhow::Result<()> {
     })?;
     let after_message = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     let delta = message_probe.snapshot();
-    std::fs::write(output.join("message-topics.json"), serde_json::to_vec_pretty(&json!({
-        "reset":delta.reset,"activity":delta.activity_changed,"participants":delta.participants_changed,
-        "loading":delta.loading_changed,"arrivals":delta.message_arrivals.count,"before":before_message,"after":after_message
-    }))?)?;
+    std::fs::write(
+        output.join("message-topics.json"),
+        serde_json::to_vec_pretty(&json!({
+            "reset":delta.reset,"activity":delta.activity_changed,"participants":delta.participants_changed,
+            "loading":delta.loading_changed,"arrivals":delta.message_arrivals.count,"before":before_message,"after":after_message
+        }))?,
+    )?;
     anyhow::ensure!(
         view.update(&mut cx, |v, _| v.benchmark_record_count(false)) == original_count + 1,
         "core message did not reach the presentation list"

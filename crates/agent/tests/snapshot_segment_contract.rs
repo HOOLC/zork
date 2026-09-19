@@ -6,7 +6,7 @@ use zork_agent::session::compression::SegmentCompressor;
 use zork_agent::session::events::{Input, Selection, SessionEvent};
 use zork_agent::session::query::{FileSessionQuery, SessionQuery};
 use zork_agent::session::recovery::recover;
-use zork_agent::session::state::{STATE_SCHEMA_VERSION, snapshot_value};
+use zork_agent::session::state::{snapshot_value, STATE_SCHEMA_VERSION};
 use zork_agent::session::store::{SessionStore, StoreOptions, StreamStore};
 use zork_agent::session::tools::ToolRegistry;
 
@@ -271,10 +271,8 @@ fn recovery_uses_an_older_snapshot_without_losing_the_newer_suffix() {
 
     let recovered = recover(&query, &session_text, None, &registry).unwrap();
     assert_eq!(recovered.state.selection.unwrap().model, "model-c");
-    assert!(
-        recovered
-            .diagnostics
-            .iter()
-            .any(|message| message.contains("was not usable"))
-    );
+    assert!(recovered
+        .diagnostics
+        .iter()
+        .any(|message| message.contains("was not usable")));
 }

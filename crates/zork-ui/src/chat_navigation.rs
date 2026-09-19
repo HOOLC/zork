@@ -600,22 +600,16 @@ impl Navigation {
                 .automation(AutomationRole::Button, self.locale.text("device_add"))
                 .into_any_element(),
         };
-        self.tabs
-            .column()
-            .py_2()
-            .child(add_device)
-            .child(
-                self.tabs
-                    .tab("desktop-manage".into(), false)
-                    .child(ui::icon("icons/settings.svg", 20.))
-                    .child(self.locale.text("nav_settings"))
-                    .on_click(
-                        cx.listener(|v, _, _, cx| {
-                            v.go(v.active.clone(), Destination::Manage(4), cx)
-                        }),
-                    )
-                    .automation(AutomationRole::Button, self.locale.text("nav_settings")),
-            )
+        self.tabs.column().py_2().child(add_device).child(
+            self.tabs
+                .tab("desktop-manage".into(), false)
+                .child(ui::icon("icons/settings.svg", 20.))
+                .child(self.locale.text("nav_settings"))
+                .on_click(
+                    cx.listener(|v, _, _, cx| v.go(v.active.clone(), Destination::Manage(4), cx)),
+                )
+                .automation(AutomationRole::Button, self.locale.text("nav_settings")),
+        )
     }
 }
 

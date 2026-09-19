@@ -186,13 +186,18 @@ impl Reader {
                             .child(reader.source.author.clone().unwrap_or_default()),
                     )
                     .child(
-                        crate::controls::quiet_button("message-copy-full", self.copy.clone(), self.is_open(), crate::controls::IconButtonSize::Standard)
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                if v.is_open() {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
-                                }
-                            }))
-                            .automation(AutomationRole::Button, self.copy.clone()),
+                        crate::controls::quiet_button(
+                            "message-copy-full",
+                            self.copy.clone(),
+                            self.is_open(),
+                            crate::controls::IconButtonSize::Standard,
+                        )
+                        .on_click(cx.listener(move |v, _, _, cx| {
+                            if v.is_open() {
+                                cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+                            }
+                        }))
+                        .automation(AutomationRole::Button, self.copy.clone()),
                     ),
             )
             .child(list.flex_1().min_h_0().py_3())

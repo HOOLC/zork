@@ -1,16 +1,9 @@
 //! Device → Leader → Task navigation, shared by every retained device view.
-use super::{
-    store::{ClientStore, SavedNode},
-};
-use crate::{
-    i18n::Locale,
-    shell::ShellRoute,
-};
+use super::store::{ClientStore, SavedNode};
+use crate::{i18n::Locale, shell::ShellRoute};
 use gpui::{prelude::*, Context, Window};
 use std::{collections::HashSet, sync::Arc};
-use zork_client_core::{
-    preferences::{read_view_state, save_view_state, ViewState},
-};
+use zork_client_core::preferences::{read_view_state, save_view_state, ViewState};
 
 #[derive(Clone)]
 #[allow(dead_code)] // Compatibility routes remain available to non-desktop clients.
@@ -72,20 +65,28 @@ impl DeviceNavigation {
         cx: &mut Context<Self>,
     ) {
         if let Some(view) = &self.view {
-            view.update(cx, |view, cx| view.bind_add_device_source(source.clone(), cx));
+            view.update(cx, |view, cx| {
+                view.bind_add_device_source(source.clone(), cx)
+            });
         }
         self.add_device_source = Some(source);
         cx.notify();
     }
-    pub fn set_shared_files(&mut self,selected:bool,cx:&mut Context<Self>) {
-        if self.shared_files!=selected {self.shared_files=selected;cx.notify();}
+    pub fn set_shared_files(&mut self, selected: bool, cx: &mut Context<Self>) {
+        if self.shared_files != selected {
+            self.shared_files = selected;
+            cx.notify();
+        }
     }
     #[cfg(feature = "headless-bench")]
     pub(crate) fn benchmark_region_counts(
         &self,
         cx: &gpui::App,
     ) -> std::collections::HashMap<String, [usize; 4]> {
-        self.view.as_ref().map(|view| view.read(cx).counters(cx)).unwrap_or_default()
+        self.view
+            .as_ref()
+            .map(|view| view.read(cx).counters(cx))
+            .unwrap_or_default()
     }
     pub fn new(store: Arc<ClientStore>, nodes: &[SavedNode], _cx: &mut gpui::App) -> Self {
         let collapsed = read_view_state(&store, "device", ViewState::NavigationCollapsed)
@@ -424,55 +425,94 @@ impl DeviceNavigation {
             }
         }
     }
-
 }
 
 pub(crate) use zork_ui::navigation::TabGroup;
 impl Render for DeviceNavigation {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use zork_ui::chat_navigation::{Action, Destination as Intent};
-        let view = if let Some(view) = &self.view { view.clone() } else {
+        let view = if let Some(view) = &self.view {
+            view.clone()
+        } else {
             let locale = self.locale;
-            let view = cx.new(|cx| zork_ui::chat_navigation::Navigation::new(self.collapsed.clone(),
-                zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())), cx));
+            let view = cx.new(|cx| {
+                zork_ui::chat_navigation::Navigation::new(
+                    self.collapsed.clone(),
+                    zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())),
+                    cx,
+                )
+            });
             if let Some(source) = &self.add_device_source {
-                view.update(cx, |view, cx| view.bind_add_device_source(source.clone(), cx));
+                view.update(cx, |view, cx| {
+                    view.bind_add_device_source(source.clone(), cx)
+                });
             }
-            cx.subscribe(&view, |v, _, event: &Action, cx| {
-                match event {
-                    Action::Navigate { node, destination } => {
-                        let destination = match destination {
-                            Intent::SharedFiles => Destination::SharedFiles,
-                            Intent::Leader(id) => Destination::Leader(id.clone()),
-                            Intent::Conversation { session, leader } => Destination::Conversation { session: session.clone(), leader: leader.clone() },
-                            Intent::Manage(page) => Destination::Manage(*page),
-                        };
-                        cx.emit(Navigate { node: node.clone(), destination });
-                    }
-                    Action::BeginResize => { v.resizing = true; },
-                    Action::Collapsed(collapsed) => {
-                        v.collapsed = collapsed.clone();
-                        if let Err(error) = save_view_state(&v.store, "device", ViewState::NavigationCollapsed, &v.collapsed) {
-                            eprintln!("Could not save device navigation state: {error}");
-                        }
+            cx.subscribe(&view, |v, _, event: &Action, cx| match event {
+                Action::Navigate { node, destination } => {
+                    let destination = match destination {
+                        Intent::SharedFiles => Destination::SharedFiles,
+                        Intent::Leader(id) => Destination::Leader(id.clone()),
+                        Intent::Conversation { session, leader } => Destination::Conversation {
+                            session: session.clone(),
+                            leader: leader.clone(),
+                        },
+                        Intent::Manage(page) => Destination::Manage(*page),
+                    };
+                    cx.emit(Navigate {
+                        node: node.clone(),
+                        destination,
+                    });
+                }
+                Action::BeginResize => {
+                    v.resizing = true;
+                }
+                Action::Collapsed(collapsed) => {
+                    v.collapsed = collapsed.clone();
+                    if let Err(error) = save_view_state(
+                        &v.store,
+                        "device",
+                        ViewState::NavigationCollapsed,
+                        &v.collapsed,
+                    ) {
+                        eprintln!("Could not save device navigation state: {error}");
                     }
                 }
-            }).detach();
+            })
+            .detach();
             self.view_locale = Some(locale);
             self.view = Some(view.clone());
             view
         };
-        let devices = self.devices.iter().map(|device| zork_ui::chat_navigation::Device {
-            id: device.node.id.clone(), name: device.node.name.clone(), online: device.data.online,
-            direct: device.data.route.direct, public: device.data.route.scope == crate::api::ConnectionScope::Public,
-            agents: device.data.agents.clone(), tasks: device.data.tasks.clone(), others: device.data.others.clone(),
-            selected_session: device.selection.selected_session.clone(), chatting: matches!(device.selection.route, Some(ShellRoute::Task(_))),
-        }).collect();
+        let devices = self
+            .devices
+            .iter()
+            .map(|device| zork_ui::chat_navigation::Device {
+                id: device.node.id.clone(),
+                name: device.node.name.clone(),
+                online: device.data.online,
+                direct: device.data.route.direct,
+                public: device.data.route.scope == crate::api::ConnectionScope::Public,
+                agents: device.data.agents.clone(),
+                tasks: device.data.tasks.clone(),
+                others: device.data.others.clone(),
+                selected_session: device.selection.selected_session.clone(),
+                chatting: matches!(device.selection.route, Some(ShellRoute::Task(_))),
+            })
+            .collect();
         view.update(cx, |v, cx| {
-            v.set_data(devices, self.active.clone(), self.shared_files, self.width, cx);
+            v.set_data(
+                devices,
+                self.active.clone(),
+                self.shared_files,
+                self.width,
+                cx,
+            );
             if self.view_locale != Some(self.locale) {
                 let locale = self.locale;
-                v.set_text(zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())), cx);
+                v.set_text(
+                    zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())),
+                    cx,
+                );
                 self.view_locale = Some(locale);
             }
         });

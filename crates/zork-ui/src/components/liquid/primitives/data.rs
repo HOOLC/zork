@@ -68,8 +68,14 @@ pub fn portrait_choices(
     choose: impl Fn(&usize, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     PortraitChoices {
-        id: id.into(), options, selected, enabled, columns: columns.max(1),
-        item_width, portrait_size, choose: std::rc::Rc::new(choose),
+        id: id.into(),
+        options,
+        selected,
+        enabled,
+        columns: columns.max(1),
+        item_width,
+        portrait_size,
+        choose: std::rc::Rc::new(choose),
     }
 }
 
@@ -86,47 +92,105 @@ struct PortraitChoices {
 }
 impl RenderOnce for PortraitChoices {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        use super::super::controls::{adaptive_action, action_focus, ActionStyle};
+        use super::super::controls::{action_focus, adaptive_action, ActionStyle};
         let count = self.options.len();
         let selected = self.selected.min(count.saturating_sub(1));
         let enabled = self.enabled;
-        let handles: Vec<_> = self.options.iter().enumerate().map(|(index, item)| {
-            action_focus(item.id.clone(), window, cx).tab_stop(enabled && index == selected)
-        }).collect();
-        let mut group = div().id(self.id).role(Role::RadioGroup).aria_label("头像")
-            .w(px(self.item_width * self.columns as f32 + 8. * self.columns.saturating_sub(1) as f32))
-            .flex().flex_wrap().gap(px(8.));
+        let handles: Vec<_> = self
+            .options
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                action_focus(item.id.clone(), window, cx).tab_stop(enabled && index == selected)
+            })
+            .collect();
+        let mut group = div()
+            .id(self.id)
+            .role(Role::RadioGroup)
+            .aria_label("头像")
+            .w(px(
+                self.item_width * self.columns as f32 + 8. * self.columns.saturating_sub(1) as f32
+            ))
+            .flex()
+            .flex_wrap()
+            .gap(px(8.));
         for (index, item) in self.options.into_iter().enumerate() {
             let active = index == selected;
             let focus = handles[index].clone();
             let click_focus = focus.clone();
             let choose = self.choose.clone();
-            group = group.child(adaptive_action(item.id.clone(), "", ActionStyle {
-                disabled: !enabled, quiet: true, icon_only: Some(false), radius: Some(8.), ..Default::default()
-            }, CUE_UI.palette.canvas)
-                .w(px(self.item_width)).h(px(self.portrait_size + 10.)).px_0()
-                .flex_col().gap(px(3.))
-                .track_focus(&focus).tab_stop(enabled && active)
-                .role(Role::RadioButton).aria_label(item.label.clone())
-                .aria_toggled(if active { Toggled::True } else { Toggled::False })
-                .child(avatar(format!("{}-portrait", item.id), item.label.clone(), AvatarSource::Portrait(item.portrait), self.portrait_size))
-                .child(div().w(px(12.)).h(px(2.)).bg(if active { rgb(crate::design::BRAND_ACCENT) } else { rgba(0).into() }))
-                .on_click(move |_, window, cx| {
-                    if enabled { window.focus(&click_focus, cx); choose(&index, window, cx); }
+            group = group.child(
+                adaptive_action(
+                    item.id.clone(),
+                    "",
+                    ActionStyle {
+                        disabled: !enabled,
+                        quiet: true,
+                        icon_only: Some(false),
+                        radius: Some(8.),
+                        ..Default::default()
+                    },
+                    CUE_UI.palette.canvas,
+                )
+                .w(px(self.item_width))
+                .h(px(self.portrait_size + 10.))
+                .px_0()
+                .flex_col()
+                .gap(px(3.))
+                .track_focus(&focus)
+                .tab_stop(enabled && active)
+                .role(Role::RadioButton)
+                .aria_label(item.label.clone())
+                .aria_toggled(if active {
+                    Toggled::True
+                } else {
+                    Toggled::False
                 })
-                .automation_enabled(enabled, AutomationRole::Option, if active { format!("{} · 已选择", item.label) } else { item.label.to_string() }));
+                .child(avatar(
+                    format!("{}-portrait", item.id),
+                    item.label.clone(),
+                    AvatarSource::Portrait(item.portrait),
+                    self.portrait_size,
+                ))
+                .child(div().w(px(12.)).h(px(2.)).bg(if active {
+                    rgb(crate::design::BRAND_ACCENT)
+                } else {
+                    rgba(0).into()
+                }))
+                .on_click(move |_, window, cx| {
+                    if enabled {
+                        window.focus(&click_focus, cx);
+                        choose(&index, window, cx);
+                    }
+                })
+                .automation_enabled(
+                    enabled,
+                    AutomationRole::Option,
+                    if active {
+                        format!("{} · 已选择", item.label)
+                    } else {
+                        item.label.to_string()
+                    },
+                ),
+            );
         }
         group.on_key_down(move |event, window, cx| {
-            if !enabled || count == 0 { return; }
+            if !enabled || count == 0 {
+                return;
+            }
             let next = match event.keystroke.key.as_str() {
                 "left" => Some((selected + count - 1) % count),
                 "right" => Some((selected + 1) % count),
                 "up" => Some(selected.saturating_sub(self.columns)),
                 "down" => Some((selected + self.columns).min(count - 1)),
-                "home" => Some(0), "end" => Some(count - 1), _ => None,
+                "home" => Some(0),
+                "end" => Some(count - 1),
+                _ => None,
             };
             if let Some(next) = next {
-                window.focus(&handles[next], cx); (self.choose)(&next, window, cx); cx.stop_propagation();
+                window.focus(&handles[next], cx);
+                (self.choose)(&next, window, cx);
+                cx.stop_propagation();
             }
         })
     }

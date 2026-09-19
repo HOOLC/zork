@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use zork_client_core::{
-    api::{StationClient, MessagePage, TranscriptMessage},
+    api::{MessagePage, StationClient, TranscriptMessage},
     interactions::*,
     state::Device,
     store::ClientStore,

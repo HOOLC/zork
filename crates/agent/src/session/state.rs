@@ -1186,9 +1186,10 @@ impl SessionState {
 
     fn failed_bad_request(&self) -> bool {
         self.last_turn_outcome == Some(TurnOutcome::Failed)
-            && self.last_step_failure.as_ref().is_some_and(|failure| {
-                failure.error.status_code == Some(400)
-            })
+            && self
+                .last_step_failure
+                .as_ref()
+                .is_some_and(|failure| failure.error.status_code == Some(400))
     }
 
     pub fn should_start_turn(&self) -> bool {

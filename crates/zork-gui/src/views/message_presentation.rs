@@ -10,7 +10,6 @@ pub(super) struct MessageMotion {
     pub scroll: Option<Task<()>>,
 }
 
-
 impl RootView {
     pub(super) fn track_message_arrivals(
         &mut self,
@@ -29,10 +28,7 @@ impl RootView {
         }
         // Following means: actually following, mid-animation, at the scrollbar end,
         // or sitting on the last message's header (our new tail target for tall messages).
-        let is_at_end = self
-            .transcript_list
-            .is_scrolled_to_end()
-            .unwrap_or(false);
+        let is_at_end = self.transcript_list.is_scrolled_to_end().unwrap_or(false);
         let is_on_last_header = !self.lines.is_empty()
             && self.transcript_list.logical_scroll_top().item_ix
                 == self.lines.len().saturating_sub(1);
@@ -71,7 +67,11 @@ impl RootView {
             // messages it keeps the header visible without animation.
             self.transcript_list.set_follow_mode(FollowMode::Normal);
             self.transcript_list.scroll_to(target_offset);
-            let target_y = -self.transcript_list.scroll_px_offset_for_scrollbar().y.as_f32();
+            let target_y = -self
+                .transcript_list
+                .scroll_px_offset_for_scrollbar()
+                .y
+                .as_f32();
             let max_y = self.transcript_list.max_offset_for_scrollbar().y.as_f32();
             if target_y >= max_y - 1. {
                 // Small message: restore Tail semantics so is_following_tail stays true
@@ -179,15 +179,21 @@ impl RootView {
         let text = crate::comments::display_text(content);
         let document = crate::components::message::message_document(role, content);
         let source = crate::comments::CommentSource {
-            session_id: self.selected_session.clone().unwrap_or_default(), message_id: metadata.id.clone(),
-            author: metadata.author_name.clone(), author_agent_id: metadata.author_agent_id.clone(), quote: String::new(),
+            session_id: self.selected_session.clone().unwrap_or_default(),
+            message_id: metadata.id.clone(),
+            author: metadata.author_name.clone(),
+            author_agent_id: metadata.author_agent_id.clone(),
+            quote: String::new(),
         };
         let links = self.message_link_handler(cx);
         let title = self.locale.text("message_full_title").into();
         let copy = self.locale.text("message_copy_full").into();
         self.message_reader.update(cx, |reader, cx| {
             reader.configure(title, copy, links);
-            reader.open(zork_ui::components::message_reader::Content::new(source, text, document), cx);
+            reader.open(
+                zork_ui::components::message_reader::Content::new(source, text, document),
+                cx,
+            );
         });
         zork_ui::components::region::invalidate_all(cx);
     }

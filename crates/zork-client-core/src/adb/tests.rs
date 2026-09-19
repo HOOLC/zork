@@ -80,11 +80,9 @@ fn legacy_settings_do_not_restrict_stations_and_port_validation_stays_in_core() 
     );
     for port in ["", "abc", "-1", "0", "1023", "65536"] {
         let before = controller.snapshot();
-        assert!(
-            controller
-                .execute(Action::SetPort { port: port.into() })
-                .is_err()
-        );
+        assert!(controller
+            .execute(Action::SetPort { port: port.into() })
+            .is_err());
         assert_eq!(controller.snapshot(), before);
     }
     controller.execute(Action::SetPort {
@@ -191,12 +189,10 @@ fn disabling_and_changing_the_phone_port_cancel_every_old_stream_generation() ->
         port: "5557".into(),
     })?;
     assert!(old.values().all(|lease| *lease.cancel.borrow()));
-    assert!(
-        controller.snapshot()["stations"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(controller.snapshot()["stations"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     reconcile(&controller, LocalState::Ready)?;
     controller.update_station(
         "station-a",
@@ -210,12 +206,10 @@ fn disabling_and_changing_the_phone_port_cancel_every_old_stream_generation() ->
     assert!(current.values().all(|lease| *lease.cancel.borrow()));
     assert_eq!(controller.snapshot()["page"]["step"], "disabled");
     assert_eq!(controller.snapshot()["service_requested"], false);
-    assert!(
-        controller.snapshot()["stations"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(controller.snapshot()["stations"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     Ok(())
 }
 

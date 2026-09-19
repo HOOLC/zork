@@ -109,7 +109,10 @@ impl<V: Render + 'static> Fixture<V> {
     }
     fn reveal(&mut self, id: &str, dialog: &str) -> anyhow::Result<()> {
         for _ in 0..5 {
-            if self.element(id).is_some_and(|element| element.bounds == element.visible_bounds) {
+            if self
+                .element(id)
+                .is_some_and(|element| element.bounds == element.visible_bounds)
+            {
                 return Ok(());
             }
             let card = self.element(dialog).expect("dialog is open");
@@ -150,7 +153,9 @@ impl<V: Render + 'static> Fixture<V> {
             footer.bounds == footer.visible_bounds
                 && footer.bounds.y + footer.bounds.height <= card.bounds.y + card.bounds.height,
             "modal actions are clipped: card={:?}, footer={:?}, visible={:?}",
-            card.bounds, footer.bounds, footer.visible_bounds
+            card.bounds,
+            footer.bounds,
+            footer.visible_bounds
         );
         Ok(())
     }
@@ -179,7 +184,8 @@ impl<V: Render + 'static> Fixture<V> {
                 .iter()
                 .filter(|e| {
                     avatars.iter().any(|a| e.id == format!("agent-avatar-{a}"))
-                        && e.visible_bounds.width >= 16. && e.visible_bounds.height >= 16.
+                        && e.visible_bounds.width >= 16.
+                        && e.visible_bounds.height >= 16.
                 })
                 .all(|e| {
                     let colors: std::collections::HashSet<_> = (-8..8)
@@ -212,7 +218,10 @@ impl<V: Render + 'static> Fixture<V> {
             }
             if started.elapsed().as_secs() >= 5 {
                 pixels.save(out.join(format!("failed-{name}")))?;
-                std::fs::write(out.join(format!("failed-{name}.json")), serde_json::to_vec_pretty(&snapshot)?)?;
+                std::fs::write(
+                    out.join(format!("failed-{name}.json")),
+                    serde_json::to_vec_pretty(&snapshot)?,
+                )?;
                 anyhow::bail!("screenshot did not settle or has unloaded SVGs: {name} (avatars={ready}, stable={stable})");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -221,9 +230,15 @@ impl<V: Render + 'static> Fixture<V> {
     }
 }
 fn main() -> anyhow::Result<()> {
-    if std::env::args().any(|arg| arg == "--paint-nodes") { return paint_node_checks(); }
-    if std::env::args().any(|arg| arg == "--enrollment") { return enrollment_checks(); }
-    if std::env::args().any(|arg| arg == "--data-reset") { return data_reset_checks(); }
+    if std::env::args().any(|arg| arg == "--paint-nodes") {
+        return paint_node_checks();
+    }
+    if std::env::args().any(|arg| arg == "--enrollment") {
+        return enrollment_checks();
+    }
+    if std::env::args().any(|arg| arg == "--data-reset") {
+        return data_reset_checks();
+    }
     std::env::set_var("SEED", "0");
     let state = tempfile::tempdir()?;
     std::env::set_var(
@@ -414,50 +429,115 @@ impl Render for PaintNodeFrame {
         let (node, copies, nested, alpha) = (self.node, self.copies, self.nested, self.alpha);
         let snapshot = self.snapshot.clone();
         let region = self.region.clone();
-        canvas(|_, _, _| {}, move |bounds, _, window, cx| {
-            for row in 0..16 {
-                for col in 0..24 {
-                    let cell = Bounds::new(bounds.origin + point(px(col as f32 * 16.), px(row as f32 * 16.)), size(px(16.), px(16.)));
-                    window.paint_quad(fill(cell, rgb(if (row + col) % 2 == 0 { 0xffffff } else { 0x7e9ca8 })));
+        canvas(
+            |_, _, _| {},
+            move |bounds, _, window, cx| {
+                for row in 0..16 {
+                    for col in 0..24 {
+                        let cell = Bounds::new(
+                            bounds.origin + point(px(col as f32 * 16.), px(row as f32 * 16.)),
+                            size(px(16.), px(16.)),
+                        );
+                        window.paint_quad(fill(
+                            cell,
+                            rgb(if (row + col) % 2 == 0 {
+                                0xffffff
+                            } else {
+                                0x7e9ca8
+                            }),
+                        ));
+                    }
                 }
-            }
-            let source = Bounds::new(bounds.origin + point(px(32.5), px(40.5)), size(px(280.), px(70.)));
-            let (_, picture) = window.capture_paint_snapshot(0x501, source, None, |window| {
-                window.paint_quad(quad(source, px(24.), rgba(0xf7672a80), px(1.), rgba(0x24313b80), gpui::BorderStyle::Solid));
-                let label = "半透明 text + icon";
-                let line = window.text_system().shape_line(label.into(), px(16.), &[TextRun {
-                    len: label.len(), font: font("Inter Variable"), color: rgba(0x152b4580).into(),
-                    background_color: None, underline: None, strikethrough: None,
-                }], None);
-                line.paint(source.origin + point(px(16.), px(20.)), px(24.), TextAlign::Left, None, window, cx).unwrap();
-            });
-            *snapshot.borrow_mut() = Some(picture.clone());
-            let paint = |window: &mut Window| {
-                window.with_scaled_alpha_paint_clip(point(px(0.), px(0.)), 1., alpha, &[bounds], |window| {
-                    if copies == 0 { window.paint_snapshot(&picture); }
-                    else { window.paint_node(node, &picture); }
+                let source = Bounds::new(
+                    bounds.origin + point(px(32.5), px(40.5)),
+                    size(px(280.), px(70.)),
+                );
+                let (_, picture) = window.capture_paint_snapshot(0x501, source, None, |window| {
+                    window.paint_quad(quad(
+                        source,
+                        px(24.),
+                        rgba(0xf7672a80),
+                        px(1.),
+                        rgba(0x24313b80),
+                        gpui::BorderStyle::Solid,
+                    ));
+                    let label = "半透明 text + icon";
+                    let line = window.text_system().shape_line(
+                        label.into(),
+                        px(16.),
+                        &[TextRun {
+                            len: label.len(),
+                            font: font("Inter Variable"),
+                            color: rgba(0x152b4580).into(),
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }],
+                        None,
+                    );
+                    line.paint(
+                        source.origin + point(px(16.), px(20.)),
+                        px(24.),
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    )
+                    .unwrap();
                 });
-            };
-            if nested { window.with_retained_paint(0x503, bounds, paint); }
-            else { paint(window); }
-            let (_, recorded) = window.record_paint_region(|window| {
-                for _ in 1..copies {
-                    if nested { window.with_retained_paint(0x502, bounds, paint); }
-                    else { paint(window); }
+                *snapshot.borrow_mut() = Some(picture.clone());
+                let paint = |window: &mut Window| {
+                    window.with_scaled_alpha_paint_clip(
+                        point(px(0.), px(0.)),
+                        1.,
+                        alpha,
+                        &[bounds],
+                        |window| {
+                            if copies == 0 {
+                                window.paint_snapshot(&picture);
+                            } else {
+                                window.paint_node(node, &picture);
+                            }
+                        },
+                    );
+                };
+                if nested {
+                    window.with_retained_paint(0x503, bounds, paint);
+                } else {
+                    paint(window);
                 }
-            });
-            *region.borrow_mut() = recorded;
-        }).w(px(384.)).h(px(256.))
+                let (_, recorded) = window.record_paint_region(|window| {
+                    for _ in 1..copies {
+                        if nested {
+                            window.with_retained_paint(0x502, bounds, paint);
+                        } else {
+                            paint(window);
+                        }
+                    }
+                });
+                *region.borrow_mut() = recorded;
+            },
+        )
+        .w(px(384.))
+        .h(px(256.))
     }
 }
 
 fn paint_node_checks() -> anyhow::Result<()> {
     for gpu in [false, true] {
         let mut f = Fixture::new(900., 600., |_| PaintNodeFrame {
-            node: Default::default(), copies: 0, gpu, nested: false, alpha: 1.,
-            snapshot: Default::default(), region: Default::default(),
+            node: Default::default(),
+            copies: 0,
+            gpu,
+            nested: false,
+            alpha: 1.,
+            snapshot: Default::default(),
+            region: Default::default(),
         })?;
-        for (alpha, nested) in [0., 0.35, 1.].into_iter().flat_map(|alpha| [false, true].map(|nested| (alpha, nested))) {
+        for (alpha, nested) in [0., 0.35, 1.]
+            .into_iter()
+            .flat_map(|alpha| [false, true].map(|nested| (alpha, nested)))
+        {
             f.view.update(&mut f.cx, |view, cx| {
                 view.copies = 0;
                 view.alpha = alpha;
@@ -473,10 +553,17 @@ fn paint_node_checks() -> anyhow::Result<()> {
                 });
                 f.cx.run_until_parked();
                 let pixels = f.cx.capture_screenshot(f.window.into())?;
-                let difference = pixels.pixels().zip(reference.pixels()).filter(|(a,b)| a != b).count();
+                let difference = pixels
+                    .pixels()
+                    .zip(reference.pixels())
+                    .filter(|(a, b)| a != b)
+                    .count();
                 anyhow::ensure!(difference == 0, "node changed native alpha/edges: gpu={gpu}, alpha={alpha}, copies={copies}, nested={nested}, different pixels={difference}");
             }
-            let region = f.view.read_with(&f.cx, |view, _| view.region.borrow().clone()).unwrap();
+            let region = f
+                .view
+                .read_with(&f.cx, |view, _| view.region.borrow().clone())
+                .unwrap();
             let replaced = f.cx.update_window(f.window.into(), |_, window, _| {
                 let replaced = window.repaint_region(&region, |_| {});
                 window.present_if_needed();
@@ -484,7 +571,10 @@ fn paint_node_checks() -> anyhow::Result<()> {
             })?;
             anyhow::ensure!(replaced, "paint-only cancellation was not exercised");
             let pixels = f.cx.capture_screenshot(f.window.into())?;
-            anyhow::ensure!(pixels == reference, "cancelling playback lost/doubled source pixels: gpu={gpu}, alpha={alpha}");
+            anyhow::ensure!(
+                pixels == reference,
+                "cancelling playback lost/doubled source pixels: gpu={gpu}, alpha={alpha}"
+            );
         }
     }
     println!("paint nodes: native transparency, text edges, parent alpha, nested replay and paint-only cancellation passed on GPU and fallback");
@@ -554,11 +644,17 @@ impl Render for EnrollmentFrame {
     }
 }
 
-fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Result<serde_json::Value> {
+fn settle_enrollment(
+    f: &mut Fixture<EnrollmentFrame>,
+    open: bool,
+) -> anyhow::Result<serde_json::Value> {
     use std::time::{Duration, Instant};
     let started = Instant::now();
-    let capture = std::env::var_os("ZORK_ENROLLMENT_SOURCE_FRAMES")
-        .map(|path| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(path));
+    let capture = std::env::var_os("ZORK_ENROLLMENT_SOURCE_FRAMES").map(|path| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path)
+    });
     let mut samples = Vec::new();
     let mut minimum_ink = usize::MAX;
     loop {
@@ -570,9 +666,13 @@ fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Re
         f.cx.update_window(f.window.into(), |_, window, _| {
             window.present_if_needed();
         })?;
-        let state = f.view.read_with(&f.cx, |view, _| view.modal.inspect("add-device-dialog"));
+        let state = f
+            .view
+            .read_with(&f.cx, |view, _| view.modal.inspect("add-device-dialog"));
         {
-            let source = f.element("device-add").context("source disappeared from input tree")?;
+            let source = f
+                .element("device-add")
+                .context("source disappeared from input tree")?;
             let snapshot = f.driver.snapshot(false);
             let scale = snapshot.scale_factor;
             let pixels = f.cx.capture_screenshot(f.window.into())?;
@@ -581,7 +681,10 @@ fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Re
             let width = (source.bounds.width * scale).round() as u32;
             let height = (source.bounds.height * scale).round() as u32;
             let crop = image::imageops::crop_imm(&pixels, x, y, width, height).to_image();
-            let ink = crop.pixels().filter(|pixel| pixel.0[..3].iter().all(|c| *c < 150)).count();
+            let ink = crop
+                .pixels()
+                .filter(|pixel| pixel.0[..3].iter().all(|c| *c < 150))
+                .count();
             let name = format!("{}-{}", pixels.width(), if open { "open" } else { "close" });
             if let Some(output) = &capture {
                 std::fs::create_dir_all(output)?;
@@ -593,20 +696,33 @@ fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Re
                     pixels.save(output.join(format!("{name}-minimum.png")))?;
                 }
             }
-            let counters = f.view.read_with(&f.cx, |view,cx| view.navigation.read(cx).counters(cx));
+            let counters = f
+                .view
+                .read_with(&f.cx, |view, cx| view.navigation.read(cx).counters(cx));
             samples.push(json!({"ms":started.elapsed().as_secs_f64()*1000.,"ink":ink,"motion":state,"counters":counters}));
             if let Some(output) = &capture {
-                std::fs::write(output.join(format!("{name}.json")), serde_json::to_vec_pretty(&samples)?)?;
+                std::fs::write(
+                    output.join(format!("{name}.json")),
+                    serde_json::to_vec_pretty(&samples)?,
+                )?;
             }
-            anyhow::ensure!(ink > 500, "source button stopped drawing: {name}, ink={ink}, state={state}");
+            anyhow::ensure!(
+                ink > 500,
+                "source button stopped drawing: {name}, ink={ink}, state={state}"
+            );
         }
         let alpha = if open { 1. } else { 0. };
-        if state["moving"] == false && state["open"] == open
-            && state["contentAlpha"] == alpha && state["backdropAlpha"] == alpha
+        if state["moving"] == false
+            && state["open"] == open
+            && state["contentAlpha"] == alpha
+            && state["backdropAlpha"] == alpha
         {
             return Ok(state);
         }
-        anyhow::ensure!(started.elapsed() < Duration::from_secs(5), "enrollment did not settle: {state}");
+        anyhow::ensure!(
+            started.elapsed() < Duration::from_secs(5),
+            "enrollment did not settle: {state}"
+        );
         std::thread::sleep(Duration::from_millis(16));
     }
 }
@@ -614,7 +730,8 @@ fn settle_enrollment(f: &mut Fixture<EnrollmentFrame>, open: bool) -> anyhow::Re
 fn enrollment_checks() -> anyhow::Result<()> {
     std::env::set_var("SEED", "0");
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-    let output = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/headless-interactions/modals");
+    let output = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../artifacts/headless-interactions/modals");
     std::fs::create_dir_all(&output)?;
     // At DPR 2 these exercise both retained GPU content and the size-limited fallback.
     for (width, height) in [(1280., 800.), (1470., 956.)] {
@@ -633,53 +750,107 @@ fn enrollment_checks() -> anyhow::Result<()> {
                 navigation
             });
             cx.subscribe(&navigation, |view: &mut EnrollmentFrame, _, action, cx| {
-                if matches!(action, zork_ui::chat_navigation::Action::Navigate {
-                    node: None, destination: zork_ui::chat_navigation::Destination::Manage(3)
-                }) {
+                if matches!(
+                    action,
+                    zork_ui::chat_navigation::Action::Navigate {
+                        node: None,
+                        destination: zork_ui::chat_navigation::Destination::Manage(3)
+                    }
+                ) {
                     view.open = true;
                     cx.notify();
                 }
-            }).detach();
+            })
+            .detach();
             EnrollmentFrame {
                 content: cx.new(|_| EnrollmentOwner { phone: true }),
-                navigation, modal, open: false,
+                navigation,
+                modal,
+                open: false,
             }
         })?;
         f.cx.update(|cx| cx.set_reduce_motion(false));
-        let source = f.element("device-add").context("sidebar source missing")?.bounds;
+        let source = f
+            .element("device-add")
+            .context("sidebar source missing")?
+            .bounds;
         f.click("device-add")?;
         let state = settle_enrollment(&mut f, true)?;
         let pixels = f.cx.capture_screenshot(f.window.into())?;
         pixels.save(output.join(format!("enrollment-{width}.png")))?;
-        std::fs::write(output.join(format!("enrollment-{width}.json")), serde_json::to_vec_pretty(&json!({"motion":state,"elements":f.driver.snapshot(false)}))?)?;
-        let card = f.element("add-device-dialog").context("enrollment dialog missing")?;
-        anyhow::ensure!((state["anchor"]["cx"].as_f64().unwrap() - (source.x + source.width / 2.) as f64).abs() < 1.
-            && (state["anchor"]["cy"].as_f64().unwrap() - (source.y + source.height / 2.) as f64).abs() < 1.,
-            "dialog did not bind its real sidebar source: {}", state["anchor"]);
-        anyhow::ensure!((state["pose"]["w"].as_f64().unwrap() - card.bounds.width as f64).abs() < 1., "enrollment material and content width differ: {state}");
-        anyhow::ensure!((state["pose"]["h"].as_f64().unwrap() - card.bounds.height as f64).abs() < 1., "enrollment material and content height differ: {state}");
-        for id in ["add-device-dialog-close", "mesh-connect-phone-tab", "mesh-connect-device-tab", "mesh-client-invite-create"] {
+        std::fs::write(
+            output.join(format!("enrollment-{width}.json")),
+            serde_json::to_vec_pretty(
+                &json!({"motion":state,"elements":f.driver.snapshot(false)}),
+            )?,
+        )?;
+        let card = f
+            .element("add-device-dialog")
+            .context("enrollment dialog missing")?;
+        anyhow::ensure!(
+            (state["anchor"]["cx"].as_f64().unwrap() - (source.x + source.width / 2.) as f64).abs()
+                < 1.
+                && (state["anchor"]["cy"].as_f64().unwrap()
+                    - (source.y + source.height / 2.) as f64)
+                    .abs()
+                    < 1.,
+            "dialog did not bind its real sidebar source: {}",
+            state["anchor"]
+        );
+        anyhow::ensure!(
+            (state["pose"]["w"].as_f64().unwrap() - card.bounds.width as f64).abs() < 1.,
+            "enrollment material and content width differ: {state}"
+        );
+        anyhow::ensure!(
+            (state["pose"]["h"].as_f64().unwrap() - card.bounds.height as f64).abs() < 1.,
+            "enrollment material and content height differ: {state}"
+        );
+        for id in [
+            "add-device-dialog-close",
+            "mesh-connect-phone-tab",
+            "mesh-connect-device-tab",
+            "mesh-client-invite-create",
+        ] {
             let control = f.element(id).with_context(|| format!("missing {id}"))?;
-            anyhow::ensure!(control.visible && control.bounds == control.visible_bounds, "{id} was clipped");
-            anyhow::ensure!(control.bounds.x >= card.bounds.x && control.bounds.y >= card.bounds.y
-                && control.bounds.x + control.bounds.width <= card.bounds.x + card.bounds.width
-                && control.bounds.y + control.bounds.height <= card.bounds.y + card.bounds.height,
-                "{id} escaped the dialog");
+            anyhow::ensure!(
+                control.visible && control.bounds == control.visible_bounds,
+                "{id} was clipped"
+            );
+            anyhow::ensure!(
+                control.bounds.x >= card.bounds.x
+                    && control.bounds.y >= card.bounds.y
+                    && control.bounds.x + control.bounds.width <= card.bounds.x + card.bounds.width
+                    && control.bounds.y + control.bounds.height
+                        <= card.bounds.y + card.bounds.height,
+                "{id} escaped the dialog"
+            );
         }
         let scale = f.driver.snapshot(false).scale_factor;
-        let title_ink = pixels.enumerate_pixels().filter(|(x, y, pixel)| {
-            let (x, y) = (*x as f32 / scale, *y as f32 / scale);
-            x >= card.bounds.x + 24. && x < card.bounds.x + 190.
-                && y >= card.bounds.y + 20. && y < card.bounds.y + 56.
-                && pixel.0[..3].iter().all(|channel| *channel < 150)
-        }).count();
+        let title_ink = pixels
+            .enumerate_pixels()
+            .filter(|(x, y, pixel)| {
+                let (x, y) = (*x as f32 / scale, *y as f32 / scale);
+                x >= card.bounds.x + 24.
+                    && x < card.bounds.x + 190.
+                    && y >= card.bounds.y + 20.
+                    && y < card.bounds.y + 56.
+                    && pixel.0[..3].iter().all(|channel| *channel < 150)
+            })
+            .count();
         anyhow::ensure!(title_ink > 50, "dialog title missing from native pixels");
         f.click("mesh-connect-device-tab")?;
-        anyhow::ensure!(!f.view.read_with(&f.cx, |view, cx| view.content.read(cx).phone), "tab input missed its painted control");
+        anyhow::ensure!(
+            !f.view
+                .read_with(&f.cx, |view, cx| view.content.read(cx).phone),
+            "tab input missed its painted control"
+        );
         f.click("add-device-dialog-close")?;
         settle_enrollment(&mut f, false)?;
         f.key("enter")?;
-        anyhow::ensure!(f.view.read_with(&f.cx, |view, _| view.open), "closing did not restore the sidebar trigger's keyboard focus");
+        anyhow::ensure!(
+            f.view.read_with(&f.cx, |view, _| view.open),
+            "closing did not restore the sidebar trigger's keyboard focus"
+        );
         f.key("escape")?;
         settle_enrollment(&mut f, false)?;
         println!("enrollment {width}: source, layout, native pixels, tabs, close and keyboard reversal passed");
@@ -692,44 +863,101 @@ struct ResetFrame {
     confirmations: usize,
 }
 impl Render for ResetFrame {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement { self.content.clone() }
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        self.content.clone()
+    }
 }
 fn data_reset_checks() -> anyhow::Result<()> {
     use zork_ui::settings::data::{Confirmed, Data, DataSettings};
     for (width, height) in [(900., 600.), (1280., 800.)] {
         for locale in zork_gui::i18n::Locale::ALL {
-            let text = zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
+            let text =
+                zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
             let view_text = text.clone();
             let mut f = Fixture::<ResetFrame>::new(width, height, move |cx| {
                 let content = cx.new(|cx| DataSettings::new(Data::default(), view_text, cx));
-                cx.subscribe(&content, |v, _, _: &Confirmed, cx| { v.confirmations += 1; cx.notify(); }).detach();
-                ResetFrame { content, confirmations: 0 }
+                cx.subscribe(&content, |v, _, _: &Confirmed, cx| {
+                    v.confirmations += 1;
+                    cx.notify();
+                })
+                .detach();
+                ResetFrame {
+                    content,
+                    confirmations: 0,
+                }
             })?;
             f.click("clear-client-data")?;
-            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "opening cleared data");
-            let confirm = f.element("clear-client-data-dialog-confirm").context("missing reset confirmation")?;
-            anyhow::ensure!(confirm.bounds == confirm.visible_bounds, "reset confirmation clipped");
+            anyhow::ensure!(
+                f.view.read_with(&f.cx, |v, _| v.confirmations) == 0,
+                "opening cleared data"
+            );
+            let confirm = f
+                .element("clear-client-data-dialog-confirm")
+                .context("missing reset confirmation")?;
+            anyhow::ensure!(
+                confirm.bounds == confirm.visible_bounds,
+                "reset confirmation clipped"
+            );
             f.key("escape")?;
-            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "cancelling cleared data");
+            anyhow::ensure!(
+                f.view.read_with(&f.cx, |v, _| v.confirmations) == 0,
+                "cancelling cleared data"
+            );
             f.click("clear-client-data")?;
             f.click("clear-client-data-dialog-cancel")?;
-            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 0, "cancel button cleared data");
+            anyhow::ensure!(
+                f.view.read_with(&f.cx, |v, _| v.confirmations) == 0,
+                "cancel button cleared data"
+            );
             f.click("clear-client-data")?;
             f.screenshot(&format!("clear-data-{}-{width}.png", locale.code()))?;
             f.click("clear-client-data-dialog-confirm")?;
-            anyhow::ensure!(f.view.read_with(&f.cx, |v, _| v.confirmations) == 1, "confirmed reset was not emitted exactly once");
+            anyhow::ensure!(
+                f.view.read_with(&f.cx, |v, _| v.confirmations) == 1,
+                "confirmed reset was not emitted exactly once"
+            );
             f.view.update(&mut f.cx, |v, cx| {
-                v.content.update(cx, |v, cx| v.configure(Data { busy: true, error: None }, text.clone(), cx));
+                v.content.update(cx, |v, cx| {
+                    v.configure(
+                        Data {
+                            busy: true,
+                            error: None,
+                        },
+                        text.clone(),
+                        cx,
+                    )
+                });
             });
             f.key("escape")?;
-            anyhow::ensure!(f.view.read_with(&f.cx, |v, cx| v.content.read(cx).inspect())["open"] == true, "busy reset dismissed");
-            anyhow::ensure!(!f.element("clear-client-data-dialog-confirm").unwrap().enabled, "busy reset stayed clickable");
+            anyhow::ensure!(
+                f.view
+                    .read_with(&f.cx, |v, cx| v.content.read(cx).inspect())["open"]
+                    == true,
+                "busy reset dismissed"
+            );
+            anyhow::ensure!(
+                !f.element("clear-client-data-dialog-confirm")
+                    .unwrap()
+                    .enabled,
+                "busy reset stayed clickable"
+            );
             f.view.update(&mut f.cx, |v, cx| {
-                v.content.update(cx, |v, cx| v.configure(Data { busy: false, error: Some("Node could not stop".into()) }, text.clone(), cx));
+                v.content.update(cx, |v, cx| {
+                    v.configure(
+                        Data {
+                            busy: false,
+                            error: Some("Node could not stop".into()),
+                        },
+                        text.clone(),
+                        cx,
+                    )
+                });
             });
             f.key("escape")?;
         }
     }
-    println!("PASS reset confirmation, cancellation, busy state and viewport: Chinese/English, 900/1280");
+    println!(
+        "PASS reset confirmation, cancellation, busy state and viewport: Chinese/English, 900/1280"
+    );
     Ok(())
 }

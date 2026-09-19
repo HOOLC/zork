@@ -47,14 +47,31 @@ fn fresh_builtins_are_readable_before_provisioning_returns() {
     let root = temporary.path();
     skills::management::provision_bundled(root).unwrap();
     let listed = bundled::manage(root, Request::List).unwrap();
-    for id in ["slack", "android-debugging", "skill-management", "service-sharing", "file-sharing"] {
-        let entry = listed["skills"].as_array().unwrap().iter()
-            .find(|entry| entry["skill"] == id).unwrap();
+    for id in [
+        "slack",
+        "android-debugging",
+        "skill-management",
+        "service-sharing",
+        "file-sharing",
+    ] {
+        let entry = listed["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["skill"] == id)
+            .unwrap();
         let directory = PathBuf::from(entry["directory"].as_str().unwrap());
-        assert!(fs::read_to_string(directory.join("SKILL.md")).unwrap().contains("description:"));
+        assert!(fs::read_to_string(directory.join("SKILL.md"))
+            .unwrap()
+            .contains("description:"));
         let state = zork_config::skill_bundles::load(&directory.join(".zork")).unwrap();
         let active = state.active.unwrap();
-        assert!(directory.join(".zork/.versions").join(active.directory).join(id).join("SKILL.md").is_file());
+        assert!(directory
+            .join(".zork/.versions")
+            .join(active.directory)
+            .join(id)
+            .join("SKILL.md")
+            .is_file());
     }
 }
 

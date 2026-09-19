@@ -132,15 +132,30 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.label == "已触发 6 次操作"),
         "Action dispatch was lost or duplicated"
     );
-    let edge_target = driver.snapshot(false).elements.into_iter()
-        .find(|element| element.id == "interaction-overview-canvas-chat").unwrap();
-    for y in [edge_target.bounds.y + 3., edge_target.bounds.y + edge_target.bounds.height - 3.] {
-        let action = serde_json::from_value(json!({"type":"click","target":{"x":edge_target.center.x,"y":y}}))?;
+    let edge_target = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|element| element.id == "interaction-overview-canvas-chat")
+        .unwrap();
+    for y in [
+        edge_target.bounds.y + 3.,
+        edge_target.bounds.y + edge_target.bounds.height - 3.,
+    ] {
+        let action = serde_json::from_value(
+            json!({"type":"click","target":{"x":edge_target.center.x,"y":y}}),
+        )?;
         cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
         pump(&mut cx)?;
     }
-    anyhow::ensure!(driver.snapshot(false).elements.iter().any(|element| element.label == "已触发 8 次操作"),
-        "the full control must respond outside the label's ink band");
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|element| element.label == "已触发 8 次操作"),
+        "the full control must respond outside the label's ink band"
+    );
     cx.capture_screenshot(window.into())?
         .save(output.join("overview.png"))?;
     println!("PASS: six real controls, two surfaces, hover/pressed colors, stable bounds, one action per center/edge click");

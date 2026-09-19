@@ -112,8 +112,17 @@ impl DetailsTooltip {
             )
     }
     fn surface(id: String) -> gpui::Stateful<gpui::Div> {
-        crate::components::liquid::primitives::surface(id, ui::CARD_RADIUS, CUE_UI.palette.canvas, true)
-            .occlude().w(px(320.)).max_w_full().flex().flex_col()
+        crate::components::liquid::primitives::surface(
+            id,
+            ui::CARD_RADIUS,
+            CUE_UI.palette.canvas,
+            true,
+        )
+        .occlude()
+        .w(px(320.))
+        .max_w_full()
+        .flex()
+        .flex_col()
     }
 }
 
@@ -188,7 +197,9 @@ impl HoverState {
 }
 
 #[derive(Default)]
-struct PopupPose { panel: FloatingPanel }
+struct PopupPose {
+    panel: FloatingPanel,
+}
 
 /// One keyed floating material follows the actual measured content and target.
 #[derive(gpui::IntoElement)]
@@ -207,22 +218,52 @@ pub fn sliding_popup<F: Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement + 's
     width: f32,
     content: F,
 ) -> SlidingPopup<F> {
-    SlidingPopup { key: key.into(), anchor, width, content, open: true, hover: None }
-}
-impl<F: Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement + 'static> SlidingPopup<F> {
-    pub fn open(mut self, open: bool) -> Self { self.open = open; self }
-    pub fn on_hover(mut self, listener: impl Fn(&bool, &mut Window, &mut gpui::App) + 'static) -> Self {
-        self.hover = Some(std::rc::Rc::new(listener)); self
+    SlidingPopup {
+        key: key.into(),
+        anchor,
+        width,
+        content,
+        open: true,
+        hover: None,
     }
 }
-impl<F: Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement + 'static> gpui::RenderOnce for SlidingPopup<F> {
+impl<F: Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement + 'static> SlidingPopup<F> {
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = open;
+        self
+    }
+    pub fn on_hover(
+        mut self,
+        listener: impl Fn(&bool, &mut Window, &mut gpui::App) + 'static,
+    ) -> Self {
+        self.hover = Some(std::rc::Rc::new(listener));
+        self
+    }
+}
+impl<F: Fn(&mut Window, &mut gpui::App) -> gpui::AnyElement + 'static> gpui::RenderOnce
+    for SlidingPopup<F>
+{
     fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let state = window.use_keyed_state(self.key.clone(), cx, |_, _| PopupPose::default());
-        let content = Content { sections: vec![(self.content)(window, cx)], padding: 0., gap: 0. };
-        state.update(cx, |value, cx| value.panel.render(
-            format!("{}-surface", self.key), self.anchor, self.open,
-            FloatingStyle::details(self.width, Side::Above), content, self.hover, window, cx,
-        )).unwrap_or_else(|| gpui::Empty.into_any_element())
+        let content = Content {
+            sections: vec![(self.content)(window, cx)],
+            padding: 0.,
+            gap: 0.,
+        };
+        state
+            .update(cx, |value, cx| {
+                value.panel.render(
+                    format!("{}-surface", self.key),
+                    self.anchor,
+                    self.open,
+                    FloatingStyle::details(self.width, Side::Above),
+                    content,
+                    self.hover,
+                    window,
+                    cx,
+                )
+            })
+            .unwrap_or_else(|| gpui::Empty.into_any_element())
     }
 }
 
@@ -310,27 +351,59 @@ impl DetailsOverlay {
 }
 impl gpui::Render for DetailsOverlay {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(details) = self.active.as_ref() else { return gpui::Empty.into_any_element(); };
-        let progress = if cx.reduce_motion() { 1. } else {
-            self.content_started.map_or(1., |start| (start.elapsed().as_secs_f32() / CONTENT_SECONDS).min(1.))
+        let Some(details) = self.active.as_ref() else {
+            return gpui::Empty.into_any_element();
+        };
+        let progress = if cx.reduce_motion() {
+            1.
+        } else {
+            self.content_started.map_or(1., |start| {
+                (start.elapsed().as_secs_f32() / CONTENT_SECONDS).min(1.)
+            })
         };
         let fade = 1. - (1. - progress).powi(3);
         self.active_opacity = fade;
-        self.painted_opacities = self.outgoing.iter().map(|(_, opacity)| opacity * (1. - fade)).collect();
-        if progress >= 1. { self.outgoing.clear(); self.painted_opacities.clear(); }
-        else { window.request_animation_frame(); }
-        let content = div().relative().child(details.content().opacity(fade))
-            .children(self.outgoing.iter().zip(&self.painted_opacities).map(|((details, _), opacity)| {
-                div().absolute().inset_0().opacity(*opacity).child(details.content())
-            }));
+        self.painted_opacities = self
+            .outgoing
+            .iter()
+            .map(|(_, opacity)| opacity * (1. - fade))
+            .collect();
+        if progress >= 1. {
+            self.outgoing.clear();
+            self.painted_opacities.clear();
+        } else {
+            window.request_animation_frame();
+        }
+        let content = div()
+            .relative()
+            .child(details.content().opacity(fade))
+            .children(self.outgoing.iter().zip(&self.painted_opacities).map(
+                |((details, _), opacity)| {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .opacity(*opacity)
+                        .child(details.content())
+                },
+            ));
         let hover = std::rc::Rc::new(cx.listener(|v, inside: &bool, _, cx| {
-            v.panel_hover = *inside; v.schedule_close(cx);
+            v.panel_hover = *inside;
+            v.schedule_close(cx);
         }));
-        let panel = self.panel.render("detail-tooltip-shared", self.bounds, !self.dismissing,
-            FloatingStyle::details(320., Side::Beside), Content::new(vec![content.into_any_element()]),
-            Some(hover), window, cx);
+        let panel = self.panel.render(
+            "detail-tooltip-shared",
+            self.bounds,
+            !self.dismissing,
+            FloatingStyle::details(320., Side::Beside),
+            Content::new(vec![content.into_any_element()]),
+            Some(hover),
+            window,
+            cx,
+        );
         if self.dismissing && !self.panel.alive() {
-            self.active = None; self.outgoing.clear(); self.painted_opacities.clear();
+            self.active = None;
+            self.outgoing.clear();
+            self.painted_opacities.clear();
         }
         panel.unwrap_or_else(|| gpui::Empty.into_any_element())
     }
@@ -380,7 +453,8 @@ impl<E: ControlElement> gpui::RenderOnce for TooltipTrigger<E> {
                     |_, _, _, _| {},
                 )
                 .absolute()
-                .inset_0().into_any_element(),
+                .inset_0()
+                .into_any_element(),
             )
         })
     }
@@ -486,21 +560,48 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
         let hover_state = state.clone();
         let panel_state = state.clone();
         let escape_state = state.clone();
-        let width = (crate::components::liquid::overlay::measure_label(&self.text, 12., window) + 16.)
+        let width = (crate::components::liquid::overlay::measure_label(&self.text, 12., window)
+            + 16.)
             .min(360.);
         let text = self.text.clone();
-        let content = div().id(format!("control-hint-{}", self.key)).px(px(8.)).py(px(5.))
-            .text_size(px(12.)).line_height(px(20.)).text_color(rgb(CUE_UI.palette.text))
-            .whitespace_normal().child(text.clone()).automation(AutomationRole::Status, text);
+        let content = div()
+            .id(format!("control-hint-{}", self.key))
+            .px(px(8.))
+            .py(px(5.))
+            .text_size(px(12.))
+            .line_height(px(20.))
+            .text_color(rgb(CUE_UI.palette.text))
+            .whitespace_normal()
+            .child(text.clone())
+            .automation(AutomationRole::Status, text);
         let hover = std::rc::Rc::new(move |inside: &bool, _: &mut Window, cx: &mut gpui::App| {
             panel_state.update(cx, |value, cx| value.hover(*inside, true, cx));
         });
-        let panel = state.update(cx, |value, cx| value.panel.render(
-            format!("hint-panel-{}", self.key), bounds, open,
-            FloatingStyle { width, side: Side::Below, radius: 9., priority: 110, role: gpui::Role::Tooltip },
-            Content { sections: vec![content.into_any_element()], padding: 0., gap: 0. }, Some(hover), window, cx));
+        let panel = state.update(cx, |value, cx| {
+            value.panel.render(
+                format!("hint-panel-{}", self.key),
+                bounds,
+                open,
+                FloatingStyle {
+                    width,
+                    side: Side::Below,
+                    radius: 9.,
+                    priority: 110,
+                    role: gpui::Role::Tooltip,
+                },
+                Content {
+                    sections: vec![content.into_any_element()],
+                    padding: 0.,
+                    gap: 0.,
+                },
+                Some(hover),
+                window,
+                cx,
+            )
+        });
         self.row.map_inner(|row| {
-            row.when_some(focus, |row, focus| row.control_focus(&focus)).aria_description(self.text.clone())
+            row.when_some(focus, |row, focus| row.control_focus(&focus))
+                .aria_description(self.text.clone())
                 .on_hover(move |hovered, _, cx| {
                     hover_state.update(cx, |v, cx| v.hover(*hovered, false, cx))
                 })
@@ -519,7 +620,10 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
                     gpui::canvas(
                         move |bounds, _, cx| anchor_state.update(cx, |v, _| v.bounds = bounds),
                         |_, _, _, _| {},
-                    ).absolute().inset_0().into_any_element(),
+                    )
+                    .absolute()
+                    .inset_0()
+                    .into_any_element(),
                 )
                 .when_some(panel, |row, panel| row.control_overlay(panel))
         })

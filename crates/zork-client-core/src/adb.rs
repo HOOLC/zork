@@ -5,9 +5,9 @@ mod probe;
 mod tests;
 
 use crate::store::ClientStore;
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},

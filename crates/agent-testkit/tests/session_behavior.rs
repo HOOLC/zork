@@ -956,16 +956,29 @@ async fn a_permanent_provider_failure_waits_for_new_mail_then_the_session_recove
 // Contract: docs/design/agent-runtime.md [RETRY-02]
 async fn http_400_never_retries_or_restores_rejected_input_and_new_mail_recovers() {
     let mut world = TestWorld::new();
-    for code in ["invalid_request_error", "context_length_exceeded", "max_output_tokens"] {
+    for code in [
+        "invalid_request_error",
+        "context_length_exceeded",
+        "max_output_tokens",
+    ] {
         let session_id = session(&world, "/virtual/http-400").await;
-        world.send_mail(&session_id, "rejected input").await.unwrap();
+        world
+            .send_mail(&session_id, "rejected input")
+            .await
+            .unwrap();
         let mut failure = ProviderFailure::new("controlled.http", true, "invalid request");
         failure.status_code = Some(400);
         failure.provider_code = Some(code.into());
-        world.request().await.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
-        let stopped = world.wait_for_state(&session_id, |state| {
-            state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
-        }).await;
+        world
+            .request()
+            .await
+            .respond(Err(ModelError::ProviderFailed(failure)))
+            .unwrap();
+        let stopped = world
+            .wait_for_state(&session_id, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+            })
+            .await;
         assert!(stopped.unconsumed_inputs.is_empty());
         assert_eq!(stopped.generation.number, 1);
         world.restart().await.unwrap();
@@ -974,16 +987,36 @@ async fn http_400_never_retries_or_restores_rejected_input_and_new_mail_recovers
         assert_eq!(restored.last_turn_outcome, Some(TurnOutcome::Failed));
         assert!(restored.active_turn.is_none());
         let events = world.events(&session_id);
-        assert_eq!(events.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 1);
-        assert!(!events.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
-        assert!(events.iter().any(|e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
-            if error.status_code == Some(400) && !error.retryable)));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e.event, SessionEvent::StepStarted { .. }))
+                .count(),
+            1
+        );
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+        assert!(events.iter().any(
+            |e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
+            if error.status_code == Some(400) && !error.retryable)
+        ));
 
-        world.send_mail(&session_id, "request is fixed; continue").await.unwrap();
+        world
+            .send_mail(&session_id, "request is fixed; continue")
+            .await
+            .unwrap();
         let next = world.request().await;
-        assert!(next.transcript.iter().any(|message| message.content.as_ref() == "request is fixed; continue"));
+        assert!(next
+            .transcript
+            .iter()
+            .any(|message| message.content.as_ref() == "request is fixed; continue"));
         next.respond_text("done").unwrap();
-        world.wait_for_state(&session_id, |state| state.last_turn_outcome == Some(TurnOutcome::Finished)).await;
+        world
+            .wait_for_state(&session_id, |state| {
+                state.last_turn_outcome == Some(TurnOutcome::Finished)
+            })
+            .await;
     }
     world.shutdown().await;
 }
@@ -995,30 +1028,65 @@ async fn a_late_tool_result_after_http_400_waits_for_new_input_without_losing_th
     let mut slow = world.install_tool(controlled_tool("test.slow")).unwrap();
     let session_id = session(&world, "/virtual/http-400-late-tool").await;
     world.send_mail(&session_id, "start work").await.unwrap();
-    world.request().await.respond_call(
-        "provider-slow", "test.slow", json!({"value": "controlled"}),
-    ).unwrap();
+    world
+        .request()
+        .await
+        .respond_call("provider-slow", "test.slow", json!({"value": "controlled"}))
+        .unwrap();
     let running = slow.request().await;
-    world.send_mail(&session_id, "continue while the tool runs").await.unwrap();
+    world
+        .send_mail(&session_id, "continue while the tool runs")
+        .await
+        .unwrap();
     let mut failure = ProviderFailure::new("controlled.http", false, "bad request");
     failure.status_code = Some(400);
-    world.request().await.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
-    world.wait_for_state(&session_id, |state| {
-        state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
-    }).await;
-    running.succeed(json!({"text": "authoritative late result"})).unwrap();
-    let stopped = world.wait_for_state(&session_id, |state| {
-        state.pending_tools.values().any(|tool| tool.result.is_some())
-    }).await;
+    world
+        .request()
+        .await
+        .respond(Err(ModelError::ProviderFailed(failure)))
+        .unwrap();
+    world
+        .wait_for_state(&session_id, |state| {
+            state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
+        })
+        .await;
+    running
+        .succeed(json!({"text": "authoritative late result"}))
+        .unwrap();
+    let stopped = world
+        .wait_for_state(&session_id, |state| {
+            state
+                .pending_tools
+                .values()
+                .any(|tool| tool.result.is_some())
+        })
+        .await;
     assert!(stopped.active_turn.is_none());
     assert!(!stopped.should_start_turn());
-    assert_eq!(world.events(&session_id).iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 2);
+    assert_eq!(
+        world
+            .events(&session_id)
+            .iter()
+            .filter(|e| matches!(e.event, SessionEvent::StepStarted { .. }))
+            .count(),
+        2
+    );
 
-    world.send_mail(&session_id, "request is fixed; continue").await.unwrap();
+    world
+        .send_mail(&session_id, "request is fixed; continue")
+        .await
+        .unwrap();
     let next = world.request().await;
-    assert!(next.transcript.iter().any(|message| message.content.contains("authoritative late result")));
+    assert!(next
+        .transcript
+        .iter()
+        .any(|message| message.content.contains("authoritative late result")));
     next.respond_text("done").unwrap();
-    world.wait_for_state(&session_id, |state| state.last_turn_outcome == Some(TurnOutcome::Finished)).await;
+    world
+        .wait_for_state(&session_id, |state| {
+            state.last_turn_outcome == Some(TurnOutcome::Finished)
+        })
+        .await;
     world.shutdown().await;
 }
 

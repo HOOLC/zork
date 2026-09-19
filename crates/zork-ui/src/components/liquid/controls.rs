@@ -13,18 +13,35 @@ pub use adaptive::{adaptive_action, adaptive_input, Action, Field};
 /// for ordinary compositional rows used as overlay sources.
 pub trait ControlElement: Element + StatefulInteractiveElement + ParentElement + Styled {
     fn control_focus(self, focus: &FocusHandle) -> Self;
-    fn panel_source(self) -> Self { self }
-    fn source_material(self, _material: super::render::SourceMaterial) -> Self { self }
-    fn control_overlay(mut self, overlay: AnyElement) -> Self { self.extend([overlay]); self }
+    fn panel_source(self) -> Self {
+        self
+    }
+    fn source_material(self, _material: super::render::SourceMaterial) -> Self {
+        self
+    }
+    fn control_overlay(mut self, overlay: AnyElement) -> Self {
+        self.extend([overlay]);
+        self
+    }
 }
 impl ControlElement for Stateful<Div> {
-    fn control_focus(self, focus: &FocusHandle) -> Self { self.track_focus(focus) }
+    fn control_focus(self, focus: &FocusHandle) -> Self {
+        self.track_focus(focus)
+    }
 }
 impl ControlElement for Action {
-    fn control_focus(self, focus: &FocusHandle) -> Self { self.track_focus(focus) }
-    fn panel_source(self) -> Self { self.opens_panel() }
-    fn source_material(self, material: super::render::SourceMaterial) -> Self { self.material_source(material) }
-    fn control_overlay(self, overlay: AnyElement) -> Self { self.overlay(overlay) }
+    fn control_focus(self, focus: &FocusHandle) -> Self {
+        self.track_focus(focus)
+    }
+    fn panel_source(self) -> Self {
+        self.opens_panel()
+    }
+    fn source_material(self, material: super::render::SourceMaterial) -> Self {
+        self.material_source(material)
+    }
+    fn control_overlay(self, overlay: AnyElement) -> Self {
+        self.overlay(overlay)
+    }
 }
 #[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
@@ -38,7 +55,9 @@ pub fn segment_pose(width: f32, count: usize, selected: usize) -> super::Pose {
     zork_liquid::recipes::segment_pose(width as f64, CONTROL_HEIGHT as f64, count, selected)
 }
 
-pub fn toggle_pose(checked: bool) -> super::Pose { zork_liquid::recipes::toggle_pose(checked) }
+pub fn toggle_pose(checked: bool) -> super::Pose {
+    zork_liquid::recipes::toggle_pose(checked)
+}
 
 struct ControlMotion {
     surface: super::Surface,
@@ -129,7 +148,7 @@ pub(super) fn with_control_surface(
 #[cfg(all(test, feature = "headless-bench"))]
 mod retained_control_tests {
     use super::with_control_surface;
-    use gpui::{prelude::*, div, px, AppContext, Context, Render, TestAppContext, Window};
+    use gpui::{div, prelude::*, px, AppContext, Context, Render, TestAppContext, Window};
     use std::{cell::RefCell, rc::Rc};
     struct Fixture {
         target: super::super::Pose,
@@ -139,12 +158,23 @@ mod retained_control_tests {
         fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let target = self.target;
             let drawing = self.drawing.clone();
-            let control = with_control_surface("hidden-control", target, 1., window, cx,
+            let control = with_control_surface(
+                "hidden-control",
+                target,
+                1.,
+                window,
+                cx,
                 move |surface, _, _| {
                     *drawing.borrow_mut() = Some((surface.contour(), surface.simulation.pose()));
-                    div().id("hidden-control").w(px(target.w as f32)).h(px(target.h as f32))
-                });
-            div().size_full().child(div().absolute().top(px(2000.)).child(control))
+                    div()
+                        .id("hidden-control")
+                        .w(px(target.w as f32))
+                        .h(px(target.h as f32))
+                },
+            );
+            div()
+                .size_full()
+                .child(div().absolute().top(px(2000.)).child(control))
         }
     }
     #[test]
@@ -152,17 +182,27 @@ mod retained_control_tests {
         let mut cx = TestAppContext::single();
         let drawing = Rc::new(RefCell::new(None));
         let target = super::super::Pose::rect(0., 0., 96., 32., 16.);
-        let window = cx.add_window(|_, _| Fixture { target, drawing: drawing.clone() });
+        let window = cx.add_window(|_, _| Fixture {
+            target,
+            drawing: drawing.clone(),
+        });
         cx.run_until_parked();
         let first = drawing.borrow().as_ref().unwrap().0.clone();
         for _ in 0..12 {
             window.update(&mut cx, |_, _, cx| cx.notify()).unwrap();
             cx.run_until_parked();
-            assert!(Rc::ptr_eq(&first, &drawing.borrow().as_ref().unwrap().0),
-                "an unchanged hidden control regenerated its contour");
+            assert!(
+                Rc::ptr_eq(&first, &drawing.borrow().as_ref().unwrap().0),
+                "an unchanged hidden control regenerated its contour"
+            );
         }
         let next = super::super::Pose::rect(0., 0., 156., 40., 20.);
-        window.update(&mut cx, |view, _, cx| { view.target = next; cx.notify(); }).unwrap();
+        window
+            .update(&mut cx, |view, _, cx| {
+                view.target = next;
+                cx.notify();
+            })
+            .unwrap();
         cx.run_until_parked();
         let drawing = drawing.borrow();
         let (path, pose) = drawing.as_ref().unwrap();
@@ -355,12 +395,37 @@ pub fn deferred_segmented(
 ) -> Stateful<Div> {
     let id = id.into();
     let choose: ControlCallback<usize> = std::rc::Rc::new(choose);
-    adaptive::fill_slot(format!("{id}-slot"), CONTROL_HEIGHT, move |size, window, cx| {
-        let width = size.width.as_f32().max(2.);
-        with_control_surface(&id, segment_pose(width, options.len(), selected.unwrap_or(0)), 1., window, cx,
-            |surface, window, cx| render_segmented(id.clone(), width, options, selected, kind, enabled, parent, surface, window, cx, hints, choose)
-        ).into_any_element()
-    })
+    adaptive::fill_slot(
+        format!("{id}-slot"),
+        CONTROL_HEIGHT,
+        move |size, window, cx| {
+            let width = size.width.as_f32().max(2.);
+            with_control_surface(
+                &id,
+                segment_pose(width, options.len(), selected.unwrap_or(0)),
+                1.,
+                window,
+                cx,
+                |surface, window, cx| {
+                    render_segmented(
+                        id.clone(),
+                        width,
+                        options,
+                        selected,
+                        kind,
+                        enabled,
+                        parent,
+                        surface,
+                        window,
+                        cx,
+                        hints,
+                        choose,
+                    )
+                },
+            )
+            .into_any_element()
+        },
+    )
 }
 
 pub fn segmented_with_surface<V: 'static>(
@@ -511,9 +576,15 @@ fn render_segmented(
                     }
                 })
                 .automation_enabled(enabled, AutomationRole::Button, label.to_string())
-                .map(|control| if let Some(hint) = hints.get(index).cloned().flatten() {
-                    crate::components::tooltip::hint(control, hint_id, hint.to_string()).focus_handle(&hint_focus).into_any_element()
-                } else { control.into_any_element() }),
+                .map(|control| {
+                    if let Some(hint) = hints.get(index).cloned().flatten() {
+                        crate::components::tooltip::hint(control, hint_id, hint.to_string())
+                            .focus_handle(&hint_focus)
+                            .into_any_element()
+                    } else {
+                        control.into_any_element()
+                    }
+                }),
         );
     }
     div()
@@ -880,98 +951,117 @@ fn render_action_content(
     let hover = window.use_keyed_state(format!("liquid-action-hover-{id:?}"), cx, |_, _| false);
     let hovered = enabled && *hover.read(cx);
     let color = action_ink(&label, style);
-    let radius = style.radius.unwrap_or_else(|| if style.field {
-        crate::controls::FIELD_RADIUS
-    } else if width == height && !primary_icon {
-        height / 2. - 4.
-    } else {
-        height / 2.
+    let radius = style.radius.unwrap_or_else(|| {
+        if style.field {
+            crate::controls::FIELD_RADIUS
+        } else if width == height && !primary_icon {
+            height / 2. - 4.
+        } else {
+            height / 2.
+        }
     });
     let pressed_color = if solid {
         INTERACTION.accent_pressed
     } else {
         INTERACTION.neutral_pressed
     };
-    let build = |clip: Option<super::ContentClip>, pressed: bool, window: &mut Window, cx: &mut App| {
-        let mut contents = div()
-            .size_full()
-            .relative()
-            .flex()
-            .items_center()
-            .justify_center()
-            .gap(px(7.))
-            .text_size(px(if style.field { 13. } else { 12. }))
-            .text_color(rgb(color))
-            .whitespace_nowrap();
-        if enabled && background_feedback {
-            let hover = HoverFill {
-                id: format!("liquid-hover-{id:?}").into(),
-                color: if solid {
-                    INTERACTION.accent_hover
-                } else {
-                    INTERACTION.neutral_hover
-                },
-                radius: 0.,
-                pressed: None,
-            };
-            if let Some(clip) = &clip {
-                if !style.hover_group {
-                let fill = clip.fill(
-                    format!("liquid-hover-fill-{id:?}"),
-                    radius as f64,
-                    None,
-                    None,
-                    window,
-                    cx,
-                );
-                contents = contents.child(hover.render_with(fill, window, cx));
-                }
-                if pressed {
-                contents = contents.child(
-                    div()
-                        .id(format!("liquid-press-fill-{id:?}"))
-                        .absolute()
-                        .inset_0()
-                        .child(clip.fill(
-                            format!("liquid-press-path-{id:?}"),
+    let build =
+        |clip: Option<super::ContentClip>, pressed: bool, window: &mut Window, cx: &mut App| {
+            let mut contents = div()
+                .size_full()
+                .relative()
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(px(7.))
+                .text_size(px(if style.field { 13. } else { 12. }))
+                .text_color(rgb(color))
+                .whitespace_nowrap();
+            if enabled && background_feedback {
+                let hover = HoverFill {
+                    id: format!("liquid-hover-{id:?}").into(),
+                    color: if solid {
+                        INTERACTION.accent_hover
+                    } else {
+                        INTERACTION.neutral_hover
+                    },
+                    radius: 0.,
+                    pressed: None,
+                };
+                if let Some(clip) = &clip {
+                    if !style.hover_group {
+                        let fill = clip.fill(
+                            format!("liquid-hover-fill-{id:?}"),
                             radius as f64,
-                            Some(pressed_color),
+                            None,
                             None,
                             window,
                             cx,
-                        )),
-                );
-                }
-            } else {
-                contents = contents
-                    .when(!style.hover_group, |contents| contents.child(hover))
-                    .when(pressed, |contents| contents.child(div().absolute().inset_0().bg(rgb(pressed_color))));
-            }
-        }
-        contents = if let Some((ink, binding)) = content {
-            // The root keeps the entire control's hit region. Clip each flow
-            // child at its own measured height, including multiline rows and
-            // portraits; geometry probes remain outside these ink regions.
-            if let Some(clip) = clip { binding.bind(clip); }
-            contents.child(ink)
-        } else {
-            let ink = action_content(&id, label.clone(), height, style).into_any_element();
-            if let Some(clip) = clip {
-                contents.child(clip.content(div().size_full().flex().items_center().justify_center().child(ink), height.min(20.)))
-            } else { contents.child(ink) }
-        };
-        contents
-            .id(action_content_scope(&id))
-            .on_hover(move |value, _, cx| {
-                hover.update(cx, |hovered, cx| {
-                    if *hovered != *value {
-                        *hovered = *value;
-                        cx.notify();
+                        );
+                        contents = contents.child(hover.render_with(fill, window, cx));
                     }
-                });
-            })
-            .into_any_element()
-    };
+                    if pressed {
+                        contents = contents.child(
+                            div()
+                                .id(format!("liquid-press-fill-{id:?}"))
+                                .absolute()
+                                .inset_0()
+                                .child(clip.fill(
+                                    format!("liquid-press-path-{id:?}"),
+                                    radius as f64,
+                                    Some(pressed_color),
+                                    None,
+                                    window,
+                                    cx,
+                                )),
+                        );
+                    }
+                } else {
+                    contents = contents
+                        .when(!style.hover_group, |contents| contents.child(hover))
+                        .when(pressed, |contents| {
+                            contents.child(div().absolute().inset_0().bg(rgb(pressed_color)))
+                        });
+                }
+            }
+            contents = if let Some((ink, binding)) = content {
+                // The root keeps the entire control's hit region. Clip each flow
+                // child at its own measured height, including multiline rows and
+                // portraits; geometry probes remain outside these ink regions.
+                if let Some(clip) = clip {
+                    binding.bind(clip);
+                }
+                contents.child(ink)
+            } else {
+                let ink = action_content(&id, label.clone(), height, style).into_any_element();
+                if let Some(clip) = clip {
+                    contents.child(
+                        clip.content(
+                            div()
+                                .size_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(ink),
+                            height.min(20.),
+                        ),
+                    )
+                } else {
+                    contents.child(ink)
+                }
+            };
+            contents
+                .id(action_content_scope(&id))
+                .on_hover(move |value, _, cx| {
+                    hover.update(cx, |hovered, cx| {
+                        if *hovered != *value {
+                            *hovered = *value;
+                            cx.notify();
+                        }
+                    });
+                })
+                .into_any_element()
+        };
     let colors = SurfaceColors {
         fill: if solid {
             if style.disabled {
@@ -1002,16 +1092,28 @@ fn render_action_content(
         focused: enabled && focus.is_focused(window),
     };
     let control = super::press::content_surface_with_source(
-        id.clone(), width, height, radius, 0.6, colors,
+        id.clone(),
+        width,
+        height,
+        radius,
+        0.6,
+        colors,
         !soft && ((icon_only && !primary_icon) || style.quiet || style.radio.is_some()),
-        build, enabled, source, adaptive, window, cx,
+        build,
+        enabled,
+        source,
+        adaptive,
+        window,
+        cx,
     );
     control
         .when(!adaptive, |v| {
             v.role(Role::Button)
                 .aria_label(label)
                 .a11y_synthetic_children(move |builder| {
-                    if !enabled { builder.parent_node().set_disabled(); }
+                    if !enabled {
+                        builder.parent_node().set_disabled();
+                    }
                 })
         })
         .when(style.busy && !adaptive, |v| v.aria_description("正在处理"))
@@ -1116,13 +1218,25 @@ pub(crate) fn action_content(
         .text_color(rgb(color))
         .whitespace_nowrap()
         .when(style.busy, |v| v.opacity(0.));
-    div().id(format!("liquid-action-content-{id:?}")).relative()
+    div()
+        .id(format!("liquid-action-content-{id:?}"))
+        .relative()
         .when(style.field || style.leading, |v| v.w_full())
         .child(ink)
-        .when(style.busy, |v| v.child(
-            div().absolute().inset_0().flex().items_center().justify_center()
-                .child(crate::components::loading::indicator(format!("{id:?}-loading"), 14.).without_delay())
-        ))
+        .when(style.busy, |v| {
+            v.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        crate::components::loading::indicator(format!("{id:?}-loading"), 14.)
+                            .without_delay(),
+                    ),
+            )
+        })
 }
 
 /// Press feedback is independent of the hover fade, including a quick press
@@ -1373,7 +1487,17 @@ pub fn input(
     window: &mut Window,
     cx: &mut App,
 ) -> Stateful<Div> {
-    input_content(id.into(), input, width, height, invalid, parent, None, window, cx)
+    input_content(
+        id.into(),
+        input,
+        width,
+        height,
+        invalid,
+        parent,
+        None,
+        window,
+        cx,
+    )
 }
 
 fn input_content(
@@ -1396,20 +1520,27 @@ fn input_content(
         12.,
         0.6,
         SurfaceColors {
-            fill: if invalid { crate::design::FORM.error_surface } else { parent },
+            fill: if invalid {
+                crate::design::FORM.error_surface
+            } else {
+                parent
+            },
             border: Some(if invalid { 0xC9837E } else { LIQUID_OUTLINE }),
             parent,
             focused: focus.is_focused(window),
         },
-        content.unwrap_or_else(|| div()
-            .absolute()
-            .left(px(12.))
-            .top(px(5.))
-            .w(px((width - 24.).max(2.)))
-            .h(px((height - 10.).max(2.)))
-            .line_height(px(20.))
-            .text_size(px(13.))
-            .child(input.clone()).into_any_element()),
+        content.unwrap_or_else(|| {
+            div()
+                .absolute()
+                .left(px(12.))
+                .top(px(5.))
+                .w(px((width - 24.).max(2.)))
+                .h(px((height - 10.).max(2.)))
+                .line_height(px(20.))
+                .text_size(px(13.))
+                .child(input.clone())
+                .into_any_element()
+        }),
         window,
         cx,
     )

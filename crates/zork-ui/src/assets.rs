@@ -6,7 +6,9 @@ pub struct EmbeddedAssets;
 impl AssetSource for EmbeddedAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         let bytes: Option<&'static [u8]> = match path {
-            "icons/more-horizontal.svg" => Some(include_bytes!("../assets/icons/more-horizontal.svg")),
+            "icons/more-horizontal.svg" => {
+                Some(include_bytes!("../assets/icons/more-horizontal.svg"))
+            }
             "icons/copy.svg" => Some(include_bytes!("../assets/icons/copy.svg")),
             "icons/message-square.svg" => {
                 Some(include_bytes!("../assets/icons/message-square.svg"))
@@ -479,37 +481,39 @@ pub fn init_fonts(cx: &gpui::App) {
     #[cfg(target_os = "macos")]
     {
         let text_system = cx.text_system().clone();
-        cx.background_executor().spawn(async move {
-            gpui::observe_startup("gpui.text_prepare_begin");
-            // CoreText family selection and the Latin/CJK fallback shaper are
-            // shared by all windows. Initialize them while AppKit builds the
-            // native window; no frame or view is created by this worker.
-            let text_system = gpui::WindowTextSystem::new(text_system);
-            let sample: gpui::SharedString = "Aa中".into();
-            for family in [".SystemUIFont", "Inter Variable"] {
-                for weight in [
-                    gpui::FontWeight::NORMAL,
-                    gpui::FontWeight::MEDIUM,
-                    gpui::FontWeight::SEMIBOLD,
-                ] {
-                    let mut font = gpui::font(family);
-                    font.weight = weight;
-                    let _ = text_system.shape_line(
-                        sample.clone(),
-                        gpui::px(13.),
-                        &[gpui::TextRun {
-                            len: sample.len(),
-                            font,
-                            color: gpui::Hsla::black(),
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        }],
-                        None,
-                    );
+        cx.background_executor()
+            .spawn(async move {
+                gpui::observe_startup("gpui.text_prepare_begin");
+                // CoreText family selection and the Latin/CJK fallback shaper are
+                // shared by all windows. Initialize them while AppKit builds the
+                // native window; no frame or view is created by this worker.
+                let text_system = gpui::WindowTextSystem::new(text_system);
+                let sample: gpui::SharedString = "Aa中".into();
+                for family in [".SystemUIFont", "Inter Variable"] {
+                    for weight in [
+                        gpui::FontWeight::NORMAL,
+                        gpui::FontWeight::MEDIUM,
+                        gpui::FontWeight::SEMIBOLD,
+                    ] {
+                        let mut font = gpui::font(family);
+                        font.weight = weight;
+                        let _ = text_system.shape_line(
+                            sample.clone(),
+                            gpui::px(13.),
+                            &[gpui::TextRun {
+                                len: sample.len(),
+                                font,
+                                color: gpui::Hsla::black(),
+                                background_color: None,
+                                underline: None,
+                                strikethrough: None,
+                            }],
+                            None,
+                        );
+                    }
                 }
-            }
-            gpui::observe_startup("gpui.text_prepare_ready");
-        }).detach();
+                gpui::observe_startup("gpui.text_prepare_ready");
+            })
+            .detach();
     }
 }

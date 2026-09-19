@@ -5,7 +5,9 @@
 //! geometry live here so regressions do not silently turn the app back into a
 //! generic dashboard.
 
-pub use zork_liquid::tokens::{BRAND_ACCENT, LIQUID_OUTLINE, BORDER_WIDTH, InteractionPalette, INTERACTION};
+pub use zork_liquid::tokens::{
+    InteractionPalette, BORDER_WIDTH, BRAND_ACCENT, INTERACTION, LIQUID_OUTLINE,
+};
 
 /// Form and feedback colors extend the existing approved warm-white palette.
 pub struct FormPalette {

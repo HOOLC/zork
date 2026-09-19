@@ -185,8 +185,10 @@ pub(super) fn content_surface(
     window: &mut Window,
     cx: &mut App,
 ) -> Stateful<Div> {
-    content_surface_with_source(id, width, height, radius, smoothing, colors, clear,
-        content, enabled, None, false, window, cx)
+    content_surface_with_source(
+        id, width, height, radius, smoothing, colors, clear, content, enabled, None, false, window,
+        cx,
+    )
 }
 
 pub(super) fn content_surface_with_source(
@@ -245,30 +247,55 @@ pub(super) fn content_surface_with_source(
             v.rest_surface = Some(super::render::StaticSurface::new(rest, smoothing));
         }
     });
-    let clip = source.as_ref().map_or_else(|| {
-        let v = state.read(cx);
-        v.surface.as_ref().map_or_else(
-            || v.rest_surface.as_ref().unwrap().content_clip(),
-            Surface::content_clip,
-        )
-    }, |source| source.part.content_clip());
+    let clip = source.as_ref().map_or_else(
+        || {
+            let v = state.read(cx);
+            v.surface.as_ref().map_or_else(
+                || v.rest_surface.as_ref().unwrap().content_clip(),
+                Surface::content_clip,
+            )
+        },
+        |source| source.part.content_clip(),
+    );
     let pressed = state.read(cx).press.down || state.read(cx).press.release_pending;
     let content = content(Some(clip), pressed, window, cx);
     let content = if let Some(binding) = &source_binding {
         binding.capture_content(content)
-    } else { content };
+    } else {
+        content
+    };
     let motion = state.read(cx);
     let fill = (!clear).then_some(colors.fill);
-    let pose = source.as_ref().map_or_else(|| motion
-        .surface
-        .as_ref()
-        .map_or(rest, |s| s.simulation.pose()), |source| Pose::rect(
-            source.pose.left() - source.rest.left(), source.pose.top() - source.rest.top(),
-            source.pose.w, source.pose.h, source.pose.r));
+    let pose = source.as_ref().map_or_else(
+        || {
+            motion
+                .surface
+                .as_ref()
+                .map_or(rest, |s| s.simulation.pose())
+        },
+        |source| {
+            Pose::rect(
+                source.pose.left() - source.rest.left(),
+                source.pose.top() - source.rest.top(),
+                source.pose.w,
+                source.pose.h,
+                source.pose.r,
+            )
+        },
+    );
     let (background, outline) = if let Some(source) = &source {
-        let offset = point(px(-source.rest.left() as f32), px(-source.rest.top() as f32));
-        (source.part.background(Some(colors.fill), None, offset, false),
-         source.part.background(None, colors.border, offset, colors.focused))
+        let offset = point(
+            px(-source.rest.left() as f32),
+            px(-source.rest.top() as f32),
+        );
+        (
+            source
+                .part
+                .background(Some(colors.fill), None, offset, false),
+            source
+                .part
+                .background(None, colors.border, offset, colors.focused),
+        )
     } else if let Some(surface) = &motion.surface {
         (
             surface
@@ -291,9 +318,16 @@ pub(super) fn content_surface_with_source(
     // control still owns its input contour at its current page position.
     let input_placement = source.is_some().then(|| {
         if let Some(surface) = &motion.surface {
-            surface.background_colors(None, None, point(px(0.), px(0.)), false).into_any_element()
+            surface
+                .background_colors(None, None, point(px(0.), px(0.)), false)
+                .into_any_element()
         } else {
-            motion.rest_surface.as_ref().unwrap().background(None, None, false).into_any_element()
+            motion
+                .rest_surface
+                .as_ref()
+                .unwrap()
+                .background(None, None, false)
+                .into_any_element()
         }
     });
     let control = div()
@@ -301,13 +335,23 @@ pub(super) fn content_surface_with_source(
         .relative()
         .w(px(width))
         .h(px(height))
-        .when_some(input_placement, |control, placement| control.child(placement))
+        .when_some(input_placement, |control, placement| {
+            control.child(placement)
+        })
         .child(background)
         .child(
             div()
                 .absolute()
-                .left(px(if keeps_input_slot { 0. } else { (pose.cx - rest.cx) as f32 }))
-                .top(px(if keeps_input_slot { 0. } else { (pose.cy - rest.cy) as f32 }))
+                .left(px(if keeps_input_slot {
+                    0.
+                } else {
+                    (pose.cx - rest.cx) as f32
+                }))
+                .top(px(if keeps_input_slot {
+                    0.
+                } else {
+                    (pose.cy - rest.cy) as f32
+                }))
                 .w(px(width))
                 .h(px(height))
                 .child(content),

@@ -7,21 +7,21 @@ use std::time::Duration;
 use super::compression::SegmentCompressor;
 use super::context::summary_transcript;
 use super::deadline::DeadlineScheduler;
-use super::decision::{Decision, DecisionWorld, decide, handoff_document};
+use super::decision::{decide, handoff_document, Decision, DecisionWorld};
 use super::events::{
     DeadlineKind, Input, ProviderErrorRecord, Purpose, RuntimeFailure, Selection, SessionEvent,
     ToolInvocation, ToolOutcome, ToolResultData, Usage,
 };
-use super::executor::{CompletedTool, ToolExecutor, rejected_execution};
+use super::executor::{rejected_execution, CompletedTool, ToolExecutor};
 use super::model::{
     ModelError, ModelGateway, ModelOutcome, ModelReleaseSuggestion, ModelRequest,
     ModelStreamObserver, TOOL_INTERRUPTED_MESSAGE,
 };
 use super::ports::{CancelToolRequest, Clock, IdGenerator, ToolCancellation, ToolControl};
 use super::projection::provider_transcript;
-use super::state::{GenerationEntry, STATE_SCHEMA_VERSION, SessionState, snapshot_value};
+use super::state::{snapshot_value, GenerationEntry, SessionState, STATE_SCHEMA_VERSION};
 use super::store::{EventEnvelope, SessionStore, StoreError};
-use super::tools::{DynamicCall, ToolExecution, ToolRegistry, provider_call_definition};
+use super::tools::{provider_call_definition, DynamicCall, ToolExecution, ToolRegistry};
 
 pub type InputBudget = Arc<dyn Fn(&SessionState) -> Option<u64> + Send + Sync>;
 pub type MaxOutputTokens = Arc<dyn Fn(&SessionState) -> Option<u32> + Send + Sync>;

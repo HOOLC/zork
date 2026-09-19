@@ -130,9 +130,10 @@ impl LocalNode {
         let mut events = manager::Events::new(&self.root)?;
         // Readiness is an exact file source. macOS directory events can batch
         // delivery; vnode notifications announce the committed PID immediately.
-        let readiness = zork_notify::files::Source::new([
-            zork_config::ready_pid_path(&self.root, "zork-station"),
-        ])?;
+        let readiness = zork_notify::files::Source::new([zork_config::ready_pid_path(
+            &self.root,
+            "zork-station",
+        )])?;
         let mut changes = events
             .subscribe()
             .merge(readiness.subscribe())

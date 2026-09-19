@@ -69,17 +69,56 @@ mod tests {
             "title":"Developer options", "source":"await android.startActivity({action:'android.settings.APPLICATION_DEVELOPMENT_SETTINGS'});"
         })).unwrap();
         let payload = serde_json::to_value(script).unwrap();
-        let posted = db.post_chat_content(None, "script", &chat, &author(), "", &[], None, &[], &[], Some(&payload)).unwrap();
+        let posted = db
+            .post_chat_content(
+                None,
+                "script",
+                &chat,
+                &author(),
+                "",
+                &[],
+                None,
+                &[],
+                &[],
+                Some(&payload),
+            )
+            .unwrap();
         assert_eq!(posted.interaction.as_ref(), Some(&payload));
         assert!(db.interaction_result(&chat, "script").unwrap().is_none());
-        assert_eq!(db.conn.lock().unwrap().query_row("SELECT COUNT(*) FROM interaction_registrations", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
-        let mut bad = payload.clone(); bad["version"] = json!(999);
-        assert!(db.post_chat_content(None, "unsupported", &chat, &author(), "", &[], None, &[], &[], Some(&bad)).is_err());
+        assert_eq!(
+            db.conn
+                .lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM interaction_registrations", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        let mut bad = payload.clone();
+        bad["version"] = json!(999);
+        assert!(db
+            .post_chat_content(
+                None,
+                "unsupported",
+                &chat,
+                &author(),
+                "",
+                &[],
+                None,
+                &[],
+                &[],
+                Some(&bad)
+            )
+            .is_err());
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 1);
         drop(db);
         fs::remove_dir_all(root.path().join("cache")).unwrap();
         let db = StationDb::open(root.path(), &work).unwrap();
-        assert_eq!(db.chat_message(&chat, "script").unwrap().interaction, Some(payload));
+        assert_eq!(
+            db.chat_message(&chat, "script").unwrap().interaction,
+            Some(payload)
+        );
         assert!(db.interaction_result(&chat, "script").unwrap().is_none());
         assert_eq!(db.chat(&chat).unwrap().channel.message_count, 1);
     }

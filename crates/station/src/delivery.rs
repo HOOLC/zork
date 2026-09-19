@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use crate::connections::ConnectionRuntime;
-use crate::db::{EnsureSession, StationDb, SessionRow};
+use crate::db::{EnsureSession, SessionRow, StationDb};
 use crate::inbound::InboundEvent;
 use crate::jobs::JobEvent;
 use crate::slack::BotSelf;

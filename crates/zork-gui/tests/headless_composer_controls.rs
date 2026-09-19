@@ -118,7 +118,9 @@ fn main() -> anyhow::Result<()> {
                 == if baseline {
                     [170, 170, 164]
                 } else {
-                    zork_ui::design::INTERACTION.neutral_pressed.to_be_bytes()[1..].try_into().unwrap()
+                    zork_ui::design::INTERACTION.neutral_pressed.to_be_bytes()[1..]
+                        .try_into()
+                        .unwrap()
                 },
             "disabled send should use the shared primary action state"
         );

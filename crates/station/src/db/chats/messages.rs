@@ -193,7 +193,8 @@ impl StationDb {
             command_active(&tx, key)?;
         }
         let business = interaction.and_then(zork_client_types::interaction::MessageContent::parse);
-        let hydrated = business.as_ref()
+        let hydrated = business
+            .as_ref()
             .map(|content| super::cards::hydrate(&tx, content, id, &author.id))
             .transpose()?
             .map(serde_json::to_value)

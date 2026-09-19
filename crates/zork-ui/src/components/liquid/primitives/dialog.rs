@@ -76,7 +76,10 @@ impl AlertDialog {
         let title = title.into();
         let confirm_label = confirm_label.into();
         let cancel_label = self.cancel_label.clone().unwrap_or_else(|| "取消".into());
-        let cancel_accessible = self.cancel_label.clone().unwrap_or_else(|| "取消确认".into());
+        let cancel_accessible = self
+            .cancel_label
+            .clone()
+            .unwrap_or_else(|| "取消确认".into());
         let cancel = Rc::new(cancel);
         let callback = cancel.clone();
         let cancel_id = format!("{id}-cancel");
@@ -105,7 +108,11 @@ impl AlertDialog {
                         callback(v, w, cx);
                     }
                 }))
-                .automation_enabled(!busy, AutomationRole::Button, cancel_accessible),
+                .automation_enabled(
+                    !busy,
+                    AutomationRole::Button,
+                    cancel_accessible,
+                ),
             )
             .child(
                 controls::action(
@@ -252,10 +259,18 @@ impl Flyout {
             align_end: Cell::new(false),
         }
     }
-    pub fn alive(&self) -> bool { self.material.borrow().alive() }
-    pub fn samples(&self) -> Vec<super::super::overlay::FrameSample> { self.material.borrow().samples().to_vec() }
-    pub fn reset_samples(&self) { self.material.borrow_mut().reset_samples(); }
-    pub fn visible(&self) -> bool { self.material.borrow().visible() }
+    pub fn alive(&self) -> bool {
+        self.material.borrow().alive()
+    }
+    pub fn samples(&self) -> Vec<super::super::overlay::FrameSample> {
+        self.material.borrow().samples().to_vec()
+    }
+    pub fn reset_samples(&self) {
+        self.material.borrow_mut().reset_samples();
+    }
+    pub fn visible(&self) -> bool {
+        self.material.borrow().visible()
+    }
     pub fn initial_focus(&self, focus: Option<FocusHandle>) {
         *self.initial_focus.borrow_mut() = focus;
     }
@@ -267,13 +282,30 @@ impl Flyout {
     pub fn align_end(&self) {
         self.align_end.set(true);
     }
-    pub fn dismiss(&self) { self.state.borrow_mut().open = false; }
+    pub fn dismiss(&self) {
+        self.state.borrow_mut().open = false;
+    }
     /// A selection or another measured surface can open the same flyout without
     /// manufacturing a fixed-width trigger or taking over its source's layout.
-    pub fn open_at(&self, id: impl Into<SharedString>, label: impl Into<SharedString>, bounds: Bounds<Pixels>, source: Option<FocusHandle>, window: &mut Window, cx: &mut App) {
+    pub fn open_at(
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        bounds: Bounds<Pixels>,
+        source: Option<FocusHandle>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         self.anchor.set_window_bounds(bounds, window);
-        let source = source.or_else(|| window.focused(cx)).unwrap_or_else(|| self.focus.clone());
-        *self.trigger.borrow_mut() = Some(FlyoutTrigger { id: id.into(), label: label.into(), focus: source.clone(), material: false });
+        let source = source
+            .or_else(|| window.focused(cx))
+            .unwrap_or_else(|| self.focus.clone());
+        *self.trigger.borrow_mut() = Some(FlyoutTrigger {
+            id: id.into(),
+            label: label.into(),
+            focus: source.clone(),
+            material: false,
+        });
         let mut state = self.state.borrow_mut();
         state.pending = !state.open;
         state.open = true;
@@ -299,38 +331,76 @@ impl Flyout {
         }
     }
     pub fn trigger_element<V: 'static, E: ControlElement>(
-        &self, element: E, label: impl Into<SharedString>, focus: &FocusHandle,
-        enabled: bool, cx: &mut Context<V>,
+        &self,
+        element: E,
+        label: impl Into<SharedString>,
+        focus: &FocusHandle,
+        enabled: bool,
+        cx: &mut Context<V>,
     ) -> E {
-        let id: SharedString = format!("{:?}", Element::id(&element).expect("a flyout source needs a stable ID")).into();
-        *self.trigger.borrow_mut() = Some(FlyoutTrigger { id, label: label.into(), focus: focus.clone(), material: true });
+        let id: SharedString = format!(
+            "{:?}",
+            Element::id(&element).expect("a flyout source needs a stable ID")
+        )
+        .into();
+        *self.trigger.borrow_mut() = Some(FlyoutTrigger {
+            id,
+            label: label.into(),
+            focus: focus.clone(),
+            material: true,
+        });
         let state = self.state.clone();
         let focus = focus.clone();
-        element.control_focus(&focus).panel_source()
-            .source_material(self.material.borrow().source_material()).aria_expanded(self.is_open())
+        element
+            .control_focus(&focus)
+            .panel_source()
+            .source_material(self.material.borrow().source_material())
+            .aria_expanded(self.is_open())
             .on_click(cx.listener(move |_, _, w, cx| {
-                if !enabled { return; }
+                if !enabled {
+                    return;
+                }
                 let mut state = state.borrow_mut();
                 state.open = !state.open;
                 state.pending = state.open;
                 state.source = Some(focus.clone());
-                if !state.open { w.focus(&focus, cx); }
+                if !state.open {
+                    w.focus(&focus, cx);
+                }
                 cx.notify();
             }))
-            .control_overlay(self.anchor.measure(self.is_open() || self.material.borrow().alive(), cx).into_any_element())
+            .control_overlay(
+                self.anchor
+                    .measure(self.is_open() || self.material.borrow().alive(), cx)
+                    .into_any_element(),
+            )
     }
     pub fn trigger<V: 'static>(
-        &self, id: impl Into<SharedString>, label: impl Into<SharedString>, width: f32,
-        window: &mut Window, cx: &mut Context<V>,
+        &self,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        width: f32,
+        window: &mut Window,
+        cx: &mut Context<V>,
     ) -> AnyElement {
         let id = id.into();
         let label = label.into();
         let focus = controls::action_focus(id.clone(), window, cx);
-        let action = controls::adaptive_action(id, label.clone(),
-            ActionStyle { expanded: self.is_open(), opens_panel: true, ..Default::default() },
-            CUE_UI.palette.canvas).w(px(width)).h(px(32.));
+        let action = controls::adaptive_action(
+            id,
+            label.clone(),
+            ActionStyle {
+                expanded: self.is_open(),
+                opens_panel: true,
+                ..Default::default()
+            },
+            CUE_UI.palette.canvas,
+        )
+        .w(px(width))
+        .h(px(32.));
         self.trigger_element(action, label.clone(), &focus, true, cx)
-            .automation(AutomationRole::Button, label).into_any_element()
+            .automation(AutomationRole::Button, label)
+            .into_any_element()
     }
     pub fn render<V: 'static>(
         &self,
@@ -346,16 +416,27 @@ impl Flyout {
     /// Rich callers supply their header and unpadded content. The material owns
     /// the declared padding so its content clips exclude the empty corner area.
     pub fn render_content<V: 'static>(
-        &self, id: impl Into<SharedString>, title: impl Into<SharedString>,
+        &self,
+        id: impl Into<SharedString>,
+        title: impl Into<SharedString>,
         body: impl FnOnce(bool, f32, &mut Window, &mut Context<V>) -> AnyElement,
-        width: f32, padding: f32, window: &mut Window, cx: &mut Context<V>,
+        width: f32,
+        padding: f32,
+        window: &mut Window,
+        cx: &mut Context<V>,
     ) -> Option<AnyElement> {
         self.render_body(id, title, body, width, padding, false, window, cx)
     }
     fn render_body<V: 'static>(
-        &self, id: impl Into<SharedString>, title: impl Into<SharedString>,
+        &self,
+        id: impl Into<SharedString>,
+        title: impl Into<SharedString>,
         body: impl FnOnce(bool, f32, &mut Window, &mut Context<V>) -> AnyElement,
-        width: f32, padding: f32, heading: bool, window: &mut Window, cx: &mut Context<V>,
+        width: f32,
+        padding: f32,
+        heading: bool,
+        window: &mut Window,
+        cx: &mut Context<V>,
     ) -> Option<AnyElement> {
         let open = self.is_open();
         if !open && !self.material.borrow().alive() {
@@ -371,11 +452,7 @@ impl Flyout {
         let width = width.min((viewport.width.as_f32() - 24.).max(2.));
         let padding = padding.max(0.).min(width / 2. - 1.);
         let inner_width = (width - 2. * padding).max(2.);
-        let natural_height = self
-            .material
-            .borrow()
-            .content_height()
-            .unwrap_or(2.);
+        let natural_height = self.material.borrow().content_height().unwrap_or(2.);
         let placement = self
             .anchor
             .fit(source, size(px(width), px(natural_height)), viewport, 8.);
@@ -397,15 +474,20 @@ impl Flyout {
         let visible = self.anchor.visible.get();
         let active = open && visible;
         if active && !self.was_open.replace(active) {
-            self.scope.borrow_mut().activate("flyout", &trigger.focus, window, cx);
+            self.scope
+                .borrow_mut()
+                .activate("flyout", &trigger.focus, window, cx);
         } else {
             self.was_open.set(active);
-            self.scope.borrow_mut().sync(active.then_some("flyout"), window, cx);
+            self.scope
+                .borrow_mut()
+                .sync(active.then_some("flyout"), window, cx);
         }
         if !visible && self.focus.contains_focused(window, cx) {
             window.focus(&trigger.focus, cx);
         }
-        let interactive = open && visible && (cx.reduce_motion() || self.material.borrow().progress() >= 0.4);
+        let interactive =
+            open && visible && (cx.reduce_motion() || self.material.borrow().progress() >= 0.4);
         let body = body(interactive, inner_width, window, cx);
         let state = self.state.clone();
         let focus = self.focus.clone();
@@ -421,7 +503,10 @@ impl Flyout {
             .id(id.clone())
             .occlude()
             .w(px(inner_width))
-            .max_h(px((available - 2. * padding - if heading { 32. } else { 0. }).max(2.)))
+            .max_h(px((available
+                - 2. * padding
+                - if heading { 32. } else { 0. })
+            .max(2.)))
             .overflow_y_scroll()
             .role(Role::Dialog)
             .aria_label(title.clone())
@@ -522,8 +607,14 @@ impl Flyout {
         }));
         let mut sections = Vec::new();
         if heading {
-            sections.push(div().text_size(px(13.)).line_height(px(20.))
-                .font_weight(FontWeight::SEMIBOLD).child(title).into_any_element());
+            sections.push(
+                div()
+                    .text_size(px(13.))
+                    .line_height(px(20.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(title)
+                    .into_any_element(),
+            );
         }
         sections.push(contents.into_any_element());
         let panel = self.material.borrow_mut().render(
@@ -534,7 +625,11 @@ impl Flyout {
                 y - source.top().as_f32(),
                 width,
             ),
-            Content { sections, padding, gap: if heading { 12. } else { 0. } },
+            Content {
+                sections,
+                padding,
+                gap: if heading { 12. } else { 0. },
+            },
             Some(origin),
             SurfaceColors::outlined(crate::design::LIQUID_OUTLINE, CUE_UI.palette.canvas),
             Material::default(),
@@ -550,7 +645,9 @@ impl Flyout {
             window.on_next_frame(move |w, cx| {
                 if state.borrow().open {
                     w.focus(initial.as_ref().unwrap_or(&focus), cx);
-                    if initial.is_none() { crate::modal::advance_focus(false, w, cx); }
+                    if initial.is_none() {
+                        crate::modal::advance_focus(false, w, cx);
+                    }
                 }
             });
         }
@@ -626,7 +723,8 @@ impl NavigationMenu {
                 focus: focus.clone(),
                 material: true,
             });
-            let trigger_width = (super::super::overlay::measure_label(&group.label, 12., window) + 36.).min(width);
+            let trigger_width =
+                (super::super::overlay::measure_label(&group.label, 12., window) + 36.).min(width);
             let trigger = controls::adaptive_action(
                 group.key,
                 group.label.clone(),
@@ -637,7 +735,8 @@ impl NavigationMenu {
                 },
                 CUE_UI.palette.canvas,
             )
-            .w(px(trigger_width)).h(px(32.))
+            .w(px(trigger_width))
+            .h(px(32.))
             .source_material(self.flyouts[index].material.borrow().source_material())
             .aria_expanded(active == Some(index))
             .track_focus(&focus)
@@ -676,7 +775,10 @@ impl NavigationMenu {
                 }
                 hover_flyout(&hover_state, *inside, false, cx);
             }))
-            .child(self.flyouts[index].anchor.measure(self.flyouts[index].is_open() || self.flyouts[index].material.borrow().alive(), cx))
+            .child(self.flyouts[index].anchor.measure(
+                self.flyouts[index].is_open() || self.flyouts[index].material.borrow().alive(),
+                cx,
+            ))
             .automation(AutomationRole::Button, group.label.clone());
             row = row.child(trigger);
             let navigate = callback.clone();

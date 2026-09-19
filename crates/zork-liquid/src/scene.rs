@@ -29,9 +29,9 @@
 //! applying commands or advancing time again. Protocols are process-local,
 //! native-endian transports, not persistent or network serialization formats.
 use crate::{
-    Contour, Material, Options, Pose, Simulation, Surface, border,
+    border,
     motion::{DelayedReveal, Press, Reveal, Transition},
-    recipes,
+    recipes, Contour, Material, Options, Pose, Simulation, Surface,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;

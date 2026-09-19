@@ -127,7 +127,6 @@ pub fn message_document_with_preview(
         .flex()
         .items_center()
         .gap_3()
-
         .when(preview.is_none(), |v| {
             v.child(ui::icon("icons/file.svg", 20.))
         })
@@ -213,7 +212,6 @@ pub fn row_source<V: 'static>(
         .flex()
         .items_center()
         .gap(px(10.))
-
         .child(ui::icon("icons/file.svg", 18.))
         .child(
             div()
@@ -238,8 +236,20 @@ pub fn row_source<V: 'static>(
         )
         .on_click(cx.listener(move |v, _, _, cx| open(v, cx)))
         .map(|control| match source {
-            Some(source) => source.bind(control, label.clone(), ui::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, label).into_any_element(),
-            None => control.automation(AutomationRole::Button, label).into_any_element(),
+            Some(source) => source
+                .bind(
+                    control,
+                    label.clone(),
+                    ui::ActionStyle {
+                        quiet: true,
+                        ..Default::default()
+                    },
+                )
+                .automation(AutomationRole::Button, label)
+                .into_any_element(),
+            None => control
+                .automation(AutomationRole::Button, label)
+                .into_any_element(),
         })
 }
 
@@ -268,16 +278,26 @@ pub fn content_row_source<V: 'static>(
 }
 
 pub fn content_row_enabled<V: 'static>(
-    id: impl Into<gpui::ElementId>, icon_path: &'static str, name: String, meta: String,
-    enabled: bool, cx: &Context<V>, open: impl Fn(&mut V, &mut Context<V>) + 'static,
+    id: impl Into<gpui::ElementId>,
+    icon_path: &'static str,
+    name: String,
+    meta: String,
+    enabled: bool,
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
     content_row_control(id, icon_path, name, meta, None, enabled, cx, open)
 }
 
 fn content_row_control<V: 'static>(
-    id: impl Into<gpui::ElementId>, icon_path: &'static str, name: String, meta: String,
-    source: Option<crate::components::liquid::overlay::SourceBinding>, enabled: bool,
-    cx: &Context<V>, open: impl Fn(&mut V, &mut Context<V>) + 'static,
+    id: impl Into<gpui::ElementId>,
+    icon_path: &'static str,
+    name: String,
+    meta: String,
+    source: Option<crate::components::liquid::overlay::SourceBinding>,
+    enabled: bool,
+    cx: &Context<V>,
+    open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
     ui::quiet_button(id, "", enabled, ui::IconButtonSize::Standard)
         .w_full()
@@ -296,10 +316,27 @@ fn content_row_control<V: 'static>(
                 .child(ui::text_role(name.clone(), crate::design::TextRole::Body).truncate())
                 .child(ui::text_role(meta, crate::design::TextRole::Metadata).truncate()),
         )
-        .on_click(cx.listener(move |view, _, _, cx| { if enabled { open(view, cx); } }))
+        .on_click(cx.listener(move |view, _, _, cx| {
+            if enabled {
+                open(view, cx);
+            }
+        }))
         .map(|row| match source {
-            Some(source) => source.bind(row, name.clone(), ui::ActionStyle { quiet: true, icon: Some(icon_path), ..Default::default() }).automation_enabled(enabled, AutomationRole::Button, name).into_any_element(),
-            None => row.automation_enabled(enabled, AutomationRole::Button, name).into_any_element(),
+            Some(source) => source
+                .bind(
+                    row,
+                    name.clone(),
+                    ui::ActionStyle {
+                        quiet: true,
+                        icon: Some(icon_path),
+                        ..Default::default()
+                    },
+                )
+                .automation_enabled(enabled, AutomationRole::Button, name)
+                .into_any_element(),
+            None => row
+                .automation_enabled(enabled, AutomationRole::Button, name)
+                .into_any_element(),
         })
 }
 
@@ -335,7 +372,6 @@ pub fn card_source<V: 'static>(
         .flex()
         .items_center()
         .gap(px(10.))
-
         .child(ui::icon("icons/file.svg", 18.))
         .child(
             div()
@@ -365,7 +401,19 @@ pub fn card_source<V: 'static>(
             }
         }))
         .map(|control| match source {
-            Some(source) => source.bind(control, label.clone(), ui::ActionStyle { disabled: !enabled, ..Default::default() }).automation_enabled(enabled, AutomationRole::Button, label).into_any_element(),
-            None => control.automation_enabled(enabled, AutomationRole::Button, label).into_any_element(),
+            Some(source) => source
+                .bind(
+                    control,
+                    label.clone(),
+                    ui::ActionStyle {
+                        disabled: !enabled,
+                        ..Default::default()
+                    },
+                )
+                .automation_enabled(enabled, AutomationRole::Button, label)
+                .into_any_element(),
+            None => control
+                .automation_enabled(enabled, AutomationRole::Button, label)
+                .into_any_element(),
         })
 }

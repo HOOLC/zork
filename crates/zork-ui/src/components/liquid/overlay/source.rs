@@ -159,7 +159,10 @@ impl<E: ControlElement> ParentElement for BoundTrigger<E> {
 }
 impl<E: ControlElement> ControlElement for BoundTrigger<E> {
     fn source_material(mut self, material: super::super::render::SourceMaterial) -> Self {
-        self.element = self.element.take().map(|element| element.source_material(material));
+        self.element = self
+            .element
+            .take()
+            .map(|element| element.source_material(material));
         self
     }
     fn control_focus(mut self, focus: &FocusHandle) -> Self {
@@ -205,10 +208,16 @@ impl<E: ControlElement> Element for BoundTrigger<E> {
             .clone()
             .unwrap_or_else(|| controls::action_focus(self.id.clone(), window, cx))
             .tab_stop(!self.style.disabled && !self.style.busy);
-        let drawing = window.use_keyed_state(format!("overlay-source-drawing-{:?}", self.id), cx,
-            |_, _| Rc::<RefCell<Option<PaintRegion>>>::default());
+        let drawing = window.use_keyed_state(
+            format!("overlay-source-drawing-{:?}", self.id),
+            cx,
+            |_, _| Rc::<RefCell<Option<PaintRegion>>>::default(),
+        );
         self.drawing = drawing.read(cx).clone();
-        let material = self.binding.material.for_owner(format!("{:?}", self.id).into(), window, cx);
+        let material = self
+            .binding
+            .material
+            .for_owner(format!("{:?}", self.id).into(), window, cx);
         self.material = Some(material.clone());
         let mut child = self
             .binding
@@ -250,9 +259,12 @@ impl<E: ControlElement> Element for BoundTrigger<E> {
         cx: &mut App,
     ) {
         let (_, region) = window.record_paint_region(|window| {
-            self.material.as_ref().unwrap().paint_control(bounds, window, |window| {
-                self.rendered.as_mut().unwrap().paint(window, cx);
-            });
+            self.material
+                .as_ref()
+                .unwrap()
+                .paint_control(bounds, window, |window| {
+                    self.rendered.as_mut().unwrap().paint(window, cx);
+                });
         });
         *self.drawing.borrow_mut() = region;
     }

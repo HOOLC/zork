@@ -311,7 +311,10 @@ impl RootView {
             .iter()
             .map(|m| m.position(now).y + RADIUS)
             .fold(0., f32::max)
-            .min((window.viewport_size().height.as_f32() - self.composer_editor_height - 96.).max(0.));
+            .min(
+                (window.viewport_size().height.as_f32() - self.composer_editor_height - 96.)
+                    .max(0.),
+            );
         if (extent - self.presence.extent).abs() > 0.001 {
             self.presence.extent = extent;
             // The list and bubbles consume the same sample in this frame.
@@ -320,143 +323,331 @@ impl RootView {
         }
     }
 
-    pub(super) fn render_shared_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        use zork_ui::components::liquid::{composer as component, Pose};
+    pub(super) fn render_shared_composer(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         use component::{Capabilities, Member as MemberView, Snapshot};
-        let now = self.presence.frame_time.unwrap_or_else(|| cx.background_executor().now());
+        use zork_ui::components::liquid::{composer as component, Pose};
+        let now = self
+            .presence
+            .frame_time
+            .unwrap_or_else(|| cx.background_executor().now());
         self.presence.wake = None;
-        let preview = self.presence.preview.get_or_insert_with(|| cx.new(|cx| {
-            zork_ui::components::region::forget_on_release(cx);
-            preview::Overlay::default()
-        })).clone();
-        preview.update(cx, |v, cx| v.retain(self.presence.members.iter().map(|m| &m.info.id), cx));
-        self.presence.anchors.retain(|id, _| self.presence.members.iter().any(|m| &m.info.id == id));
+        let preview = self
+            .presence
+            .preview
+            .get_or_insert_with(|| {
+                cx.new(|cx| {
+                    zork_ui::components::region::forget_on_release(cx);
+                    preview::Overlay::default()
+                })
+            })
+            .clone();
+        preview.update(cx, |v, cx| {
+            v.retain(self.presence.members.iter().map(|m| &m.info.id), cx)
+        });
+        self.presence
+            .anchors
+            .retain(|id, _| self.presence.members.iter().any(|m| &m.info.id == id));
         let extent = self.presence.extent.max(self.file_fan_dimensions().1);
-        let height = self.composer_editor_height + zork_ui::components::liquid_composer::TOP_EXTENSION
+        let height = self.composer_editor_height
+            + zork_ui::components::liquid_composer::TOP_EXTENSION
             + zork_ui::components::liquid_composer::COMPOSER_CHROME;
-        let body = Pose::rect(0., extent as f64, self.composer_surface_width.max(2.) as f64,
-            height as f64, zork_ui::components::liquid_composer::SURFACE_RADIUS as f64);
-        let state = zork_client_core::composer::interrupting(
-            self.sessions.iter().find(|s| Some(&s.session_id) == self.selected_session.as_ref()),
-            self.composer_input.read(cx).value(),
-            self.draft_state.comments.len() + self.draft_state.attachments.len() + self.draft_state.files.len(),
-            self.canceling, self.preparing_files,
+        let body = Pose::rect(
+            0.,
+            extent as f64,
+            self.composer_surface_width.max(2.) as f64,
+            height as f64,
+            zork_ui::components::liquid_composer::SURFACE_RADIUS as f64,
         );
-        let targets: Vec<_> = self.presence.members.iter().filter_map(|member| {
-            let position = member.position(now);
-            let width = (AVATAR + member.width.sample(now)).min(self.composer_surface_width - EDGE - PORTRAIT_INSET * 2.) + PORTRAIT_INSET * 2.;
-            let pose = Pose::rect((EDGE + position.x) as f64,
-                body.top() - position.y as f64 - RADIUS as f64, width.max(2.) as f64, 32., 16.);
-            // Membership remains in core. Offscreen portraits need neither a
-            // material parcel nor a control; retain a small motion gutter.
-            (pose.left() < body.w + 8. && pose.left() + pose.w > -8. && pose.top() + pose.h > -8.)
-                .then_some((member, pose))
-        }).collect();
+        let state = zork_client_core::composer::interrupting(
+            self.sessions
+                .iter()
+                .find(|s| Some(&s.session_id) == self.selected_session.as_ref()),
+            self.composer_input.read(cx).value(),
+            self.draft_state.comments.len()
+                + self.draft_state.attachments.len()
+                + self.draft_state.files.len(),
+            self.canceling,
+            self.preparing_files,
+        );
+        let targets: Vec<_> = self
+            .presence
+            .members
+            .iter()
+            .filter_map(|member| {
+                let position = member.position(now);
+                let width = (AVATAR + member.width.sample(now))
+                    .min(self.composer_surface_width - EDGE - PORTRAIT_INSET * 2.)
+                    + PORTRAIT_INSET * 2.;
+                let pose = Pose::rect(
+                    (EDGE + position.x) as f64,
+                    body.top() - position.y as f64 - RADIUS as f64,
+                    width.max(2.) as f64,
+                    32.,
+                    16.,
+                );
+                // Membership remains in core. Offscreen portraits need neither a
+                // material parcel nor a control; retain a small motion gutter.
+                (pose.left() < body.w + 8.
+                    && pose.left() + pose.w > -8.
+                    && pose.top() + pose.h > -8.)
+                    .then_some((member, pose))
+            })
+            .collect();
         let snapshot = Snapshot {
-            capabilities: Capabilities { editable: state.editable, stop: state.stop, enabled: state.enabled },
+            capabilities: Capabilities {
+                editable: state.editable,
+                stop: state.stop,
+                enabled: state.enabled,
+            },
             text: self.composer_input.read(cx).value().to_owned(),
-            members: targets.iter().map(|(member, _)| MemberView {
-                id: member.info.id.clone(), avatar: member.info.avatar.clone().unwrap_or_else(|| "cat".into()),
-                label: format!("{} · {}", member.info.name, member.label), active: member.expanded,
-            }).collect(), ..Default::default()
+            members: targets
+                .iter()
+                .map(|(member, _)| MemberView {
+                    id: member.info.id.clone(),
+                    avatar: member.info.avatar.clone().unwrap_or_else(|| "cat".into()),
+                    label: format!("{} · {}", member.info.name, member.label),
+                    active: member.expanded,
+                })
+                .collect(),
+            ..Default::default()
         };
-        let member_colors = targets.iter().map(|(m, _)| if m.failed { CUE_UI.palette.danger } else { TEXT }).collect();
+        let member_colors = targets
+            .iter()
+            .map(|(m, _)| {
+                if m.failed {
+                    CUE_UI.palette.danger
+                } else {
+                    TEXT
+                }
+            })
+            .collect();
         let member_names = targets.iter().map(|(m, _)| m.info.name.clone()).collect();
-        let targets: Vec<_> = targets.into_iter().map(|(member, pose)| (member.info.id.clone(), pose)).collect();
+        let targets: Vec<_> = targets
+            .into_iter()
+            .map(|(member, pose)| (member.info.id.clone(), pose))
+            .collect();
         let opening = self.draft_opening();
-        let fan = opening.map(|_| div().absolute().top_0().w_full()
-            .h(px(extent + zork_ui::components::liquid_composer::TOP_EXTENSION))
-            .child(self.render_draft_fan(cx)).into_any_element());
-        let elapsed = self.presence.scene_time.replace(now).map_or(0., |previous| now.saturating_duration_since(previous).as_secs_f64());
-        let prior_revision = self.presence.scene.surface.as_ref().map(|surface| surface.simulation.revision);
-        let moving = self.presence.scene.frame(body, &targets,
-            opening.map(|opening| opening.translated(gpui::point(0., body.top() as f32))), elapsed, cx.reduce_motion());
-        let settled = !moving && prior_revision != self.presence.scene.surface.as_ref().map(|surface| surface.simulation.revision);
-        if moving || settled || self.presence.members.iter().any(|member| member.moving(now)) {
+        let fan = opening.map(|_| {
+            div()
+                .absolute()
+                .top_0()
+                .w_full()
+                .h(px(
+                    extent + zork_ui::components::liquid_composer::TOP_EXTENSION
+                ))
+                .child(self.render_draft_fan(cx))
+                .into_any_element()
+        });
+        let elapsed = self
+            .presence
+            .scene_time
+            .replace(now)
+            .map_or(0., |previous| {
+                now.saturating_duration_since(previous).as_secs_f64()
+            });
+        let prior_revision = self
+            .presence
+            .scene
+            .surface
+            .as_ref()
+            .map(|surface| surface.simulation.revision);
+        let moving = self.presence.scene.frame(
+            body,
+            &targets,
+            opening.map(|opening| opening.translated(gpui::point(0., body.top() as f32))),
+            elapsed,
+            cx.reduce_motion(),
+        );
+        let settled = !moving
+            && prior_revision
+                != self
+                    .presence
+                    .scene
+                    .surface
+                    .as_ref()
+                    .map(|surface| surface.simulation.revision);
+        if moving
+            || settled
+            || self
+                .presence
+                .members
+                .iter()
+                .any(|member| member.moving(now))
+        {
             if !self.presence.frame_scheduled {
                 self.presence.frame_scheduled = true;
-            let root = cx.entity().downgrade();
-            window.on_next_frame(move |_, cx| { let _ = root.update(cx, |view, cx| {
-                view.presence.frame_scheduled = false;
-                let now = cx.background_executor().now();
-                if view.presence.scene.moving() || view.presence.members.iter().any(|member| member.moving(now)) {
-                    zork_ui::components::region::invalidate(cx, &["composer"]);
-                } else {
-                    // Commit the intrinsic region's cached layout at rest;
-                    // a later unrelated redraw must not rebuild the composer.
-                    cx.notify();
-                }
-            }); });
+                let root = cx.entity().downgrade();
+                window.on_next_frame(move |_, cx| {
+                    let _ = root.update(cx, |view, cx| {
+                        view.presence.frame_scheduled = false;
+                        let now = cx.background_executor().now();
+                        if view.presence.scene.moving()
+                            || view
+                                .presence
+                                .members
+                                .iter()
+                                .any(|member| member.moving(now))
+                        {
+                            zork_ui::components::region::invalidate(cx, &["composer"]);
+                        } else {
+                            // Commit the intrinsic region's cached layout at rest;
+                            // a later unrelated redraw must not rebuild the composer.
+                            cx.notify();
+                        }
+                    });
+                });
             }
         } else if let Some(delay) = self.presence.next_wake(now) {
             self.presence.wake = Some(cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(delay).await;
-                let _ = this.update(cx, |_, cx| zork_ui::components::region::invalidate(cx, &["composer"]));
+                let _ = this.update(cx, |_, cx| {
+                    zork_ui::components::region::invalidate(cx, &["composer"])
+                });
             }));
         }
-        let indices = self.presence.scene.indices(snapshot.members.iter().map(|m| &m.id));
+        let indices = self
+            .presence
+            .scene
+            .indices(snapshot.members.iter().map(|m| &m.id));
         let bubbles = self.presence.scene.bubbles();
         let root = cx.entity().downgrade();
         let handler = Rc::new(move |action, w: &mut Window, cx: &mut gpui::App| {
             let _ = root.update(cx, |view, cx| view.composer_action(action, w, cx));
         });
-        let surface = self.presence.scene.surface.as_ref().expect("valid composer material");
-        let component = component::render(component::Props {
-            id: "composer", surface, width: self.composer_surface_width, height: extent + height,
-            editor: &self.composer_input, snapshot: &snapshot, fan_progress: self.file_ui.draft.progress,
-            fan_pinned: self.file_ui.draft.pinned, bubbles: &bubbles, handler,
-            presentation: Some(component::Presentation {
-                editor_id: "composer-input".into(), attach_id: "composer-options".into(), primary_id: "send-button".into(),
-                member_groups: indices,
-                member_colors, member_names,
-                fan, busy: self.canceling, editor_label: self.locale.text("composer_placeholder").into(),
-                attach_label: self.locale.text("add_files").into(),
-                primary_label: self.locale.text(if state.stop { "stop_task" } else { "send_message" }).into(),
-            }),
-        }, window, cx);
-        div().relative().w(px(self.composer_surface_width)).h(px(extent + height))
-            .child(component).child(zork_ui::components::region::tracked_view(preview)).into_any_element()
+        let surface = self
+            .presence
+            .scene
+            .surface
+            .as_ref()
+            .expect("valid composer material");
+        let component = component::render(
+            component::Props {
+                id: "composer",
+                surface,
+                width: self.composer_surface_width,
+                height: extent + height,
+                editor: &self.composer_input,
+                snapshot: &snapshot,
+                fan_progress: self.file_ui.draft.progress,
+                fan_pinned: self.file_ui.draft.pinned,
+                bubbles: &bubbles,
+                handler,
+                presentation: Some(component::Presentation {
+                    editor_id: "composer-input".into(),
+                    attach_id: "composer-options".into(),
+                    primary_id: "send-button".into(),
+                    member_groups: indices,
+                    member_colors,
+                    member_names,
+                    fan,
+                    busy: self.canceling,
+                    editor_label: self.locale.text("composer_placeholder").into(),
+                    attach_label: self.locale.text("add_files").into(),
+                    primary_label: self
+                        .locale
+                        .text(if state.stop {
+                            "stop_task"
+                        } else {
+                            "send_message"
+                        })
+                        .into(),
+                }),
+            },
+            window,
+            cx,
+        );
+        div()
+            .relative()
+            .w(px(self.composer_surface_width))
+            .h(px(extent + height))
+            .child(component)
+            .child(zork_ui::components::region::tracked_view(preview))
+            .into_any_element()
     }
 
-    fn composer_action(&mut self, action: zork_ui::components::liquid::composer::Action, window: &mut Window, cx: &mut Context<Self>) {
+    fn composer_action(
+        &mut self,
+        action: zork_ui::components::liquid::composer::Action,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         use zork_ui::components::liquid::{composer::Action, departure::Origin};
         match action {
             Action::FocusEditor => self.focus_composer(window, cx),
             Action::Primary => {
                 let state = zork_client_core::composer::interrupting(
-                    self.sessions.iter().find(|s| Some(&s.session_id) == self.selected_session.as_ref()),
+                    self.sessions
+                        .iter()
+                        .find(|s| Some(&s.session_id) == self.selected_session.as_ref()),
                     self.composer_input.read(cx).value(),
-                    self.draft_state.comments.len() + self.draft_state.attachments.len() + self.draft_state.files.len(),
-                    self.canceling, self.preparing_files,
+                    self.draft_state.comments.len()
+                        + self.draft_state.attachments.len()
+                        + self.draft_state.files.len(),
+                    self.canceling,
+                    self.preparing_files,
                 );
                 if state.enabled {
-                    if state.stop { self.cancel_session(cx); }
-                    else { self.send_composer(Origin::Button, cx); }
+                    if state.stop {
+                        self.cancel_session(cx);
+                    } else {
+                        self.send_composer(Origin::Button, cx);
+                    }
                 }
             }
-            Action::ChooseFiles => { self.focus_composer(window, cx); self.choose_files(cx); }
+            Action::ChooseFiles => {
+                self.focus_composer(window, cx);
+                self.choose_files(cx);
+            }
             Action::Member(id) => {
-                if let Some(member) = self.presence.members.iter().find(|member| member.info.id == id) {
+                if let Some(member) = self
+                    .presence
+                    .members
+                    .iter()
+                    .find(|member| member.info.id == id)
+                {
                     self.toggle_history(&member.info.session_id.clone(), cx);
                 }
             }
             Action::MemberAnchor(id, bounds) => {
                 self.presence.anchors.insert(id.clone(), bounds);
-                if let Some(preview) = &self.presence.preview { preview.update(cx, |v, cx| v.anchor(&id, bounds, cx)); }
+                if let Some(preview) = &self.presence.preview {
+                    preview.update(cx, |v, cx| v.anchor(&id, bounds, cx));
+                }
             }
             Action::MemberHover(id) => self.hover_composer_member(id, cx),
             // The rich fan supplies its own typed file references and callback.
-            Action::FanHover(_) | Action::ToggleFan | Action::OpenFile(_) | Action::RemoveFile(_) => {},
+            Action::FanHover(_)
+            | Action::ToggleFan
+            | Action::OpenFile(_)
+            | Action::RemoveFile(_) => {}
         }
     }
     fn hover_composer_member(&mut self, id: Option<String>, cx: &mut Context<Self>) {
-        let Some(preview) = self.presence.preview.clone() else { return; };
+        let Some(preview) = self.presence.preview.clone() else {
+            return;
+        };
         if let Some(previous) = self.presence.hovered.take() {
-            if id.as_ref() != Some(&previous) { preview.update(cx, |v, cx| v.leave(&previous, cx)); }
+            if id.as_ref() != Some(&previous) {
+                preview.update(cx, |v, cx| v.leave(&previous, cx));
+            }
         }
         self.presence.hovered = id.clone();
-        let Some(id) = id else { return; };
-        let Some(member) = self.presence.members.iter().find(|m| m.info.id == id).map(|m| m.info.clone()) else { return; };
+        let Some(id) = id else {
+            return;
+        };
+        let Some(member) = self
+            .presence
+            .members
+            .iter()
+            .find(|m| m.info.id == id)
+            .map(|m| m.info.clone())
+        else {
+            return;
+        };
         let bounds = self.presence.anchors.get(&id).copied().unwrap_or_default();
         let device = self.core_device.clone();
         let conversation = self.core_conversation.clone();
@@ -468,12 +659,26 @@ impl RootView {
         let offline = false;
         #[cfg(feature = "headless-bench")]
         let fixture = self.presence.previews.get(&id).cloned();
-        preview.update(cx, |v, cx| v.show(&id, bounds, |cx| {
-            #[cfg(feature = "headless-bench")]
-            if let Some(state) = &fixture { return cx.new(|_| preview::Preview::fixture(member.clone(), locale, state.clone())); }
-            let source = (!offline && !member.session_id.is_empty()).then(|| device.conversation(&member.session_id));
-            cx.new(|cx| preview::Preview::new(member, locale, source, conversation, is_selected, cx))
-        }, cx));
+        preview.update(cx, |v, cx| {
+            v.show(
+                &id,
+                bounds,
+                |cx| {
+                    #[cfg(feature = "headless-bench")]
+                    if let Some(state) = &fixture {
+                        return cx.new(|_| {
+                            preview::Preview::fixture(member.clone(), locale, state.clone())
+                        });
+                    }
+                    let source = (!offline && !member.session_id.is_empty())
+                        .then(|| device.conversation(&member.session_id));
+                    cx.new(|cx| {
+                        preview::Preview::new(member, locale, source, conversation, is_selected, cx)
+                    })
+                },
+                cx,
+            )
+        });
     }
 }
 

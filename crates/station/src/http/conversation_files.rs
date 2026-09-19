@@ -177,7 +177,7 @@ pub(crate) async fn agent_content(
     tokio::task::spawn_blocking(move || {
         let mut descriptions = Vec::new();
         for file in references {
-            let path = db.conversation_file_path(&key,&file)?;
+            let path = db.conversation_file_path(&key, &file)?;
             descriptions.push(
                 json!({"attachment_id":file.id,"name":file.name,"bytes":file.byte_len,"path":path}),
             );

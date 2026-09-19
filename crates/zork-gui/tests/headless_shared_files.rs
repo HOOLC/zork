@@ -1,6 +1,6 @@
 //! Native rendering and bounded row construction. Connected business behavior
 //! is covered separately by client-core and the real Mesh process fixture.
-use gpui::{AppContext, HeadlessAppContext, div, prelude::*, px};
+use gpui::{div, prelude::*, px, AppContext, HeadlessAppContext};
 use serde_json::json;
 use std::{
     sync::Arc,

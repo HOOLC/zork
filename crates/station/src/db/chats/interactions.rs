@@ -23,12 +23,17 @@ pub(in crate::db) fn insert(conn: &Connection, id: &str, content: &Value) -> Res
                 request.validate().map_err(anyhow::Error::msg)?;
                 (None, 0)
             }
-            Content::Result { result } => (Some(result.request_message_id.as_str()), result.revision),
+            Content::Result { result } => {
+                (Some(result.request_message_id.as_str()), result.revision)
+            }
         }
     } else {
         // Local script cards use the existing immutable card payload storage,
         // without a registration, result root, or cross-client execution receipt.
-        anyhow::ensure!(zork_client_types::local_script::Card::parse(content).is_some(), "unsupported_message_card");
+        anyhow::ensure!(
+            zork_client_types::local_script::Card::parse(content).is_some(),
+            "unsupported_message_card"
+        );
         (None, 0)
     };
     conn.execute(

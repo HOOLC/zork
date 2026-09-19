@@ -24,9 +24,13 @@ struct RetainedElement {
 }
 impl RetainedElement {
     fn snapshot(self) -> ElementInfo {
-        let mut info=self.info;
-        if !gpui::InteractionGate::allows(self.gates.as_deref()) { info.enabled=false; }
-        if !gpui::InteractionGate::visible_in(self.gates.as_deref()) { info.visible=false; }
+        let mut info = self.info;
+        if !gpui::InteractionGate::allows(self.gates.as_deref()) {
+            info.enabled = false;
+        }
+        if !gpui::InteractionGate::visible_in(self.gates.as_deref()) {
+            info.visible = false;
+        }
         info
     }
 }
@@ -105,7 +109,7 @@ impl AutomationRegistry {
             actions: metadata.role.actions(),
         };
 
-        Self::record_info(&mut self.lock(), RetainedElement {info,gates});
+        Self::record_info(&mut self.lock(), RetainedElement { info, gates });
     }
 
     fn record_info(state: &mut RegistryState, info: RetainedElement) {
@@ -190,7 +194,11 @@ impl AutomationRegistry {
                 coordinate_space: COORDINATE_SPACE,
                 scale_factor: pending.scale_factor,
                 viewport: pending.viewport,
-                elements: pending.elements.into_values().map(RetainedElement::snapshot).collect(),
+                elements: pending
+                    .elements
+                    .into_values()
+                    .map(RetainedElement::snapshot)
+                    .collect(),
             };
             revision
         };
@@ -475,19 +483,50 @@ mod tests {
 
     #[test]
     fn retained_input_gates_update_cached_metadata_without_losing_enabled_state() {
-        let registry=AutomationRegistry::new();
-        let gate=gpui::InteractionGate::new(true);
-        registry.lock().pending=Some(PendingFrame {scale_factor:1.,viewport:Viewport {width:100.,height:80.},elements:BTreeMap::new()});
-        let bounds=Bounds::new(gpui::point(gpui::px(0.),gpui::px(0.)),gpui::size(gpui::px(20.),gpui::px(20.)));
-        registry.record(&ElementMetadata {id:"retained".into(),role:AutomationRole::Button,label:"Retained".into(),enabled:true,register:true},bounds,bounds,Some(Arc::from([gate.clone()])));
-        let entries=registry.lock().pending.as_ref().unwrap().elements.clone();
-        for (visible,enabled) in [(true,false),(false,false),(true,true)] {
-            gate.set_state(visible,enabled);
-            registry.lock().pending=Some(PendingFrame {scale_factor:1.,viewport:Viewport {width:100.,height:80.},elements:entries.clone()});
+        let registry = AutomationRegistry::new();
+        let gate = gpui::InteractionGate::new(true);
+        registry.lock().pending = Some(PendingFrame {
+            scale_factor: 1.,
+            viewport: Viewport {
+                width: 100.,
+                height: 80.,
+            },
+            elements: BTreeMap::new(),
+        });
+        let bounds = Bounds::new(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(20.), gpui::px(20.)),
+        );
+        registry.record(
+            &ElementMetadata {
+                id: "retained".into(),
+                role: AutomationRole::Button,
+                label: "Retained".into(),
+                enabled: true,
+                register: true,
+            },
+            bounds,
+            bounds,
+            Some(Arc::from([gate.clone()])),
+        );
+        let entries = registry.lock().pending.as_ref().unwrap().elements.clone();
+        for (visible, enabled) in [(true, false), (false, false), (true, true)] {
+            gate.set_state(visible, enabled);
+            registry.lock().pending = Some(PendingFrame {
+                scale_factor: 1.,
+                viewport: Viewport {
+                    width: 100.,
+                    height: 80.,
+                },
+                elements: entries.clone(),
+            });
             registry.commit_frame();
-            let info=registry.element("retained").unwrap();
-            assert_eq!((info.visible,info.enabled),(visible,enabled));
-            assert_eq!(registry.snapshot(false).elements.len(),usize::from(visible));
+            let info = registry.element("retained").unwrap();
+            assert_eq!((info.visible, info.enabled), (visible, enabled));
+            assert_eq!(
+                registry.snapshot(false).elements.len(),
+                usize::from(visible)
+            );
         }
     }
 

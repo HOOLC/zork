@@ -127,7 +127,7 @@ impl<V: Render> Element for IntrinsicView<V> {
 #[cfg(all(test, feature = "headless-bench"))]
 mod tests {
     use super::IntrinsicCache;
-    use gpui::{AppContext, Context, Entity, Render, TestAppContext, Window, div, prelude::*, px};
+    use gpui::{div, prelude::*, px, AppContext, Context, Entity, Render, TestAppContext, Window};
     use std::{cell::Cell, rc::Rc};
     struct Child {
         cache: IntrinsicCache,

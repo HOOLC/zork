@@ -83,8 +83,9 @@ pub struct SourceMaterial {
 }
 impl SourceMaterial {
     pub(crate) fn for_owner(&self, owner: SharedString, window: &mut Window, cx: &mut App) -> Self {
-        let drawing = window.use_keyed_state(format!("liquid-source-node-{owner}"), cx,
-            |_, _| Rc::<RefCell<super::presentation::SourceDrawing>>::default());
+        let drawing = window.use_keyed_state(format!("liquid-source-node-{owner}"), cx, |_, _| {
+            Rc::<RefCell<super::presentation::SourceDrawing>>::default()
+        });
         Self {
             frame: self.frame.clone(),
             owner: Some(owner),

@@ -2,8 +2,8 @@
 pub mod account;
 pub mod browser;
 pub mod browser_worker;
-pub mod directory;
 pub mod data_reset;
+pub mod directory;
 pub mod node;
 pub mod preview;
 pub mod startup;
@@ -64,19 +64,36 @@ pub fn reduced_motion() -> bool {
     use std::ffi::{c_char, c_void};
     #[link(name = "CoreFoundation", kind = "framework")]
     unsafe extern "C" {
-        fn CFStringCreateWithCString(allocator: *const c_void, bytes: *const c_char, encoding: u32) -> *const c_void;
-        fn CFPreferencesGetAppBooleanValue(key: *const c_void, application: *const c_void, valid: *mut u8) -> u8;
+        fn CFStringCreateWithCString(
+            allocator: *const c_void,
+            bytes: *const c_char,
+            encoding: u32,
+        ) -> *const c_void;
+        fn CFPreferencesGetAppBooleanValue(
+            key: *const c_void,
+            application: *const c_void,
+            valid: *mut u8,
+        ) -> u8;
         fn CFRelease(value: *const c_void);
     }
     let reduced = unsafe {
         // These CF strings are owned locally; the preferences API only borrows them.
         let key = CFStringCreateWithCString(std::ptr::null(), c"reduceMotion".as_ptr(), 0x08000100);
-        let app = CFStringCreateWithCString(std::ptr::null(), c"com.apple.universalaccess".as_ptr(), 0x08000100);
+        let app = CFStringCreateWithCString(
+            std::ptr::null(),
+            c"com.apple.universalaccess".as_ptr(),
+            0x08000100,
+        );
         let mut valid = 0;
-        let value = !key.is_null() && !app.is_null()
+        let value = !key.is_null()
+            && !app.is_null()
             && CFPreferencesGetAppBooleanValue(key, app, &mut valid) != 0;
-        if !key.is_null() { CFRelease(key); }
-        if !app.is_null() { CFRelease(app); }
+        if !key.is_null() {
+            CFRelease(key);
+        }
+        if !app.is_null() {
+            CFRelease(app);
+        }
         valid != 0 && value
     };
     trace_startup("gui.reduced_motion_ready");

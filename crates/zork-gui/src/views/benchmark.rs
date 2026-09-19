@@ -10,7 +10,11 @@ impl RootView {
     pub fn benchmark_composer_material(&self) -> serde_json::Value {
         self.presence.scene.inspect()
     }
-    pub fn benchmark_history_modal(&self, window: &gpui::Window, cx: &gpui::App) -> serde_json::Value {
+    pub fn benchmark_history_modal(
+        &self,
+        window: &gpui::Window,
+        cx: &gpui::App,
+    ) -> serde_json::Value {
         let mut value = self.history_details.read(cx).inspect(window, cx);
         value["detail"] = serde_json::json!(self.history.detail);
         value["agent"] = serde_json::json!(self.history.agent_detail);

@@ -396,14 +396,20 @@ async fn http_400_during_context_maintenance_preserves_inputs_without_restarting
             let mut failure = ProviderFailure::new("provider.http", true, "bad request");
             failure.status_code = Some(400);
             failure.provider_code = Some(code.into());
-            attempt.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
-            let stopped = world.wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
-            }).await;
+            attempt
+                .respond(Err(ModelError::ProviderFailed(failure)))
+                .unwrap();
+            let stopped = world
+                .wait_for_state(&session, |state| {
+                    state.last_turn_outcome == Some(TurnOutcome::Failed)
+                        && state.active_turn.is_none()
+                })
+                .await;
             assert_eq!(stopped.generation.number, 1);
-            assert!(stopped.unconsumed_inputs.iter().any(|input| {
-                input.content == "Continue the remaining work." && !input.wake
-            }));
+            assert!(stopped
+                .unconsumed_inputs
+                .iter()
+                .any(|input| { input.content == "Continue the remaining work." && !input.wake }));
             assert!(!stopped.should_start_turn());
             world.restart().await.unwrap();
             world.clock.advance(Duration::from_secs(60));
@@ -411,8 +417,16 @@ async fn http_400_during_context_maintenance_preserves_inputs_without_restarting
             assert_eq!(restored.last_turn_outcome, Some(TurnOutcome::Failed));
             assert!(restored.active_turn.is_none());
             let events = world.events(&session);
-            assert_eq!(events.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 2);
-            assert!(!events.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| matches!(e.event, SessionEvent::StepStarted { .. }))
+                    .count(),
+                2
+            );
+            assert!(!events
+                .iter()
+                .any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
             world.shutdown().await;
         }
     }
@@ -616,12 +630,31 @@ async fn cancel_interrupts_either_context_step_without_committing_a_generation()
     for strategy in [ContextStrategy::Compaction, ContextStrategy::Handoff] {
         let mut world = TestWorld::with_options(options(strategy));
         let (session, pending) = begin(&mut world).await;
-        world.cancel(&session).await.unwrap();
-        let state = world
-            .wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Cancelled)
+        let turn_id = world
+            .events(&session)
+            .into_iter()
+            .find_map(|event| match event.event {
+                SessionEvent::StepStarted {
+                    step_id, turn_id, ..
+                } if step_id == pending.step_id => Some(turn_id),
+                _ => None,
             })
-            .await;
+            .expect("the context request has a durable owning turn");
+        world
+            .send_mail(&session, "Continue after cancellation.")
+            .await
+            .unwrap();
+        world.cancel(&session).await.unwrap();
+        // Queued input can start another turn before cancellation is inspected.
+        // Observe its request, then assert the cancelled turn's durable outcome.
+        let _resumed = request(&mut world).await;
+        assert!(world.events(&session).iter().any(|event| matches!(
+            &event.event,
+            SessionEvent::TurnFinished { turn_id: finished, outcome: TurnOutcome::Cancelled, .. }
+                if finished == &turn_id
+        )));
+        let state = world.state(&session).await.unwrap();
+        assert_ne!(state.active_turn.as_ref().unwrap().turn_id, turn_id);
         assert_eq!(state.generation.number, 1);
         assert!(pending.respond_text("too late").is_err());
         assert!(!world

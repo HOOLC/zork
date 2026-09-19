@@ -11,8 +11,8 @@ mod clipping;
 pub use clipping::{ContentClip, ContentClipBinding};
 mod ownership;
 mod presentation;
-pub use ownership::SourceMaterial;
 pub(crate) use ownership::MaterialPart;
+pub use ownership::SourceMaterial;
 
 /// A read-only projection of the body's actual material, never a layer
 /// partition or an independently advanced simulation.
@@ -22,9 +22,20 @@ pub(super) struct BodyDrawing {
     surface: Option<Surface>,
 }
 impl BodyDrawing {
-    pub fn paint(&mut self, parent: &Surface, bounds: Bounds<Pixels>, fill: Option<u32>, stroke: Option<u32>, window: &mut Window) {
+    pub fn paint(
+        &mut self,
+        parent: &Surface,
+        bounds: Bounds<Pixels>,
+        fill: Option<u32>,
+        stroke: Option<u32>,
+        window: &mut Window,
+    ) {
         let contour = parent.contour();
-        if self.parent.as_ref().is_none_or(|old| !Rc::ptr_eq(old, &contour)) {
+        if self
+            .parent
+            .as_ref()
+            .is_none_or(|old| !Rc::ptr_eq(old, &contour))
+        {
             let projection = parent.simulation.group_snapshot(1);
             if let Some(surface) = &mut self.surface {
                 surface.simulation = projection;
@@ -34,7 +45,9 @@ impl BodyDrawing {
             }
             self.parent = Some(contour);
         }
-        if let Some(surface) = &self.surface { surface.paint_geometry(bounds, fill, stroke, window); }
+        if let Some(surface) = &self.surface {
+            surface.paint_geometry(bounds, fill, stroke, window);
+        }
     }
 }
 
@@ -58,7 +71,12 @@ impl std::ops::DerefMut for Surface {
 impl Surface {
     pub fn new(simulation: Simulation) -> Result<Self, ContourError> {
         let geometry = Rc::new(RefCell::new(MaterialGeometry::default()));
-        let paint = || PaintHandle(Rc::new(RefCell::new(PaintCache { geometry: geometry.clone(), ..Default::default() })));
+        let paint = || {
+            PaintHandle(Rc::new(RefCell::new(PaintCache {
+                geometry: geometry.clone(),
+                ..Default::default()
+            })))
+        };
         let model = zork_liquid::Surface::new(simulation)?;
         let live_contour = Rc::new(RefCell::new(model.contour()));
         Ok(Self {
@@ -103,17 +121,29 @@ impl Surface {
             if !path.borrow().contains([
                 (event.position.x - origin.x).as_f32() as f64,
                 (event.position.y - origin.y).as_f32() as f64,
-            ]) { cx.stop_propagation(); }
+            ]) {
+                cx.stop_propagation();
+            }
         })
     }
 
-    pub(crate) fn paint_geometry(&self, bounds: Bounds<Pixels>, fill: Option<u32>, stroke: Option<u32>, window: &mut Window) {
+    pub(crate) fn paint_geometry(
+        &self,
+        bounds: Bounds<Pixels>,
+        fill: Option<u32>,
+        stroke: Option<u32>,
+        window: &mut Window,
+    ) {
         let path = self.model.contour();
         let mut cache = self.paint.0.borrow_mut();
         cache.visible = visible(bounds, window);
         cache.prepare(&path, bounds);
-        if let (Some(path), Some(color)) = (&cache.fill, fill) { paint_at(window, path, bounds.origin, color); }
-        if let (Some(path), Some(color)) = (&cache.stroke, stroke) { paint_at(window, path, bounds.origin, color); }
+        if let (Some(path), Some(color)) = (&cache.fill, fill) {
+            paint_at(window, path, bounds.origin, color);
+        }
+        if let (Some(path), Some(color)) = (&cache.stroke, stroke) {
+            paint_at(window, path, bounds.origin, color);
+        }
     }
     pub fn accepts_click(&self, event: &ClickEvent) -> bool {
         if matches!(event, ClickEvent::Keyboard(_)) {
@@ -315,7 +345,9 @@ fn background(
             if !cache.visible {
                 return;
             }
-            if fill.is_none() && stroke.is_none() && !focused { return; }
+            if fill.is_none() && stroke.is_none() && !focused {
+                return;
+            }
             cache.prepare(&path, placed);
             if let (Some(path), Some(fill)) = (&cache.fill, fill) {
                 paint_at(window, path, placed.origin, fill);
@@ -333,7 +365,6 @@ fn background(
             } else if let (Some(path), Some(stroke)) = (&cache.stroke, stroke) {
                 paint_at(window, path, placed.origin, stroke);
             }
-
         },
     )
     .absolute()
@@ -548,16 +579,19 @@ struct MaterialGeometry {
 }
 impl MaterialGeometry {
     fn fill(&mut self, path: &Rc<Contour>) -> Option<Path<Pixels>> {
-        if self.path.as_ref().is_none_or(|old| !Rc::ptr_eq(old,path)) {
-            let mut b = builder(); append(&mut b,path);
-            self.fill = b.build().ok(); self.path = Some(path.clone());
-            self.stroke = None; self.stroke_width = None;
+        if self.path.as_ref().is_none_or(|old| !Rc::ptr_eq(old, path)) {
+            let mut b = builder();
+            append(&mut b, path);
+            self.fill = b.build().ok();
+            self.path = Some(path.clone());
+            self.stroke = None;
+            self.stroke_width = None;
         }
         self.fill.clone()
     }
     fn stroke(&mut self, path: &Rc<Contour>, width: f32) -> Option<Path<Pixels>> {
         if self.stroke_width != Some(width) {
-            self.stroke = super::tessellation::stroke_path(path,width);
+            self.stroke = super::tessellation::stroke_path(path, width);
             self.stroke_width = Some(width);
         }
         self.stroke.clone()
@@ -592,18 +626,29 @@ impl PaintCache {
         self.key = Some((path.clone(), bounds.size));
         let mut geometry = self.geometry.borrow_mut();
         self.fill = geometry.fill(path);
-        self.stroke = geometry.stroke(path, self.border_width.unwrap_or(crate::design::BORDER_WIDTH));
+        self.stroke = geometry.stroke(
+            path,
+            self.border_width.unwrap_or(crate::design::BORDER_WIDTH),
+        );
         drop(geometry);
         if let Some(partition) = self.partition {
-            self.fill = self.fill.take().map(|path| ownership::partition(path, partition));
-            self.stroke = self.stroke.take().map(|path| ownership::partition(path, partition));
+            self.fill = self
+                .fill
+                .take()
+                .map(|path| ownership::partition(path, partition));
+            self.stroke = self
+                .stroke
+                .take()
+                .map(|path| ownership::partition(path, partition));
         }
         self.focus = None;
         self.exterior = None;
         self.failed = self.fill.is_none() || self.stroke.is_none();
     }
     fn prepare_exterior(&mut self, path: &Contour, bounds: Bounds<Pixels>) {
-        if self.exterior.is_some() { return; }
+        if self.exterior.is_some() {
+            return;
+        }
         let mut exterior = builder();
         exterior.move_to(point(px(-1.), px(-1.)));
         exterior.line_to(point(bounds.size.width + px(1.), px(-1.)));
@@ -621,7 +666,10 @@ impl PaintCache {
         if self.focus.is_none() {
             self.focus = super::tessellation::stroke_path(path, crate::design::BORDER_WIDTH);
             if let Some(partition) = self.partition {
-                self.focus = self.focus.take().map(|path| ownership::partition(path, partition));
+                self.focus = self
+                    .focus
+                    .take()
+                    .map(|path| ownership::partition(path, partition));
             }
         }
     }
@@ -753,20 +801,32 @@ thread_local! {
 impl StaticGeometry {
     fn get(pose: Pose, smoothing: f64) -> Rc<Self> {
         STATIC_GEOMETRY.with_borrow_mut(|cache| {
-            let hit = cache.iter().position(|entry| entry.pose == pose && entry.smoothing == smoothing);
-            let entry = hit.map(|index| cache.remove(index)).unwrap_or_else(|| Rc::new(Self {
-                pose, smoothing,
-                contour: Rc::new(Contour {
-                    loops: vec![rounded_rectangle(pose, smoothing)],
-                    sampled_points: 0, full_grid_points: 0, used_fallback: false, revision: 0,
-                }),
-                geometry: Default::default(), polygons: Default::default(), ink: Default::default(),
-            }));
+            let hit = cache
+                .iter()
+                .position(|entry| entry.pose == pose && entry.smoothing == smoothing);
+            let entry = hit.map(|index| cache.remove(index)).unwrap_or_else(|| {
+                Rc::new(Self {
+                    pose,
+                    smoothing,
+                    contour: Rc::new(Contour {
+                        loops: vec![rounded_rectangle(pose, smoothing)],
+                        sampled_points: 0,
+                        full_grid_points: 0,
+                        used_fallback: false,
+                        revision: 0,
+                    }),
+                    geometry: Default::default(),
+                    polygons: Default::default(),
+                    ink: Default::default(),
+                })
+            });
             // Bound both retained variants and corner subdivision. Oversized
             // surfaces keep their ordinary per-control cache.
             if pose.w <= 4096. && pose.h <= 4096. && pose.r <= 64. {
                 cache.push(entry.clone());
-                if cache.len() > 64 { cache.remove(0); }
+                if cache.len() > 64 {
+                    cache.remove(0);
+                }
             }
             entry
         })

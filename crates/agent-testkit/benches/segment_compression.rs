@@ -7,7 +7,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
-use zork_agent::session::events::{EVENT_SCHEMA_VERSION, Input, Selection, SessionEvent};
+use zork_agent::session::events::{Input, Selection, SessionEvent, EVENT_SCHEMA_VERSION};
 use zork_agent::session::store::{EventEnvelope, SessionStore, StreamStore};
 
 const DEFAULT_SEGMENT_MIB: u64 = 32;

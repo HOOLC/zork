@@ -1213,9 +1213,7 @@
         "end": 1789200000000,
         "grouped": false,
         "id": "input",
-        "members": [
-          "input"
-        ],
+        "members": ["input"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1227,14 +1225,7 @@
         "end": 1789200011600,
         "grouped": true,
         "id": "tool:call-0",
-        "members": [
-          "tool:call-0",
-          "tool:call-1",
-          "tool:call-2",
-          "tool:call-3",
-          "tool:call-4",
-          "tool:call-5"
-        ],
+        "members": ["tool:call-0", "tool:call-1", "tool:call-2", "tool:call-3", "tool:call-4", "tool:call-5"],
         "queries": 1,
         "read": 1,
         "shell": 1,
@@ -1246,9 +1237,7 @@
         "end": 1789200014500,
         "grouped": false,
         "id": "tool:call-6",
-        "members": [
-          "tool:call-6"
-        ],
+        "members": ["tool:call-6"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1260,9 +1249,7 @@
         "end": 1789200014400,
         "grouped": false,
         "id": "wake-input",
-        "members": [
-          "wake-input"
-        ],
+        "members": ["wake-input"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1274,9 +1261,7 @@
         "end": 1789200015600,
         "grouped": false,
         "id": "tool:call-7",
-        "members": [
-          "tool:call-7"
-        ],
+        "members": ["tool:call-7"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1288,9 +1273,7 @@
         "end": 1789200017600,
         "grouped": false,
         "id": "tool:call-8",
-        "members": [
-          "tool:call-8"
-        ],
+        "members": ["tool:call-8"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1302,9 +1285,7 @@
         "end": 1789200019600,
         "grouped": false,
         "id": "tool:call-9",
-        "members": [
-          "tool:call-9"
-        ],
+        "members": ["tool:call-9"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1316,9 +1297,7 @@
         "end": 1789200021600,
         "grouped": false,
         "id": "tool:call-10",
-        "members": [
-          "tool:call-10"
-        ],
+        "members": ["tool:call-10"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1330,9 +1309,7 @@
         "end": 1789200023600,
         "grouped": false,
         "id": "tool:call-11",
-        "members": [
-          "tool:call-11"
-        ],
+        "members": ["tool:call-11"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1344,9 +1321,7 @@
         "end": 1789200025600,
         "grouped": false,
         "id": "tool:call-12",
-        "members": [
-          "tool:call-12"
-        ],
+        "members": ["tool:call-12"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1358,9 +1333,7 @@
         "end": 1789200027600,
         "grouped": false,
         "id": "tool:call-13",
-        "members": [
-          "tool:call-13"
-        ],
+        "members": ["tool:call-13"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1372,12 +1345,7 @@
         "end": 1789200035600,
         "grouped": true,
         "id": "tool:call-14",
-        "members": [
-          "tool:call-14",
-          "tool:call-15",
-          "tool:call-16",
-          "tool:call-17"
-        ],
+        "members": ["tool:call-14", "tool:call-15", "tool:call-16", "tool:call-17"],
         "queries": 4,
         "read": 0,
         "shell": 0,
@@ -1389,9 +1357,7 @@
         "end": 1789200037600,
         "grouped": false,
         "id": "tool:call-18",
-        "members": [
-          "tool:call-18"
-        ],
+        "members": ["tool:call-18"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1403,9 +1369,7 @@
         "end": 1789200039600,
         "grouped": false,
         "id": "tool:call-19",
-        "members": [
-          "tool:call-19"
-        ],
+        "members": ["tool:call-19"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1417,9 +1381,7 @@
         "end": 1789200041600,
         "grouped": false,
         "id": "tool:call-20",
-        "members": [
-          "tool:call-20"
-        ],
+        "members": ["tool:call-20"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1431,9 +1393,7 @@
         "end": 1789200043600,
         "grouped": false,
         "id": "tool:call-21",
-        "members": [
-          "tool:call-21"
-        ],
+        "members": ["tool:call-21"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1445,9 +1405,7 @@
         "end": 1789200045600,
         "grouped": false,
         "id": "tool:call-22",
-        "members": [
-          "tool:call-22"
-        ],
+        "members": ["tool:call-22"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1459,9 +1417,7 @@
         "end": 1789200046950,
         "grouped": false,
         "id": "tool:call-23",
-        "members": [
-          "tool:call-23"
-        ],
+        "members": ["tool:call-23"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -1473,9 +1429,7 @@
         "end": 1789200055000,
         "grouped": false,
         "id": "model:failed-model",
-        "members": [
-          "model:failed-model"
-        ],
+        "members": ["model:failed-model"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2307,9 +2261,7 @@
         "end": 1789200000000,
         "grouped": false,
         "id": "input",
-        "members": [
-          "input"
-        ],
+        "members": ["input"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2321,15 +2273,7 @@
         "end": 1789200011600,
         "grouped": true,
         "id": "tool:earlier-read",
-        "members": [
-          "tool:earlier-read",
-          "tool:call-0",
-          "tool:call-1",
-          "tool:call-2",
-          "tool:call-3",
-          "tool:call-4",
-          "tool:call-5"
-        ],
+        "members": ["tool:earlier-read", "tool:call-0", "tool:call-1", "tool:call-2", "tool:call-3", "tool:call-4", "tool:call-5"],
         "queries": 1,
         "read": 2,
         "shell": 1,
@@ -2341,9 +2285,7 @@
         "end": 1789200014500,
         "grouped": false,
         "id": "tool:call-6",
-        "members": [
-          "tool:call-6"
-        ],
+        "members": ["tool:call-6"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2355,9 +2297,7 @@
         "end": 1789200014400,
         "grouped": false,
         "id": "wake-input",
-        "members": [
-          "wake-input"
-        ],
+        "members": ["wake-input"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2369,9 +2309,7 @@
         "end": 1789200015600,
         "grouped": false,
         "id": "tool:call-7",
-        "members": [
-          "tool:call-7"
-        ],
+        "members": ["tool:call-7"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2383,9 +2321,7 @@
         "end": 1789200017600,
         "grouped": false,
         "id": "tool:call-8",
-        "members": [
-          "tool:call-8"
-        ],
+        "members": ["tool:call-8"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2397,9 +2333,7 @@
         "end": 1789200019600,
         "grouped": false,
         "id": "tool:call-9",
-        "members": [
-          "tool:call-9"
-        ],
+        "members": ["tool:call-9"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2411,9 +2345,7 @@
         "end": 1789200021600,
         "grouped": false,
         "id": "tool:call-10",
-        "members": [
-          "tool:call-10"
-        ],
+        "members": ["tool:call-10"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2425,9 +2357,7 @@
         "end": 1789200023600,
         "grouped": false,
         "id": "tool:call-11",
-        "members": [
-          "tool:call-11"
-        ],
+        "members": ["tool:call-11"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2439,9 +2369,7 @@
         "end": 1789200025600,
         "grouped": false,
         "id": "tool:call-12",
-        "members": [
-          "tool:call-12"
-        ],
+        "members": ["tool:call-12"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2453,9 +2381,7 @@
         "end": 1789200027600,
         "grouped": false,
         "id": "tool:call-13",
-        "members": [
-          "tool:call-13"
-        ],
+        "members": ["tool:call-13"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2467,12 +2393,7 @@
         "end": 1789200035600,
         "grouped": true,
         "id": "tool:call-14",
-        "members": [
-          "tool:call-14",
-          "tool:call-15",
-          "tool:call-16",
-          "tool:call-17"
-        ],
+        "members": ["tool:call-14", "tool:call-15", "tool:call-16", "tool:call-17"],
         "queries": 4,
         "read": 0,
         "shell": 0,
@@ -2484,9 +2405,7 @@
         "end": 1789200037600,
         "grouped": false,
         "id": "tool:call-18",
-        "members": [
-          "tool:call-18"
-        ],
+        "members": ["tool:call-18"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2498,9 +2417,7 @@
         "end": 1789200039600,
         "grouped": false,
         "id": "tool:call-19",
-        "members": [
-          "tool:call-19"
-        ],
+        "members": ["tool:call-19"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2512,9 +2429,7 @@
         "end": 1789200041600,
         "grouped": false,
         "id": "tool:call-20",
-        "members": [
-          "tool:call-20"
-        ],
+        "members": ["tool:call-20"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2526,9 +2441,7 @@
         "end": 1789200043600,
         "grouped": false,
         "id": "tool:call-21",
-        "members": [
-          "tool:call-21"
-        ],
+        "members": ["tool:call-21"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2540,9 +2453,7 @@
         "end": 1789200045600,
         "grouped": false,
         "id": "tool:call-22",
-        "members": [
-          "tool:call-22"
-        ],
+        "members": ["tool:call-22"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2554,9 +2465,7 @@
         "end": 1789200046950,
         "grouped": false,
         "id": "tool:call-23",
-        "members": [
-          "tool:call-23"
-        ],
+        "members": ["tool:call-23"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -2568,9 +2477,7 @@
         "end": 1789200055000,
         "grouped": false,
         "id": "model:failed-model",
-        "members": [
-          "model:failed-model"
-        ],
+        "members": ["model:failed-model"],
         "queries": 0,
         "read": 0,
         "shell": 0,

@@ -22,7 +22,10 @@ impl Travel {
         }
     }
     pub fn translate(&mut self, offset: Point) {
-        for i in 0..2 { self.position[i] += offset[i]; self.target[i] += offset[i]; }
+        for i in 0..2 {
+            self.position[i] += offset[i];
+            self.target[i] += offset[i];
+        }
     }
     pub fn step(&mut self, dt: f64) {
         let delta = [

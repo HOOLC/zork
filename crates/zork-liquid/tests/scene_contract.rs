@@ -1,6 +1,6 @@
 //! Consumer-side checks of the process-local scene protocol, using public APIs.
 use std::collections::BTreeMap;
-use zork_liquid::scene::{COMMAND_BYTES, Scene, VERSION};
+use zork_liquid::scene::{Scene, COMMAND_BYTES, VERSION};
 
 fn command(id: u32, kind: u32, flags: u32) -> Vec<u8> {
     let mut words = [0_u32; 24];
@@ -72,21 +72,19 @@ fn decode(bytes: &[u8]) -> (u32, BTreeMap<u32, Record>) {
         assert!(values.into_iter().all(|value| (0. ..=1.).contains(&value)));
         let state = word(record, 15);
         assert_eq!(state & !1, 0);
-        assert!(
-            records
-                .insert(
-                    word(record, 0),
-                    Record {
-                        flags: word(record, 1),
-                        length,
-                        content: values[0],
-                        backdrop: values[1],
-                        expansion: values[2],
-                        alive: state & 1 != 0,
-                    }
-                )
-                .is_none()
-        );
+        assert!(records
+            .insert(
+                word(record, 0),
+                Record {
+                    flags: word(record, 1),
+                    length,
+                    content: values[0],
+                    backdrop: values[1],
+                    expansion: values[2],
+                    alive: state & 1 != 0,
+                }
+            )
+            .is_none());
         offset += length;
     }
     assert_eq!(offset, bytes.len());
@@ -106,11 +104,9 @@ fn v3_records_cover_all_path_kinds_and_geometry_resends() {
     let (_, records) = decode(scene.frame(&input, 0., true).unwrap());
     assert_eq!(records.len(), 4);
     assert_eq!(records[&4].length, 64);
-    assert!(
-        records
-            .values()
-            .all(|r| !r.alive && r.content == 0. && r.backdrop == 0.)
-    );
+    assert!(records
+        .values()
+        .all(|r| !r.alive && r.content == 0. && r.backdrop == 0.));
 
     let mut moved = command(1, 0, 1);
     moved[16..20].copy_from_slice(&80_f32.to_ne_bytes());

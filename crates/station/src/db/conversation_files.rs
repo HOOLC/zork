@@ -1,6 +1,6 @@
 //! Bounded resumable ingress into the conversation owner's durable snapshot store.
-use super::*;
 use super::snapshots::Snapshot;
+use super::*;
 use anyhow::ensure;
 use zork_client_types::files::{FileRef, CHUNK_BYTES};
 #[cfg(test)]
@@ -138,10 +138,17 @@ mod tests {
 }
 
 impl StationDb {
-    pub fn conversation_file_path(&self, key:&str, file:&FileRef)->Result<PathBuf> {
-        ensure!(self.conversation_file_ref(key,&file.id)?==*file,"attachment_reference_mismatch");
-        let snapshot=Snapshot{root:file.content_root.clone(),name:file.name.clone(),byte_len:file.byte_len};
-        self.snapshot_range(&snapshot,0,0)?;
+    pub fn conversation_file_path(&self, key: &str, file: &FileRef) -> Result<PathBuf> {
+        ensure!(
+            self.conversation_file_ref(key, &file.id)? == *file,
+            "attachment_reference_mismatch"
+        );
+        let snapshot = Snapshot {
+            root: file.content_root.clone(),
+            name: file.name.clone(),
+            byte_len: file.byte_len,
+        };
+        self.snapshot_range(&snapshot, 0, 0)?;
         self.snapshot_path(&snapshot)
     }
 

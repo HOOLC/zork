@@ -172,8 +172,11 @@ impl ProfilesView {
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(detail: bool, cx: &mut Context<Self>) -> Self {
         #[cfg(not(target_family = "wasm"))]
-        let client = Arc::new(StationClient::fixture(zork_ui::stories::page_fixture(),
-            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
+        let client = Arc::new(StationClient::fixture(
+            zork_ui::stories::page_fixture(),
+            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
+                .expect("provider fixture"),
+        ));
         #[cfg(target_family = "wasm")]
         let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
@@ -789,7 +792,16 @@ impl ProfilesView {
                     v.edit_model(Some(edit.clone()), cx);
                 }
             }))
-            .map(|row| self.modal.source("model-editor-dialog").bind(row, id.clone(), ui::ActionStyle { disabled: self.busy, ..Default::default() }))
+            .map(|row| {
+                self.modal.source("model-editor-dialog").bind(
+                    row,
+                    id.clone(),
+                    ui::ActionStyle {
+                        disabled: self.busy,
+                        ..Default::default()
+                    },
+                )
+            })
             .automation(AutomationRole::Button, format!("编辑 {id}"))
             .into_any_element()
     }
@@ -1118,10 +1130,26 @@ impl Render for ProfilesView {
             None
         };
         self.modal.sync(modal_key, window, cx);
-        let create_visible = self.modal.retain("profile-create-dialog", show.then_some(()), cx).is_some();
-        let detail_visible = self.modal.retain("profile-detail-dialog", self.detail.clone().filter(|_| !self.model_form_open), cx);
-        let model_visible = self.modal.retain("model-editor-dialog", self.detail.clone().filter(|_| self.model_form_open).map(|detail| (detail, self.editing_model.clone())), cx);
-        let displayed_detail = detail_visible.clone().or_else(|| model_visible.as_ref().map(|(detail, _)| detail.clone()));
+        let create_visible = self
+            .modal
+            .retain("profile-create-dialog", show.then_some(()), cx)
+            .is_some();
+        let detail_visible = self.modal.retain(
+            "profile-detail-dialog",
+            self.detail.clone().filter(|_| !self.model_form_open),
+            cx,
+        );
+        let model_visible = self.modal.retain(
+            "model-editor-dialog",
+            self.detail
+                .clone()
+                .filter(|_| self.model_form_open)
+                .map(|detail| (detail, self.editing_model.clone())),
+            cx,
+        );
+        let displayed_detail = detail_visible
+            .clone()
+            .or_else(|| model_visible.as_ref().map(|(detail, _)| detail.clone()));
         let supports = self
             .selection()
             .is_some_and(|(_, b)| b["deviceCode"] == true);
@@ -1219,10 +1247,24 @@ impl Render for ProfilesView {
                             "接入方式",
                             zork_ui::components::liquid::controls::deferred_segmented(
                                 "profile-access-active",
-                                [("profile-access-true", "订阅账号"), ("profile-access-false", "API 接入")]
-                                    .into_iter().map(|(id, label)| zork_ui::components::liquid::controls::Segment { id: id.into(), label: label.into(), disabled: false }).collect(),
-                                vec![], Some(usize::from(!self.subscription)), zork_ui::components::liquid::controls::SegmentKind::Choice,
-                                !self.busy && self.attempt.is_none(), p.canvas,
+                                [
+                                    ("profile-access-true", "订阅账号"),
+                                    ("profile-access-false", "API 接入"),
+                                ]
+                                .into_iter()
+                                .map(
+                                    |(id, label)| zork_ui::components::liquid::controls::Segment {
+                                        id: id.into(),
+                                        label: label.into(),
+                                        disabled: false,
+                                    },
+                                )
+                                .collect(),
+                                vec![],
+                                Some(usize::from(!self.subscription)),
+                                zork_ui::components::liquid::controls::SegmentKind::Choice,
+                                !self.busy && self.attempt.is_none(),
+                                p.canvas,
                                 cx.listener(|v, index: &usize, _, cx| {
                                     if !v.busy && v.attempt.is_none() {
                                         v.select_access(*index == 0);
@@ -1533,7 +1575,17 @@ impl Render for ProfilesView {
                                                     v.edit_model(None, cx);
                                                 }
                                             }))
-                                            .map(|button| self.modal.source("model-editor-dialog").bind(button, "手动添加", ui::ActionStyle { icon: Some("icons/plus.svg"), disabled: self.busy, ..Default::default() }))
+                                            .map(|button| {
+                                                self.modal.source("model-editor-dialog").bind(
+                                                    button,
+                                                    "手动添加",
+                                                    ui::ActionStyle {
+                                                        icon: Some("icons/plus.svg"),
+                                                        disabled: self.busy,
+                                                        ..Default::default()
+                                                    },
+                                                )
+                                            })
                                             .automation(AutomationRole::Button, "手动添加模型"),
                                     ),
                             ),
@@ -1626,7 +1678,10 @@ impl Render for ProfilesView {
                 .when(model_visible.is_some(), |v| {
                     v.child(ui::modal(
                         "model-editor-dialog",
-                        if model_visible.as_ref().is_some_and(|(_, editing)| editing.is_some()) {
+                        if model_visible
+                            .as_ref()
+                            .is_some_and(|(_, editing)| editing.is_some())
+                        {
                             "编辑模型"
                         } else {
                             "添加模型"
@@ -1865,7 +1920,16 @@ impl ProfilesView {
                             v.message = None;
                             zork_ui::components::region::invalidate_all(cx);
                         }))
-                        .map(|button| self.modal.source("profile-create-dialog").bind(button, "添加连接", ui::ActionStyle { icon: Some("icons/plus.svg"), ..Default::default() }))
+                        .map(|button| {
+                            self.modal.source("profile-create-dialog").bind(
+                                button,
+                                "添加连接",
+                                ui::ActionStyle {
+                                    icon: Some("icons/plus.svg"),
+                                    ..Default::default()
+                                },
+                            )
+                        })
                         .automation(AutomationRole::Button, "添加连接"),
                 )
             })
@@ -1893,98 +1957,112 @@ impl ProfilesView {
             .and_then(|b| b["label"].as_str())
             .unwrap_or("");
 
-        ui::quiet_button(format!("profile-detail-{id}"), "", true, ui::IconButtonSize::Standard)
-            .radius(ui::FIELD_RADIUS)
-            .font_weight(gpui::FontWeight::NORMAL)
-            .justify_start()
-            .w_full()
-            .on_click(cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)))
-            .h(px(80.))
-            .px(px(12.))
-            .rounded(px(ui::FIELD_RADIUS))
-            .flex()
-            .items_center()
-            .gap_3()
-            .child(
-                div()
-                    .id(format!("profile-avatar-{}", profile.profile_id))
-                    .size(px(40.))
-                    .flex_shrink_0()
-                    .rounded(px(ui::FIELD_RADIUS))
-                    .bg(rgb(p.sidebar))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(provider_icon(&profile.provider, 24.))
-                    .automation(AutomationRole::Status, profile.provider.clone()),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(13.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(profile.display_name().to_owned()),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(11.))
-                            .line_height(px(16.))
-                            .text_color(rgb(p.muted))
-                            .child(format!(
-                                "{}{}{}",
-                                provider_name,
-                                if billing.is_empty() { "" } else { " · " },
-                                billing
-                            )),
-                    )
-                    .when_some(
-                        self.quota.get(&profile.profile_id).filter(|q| q.visible()),
-                        |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
-                    ),
-            )
-            .child(div().text_size(px(11.)).text_color(rgb(p.muted)).child(
-                if profile.models.is_empty() {
-                    "待配置模型".into()
-                } else {
-                    format!("{} 个模型", profile.models.len())
-                },
-            ))
-            .child(
-                div()
-                    .px_2()
-                    .py_1()
-                    .rounded_full()
-                    .text_size(px(11.))
-                    .bg(gpui::rgba(
-                        ((if profile.is_verified() {
-                            p.success
-                        } else {
-                            p.warning
-                        }) << 8)
-                            | 0x12,
-                    ))
-                    .text_color(rgb(if profile.is_verified() {
+        ui::quiet_button(
+            format!("profile-detail-{id}"),
+            "",
+            true,
+            ui::IconButtonSize::Standard,
+        )
+        .radius(ui::FIELD_RADIUS)
+        .font_weight(gpui::FontWeight::NORMAL)
+        .justify_start()
+        .w_full()
+        .on_click(cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)))
+        .h(px(80.))
+        .px(px(12.))
+        .rounded(px(ui::FIELD_RADIUS))
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(
+            div()
+                .id(format!("profile-avatar-{}", profile.profile_id))
+                .size(px(40.))
+                .flex_shrink_0()
+                .rounded(px(ui::FIELD_RADIUS))
+                .bg(rgb(p.sidebar))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(provider_icon(&profile.provider, 24.))
+                .automation(AutomationRole::Status, profile.provider.clone()),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_0()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(13.))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .child(profile.display_name().to_owned()),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(11.))
+                        .line_height(px(16.))
+                        .text_color(rgb(p.muted))
+                        .child(format!(
+                            "{}{}{}",
+                            provider_name,
+                            if billing.is_empty() { "" } else { " · " },
+                            billing
+                        )),
+                )
+                .when_some(
+                    self.quota.get(&profile.profile_id).filter(|q| q.visible()),
+                    |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
+                ),
+        )
+        .child(div().text_size(px(11.)).text_color(rgb(p.muted)).child(
+            if profile.models.is_empty() {
+                "待配置模型".into()
+            } else {
+                format!("{} 个模型", profile.models.len())
+            },
+        ))
+        .child(
+            div()
+                .px_2()
+                .py_1()
+                .rounded_full()
+                .text_size(px(11.))
+                .bg(gpui::rgba(
+                    ((if profile.is_verified() {
                         p.success
                     } else {
                         p.warning
-                    }))
-                    .child(self.locale.text(if profile.is_verified() {
-                        "profile_verified"
-                    } else {
-                        "profile_unverified"
-                    })),
+                    }) << 8)
+                        | 0x12,
+                ))
+                .text_color(rgb(if profile.is_verified() {
+                    p.success
+                } else {
+                    p.warning
+                }))
+                .child(self.locale.text(if profile.is_verified() {
+                    "profile_verified"
+                } else {
+                    "profile_unverified"
+                })),
+        )
+        .map(|row| {
+            self.modal.source("profile-detail-dialog").bind(
+                row,
+                profile.display_name().to_owned(),
+                ui::ActionStyle {
+                    image: Some(ui::provider_path(&profile.provider)),
+                    ..Default::default()
+                },
             )
-            .map(|row| self.modal.source("profile-detail-dialog").bind(row, profile.display_name().to_owned(), ui::ActionStyle { image: Some(ui::provider_path(&profile.provider)), ..Default::default() }))
-            .automation(AutomationRole::Button, profile.display_name().to_owned())
-            .into_any_element()
+        })
+        .automation(AutomationRole::Button, profile.display_name().to_owned())
+        .into_any_element()
     }
 
     fn render_quota_summary(&self, id: &str, quota: &QuotaPresentation) -> gpui::AnyElement {

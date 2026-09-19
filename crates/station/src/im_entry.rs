@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 use crate::connections::ConnectionManager;
-use crate::db::{StationDb, SessionBindingRow, SessionRow, VisibleMessageRow};
+use crate::db::{SessionBindingRow, SessionRow, StationDb, VisibleMessageRow};
 
 pub const LOCAL_GUI_ENTRY_ID: &str = "local_gui";
 pub const LOCAL_GUI_PLATFORM: &str = "local_gui";

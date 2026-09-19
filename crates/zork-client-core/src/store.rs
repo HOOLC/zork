@@ -402,21 +402,36 @@ mod startup_tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("client.db");
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch("CREATE TABLE cache(node TEXT,key TEXT,value TEXT NOT NULL,PRIMARY KEY(node,key));
+        conn.execute_batch(
+            "CREATE TABLE cache(node TEXT,key TEXT,value TEXT NOT NULL,PRIMARY KEY(node,key));
             INSERT INTO cache VALUES('device','local-node-enabled','true');
             CREATE TABLE outbox(node TEXT,value TEXT);
-            INSERT INTO outbox VALUES('peer','invalid queued message');").unwrap();
+            INSERT INTO outbox VALUES('peer','invalid queued message');",
+        )
+        .unwrap();
         drop(conn);
         assert!(ClientStore::open(root.path()).is_err());
         let conn = Connection::open(&path).unwrap();
-        assert_eq!(conn.query_row("SELECT value FROM outbox", [], |row| row.get::<_, String>(0))
-            .unwrap(), "invalid queued message");
-        assert!(!conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='messages')", [],
-            |row| row.get::<_, bool>(0)).unwrap());
+        assert_eq!(
+            conn.query_row("SELECT value FROM outbox", [], |row| row
+                .get::<_, String>(0))
+                .unwrap(),
+            "invalid queued message"
+        );
+        assert!(!conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='messages')",
+                [],
+                |row| row.get::<_, bool>(0)
+            )
+            .unwrap());
         // Repair only this malformed fixture, then prove a normal retry works.
         conn.execute("DELETE FROM outbox", []).unwrap();
         drop(conn);
-        assert!(ClientStore::open(root.path()).unwrap().local_node_enabled().unwrap());
+        assert!(ClientStore::open(root.path())
+            .unwrap()
+            .local_node_enabled()
+            .unwrap());
     }
 }
 

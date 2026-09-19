@@ -41,7 +41,10 @@ pub fn activity_header<V: 'static>(
 pub fn activity_header_sources<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    sources: (Option<crate::components::liquid::overlay::SourceBinding>, Option<crate::components::liquid::overlay::SourceBinding>),
+    sources: (
+        Option<crate::components::liquid::overlay::SourceBinding>,
+        Option<crate::components::liquid::overlay::SourceBinding>,
+    ),
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
@@ -168,8 +171,20 @@ pub fn activity_header_sources<V: 'static>(
                                         },
                                     ))
                                     .map(|subject| match sources.1 {
-                                        Some(source) => source.bind(subject, subject_label.clone(), crate::controls::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, subject_label).into_any_element(),
-                                        None => subject.automation(AutomationRole::Button, subject_label).into_any_element(),
+                                        Some(source) => source
+                                            .bind(
+                                                subject,
+                                                subject_label.clone(),
+                                                crate::controls::ActionStyle {
+                                                    quiet: true,
+                                                    ..Default::default()
+                                                },
+                                            )
+                                            .automation(AutomationRole::Button, subject_label)
+                                            .into_any_element(),
+                                        None => subject
+                                            .automation(AutomationRole::Button, subject_label)
+                                            .into_any_element(),
                                     }),
                             )
                         })
@@ -203,9 +218,22 @@ pub fn activity_header_sources<V: 'static>(
                     )
                 }),
         )
-         .map(|header| match sources.0 {
-            Some(source) => source.bind(header, face, crate::controls::ActionStyle { quiet: true, icon: Some(icon), ..Default::default() }).automation(AutomationRole::Button, accessible).into_any_element(),
-            None => header.automation(AutomationRole::Button, accessible).into_any_element(),
+        .map(|header| match sources.0 {
+            Some(source) => source
+                .bind(
+                    header,
+                    face,
+                    crate::controls::ActionStyle {
+                        quiet: true,
+                        icon: Some(icon),
+                        ..Default::default()
+                    },
+                )
+                .automation(AutomationRole::Button, accessible)
+                .into_any_element(),
+            None => header
+                .automation(AutomationRole::Button, accessible)
+                .into_any_element(),
         })
 }
 pub fn color(entry: &Entry) -> u32 {

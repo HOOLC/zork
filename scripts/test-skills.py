@@ -127,8 +127,14 @@ def main():
                         slack_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "slack")
                         assert tool("file.read", {"path": slack_path})["content"] == Path(slack_path).read_text()
                         tool("shell.run", {"command": "test \"$SKILLS_ROOT\" = " + shlex.quote(str(node.root / "skills"))})
-                        added = tool("skill.sources", {"action": "add", "path": "agent-skills"})
-                        assert added["agent_id"] == "leader" and added["agent_paths"] == ["agent-skills"]
+                        inspected = tool("agent.inspect", {"agent_id": "leader"})
+                        tool("agent.update", {"agent_id": "leader", "expected_revision": inspected["revision"],
+                                              "changes": {"skill_paths": ["agent-skills"]}})
+                        configured = tool("agent.inspect", {"agent_id": "leader"})
+                        assert configured["config"] == dict(inspected["config"], skill_paths=["agent-skills"])
+                        catalog = request(node.url, "GET", endpoint)
+                        assert catalog["paths"] == ["agent-skills"]
+                        assert {s["description"] for s in catalog["catalog"]["skills"] if s["name"] == "build"} == {"Agent build", "Shared build"}
                         content = "---\nname: managed\ndescription: Managed skill\n---\nManaged body\n"
                         directory = node.root / "skills/managed"
                         tool("shell.run", {"command": "mkdir -p " + shlex.quote(str(directory))})
@@ -143,9 +149,9 @@ def main():
                         assert (directory / "saved.md").read_text().endswith("Updated\n")
                     else:
                         catalog = request(node.url, "GET", endpoint)
-                        assert catalog["paths"] == []
+                        assert catalog["paths"] == ["agent-skills"]
                         build_skills = [s for s in catalog["catalog"]["skills"] if s["name"] == "build"]
-                        assert len(build_skills) == 1 and build_skills[0]["description"] == "Shared build", build_skills
+                        assert {s["description"] for s in build_skills} == {"Agent build", "Shared build"}, build_skills
                         assert request(node.agent_url, "GET", f"/sessions/{session_id}")["session_id"] == session_id
                         assert any(s["name"] == "skill-management" for s in catalog["catalog"]["skills"])
                         assert (node.root / "skills/managed/saved.md").read_text().endswith("Updated\n")

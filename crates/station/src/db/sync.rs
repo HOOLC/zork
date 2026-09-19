@@ -588,7 +588,9 @@ mod tests {
         assert_eq!(next.through.epoch, first.epoch);
         assert!(next.through.sequence > first.sequence);
         assert_ne!(fs::read(&watermark).unwrap(), issued);
-        assert!(next.records.iter().any(|record| record.value.as_ref()
+        assert!(next.records.iter().any(|record| record
+            .value
+            .as_ref()
             .is_some_and(|value| value["name"] == "Not yet published")));
     }
 

@@ -470,10 +470,21 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     cx.capture_screenshot(window.into())?
         .save(out.join("details.png"))?;
     action(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
-    let modal_state = cx.update_window(window.into(), |_, w, cx| root_view.read(cx).benchmark_history_modal(w, cx))?;
-    if driver.snapshot(false).elements.iter().any(|e| e.id == "history-detail-dialog") {
-        cx.capture_screenshot(window.into())?.save(out.join("failed-detail-escape.png"))?;
-        std::fs::write(out.join("failed-detail-escape.json"), serde_json::to_vec_pretty(&modal_state)?)?;
+    let modal_state = cx.update_window(window.into(), |_, w, cx| {
+        root_view.read(cx).benchmark_history_modal(w, cx)
+    })?;
+    if driver
+        .snapshot(false)
+        .elements
+        .iter()
+        .any(|e| e.id == "history-detail-dialog")
+    {
+        cx.capture_screenshot(window.into())?
+            .save(out.join("failed-detail-escape.png"))?;
+        std::fs::write(
+            out.join("failed-detail-escape.json"),
+            serde_json::to_vec_pretty(&modal_state)?,
+        )?;
     }
     anyhow::ensure!(
         !driver

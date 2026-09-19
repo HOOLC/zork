@@ -51,7 +51,9 @@ pub fn prepare_child(command: &mut Command) {
 pub fn launch_path(path: &Path) -> PathBuf {
     #[cfg(target_os = "macos")]
     if let Ok(resolved) = path.canonicalize() {
-        if resolved.file_name().is_some_and(|name| name == "ZorkHelperLauncher")
+        if resolved
+            .file_name()
+            .is_some_and(|name| name == "ZorkHelperLauncher")
             || identity::native_helper(&resolved)
         {
             return resolved;
@@ -412,7 +414,9 @@ mod tests {
         let alias = temp.path().join("zork");
         std::os::unix::fs::symlink(&launcher, &alias).unwrap();
         assert_eq!(launch_path(&alias), launcher.canonicalize().unwrap());
-        let native = temp.path().join("ZorkStation.app/Contents/MacOS/zork-station");
+        let native = temp
+            .path()
+            .join("ZorkStation.app/Contents/MacOS/zork-station");
         fs::create_dir_all(native.parent().unwrap()).unwrap();
         fs::write(&native, "native fixture").unwrap();
         let native_alias = temp.path().join("zork-station");

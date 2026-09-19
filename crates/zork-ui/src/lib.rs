@@ -17,9 +17,9 @@ mod form_story;
 #[cfg(feature = "stories")]
 mod interaction_story;
 #[cfg(feature = "stories")]
-pub mod stories;
-#[cfg(feature = "stories")]
 pub mod liquid_story;
+#[cfg(feature = "stories")]
+pub mod stories;
 
 pub mod resources;
 

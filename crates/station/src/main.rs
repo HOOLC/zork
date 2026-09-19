@@ -122,8 +122,8 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
         // outlive startup or an unsuccessful process identity registration.
         registered?;
         let db = db.map_err(|_| anyhow::anyhow!("Station storage preparation interrupted"))??;
-        let prepared = prepared
-            .map_err(|_| anyhow::anyhow!("Agent storage preparation interrupted"))??;
+        let prepared =
+            prepared.map_err(|_| anyhow::anyhow!("Agent storage preparation interrupted"))??;
         Ok((Arc::new(db), prepared))
     })?;
     zork_config::startup::mark("station.database_opened");

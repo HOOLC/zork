@@ -131,7 +131,7 @@ impl Card {
     ) {
         match action {
             view::Action::FocusEditor => window.focus(&self.input.read(cx).focus_handle(), cx),
-            view::Action::MemberAnchor(_, _) => {},
+            view::Action::MemberAnchor(_, _) => {}
             view::Action::Primary => self.composer_intent(Intent::Primary, cx),
             view::Action::ChooseFiles => self.choose_composer_files(cx),
             view::Action::FanHover(hover) => {

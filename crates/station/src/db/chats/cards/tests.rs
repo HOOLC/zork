@@ -71,12 +71,15 @@ fn publish(db: &StationDb, chat: &str, request: &CardRecord, actor: &str) -> Mes
         None,
         &[],
         &[],
-        Some(&serde_json::to_value(MessageContent::linked(
-            request.request_id.clone(),
-            request.handler.clone(),
-            request.request.clone(),
-            None,
-        )).unwrap()),
+        Some(
+            &serde_json::to_value(MessageContent::linked(
+                request.request_id.clone(),
+                request.handler.clone(),
+                request.request.clone(),
+                None,
+            ))
+            .unwrap(),
+        ),
     )
     .unwrap()
 }
@@ -323,12 +326,15 @@ fn foreign_publication_recovers_a_phase_before_the_card_and_rejects_execution() 
             None,
             &[],
             &[],
-            Some(&serde_json::to_value(MessageContent::linked(
-                request.request_id.clone(),
-                request.handler.clone(),
-                request.request.clone(),
-                None,
-            )).unwrap()),
+            Some(
+                &serde_json::to_value(MessageContent::linked(
+                    request.request_id.clone(),
+                    request.handler.clone(),
+                    request.request.clone(),
+                    None,
+                ))
+                .unwrap(),
+            ),
         )
         .unwrap();
     assert_eq!(
