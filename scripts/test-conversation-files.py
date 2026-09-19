@@ -72,14 +72,14 @@ try:
     assert materialized.read_bytes() == payload
     f.wait(lambda: next(t for t in a.get('/v1/tasks')['items'] if t['task_id'] == assigned['task']['task_id'])['last_run_status'] == 'finished', 'input turn finished')
     current = next(t for t in a.get('/v1/tasks')['items'] if t['task_id'] == assigned['task']['task_id'])
-    goal = json.dumps({'fake_tools': [{'name': 'chat.post_file', 'input': {'attachment_id': remote_input['artifact_id'], 'initial_comment': 'Returned input snapshot'}}, {'name': 'chat.post_message', 'input': {'kind': 'final', 'text': 'File returned'}}]})
+    goal = json.dumps({'fake_tools': [{'name': 'chat.post_file', 'input': {'attachments': [{'attachment_id': remote_input['artifact_id']}], 'text': 'Returned input snapshot'}}, {'name': 'chat.post_message', 'input': {'text': 'File returned'}}]})
     ok(a, 'POST', '/v1/agent/tasks/' + current['task_id'] + '/rework', {'request_id': 'return-file', 'goal': goal, 'expected_revision': current['revision']}, leader)
     returned = f.wait(lambda: next((v for v in a.get('/v1/artifacts')['items'] if v['artifact_id'].startswith('mesh-')), None), 'returned file imported')
     assert bytes_at(a, returned) == payload
     f.wait(lambda: any(t.get('result_text') == 'File returned' for t in a.get('/v1/tasks')['items']), 'final follows file')
     b.stop()
     # An offline source node is no longer needed to forward its delivered file.
-    goal = json.dumps({'fake_tools': [{'name': 'chat.post_file', 'input': {'attachment_id': returned['artifact_id'], 'source_task_id': current['task_id'], 'initial_comment': 'Saved in Leader conversation'}}]})
+    goal = json.dumps({'fake_tools': [{'name': 'chat.post_file', 'input': {'attachments': [{'attachment_id': returned['artifact_id'], 'source_chat_id': assigned['session_id']}], 'text': 'Saved in Leader conversation'}}]})
     ok(a, 'POST', '/v1/im/sessions/' + leader['session_id'] + '/messages', {'request_id': 'forward-file', 'content': goal})
     forwarded = f.wait(lambda: next((v for v in a.get('/v1/artifacts')['items'] if v['session_id'] == leader['session_id'] and v['artifact_id'] != initial['artifact_id']), None), 'Leader owns independent copy')
     assert bytes_at(a, forwarded) == payload

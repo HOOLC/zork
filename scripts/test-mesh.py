@@ -158,8 +158,8 @@ def main():
         script = "printf 'started\\n' >> executions.txt\nsleep 5"
         goal = json.dumps({'fake_tools': [
             {'name': 'shell.run', 'input': {'command': script}},
-            {'name': 'chat.post_file', 'input': {'file_path': str(b.workspace / 'report.md'), 'initial_comment': 'remote artifact'}},
-            {'name': 'chat.post_message', 'input': {'kind': 'final', 'text': 'Remote result ready for review.'}},
+            {'name': 'chat.post_file', 'input': {'attachments': [{'file_path': str(b.workspace / 'report.md')}], 'text': 'remote artifact'}},
+            {'name': 'chat.post_message', 'input': {'text': 'Remote result ready for review.'}},
         ]})
         command = {'command_id': 'mesh-fixture-1', 'expected_revision': task['revision'], 'executor_origin': b.origin, 'workspace_id': 'lab', 'goal': goal}
         route = f"/v1/tasks/{task['task_id']}/delegate"

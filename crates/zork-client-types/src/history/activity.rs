@@ -376,10 +376,14 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
             } else {
                 conversation
             },
-            field(args, "file_path").map(|path| match field(args, "initial_comment") {
-                Some(comment) => format!("{path} · {comment}"),
-                None => path,
-            }),
+            field(args, "file_path")
+                .or_else(|| field(&args["attachments"][0], "file_path"))
+                .map(
+                    |path| match field(args, "initial_comment").or_else(|| field(args, "text")) {
+                        Some(comment) => format!("{path} · {comment}"),
+                        None => path,
+                    },
+                ),
         ),
         "chat.notify" => (Kind::Notify, conversation, field(args, "text")),
         "agent.assign" => (

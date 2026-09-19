@@ -91,6 +91,15 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     }
     let mut args = input.arguments.clone();
     args.as_object_mut().unwrap().remove("target");
+    if zork_agent_station_tools::channels::sends_message(&input.tool) && args["chat_id"].is_null() {
+        // A publishing call without an explicit destination goes to the caller's own
+        // Chat. Recording it here keeps the persisted request self-describing.
+        let home = state
+            .db
+            .agent_home(&who.agent)?
+            .context("chat_id is required: this Agent has no Chat of its own")?;
+        args["chat_id"] = json!(home.chat_id);
+    }
     let key = format!("outgoing-{}", fingerprint(&(&who, &input.invocation_id))?);
     let mutation = zork_agent_station_tools::channels::mutating(&input.tool);
     if ordinary_send(&input.tool, &args) {
@@ -98,7 +107,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
             return Ok(json!({"status":"delivery_unknown","operation_id":input.invocation_id}));
         }
         let key = format!("send-{}", ulid::Ulid::new());
-        let files = if zork_agent_station_tools::channels::sends_message(&input.tool) {
+        let files = if zork_agent_station_tools::channels::carries_files(&input.tool) {
             attachments::prepare(state, &who, &target, &args).await?
         } else {
             vec![]
@@ -196,12 +205,12 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         state.db.finish_chat_outgoing(&key, &result)?;
         return Ok(result);
     } else {
-        let publication = if input.tool == "chat.send" {
+        let publication = if input.tool == "chat.post_message" {
             crate::business_cards::prepare(state, &who, &target, &args).await?
         } else {
             None
         };
-        let files = if input.tool == "chat.send" {
+        let files = if zork_agent_station_tools::channels::carries_files(&input.tool) {
             attachments::prepare(state, &who, &target, &args).await?
         } else {
             Vec::<PreparedFile>::new()
@@ -334,8 +343,14 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
         "channel_request_too_large"
     );
     let mut schema_args = rpc.arguments.clone();
-    if zork_agent_station_tools::channels::sends_message(&rpc.tool) {
-        schema_args["attachments"] = json!([]);
+    if zork_agent_station_tools::channels::carries_files(&rpc.tool) {
+        // Frozen files replace the original attachment arguments; a placeholder
+        // of the same arity keeps the replayed request valid against the schema.
+        schema_args["attachments"] = json!(rpc
+            .files
+            .iter()
+            .map(|_| json!({"file_path":"frozen"}))
+            .collect::<Vec<_>>());
     }
     validate(&rpc.tool, &schema_args)?;
     let command = format!(
@@ -445,7 +460,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             value["chat_id"] = json!(chat);
             Ok(value)
         }
-        "chat.send" | "chat.send.android_script" => {
+        "chat.post_message" | "chat.post_file" | "chat.post_message.android_script" => {
             if !args["oauth"].is_null() {
                 ensure!(
                     args["interaction"].is_null() && rpc.files.is_empty(),
@@ -497,7 +512,7 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
                         None,
                     ),
                 )?)
-            } else if rpc.tool == "chat.send.android_script" {
+            } else if rpc.tool == "chat.post_message.android_script" {
                 let script = zork_client_types::local_script::Card {
                     kind: zork_client_types::local_script::Kind::LocalScript,
                     version: zork_client_types::local_script::VERSION,

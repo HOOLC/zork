@@ -61,7 +61,7 @@ def main():
             assert c.operation(a, leader, 'chat.inspect', {'chat_id': created['chat_id']})['participants'] == []
             remote_created = c.operation(b, observer, 'chat.create', {'target': a.origin, 'title': 'Remote creator'})
             assert remote_created['creator']['id'] == b.origin + '/remote-observer'
-            posted = c.operation(b, observer, 'chat.send', {'target': a.origin, 'chat_id': created['chat_id'], 'text': 'Different first author'})
+            posted = c.operation(b, observer, 'chat.post_message', {'target': a.origin, 'chat_id': created['chat_id'], 'text': 'Different first author'})
             summary = next(chat for chat in c.ok(a, 'GET', '/v1/node/chats')['items'] if chat['chat_id'] == created['chat_id'])
             assert summary['creator'] == created['creator'] and summary['last_message_at'] == posted['created_at']
             passed('authenticated local/remote creation survives different first authors and no subscription')
@@ -76,7 +76,7 @@ def main():
                 'content': json.dumps({'fake_tool': {'name': 'agent.create', 'input': {'config': config, 'review': True}}})})
             notice = f.wait(lambda: next((item for item in c.mailbox(a, leader)
                 if item.get('kind') == 'user_action_required'), None), 'original create invocation requests review')
-            proposal = c.operation(a, leader, 'chat.send', {'chat_id': home, 'text': 'Prepare a worker for the original work',
+            proposal = c.operation(a, leader, 'chat.post_message', {'chat_id': home, 'text': 'Prepare a worker for the original work',
                 'interaction': {'request_id': notice['request_id']}})
             c.ok(a, 'POST', f'/v1/node/chats/{home}/messages/{proposal["message_id"]}/agent-configuration',
                 {'response_id': 'confirm-worker', 'accept': True, 'values': {}})
@@ -113,10 +113,10 @@ def main():
 
             chat, runtime = tasks[0]
             c.sql(a, "UPDATE product_tasks SET state='completed' WHERE session_key=(SELECT session_key FROM chat_channels WHERE chat_id=?)", (chat,))
-            sent = c.operation(a, leader, 'chat.send', {'chat_id': chat, 'text': 'Continue after the old completion flag'})
+            sent = c.operation(a, leader, 'chat.post_message', {'chat_id': chat, 'text': 'Continue after the old completion flag'})
             f.wait(lambda: received(a, runtime, sent['message_id']) == 1, 'follow-up uses first task context')
             assert received(a, tasks[1][1], sent['message_id']) == 0
-            reply = c.operation(a, runtime, 'chat.send', {'chat_id': chat, 'text': 'Task result'})
+            reply = c.operation(a, runtime, 'chat.post_message', {'chat_id': chat, 'text': 'Task result'})
             f.wait(lambda: received(a, leader, reply['message_id']) == 1, 'task result keeps leader continuity')
             assert received(a, runtime, reply['message_id']) == 0
             assert c.runtime(a, 'creator') == leader
@@ -130,7 +130,7 @@ def main():
             f.wait(lambda: settled(b, remote_runtime), 'remote initial work settles')
             members = c.ok(a, 'GET', f'/v1/im/sessions/{remote_chat}/status')['items']
             assert next(member for member in members if member['id'] == b.origin + '/remote-builder')['session_id'] == remote_chat
-            sent = c.operation(a, leader, 'chat.send', {'chat_id': remote_chat, 'text': 'Continue remotely in the same context'})
+            sent = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': 'Continue remotely in the same context'})
             f.wait(lambda: received(b, remote_runtime, sent['message_id']) == 1, 'remote follow-up')
             assert c.runtime(b, 'remote-builder') is None
             assert len([item for item in c.mailbox(b, remote_runtime) if item.get('source') == 'assignment']) == 1
@@ -138,7 +138,7 @@ def main():
             assert history['items'], history
             remote_before = c.sql(b, 'SELECT COUNT(*) FROM sessions')[0][0]
             for index in range(6):
-                bulk = c.operation(a, leader, 'chat.send', {'chat_id': remote_chat, 'text': f'History segment {index}: ' + 'x' * 24000})
+                bulk = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': f'History segment {index}: ' + 'x' * 24000})
                 f.wait(lambda: received(b, remote_runtime, bulk['message_id']) == 1, 'large remote history input')
             large_history = c.ok(a, 'GET', f'/v1/im/sessions/{remote_chat}/history?limit=200')
             assert len(json.dumps(large_history).encode()) > 128 * 1024
@@ -146,7 +146,7 @@ def main():
             passed('Mesh follow-ups and owner-side history resolve the exact remote execution without a worker home')
 
             b.stop()
-            backlog = c.operation(a, leader, 'chat.send', {'chat_id': remote_chat, 'text': 'Queued while executor is offline'})
+            backlog = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': 'Queued while executor is offline'})
             c.start(b)
             f.wait(lambda: received(b, remote_runtime, backlog['message_id']) == 1, 'offline execution continuation')
             assert received(b, remote_runtime, sent['message_id']) == 1

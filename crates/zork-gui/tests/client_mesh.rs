@@ -108,7 +108,7 @@ fn client_mesh() {
         assert_eq!(participants["items"][0]["session_id"],id);
         let session=client.list_sessions().await.unwrap().into_iter().find(|s|s.session_id==id).unwrap();
         let report=std::path::Path::new(&session.workspace).join("large-report.txt");let content="local Mesh artifact\n".repeat(20_000);std::fs::write(&report,&content).unwrap();
-        let input=json!({"fake_tools":[{"name":"chat.post_file","input":{"file_path":report,"initial_comment":"Mesh client transfer"}},{"name":"chat.post_message","input":{"kind":"final","text":"Delivered to remote client"}}]}).to_string();
+        let input=json!({"fake_tools":[{"name":"chat.post_file","input":{"chat_id":id,"attachments":[{"file_path":report}],"text":"Mesh client transfer"}},{"name":"chat.post_message","input":{"chat_id":id,"text":"Delivered to remote client"}}]}).to_string();
         let quota = client.node_request(reqwest::Method::POST,"/v1/node/profiles/fixture/refresh".into(),None).await.unwrap();
         assert_eq!(quota["profile_id"],"fixture");
         assert!(quota.get("rateLimits").is_some() && quota.get("auth").is_none());

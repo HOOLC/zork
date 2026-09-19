@@ -157,23 +157,34 @@ pub(super) fn prepare_file(
     workspace: &Path,
     file_path: &Path,
 ) -> Result<(String, String, &'static str, Vec<u8>)> {
-    let relative = if file_path.is_absolute() {
+    // Relative paths resolve from the workspace. An absolute path names a file on this
+    // node directly, whether it lives inside the workspace or anywhere else.
+    let root = fs::canonicalize(workspace).context("artifact_invalid_workspace")?;
+    let (root, relative, external) = if file_path.is_absolute() {
         match file_path.strip_prefix(workspace) {
-            Ok(relative) => relative.to_path_buf(),
+            Ok(relative) => (root, relative.to_path_buf(), false),
             Err(_) => {
                 // macOS callers can use /var while the runtime records /private/var.
-                // Resolve the parent alias, keep the leaf for the NOFOLLOW open below.
-                let root = fs::canonicalize(workspace)?;
-                let parent =
-                    fs::canonicalize(file_path.parent().context("artifact_invalid_path")?)?;
-                parent
-                    .strip_prefix(root)
-                    .map_err(|_| anyhow::anyhow!("artifact_outside_workspace"))?
-                    .join(file_path.file_name().context("artifact_invalid_path")?)
+                // Resolve the alias once, then read exactly what was resolved.
+                let canonical = fs::canonicalize(file_path).context("artifact_file_unavailable")?;
+                match canonical.strip_prefix(&root) {
+                    Ok(relative) => (root, relative.to_path_buf(), false),
+                    Err(_) => {
+                        let parent = canonical
+                            .parent()
+                            .context("artifact_invalid_path")?
+                            .to_path_buf();
+                        let name = canonical
+                            .file_name()
+                            .context("artifact_invalid_path")?
+                            .to_owned();
+                        (parent, PathBuf::from(name), true)
+                    }
+                }
             }
         }
     } else {
-        file_path.to_path_buf()
+        (root, file_path.to_path_buf(), false)
     };
     let components = relative
         .components()
@@ -186,16 +197,26 @@ pub(super) fn prepare_file(
         anyhow::bail!("artifact_invalid_path");
     }
     let relative = components.iter().collect::<PathBuf>();
-    let source_path = relative
-        .to_str()
-        .context("artifact_invalid_path")?
-        .to_owned();
     let name = relative
         .file_name()
         .and_then(|n| n.to_str())
         .context("artifact_invalid_path")?
         .to_owned();
-    let content = read_workspace_file(workspace, &components)?;
+    let content = read_workspace_file(&root, &components)?;
+    let source_path = if external {
+        // The catalog publishes source_path, so a file from outside the workspace keeps
+        // its content identity instead of a host path.
+        format!(
+            "external/{}/{}",
+            &zork_mesh::content_root(&content)[..12],
+            name
+        )
+    } else {
+        relative
+            .to_str()
+            .context("artifact_invalid_path")?
+            .to_owned()
+    };
     let media_type = match relative
         .extension()
         .and_then(|s| s.to_str())
@@ -435,12 +456,31 @@ mod tests {
     }
     #[test]
     #[cfg(unix)]
-    fn registration_rejects_escape_symlinks_directories_and_oversized_files() {
+    fn registration_reads_absolute_paths_and_rejects_traversal_symlinks_directories_and_oversized_files(
+    ) {
         use std::os::unix::fs::symlink;
         let (dir, db, task, workspace) = setup();
         let outside = dir.path().join("outside.txt");
         fs::write(&outside, "unrelated").unwrap();
-        assert!(db.register_artifact(&task, &outside, None).is_err());
+        // An absolute path names a file on this node directly, workspace or not; the
+        // catalog records a content identity instead of the host path.
+        let external = db.register_artifact(&task, &outside, None).unwrap();
+        assert_eq!(external.name, "outside.txt");
+        assert_eq!(external.byte_len, "unrelated".len() as i64);
+        assert!(
+            external.source_path.starts_with("external/")
+                && external.source_path.ends_with("/outside.txt")
+                && !external
+                    .source_path
+                    .contains(&*dir.path().to_string_lossy()),
+            "{}",
+            external.source_path
+        );
+        assert_eq!(
+            db.artifact_content(&external.artifact_id).unwrap().unwrap(),
+            b"unrelated"
+        );
+        // A relative path still resolves inside the workspace only.
         assert!(db
             .register_artifact(&task, Path::new("../outside.txt"), None)
             .is_err());
@@ -467,7 +507,7 @@ mod tests {
                 .to_string(),
             "artifact_too_large"
         );
-        assert!(db.list_artifacts(None).unwrap().is_empty());
+        assert_eq!(db.list_artifacts(None).unwrap().len(), 1);
         fs::write(workspace.join("real.txt"), "inside workspace").unwrap();
         symlink(&workspace, dir.path().join("workspace-alias")).unwrap();
         let alias = dir.path().join("workspace-alias/real.txt");

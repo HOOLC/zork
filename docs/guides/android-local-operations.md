@@ -1,10 +1,10 @@
 # Android 本机操作
 
-本文用于选择 Android 本机动作，区分可直接执行、需用户授权和系统不允许的操作。按普通第三方应用、Android 10 及以上、现代 target SDK 判断，不预设 ADB、root、系统签名或设备所有者权限。下表描述 Android 平台能力；脚本实际可调用的宿主接口以 `chat.send.android_script` 的工具帮助为准，厂商兼容性需要实测。
+本文用于选择 Android 本机动作，区分可直接执行、需用户授权和系统不允许的操作。按普通第三方应用、Android 10 及以上、现代 target SDK 判断，不预设 ADB、root、系统签名或设备所有者权限。下表描述 Android 平台能力；脚本实际可调用的宿主接口以 `chat.post_message.android_script` 的工具帮助为准，厂商兼容性需要实测。
 
 ## 卡片的执行方式
 
-用 `chat.send.android_script` 发送标题、说明和 JavaScript 源码，兼容的 Android 客户端显示本机执行按钮。执行与消息发布的关系遵循 [本机脚本卡片约定](../design/chat.md#本机脚本卡片)：原生回调和日志只留本机，用户自行向 Agent 说明后续情况。
+用 `chat.post_message.android_script` 发送标题、说明和 JavaScript 源码，兼容的 Android 客户端显示本机执行按钮。执行与消息发布的关系遵循 [本机脚本卡片约定](../design/chat.md#本机脚本卡片)：原生回调和日志只留本机，用户自行向 Agent 说明后续情况。
 
 ## 动作脚本的表达
 

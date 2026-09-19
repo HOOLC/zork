@@ -166,7 +166,7 @@ def main():
         assert any(w['id'] == 'local-worker' for w in request(a, 'GET', '/v1/agent/workers', leader=leader)[1]['items'])
         goal = json.dumps({'fake_tools': [
             {'name': 'shell.run', 'input': {'command': "printf 'one\\n' >> enrollment-executions.txt"}},
-            {'name': 'chat.post_message', 'input': {'kind': 'final', 'text': 'Executed on mini2'}},
+            {'name': 'chat.post_message', 'input': {'text': 'Executed on mini2'}},
         ]})
         body = {'request_id': 'enrollment-task', 'worker_id': remote, 'goal': goal}
         status, assigned = request(a, 'POST', '/v1/agent/tasks', body, leader)

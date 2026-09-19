@@ -27,7 +27,7 @@ try:
     worker=admin(b,'POST','/v1/node/agents',dict(selection,id='worker',name='Worker B',role='worker',allowed_leaders=[a.origin+'/leader']))
     remote_id=b.origin+'/worker'
     f.wait(lambda:any(w['id']==remote_id for w in req(a,'GET','/v1/agent/workers',leader=leader)[1]['items']),'authorized remote catalog')
-    goal=json.dumps({'fake_tools':[{'name':'shell.run','input':{'command':"while ! test -f activity-release; do sleep 0.1; done; printf 'one\\n' >> executions.txt\nprintf '# remote report\\n' > report.md"}},{'name':'chat.post_message','input':{'kind':'final','text':'Remote Worker completed'}}]})
+    goal=json.dumps({'fake_tools':[{'name':'shell.run','input':{'command':"while ! test -f activity-release; do sleep 0.1; done; printf 'one\\n' >> executions.txt\nprintf '# remote report\\n' > report.md"}},{'name':'chat.post_message','input':{'text':'Remote Worker completed'}}]})
     body={'request_id':'first','worker_id':remote_id,'goal':goal}
     status,first=req(a,'POST','/v1/agent/tasks',body,leader);assert status==200,(status,first)
     assert req(a,'POST','/v1/agent/tasks',body,leader)[1]['session_id']==first['session_id']
@@ -54,7 +54,7 @@ try:
     assert len(tasks(a))==2 and {t['session_id'] for t in tasks(b)}==remote_sessions
     assert all(t['run_count']==1 for t in tasks(a)),tasks(a)
     first_task=next(t for t in tasks(a) if t['session_id']==first['session_id'])
-    rework_goal=json.dumps({'fake_tools':[{'name':'chat.post_file','input':{'file_path':'report.md','initial_comment':'Remote Agent artifact'}},{'name':'chat.post_message','input':{'kind':'final','text':'Remote rework complete'}}]})
+    rework_goal=json.dumps({'fake_tools':[{'name':'chat.post_file','input':{'attachments':[{'file_path':'report.md'}],'text':'Remote Agent artifact'}},{'name':'chat.post_message','input':{'text':'Remote rework complete'}}]})
     route='/v1/agent/tasks/'+first_task['task_id']+'/rework';rework={'request_id':'revise','goal':rework_goal,'expected_revision':first_task['revision']}
     status,value=req(a,'POST',route,rework,leader);assert status==200,(status,value)
     assert req(a,'POST',route,rework,leader)[0]==200
