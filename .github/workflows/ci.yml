@@ -37,9 +37,14 @@ on:
       - "crates/zork-gui/tests/test_station_entry.py"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
+    inputs:
+      prime_cache:
+        description: Build and publish the runtime cache only; does not run tests
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.prime_cache && 'prime' || 'verify' }}
   cancel-in-progress: true
 
 permissions:
@@ -47,10 +52,10 @@ permissions:
 
 jobs:
   runtime:
-    name: Main runtime contracts
-    if: github.ref == 'refs/heads/main'
+    name: ${{ inputs.prime_cache && 'Prime runtime cache (no tests)' || 'Main runtime contracts' }}
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.prime_cache)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.prime_cache && 15 || 5 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -72,9 +77,12 @@ jobs:
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
-          # Publish namespaced shards explicitly after compilation; avoid the
-          # duplicate manifest and full remote sync in the action's post step.
-          save-cache: false
+          # Cache linked test/program artifacts as well as libraries. Let the
+          # action own uploads and its single manifest publication.
+          version: "0.26.0"
+          save-cache: true
+          cache-executables: true
+          pr-comment: false
           manifest-key: zork-main-runtime-${{ runner.os }}-${{ runner.arch }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET || 'zork-kache' }}
           s3-region: auto
@@ -91,16 +99,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build shared runtime and test binaries
         run: bash scripts/check-runtime.sh build
-      - name: Record compiled dependencies
-        if: env.KACHE_CONFIGURED == 'true'
-        env:
-          KACHE_REMOTE_READONLY: "0"
-        run: kache save-manifest --manifest-key "$KACHE_MANIFEST_KEY" --namespace "$KACHE_NAMESPACE"
       - name: Save compiled target cache
-        if: steps.target.outputs.cache-hit != 'true'
+        if: env.KACHE_CONFIGURED != 'true' && steps.target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: target
           key: ${{ steps.target.outputs.cache-primary-key }}
       - name: Test runtime contracts
+        if: ${{ !inputs.prime_cache }}
         run: bash scripts/check-runtime.sh test
