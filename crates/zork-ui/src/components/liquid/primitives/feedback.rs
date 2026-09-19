@@ -5,7 +5,7 @@ use super::{
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls::NoticeKind,
-    design::{CUE_UI, FORM},
+    design::{FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 #[cfg(not(target_family = "wasm"))]
@@ -16,10 +16,10 @@ use web_time::Instant;
 
 pub fn colors(kind: NoticeKind) -> (u32, u32) {
     match kind {
-        NoticeKind::Info | NoticeKind::Loading => (CUE_UI.palette.text, CUE_UI.palette.prompt),
-        NoticeKind::Success => (CUE_UI.palette.success, FORM.success_surface),
-        NoticeKind::Warning => (CUE_UI.palette.warning, FORM.warning_surface),
-        NoticeKind::Error => (CUE_UI.palette.danger, FORM.error_surface),
+        NoticeKind::Info | NoticeKind::Loading => (ZORK_UI.palette.text, ZORK_UI.palette.prompt),
+        NoticeKind::Success => (ZORK_UI.palette.success, FORM.success_surface),
+        NoticeKind::Warning => (ZORK_UI.palette.warning, FORM.warning_surface),
+        NoticeKind::Error => (ZORK_UI.palette.danger, FORM.error_surface),
     }
 }
 pub fn notice_content(
@@ -113,7 +113,7 @@ pub fn skeleton(
     surface(
         id,
         if circular { width.min(height) / 2. } else { 6. },
-        CUE_UI.palette.border,
+        ZORK_UI.palette.border,
         false,
     )
     .w(px(width))
@@ -323,7 +323,7 @@ impl Render for Toasts {
                     disabled: !live,
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
             )
@@ -346,7 +346,7 @@ impl Render for Toasts {
                             .pl(px(28.))
                             .text_size(px(12.))
                             .line_height(px(19.))
-                            .text_color(rgb(CUE_UI.palette.muted))
+                            .text_color(rgb(ZORK_UI.palette.muted))
                             .child(description),
                     )
                 });
@@ -361,7 +361,7 @@ impl Render for Toasts {
                             disabled: !live,
                             ..Default::default()
                         },
-                        CUE_UI.palette.canvas,
+                        ZORK_UI.palette.canvas,
                         window,
                         cx,
                     )
@@ -384,7 +384,7 @@ impl Render for Toasts {
                 surface(
                     format!("toast-{id}"),
                     crate::controls::CARD_RADIUS,
-                    CUE_UI.palette.canvas,
+                    ZORK_UI.palette.canvas,
                     true,
                 )
                 .occlude()

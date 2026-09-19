@@ -10,12 +10,12 @@ use crate::{
         message::{render_selectable_document, MessageDocument},
     },
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{prelude::*, *};
 use std::{rc::Rc, sync::Arc};
-const BG: u32 = CUE_UI.palette.canvas;
+const BG: u32 = ZORK_UI.palette.canvas;
 #[derive(Clone)]
 pub struct DecodedImage {
     pub rendered: Arc<RenderImage>,
@@ -486,7 +486,7 @@ impl Viewer {
             .h(window.viewport_size().height)
             .occlude()
             .bg(if image_view {
-                rgb(CUE_UI.palette.sidebar)
+                rgb(ZORK_UI.palette.sidebar)
             } else {
                 rgba(0x00000059)
             })

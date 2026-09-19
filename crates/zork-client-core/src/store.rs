@@ -278,7 +278,20 @@ impl ClientStore {
         }
         tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','network',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",[serde_json::to_string(network)?])?;
         tx.execute(
-            "DELETE FROM cache WHERE node='device' AND key='invitation'",
+            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn resolve_invitation_if(&self, id: &str, pending: &impl Serialize) -> Result<()> {
+        let mut conn = self.0.lock().expect("client database");
+        let tx = conn.transaction()?;
+        let owner: Option<String> = tx.query_row("SELECT json_extract(value,'$.id') FROM cache WHERE node='device' AND key='invitation_input'", [], |row| row.get(0)).optional()?.flatten();
+        anyhow::ensure!(owner.as_deref() == Some(id), "invitation_cancelled");
+        tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','invitation',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value", [serde_json::to_string(pending)?])?;
+        tx.execute(
+            "DELETE FROM cache WHERE node='device' AND key='invitation_input'",
             [],
         )?;
         tx.commit()?;
@@ -286,7 +299,7 @@ impl ClientStore {
     }
     pub fn forget_invitation(&self) -> Result<()> {
         self.0.lock().expect("client database").execute(
-            "DELETE FROM cache WHERE node='device' AND key='invitation'",
+            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
             [],
         )?;
         Ok(())

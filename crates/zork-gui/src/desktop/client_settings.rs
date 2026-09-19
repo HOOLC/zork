@@ -20,7 +20,6 @@ pub struct State {
     pub locale: Locale,
     pub message_preview_height: u32,
     pub(super) appearance: Option<Entity<zork_ui::settings::appearance::Appearance>>,
-    pub account_available: bool,
     pub notification_permission: super::notifications::Permission,
     pub notification_error: Option<String>,
     pub notification_busy: bool,
@@ -94,9 +93,7 @@ impl DesktopRoot {
             (Page::Appearance, "client_appearance"),
             (Page::Notifications, "client_notifications"),
         ];
-        if self.client_settings.account_available || self.identity.is_some() {
-            pages.push((Page::Account, "client_account"));
-        }
+        pages.push((Page::Account, "client_account"));
         pages.push((Page::Data, "client_data"));
         self.settings_tabs
             .section(
@@ -129,6 +126,7 @@ impl DesktopRoot {
             Page::Account => "client_account",
             Page::Data => "client_data",
         };
+        let account_page = state.page == Page::Account;
         let content = match state.page {
             Page::Appearance => {
                 let data = zork_ui::settings::appearance::Data {
@@ -188,7 +186,7 @@ impl DesktopRoot {
             .flex()
             .flex_col()
             .gap_5()
-            .child(ui::page_title(t(title)))
+            .when(!account_page, |view| view.child(ui::page_title(t(title))))
             .child(content)
     }
 }

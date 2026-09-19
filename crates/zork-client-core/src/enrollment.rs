@@ -10,6 +10,15 @@ struct Pending {
     name: String,
     network: Network,
 }
+#[derive(Clone, Serialize, Deserialize)]
+struct Input {
+    id: String,
+    ticket: String,
+    name: String,
+}
+fn input_snapshot(input: &Input) -> Value {
+    json!({"name":"连接设备", "status":"resolving", "id":input.id})
+}
 impl Client {
     pub(crate) async fn next_invitation(&mut self) -> Result<Value> {
         self.resume().await?;
@@ -26,11 +35,20 @@ impl Client {
         {
             return Ok(());
         }
-        let Some(pending) = self.pending_invitation()? else {
+        let pending = self.pending_invitation()?;
+        let input: Option<Input> = self.store.get("device", "invitation_input")?;
+        if pending.is_none() && input.is_none() {
             return Ok(());
-        };
+        }
         let current = self.invitation.source.read();
-        if current["done"] == true && current["invitation"]["id"] == pending.invitation.id {
+        if current["done"] == true
+            && (pending
+                .as_ref()
+                .is_some_and(|pending| current["invitation"]["id"] == pending.invitation.id)
+                || input
+                    .as_ref()
+                    .is_some_and(|input| current["invitation"]["id"] == input.id))
+        {
             return Ok(());
         }
         let generation = self.invitation.replace(public_snapshot(&self.store, true)?);
@@ -40,8 +58,20 @@ impl Client {
             self.node()?,
             self.invitation.clone(),
         );
+        let account = self.account.clone();
         self.invitation_job = Some(zork_notify::Task(tokio::spawn(async move {
-            run_invitation(root, store, node, pending, view, generation).await;
+            let pending = match pending {
+                Some(pending) => pending,
+                None => {
+                    match resolve_input(&root, &store, input.unwrap(), &view, generation, &account)
+                        .await
+                    {
+                        Ok(pending) => pending,
+                        Err(_) => return,
+                    }
+                }
+            };
+            run_invitation(root, store, node, pending, view, generation, account).await;
         })));
         Ok(())
     }
@@ -55,9 +85,40 @@ impl Client {
             .unwrap_or(self.store.get("device", "network")?.unwrap_or_default()))
     }
     pub(crate) fn invitation_snapshot(&self) -> Result<Value> {
-        Ok(self.pending_invitation()?.map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})).unwrap_or(Value::Null))
+        Ok(public_snapshot(&self.store, self.runtime.is_some())?["invitation"].clone())
     }
     pub(crate) async fn begin_invitation(&mut self, ticket: &str, name: &str) -> Result<Value> {
+        let name = name.trim();
+        ensure!(
+            !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control),
+            "手机名称无效"
+        );
+        let ticket = ticket.trim();
+        if zork_mesh::enrollment::ticket::Ticket::is_short(ticket) {
+            let decoded = zork_mesh::enrollment::ticket::Ticket::decode(ticket)
+                .context("无法识别连接邀请")?;
+            ensure!(
+                decoded.kind == InviteKind::Client,
+                "这是执行设备邀请，请在桌面选择连接手机"
+            );
+            let existing: Option<Input> = self.store.get("device", "invitation_input")?;
+            if let Some(existing) = existing {
+                ensure!(existing.ticket == ticket, "请先取消当前连接邀请");
+            } else {
+                ensure!(self.pending_invitation()?.is_none(), "请先取消当前连接邀请");
+                self.store.put(
+                    "device",
+                    "invitation_input",
+                    &Input {
+                        id: ulid::Ulid::new().to_string(),
+                        ticket: ticket.into(),
+                        name: name.into(),
+                    },
+                )?;
+            }
+            self.resume().await?;
+            return self.snapshot();
+        }
         let invitation =
             crate::transport::resolve_invitation(&self.root, ticket.trim(), InviteKind::Client)
                 .await
@@ -274,13 +335,86 @@ impl InvitationState {
 
 pub(crate) fn public_snapshot(store: &ClientStore, running: bool) -> Result<Value> {
     let pending: Option<Pending> = store.get("device", "invitation")?;
+    let input: Option<Input> = store.get("device", "invitation_input")?;
     Ok(json!({
-        "invitation": pending.as_ref().map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})),
-        "done":pending.is_none(),
+        "invitation": pending.as_ref().map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})).or_else(|| input.as_ref().map(input_snapshot)),
+        "done":pending.is_none() && input.is_none(),
         "identity":store.get::<String>("device","identity")?, "running":running,
         "nodes":store.nodes()?, "selected_peer":store.get::<Option<String>>("device","last-node")?.flatten(),
         "network":store.get::<Network>("device","network")?.unwrap_or_default(),
     }))
+}
+
+async fn resolve_input(
+    root: &std::path::Path,
+    store: &ClientStore,
+    input: Input,
+    view: &InvitationState,
+    generation: u64,
+    account: &crate::relay_account::controller::Controller,
+) -> Result<Pending> {
+    let mut retry = zork_notify::retry::Retry::default();
+    let mut changes = account.subscribe();
+    loop {
+        match crate::transport::resolve_invitation(root, &input.ticket, InviteKind::Client).await {
+            Ok(invitation) => {
+                let network = if store.nodes()?.is_empty() {
+                    Network {
+                        direct_only: invitation.offline,
+                        relay_urls: invitation.relay_urls.clone(),
+                        discovery_url: invitation.discovery_url.clone(),
+                    }
+                } else {
+                    store.get("device", "network")?.unwrap_or_default()
+                };
+                let pending = Pending {
+                    invitation,
+                    name: input.name,
+                    network,
+                };
+                store.resolve_invitation_if(&input.id, &pending)?;
+                return Ok(pending);
+            }
+            Err(error) => {
+                let reason = error.to_string();
+                let terminal = [
+                    "expired",
+                    "revoked",
+                    "mismatch",
+                    "invalid",
+                    "unsupported",
+                    "not_claimed",
+                ]
+                .iter()
+                .any(|part| reason.contains(part));
+                let mut snapshot = public_snapshot(store, true)?;
+                if snapshot["invitation"]["id"] != input.id {
+                    anyhow::bail!("invitation_cancelled");
+                }
+                let login = !account.snapshot().authenticated;
+                snapshot["done"] = json!(terminal);
+                snapshot["invitation"]["status"] = json!(if terminal {
+                    "failed"
+                } else if login {
+                    "login_required"
+                } else {
+                    "resolving"
+                });
+                snapshot["notice"] = json!(if terminal {
+                    "邀请无法使用，请在电脑重新生成。"
+                } else if login {
+                    "尚未找到局域网设备。跨网络连接请先登录 Zork，登录后会继续此邀请。"
+                } else {
+                    "暂时无法读取邀请，正在重试…"
+                });
+                view.publish(generation, snapshot);
+                if terminal {
+                    return Err(error);
+                }
+                tokio::select! { _ = retry.wait() => {}, _ = changes.changed() => {} }
+            }
+        }
+    }
 }
 
 async fn run_invitation(
@@ -290,8 +424,10 @@ async fn run_invitation(
     pending: Pending,
     view: Arc<InvitationState>,
     generation: u64,
+    account: Arc<crate::relay_account::controller::Controller>,
 ) {
     let mut retry = zork_notify::retry::Retry::default();
+    let mut account_changes = account.subscribe();
     loop {
         let result: Result<()> = async {
             let request = connect_invitation(&root, &store, &node, &pending).await?;
@@ -375,6 +511,11 @@ async fn run_invitation(
                     ("revoked", "连接邀请已取消或访问权限已撤销")
                 } else if terminal {
                     ("conflict", "邀请身份或来源已变化，请重新生成")
+                } else if !account.snapshot().authenticated && !pending.invitation.offline {
+                    (
+                        "login_required",
+                        "跨网络连接需要登录 Zork；登录后会自动继续此邀请。",
+                    )
                 } else {
                     ("waiting", "暂时无法连接设备，正在重试…")
                 };
@@ -384,7 +525,7 @@ async fn run_invitation(
                 if terminal {
                     return;
                 }
-                retry.wait().await;
+                tokio::select! { _ = retry.wait() => {}, _ = account_changes.changed() => {} }
             }
         }
     }
@@ -393,6 +534,31 @@ async fn run_invitation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancellation_fences_unresolved_invitation_and_late_login_resume() {
+        let root = tempfile::tempdir().unwrap();
+        let store = ClientStore::open(root.path()).unwrap();
+        store
+            .put("device", "invitation_input", &json!({"id":"first"}))
+            .unwrap();
+        store.forget_invitation().unwrap();
+        assert!(store
+            .resolve_invitation_if("first", &json!({"invitation":{"id":"resolved"}}))
+            .is_err());
+        store
+            .put("device", "invitation_input", &json!({"id":"second"}))
+            .unwrap();
+        assert!(store
+            .resolve_invitation_if("first", &json!({"invitation":{"id":"resolved"}}))
+            .is_err());
+        store
+            .resolve_invitation_if("second", &json!({"invitation":{"id":"resolved"}}))
+            .unwrap();
+        assert!(store
+            .get::<Value>("device", "invitation_input")
+            .unwrap()
+            .is_none());
+    }
     #[test]
     fn a_cancelled_claim_cannot_commit_peers_after_the_network_reply_arrives() {
         let root = tempfile::tempdir().unwrap();

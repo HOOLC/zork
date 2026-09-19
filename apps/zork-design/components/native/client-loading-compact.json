@@ -36,7 +36,7 @@
       ]
     },
     {
-      "id": "cue-account-cancel",
+      "id": "zork-account-cancel",
       "role": "button",
       "label": "取消登录",
       "enabled": true,
@@ -63,7 +63,7 @@
       ]
     },
     {
-      "id": "cue-account-login",
+      "id": "zork-account-login",
       "role": "button",
       "label": "登录账号",
       "enabled": false,

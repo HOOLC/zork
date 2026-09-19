@@ -1,226 +1,226 @@
 [
   {
     "file": "home.svg",
-    "cueExport": "HomeIcon",
+    "upstreamExport": "HomeIcon",
     "centralName": "IconHomeRoof",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconHomeRoof",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "list-checks.svg",
-    "cueExport": "ListChecksIcon",
+    "upstreamExport": "ListChecksIcon",
     "centralName": "IconPlanning",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlanning",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "folder1.svg",
-    "cueExport": "Folder1Icon",
+    "upstreamExport": "Folder1Icon",
     "centralName": "IconFolder1",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder1",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "arrow-up.svg",
-    "cueExport": "ArrowUpIcon",
+    "upstreamExport": "ArrowUpIcon",
     "centralName": "IconArrowUp",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUp",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "chevron-down.svg",
-    "cueExport": "ChevronDownIcon",
+    "upstreamExport": "ChevronDownIcon",
     "centralName": "IconChevronDownMedium",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownMedium",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "sparkles.svg",
-    "cueExport": "SparklesIcon",
+    "upstreamExport": "SparklesIcon",
     "centralName": "IconSparklesTwo",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSparklesTwo",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "shapes-plus-x-square-circle.svg",
-    "cueExport": "ShapesPlusXSquareCircleIcon",
+    "upstreamExport": "ShapesPlusXSquareCircleIcon",
     "centralName": "IconShapesPlusXSquareCircle",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconShapesPlusXSquareCircle",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "panel-left.svg",
-    "cueExport": "PanelLeftIcon",
+    "upstreamExport": "PanelLeftIcon",
     "centralName": "IconLayoutAlignLeft",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignLeft",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "plus.svg",
-    "cueExport": "PlusIcon",
+    "upstreamExport": "PlusIcon",
     "centralName": "IconPlusLarge",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusLarge",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "search.svg",
-    "cueExport": "SearchIcon",
+    "upstreamExport": "SearchIcon",
     "centralName": "IconMagnifyingGlass",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "settings-slider-horizontal.svg",
-    "cueExport": "SettingsSliderHorizontalIcon",
+    "upstreamExport": "SettingsSliderHorizontalIcon",
     "centralName": "IconSettingsSliderHor",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderHor",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "inbox.svg",
-    "cueExport": "InboxIcon",
+    "upstreamExport": "InboxIcon",
     "centralName": "IconBox2",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBox2",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "folder2.svg",
-    "cueExport": "Folder2Icon",
+    "upstreamExport": "Folder2Icon",
     "centralName": "IconFolder2",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder2",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "puzzle.svg",
-    "cueExport": "PuzzleIcon",
+    "upstreamExport": "PuzzleIcon",
     "centralName": "IconPuzzle",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "settings.svg",
-    "cueExport": "SettingsIcon",
+    "upstreamExport": "SettingsIcon",
     "centralName": "IconSettingsGear2",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "arrow-left.svg",
-    "cueExport": "ArrowLeftIcon",
+    "upstreamExport": "ArrowLeftIcon",
     "centralName": "IconArrowLeft",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowLeft",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "arrow-right.svg",
-    "cueExport": "ArrowRightIcon",
+    "upstreamExport": "ArrowRightIcon",
     "centralName": "IconArrowRight",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "clock.svg",
-    "cueExport": "ClockIcon",
+    "upstreamExport": "ClockIcon",
     "centralName": "IconClock",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "panel-right.svg",
-    "cueExport": "PanelRightIcon",
+    "upstreamExport": "PanelRightIcon",
     "centralName": "IconLayoutAlignRight",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignRight",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "x.svg",
-    "cueExport": "XIcon",
+    "upstreamExport": "XIcon",
     "centralName": "IconCrossSmall",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "reload.svg",
-    "cueExport": "ReloadIcon",
+    "upstreamExport": "ReloadIcon",
     "centralName": "IconArrowRotateClockwise",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRotateClockwise",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "settings-slider-three.svg",
-    "cueExport": "SettingsSliderThreeIcon",
+    "upstreamExport": "SettingsSliderThreeIcon",
     "centralName": "IconSettingsSliderThree",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderThree",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "microphone-filled.svg",
-    "cueExport": "MicrophoneFilledIcon",
+    "upstreamExport": "MicrophoneFilledIcon",
     "centralName": "IconMicrophone",
     "module": "@central-icons-react/round-filled-radius-2-stroke-2/IconMicrophone",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "paperclip.svg",
-    "cueExport": "PaperclipIcon",
+    "upstreamExport": "PaperclipIcon",
     "centralName": "IconPaperclip1",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperclip1",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "check.svg",
-    "cueExport": "CheckIcon",
+    "upstreamExport": "CheckIcon",
     "centralName": "IconCheckmark1Small",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCheckmark1Small",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "filter2.svg",
-    "cueExport": "Filter2Icon",
+    "upstreamExport": "Filter2Icon",
     "centralName": "IconFilter2",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFilter2",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "layout-column.svg",
-    "cueExport": "LayoutColumnIcon",
+    "upstreamExport": "LayoutColumnIcon",
     "centralName": "IconLayoutColumn",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutColumn",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "bars-three.svg",
-    "cueExport": "BarsThreeIcon",
+    "upstreamExport": "BarsThreeIcon",
     "centralName": "IconBarsThree2",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBarsThree2",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "circle-dashed.svg",
-    "cueExport": "CircleDashedIcon",
+    "upstreamExport": "CircleDashedIcon",
     "centralName": "IconCircleDashed",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleDashed",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "loader.svg",
-    "cueExport": "LoaderIcon",
+    "upstreamExport": "LoaderIcon",
     "centralName": "IconLoader",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconLoader",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "file.svg",
-    "cueExport": "FileIcon",
+    "upstreamExport": "FileIcon",
     "centralName": "IconFileBend",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileBend",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   },
   {
     "file": "download.svg",
-    "cueExport": "DownloadIcon",
+    "upstreamExport": "DownloadIcon",
     "centralName": "IconArrowInbox",
     "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowInbox",
-    "strokeNormalization": "2 → 1.5, matching Cue styles.css"
+    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
   }
 ]

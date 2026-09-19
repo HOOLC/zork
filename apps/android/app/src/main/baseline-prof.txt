@@ -1,13 +1,13 @@
 # UI paths exercised by conversation navigation, partner motion and message scrolling.
 # Keep the app's own hot methods alongside the profiles supplied by Compose.
-HPLsurf/zork/android/WorkbenchKt**;->**(**)**
-HPLsurf/zork/android/WorkbenchActions**;->**(**)**
-HPLsurf/zork/android/WorkbenchState**;->**(**)**
-HPLsurf/zork/android/Composer**;->**(**)**
-HPLsurf/zork/android/Liquid**;->**(**)**
-HPLsurf/zork/android/ConversationBodySlot**;->**(**)**
-HPLsurf/zork/android/ConversationMessageState**;->**(**)**
-HPLsurf/zork/android/Message**;->**(**)**
-HPLsurf/zork/android/PageSlide**;->**(**)**
-HPLsurf/zork/android/MainActivity**;->**(**)**
-HPLsurf/zork/android/ThemeKt**;->**(**)**
+HPLing/zork/android/WorkbenchKt**;->**(**)**
+HPLing/zork/android/WorkbenchActions**;->**(**)**
+HPLing/zork/android/WorkbenchState**;->**(**)**
+HPLing/zork/android/Composer**;->**(**)**
+HPLing/zork/android/Liquid**;->**(**)**
+HPLing/zork/android/ConversationBodySlot**;->**(**)**
+HPLing/zork/android/ConversationMessageState**;->**(**)**
+HPLing/zork/android/Message**;->**(**)**
+HPLing/zork/android/PageSlide**;->**(**)**
+HPLing/zork/android/MainActivity**;->**(**)**
+HPLing/zork/android/ThemeKt**;->**(**)**

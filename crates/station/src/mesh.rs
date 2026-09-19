@@ -424,7 +424,10 @@ impl MeshService {
         if !config.enabled {
             return Ok(None);
         }
-        zork_config::services::ServicesConfig::load_from_install()?.apply_network(&mut config)?;
+        zork_config::services::ServicesConfig::load_for_data_root(
+            &zork_config::relay_account::resolve_root(root)?,
+        )?
+        .apply_network(&mut config)?;
         managed::validate(&config)?;
         let runtime = managed::start(root, &config).await?;
         let runtime = zork_client_core::transport::own(root, &config, runtime)?;

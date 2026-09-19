@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::liquid::controls::{self, ActionStyle},
     controls::NoticeKind,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 
 mod content;
@@ -12,7 +12,7 @@ mod inputs;
 mod overlays;
 mod selection;
 
-const WHITE: u32 = CUE_UI.palette.canvas;
+const WHITE: u32 = ZORK_UI.palette.canvas;
 fn stack() -> Div {
     div().flex().flex_col().gap(px(16.)).min_w_0()
 }
@@ -25,7 +25,7 @@ fn note(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(px(12.))
         .line_height(px(20.))
-        .text_color(rgb(CUE_UI.palette.muted))
+        .text_color(rgb(ZORK_UI.palette.muted))
         .child(text)
 }
 impl Specimen {
@@ -124,7 +124,7 @@ impl Render for Specimen {
             .id(self.sid("example"))
             .w(px(self.width))
             .p(px(18.))
-            .text_color(rgb(CUE_UI.palette.text));
+            .text_color(rgb(ZORK_UI.palette.text));
         let labels = self.variants();
         if !labels.is_empty() {
             let measured = labels

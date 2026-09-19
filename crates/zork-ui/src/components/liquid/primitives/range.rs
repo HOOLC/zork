@@ -2,7 +2,7 @@ use super::super::{controls, Pose};
 use super::{disabled_node, surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::{BRAND_ACCENT, CUE_UI},
+    design::{BRAND_ACCENT, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use std::{
@@ -150,7 +150,7 @@ pub fn slider<V: 'static>(
     let rail = surface(
         format!("{id}-rail"),
         rail_pose.r as f32,
-        CUE_UI.palette.border,
+        ZORK_UI.palette.border,
         false,
     )
     .absolute()
@@ -263,7 +263,7 @@ pub fn slider<V: 'static>(
                         div()
                             .absolute()
                             .inset(px(5.))
-                            .bg(rgb(CUE_UI.palette.canvas))
+                            .bg(rgb(ZORK_UI.palette.canvas))
                             .rounded_full(),
                     )
                 },
@@ -396,7 +396,7 @@ pub fn progress(
             0.
         }
     });
-    let rail = surface(format!("{id}-track"), 4., CUE_UI.palette.border, false)
+    let rail = surface(format!("{id}-track"), 4., ZORK_UI.palette.border, false)
         .w(px(width))
         .h(px(8.))
         .relative()

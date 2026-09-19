@@ -81,6 +81,68 @@ pub fn path(root: &Path) -> PathBuf {
     root.join("account/relay.json")
 }
 
+/// An app-owned node and transport share the profile's account, while retaining
+/// their own Mesh identities. The marker contains no path or credential.
+pub fn bind_profile(profile: &Path) -> Result<()> {
+    fs::create_dir_all(profile)?;
+    for name in ["node", "transport"] {
+        let child = profile.join(name);
+        let _lock = try_lock(&child)?.context("account is in use while binding the profile")?;
+        let marker = child.join("account/profile");
+        if marker.exists() {
+            ensure!(
+                resolve_root(&child)? == fs::canonicalize(profile)?,
+                "invalid account profile binding"
+            );
+            continue;
+        }
+        let old = read(&child)?;
+        ensure!(
+            old.current.is_none()
+                && old.pending_revocations.is_empty()
+                && old.login_attempt.is_none(),
+            "the owned node has an independent account; log it out before opening this profile"
+        );
+        let mut file = options().write(true).create_new(true).open(marker)?;
+        file.write_all(b"zork-profile-v1\n")?;
+        file.sync_all()?;
+    }
+    Ok(())
+}
+
+pub fn resolve_root(root: &Path) -> Result<PathBuf> {
+    let marker = root.join("account/profile");
+    let mut file = match options().read(true).open(&marker) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_owned()),
+        Err(error) => return Err(error).context("read account profile binding"),
+    };
+    ensure!(
+        file.metadata()?.is_file() && file.metadata()?.len() == 16,
+        "invalid account profile binding"
+    );
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    ensure!(
+        contents == "zork-profile-v1\n",
+        "invalid account profile binding"
+    );
+    let root = fs::canonicalize(root)?;
+    ensure!(
+        matches!(
+            root.file_name().and_then(|n| n.to_str()),
+            Some("node" | "transport")
+        ),
+        "invalid account profile child"
+    );
+    let parent = root.parent().context("account profile parent missing")?;
+    ensure!(
+        !parent.join("account/profile").exists(),
+        "nested account profile bindings are not allowed"
+    );
+    Ok(parent.to_owned())
+}
+
 pub fn canonical_origin(value: &str) -> Result<String> {
     let url = url::Url::parse(value).context("invalid relay origin")?;
     ensure!(

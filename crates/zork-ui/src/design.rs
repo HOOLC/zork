@@ -1,5 +1,5 @@
 //! Shared desktop design. Contract: docs/design/interface.md.
-//! Hallmark · Workbench · modern-minimal · Cue reference · native GPUI tokens.
+//! Hallmark · Workbench · modern-minimal · native GPUI tokens.
 //!
 //! Rendering stays in `views`, but the durable palette, hierarchy, and default
 //! geometry live here so regressions do not silently turn the app back into a
@@ -24,7 +24,7 @@ pub const FORM: FormPalette = FormPalette {
     hover_border: 0x9A9EA3,
     focus_border: INTERACTION.focus_border,
     error_border: 0xC9837E,
-    error_focus_border: CUE_UI.palette.danger,
+    error_focus_border: ZORK_UI.palette.danger,
     error_surface: 0xFFFAFA,
     success_surface: 0xECFDF3,
     warning_surface: 0xFFFAEB,
@@ -264,7 +264,7 @@ pub struct TaskRowSpec {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CueUiSpec {
+pub struct ZorkUiSpec {
     pub force_light_window_chrome: bool,
     pub palette: Palette,
     pub layout: LayoutSpec,
@@ -276,7 +276,7 @@ pub struct CueUiSpec {
     pub task_rows: TaskRowSpec,
 }
 
-pub const CUE_UI: CueUiSpec = CueUiSpec {
+pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
     force_light_window_chrome: true,
     // sRGB values sampled from the approved HTML design tokens in a browser.
     palette: Palette {
@@ -373,8 +373,8 @@ pub const CUE_UI: CueUiSpec = CueUiSpec {
     },
 };
 
-pub fn cue_ui_spec() -> CueUiSpec {
-    CUE_UI
+pub fn zork_ui_spec() -> ZorkUiSpec {
+    ZORK_UI
 }
 
 /// Muted identity accents shared by Leader avatars across settings and conversations.

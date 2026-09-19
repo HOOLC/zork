@@ -65,7 +65,7 @@ impl Statistics {
             .p(px(8.))
             .flex_shrink_0()
             .rounded(px(8.))
-            .bg(rgb(CUE_UI.palette.sidebar))
+            .bg(rgb(ZORK_UI.palette.sidebar))
             .flex()
             .flex_col()
             .gap(px(6.))

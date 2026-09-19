@@ -77,6 +77,7 @@ export class Relay extends DurableObject<{ TEST_RELAY?: Fetcher }> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/__test/devices") return reply(deviceRequests);
     if (path === "/__test/offline") {
       offline = !offline;
       return reply({ offline });
@@ -106,8 +107,18 @@ export default {
         ),
       });
     }
+    if (path === "/v1/auth/device" && request.method === "POST") {
+      const response = await worker.fetch(request, env);
+      if (response.ok) {
+        deviceRequests.push(((await response.clone().json()) as { verification_uri: string }).verification_uri);
+        if (deviceRequests.length > 8) deviceRequests.shift();
+      }
+      return response;
+    }
     return worker.fetch(request, env);
   },
 };
 let offline = false;
 let loseRefreshResponse = false;
+
+const deviceRequests: string[] = [];

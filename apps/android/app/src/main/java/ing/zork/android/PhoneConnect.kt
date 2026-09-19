@@ -16,6 +16,7 @@ class QrScanActivity : CaptureActivity()
 
 @Composable
 internal fun PhoneConnectActions(model: ClientViewModel) {
+    AccountContent(model.account, model.accountError, model::accountAction)
     var paste by remember { mutableStateOf(false) }
     var ticket by remember { mutableStateOf("") }
     var scanNotice by remember { mutableStateOf<String?>(null) }
@@ -46,8 +47,9 @@ internal fun PhoneConnectActions(model: ClientViewModel) {
 @Composable
 internal fun PhoneInvitationStatus(model: ClientViewModel) {
     val invitation = model.invitation ?: return
+    AccountContent(model.account, model.accountError, model::accountAction)
     Text(invitation.text("name"), fontSize = 20.sp)
-    Text(if (invitation.text("status") == "awaiting_approval") "请在电脑上允许这台手机连接。" else "正在连接设备…",
+    Text(when (invitation.text("status")) { "awaiting_approval" -> "请在电脑上允许这台手机连接。"; "login_required" -> "登录后会继续连接此设备。"; "failed", "expired", "revoked", "conflict" -> "请重新获取连接邀请。"; else -> "正在连接设备…" },
         color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp)
     model.notice?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
     LiquidButton("取消连接", quiet = true, onClick = model::cancelInvitation, enabled = !model.busy)

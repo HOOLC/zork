@@ -101,8 +101,17 @@ relogin without Station restart, server revocation and reconnect denial. A healt
 /healthz only proves Worker reachability. Local mock Google identity tests do not
 prove the real OAuth client's configuration or consent screen.
 
-Each runtime reads credentials from its own data directory. Use the same --data
-as the Station or embedded client being tested. Do not copy account files or Mesh
+Desktop and Android expose Zork account login before device connection and in
+settings. The desktop profile owns one private session shared by its embedded
+client and owned Station, including after background service takeover. An
+independent Station keeps its own account. For a headless host, run:
+
+    zork account login --device --no-browser --data /path/to/station-data
+
+Open the printed authorization link on any browser, confirm the requesting
+device, and select a Google account. The requesting core polls with its private
+PKCE verifier; no loopback tunnel or pre-existing Mesh connection is needed.
+Use the same --data as the Station being tested. Do not copy account files or Mesh
 identities between development and release profiles. CLI help describes session
 revocation and account-wide logout. When offline, logout disables local access,
 retains a private revocation record and returns a pending result. The running
@@ -122,6 +131,17 @@ directory nor a device allowlist.
     pnpm test
     # After rebuilding zork and zork-station with --locked:
     pnpm exec tsx test/native-lifecycle.ts /path/to/fresh/binaries /path/to/report
+
+Product entry-point checks use the same local Worker and signed Google fixture:
+
+    cargo test --locked -p zork-gui --features headless-bench --test headless_relay_account --no-run
+    pnpm exec tsx test/product-account.ts /path/to/headless_relay_account /path/to/fresh/binaries /path/to/report
+    pnpm exec tsx test/android-account.ts /path/to/fresh.apk emulator-SERIAL /path/to/report
+
+The Android runner requires an isolated emulator. It installs a fixed APK copy,
+uses a loopback reverse forward and checks the real settings UI through JNI.
+These local fixtures validate the product flow; real Google consent must also
+be checked against the deployed OAuth client.
 
 The native regression uses the production CLI, Station, credential controller and
 official relay container. Only Google's external identity provider is a local

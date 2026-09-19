@@ -982,12 +982,12 @@ impl Render for BrowserPanel {
             return div()
                 .w(px(width))
                 .flex_shrink_0()
-                .border_color(rgb(crate::design::CUE_UI.palette.border))
-                .bg(rgb(crate::design::CUE_UI.palette.canvas))
+                .border_color(rgb(crate::design::ZORK_UI.palette.border))
+                .bg(rgb(crate::design::ZORK_UI.palette.canvas))
                 .child(self.render_tabs(cx))
                 .into_any_element();
         }
-        let palette = crate::design::CUE_UI.palette;
+        let palette = crate::design::ZORK_UI.palette;
         let bounds = self.bounds.clone();
         let layout_changed = self.wake.clone();
         let input = cx.entity();

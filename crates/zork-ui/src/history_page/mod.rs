@@ -11,13 +11,13 @@ use crate::history::{
 };
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{prelude::*, *};
 use std::{collections::HashSet, time::Duration};
-const DIM: u32 = CUE_UI.palette.muted;
-const TEXT: u32 = CUE_UI.palette.text;
+const DIM: u32 = ZORK_UI.palette.muted;
+const TEXT: u32 = ZORK_UI.palette.text;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
@@ -443,7 +443,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         let selected = self.history().selected.as_ref() == Some(&id);
         div()
             .id(("history-row", index))
-            .when(selected, |v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
+            .when(selected, |v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
             .when(outside, |v| v.opacity(0.3))
             .child(crate::components::history::activity_header_sources(
                 ("history-record", index),

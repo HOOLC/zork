@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::{
@@ -50,7 +50,7 @@ impl AlertDialog {
                 label.clone(),
                 width,
                 ActionStyle::default(),
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
                 open,
@@ -99,7 +99,7 @@ impl AlertDialog {
                         disabled: busy,
                         ..Default::default()
                     },
-                    CUE_UI.palette.canvas,
+                    ZORK_UI.palette.canvas,
                     window,
                     cx,
                 )
@@ -125,7 +125,7 @@ impl AlertDialog {
                         busy,
                         ..Default::default()
                     },
-                    CUE_UI.palette.canvas,
+                    ZORK_UI.palette.canvas,
                     window,
                     cx,
                 )
@@ -394,7 +394,7 @@ impl Flyout {
                 opens_panel: true,
                 ..Default::default()
             },
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
         )
         .w(px(width))
         .h(px(32.));
@@ -631,7 +631,7 @@ impl Flyout {
                 gap: if heading { 12. } else { 0. },
             },
             Some(origin),
-            SurfaceColors::outlined(crate::design::LIQUID_OUTLINE, CUE_UI.palette.canvas),
+            SurfaceColors::outlined(crate::design::LIQUID_OUTLINE, ZORK_UI.palette.canvas),
             Material::default(),
             window,
             cx,
@@ -733,7 +733,7 @@ impl NavigationMenu {
                     opens_panel: true,
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
             )
             .w(px(trigger_width))
             .h(px(32.))
@@ -797,7 +797,7 @@ impl NavigationMenu {
                             surface(
                                 format!("{scope}-link-{}", link.key),
                                 8.,
-                                CUE_UI.palette.canvas,
+                                ZORK_UI.palette.canvas,
                                 false,
                             )
                             .role(Role::Link)
@@ -820,7 +820,7 @@ impl NavigationMenu {
                                 div()
                                     .text_size(px(12.))
                                     .line_height(px(19.))
-                                    .text_color(rgb(CUE_UI.palette.muted))
+                                    .text_color(rgb(ZORK_UI.palette.muted))
                                     .child(link.description),
                             )
                             .on_click(cx.listener(move |v, _, w, cx| {

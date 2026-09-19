@@ -36,7 +36,7 @@ pub fn inline(id: impl Into<SharedString>) -> InlinePanel {
         radius: crate::controls::CARD_RADIUS,
         colors: SurfaceColors::outlined(
             crate::design::LIQUID_OUTLINE,
-            crate::design::CUE_UI.palette.canvas,
+            crate::design::ZORK_UI.palette.canvas,
         ),
     }
 }

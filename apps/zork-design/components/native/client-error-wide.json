@@ -36,7 +36,7 @@
       ]
     },
     {
-      "id": "cue-account-login",
+      "id": "zork-account-login",
       "role": "button",
       "label": "登录账号",
       "enabled": true,

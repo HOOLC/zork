@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     settings::row,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
@@ -73,7 +73,7 @@ pub fn network<V: 'static>(
         .child(
             div()
                 .text_size(px(11.))
-                .text_color(rgb(CUE_UI.palette.muted))
+                .text_color(rgb(ZORK_UI.palette.muted))
                 .child("管理已配对设备及其访问权限。"),
         )
         .child(row(
@@ -161,7 +161,7 @@ pub fn network<V: 'static>(
                 div()
                     .py_5()
                     .text_size(px(12.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child("还没有配对设备。通过加入命令或手动连接连接设备。"),
             )
         })
@@ -225,7 +225,7 @@ pub fn enrollment<V: 'static>(
             Some(usize::from(!data.client)),
             crate::components::liquid::controls::SegmentKind::Choice,
             !data.busy,
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             cx.listener(move |v, index: &usize, _, cx| {
                 select_client(v, EnrollmentAction::Select(*index == 0), cx)
             }),
@@ -233,7 +233,7 @@ pub fn enrollment<V: 'static>(
         .child(
             div()
                 .text_size(px(11.))
-                .text_color(rgb(CUE_UI.palette.muted))
+                .text_color(rgb(ZORK_UI.palette.muted))
                 .child(if data.client {
                     "在手机 Zork 中打开扫一扫。扫码后，请在这里确认允许连接。"
                 } else {
@@ -409,9 +409,9 @@ pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl In
         .min_w_0()
         .min_h(px(84.))
         .p_3()
-        .bg(rgb(CUE_UI.palette.sidebar))
+        .bg(rgb(ZORK_UI.palette.sidebar))
         .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
         .rounded(px(ui::FIELD_RADIUS))
         .overflow_x_scroll()
         .font_family("Menlo")
@@ -715,7 +715,7 @@ pub fn page<V: 'static>(
                 .mt_6()
                 .pt_5()
                 .border_t(px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(CUE_UI.palette.border))
+                .border_color(rgb(ZORK_UI.palette.border))
                 .child(enrollment(props.invitation, cx, move |v, event, cx| {
                     enrollment_action(v, PageAction::Enrollment(event), cx)
                 })),

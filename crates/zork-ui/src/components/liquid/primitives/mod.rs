@@ -12,7 +12,7 @@ pub mod selection;
 
 use crate::{
     components::smooth,
-    design::{CUE_UI, LIQUID_OUTLINE},
+    design::{LIQUID_OUTLINE, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 
@@ -54,7 +54,7 @@ pub fn label<V: Focusable + 'static>(
         .aria_label(text.clone())
         .text_size(px(12.))
         .line_height(px(20.))
-        .text_color(rgb(CUE_UI.palette.muted))
+        .text_color(rgb(ZORK_UI.palette.muted))
         .child(text.clone())
         .on_click(move |_, window, cx| {
             if !disabled {

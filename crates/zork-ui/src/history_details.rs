@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{json_tree, liquid::overlay::SourceBinding},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     history::Entry,
     resources::Text,
 };
@@ -120,7 +120,7 @@ impl Render for Details {
                     div()
                         .mt_3()
                         .text_size(px(12.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(id.clone()),
                 )
                 .when_some(role.clone(), |v, role| v.child(div().mt_2().child(role)))
@@ -155,7 +155,7 @@ impl Render for Details {
                 .child(
                     div()
                         .text_size(px(11.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(self.text.text("history_raw")),
                 )
                 .children(entry.raw.iter().enumerate().map(|(n, value)| {

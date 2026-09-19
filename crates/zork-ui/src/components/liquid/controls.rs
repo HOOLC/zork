@@ -3,7 +3,7 @@ use super::{skin, SurfaceColors};
 use crate::{
     components::{motion::HoverFill, text_input::ComposerInput},
     controls::CONTROL_HEIGHT,
-    design::{BRAND_ACCENT, CUE_UI, INTERACTION, LIQUID_OUTLINE},
+    design::{BRAND_ACCENT, INTERACTION, LIQUID_OUTLINE, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 mod adaptive;
@@ -480,7 +480,7 @@ fn render_segmented(
     choose: ControlCallback<usize>,
 ) -> Stateful<Div> {
     use crate::automation::{AutomationElementExt, AutomationRole};
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let count = options.len().max(1);
     let active: Vec<_> = options
         .iter()
@@ -714,7 +714,7 @@ fn render_toggle(
     cx: &mut App,
     change: ControlCallback<bool>,
 ) -> Stateful<Div> {
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let travel = ((surface.simulation.pose().cx - 16.) / 17.).clamp(0., 1.) as f32;
     let mix = |a, b| u32::from(crate::components::motion::mix_rgb(a, b, travel)) >> 8;
     let fill = if enabled {
@@ -1070,7 +1070,7 @@ fn render_action_content(
                 BRAND_ACCENT
             }
         } else if soft {
-            CUE_UI.palette.selected
+            ZORK_UI.palette.selected
         } else {
             parent
         },
@@ -1139,7 +1139,7 @@ fn action_content_scope(id: &ElementId) -> String {
 
 fn action_ink(_label: &str, style: ActionStyle) -> u32 {
     let style = style.resolved();
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     if style.disabled {
         p.subtle
     } else if style.primary && !style.field {
@@ -1156,7 +1156,7 @@ pub(crate) fn action_content(
     height: f32,
     style: ActionStyle,
 ) -> Stateful<Div> {
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let color = action_ink(&label, style);
     let ink = div()
         .id(format!("liquid-action-ink-{id:?}"))
@@ -1308,7 +1308,7 @@ pub fn menu_item_with_icon(
     cx: &mut App,
 ) -> Stateful<Div> {
     let id = id.into();
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let (parent, clip, radius, grouped) = match surface {
         MenuSurface::Local(parent) => (parent, None, 10., false),
         MenuSurface::StaticGroup { radius } => (p.canvas, None, radius, true),

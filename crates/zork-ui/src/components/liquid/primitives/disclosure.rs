@@ -3,7 +3,7 @@ use super::{disabled_node, selection, surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::collapse::Collapse,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
@@ -44,9 +44,9 @@ pub fn tab_nav<V: 'static>(
                 .text_size(px(13.))
                 .line_height(px(20.))
                 .text_color(rgb(if disabled {
-                    CUE_UI.palette.muted
+                    ZORK_UI.palette.muted
                 } else {
-                    CUE_UI.palette.text
+                    ZORK_UI.palette.text
                 }))
                 .border_b(px(crate::design::BORDER_WIDTH))
                 .border_color(if index == selected {
@@ -151,7 +151,7 @@ pub fn accordion<V: 'static>(
     let mut root = surface(
         id,
         crate::controls::CARD_RADIUS,
-        CUE_UI.palette.prompt,
+        ZORK_UI.palette.prompt,
         false,
     )
     .w(px(width))
@@ -192,7 +192,7 @@ pub fn accordion<V: 'static>(
                 expanded: open,
                 ..Default::default()
             },
-            CUE_UI.palette.prompt,
+            ZORK_UI.palette.prompt,
             window,
             cx,
         )
@@ -342,7 +342,7 @@ pub fn tabs<V: 'static>(
         Some(selected),
         controls::SegmentKind::Tabs { manual },
         true,
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
         window,
         cx,
         move |v, i, cx| callback(v, i, cx),

@@ -65,7 +65,7 @@ class DesktopBrowserTest(BrowserTest, unittest.TestCase):
             cls.session = opened['session_id']
             cls.gui = subprocess.Popen([
                 str(fixture.TARGET / 'zork-gui'), '--dev', '--dev-port',
-                cls.ui_url.rsplit(':', 1)[1], '--dev-token', 'cue-shell-fixture'],
+                cls.ui_url.rsplit(':', 1)[1], '--dev-token', 'zork-shell-fixture'],
                 env=cls.gui_env, stdout=cls.gui_log, stderr=cls.gui_log)
             cls.wait_until(lambda: cls.element('connect-existing-node', enabled=True), 'current desktop', 30)
             cls.click('connect-existing-node')

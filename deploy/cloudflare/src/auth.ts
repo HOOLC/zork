@@ -63,8 +63,7 @@ export function reply(body: unknown, status = 200, headers: HeadersInit = {}): R
 export const denied = () => reply({ error: "invalid_session" }, 401);
 export const limited = (seconds = 60) => reply({ error: "rate_limited" }, 429, { "retry-after": String(seconds) });
 
-export async function readJson(request: Request): Promise<Record<string, unknown>> {
-  if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new Error("content_type");
+export async function readText(request: Request, maximum = 8192): Promise<string> {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("body_required");
   const chunks: Uint8Array[] = [];
@@ -74,7 +73,7 @@ export async function readJson(request: Request): Promise<Record<string, unknown
       const { value, done } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > 8192) {
+      if (length > maximum) {
         await reader.cancel();
         throw new Error("body_too_large");
       }
@@ -86,12 +85,17 @@ export async function readJson(request: Request): Promise<Record<string, unknown
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    const body = JSON.parse(new TextDecoder().decode(bytes));
-    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_body");
-    return body;
+    return new TextDecoder().decode(bytes);
   } finally {
     reader.releaseLock();
   }
+}
+
+export async function readJson(request: Request): Promise<Record<string, unknown>> {
+  if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new Error("content_type");
+  const body = JSON.parse(await readText(request));
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_body");
+  return body;
 }
 
 export async function signToken(env: Env, type: "access" | "refresh", claims: Record<string, unknown>, expires: number, issued = nowSeconds()): Promise<string> {

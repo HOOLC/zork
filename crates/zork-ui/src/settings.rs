@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
@@ -20,7 +20,7 @@ pub fn row(
         .gap_5()
         .py(px(14.))
         .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
         .child(
             div()
                 .flex_1()
@@ -34,7 +34,7 @@ pub fn row(
                 .child(
                     div()
                         .text_size(px(11.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(detail.into()),
                 ),
         )
@@ -76,8 +76,8 @@ pub fn account<V: 'static>(
         .child(
             div()
                 .text_size(px(11.))
-                .text_color(rgb(CUE_UI.palette.muted))
-                .child("管理此客户端登录的账号。"),
+                .text_color(rgb(ZORK_UI.palette.muted))
+                .child("Zork 账号用于公网连接；局域网连接无需登录。"),
         )
         .child(row(
             "账号",
@@ -93,19 +93,19 @@ pub fn account<V: 'static>(
                             .unwrap_or_default()
                     )
                 })
-                .unwrap_or("登录后，在你的设备间识别同一个账号。".into()),
+                .unwrap_or("使用 Google 账号登录 Zork，启用跨网络连接。".into()),
             div()
                 .flex()
                 .gap_2()
                 .child(
                     ui::button(
-                        "cue-account-login",
+                        "zork-account-login",
                         if data.busy {
                             "等待登录…"
                         } else if signed {
                             "重新验证"
                         } else {
-                            "登录账号"
+                            "使用 Google 登录"
                         },
                         false,
                         !data.busy,
@@ -114,12 +114,12 @@ pub fn account<V: 'static>(
                     .automation_enabled(
                         !data.busy,
                         AutomationRole::Button,
-                        "登录账号",
+                        "使用 Google 登录",
                     ),
                 )
                 .when(data.busy, |v| {
                     v.child(
-                        ui::button("cue-account-cancel", "取消", false, true)
+                        ui::button("zork-account-cancel", "取消", false, true)
                             .on_click(
                                 cx.listener(move |v, _, _, cx| {
                                     cancel(v, AccountAction::Cancel, cx)
@@ -130,7 +130,7 @@ pub fn account<V: 'static>(
                 })
                 .when(signed, |v| {
                     v.child(
-                        ui::button("cue-account-logout", "退出账号", false, !data.busy)
+                        ui::button("zork-account-logout", "退出账号", false, !data.busy)
                             .on_click(
                                 cx.listener(move |v, _, _, cx| {
                                     logout(v, AccountAction::Logout, cx)
@@ -209,7 +209,7 @@ pub fn device<V: 'static>(
     let toggle = action.clone();
     let background = action.clone();
     let login = action.clone();
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let has_update = data
         .latest_version
         .as_ref()

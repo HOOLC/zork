@@ -51,7 +51,7 @@ impl Reveal {
     }
 }
 
-/// A visibility layer waits for its entry cue once, then remains
+/// A visibility layer waits for its entry signal once, then remains
 /// visible through content/layout updates until the component is closed.
 #[derive(Clone, Copy, Default)]
 pub struct DelayedReveal {
@@ -282,14 +282,14 @@ mod lifecycle_tests {
     use super::*;
 
     #[test]
-    fn backdrop_waits_for_its_cue_and_preserves_opacity_on_reversal() {
+    fn backdrop_waits_for_its_signal_and_preserves_opacity_on_reversal() {
         let mut backdrop = DelayedReveal::default();
         for _ in 0..240 {
             backdrop.advance(true, false, 1. / 60., false);
             assert_eq!(
                 backdrop.opacity(),
                 0.,
-                "background appeared before its entry cue"
+                "background appeared before its entry signal"
             );
         }
         backdrop.advance(true, true, 0., false);

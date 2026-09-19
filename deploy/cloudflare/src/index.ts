@@ -2,7 +2,7 @@ import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
 import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
 import { authConfigured, bearerToken, denied, digest, readJson, reply, validId, validSecret, verifyToken } from "./auth";
-import { googleStart } from "./login";
+import { devicePage, googleStart, consumeLoginRate } from "./login";
 import type { Env } from "./env";
 export { Account } from "./account";
 export { LoginAttempt, LoginLimiter } from "./login";
@@ -64,6 +64,28 @@ export default {
     }
     if (path === "/v1/auth/google/start" && request.method === "GET") {
       return googleStart(env, request);
+    }
+    if (path === "/v1/auth/device/complete" && request.method === "GET") {
+      return devicePage("请返回 Zork", "<p>登录结果会在发起请求的 Zork 中显示，现在可以关闭此页。</p>");
+    }
+    const device = /^\/v1\/auth\/device\/([A-Za-z0-9_-]{43})$/.exec(path);
+    if (device && (request.method === "GET" || request.method === "POST")) {
+      return env.LOGINS.getByName(device[1]).authorizeDevice(device[1], request);
+    }
+    if ((path === "/v1/auth/device" || path === "/v1/auth/device/token" || path === "/v1/auth/device/cancel") && request.method === "POST") {
+      try {
+        const body = await readJson(request);
+        if (!validSecret(body.id)) return reply({ error: "invalid_login" }, 400);
+        if (path.endsWith("/token") || path.endsWith("/cancel")) {
+          if (!validSecret(body.code_verifier)) return reply({ error: "invalid_grant" }, 401);
+          return path.endsWith("/cancel") ? env.LOGINS.getByName(body.id).cancelDevice(body.code_verifier) : env.LOGINS.getByName(body.id).pollDevice(body.code_verifier);
+        }
+        if (!validSecret(body.code_challenge) || typeof body.name !== "string") return reply({ error: "invalid_login" }, 400);
+        if (!(await consumeLoginRate(env, request))) return reply({ error: "rate_limited" }, 429, { "retry-after": "60" });
+        return env.LOGINS.getByName(body.id).startDevice(body.id, body.code_challenge, body.name);
+      } catch {
+        return reply({ error: "invalid_request" }, 400);
+      }
     }
     if (path === "/v1/auth/google/callback" && request.method === "GET") {
       const state = url.searchParams.get("state");

@@ -20,6 +20,14 @@ impl Enrollment {
         Self::bind_at(root, root, config).await
     }
     async fn bind_at(root: &Path, key_root: &Path, config: &MeshConfig) -> Result<Self> {
+        let mut effective = config.clone();
+        if !effective.offline {
+            zork_config::services::ServicesConfig::load_for_data_root(
+                &zork_config::relay_account::resolve_root(root)?,
+            )?
+            .apply_network(&mut effective)?;
+        }
+        let config = &effective;
         let transport = Arc::new(zork_mesh::enrollment::Enrollment::bind(key_root, config).await?);
         let account = if config.offline {
             None
@@ -65,7 +73,9 @@ pub async fn resolve_invitation(
         ensure!(ticket.kind == expected, "invite_kind_mismatch");
         let mut config = ticket.network_config();
         if !config.offline {
-            let services = zork_config::services::ServicesConfig::load_from_install()?;
+            let services = zork_config::services::ServicesConfig::load_for_data_root(
+                &zork_config::relay_account::resolve_root(root)?,
+            )?;
             config.relay_urls = services.relay_urls;
             if config.discovery_url.is_none() {
                 config.discovery_url = services.discovery_url;

@@ -198,7 +198,6 @@ impl Invitation {
         zork_config::services::ServicesConfig {
             relay_urls: invite.relay_urls.clone(),
             discovery_url: invite.discovery_url.clone(),
-            cue: None,
         }
         .validate()?;
         ensure!(

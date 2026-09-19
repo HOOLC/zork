@@ -2,12 +2,12 @@
 use crate::history::{self as model, Entry};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::{cell::Cell, rc::Rc};
-const DIM: u32 = CUE_UI.palette.muted;
-const BORDER: u32 = CUE_UI.palette.border;
+const DIM: u32 = ZORK_UI.palette.muted;
+const BORDER: u32 = ZORK_UI.palette.border;
 #[derive(Default)]
 struct State {
     entries: zork_observe::List<Entry>,
@@ -380,7 +380,7 @@ impl Timeline {
                                             .flex_1()
                                             .h_full()
                                             .overflow_hidden()
-                                            .bg(rgb(CUE_UI.palette.canvas))
+                                            .bg(rgb(ZORK_UI.palette.canvas))
                                             .map(|d| {
                                                 d.children(self.state.range.map(|(a, b)| {
                                                     let left =
@@ -466,7 +466,7 @@ impl Timeline {
                             .px(px(6.))
                             .py(px(2.))
                             .rounded(px(4.))
-                            .bg(rgb(crate::design::CUE_UI.palette.sidebar_hover))
+                            .bg(rgb(crate::design::ZORK_UI.palette.sidebar_hover))
                             .text_size(px(10.))
                             .text_color(rgb(DIM))
                             .child(self.history_state(e)),

@@ -83,7 +83,7 @@ impl DesktopRoot {
                 .flex_shrink_0()
                 .px_4()
                 .py_2()
-                .bg(rgb(CUE_UI.palette.canvas))
+                .bg(rgb(ZORK_UI.palette.canvas))
                 .child(content),
         )
     }
@@ -113,6 +113,33 @@ impl DesktopRoot {
             .max_w(px(460.))
             .px_8()
             .child(ui::heading(locale.text(title), locale.text(description)))
+            .when(self.account_state.subject.is_none(), |view| {
+                view.child(ui::text_role(
+                    "公网连接需要登录 Zork；局域网可直接连接。",
+                    TextRole::Description,
+                ))
+                .child(
+                    ui::button(
+                        "desktop-welcome-login",
+                        if self.account_state.busy() {
+                            "等待 Google 登录…"
+                        } else {
+                            "使用 Google 登录"
+                        },
+                        false,
+                        !self.account_state.busy(),
+                    )
+                    .on_click(cx.listener(|view, _, _, cx| view.login_account(cx)))
+                    .automation_enabled(
+                        !self.account_state.busy(),
+                        AutomationRole::Button,
+                        "使用 Google 登录",
+                    ),
+                )
+                .when_some(self.account_state.error.clone(), |view, error| {
+                    view.child(ui::feedback(error))
+                })
+            })
             .when(preparing, |view| {
                 view.child(loading::status(
                     "desktop-startup-status",

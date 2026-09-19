@@ -256,7 +256,7 @@ impl Specimen {
                             .items_center()
                             .text_size(px(12.))
                             .border_b(px(crate::design::BORDER_WIDTH))
-                            .border_color(rgb(CUE_UI.palette.border))
+                            .border_color(rgb(ZORK_UI.palette.border))
                             .child(format!(
                                 "第 {:02} 行　可横向与纵向滚动的示例内容　　　　　　　行尾",
                                 index + 1
@@ -274,7 +274,7 @@ impl Specimen {
                     width,
                     div()
                         .size_full()
-                        .bg(rgb(CUE_UI.palette.prompt))
+                        .bg(rgb(ZORK_UI.palette.prompt))
                         .flex()
                         .items_center()
                         .justify_center()
@@ -289,7 +289,7 @@ impl Specimen {
                     .child(p::data::inset(
                         div()
                             .h(px(36.))
-                            .bg(rgb(CUE_UI.palette.prompt))
+                            .bg(rgb(ZORK_UI.palette.prompt))
                             .flex()
                             .items_center()
                             .px(px(16.))

@@ -11,7 +11,7 @@ use std::{
 use zork_gui::{
     assets::EmbeddedAssets,
     automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
-    design::CUE_UI,
+    design::ZORK_UI,
     desktop::stories::{self, Story, StoryHost},
 };
 
@@ -209,15 +209,15 @@ impl Render for Gallery {
             .size_full()
             .font_family("Inter Variable")
             .text_size(px(12.))
-            .text_color(rgb(CUE_UI.palette.text))
-            .bg(rgb(CUE_UI.palette.canvas))
+            .text_color(rgb(ZORK_UI.palette.text))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .flex()
             .child(
                 div()
                     .w(px(248.))
                     .h_full()
                     .flex_shrink_0()
-                    .bg(rgb(CUE_UI.palette.sidebar))
+                    .bg(rgb(ZORK_UI.palette.sidebar))
                     .flex()
                     .flex_col()
                     .pt_8()
@@ -243,11 +243,11 @@ impl Render for Gallery {
                                     .rounded(px(6.))
                                     .cursor_pointer()
                                     .bg(rgb(if i == self.selected {
-                                        CUE_UI.palette.selected
+                                        ZORK_UI.palette.selected
                                     } else {
-                                        CUE_UI.palette.sidebar
+                                        ZORK_UI.palette.sidebar
                                     }))
-                                    .hover(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
+                                    .hover(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
                                     .child(format!("{} · {}", s.title, s.state))
                                     .on_click(cx.listener(move |v, _, _, cx| v.select(i, cx)))
                             })),
@@ -268,7 +268,7 @@ impl Render for Gallery {
                             .items_center()
                             .justify_between()
                             .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
-                            .border_color(rgb(CUE_UI.palette.border))
+                            .border_color(rgb(ZORK_UI.palette.border))
                             .child(
                                 div()
                                     .flex()
@@ -278,7 +278,7 @@ impl Render for Gallery {
                                     .child(
                                         div()
                                             .text_size(px(10.))
-                                            .text_color(rgb(CUE_UI.palette.muted))
+                                            .text_color(rgb(ZORK_UI.palette.muted))
                                             .child(story.source.clone()),
                                     ),
                             )
@@ -288,7 +288,7 @@ impl Render for Gallery {
                                     .px_3()
                                     .py_2()
                                     .rounded(px(6.))
-                                    .bg(rgb(CUE_UI.palette.sidebar))
+                                    .bg(rgb(ZORK_UI.palette.sidebar))
                                     .cursor_pointer()
                                     .child("重置状态")
                                     .on_click(cx.listener(|v, _, _, cx| v.select(v.selected, cx))),
@@ -306,7 +306,7 @@ impl Render for Gallery {
                                 div()
                                     .w(px(story.width))
                                     .h(px(story.height))
-                                    .bg(rgb(CUE_UI.palette.canvas))
+                                    .bg(rgb(ZORK_UI.palette.canvas))
                                     .child(self.host.clone()),
                             ),
                     ),

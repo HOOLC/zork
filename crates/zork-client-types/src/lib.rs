@@ -19,3 +19,5 @@ pub mod composer;
 pub mod navigation;
 
 pub mod device;
+
+pub mod account;

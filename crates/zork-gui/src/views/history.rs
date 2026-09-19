@@ -1,4 +1,4 @@
-//! Native port of Cue's participant session history page (e9a817c0c).
+//! Native participant session history page.
 use super::*;
 use crate::session_history::{self as model, Entry, Record};
 use gpui::{ListAlignment, ListOffset, ListState};

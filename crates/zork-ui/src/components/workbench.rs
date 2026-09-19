@@ -3,13 +3,13 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::{TextRole, CUE_UI, LIQUID_OUTLINE},
+    design::{TextRole, LIQUID_OUTLINE, ZORK_UI},
 };
 use gpui::{
     div, prelude::*, px, rgb, Context, Div, ElementId, Font, SharedString, Stateful, Window,
 };
 
-pub const CANVAS: u32 = CUE_UI.palette.canvas;
+pub const CANVAS: u32 = ZORK_UI.palette.canvas;
 
 pub const GAP: f32 = 24.;
 pub const PREVIEW_PADDING: f32 = 18.;
@@ -106,14 +106,14 @@ pub fn separated(content: impl IntoElement, spacing: f32) -> Div {
     div()
         .pt(px(spacing))
         .border_t(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
         .child(content)
 }
 pub fn toolbar() -> Div {
     column(12.)
         .pb_5()
         .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
 }
 pub fn setting(
     label: impl Into<SharedString>,
@@ -124,7 +124,7 @@ pub fn setting(
         .child(
             row(8.)
                 .justify_between()
-                .child(ui::text_role(label, TextRole::Label).text_color(rgb(CUE_UI.palette.text)))
+                .child(ui::text_role(label, TextRole::Label).text_color(rgb(ZORK_UI.palette.text)))
                 .child(control),
         )
         .child(ui::text_role(help, TextRole::Metadata))
@@ -138,7 +138,7 @@ pub fn switch_setting(
         .justify_between()
         .child(
             column(4.)
-                .child(ui::text_role(label, TextRole::Label).text_color(rgb(CUE_UI.palette.text)))
+                .child(ui::text_role(label, TextRole::Label).text_color(rgb(ZORK_UI.palette.text)))
                 .child(ui::text_role(help, TextRole::Metadata)),
         )
         .child(control)
@@ -188,7 +188,7 @@ pub fn stepper<V: 'static>(
                     }),
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
             )
@@ -206,7 +206,7 @@ pub fn stepper<V: 'static>(
         32.,
         ui::FIELD_RADIUS,
         super::liquid::Material::default().smoothing,
-        super::liquid::SurfaceColors::outlined(LIQUID_OUTLINE, CUE_UI.palette.canvas),
+        super::liquid::SurfaceColors::outlined(LIQUID_OUTLINE, ZORK_UI.palette.canvas),
         content,
         window,
         cx,
@@ -225,7 +225,7 @@ pub fn header(
         .px(px(gutter))
         .justify_between()
         .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
         .child(
             row(8.)
                 .child(gpui::img("brand/mark.svg").size(px(22.)).flex_shrink_0())
@@ -255,9 +255,9 @@ pub fn rail(
         .flex_shrink_0()
         .overflow_y_scroll()
         .p(px(if is_navigation { 12. } else { 16. }))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
         .when(is_navigation, |v| {
-            v.bg(rgb(CUE_UI.palette.sidebar))
+            v.bg(rgb(ZORK_UI.palette.sidebar))
                 .border_r(gpui::px(crate::design::BORDER_WIDTH))
         })
         .when(!is_navigation, |v| {
@@ -315,8 +315,8 @@ pub fn shell(
         .overflow_hidden()
         .flex()
         .flex_col()
-        .bg(rgb(CUE_UI.palette.canvas))
-        .text_color(rgb(CUE_UI.palette.text))
+        .bg(rgb(ZORK_UI.palette.canvas))
+        .text_color(rgb(ZORK_UI.palette.text))
         .text_size(px(13.))
         .font(font)
         .child(header)

@@ -35,7 +35,6 @@ pub fn validate(config: &MeshConfig) -> Result<()> {
     zork_config::services::ServicesConfig {
         relay_urls: config.relay_urls.clone(),
         discovery_url: config.discovery_url.clone(),
-        cue: None,
     }
     .validate()?;
     ensure!(

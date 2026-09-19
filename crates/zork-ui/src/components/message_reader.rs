@@ -6,7 +6,7 @@ use crate::{
         message::{render_selectable_document, MessageDocument},
         selection::{SelectionContext, TranscriptSelection},
     },
-    design::CUE_UI,
+    design::ZORK_UI,
     modal::ModalState,
 };
 use gpui::{prelude::*, *};
@@ -171,7 +171,7 @@ impl Reader {
             .min_h_0()
             .flex()
             .flex_col()
-            .bg(rgb(CUE_UI.palette.canvas))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .child(
                 div()
                     .px_5()
@@ -182,7 +182,7 @@ impl Reader {
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(rgb(CUE_UI.palette.muted))
+                            .text_color(rgb(ZORK_UI.palette.muted))
                             .child(reader.source.author.clone().unwrap_or_default()),
                     )
                     .child(

@@ -2,7 +2,7 @@
 //! Confirmed; the shared component owns only disclosure and focus.
 use crate::{
     components::liquid::{primitives::dialog::AlertDialog, Material},
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{prelude::*, *};
@@ -101,7 +101,7 @@ impl Render for DataSettings {
                 div()
                     .text_size(px(13.))
                     .line_height(px(22.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(text.text("client_clear_data_detail")),
             )
             .child(div().child(button))
@@ -111,7 +111,7 @@ impl Render for DataSettings {
                     v.child(
                         div()
                             .text_size(px(13.))
-                            .text_color(rgb(CUE_UI.palette.danger))
+                            .text_color(rgb(ZORK_UI.palette.danger))
                             .child(error),
                     )
                 },

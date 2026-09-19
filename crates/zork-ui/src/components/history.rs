@@ -2,7 +2,7 @@
 use crate::history::activity::Kind;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
     history::Entry,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight};
@@ -79,8 +79,8 @@ pub fn activity_header_sources<V: 'static>(
         .py(px(3.))
         .min_w_0()
         .cursor_pointer()
-        .hover(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
-        .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
+        .hover(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
+        .focus_visible(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
         .on_click(cx.listener(move |v, _, window, cx| open(v, window, cx)))
         .on_key_down(
             cx.listener(move |v, event: &gpui::KeyDownEvent, window, cx| {
@@ -98,7 +98,7 @@ pub fn activity_header_sources<V: 'static>(
                 .flex()
                 .items_center()
                 .child(
-                    crate::controls::icon(header.icon, 14.).text_color(rgb(CUE_UI.palette.muted)),
+                    crate::controls::icon(header.icon, 14.).text_color(rgb(ZORK_UI.palette.muted)),
                 ),
         )
         .child(
@@ -127,7 +127,7 @@ pub fn activity_header_sources<V: 'static>(
                                     .flex_shrink_0()
                                     .text_size(px(12.))
                                     .font_weight(FontWeight::NORMAL)
-                                    .text_color(rgb(CUE_UI.palette.muted))
+                                    .text_color(rgb(ZORK_UI.palette.muted))
                                     .child(text),
                             )
                         })
@@ -139,7 +139,7 @@ pub fn activity_header_sources<V: 'static>(
                                 .text_color(rgb(if header.clickable_subject {
                                     SEND_COLOR
                                 } else {
-                                    CUE_UI.palette.text
+                                    ZORK_UI.palette.text
                                 }))
                                 .truncate()
                                 .child(text);
@@ -202,7 +202,7 @@ pub fn activity_header_sources<V: 'static>(
                             div()
                                 .flex_shrink_0()
                                 .text_size(px(11.))
-                                .text_color(rgb(CUE_UI.palette.muted))
+                                .text_color(rgb(ZORK_UI.palette.muted))
                                 .child(header.time),
                         ),
                 )
@@ -212,7 +212,7 @@ pub fn activity_header_sources<V: 'static>(
                             .h(px(20.))
                             .line_height(px(20.))
                             .text_size(px(12.))
-                            .text_color(rgb(CUE_UI.palette.muted))
+                            .text_color(rgb(ZORK_UI.palette.muted))
                             .truncate()
                             .child(header.summary),
                     )
@@ -238,7 +238,7 @@ pub fn activity_header_sources<V: 'static>(
 }
 pub fn color(entry: &Entry) -> u32 {
     if matches!(entry.state.as_str(), "failed" | "timed_out") {
-        CUE_UI.palette.danger
+        ZORK_UI.palette.danger
     } else {
         [SEND_COLOR, MODEL_COLOR, RECEIVE_COLOR][entry.lane.min(2)]
     }
@@ -268,7 +268,7 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
                     .gap_y(px(1.))
                     .text_size(px(10.))
                     .line_height(px(15.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(format!("{input_label} {input}"))
                     .child(format!("{output_label} {output}"))
                     .when_some(
@@ -280,14 +280,14 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
 }
 pub fn activity_color(kind: Kind, state: &str) -> u32 {
     if matches!(state, "failed" | "timed_out") {
-        return CUE_UI.palette.danger;
+        return ZORK_UI.palette.danger;
     }
     match kind {
         Kind::Received => RECEIVE_COLOR,
         Kind::SendMessage | Kind::SendFile | Kind::Notify => SEND_COLOR,
-        Kind::Assign | Kind::Rework | Kind::Wait | Kind::Cancel => CUE_UI.palette.muted,
-        Kind::Error => CUE_UI.palette.danger,
-        _ => CUE_UI.palette.text,
+        Kind::Assign | Kind::Rework | Kind::Wait | Kind::Cancel => ZORK_UI.palette.muted,
+        Kind::Error => ZORK_UI.palette.danger,
+        _ => ZORK_UI.palette.text,
     }
 }
 pub fn kind_label(kind: Kind) -> &'static str {

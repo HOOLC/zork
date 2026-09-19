@@ -670,7 +670,7 @@ impl Render for ResourcesView {
         }
         body.font_family("Inter Variable")
             .text_size(px(13.))
-            .text_color(rgb(crate::design::CUE_UI.palette.text))
+            .text_color(rgb(crate::design::ZORK_UI.palette.text))
     }
 }
 fn status(locale: &Text, value: &str) -> String {

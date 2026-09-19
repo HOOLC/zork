@@ -1,4 +1,4 @@
-//! Embedded Zork design assets. Legacy Cue resources remain registered for historical compatibility, not current product defaults.
+//! Embedded Zork design assets. Resource paths follow their presentation responsibilities.
 use gpui::{AssetSource, Result, SharedString};
 use std::borrow::Cow;
 #[derive(Clone, Copy, Debug, Default)]
@@ -85,49 +85,68 @@ impl AssetSource for EmbeddedAssets {
             "avatars/fox.svg" => Some(include_bytes!("../assets/avatars/fox.svg")),
             "avatars/panda.svg" => Some(include_bytes!("../assets/avatars/panda.svg")),
             "avatars/chick.svg" => Some(include_bytes!("../assets/avatars/chick.svg")),
-            "cue/circle-x.svg" => Some(include_bytes!("../assets/cue/circle-x.svg")),
-            "cue/mascot.svg" => Some(include_bytes!("../assets/cue/mascot.svg")),
-            "cue/arrow-up.svg" => Some(include_bytes!("../assets/cue/arrow-up.svg")),
-            "cue/chevron-down.svg" => Some(include_bytes!("../assets/cue/chevron-down.svg")),
-            "cue/folder1.svg" => Some(include_bytes!("../assets/cue/folder1.svg")),
-            "cue/home.svg" => Some(include_bytes!("../assets/cue/home.svg")),
-            "cue/list-checks.svg" => Some(include_bytes!("../assets/cue/list-checks.svg")),
-            "cue/panel-left.svg" => Some(include_bytes!("../assets/cue/panel-left.svg")),
-            "cue/plus.svg" => Some(include_bytes!("../assets/cue/plus.svg")),
-            "cue/search.svg" => Some(include_bytes!("../assets/cue/search.svg")),
-            "cue/settings-slider-horizontal.svg" => Some(include_bytes!(
-                "../assets/cue/settings-slider-horizontal.svg"
-            )),
-            "cue/shapes-plus-x-square-circle.svg" => Some(include_bytes!(
-                "../assets/cue/shapes-plus-x-square-circle.svg"
-            )),
-            "cue/sparkles.svg" => Some(include_bytes!("../assets/cue/sparkles.svg")),
-            "cue/inbox.svg" => Some(include_bytes!("../assets/cue/inbox.svg")),
-            "cue/folder2.svg" => Some(include_bytes!("../assets/cue/folder2.svg")),
-            "cue/puzzle.svg" => Some(include_bytes!("../assets/cue/puzzle.svg")),
-            "cue/settings.svg" => Some(include_bytes!("../assets/cue/settings.svg")),
-            "cue/arrow-left.svg" => Some(include_bytes!("../assets/cue/arrow-left.svg")),
-            "cue/arrow-right.svg" => Some(include_bytes!("../assets/cue/arrow-right.svg")),
-            "cue/clock.svg" => Some(include_bytes!("../assets/cue/clock.svg")),
-            "cue/panel-right.svg" => Some(include_bytes!("../assets/cue/panel-right.svg")),
-            "cue/x.svg" => Some(include_bytes!("../assets/cue/x.svg")),
-            "cue/reload.svg" => Some(include_bytes!("../assets/cue/reload.svg")),
-            "cue/settings-slider-three.svg" => {
-                Some(include_bytes!("../assets/cue/settings-slider-three.svg"))
+            "interface/circle-x.svg" => Some(include_bytes!("../assets/interface/circle-x.svg")),
+            "interface/arrow-up.svg" => Some(include_bytes!("../assets/interface/arrow-up.svg")),
+            "interface/chevron-down.svg" => {
+                Some(include_bytes!("../assets/interface/chevron-down.svg"))
             }
-            "cue/microphone-filled.svg" => {
-                Some(include_bytes!("../assets/cue/microphone-filled.svg"))
+            "interface/folder1.svg" => Some(include_bytes!("../assets/interface/folder1.svg")),
+            "interface/home.svg" => Some(include_bytes!("../assets/interface/home.svg")),
+            "interface/list-checks.svg" => {
+                Some(include_bytes!("../assets/interface/list-checks.svg"))
             }
-            "cue/provider-logos.png" => Some(include_bytes!("../assets/cue/provider-logos.png")),
-            "cue/paperclip.svg" => Some(include_bytes!("../assets/cue/paperclip.svg")),
-            "cue/check.svg" => Some(include_bytes!("../assets/cue/check.svg")),
-            "cue/filter2.svg" => Some(include_bytes!("../assets/cue/filter2.svg")),
-            "cue/layout-column.svg" => Some(include_bytes!("../assets/cue/layout-column.svg")),
-            "cue/bars-three.svg" => Some(include_bytes!("../assets/cue/bars-three.svg")),
-            "cue/circle-dashed.svg" => Some(include_bytes!("../assets/cue/circle-dashed.svg")),
-            "cue/loader.svg" => Some(include_bytes!("../assets/cue/loader.svg")),
-            "cue/file.svg" => Some(include_bytes!("../assets/cue/file.svg")),
-            "cue/download.svg" => Some(include_bytes!("../assets/cue/download.svg")),
+            "interface/panel-left.svg" => {
+                Some(include_bytes!("../assets/interface/panel-left.svg"))
+            }
+            "interface/plus.svg" => Some(include_bytes!("../assets/interface/plus.svg")),
+            "interface/search.svg" => Some(include_bytes!("../assets/interface/search.svg")),
+            "interface/settings-slider-horizontal.svg" => Some(include_bytes!(
+                "../assets/interface/settings-slider-horizontal.svg"
+            )),
+            "interface/shapes-plus-x-square-circle.svg" => Some(include_bytes!(
+                "../assets/interface/shapes-plus-x-square-circle.svg"
+            )),
+            "interface/sparkles.svg" => Some(include_bytes!("../assets/interface/sparkles.svg")),
+            "interface/inbox.svg" => Some(include_bytes!("../assets/interface/inbox.svg")),
+            "interface/folder2.svg" => Some(include_bytes!("../assets/interface/folder2.svg")),
+            "interface/puzzle.svg" => Some(include_bytes!("../assets/interface/puzzle.svg")),
+            "interface/settings.svg" => Some(include_bytes!("../assets/interface/settings.svg")),
+            "interface/arrow-left.svg" => {
+                Some(include_bytes!("../assets/interface/arrow-left.svg"))
+            }
+            "interface/arrow-right.svg" => {
+                Some(include_bytes!("../assets/interface/arrow-right.svg"))
+            }
+            "interface/clock.svg" => Some(include_bytes!("../assets/interface/clock.svg")),
+            "interface/panel-right.svg" => {
+                Some(include_bytes!("../assets/interface/panel-right.svg"))
+            }
+            "interface/x.svg" => Some(include_bytes!("../assets/interface/x.svg")),
+            "interface/reload.svg" => Some(include_bytes!("../assets/interface/reload.svg")),
+            "interface/settings-slider-three.svg" => Some(include_bytes!(
+                "../assets/interface/settings-slider-three.svg"
+            )),
+            "interface/microphone-filled.svg" => {
+                Some(include_bytes!("../assets/interface/microphone-filled.svg"))
+            }
+            "interface/provider-logos.png" => {
+                Some(include_bytes!("../assets/interface/provider-logos.png"))
+            }
+            "interface/paperclip.svg" => Some(include_bytes!("../assets/interface/paperclip.svg")),
+            "interface/check.svg" => Some(include_bytes!("../assets/interface/check.svg")),
+            "interface/filter2.svg" => Some(include_bytes!("../assets/interface/filter2.svg")),
+            "interface/layout-column.svg" => {
+                Some(include_bytes!("../assets/interface/layout-column.svg"))
+            }
+            "interface/bars-three.svg" => {
+                Some(include_bytes!("../assets/interface/bars-three.svg"))
+            }
+            "interface/circle-dashed.svg" => {
+                Some(include_bytes!("../assets/interface/circle-dashed.svg"))
+            }
+            "interface/loader.svg" => Some(include_bytes!("../assets/interface/loader.svg")),
+            "interface/file.svg" => Some(include_bytes!("../assets/interface/file.svg")),
+            "interface/download.svg" => Some(include_bytes!("../assets/interface/download.svg")),
             "avatars/owl.svg" => Some(include_bytes!("../assets/avatars/owl.svg")),
             "avatars/octopus.svg" => Some(include_bytes!("../assets/avatars/octopus.svg")),
             "avatars/deer.svg" => Some(include_bytes!("../assets/avatars/deer.svg")),
@@ -410,7 +429,7 @@ impl AssetSource for EmbeddedAssets {
                 "wordmark.svg".into(),
             ]);
         }
-        if path != "cue" {
+        if path != "interface" {
             return Ok(Vec::new());
         }
         Ok(vec![

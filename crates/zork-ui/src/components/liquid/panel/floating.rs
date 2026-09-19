@@ -136,7 +136,7 @@ impl FloatingPanel {
             None,
             SurfaceColors::outlined(
                 crate::design::LIQUID_OUTLINE,
-                crate::design::CUE_UI.palette.canvas,
+                crate::design::ZORK_UI.palette.canvas,
             ),
             Material::default(),
             Some(open && self.visible),

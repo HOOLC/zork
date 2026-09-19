@@ -1,6 +1,6 @@
 # Zork loading SVG
 
-独立 SVG 设计资源，配套 `preview.html` 可直接在浏览器打开。颜色与线条来自 `src/design.rs` 的 CUE_UI 和现有图标；companion 原样复用品牌路径。
+独立 SVG 设计资源，配套 `preview.html` 可直接在浏览器打开。颜色与线条来自 `src/design.rs` 的 ZORK_UI 和现有图标；companion 原样复用品牌路径。
 
 | 文件 | 场景 | 推荐尺寸 | 周期 |
 | --- | --- | --- | --- |

@@ -216,7 +216,7 @@ mod android {
     };
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_watch<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_watch<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -263,7 +263,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_observe<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_observe<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -282,7 +282,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_textAttachmentLimit<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_textAttachmentLimit<'a>(
         _env: EnvUnowned<'a>,
         _this: JObject<'a>,
     ) -> jni::sys::jint {
@@ -290,7 +290,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_newId<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_newId<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
     ) -> JString<'a> {
@@ -299,7 +299,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_composerState<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_composerState<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         input: JString<'a>,
@@ -316,7 +316,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_validateModel<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_validateModel<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         input: JString<'a>,
@@ -334,7 +334,7 @@ mod android {
 
     #[cfg(debug_assertions)]
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_LocalScriptFixtureBridge_seed<'a>(
+    pub extern "system" fn Java_ing_zork_android_LocalScriptFixtureBridge_seed<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -355,7 +355,7 @@ mod android {
 
     #[cfg(debug_assertions)]
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_previewModels<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_previewModels<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         input: JString<'a>,
@@ -372,7 +372,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_isLocal<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_isLocal<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         request: JString<'a>,
@@ -387,7 +387,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_agentChoices<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_agentChoices<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         profiles: JString<'a>,
@@ -412,7 +412,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_connectionChoices<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_connectionChoices<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         catalog: JString<'a>,
@@ -435,7 +435,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_modelForm<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_modelForm<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         query: JString<'a>,
@@ -464,7 +464,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_copyableModel<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_copyableModel<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         model: JString<'a>,
@@ -478,7 +478,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_initialize<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_initialize<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         context: JObject<'a>,
@@ -488,7 +488,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_clearData<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_clearData<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -554,7 +554,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_call<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_call<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -571,7 +571,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_sharedFileBytes<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_sharedFileBytes<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,
@@ -591,7 +591,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_surf_zork_android_NativeBridge_saveSharedFile<'a>(
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_saveSharedFile<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
         root: JString<'a>,

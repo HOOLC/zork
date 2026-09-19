@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
     controls as ui,
-    design::{TextRole, CUE_UI},
+    design::{TextRole, ZORK_UI},
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, FocusHandle, Render, Task, Window};
 
@@ -176,7 +176,7 @@ impl Render for FormStory {
             .child(
                 div()
                     .border_t(gpui::px(crate::design::BORDER_WIDTH))
-                    .border_color(rgb(CUE_UI.palette.border))
+                    .border_color(rgb(ZORK_UI.palette.border))
                     .pt_4()
                     .flex()
                     .flex_col()

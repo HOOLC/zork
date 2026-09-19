@@ -29,7 +29,7 @@ impl Specimen {
                                 32.,
                                 None,
                                 !interactive,
-                                CUE_UI.palette.prompt,
+                                ZORK_UI.palette.prompt,
                                 w,
                                 cx,
                             )
@@ -77,7 +77,7 @@ impl Specimen {
                                 32.,
                                 None,
                                 disabled,
-                                CUE_UI.palette.prompt,
+                                ZORK_UI.palette.prompt,
                                 w,
                                 cx,
                             ))

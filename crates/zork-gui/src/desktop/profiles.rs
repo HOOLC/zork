@@ -7,7 +7,7 @@ use crate::{
     api::ProfileInfo,
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, Task, Window};
 use serde_json::{json, Value};
@@ -362,7 +362,7 @@ impl ProfilesView {
         cx.spawn(async move |_, _| source.refresh().await).detach();
     }
     fn quota_detail(&self, id: &str) -> gpui::AnyElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let Some(quota) = self.quota.get(id).filter(|q| q.visible()) else {
             return div().into_any_element();
         };
@@ -701,7 +701,7 @@ impl ProfilesView {
         {
             self.model_rows_built += 1;
         }
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let edit = model.clone();
         let id = model["id"].as_str().unwrap_or_default().to_owned();
         let remove = id.clone();
@@ -1109,7 +1109,7 @@ impl ProfilesView {
 impl gpui::EventEmitter<ui::OpenAgent> for ProfilesView {}
 impl Render for ProfilesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let placeholder = format!(
             "例如：my-{}",
             self.catalog
@@ -1883,7 +1883,7 @@ impl Render for ProfilesView {
 
 impl ProfilesView {
     fn render_header(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         div()
             .w_full()
             .flex()
@@ -1940,7 +1940,7 @@ impl ProfilesView {
         profile: &ProfileInfo,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
 
         let id = profile.profile_id.clone();
         let provider = self.catalog.iter().find(|p| p["id"] == profile.provider);
@@ -2066,7 +2066,7 @@ impl ProfilesView {
     }
 
     fn render_quota_summary(&self, id: &str, quota: &QuotaPresentation) -> gpui::AnyElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         div()
             .id(format!("profile-quota-summary-{id}"))
             .flex()

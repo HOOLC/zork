@@ -20,7 +20,7 @@ use crate::automation::{AutomationElementExt, AutomationRole};
 use crate::components::text_input::{
     ComposerEdited, ComposerFilesPasted, ComposerInput, ComposerLayoutChanged, ComposerSubmit,
 };
-use crate::design::CUE_UI;
+use crate::design::ZORK_UI;
 use crate::i18n::{self, Locale};
 use crate::shell::{self, ShellRoute, ShellState};
 use crate::transcript::should_render_live_activity;
@@ -49,11 +49,11 @@ pub(crate) fn shared_file_image(
     Ok(files::image::decode(bytes, format, renderer)?.rendered)
 }
 
-const BG: u32 = CUE_UI.palette.canvas;
-const PROMPT: u32 = CUE_UI.palette.prompt;
-const BORDER: u32 = CUE_UI.palette.border;
-const TEXT: u32 = CUE_UI.palette.text;
-const DIM: u32 = CUE_UI.palette.muted;
+const BG: u32 = ZORK_UI.palette.canvas;
+const PROMPT: u32 = ZORK_UI.palette.prompt;
+const BORDER: u32 = ZORK_UI.palette.border;
+const TEXT: u32 = ZORK_UI.palette.text;
+const DIM: u32 = ZORK_UI.palette.muted;
 
 #[cfg(test)]
 use crate::api::SseEvent;
@@ -933,7 +933,7 @@ impl Render for RootView {
             } else if let Some(nav) = &self.device_navigation {
                 nav.read(cx).width(window.viewport_size().width.as_f32())
             } else {
-                CUE_UI.layout.rail_width
+                ZORK_UI.layout.rail_width
             };
             let available = window.viewport_size().width.as_f32() - rail;
             let locale = self.locale;
@@ -1098,7 +1098,7 @@ impl Render for RootView {
                     }
                 }),
             )
-            .bg(rgb(CUE_UI.palette.window))
+            .bg(rgb(ZORK_UI.palette.window))
             .text_color(rgb(TEXT))
             .font_family("Inter Variable")
             .text_size(px(13.))
@@ -1158,7 +1158,7 @@ impl Render for RootView {
                                                         gpui::svg()
                                                             .path("icons/offline.svg")
                                                             .size(px(20.))
-                                                            .text_color(rgb(crate::design::CUE_UI
+                                                            .text_color(rgb(crate::design::ZORK_UI
                                                                 .palette
                                                                 .muted))
                                                             .flex_shrink_0(),
@@ -1314,7 +1314,7 @@ impl RootView {
             true,
             crate::desktop::ui::IconButtonSize::Compact,
         )
-        .bg(rgb(CUE_UI.palette.canvas))
+        .bg(rgb(ZORK_UI.palette.canvas))
         .child(crate::desktop::ui::icon("icons/columns.svg", 16.))
         .on_click(cx.listener(|v, _, _, cx| {
             v.browser.update(cx, |browser, cx| browser.toggle(cx));
@@ -1713,7 +1713,7 @@ impl RootView {
             .relative()
             .flex_shrink_0()
             .flex()
-            .pb(px(CUE_UI.layout.composer_bottom_inset));
+            .pb(px(ZORK_UI.layout.composer_bottom_inset));
         let frame = frame.justify_center().px_6();
         // Only the surface paints/occludes. The full-width positioning frame is
         // transparent, while list padding lets the last message scroll above it.
@@ -1831,7 +1831,7 @@ impl RootView {
             .read(cx)
             .content_height()
             .unwrap_or(24.)
-            .clamp(24., CUE_UI.composer.thread_max_editor_height);
+            .clamp(24., ZORK_UI.composer.thread_max_editor_height);
     }
 
     fn render_composer_extras(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -1881,7 +1881,7 @@ impl RootView {
             })
     }
 
-    // Cue styles.css: .cue-home-layout; rails fold before the 393px chat minimum.
+    // Side rails fold before the 393px chat minimum.
 
     fn activity_presentations(&self) -> Vec<crate::components::activity::Presentation> {
         self.participants

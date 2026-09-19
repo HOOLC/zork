@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight, Window};
@@ -160,7 +160,7 @@ impl Navigation {
                 cx.new(|_| {
                     crate::components::brand::Brand::new(
                         crate::components::brand::BrandMotion::Header,
-                        CUE_UI.palette.sidebar,
+                        ZORK_UI.palette.sidebar,
                     )
                 })
             })
@@ -218,9 +218,9 @@ impl Navigation {
                             .size(px(5.))
                             .rounded_full()
                             .bg(rgb(match device.online {
-                                Some(true) if device.direct => CUE_UI.palette.success,
+                                Some(true) if device.direct => ZORK_UI.palette.success,
                                 Some(true) => 0xD9A023,
-                                _ => CUE_UI.palette.subtle,
+                                _ => ZORK_UI.palette.subtle,
                             })),
                     )
                     .when(
@@ -229,7 +229,7 @@ impl Navigation {
                             row.child(
                                 div()
                                     .text_size(px(10.))
-                                    .text_color(rgb(CUE_UI.palette.muted))
+                                    .text_color(rgb(ZORK_UI.palette.muted))
                                     .child(self.locale.text("device_public_network")),
                             )
                         },
@@ -322,7 +322,7 @@ impl Navigation {
                             div()
                                 .size(px(6.))
                                 .rounded_full()
-                                .bg(rgb(CUE_UI.palette.text)),
+                                .bg(rgb(ZORK_UI.palette.text)),
                         )
                     })
                     .on_click(cx.listener(move |v, _, _, cx| {
@@ -379,7 +379,7 @@ impl Navigation {
                         .tab(format!("leader-more-{key}"), false)
                         .tab_stop(interactive)
                         .pl(px(36.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(self.locale.text(if all {
                             "device_fewer_tasks"
                         } else {
@@ -455,7 +455,7 @@ impl Navigation {
                     div()
                         .size(px(6.))
                         .rounded_full()
-                        .bg(rgb(CUE_UI.palette.text)),
+                        .bg(rgb(ZORK_UI.palette.text)),
                 )
             })
             .on_click(cx.listener(move |v, _, _, cx| {

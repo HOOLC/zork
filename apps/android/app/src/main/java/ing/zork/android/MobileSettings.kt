@@ -63,6 +63,9 @@ internal class SettingsActions(
     val adbError: String? = null,
     val adbAction: suspend (JSONObject) -> Unit = {},
     val adbRefresh: () -> Unit = {},
+    val account: JSONObject? = null,
+    val accountError: String? = null,
+    val accountAction: (String) -> Unit = {},
     val dataReset: JSONObject? = null,
     val dataResetError: String? = null,
     val clearData: () -> Unit = {},
@@ -70,6 +73,7 @@ internal class SettingsActions(
 
 @Composable
 internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actions: SettingsActions, modifier: Modifier = Modifier) {
+    if (state.page == "account") { AccountSettings(actions, modifier); return }
     if (state.page == "adb") { AdbSettings(actions, modifier); return }
     if (state.page == "notifications") {
         NotificationSettings(actions, modifier)
@@ -112,6 +116,8 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 }
                 SectionTitle("客户端")
                 SettingsListGroup {
+                    SettingsListRow("Zork 账号", R.drawable.ic_settings, subtext = "Google 登录与公网连接", action = { actions.page("account") })
+                    SettingsListDivider()
                     SettingsListRow("外观", R.drawable.ic_settings, subtext = "消息折叠高度", action = { actions.page("appearance") })
                     SettingsListDivider()
                     SettingsListRow("通知", R.drawable.ic_settings, subtext = "消息提醒、免打扰与后台连接", action = { actions.page("notifications") })
