@@ -1648,10 +1648,13 @@ impl Window {
                 }
                 last_frame_time.set(Some(now));
 
-                let pending_next_frame_callbacks = next_frame_callbacks.take();
-                if !pending_next_frame_callbacks.is_empty() {
+                if !next_frame_callbacks.borrow().is_empty() {
                     handle
                         .update(&mut cx, |_, window, cx| {
+                            // A native frame request can re-enter an ordinary
+                            // app update. Retain callbacks if borrowing the app
+                            // or window fails, so the wakeup below can retry.
+                            let pending_next_frame_callbacks = next_frame_callbacks.take();
                             for callback in pending_next_frame_callbacks {
                                 callback(window, cx);
                             }
