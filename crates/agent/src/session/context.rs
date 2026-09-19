@@ -506,6 +506,7 @@ mod tests {
             cancel_requested: false,
             consecutive_provider_failures: 0,
             provider_retry_allowed: true,
+            unconfirmed_end_attempts: 0,
             context: Some(ContextProgress {
                 purpose: Purpose::Compaction,
                 attempts: 0,

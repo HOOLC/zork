@@ -18,7 +18,7 @@ fn invitation_replacement_rejects_an_unapplied_old_claim_without_a_device_contro
     assert!(observer.prepare().unwrap().is_none());
 }
 use crate::{
-    api::{StationClient, MessageMetadata, Role, SseEvent},
+    api::{MessageMetadata, Role, SseEvent, StationClient},
     state::ConversationData,
     transcript::TranscriptLine,
 };
@@ -179,10 +179,7 @@ fn saved_echo_updates_pending_wire_message_without_another_receive_callback() {
     consume(&mut reader, &mut rows);
     assert_eq!(rows[0]["content"], "hello");
     assert_eq!(rows[0]["delivery_status"], "failed");
-    assert_eq!(
-        rows[0]["delivery_error"],
-        "目标设备不支持当前消息协议"
-    );
+    assert_eq!(rows[0]["delivery_error"], "目标设备不支持当前消息协议");
     let authoritative = event(&id, "hello");
     let message = serde_json::from_str(&authoritative.data).unwrap();
     store

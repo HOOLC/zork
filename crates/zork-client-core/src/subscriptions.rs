@@ -1,12 +1,12 @@
 //! Serialized observation over the same controllers as native UI. Waiting is
 //! separate from preparing a batch, and neither requires the command executor.
-mod conversation;
 mod adb;
+mod conversation;
 mod history;
 mod notifications;
 mod resources;
-mod shared_files;
 mod settings;
+mod shared_files;
 mod snapshot;
 #[cfg(test)]
 mod tests;
@@ -46,7 +46,12 @@ pub enum Key {
 impl Key {
     pub fn peer(&self) -> &str {
         match self {
-            Self::DataReset | Self::LocalScripts | Self::Adb | Self::Invitation | Self::Notifications | Self::SharedFiles => "",
+            Self::DataReset
+            | Self::LocalScripts
+            | Self::Adb
+            | Self::Invitation
+            | Self::Notifications
+            | Self::SharedFiles => "",
             Self::Resources { peer, .. } => peer.as_deref().unwrap_or(""),
             Self::Conversation { peer, .. }
             | Self::History { peer, .. }
@@ -105,17 +110,46 @@ pub struct WireSubscription {
     applied: u64,
 }
 impl WireSubscription {
-    pub(crate) fn from_data_reset(source: &zork_observe::ValueSource<crate::data_reset::Snapshot>) -> Self {
-        Self { projection: Projection::DataReset(snapshot::SnapshotWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+    pub(crate) fn from_data_reset(
+        source: &zork_observe::ValueSource<crate::data_reset::Snapshot>,
+    ) -> Self {
+        Self {
+            projection: Projection::DataReset(snapshot::SnapshotWire::new(source)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
     }
     pub(crate) fn from_local_scripts(source: &zork_observe::ValueSource<Value>) -> Self {
-        Self { projection: Projection::LocalScripts(snapshot::SnapshotWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+        Self {
+            projection: Projection::LocalScripts(snapshot::SnapshotWire::new(source)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
     }
     pub(crate) fn from_adb(source: Arc<crate::adb::Controller>) -> Self {
-        Self { projection: Projection::Adb(adb::AdbWire::new(source)), device: None, prepared: None, sequence: 0, applied: 0 }
+        Self {
+            projection: Projection::Adb(adb::AdbWire::new(source)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
     }
-    pub(crate) fn from_shared_files(source: Arc<crate::shared_files::SharedFiles>, store: Arc<ClientStore>) -> Self {
-        Self {projection:Projection::SharedFiles(shared_files::SharedFilesWire::new(source,store)),device:None,prepared:None,sequence:0,applied:0}
+    pub(crate) fn from_shared_files(
+        source: Arc<crate::shared_files::SharedFiles>,
+        store: Arc<ClientStore>,
+    ) -> Self {
+        Self {
+            projection: Projection::SharedFiles(shared_files::SharedFilesWire::new(source, store)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
     }
     pub(crate) fn from_notifications(store: Arc<ClientStore>) -> Result<Self> {
         Ok(Self {
@@ -160,7 +194,13 @@ impl WireSubscription {
             "projection belongs to another device"
         );
         let projection = match key {
-            Key::DataReset | Key::LocalScripts | Key::Adb | Key::Invitation | Key::Notifications | Key::SharedFiles | Key::Resources { .. } => {
+            Key::DataReset
+            | Key::LocalScripts
+            | Key::Adb
+            | Key::Invitation
+            | Key::Notifications
+            | Key::SharedFiles
+            | Key::Resources { .. } => {
                 anyhow::bail!("projection uses a client-owned source")
             }
             Key::Conversation { peer, session } => Projection::Conversation(

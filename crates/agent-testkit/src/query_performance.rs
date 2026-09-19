@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 use ulid::Ulid;
 use zork_agent::session::event_id::{EventId, EventIdError};
-use zork_agent::session::events::{EVENT_SCHEMA_VERSION, Selection, SessionEvent};
+use zork_agent::session::events::{Selection, SessionEvent, EVENT_SCHEMA_VERSION};
 use zork_agent::session::query::{FileSessionQuery, QueryError, SessionQuery, WindowOrigin};
 use zork_agent::session::store::EventEnvelope;
 

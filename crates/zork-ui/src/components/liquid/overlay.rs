@@ -2,11 +2,11 @@
 //! The component owns the live material, exit lifetime, input and focus handling.
 use super::presentation::{FramePaint, Presentation, Recipe, Target};
 use super::{controls, Material, Pose, Surface};
-use controls::ControlElement;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::{CUE_UI, LIQUID_OUTLINE},
 };
+use controls::ControlElement;
 use gpui::{prelude::*, *};
 #[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
@@ -1045,9 +1045,21 @@ impl Dialog {
     pub fn inspect(&self) -> serde_json::Value {
         let mut value = self.motion.borrow().inspect();
         if let Some(fields) = value.as_object_mut() {
-            fields.insert("destinationLayer".into(), serde_json::json!(if self.layer_open { "modal" } else { "source" }));
-            fields.insert("destinationPriority".into(), serde_json::json!(self.source_priority + if self.layer_open { 100 } else { 0 }));
-            fields.insert("paintOffset".into(), serde_json::json!([self.paint_offset.get().x.as_f32(), self.paint_offset.get().y.as_f32()]));
+            fields.insert(
+                "destinationLayer".into(),
+                serde_json::json!(if self.layer_open { "modal" } else { "source" }),
+            );
+            fields.insert(
+                "destinationPriority".into(),
+                serde_json::json!(self.source_priority + if self.layer_open { 100 } else { 0 }),
+            );
+            fields.insert(
+                "paintOffset".into(),
+                serde_json::json!([
+                    self.paint_offset.get().x.as_f32(),
+                    self.paint_offset.get().y.as_f32()
+                ]),
+            );
             fields.insert(
                 "anchor".into(),
                 serde_json::json!(pose(self.origin.get(), 16.)),
@@ -1199,8 +1211,18 @@ impl Dialog {
         let owner = cx.entity().into_any().downgrade();
         let close = crate::modal::bind_close(cx, close);
         self.render_content(
-            id.into(), title.into(), body.into_any_element(), footer, open,
-            placement, material, options, owner, window, cx, close,
+            id.into(),
+            title.into(),
+            body.into_any_element(),
+            footer,
+            open,
+            placement,
+            material,
+            options,
+            owner,
+            window,
+            cx,
+            close,
         )
     }
 
@@ -1253,12 +1275,17 @@ impl Dialog {
         }
         if floating && self.layer_open != open {
             let fallback = Bounds::new(point(px(0.), px(0.)), viewport);
-            self.presentation.transfer(source_drawing.as_ref(), fallback, window);
-            if cx.reduce_motion() { self.presentation.initial.borrow_mut().take(); }
+            self.presentation
+                .transfer(source_drawing.as_ref(), fallback, window);
+            if cx.reduce_motion() {
+                self.presentation.initial.borrow_mut().take();
+            }
             if open {
                 motion.translate(self.paint_offset.replace(point(px(0.), px(0.))));
                 self.closing_anchor = None;
-            } else { self.closing_anchor = Some(self.origin.get()); }
+            } else {
+                self.closing_anchor = Some(self.origin.get());
+            }
             motion.last = None;
             self.layer_open = open;
         }
@@ -1279,9 +1306,13 @@ impl Dialog {
                 (
                     viewport.width.as_f32(),
                     viewport.height.as_f32(),
-                    pose(self.closing_anchor.map_or_else(|| self.origin.get(), |anchor| {
-                        Bounds::new(anchor.origin, self.origin.get().size)
-                    }), 16.),
+                    pose(
+                        self.closing_anchor.map_or_else(
+                            || self.origin.get(),
+                            |anchor| Bounds::new(anchor.origin, self.origin.get().size),
+                        ),
+                        16.,
+                    ),
                     Pose::rect(
                         (viewport.width.as_f32() - w) as f64 / 2.,
                         (viewport.height.as_f32() - h) as f64 / 2.,
@@ -1317,26 +1348,28 @@ impl Dialog {
         }
         self.content_id = Some(id.clone());
         let clip = super::ContentClipBinding::fixed_layout();
-        let contents = open.then(|| crate::modal::panel_contents_with_title_action(
-            id.clone(),
-            title.clone(),
-            options
-                .title_action
-                .map(|action| crate::modal::TitleAction {
-                    editor: options.title_editor,
-                    action,
-                }),
-            body,
-            footer,
-            options.notice,
-            &self.focus.focus,
-            px(target.h as f32),
-            Some(clip.clone()),
-            window,
-            cx,
-            open && options.dismissible,
-            close.clone(),
-        ));
+        let contents = open.then(|| {
+            crate::modal::panel_contents_with_title_action(
+                id.clone(),
+                title.clone(),
+                options
+                    .title_action
+                    .map(|action| crate::modal::TitleAction {
+                        editor: options.title_editor,
+                        action,
+                    }),
+                body,
+                footer,
+                options.notice,
+                &self.focus.focus,
+                px(target.h as f32),
+                Some(clip.clone()),
+                window,
+                cx,
+                open && options.dismissible,
+                close.clone(),
+            )
+        });
         let content_height = self.measured.height(target.h).unwrap_or(target.h);
         let target = Pose::rect(
             target.left(),
@@ -1383,11 +1416,9 @@ impl Dialog {
             .surface
             .as_ref()
             .is_some_and(|surface| motion.state.moving(&surface.simulation));
-        let backdrop_moving = self.presentation.advance_backdrop(
-            floating && open,
-            motion.expansion() >= 0.5,
-            cx,
-        );
+        let backdrop_moving =
+            self.presentation
+                .advance_backdrop(floating && open, motion.expansion() >= 0.5, cx);
         if backdrop_moving && !paint_only {
             super::motion::schedule(&motion.scheduled, &owner, window);
         }
@@ -1403,9 +1434,15 @@ impl Dialog {
         let surface = motion.surface.as_ref().unwrap();
         self.source_material.clear();
         clip.bind(surface.content_clip());
-        let contents = contents.map(|contents| self.measured.measure(
-            contents, px(target.w as f32), true, motion.scheduled.clone(), owner.clone(),
-        ));
+        let contents = contents.map(|contents| {
+            self.measured.measure(
+                contents,
+                px(target.w as f32),
+                true,
+                motion.scheduled.clone(),
+                owner.clone(),
+            )
+        });
         let recipe = dialog_recipe(floating);
         let paint = FramePaint {
             motion: self.motion.clone(),
@@ -1418,26 +1455,29 @@ impl Dialog {
             recipe,
         };
         let content_alpha = self.presentation.opacity();
-        let contents = contents.map(|contents| placed(target)
-            .child(surface.content_clip().transformed(
-                contents,
-                recipe.scale(content_alpha),
-                content_alpha,
-                format!("{id}-retained-content"),
-                self.presentation.snapshot.clone(),
-            ))
-            .id(id.clone())
-            .role(if self.alert {
-                Role::AlertDialog
-            } else {
-                Role::Dialog
-            })
-            .aria_label(title.clone())
-            .map(|panel| surface.guard(panel))
-            .occlude()
-            .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .automation_enabled(open, AutomationRole::Status, title.to_string()).into_any_element());
+        let contents = contents.map(|contents| {
+            placed(target)
+                .child(surface.content_clip().transformed(
+                    contents,
+                    recipe.scale(content_alpha),
+                    content_alpha,
+                    format!("{id}-retained-content"),
+                    self.presentation.snapshot.clone(),
+                ))
+                .id(id.clone())
+                .role(if self.alert {
+                    Role::AlertDialog
+                } else {
+                    Role::Dialog
+                })
+                .aria_label(title.clone())
+                .map(|panel| surface.guard(panel))
+                .occlude()
+                .overflow_hidden()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .automation_enabled(open, AutomationRole::Status, title.to_string())
+                .into_any_element()
+        });
         let mut stage = div()
             .id(format!("{id}-backdrop"))
             .relative()
@@ -1445,27 +1485,42 @@ impl Dialog {
             .h(px(height));
         if floating && open {
             let dismiss_outside = !self.alert && options.dismissible;
-            stage = stage.occlude().on_mouse_down(
-                MouseButton::Left,
-                move |_, w, cx| {
+            stage = stage
+                .occlude()
+                .on_mouse_down(MouseButton::Left, move |_, w, cx| {
                     if dismiss_outside {
                         close(w, cx);
                     }
                     cx.stop_propagation();
-                },
-            );
+                });
         }
         let stage = if let Some(contents) = contents {
             interaction_scope(
-                format!("{id}-input-scope"), self.input_gate.clone(),
-                stage.child(paint.underlay()).child(contents).child(paint.outline()),
-            ).into_any_element()
+                format!("{id}-input-scope"),
+                self.input_gate.clone(),
+                stage
+                    .child(paint.underlay())
+                    .child(contents)
+                    .child(paint.outline()),
+            )
+            .into_any_element()
         } else {
             let drawing = paint.clone();
             let snapshot = self.presentation.snapshot.clone();
-            stage.child(canvas(|_, _, _| {}, move |_, _, window, _| {
-                if let Some(snapshot) = snapshot.borrow().as_ref() { drawing.replay(snapshot, window); }
-            }).absolute().inset_0()).into_any_element()
+            stage
+                .child(
+                    canvas(
+                        |_, _, _| {},
+                        move |_, _, window, _| {
+                            if let Some(snapshot) = snapshot.borrow().as_ref() {
+                                drawing.replay(snapshot, window);
+                            }
+                        },
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+                .into_any_element()
         };
         let stage = if paint_only && (material_moving || content_moving || backdrop_moving) {
             self.presentation.playback(
@@ -1486,9 +1541,13 @@ impl Dialog {
             self.presentation.record(stage)
         };
         Some(if floating {
-            anchor::destination_layer(stage, self.origin.clone(),
-                self.closing_anchor.map(|bounds| bounds.origin), self.paint_offset.clone(),
-                self.source_priority + if open { 100 } else { 0 })
+            anchor::destination_layer(
+                stage,
+                self.origin.clone(),
+                self.closing_anchor.map(|bounds| bounds.origin),
+                self.paint_offset.clone(),
+                self.source_priority + if open { 100 } else { 0 },
+            )
         } else {
             stage.into_any_element()
         })

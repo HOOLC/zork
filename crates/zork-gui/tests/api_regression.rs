@@ -3,7 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::{stream, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use zork_gui::api::{ApiError, StationClient, MessagePage, Role, SseStream, TranscriptMessage};
+use zork_gui::api::{ApiError, MessagePage, Role, SseStream, StationClient, TranscriptMessage};
 
 #[test]
 fn station_history_accepts_only_delivered_user_and_assistant_messages() {

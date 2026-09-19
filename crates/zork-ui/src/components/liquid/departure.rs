@@ -35,7 +35,9 @@ pub struct Bubble<'a> {
     pub accent_opacity: f32,
 }
 impl Departures {
-    pub(super) fn rebase(&mut self, base: usize) { self.base = base; }
+    pub(super) fn rebase(&mut self, base: usize) {
+        self.base = base;
+    }
     pub fn emit(&mut self, origin: Origin, text: &str, body: Pose, sim: &mut Simulation) {
         // Bound transient effects independently of accepted business operations.
         if self.flights.len() == 4 {

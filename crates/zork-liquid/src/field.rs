@@ -98,30 +98,50 @@ struct ParcelRows {
 }
 impl ParcelRows {
     fn new(parcels: &[Parcel], sigma: f64) -> Option<Self> {
-        let supports: Vec<_> = parcels.iter().map(|p| {
-            let reach = 3.3 / p.inverse;
-            // Coarse selection is conservative; kernel() remains authoritative
-            // at the exact support boundary, including floating-point rounding.
-            let margin = (p.y.abs().max(p.ry.abs()) + reach).max(1.) * 1e-12;
-            (p.y.min(p.ry) - reach - margin, p.y.max(p.ry) + reach + margin)
-        }).collect();
+        let supports: Vec<_> = parcels
+            .iter()
+            .map(|p| {
+                let reach = 3.3 / p.inverse;
+                // Coarse selection is conservative; kernel() remains authoritative
+                // at the exact support boundary, including floating-point rounding.
+                let margin = (p.y.abs().max(p.ry.abs()) + reach).max(1.) * 1e-12;
+                (
+                    p.y.min(p.ry) - reach - margin,
+                    p.y.max(p.ry) + reach + margin,
+                )
+            })
+            .collect();
         let origin = supports.iter().map(|s| s.0).fold(f64::INFINITY, f64::min);
-        let end = supports.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
+        let end = supports
+            .iter()
+            .map(|s| s.1)
+            .fold(f64::NEG_INFINITY, f64::max);
         let step = (sigma * 2.).max(1.);
         let count = ((end - origin) / step).ceil() + 1.;
-        if !count.is_finite() || !(1. ..=4096.).contains(&count) { return None; }
+        if !count.is_finite() || !(1. ..=4096.).contains(&count) {
+            return None;
+        }
         let mut buckets = vec![Vec::new(); count as usize];
         // Preserve parcel order: the reference field rounds after each parcel.
         for (index, (start, end)) in supports.into_iter().enumerate() {
             let first = ((start - origin) / step).floor() as usize;
             let last = (((end - origin) / step).floor() as usize).min(buckets.len() - 1);
-            for bucket in &mut buckets[first..=last] { bucket.push(index); }
+            for bucket in &mut buckets[first..=last] {
+                bucket.push(index);
+            }
         }
-        Some(Self { origin, step, buckets })
+        Some(Self {
+            origin,
+            step,
+            buckets,
+        })
     }
     fn at(&self, y: f64) -> &[usize] {
-        if y < self.origin { return &[]; }
-        self.buckets.get(((y - self.origin) / self.step).floor() as usize)
+        if y < self.origin {
+            return &[];
+        }
+        self.buckets
+            .get(((y - self.origin) / self.step).floor() as usize)
             .map_or(&[], Vec::as_slice)
     }
 }
@@ -210,7 +230,9 @@ impl<'a> Sampler<'a> {
             parcel_ends.push(parcels.len());
         }
         let parcel_indices = (0..parcels.len()).collect();
-        let parcel_rows = (!simulation.is_compound()).then(|| ParcelRows::new(&parcels, sigma)).flatten();
+        let parcel_rows = (!simulation.is_compound())
+            .then(|| ParcelRows::new(&parcels, sigma))
+            .flatten();
         Self {
             simulation,
             sigma,
@@ -282,7 +304,10 @@ impl<'a> Sampler<'a> {
         let base = f32_value(-d / self.sigma);
         let limit = f32_value(groups[owner].prepared.pose.short() * 0.24 / self.sigma);
         let (mut value, mut weight, mut ux, mut uy) = (base, 0., 0., 0.);
-        let indices = self.parcel_rows.as_ref().map_or(self.parcel_indices.as_slice(), |rows| rows.at(y));
+        let indices = self
+            .parcel_rows
+            .as_ref()
+            .map_or(self.parcel_indices.as_slice(), |rows| rows.at(y));
         for &index in indices {
             let p = &self.parcels[index];
             let r = kernel(self.kernel_table, x - p.rx, y - p.ry, p.inverse);
@@ -433,20 +458,30 @@ mod tests {
             } else {
                 Simulation::new(source, Material::default(), Options::default())
             };
-            if paired { simulation.set_open(true); }
-            else { simulation.set_target(target); }
+            if paired {
+                simulation.set_open(true);
+            } else {
+                simulation.set_target(target);
+            }
             for step in 0..5 {
-                for _ in 0..17 { simulation.tick(); }
+                for _ in 0..17 {
+                    simulation.tick();
+                }
                 if step == 2 {
-                    if paired { simulation.set_open(false); }
-                    else { simulation.set_target(source); }
+                    if paired {
+                        simulation.set_open(false);
+                    } else {
+                        simulation.set_target(source);
+                    }
                 }
                 let indexed = Sampler::new(&simulation);
                 let mut full = Sampler::new(&simulation);
                 full.parcel_rows = None;
                 assert!(indexed.parcel_rows.is_some());
                 let grid = Grid::for_simulation(&simulation, true);
-                let mut ys: Vec<_> = (0..=40).map(|i| grid.y + i as f64 * grid.height as f64 * grid.cell / 40.).collect();
+                let mut ys: Vec<_> = (0..=40)
+                    .map(|i| grid.y + i as f64 * grid.height as f64 * grid.cell / 40.)
+                    .collect();
                 for p in &indexed.parcels {
                     for center in [p.y, p.ry] {
                         for direction in [-1., 1.] {
@@ -458,7 +493,11 @@ mod tests {
                 for y in ys {
                     for i in 0..=24 {
                         let x = grid.x + i as f64 * grid.width as f64 * grid.cell / 24.;
-                        assert_eq!(indexed.value(x, y), full.value(x, y), "paired={paired} step={step} x={x} y={y}");
+                        assert_eq!(
+                            indexed.value(x, y),
+                            full.value(x, y),
+                            "paired={paired} step={step} x={x} y={y}"
+                        );
                     }
                 }
             }

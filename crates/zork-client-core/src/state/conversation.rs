@@ -7,7 +7,7 @@ mod login;
 mod pagination_tests;
 use crate::{
     api::{
-        AgentStatus, StationClient, MessagePage, ParticipantStatus, SessionSummary, SseEvent,
+        AgentStatus, MessagePage, ParticipantStatus, SessionSummary, SseEvent, StationClient,
         TranscriptMessage,
     },
     conversation::{apply_status, decode_sse_event, DecodedSseEvent},

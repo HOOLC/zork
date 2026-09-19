@@ -66,9 +66,15 @@ impl Row {
     pub fn render_enabled<V: 'static>(self, enabled: bool, cx: &mut Context<V>) -> AnyElement {
         if enabled && self.source.is_some() {
             return crate::components::attachments::content_row_source(
-                self.id, self.icon, self.title, self.detail, self.source, cx,
+                self.id,
+                self.icon,
+                self.title,
+                self.detail,
+                self.source,
+                cx,
                 move |_, cx| (self.open)(cx),
-            ).into_any_element();
+            )
+            .into_any_element();
         }
         crate::components::attachments::content_row_enabled(
             self.id,
@@ -244,12 +250,16 @@ impl Menu {
         width: f32,
         cx: &mut Context<Self>,
     ) {
-        let changed_trigger = (self.data.pages.count + self.data.files.count == 0) != (pages.count + files.count == 0)
-            || self.width != width || self.text.text("conversation_contents") != text.text("conversation_contents");
+        let changed_trigger = (self.data.pages.count + self.data.files.count == 0)
+            != (pages.count + files.count == 0)
+            || self.width != width
+            || self.text.text("conversation_contents") != text.text("conversation_contents");
         self.data = Groups { pages, files };
         self.text = text;
         self.width = width;
-        if changed_trigger || self.flyout.is_open() || self.flyout.alive() { cx.notify(); }
+        if changed_trigger || self.flyout.is_open() || self.flyout.alive() {
+            cx.notify();
+        }
     }
     pub fn close(&mut self, cx: &mut Context<Self>) {
         if !self.flyout.is_open() && !self.was_open {

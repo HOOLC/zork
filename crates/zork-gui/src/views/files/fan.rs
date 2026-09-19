@@ -466,55 +466,113 @@ impl RootView {
 }
 
 fn render(
-    frame: Frame, state: FanState, cache: Rc<RefCell<PreviewCache>>,
-    root: gpui::WeakEntity<RootView>, message: Option<(String, usize)>,
-    draft: bool, session: String, locale: Locale,
+    frame: Frame,
+    state: FanState,
+    cache: Rc<RefCell<PreviewCache>>,
+    root: gpui::WeakEntity<RootView>,
+    message: Option<(String, usize)>,
+    draft: bool,
+    session: String,
+    locale: Locale,
     source: zork_ui::components::liquid::overlay::SourceBinding,
 ) -> gpui::Stateful<Div> {
     use zork_ui::components::liquid::composer::fan as component;
-    let files: HashMap<_, _> = frame.files.iter().map(|visual| (visual.file.id.clone(), visual.file.clone())).collect();
-    let indices: HashMap<_, _> = frame.files.iter().enumerate().map(|(index, visual)| (visual.file.id.clone(), index)).collect();
+    let files: HashMap<_, _> = frame
+        .files
+        .iter()
+        .map(|visual| (visual.file.id.clone(), visual.file.clone()))
+        .collect();
+    let indices: HashMap<_, _> = frame
+        .files
+        .iter()
+        .enumerate()
+        .map(|(index, visual)| (visual.file.id.clone(), index))
+        .collect();
     let open = state.open();
     let key = message.as_ref().map(|m| m.0.clone()).unwrap_or_default();
     let ids = component::Ids {
-        root: if draft { "draft-file-fan".into() } else { format!("file-fan-{key}") },
-        toggle: if draft { "draft-file-fan-toggle".into() } else { format!("file-fan-toggle-{key}") },
-        file_prefix: if draft { "draft-preview-".into() } else { format!("message-file-{}-", message.as_ref().unwrap().1) },
+        root: if draft {
+            "draft-file-fan".into()
+        } else {
+            format!("file-fan-{key}")
+        },
+        toggle: if draft {
+            "draft-file-fan-toggle".into()
+        } else {
+            format!("file-fan-toggle-{key}")
+        },
+        file_prefix: if draft {
+            "draft-preview-".into()
+        } else {
+            format!("message-file-{}-", message.as_ref().unwrap().1)
+        },
         remove_prefix: "remove-".into(),
     };
     let component_frame = component::Frame {
-        files: frame.files.iter().enumerate().map(|(i, visual)| component::File {
-            id: visual.file.id.clone(), name: visual.file.name.clone(), pose: visual.pose,
-            image: Some(cache.borrow_mut().image(&visual.file, ((visual.pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize)),
-            visible: visual.visible, departing: visual.departing, active: state.active == Some(i),
-            removable: draft && open && state.progress > 0.98 && !visual.departing,
-        }).collect(),
-        width: frame.width, height: frame.height,
-        opening: Opening::new(frame.shape, frame.expanded), expanded: frame.expanded, rim: draft,
+        files: frame
+            .files
+            .iter()
+            .enumerate()
+            .map(|(i, visual)| component::File {
+                id: visual.file.id.clone(),
+                name: visual.file.name.clone(),
+                pose: visual.pose,
+                image: Some(cache.borrow_mut().image(
+                    &visual.file,
+                    ((visual.pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize,
+                )),
+                visible: visual.visible,
+                departing: visual.departing,
+                active: state.active == Some(i),
+                removable: draft && open && state.progress > 0.98 && !visual.departing,
+            })
+            .collect(),
+        width: frame.width,
+        height: frame.height,
+        opening: Opening::new(frame.shape, frame.expanded),
+        expanded: frame.expanded,
+        rim: draft,
     };
     let handler = Rc::new(move |action, window: &mut Window, cx: &mut gpui::App| {
         let _ = root.update(cx, |v, cx| match action {
-            component::Action::Hover(hover) => v.change_fan(message.clone(), Some(hover), false, cx),
+            component::Action::Hover(hover) => {
+                v.change_fan(message.clone(), Some(hover), false, cx)
+            }
             component::Action::Toggle => {
                 v.change_fan(message.clone(), None, true, cx);
                 v.focus_composer(window, cx);
             }
             component::Action::Highlight(id, hover) => {
-                if let Some(index) = indices.get(&id) { v.highlight_file(message.clone(), *index, hover, cx); }
+                if let Some(index) = indices.get(&id) {
+                    v.highlight_file(message.clone(), *index, hover, cx);
+                }
             }
             component::Action::Open(id) => {
-                if draft && v.file_ui.draft_files.changing() { return; }
-                if !open || (draft && !state.pinned) { v.change_fan(message.clone(), None, true, cx); }
-                else if let Some(file) = files.get(&id) { v.open_message_file(file, &session, cx); }
+                if draft && v.file_ui.draft_files.changing() {
+                    return;
+                }
+                if !open || (draft && !state.pinned) {
+                    v.change_fan(message.clone(), None, true, cx);
+                } else if let Some(file) = files.get(&id) {
+                    v.open_message_file(file, &session, cx);
+                }
             }
             component::Action::Remove(id) => {
                 if draft && v.selected_session.as_deref() == Some(&session) {
-                    if let Err(error) = v.core_device.remove_file(&session, &id) { v.error = Some(error.to_string()); }
+                    if let Err(error) = v.core_device.remove_file(&session, &id) {
+                        v.error = Some(error.to_string());
+                    }
                     zork_ui::components::region::invalidate(cx, &["composer"]);
                 }
             }
         });
     });
-    component::render_with_source(ids, component_frame, locale.text("conversation_files").into(),
-        locale.text("remove_attachment").into(), handler, Some(source))
+    component::render_with_source(
+        ids,
+        component_frame,
+        locale.text("conversation_files").into(),
+        locale.text("remove_attachment").into(),
+        handler,
+        Some(source),
+    )
 }

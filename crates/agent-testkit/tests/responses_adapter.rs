@@ -499,24 +499,52 @@ async fn arbitrary_http_400_stops_streaming_and_non_streaming_after_one_request(
     let mut agent = RealAgent::new().unwrap();
     for streaming in [true, false] {
         let profile_id = format!("http-400-{streaming}");
-        agent.install_profile(&profile_id, profile(agent.provider_base_url(), streaming)).unwrap();
+        agent
+            .install_profile(&profile_id, profile(agent.provider_base_url(), streaming))
+            .unwrap();
         for (code, message) in [
-            ("invalid_request_error", "Request is missing x-opencode-session"),
+            (
+                "invalid_request_error",
+                "Request is missing x-opencode-session",
+            ),
             ("context_length_exceeded", "maximum context length exceeded"),
         ] {
-            let session = agent.create_configured_session(selection(&profile_id), None).await.unwrap();
+            let session = agent
+                .create_configured_session(selection(&profile_id), None)
+                .await
+                .unwrap();
             agent.send_mail(&session, "continue").await.unwrap();
-            agent.request().await.respond_json(StatusCode::BAD_REQUEST, json!({"error": {
-                "type": "invalid_request_error", "code": code, "message": message
-            }})).unwrap();
-            agent.wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
-            }).await;
+            agent
+                .request()
+                .await
+                .respond_json(
+                    StatusCode::BAD_REQUEST,
+                    json!({"error": {
+                        "type": "invalid_request_error", "code": code, "message": message
+                    }}),
+                )
+                .unwrap();
+            agent
+                .wait_for_state(&session, |state| {
+                    state.last_turn_outcome == Some(TurnOutcome::Failed)
+                        && state.active_turn.is_none()
+                })
+                .await;
             let history = agent.history(&session, None, 200).unwrap();
-            assert_eq!(history.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 1);
-            assert!(!history.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
-            assert!(history.iter().any(|e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
-                if !error.retryable && error.status_code == Some(400))));
+            assert_eq!(
+                history
+                    .iter()
+                    .filter(|e| matches!(e.event, SessionEvent::StepStarted { .. }))
+                    .count(),
+                1
+            );
+            assert!(!history
+                .iter()
+                .any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+            assert!(history.iter().any(
+                |e| matches!(&e.event, SessionEvent::StepFailed { error, .. }
+                if !error.retryable && error.status_code == Some(400))
+            ));
         }
     }
     agent.shutdown().await;
@@ -850,24 +878,35 @@ async fn opencode_session_headers_reach_every_http_protocol_and_context_request(
                 request.step_id = step_id.into();
                 request.independent = independent;
                 let execution = ProfileExecution::new(
-                    "go".into(), "opencode-go".into(), MODEL.into(), api.into(),
-                    streaming, false, None, format!("{}/v1", provider.base_url()),
+                    "go".into(),
+                    "opencode-go".into(),
+                    MODEL.into(),
+                    api.into(),
+                    streaming,
+                    false,
+                    None,
+                    format!("{}/v1", provider.base_url()),
                     HashMap::from([
                         ("X-OpenCode-Session".into(), "stale-profile-value".into()),
                         ("x-custom".into(), "keep".into()),
                     ]),
-                    "xhigh".into(), ModelLimits {
+                    "xhigh".into(),
+                    ModelLimits {
                         context_window_tokens: 1_000_000,
                         max_output_tokens: 56_000,
                         reserve_percent: 10,
-                    }, "test-secret".into(),
+                    },
+                    "test-secret".into(),
                 );
                 let task = tokio::spawn(async move {
                     ProviderRouter::new().complete(&request, execution).await
                 });
                 let received = provider.request().await;
                 assert_eq!(received.path_and_query, path);
-                assert_eq!(received.headers["x-opencode-session"], if independent { step_id } else { session_id });
+                assert_eq!(
+                    received.headers["x-opencode-session"],
+                    if independent { step_id } else { session_id }
+                );
                 assert!(received.headers["user-agent"].starts_with("zork-agent/"));
                 assert_eq!(received.headers["x-custom"], "keep");
                 received.respond_json(StatusCode::BAD_REQUEST, json!({"error": {

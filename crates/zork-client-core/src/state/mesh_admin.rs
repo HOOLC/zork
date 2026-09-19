@@ -1,6 +1,6 @@
 //! Mesh configuration and invitation lifecycles, independent of the settings view.
 use super::{Observable, Subscription};
-use crate::api::{StationClient, MeshPeer};
+use crate::api::{MeshPeer, StationClient};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::{
@@ -189,7 +189,8 @@ impl MeshAdmin {
                 address,
                 client,
             } => {
-                let input = crate::device_edit::validate_peer(&name, &origin, &address).map_err(anyhow::Error::msg)?;
+                let input = crate::device_edit::validate_peer(&name, &origin, &address)
+                    .map_err(anyhow::Error::msg)?;
                 let mut config = self.current().await?;
                 config.peers.retain(|p| p.origin != input.origin);
                 config.peers.push(zork_config::MeshPeer {

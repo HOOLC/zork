@@ -4,7 +4,7 @@ use bytes::Bytes;
 use futures_util::{stream, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use zork_client_core::api::{
-    ApiError, StationClient, MessagePage, Role, SseStream, TranscriptMessage,
+    ApiError, MessagePage, Role, SseStream, StationClient, TranscriptMessage,
 };
 
 #[test]

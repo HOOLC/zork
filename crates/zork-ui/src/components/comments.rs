@@ -1,4 +1,5 @@
 //! Quoted comment presentation. Hosts decide when to persist or send a batch.
+use super::liquid::controls::ControlElement;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     comments::DraftComment,
@@ -7,7 +8,6 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, ClickEvent, Context, Entity, Window};
 use std::{cell::Cell, rc::Rc};
-use super::liquid::controls::ControlElement;
 mod editor;
 pub use editor::{Closed, Editor, EditorRequest, Submit};
 fn id(prefix: &str, suffix: &str) -> String {
@@ -22,7 +22,14 @@ pub fn queue<V: 'static>(
     comments: &[DraftComment],
     window: &mut Window,
     cx: &mut Context<V>,
-    edit: impl Fn(&mut V, DraftComment, &ClickEvent, gpui::Bounds<gpui::Pixels>, &mut Window, &mut Context<V>) + 'static,
+    edit: impl Fn(
+            &mut V,
+            DraftComment,
+            &ClickEvent,
+            gpui::Bounds<gpui::Pixels>,
+            &mut Window,
+            &mut Context<V>,
+        ) + 'static,
     remove: impl Fn(&mut V, String, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     let edit = Rc::new(edit);
@@ -72,20 +79,19 @@ pub fn queue<V: 'static>(
                         .child(div().text_size(px(12.)).truncate().child(comment.comment)),
                 )
                 .child(
-                    ui::button(
-                        edit_id,
-                        "编辑",
-                        false,
-                        true,
-                    )
-                    .control_focus(&focus)
-                    .control_overlay(gpui::canvas(move |bounds, _, _| measured.set(bounds), |_, _, _, _| {})
-                        .absolute().inset_0().into_any_element())
-                    .on_click(cx.listener(move |v, event, w, cx| {
-                        w.focus(&focus, cx);
-                        edit(v, editing.clone(), event, bounds.get(), w, cx);
-                    }))
-                    .automation(AutomationRole::Button, "编辑评论"),
+                    ui::button(edit_id, "编辑", false, true)
+                        .control_focus(&focus)
+                        .control_overlay(
+                            gpui::canvas(move |bounds, _, _| measured.set(bounds), |_, _, _, _| {})
+                                .absolute()
+                                .inset_0()
+                                .into_any_element(),
+                        )
+                        .on_click(cx.listener(move |v, event, w, cx| {
+                            w.focus(&focus, cx);
+                            edit(v, editing.clone(), event, bounds.get(), w, cx);
+                        }))
+                        .automation(AutomationRole::Button, "编辑评论"),
                 )
                 .child(
                     ui::icon_button(id(prefix, &format!("comment-remove-{}", comment.id)), true)
@@ -115,28 +121,54 @@ impl CommentsStory {
         let editor = cx.new(|cx| Editor::new(prefix.clone(), cx));
         cx.subscribe(&editor, |v, _, event: &Submit, cx| {
             let comment = DraftComment {
-                id: event.editing.clone().unwrap_or_else(|| { v.next_id += 1; format!("demo-{}", v.next_id) }),
-                source: event.source.clone(), comment: event.text.clone(),
+                id: event.editing.clone().unwrap_or_else(|| {
+                    v.next_id += 1;
+                    format!("demo-{}", v.next_id)
+                }),
+                source: event.source.clone(),
+                comment: event.text.clone(),
             };
-            if let Some(old) = v.comments.iter_mut().find(|old| old.id == comment.id) { *old = comment; }
-            else { v.comments.push(comment); }
+            if let Some(old) = v.comments.iter_mut().find(|old| old.id == comment.id) {
+                *old = comment;
+            } else {
+                v.comments.push(comment);
+            }
             v.editor.update(cx, |editor, cx| editor.dismiss(cx));
             cx.notify();
-        }).detach();
+        })
+        .detach();
         let request = EditorRequest {
             source: crate::comments::CommentSource {
-                session_id: "mock-session".into(), author: Some("产品 Leader".into()),
-                quote: "请先统一图标与头像。".into(), ..Default::default()
+                session_id: "mock-session".into(),
+                author: Some("产品 Leader".into()),
+                quote: "请先统一图标与头像。".into(),
+                ..Default::default()
             },
             editing: (state == "editing").then(|| "demo".into()),
-            text: if state == "editing" { "保持紧凑，文字需要清晰。".into() } else { String::new() },
+            text: if state == "editing" {
+                "保持紧凑，文字需要清晰。".into()
+            } else {
+                String::new()
+            },
             toolbar: false,
         };
         let comments = if matches!(state, "queued" | "editing") {
-            vec![DraftComment { id: "demo".into(), source: request.source.clone(), comment: "保持紧凑，文字需要清晰。".into() }]
-        } else { vec![] };
-        Self { prefix, comments, editor, pending: matches!(state, "compose" | "editing").then_some(request),
-            anchor: Default::default(), next_id: 0 }
+            vec![DraftComment {
+                id: "demo".into(),
+                source: request.source.clone(),
+                comment: "保持紧凑，文字需要清晰。".into(),
+            }]
+        } else {
+            vec![]
+        };
+        Self {
+            prefix,
+            comments,
+            editor,
+            pending: matches!(state, "compose" | "editing").then_some(request),
+            anchor: Default::default(),
+            next_id: 0,
+        }
     }
 }
 #[cfg(feature = "stories")]
@@ -146,31 +178,84 @@ impl gpui::Render for CommentsStory {
         if bounds.size.width > px(0.) {
             if let Some(request) = self.pending.take() {
                 let focus = window.focused(cx);
-                self.editor.update(cx, |editor, cx| editor.open_at(request, bounds, focus, window, cx));
+                self.editor.update(cx, |editor, cx| {
+                    editor.open_at(request, bounds, focus, window, cx)
+                });
             }
         }
         let anchor = self.anchor.clone();
         let owner = cx.entity().downgrade();
         let trigger = ui::button(id(&self.prefix, "add-comment"), "添加评论", false, true)
-            .control_overlay(gpui::canvas(move |bounds, _, cx| {
-                if anchor.replace(bounds) != bounds { let _ = owner.update(cx, |_, cx| cx.notify()); }
-            }, |_, _, _, _| {}).absolute().inset_0().into_any_element())
+            .control_overlay(
+                gpui::canvas(
+                    move |bounds, _, cx| {
+                        if anchor.replace(bounds) != bounds {
+                            let _ = owner.update(cx, |_, cx| cx.notify());
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+                .into_any_element(),
+            )
             .on_click(cx.listener(|v, _, window, cx| {
                 let bounds = v.anchor.get();
                 let focus = window.focused(cx);
-                v.editor.update(cx, |editor, cx| editor.open_at(EditorRequest {
-                    source: crate::comments::CommentSource { session_id: "mock-session".into(), author: Some("产品 Leader".into()),
-                        quote: "请先统一图标与头像。".into(), ..Default::default() },
-                    editing: None, text: String::new(), toolbar: false,
-                }, bounds, focus, window, cx));
-            })).automation(AutomationRole::Button, "添加评论");
-        let queue = queue(&self.prefix, &self.comments, window, cx,
+                v.editor.update(cx, |editor, cx| {
+                    editor.open_at(
+                        EditorRequest {
+                            source: crate::comments::CommentSource {
+                                session_id: "mock-session".into(),
+                                author: Some("产品 Leader".into()),
+                                quote: "请先统一图标与头像。".into(),
+                                ..Default::default()
+                            },
+                            editing: None,
+                            text: String::new(),
+                            toolbar: false,
+                        },
+                        bounds,
+                        focus,
+                        window,
+                        cx,
+                    )
+                });
+            }))
+            .automation(AutomationRole::Button, "添加评论");
+        let queue = queue(
+            &self.prefix,
+            &self.comments,
+            window,
+            cx,
             |v, comment, _, bounds, window, cx| {
                 let focus = window.focused(cx);
-                v.editor.update(cx, |editor, cx| editor.open_at(EditorRequest {
-                    source: comment.source, editing: Some(comment.id), text: comment.comment, toolbar: false,
-                }, bounds, focus, window, cx));
-            }, |v, id, cx| { v.comments.retain(|comment| comment.id != id); cx.notify(); });
-        div().flex().flex_col().gap_4().child(trigger).child(queue).child(self.editor.clone())
+                v.editor.update(cx, |editor, cx| {
+                    editor.open_at(
+                        EditorRequest {
+                            source: comment.source,
+                            editing: Some(comment.id),
+                            text: comment.comment,
+                            toolbar: false,
+                        },
+                        bounds,
+                        focus,
+                        window,
+                        cx,
+                    )
+                });
+            },
+            |v, id, cx| {
+                v.comments.retain(|comment| comment.id != id);
+                cx.notify();
+            },
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(trigger)
+            .child(queue)
+            .child(self.editor.clone())
     }
 }

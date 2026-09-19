@@ -40,7 +40,9 @@ pub use conversation::{
     ConversationUpdate, DeliveryState, MessageDeliveries, MessageSplice, TranscriptLookup,
 };
 #[cfg(not(target_family = "wasm"))]
-pub use device::{AgentAvailability, Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains};
+pub use device::{
+    AgentAvailability, Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains,
+};
 #[cfg(not(target_family = "wasm"))]
 pub use drafts::{Draft, DraftAction, TEXT_ATTACHMENT_LIMIT};
 #[cfg(not(target_family = "wasm"))]

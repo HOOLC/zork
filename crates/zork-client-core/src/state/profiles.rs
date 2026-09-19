@@ -1,7 +1,7 @@
 //! Connection state and refresh policy shared by native and the in-memory Web
 //! adapter. Platforms supply execution/clock only, never business comparison.
 use super::{Observable, Subscription};
-use crate::api::{StationClient, ProfileInfo};
+use crate::api::{ProfileInfo, StationClient};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},

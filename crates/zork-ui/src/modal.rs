@@ -4,10 +4,11 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::CUE_UI,
 };
-use gpui::{
-    div, prelude::*, px, rgb, App, Context, FocusHandle, FontWeight, MouseButton, Window,
+use gpui::{div, prelude::*, px, rgb, App, Context, FocusHandle, FontWeight, MouseButton, Window};
+use std::{
+    cell::Cell,
+    rc::{Rc, Weak},
 };
-use std::{cell::Cell, rc::{Rc, Weak}};
 
 mod state;
 pub use state::ModalState;
@@ -25,7 +26,12 @@ impl FocusScope {
         let scopes = cx.default_global::<FocusScopes>();
         scopes.0.retain(|(_, active)| active.strong_count() > 0);
         scopes.0.push((focus.clone(), Rc::downgrade(&interactive)));
-        Self { focus, active: None, previous: None, interactive }
+        Self {
+            focus,
+            active: None,
+            previous: None,
+            interactive,
+        }
     }
     /// An explicit activation replaces the return target even when a close and
     /// another open arrive before the next render observes the closed state.
@@ -56,8 +62,11 @@ impl FocusScope {
             // A closing sibling must not take focus back from a newly opened
             // dialog or from an explicit source selected by the host.
             if self.focus.contains_focused(window, cx) {
-                if let Some(previous) = previous { window.focus(&previous, cx); }
-                else { window.blur(); }
+                if let Some(previous) = previous {
+                    window.focus(&previous, cx);
+                } else {
+                    window.blur();
+                }
             }
         }
         self.active = active;
@@ -71,14 +80,26 @@ impl gpui::Global for FocusScopes {}
 /// Retired dialog contents still paint, but window traversal skips their focus
 /// groups until they are opened again. Weak registrations retire with the view.
 pub(crate) fn advance_focus(backwards: bool, window: &mut Window, cx: &mut App) {
-    let scopes = cx.try_global::<FocusScopes>().map(|scopes| scopes.0.clone()).unwrap_or_default();
+    let scopes = cx
+        .try_global::<FocusScopes>()
+        .map(|scopes| scopes.0.clone())
+        .unwrap_or_default();
     let first = window.focused(cx);
     for _ in 0..256 {
-        if backwards { window.focus_prev(cx); } else { window.focus_next(cx); }
-        if !scopes.iter().any(|(focus, active)| active.upgrade().is_some_and(|active| !active.get()) && focus.contains_focused(window, cx)) {
+        if backwards {
+            window.focus_prev(cx);
+        } else {
+            window.focus_next(cx);
+        }
+        if !scopes.iter().any(|(focus, active)| {
+            active.upgrade().is_some_and(|active| !active.get())
+                && focus.contains_focused(window, cx)
+        }) {
             return;
         }
-        if window.focused(cx) == first { break; }
+        if window.focused(cx) == first {
+            break;
+        }
     }
     window.blur();
 }
@@ -375,16 +396,14 @@ pub(crate) fn panel_contents_with_title_action(
         .flex()
         .flex_col()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_key_down(
-            move |event: &gpui::KeyDownEvent, window, cx| {
-                if event.keystroke.key == "escape" {
-                    if dismissible {
-                        escape_close(window, cx);
-                    }
-                    cx.stop_propagation();
+        .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
+            if event.keystroke.key == "escape" {
+                if dismissible {
+                    escape_close(window, cx);
                 }
-            },
-        )
+                cx.stop_propagation();
+            }
+        })
         .child(clip_section(
             &clip,
             div()
@@ -472,18 +491,13 @@ pub(crate) fn panel_contents_with_title_action(
         .when_some(footer, |v, footer| {
             v.child(clip_section(
                 &clip,
-                div()
-                    .flex_shrink_0()
-                    .px(px(24.))
-                    .pt_5()
-                    .pb_6()
-                    .child(
-                        div()
-                            .id(format!("{id}-footer"))
-                            .w_full()
-                            .child(footer)
-                            .automation(AutomationRole::Status, "弹窗操作区"),
-                    ),
+                div().flex_shrink_0().px(px(24.)).pt_5().pb_6().child(
+                    div()
+                        .id(format!("{id}-footer"))
+                        .w_full()
+                        .child(footer)
+                        .automation(AutomationRole::Status, "弹窗操作区"),
+                ),
                 20.,
                 24.,
             ))
@@ -517,7 +531,15 @@ fn modal_surface<V: 'static>(
     close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     state.render(
-        id.into(), title.into(), title_action, body, footer, notice,
-        dismissible, window, cx, close,
+        id.into(),
+        title.into(),
+        title_action,
+        body,
+        footer,
+        notice,
+        dismissible,
+        window,
+        cx,
+        close,
     )
 }

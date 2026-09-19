@@ -368,8 +368,16 @@ impl PrimitiveStory {
                 .into(),
             )
         } else if story.family == "attachment" {
-            let text = cx.try_global::<crate::history_page::stories::StoryText>().map(|text| text.0.clone()).unwrap_or_else(|| crate::resources::Text(std::rc::Rc::new(str::to_owned)));
-            Some(cx.new(|cx| crate::attachment_viewer::stories::Story::thumbnail(&story.state, text, cx)).into())
+            let text = cx
+                .try_global::<crate::history_page::stories::StoryText>()
+                .map(|text| text.0.clone())
+                .unwrap_or_else(|| crate::resources::Text(std::rc::Rc::new(str::to_owned)));
+            Some(
+                cx.new(|cx| {
+                    crate::attachment_viewer::stories::Story::thumbnail(&story.state, text, cx)
+                })
+                .into(),
+            )
         } else if story.family == "comments" {
             Some(
                 cx.new(|cx| {

@@ -97,7 +97,11 @@ impl Render for Story {
         );
         let source = self.reader.read(cx).source();
         wb::column(12.)
-            .child(source.bind(button, "阅读全文", controls::ActionStyle::default()).automation(AutomationRole::Button, "阅读全文"))
+            .child(
+                source
+                    .bind(button, "阅读全文", controls::ActionStyle::default())
+                    .automation(AutomationRole::Button, "阅读全文"),
+            )
             .child(self.reader.clone())
             .child(self.editor.clone())
     }

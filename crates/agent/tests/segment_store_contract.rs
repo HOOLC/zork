@@ -4,11 +4,11 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use ulid::Ulid;
 use zork_agent::session::event_id::EventId;
 use zork_agent::session::events::{
-    EVENT_SCHEMA_VERSION, Input, Selection, SessionEvent, TurnOutcome,
+    Input, Selection, SessionEvent, TurnOutcome, EVENT_SCHEMA_VERSION,
 };
 use zork_agent::session::query::{FileSessionQuery, SessionQuery};
 use zork_agent::session::recovery::recover;
-use zork_agent::session::state::{STATE_SCHEMA_VERSION, snapshot_value};
+use zork_agent::session::state::{snapshot_value, STATE_SCHEMA_VERSION};
 use zork_agent::session::store::{EventEnvelope, SessionStore, StreamStore};
 use zork_agent::session::tools::ToolRegistry;
 
@@ -159,6 +159,7 @@ fn last_commit_read_returns_a_complete_normally_finished_commit() {
                     started_at_ms: 2,
                 },
                 SessionEvent::TurnFinished {
+                    reason: None,
                     turn_id: "turn-a".into(),
                     outcome: TurnOutcome::Finished,
                     outstanding: Vec::new(),

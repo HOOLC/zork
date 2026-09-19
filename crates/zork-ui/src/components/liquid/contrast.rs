@@ -208,12 +208,10 @@ mod tests {
                         if contour.contains(local) != inside {
                             // Flattening uses the renderer's 0.01px tolerance;
                             // classification can differ only at that boundary.
-                            assert!(
-                                [[-0.02, 0.], [0.02, 0.], [0., -0.02], [0., 0.02]]
-                                    .iter()
-                                    .any(|d| contour.contains([local[0] + d[0], local[1] + d[1]])
-                                        == inside)
-                            );
+                            assert!([[-0.02, 0.], [0.02, 0.], [0., -0.02], [0., 0.02]]
+                                .iter()
+                                .any(|d| contour.contains([local[0] + d[0], local[1] + d[1]])
+                                    == inside));
                         }
                     }
                 }

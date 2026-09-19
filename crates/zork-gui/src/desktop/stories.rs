@@ -4,8 +4,8 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::CUE_UI,
 };
-use gpui::{AnyView, Context, Window, div, prelude::*, px, rgb};
-use serde_json::{Value, json};
+use gpui::{div, prelude::*, px, rgb, AnyView, Context, Window};
+use serde_json::{json, Value};
 
 pub use zork_ui::stories::{PrimitiveStory, Story};
 fn click(id: &str) -> Value {
@@ -108,9 +108,15 @@ pub fn catalog() -> Vec<Story> {
         items.push(story);
     }
     for state in ["idle", "error"] {
-        let mut story = Story::new("data-settings", "清空本机数据", state,
-            "crates/zork-ui/src/settings/data.rs", "data-settings");
-        story.width = 640.; story.height = 640.;
+        let mut story = Story::new(
+            "data-settings",
+            "清空本机数据",
+            state,
+            "crates/zork-ui/src/settings/data.rs",
+            "data-settings",
+        );
+        story.width = 640.;
+        story.height = 640.;
         story.actions = vec![click("clear-client-data")];
         items.push(story);
     }
@@ -485,7 +491,11 @@ pub struct StoryHost {
 }
 impl StoryHost {
     pub fn inspect(&self, cx: &gpui::App) -> Value {
-        if let Ok(view) = self.inner.clone().downcast::<zork_ui::settings::data::DataSettings>() {
+        if let Ok(view) = self
+            .inner
+            .clone()
+            .downcast::<zork_ui::settings::data::DataSettings>()
+        {
             return view.read(cx).inspect();
         }
         if let Ok(view) = self
@@ -586,9 +596,21 @@ impl StoryHost {
                     )
                 })
                 .into(),
-            "data-settings" => cx.new(|cx| zork_ui::settings::data::DataSettings::new(
-                zork_ui::settings::data::Data { busy: false, error: (story.state == "error").then(|| "本机运行尚未结束，请稍后重试".into()) },
-                zork_ui::resources::Text(std::rc::Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())), cx)).into(),
+            "data-settings" => cx
+                .new(|cx| {
+                    zork_ui::settings::data::DataSettings::new(
+                        zork_ui::settings::data::Data {
+                            busy: false,
+                            error: (story.state == "error")
+                                .then(|| "本机运行尚未结束，请稍后重试".into()),
+                        },
+                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
+                            crate::i18n::Locale::ZhCn.text(key).into()
+                        })),
+                        cx,
+                    )
+                })
+                .into(),
             "browser" => cx
                 .new(|cx| {
                     zork_ui::browser_chrome::stories::Story::new(

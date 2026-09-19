@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use zork_agent::session::event_id::{EventId, EventIdError};
-use zork_agent::session::events::{EVENT_SCHEMA_VERSION, SessionEvent, TurnOutcome};
+use zork_agent::session::events::{SessionEvent, TurnOutcome, EVENT_SCHEMA_VERSION};
 use zork_agent::session::model::{
     ModelError, ModelGateway, ModelOutcome, ModelReleaseSuggestion, ModelRequest,
 };
@@ -325,6 +325,7 @@ fn write_finished_session(
             started_at_ms: 0,
         },
         SessionEvent::TurnFinished {
+            reason: None,
             turn_id,
             outcome: TurnOutcome::Finished,
             outstanding: Vec::new(),

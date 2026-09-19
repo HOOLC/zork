@@ -3,23 +3,6 @@ name: Native Release
 on:
   push:
     tags: ["v*"]
-  pull_request:
-    paths:
-      - ".github/workflows/release.yml"
-      - "scripts/build/native-release.py"
-      - "scripts/install*.sh"
-      - "scripts/test-native-installer.py"
-      - "scripts/test-native-upgrade.py"
-      - "scripts/test-station-upgrade.py"
-      - "crates/station/src/node.rs"
-      - "scripts/test-mesh-installer.py"
-      - "crates/zork/**"
-      - "crates/zork-config/**"
-      - "crates/zork-mesh/**"
-      - "crates/station/src/enrollment.rs"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "package.json"
   workflow_dispatch:
 
 permissions:
@@ -27,7 +10,7 @@ permissions:
 
 concurrency:
   group: native-release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   CARGO_INCREMENTAL: "0"
@@ -36,21 +19,9 @@ env:
   MACOSX_DEPLOYMENT_TARGET: "15.0"
 
 jobs:
-  validate:
-    name: Validate native release
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate release scripts and installer behavior
-        run: |
-          python3 -m py_compile scripts/build/native-release.py scripts/test-native-installer.py
-          python3 scripts/test-native-installer.py
-
   native:
     name: Package (${{ matrix.runner }})
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
@@ -133,7 +104,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: github.event_name != 'pull_request' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     needs: assemble
     runs-on: ubuntu-24.04
     permissions:

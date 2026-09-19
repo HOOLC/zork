@@ -3,11 +3,9 @@ use crate::{
     api::StationClient,
     state::{Observable, Subscription},
 };
-use std::{
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
 };
 pub use zork_client_types::resources::*;
 
@@ -466,10 +464,8 @@ mod tests {
             let (mut socket, _) = listener.accept().unwrap();
             let mut request = [0; 8192];
             let n = socket.read(&mut request).unwrap();
-            assert!(
-                String::from_utf8_lossy(&request[..n])
-                    .starts_with("GET /v1/node/resources/mcp/server ")
-            );
+            assert!(String::from_utf8_lossy(&request[..n])
+                .starts_with("GET /v1/node/resources/mcp/server "));
             ready.send(()).unwrap();
             wait.recv().unwrap();
             let body = serde_json::to_string(&ResourceDetails {

@@ -115,13 +115,18 @@ impl Browser {
         Ok((r.cdp.clone(), self.state.clone()))
     }
     pub fn tabs(&self, host: &str) -> Vec<Tab> {
-        self.all_tabs().into_iter().filter(|tab| tab.host == host).collect()
+        self.all_tabs()
+            .into_iter()
+            .filter(|tab| tab.host == host)
+            .collect()
     }
     pub fn all_tabs(&self) -> Vec<Tab> {
         let state = self.state.lock().unwrap();
-        if state.disconnected { return vec![]; }
+        if state.disconnected {
+            return vec![];
+        }
         let mut tabs: Vec<_> = state.tabs.values().map(|tab| tab.info.clone()).collect();
-        tabs.sort_by(|a,b| a.id.cmp(&b.id));
+        tabs.sort_by(|a, b| a.id.cmp(&b.id));
         tabs
     }
     pub fn frame(&self, host: &str, id: &str) -> Option<Frame> {

@@ -1,6 +1,6 @@
 use futures_util::StreamExt;
 use serde_json::json;
-use zork_gui::api::{StationClient, Role, TranscriptMessage};
+use zork_gui::api::{Role, StationClient, TranscriptMessage};
 #[test]
 #[ignore = "run scripts/test-client-mesh.py with isolated real node and Synch"]
 fn client_mesh() {

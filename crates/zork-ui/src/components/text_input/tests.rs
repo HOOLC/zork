@@ -565,14 +565,19 @@ mod keyboard {
                 let notifications = notifications.clone();
                 scx.observe(&scx.entity(), move |_, _, _| {
                     notifications.set(notifications.get() + 1);
-                }).detach();
+                })
+                .detach();
             });
         });
         for _ in 0..4 {
             e.app.advance_clock(std::time::Duration::from_millis(600));
             e.app.run_until_parked();
         }
-        assert_eq!(notifications.get(), 0, "an unfocused projection started a blink loop");
+        assert_eq!(
+            notifications.get(),
+            0,
+            "an unfocused projection started a blink loop"
+        );
         e.update(|v, window, cx| window.focus(&v.focus_handle(), cx));
         e.app.run_until_parked();
         notifications.set(0);
@@ -580,7 +585,10 @@ mod keyboard {
             e.app.advance_clock(std::time::Duration::from_millis(600));
             e.app.run_until_parked();
         }
-        assert!(notifications.get() > 0, "a focused editor must retain its blinking cursor");
+        assert!(
+            notifications.get() > 0,
+            "a focused editor must retain its blinking cursor"
+        );
         e.update(|_, window, _| window.blur());
         e.app.run_until_parked();
         notifications.set(0);
@@ -588,7 +596,11 @@ mod keyboard {
             e.app.advance_clock(std::time::Duration::from_millis(600));
             e.app.run_until_parked();
         }
-        assert_eq!(notifications.get(), 0, "blur did not cancel the cursor timer");
+        assert_eq!(
+            notifications.get(),
+            0,
+            "blur did not cancel the cursor timer"
+        );
     }
 
     #[test]

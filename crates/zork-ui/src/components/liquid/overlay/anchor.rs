@@ -119,8 +119,8 @@ impl MeasuredAnchor {
 mod tests {
     use super::MeasuredAnchor;
     use gpui::{
-        AppContext, Bounds, Context, Pixels, Render, TestAppContext, Window, canvas, div,
-        prelude::*, px, size,
+        canvas, div, prelude::*, px, size, AppContext, Bounds, Context, Pixels, Render,
+        TestAppContext, Window,
     };
     use std::{cell::Cell, rc::Rc};
 

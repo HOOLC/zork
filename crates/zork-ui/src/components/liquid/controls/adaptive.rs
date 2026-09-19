@@ -10,9 +10,14 @@ pub(super) fn fill_slot(
     height: f32,
     render: impl FnOnce(Size<Pixels>, &mut Window, &mut App) -> AnyElement + 'static,
 ) -> Stateful<Div> {
-    div().id(id.into()).w_full().h(px(height)).child(SizedContent {
-        render: Some(Box::new(render)), child: None,
-    })
+    div()
+        .id(id.into())
+        .w_full()
+        .h(px(height))
+        .child(SizedContent {
+            render: Some(Box::new(render)),
+            child: None,
+        })
 }
 struct SizedContent {
     render: Option<Box<dyn FnOnce(Size<Pixels>, &mut Window, &mut App) -> AnyElement>>,
@@ -20,25 +25,54 @@ struct SizedContent {
 }
 impl IntoElement for SizedContent {
     type Element = Self;
-    fn into_element(self) -> Self { self }
+    fn into_element(self) -> Self {
+        self
+    }
 }
 impl Element for SizedContent {
     type RequestLayoutState = ();
     type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> { None }
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
-    fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
         let mut style = Style::default();
         style.size = size(relative(1.).into(), relative(1.).into());
         (window.request_layout(style, [], cx), ())
     }
-    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let mut child = self.render.take().unwrap()(bounds.size, window, cx);
         child.layout_as_root(bounds.size.map(AvailableSpace::Definite), window, cx);
         child.prepaint_at(bounds.origin, window, cx);
         self.child = Some(child);
     }
-    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, _: Bounds<Pixels>, _: &mut (), _: &mut (), window: &mut Window, cx: &mut App) {
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         self.child.as_mut().unwrap().paint(window, cx);
     }
 }
@@ -73,10 +107,18 @@ pub fn adaptive_input(
     parent: u32,
 ) -> Field {
     let mut field = adaptive_action(id, "", ActionStyle::default(), parent);
-    field.root = field.root.take().map(|root| root
-        .h(px(crate::controls::FIELD_HEIGHT)).w_full()
-        .px_3().py(px(5.)).justify_start().items_start()
-        .line_height(px(20.)).text_size(px(13.)).font_weight(FontWeight::NORMAL).role(Role::TextInput));
+    field.root = field.root.take().map(|root| {
+        root.h(px(crate::controls::FIELD_HEIGHT))
+            .w_full()
+            .px_3()
+            .py(px(5.))
+            .justify_start()
+            .items_start()
+            .line_height(px(20.))
+            .text_size(px(13.))
+            .font_weight(FontWeight::NORMAL)
+            .role(Role::TextInput)
+    });
     field.input = Some((input.clone(), invalid));
     field
 }
@@ -101,7 +143,9 @@ pub fn adaptive_action(
                 .tab_stop(enabled)
                 .when(appearance.busy, |v| v.aria_description("正在处理"))
                 .a11y_synthetic_children(move |builder| {
-                    if !enabled { builder.parent_node().set_disabled(); }
+                    if !enabled {
+                        builder.parent_node().set_disabled();
+                    }
                 })
                 .h(px(CONTROL_HEIGHT))
                 .flex_shrink_0()
@@ -157,7 +201,10 @@ impl Action {
         self.editor_slot = Some(content.into_any_element());
         self
     }
-    pub(super) fn overlay(mut self, overlay: AnyElement) -> Self { self.overlays.push(overlay); self }
+    pub(super) fn overlay(mut self, overlay: AnyElement) -> Self {
+        self.overlays.push(overlay);
+        self
+    }
     pub fn opens_panel(mut self) -> Self {
         self.appearance.opens_panel = true;
         self
@@ -185,13 +232,19 @@ impl ParentElement for Action {
 }
 impl IntoElement for Action {
     type Element = Self;
-    fn into_element(self) -> Self { self }
+    fn into_element(self) -> Self {
+        self
+    }
 }
 impl Element for Action {
     type RequestLayoutState = LayoutId;
     type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> { Some(self.id.clone()) }
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+    fn id(&self) -> Option<ElementId> {
+        Some(self.id.clone())
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
     fn request_layout(
         &mut self,
         _: Option<&GlobalElementId>,
@@ -217,15 +270,37 @@ impl Element for Action {
             .when(enabled, |v| v.cursor_pointer())
             .when(!enabled, |v| v.cursor_default());
         if let Some((input, _)) = &self.input {
-            root = root.child(self.editor_slot.take().unwrap_or_else(|| input.clone().into_any_element()));
-        } else if !self.label.is_empty() || self.appearance.icon.is_some()
-            || self.appearance.image.is_some() || self.appearance.radio.is_some()
+            root = root.child(
+                self.editor_slot
+                    .take()
+                    .unwrap_or_else(|| input.clone().into_any_element()),
+            );
+        } else if !self.label.is_empty()
+            || self.appearance.icon.is_some()
+            || self.appearance.image.is_some()
+            || self.appearance.radio.is_some()
         {
-            root = root.child(self.clip.region(action_content(&self.id, self.label.clone(), CONTROL_HEIGHT, self.appearance), 0., 0.));
+            root = root.child(self.clip.region(
+                action_content(
+                    &self.id,
+                    self.label.clone(),
+                    CONTROL_HEIGHT,
+                    self.appearance,
+                ),
+                0.,
+                0.,
+            ));
         }
         let children = std::mem::take(&mut self.children);
-        if self.input.is_some() { root = root.children(children); }
-        else { root = root.children(children.into_iter().map(|child| self.clip.region(child, 0., 0.).into_any_element())); }
+        if self.input.is_some() {
+            root = root.children(children);
+        } else {
+            root = root.children(
+                children
+                    .into_iter()
+                    .map(|child| self.clip.region(child, 0., 0.).into_any_element()),
+            );
+        }
         root = root.children(std::mem::take(&mut self.overlays));
         let mut root = root.into_any_element();
         // GPUI binds state to the complete ancestor path during layout. Enter
@@ -235,7 +310,9 @@ impl Element for Action {
             if self.input.is_some() {
                 root.request_layout(window, cx)
             } else {
-                window.with_id(action_content_scope(&material_id), |window| root.request_layout(window, cx))
+                window.with_id(action_content_scope(&material_id), |window| {
+                    root.request_layout(window, cx)
+                })
             }
         });
         self.measured = Some(root);
@@ -257,23 +334,33 @@ impl Element for Action {
         };
         let mut material = if let Some((input, invalid)) = &self.input {
             input_content(
-                format!("adaptive-material-{:?}", self.id).into(), input,
-                bounds.size.width.as_f32().max(1.), bounds.size.height.as_f32().max(1.),
-                *invalid, self.parent, Some(content.into_any_element()), window, cx,
+                format!("adaptive-material-{:?}", self.id).into(),
+                input,
+                bounds.size.width.as_f32().max(1.),
+                bounds.size.height.as_f32().max(1.),
+                *invalid,
+                self.parent,
+                Some(content.into_any_element()),
+                window,
+                cx,
             )
-        } else { render_action_content(
-            format!("adaptive-material-{:?}", self.id).into(),
-            self.label.clone(),
-            bounds.size.width.as_f32().max(1.),
-            bounds.size.height.as_f32().max(1.),
-            self.appearance,
-            self.parent,
-            self.focus.as_ref().unwrap().clone(),
-            Some((content.into_any_element(), self.clip.clone())),
-            self.source.clone(),
-            window,
-            cx,
-        ) }.when_some(self.opacity, |material, opacity| material.opacity(opacity)).into_any_element();
+        } else {
+            render_action_content(
+                format!("adaptive-material-{:?}", self.id).into(),
+                self.label.clone(),
+                bounds.size.width.as_f32().max(1.),
+                bounds.size.height.as_f32().max(1.),
+                self.appearance,
+                self.parent,
+                self.focus.as_ref().unwrap().clone(),
+                Some((content.into_any_element(), self.clip.clone())),
+                self.source.clone(),
+                window,
+                cx,
+            )
+        }
+        .when_some(self.opacity, |material, opacity| material.opacity(opacity))
+        .into_any_element();
         material.layout_as_root(bounds.size.map(AvailableSpace::Definite), window, cx);
         material.prepaint_at(bounds.origin, window, cx);
         self.material = Some(material);
@@ -301,13 +388,19 @@ struct LaidOut {
 }
 impl IntoElement for LaidOut {
     type Element = Self;
-    fn into_element(self) -> Self { self }
+    fn into_element(self) -> Self {
+        self
+    }
 }
 impl Element for LaidOut {
     type RequestLayoutState = ();
     type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> { None }
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
     fn request_layout(
         &mut self,
         _: Option<&GlobalElementId>,
@@ -331,7 +424,11 @@ impl Element for LaidOut {
         // layout_bounds includes the current material's offset. Remove it to
         // recover the measured tree's original coordinates before relocating.
         let origin = window.layout_bounds(self.layout).origin - window.element_offset();
-        self.child.prepaint_at(point(bounds.left() - origin.x, bounds.top() - origin.y), window, cx);
+        self.child.prepaint_at(
+            point(bounds.left() - origin.x, bounds.top() - origin.y),
+            window,
+            cx,
+        );
     }
     fn paint(
         &mut self,
@@ -342,5 +439,7 @@ impl Element for LaidOut {
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) { self.child.paint(window, cx); }
+    ) {
+        self.child.paint(window, cx);
+    }
 }

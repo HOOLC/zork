@@ -1,8 +1,8 @@
 //! Native component gallery and offscreen story exporter; never packaged in Zork.app.
 use gpui::{
-    AppContext, Bounds, Context, Entity, HeadlessAppContext, Window, div, prelude::*, px, rgb, size,
+    div, prelude::*, px, rgb, size, AppContext, Bounds, Context, Entity, HeadlessAppContext, Window,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -10,7 +10,7 @@ use std::{
 };
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
+    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
     design::CUE_UI,
     desktop::stories::{self, Story, StoryHost},
 };

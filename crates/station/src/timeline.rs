@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde_json::{json, Value};
 
-use crate::db::{StationDb, SessionBindingRow};
+use crate::db::{SessionBindingRow, StationDb};
 
 pub fn load_page(
     db: &StationDb,

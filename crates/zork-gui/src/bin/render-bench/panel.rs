@@ -1,7 +1,7 @@
 //! Panel motion measured in the production conversation layout.
 use gpui::{
-    AppContext, Entity, HeadlessAppContext, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, PlatformInput, point, px, size,
+    point, px, size, AppContext, Entity, HeadlessAppContext, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, PlatformInput,
 };
 use serde_json::json;
 use std::{path::Path, sync::Arc, time::Duration};

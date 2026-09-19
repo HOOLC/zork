@@ -360,34 +360,65 @@ impl DesktopRoot {
             Err(error) => return div().child(error.to_string()),
         };
         let current = self.active_node_id.as_ref().and_then(|node| {
-            self.active.as_ref().and_then(|root| root.read(cx).navigation_selection().0.selected_session
-                .map(|session| (node.clone(), session)))
+            self.active.as_ref().and_then(|root| {
+                root.read(cx)
+                    .navigation_selection()
+                    .0
+                    .selected_session
+                    .map(|session| (node.clone(), session))
+            })
         });
         let data = NotificationData {
-            enabled: prefs.enabled, preview: prefs.preview, sound: prefs.sound,
-            current_muted: current.as_ref().map(|current| prefs.muted.contains(current)),
-            permission_label: locale.text(self.client_settings.notification_permission.label()).into(),
-            busy: self.client_settings.notification_busy, system_settings: cfg!(target_os = "macos"),
+            enabled: prefs.enabled,
+            preview: prefs.preview,
+            sound: prefs.sound,
+            current_muted: current
+                .as_ref()
+                .map(|current| prefs.muted.contains(current)),
+            permission_label: locale
+                .text(self.client_settings.notification_permission.label())
+                .into(),
+            busy: self.client_settings.notification_busy,
+            system_settings: cfg!(target_os = "macos"),
             error: self.client_settings.notification_error.clone(),
         };
-        zork_ui::settings::notifications(data, &self.notification_switch_focus, |key| locale.text(key).into(), cx,
+        zork_ui::settings::notifications(
+            data,
+            &self.notification_switch_focus,
+            |key| locale.text(key).into(),
+            cx,
             move |view, action, cx| match action {
-                Action::Enabled(on) => view.save_notification_preference(|prefs| prefs.enabled = on, cx),
-                Action::Preview(on) => view.save_notification_preference(|prefs| prefs.preview = on, cx),
-                Action::Sound(on) => view.save_notification_preference(|prefs| prefs.sound = on, cx),
+                Action::Enabled(on) => {
+                    view.save_notification_preference(|prefs| prefs.enabled = on, cx)
+                }
+                Action::Preview(on) => {
+                    view.save_notification_preference(|prefs| prefs.preview = on, cx)
+                }
+                Action::Sound(on) => {
+                    view.save_notification_preference(|prefs| prefs.sound = on, cx)
+                }
                 Action::Mute(on) => {
                     if let Some(current) = current.clone() {
-                        view.save_notification_preference(move |prefs| {
-                            if on { prefs.muted.insert(current.clone()); } else { prefs.muted.remove(&current); }
-                        }, cx);
+                        view.save_notification_preference(
+                            move |prefs| {
+                                if on {
+                                    prefs.muted.insert(current.clone());
+                                } else {
+                                    prefs.muted.remove(&current);
+                                }
+                            },
+                            cx,
+                        );
                     }
                 }
                 Action::RefreshPermission => view.refresh_notification_permission(cx),
                 Action::Test => view.test_notification(cx),
-                Action::SystemSettings => cx.open_url("x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
-            })
+                Action::SystemSettings => cx.open_url(
+                    "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+                ),
+            },
+        )
     }
-
 }
 
 fn destination(notice: &zork_client_core::notifications::Notice) -> super::navigation::Destination {

@@ -387,6 +387,8 @@ enum AgentEvent {
     TurnCancelRequested,
     TurnFinished {
         outcome: AgentTurnOutcome,
+        #[serde(default)]
+        reason: Option<String>,
     },
     StepStarted,
     StepCompleted {
@@ -532,10 +534,10 @@ impl AgentEvent {
             Self::ToolResult { result } => Some(AgentStatusEvent::ToolFinished {
                 tool_call_id: result.invocation_id,
             }),
-            Self::TurnFinished { outcome } => Some(match outcome {
+            Self::TurnFinished { outcome, reason } => Some(match outcome {
                 AgentTurnOutcome::Finished => AgentStatusEvent::Finished,
                 AgentTurnOutcome::Failed => AgentStatusEvent::Failed {
-                    reason: "turn failed".to_owned(),
+                    reason: reason.unwrap_or_else(|| "turn failed".to_owned()),
                 },
                 AgentTurnOutcome::Cancelled => AgentStatusEvent::Interrupted,
             }),

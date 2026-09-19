@@ -16,10 +16,7 @@
         "command": "adb -s <USB_SERIAL> tcpip 5555",
         "kind": "activation",
         "note": "执行后会自动检测，无需手动确认。",
-        "paragraphs": [
-          "把手机连到一台装有 ADB 的电脑，并在手机上允许 USB 调试。",
-          "在电脑上用 adb devices -l 找到这部手机的 USB 序列号，替换下方的 <USB_SERIAL> 后执行："
-        ],
+        "paragraphs": ["把手机连到一台装有 ADB 的电脑，并在手机上允许 USB 调试。", "在电脑上用 adb devices -l 找到这部手机的 USB 序列号，替换下方的 <USB_SERIAL> 后执行："],
         "title": "通过 USB 激活"
       },
       "empty_message": "等待 Station 连接",
@@ -281,9 +278,7 @@
       {
         "help": {
           "kind": "station",
-          "paragraphs": [
-            "MacBook Air 正在等待 Android 的调试授权。请解锁手机，在系统弹窗中点「允许」。"
-          ],
+          "paragraphs": ["MacBook Air 正在等待 Android 的调试授权。请解锁手机，在系统弹窗中点「允许」。"],
           "title": "在手机上允许调试"
         },
         "help_label": "查看提示",

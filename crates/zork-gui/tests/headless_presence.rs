@@ -590,7 +590,10 @@ fn main() -> anyhow::Result<()> {
     let surface = bounds("composer-surface")?;
     let editor = bounds("composer-input")?;
     let padding_y = (surface.y + editor.y) / 2.;
-    anyhow::ensure!(padding_y > surface.y && padding_y < editor.y, "composer has no top padding");
+    anyhow::ensure!(
+        padding_y > surface.y && padding_y < editor.y,
+        "composer has no top padding"
+    );
     for action in [
         json!({"type":"key","keystroke":"cmd-a"}),
         // Clicking top padding preserves both focus and the editor selection.

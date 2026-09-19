@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use crate::connections::ConnectionRuntime;
-use crate::db::{EnsureSession, StationDb, SessionRow};
+use crate::db::{EnsureSession, SessionRow, StationDb};
 use crate::inbound::InboundEvent;
 use crate::jobs::JobEvent;
 use crate::slack::BotSelf;
@@ -236,6 +236,7 @@ pub async fn handle_job_event(
     agent: &zork_agent::Agent,
     db: &StationDb,
     event: JobEvent,
+    sequence: u64,
 ) -> Result<()> {
     let binding = db
         .get_binding(&event.session_key)?
@@ -245,7 +246,10 @@ pub async fn handle_job_event(
         event.job_id, event.kind, event.event_kind, event.summary
     );
     let agent_id = crate::agent::ensure_binding_session(agent, db, &binding).await?;
-    crate::agent::append_mailbox(agent, &agent_id, &content).await
+    agent
+        .append_ordered_mailbox(agent_id, db.job_event_source()?, sequence, content, true)
+        .await?;
+    Ok(())
 }
 
 async fn append_to_agent_with_projection(

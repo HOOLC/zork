@@ -1,6 +1,6 @@
 //! Immutable local file submissions backed by the Station file tree.
-use super::*;
 use super::snapshots::Snapshot;
+use super::*;
 use serde::Serialize;
 use std::io::Read;
 
@@ -85,7 +85,9 @@ impl StationDb {
             )
             .optional()?;
         drop(conn);
-        snapshot.map(|snapshot| self.read_snapshot(&snapshot)).transpose()
+        snapshot
+            .map(|snapshot| self.read_snapshot(&snapshot))
+            .transpose()
     }
 
     pub fn register_artifact(

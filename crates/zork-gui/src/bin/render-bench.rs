@@ -1,12 +1,12 @@
 //! Deterministic headless scrolling with real GPUI layout, shaping and paint.
 use gpui::{
-    AppContext, HeadlessAppContext, Modifiers, PlatformInput, ScrollDelta, ScrollWheelEvent,
-    TouchPhase, point, px, size,
+    point, px, size, AppContext, HeadlessAppContext, Modifiers, PlatformInput, ScrollDelta,
+    ScrollWheelEvent, TouchPhase,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
+    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
     views::RootView,
 };
 
@@ -337,14 +337,34 @@ fn workload(history: bool, output: &std::path::Path) -> anyhow::Result<serde_jso
 
 fn main() -> anyhow::Result<()> {
     #[cfg(feature = "native-blur-bench")]
-    if std::env::args().nth(1).as_deref().is_some_and(|arg| matches!(arg, "--native-frame-calibration" | "--native-offscreen-calibration")) {
-        return native_frames::calibrate(&PathBuf::from(std::env::args().nth(2).ok_or_else(|| anyhow::anyhow!("missing calibration output"))?), std::env::args().nth(1).as_deref() == Some("--native-offscreen-calibration"));
+    if std::env::args().nth(1).as_deref().is_some_and(|arg| {
+        matches!(
+            arg,
+            "--native-frame-calibration" | "--native-offscreen-calibration"
+        )
+    }) {
+        return native_frames::calibrate(
+            &PathBuf::from(
+                std::env::args()
+                    .nth(2)
+                    .ok_or_else(|| anyhow::anyhow!("missing calibration output"))?,
+            ),
+            std::env::args().nth(1).as_deref() == Some("--native-offscreen-calibration"),
+        );
     }
     if std::env::args().nth(1).as_deref() == Some("--native-frames") {
         #[cfg(feature = "native-blur-bench")]
         return native_frames::run(
-            &PathBuf::from(std::env::args().nth(2).ok_or_else(|| anyhow::anyhow!("missing configuration"))?),
-            &PathBuf::from(std::env::args().nth(3).ok_or_else(|| anyhow::anyhow!("missing output directory"))?),
+            &PathBuf::from(
+                std::env::args()
+                    .nth(2)
+                    .ok_or_else(|| anyhow::anyhow!("missing configuration"))?,
+            ),
+            &PathBuf::from(
+                std::env::args()
+                    .nth(3)
+                    .ok_or_else(|| anyhow::anyhow!("missing output directory"))?,
+            ),
         );
         #[cfg(not(feature = "native-blur-bench"))]
         anyhow::bail!("--native-frames requires native-blur-bench");

@@ -147,9 +147,17 @@ pub fn slider<V: 'static>(
     let span = (length - 20.).max(1.);
     let bounds = Pose::rect(0., 0., width as f64, height as f64, 0.);
     let rail_pose = zork_liquid::recipes::slider_rail(bounds, scale.vertical);
-    let rail = surface(format!("{id}-rail"), rail_pose.r as f32, CUE_UI.palette.border, false)
-        .absolute().left(px(rail_pose.left() as f32)).top(px(rail_pose.top() as f32))
-        .w(px(rail_pose.w as f32)).h(px(rail_pose.h as f32));
+    let rail = surface(
+        format!("{id}-rail"),
+        rail_pose.r as f32,
+        CUE_UI.palette.border,
+        false,
+    )
+    .absolute()
+    .left(px(rail_pose.left() as f32))
+    .top(px(rail_pose.top() as f32))
+    .w(px(rail_pose.w as f32))
+    .h(px(rail_pose.h as f32));
     let mut layers = Vec::new();
     let mut presented = Vec::new();
     let handles: Vec<_> = (0..values.len())
@@ -174,7 +182,12 @@ pub fn slider<V: 'static>(
             values[i + 1] - scale.minimum_gap
         };
         let active = !disabled && state.active.get() == Some(i);
-        let target = zork_liquid::recipes::slider_target(bounds, scale.fraction(value) as f64, scale.vertical, active);
+        let target = zork_liquid::recipes::slider_target(
+            bounds,
+            scale.fraction(value) as f64,
+            scale.vertical,
+            active,
+        );
         let material_id = format!("{id}-material-{i}");
         layers.push(
             controls::with_control_surface(
@@ -288,10 +301,19 @@ pub fn slider<V: 'static>(
         presented.first().copied().unwrap_or(10.)
     };
     let high = presented.last().copied().unwrap_or(low);
-    let fill_pose = zork_liquid::recipes::slider_range(bounds, low as f64, high as f64, scale.vertical);
-    let fill = surface(format!("{id}-range"), fill_pose.r as f32, BRAND_ACCENT, false)
-        .absolute().left(px(fill_pose.left() as f32)).top(px(fill_pose.top() as f32))
-        .w(px(fill_pose.w as f32)).h(px(fill_pose.h as f32));
+    let fill_pose =
+        zork_liquid::recipes::slider_range(bounds, low as f64, high as f64, scale.vertical);
+    let fill = surface(
+        format!("{id}-range"),
+        fill_pose.r as f32,
+        BRAND_ACCENT,
+        false,
+    )
+    .absolute()
+    .left(px(fill_pose.left() as f32))
+    .top(px(fill_pose.top() as f32))
+    .w(px(fill_pose.w as f32))
+    .h(px(fill_pose.h as f32));
     track = track.child(rail).child(fill).children(layers);
     let down = state.clone();
     let down_callback = callback.clone();

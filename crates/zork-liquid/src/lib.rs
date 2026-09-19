@@ -6,13 +6,13 @@ mod contour;
 mod field;
 mod geometry;
 pub mod motion;
-mod physics;
 pub mod ownership;
+mod physics;
 pub mod recipes;
 pub mod scene;
 mod surface;
-mod travel;
 pub mod tokens;
+mod travel;
 
 pub use contour::{trace, trace_dense, Contour, ContourError};
 pub use geometry::{inset_radius, rounded_rectangle, row_inset, Cubic, Point, Pose};

@@ -21,7 +21,9 @@ pub(crate) fn fill_path(contour: &Contour) -> Option<Path<Pixels>> {
 }
 
 pub(crate) fn stroke_path(contour: &Contour, width: f32) -> Option<Path<Pixels>> {
-    Some(PathBuilder::build_path(zork_liquid::border::mesh(contour, width)?))
+    Some(PathBuilder::build_path(zork_liquid::border::mesh(
+        contour, width,
+    )?))
 }
 
 #[cfg(test)]

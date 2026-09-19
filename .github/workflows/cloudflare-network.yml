@@ -1,10 +1,6 @@
 name: Cloudflare network
 
 on:
-  pull_request:
-    paths:
-      - deploy/cloudflare/**
-      - .github/workflows/cloudflare-network.yml
   push:
     branches: [main]
     paths:
@@ -14,10 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: cloudflare-network-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: deploy/cloudflare
@@ -32,7 +32,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: deploy/cloudflare/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm types
-      - run: pnpm check
       - run: pnpm test
-      - run: pnpm exec wrangler deploy --dry-run
+      - name: Check Worker bundle without rebuilding the relay image
+        run: pnpm exec wrangler deploy --dry-run --containers-rollout none

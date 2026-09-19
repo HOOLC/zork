@@ -7,21 +7,21 @@ use std::time::Duration;
 use super::compression::SegmentCompressor;
 use super::context::summary_transcript;
 use super::deadline::DeadlineScheduler;
-use super::decision::{Decision, DecisionWorld, decide, handoff_document};
+use super::decision::{decide, handoff_document, Decision, DecisionWorld};
 use super::events::{
     DeadlineKind, Input, ProviderErrorRecord, Purpose, RuntimeFailure, Selection, SessionEvent,
     ToolInvocation, ToolOutcome, ToolResultData, Usage,
 };
-use super::executor::{CompletedTool, ToolExecutor, rejected_execution};
+use super::executor::{rejected_execution, CompletedTool, ToolExecutor};
 use super::model::{
     ModelError, ModelGateway, ModelOutcome, ModelReleaseSuggestion, ModelRequest,
     ModelStreamObserver, TOOL_INTERRUPTED_MESSAGE,
 };
 use super::ports::{CancelToolRequest, Clock, IdGenerator, ToolCancellation, ToolControl};
 use super::projection::provider_transcript;
-use super::state::{GenerationEntry, STATE_SCHEMA_VERSION, SessionState, snapshot_value};
+use super::state::{snapshot_value, GenerationEntry, SessionState, STATE_SCHEMA_VERSION};
 use super::store::{EventEnvelope, SessionStore, StoreError};
-use super::tools::{DynamicCall, ToolExecution, ToolRegistry, provider_call_definition};
+use super::tools::{provider_call_definition, DynamicCall, ToolExecution, ToolRegistry};
 
 pub type InputBudget = Arc<dyn Fn(&SessionState) -> Option<u64> + Send + Sync>;
 pub type MaxOutputTokens = Arc<dyn Fn(&SessionState) -> Option<u32> + Send + Sync>;
@@ -32,6 +32,10 @@ pub struct Configuration {
     pub revision: String,
     pub selection: Selection,
     pub system_prompt: Option<String>,
+    /// Host-owned instructions for confirming a text-only turn ending. None
+    /// preserves standalone natural completion; confirmation uses `end`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_turn_confirmation: Option<String>,
 }
 pub type ConfigurationSource =
     Arc<dyn Fn(&str) -> anyhow::Result<Option<Configuration>> + Send + Sync>;
@@ -391,6 +395,10 @@ impl SessionRunner {
                     if let Err(error) = self
                         .append(vec![SessionEvent::TurnFinished {
                             turn_id,
+                            reason: (outcome == super::events::TurnOutcome::Failed)
+                                .then(|| self.state.end_confirmation_failure())
+                                .flatten()
+                                .map(str::to_owned),
                             outcome,
                             outstanding,
                             finished_at_ms: self.dependencies.clock.now_ms(),
@@ -457,7 +465,11 @@ impl SessionRunner {
             if let Some(configuration) = source(&self.state.session_id)
                 .map_err(|error| infrastructure_failure("configuration.resolve", error))?
             {
-                if self.state.configuration_revision.as_deref() != Some(&configuration.revision) {
+                if self.state.configuration_revision.as_deref() != Some(&configuration.revision)
+                    || self.state.system_prompt != configuration.system_prompt
+                    || self.state.end_turn_confirmation != configuration.end_turn_confirmation
+                    || self.state.selection.as_ref() != Some(&configuration.selection)
+                {
                     self.append(vec![SessionEvent::ConfigurationChanged { configuration }])
                         .await?;
                 }
@@ -630,6 +642,16 @@ impl SessionRunner {
                 .collect()
         };
         if purpose == Purpose::Conversation {
+            if self
+                .state
+                .active_turn
+                .as_ref()
+                .is_some_and(|turn| turn.unconfirmed_end_attempts > 0)
+            {
+                if let Some(confirmation) = &self.state.end_turn_confirmation {
+                    notices.push(format!("[runtime.end_confirmation] {confirmation}"));
+                }
+            }
             if let Some(source) = self.dependencies.options.skill_catalog.clone().or_else(|| {
                 self.dependencies
                     .options
@@ -975,7 +997,8 @@ impl SessionRunner {
         // This response closes the active provider step in the same append.
         let outstanding = self.state.outstanding(&self.dependencies.tools);
         let has_outstanding = outstanding.iter().any(|item| item.kind != "provider_step");
-        if invocations.is_empty() && !has_outstanding {
+        if invocations.is_empty() && !has_outstanding && self.state.end_turn_confirmation.is_none()
+        {
             let turn = self.state.active_turn.as_ref().ok_or_else(|| {
                 invariant_failure("model.complete", "Completed step has no active turn")
             })?;
@@ -984,6 +1007,7 @@ impl SessionRunner {
             let finished = SessionEvent::TurnFinished {
                 turn_id: turn.turn_id.clone(),
                 outcome: super::events::TurnOutcome::Finished,
+                reason: None,
                 outstanding: Vec::new(),
                 finished_at_ms: completed_at_ms,
             };

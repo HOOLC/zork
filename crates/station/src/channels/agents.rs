@@ -188,34 +188,40 @@ pub(crate) async fn ensure_runtime(state: &AppState, id: &str) -> Result<String>
         .session_id
         .as_deref()
         .context("agent_runtime_missing")?;
-    if state.agent.service.contains(runtime) {
-        return Ok(runtime.into());
-    }
     let parts = key.split(':').collect::<Vec<_>>();
     ensure!(parts.len() == 3, "invalid_agent_runtime");
-    let session = state.db.ensure_session(crate::db::EnsureSession {
-        connection_id: "local_gui",
-        platform: "local_gui",
-        channel_id: parts[1],
-        root_thread_ts: parts[2],
-        channel_type: Some("agent_control"),
-        initiator_user_id: None,
-        initiator_message_ts: None,
-    })?;
-    let selection = crate::agent::SessionSelection {
-        profile_id: agent.profile_id.clone(),
-        model: agent.model.clone(),
-        thinking: agent.thinking.clone(),
-    };
-    crate::agent::ensure_allocated_session(
-        &state.agent,
-        &state.db,
-        &crate::db::SessionBindingRow::Normal(session),
-        runtime,
-        &selection,
-        &crate::node::agent_prompt(&agent),
-    )
-    .await?;
+    if !state.agent.service.contains(runtime) {
+        let session = state.db.ensure_session(crate::db::EnsureSession {
+            connection_id: "local_gui",
+            platform: "local_gui",
+            channel_id: parts[1],
+            root_thread_ts: parts[2],
+            channel_type: Some("agent_control"),
+            initiator_user_id: None,
+            initiator_message_ts: None,
+        })?;
+        let selection = crate::agent::SessionSelection {
+            profile_id: agent.profile_id.clone(),
+            model: agent.model.clone(),
+            thinking: agent.thinking.clone(),
+        };
+        crate::agent::ensure_allocated_session(
+            &state.agent,
+            &state.db,
+            &crate::db::SessionBindingRow::Normal(session),
+            runtime,
+            &selection,
+            &crate::node::agent_prompt(&agent),
+        )
+        .await?;
+    }
+    // Receiving can activate an Agent without opening its execution history.
+    // Subscribe before accepting input, while keeping the control Session out
+    // of the public Chat catalog.
+    state
+        .status_projection
+        .ensure(key, runtime, "local_gui", parts[1], parts[2])
+        .await;
     Ok(runtime.into())
 }
 

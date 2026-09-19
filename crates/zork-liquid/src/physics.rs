@@ -289,10 +289,15 @@ impl Body {
     }
     fn translate(&mut self, offset: Point) {
         for i in 0..2 {
-            self.channels[i].position += offset[i]; self.channels[i].target += offset[i]; self.start[i] += offset[i];
+            self.channels[i].position += offset[i];
+            self.channels[i].target += offset[i];
+            self.start[i] += offset[i];
         }
-        self.goal.cx += offset[0]; self.goal.cy += offset[1];
-        if let Some(travel) = &mut self.travel { travel.translate(offset); }
+        self.goal.cx += offset[0];
+        self.goal.cy += offset[1];
+        if let Some(travel) = &mut self.travel {
+            travel.translate(offset);
+        }
     }
     fn set_anchor(&mut self, anchor: Point, m: Material) {
         let p = self.pose();
@@ -346,7 +351,9 @@ impl Body {
             self.channels[i].target += self.drift[i] * dt;
         }
         for (i, c) in self.channels.iter_mut().enumerate() {
-            if i < 2 && self.travel.is_some() { continue; }
+            if i < 2 && self.travel.is_some() {
+                continue;
+            }
             let frequency = omega * rates[i];
             let base = if i < 2 {
                 m.position_damping
@@ -406,9 +413,11 @@ impl Body {
             travel.step(dt);
             for i in 0..2 {
                 self.channels[i].position = travel.position[i]
-                    - self.tether[i].position - (0.5 - self.anchor[i]) * self.channels[i + 2].position;
+                    - self.tether[i].position
+                    - (0.5 - self.anchor[i]) * self.channels[i + 2].position;
                 self.channels[i].velocity = travel.velocity[i]
-                    - self.tether[i].velocity - (0.5 - self.anchor[i]) * self.channels[i + 2].velocity;
+                    - self.tether[i].velocity
+                    - (0.5 - self.anchor[i]) * self.channels[i + 2].velocity;
             }
         }
         let p = self.pose();
@@ -430,30 +439,40 @@ impl Body {
             || length(self.drift) > 0.001
     }
     fn remaining_motion(&self, m: Material) -> f64 {
-        if self.drift != [0., 0.] { return f64::INFINITY; }
+        if self.drift != [0., 0.] {
+            return f64::INFINITY;
+        }
         // Bound both displacement and momentum in the same spatial units.
         // A spring crossing its target at speed is not at rest.
-        let frequency = self.omega * self.speed * m.tension.sqrt() * m.response
-            * (0.72 * m.size_rate).min(1.);
+        let frequency =
+            self.omega * self.speed * m.tension.sqrt() * m.response * (0.72 * m.size_rate).min(1.);
         let goal = self.goal;
         let targets = [
             goal.cx + (self.anchor[0] - 0.5) * goal.w,
             goal.cy + (self.anchor[1] - 0.5) * goal.h,
-            goal.w, goal.h, goal.r,
+            goal.w,
+            goal.h,
+            goal.r,
         ];
-        let remaining = std::array::from_fn::<_, 5, _>(|i|
+        let remaining = std::array::from_fn::<_, 5, _>(|i| {
             (self.channels[i].position - targets[i]).abs()
-                + self.channels[i].velocity.abs() / frequency);
-        let edge = (0..2).map(|i| {
-            remaining[i] + self.anchor[i].max(1. - self.anchor[i]) * remaining[i + 2]
-                + self.tether[i].position.abs() + self.tether[i].velocity.abs() / frequency
-        }).fold(remaining[4], f64::max);
-        let rounded = m.rebound_limit.unwrap_or(goal.short() * 0.5)
-            * self.round_mix.abs();
+                + self.channels[i].velocity.abs() / frequency
+        });
+        let edge = (0..2)
+            .map(|i| {
+                remaining[i]
+                    + self.anchor[i].max(1. - self.anchor[i]) * remaining[i + 2]
+                    + self.tether[i].position.abs()
+                    + self.tether[i].velocity.abs() / frequency
+            })
+            .fold(remaining[4], f64::max);
+        let rounded = m.rebound_limit.unwrap_or(goal.short() * 0.5) * self.round_mix.abs();
         edge + rounded
     }
     fn finish(&mut self) {
-        if let Some(travel) = &mut self.travel { travel.finish(); }
+        if let Some(travel) = &mut self.travel {
+            travel.finish();
+        }
         self.locality.target = (1. - 2. * self.anchor[0])
             .abs()
             .max((1. - 2. * self.anchor[1]).abs());
@@ -1059,13 +1078,31 @@ impl Simulation {
     /// coordinate origin, preserving deformation, velocity and remaining motion.
     pub fn translate(&mut self, offset: Point) {
         assert!(offset.iter().all(|value| value.is_finite()));
-        if offset == [0., 0.] { return; }
-        for group in &mut self.groups { group.body.translate(offset); group.refresh(self.material); }
-        let shift = |pose: &mut Pose| { pose.cx += offset[0]; pose.cy += offset[1]; };
+        if offset == [0., 0.] {
+            return;
+        }
+        for group in &mut self.groups {
+            group.body.translate(offset);
+            group.refresh(self.material);
+        }
+        let shift = |pose: &mut Pose| {
+            pose.cx += offset[0];
+            pose.cy += offset[1];
+        };
         match &mut self.mode {
-            Mode::Pair { source, target, .. } => { shift(source); shift(target); },
-            Mode::Split { closed, targets, .. } => { shift(closed); for target in targets { shift(target); } },
-            Mode::Single | Mode::Compound => {},
+            Mode::Pair { source, target, .. } => {
+                shift(source);
+                shift(target);
+            }
+            Mode::Split {
+                closed, targets, ..
+            } => {
+                shift(closed);
+                for target in targets {
+                    shift(target);
+                }
+            }
+            Mode::Single | Mode::Compound => {}
         }
         self.revision += 1;
     }
@@ -1186,11 +1223,14 @@ impl Simulation {
         let stiffness = 105. + 1000. * self.material.recovery;
         let drag = (6. + 61. * self.material.recovery.sqrt()) * self.material.damping;
         let particle_frequency = stiffness.sqrt().min(stiffness / drag);
-        !self.dirty && self.groups.iter().all(|g| {
-            !g.needs_step && g.body.remaining_motion(self.material)
-                + self.material.surface_detail * (g.max_error + g.max_speed / particle_frequency)
-                <= RESIDUAL
-        })
+        !self.dirty
+            && self.groups.iter().all(|g| {
+                !g.needs_step
+                    && g.body.remaining_motion(self.material)
+                        + self.material.surface_detail
+                            * (g.max_error + g.max_speed / particle_frequency)
+                        <= RESIDUAL
+            })
     }
     pub fn set_target(&mut self, p: Pose) {
         self.set_target_with_speed(p, 1.);
@@ -1209,7 +1249,10 @@ impl Simulation {
         self.set_target(target);
         let i = self.body_index();
         self.groups[i].body.travel = Some(crate::travel::Travel::new(
-            [before.cx, before.cy], [before.vx, before.vy], [target.cx, target.cy]));
+            [before.cx, before.cy],
+            [before.vx, before.vy],
+            [target.cx, target.cy],
+        ));
     }
     pub fn layout_pair(&mut self, source: Pose, target: Pose) {
         assert!(source.is_valid() && target.is_valid());
@@ -1229,7 +1272,9 @@ impl Simulation {
         };
         self.groups[0].body.target(source, 1., self.material);
         self.groups[0].refresh(self.material);
-        if delta != [0., 0.] { self.revision += 1; }
+        if delta != [0., 0.] {
+            self.revision += 1;
+        }
         self.set_target(if open { target } else { source });
     }
     pub fn set_open(&mut self, value: bool) {
@@ -1406,7 +1451,9 @@ impl Simulation {
         for _ in 0..steps {
             if self.moving() {
                 self.tick();
-                if self.presentation_settled() { self.finish(); }
+                if self.presentation_settled() {
+                    self.finish();
+                }
             }
         }
         steps

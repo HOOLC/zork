@@ -123,7 +123,10 @@ impl AgentRuntime {
         Self::prepare(&options.data_root)?.start(options)
     }
 
-    fn start_with_store(mut options: AgentOptions, store: Arc<StreamStore>) -> anyhow::Result<Self> {
+    fn start_with_store(
+        mut options: AgentOptions,
+        store: Arc<StreamStore>,
+    ) -> anyhow::Result<Self> {
         let root = options.data_root.clone();
         let sources = options.skill_sources.unwrap_or_else(|| {
             Arc::new(move |_| {

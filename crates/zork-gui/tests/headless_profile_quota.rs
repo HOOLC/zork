@@ -119,8 +119,12 @@ fn main() -> anyhow::Result<()> {
                     .find(|e| e.id == "profile-detail-dialog-close")
                     .expect("detail close button");
                 if !(close.visible && close.enabled && close.bounds == close.visible_bounds) {
-                    cx.capture_screenshot(window.into())?.save(output.join(format!("detail-close-clipped-{width}.png")))?;
-                    std::fs::write(output.join(format!("detail-close-clipped-{width}.json")), serde_json::to_vec_pretty(&snapshot)?)?;
+                    cx.capture_screenshot(window.into())?
+                        .save(output.join(format!("detail-close-clipped-{width}.png")))?;
+                    std::fs::write(
+                        output.join(format!("detail-close-clipped-{width}.json")),
+                        serde_json::to_vec_pretty(&snapshot)?,
+                    )?;
                 }
                 anyhow::ensure!(
                     close.visible && close.enabled && close.bounds == close.visible_bounds,

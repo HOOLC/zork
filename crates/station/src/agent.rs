@@ -1,4 +1,4 @@
-use crate::db::{StationDb, ProactiveBindingRow, SessionBindingRow, SessionRow};
+use crate::db::{ProactiveBindingRow, SessionBindingRow, SessionRow, StationDb};
 use anyhow::{Context, Result};
 use axum::http::StatusCode;
 #[cfg(test)]
@@ -12,6 +12,7 @@ use zork_agent_api::{
 };
 
 const IM_SYSTEM_PROMPT: &str = include_str!("../prompts/im-thread-base-instructions.md");
+pub(crate) const END_TURN_CONFIRMATION: &str = "Your last response contained no tool calls. Assistant text stays in Session history; it was not sent to Chat. If work remains, continue executing it. If this was an intended reply, progress update, result or blocker, deliberately publish it with chat.post_message or chat.post_file to the appropriate Chat and check the result. Do not republish a message already committed, or automatically retry an uncertain send. If no further work or publication is needed now (including an intentionally silent notification), call end to confirm. Do not merely promise to continue in assistant text.";
 const SLACK_PROACTIVE_SYSTEM_PROMPT: &str =
     include_str!("../prompts/slack-proactive-base-instructions.md");
 pub fn system_prompt_for_binding(binding: &SessionBindingRow) -> &'static str {

@@ -311,9 +311,7 @@
         "end": 1800000510000,
         "grouped": false,
         "id": "0000000000000000",
-        "members": [
-          "0000000000000000"
-        ],
+        "members": ["0000000000000000"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -325,10 +323,7 @@
         "end": 1800000517010,
         "grouped": true,
         "id": "tool:tool-1",
-        "members": [
-          "tool:tool-1",
-          "tool:tool-2"
-        ],
+        "members": ["tool:tool-1", "tool:tool-2"],
         "queries": 0,
         "read": 1,
         "shell": 1,
@@ -340,9 +335,7 @@
         "end": 1800000525010,
         "grouped": false,
         "id": "tool:tool-3",
-        "members": [
-          "tool:tool-3"
-        ],
+        "members": ["tool:tool-3"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -354,9 +347,7 @@
         "end": 1800000555010,
         "grouped": false,
         "id": "tool:tool-4",
-        "members": [
-          "tool:tool-4"
-        ],
+        "members": ["tool:tool-4"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -368,9 +359,7 @@
         "end": 1800000555000,
         "grouped": false,
         "id": "0000000000000064",
-        "members": [
-          "0000000000000064"
-        ],
+        "members": ["0000000000000064"],
         "queries": 0,
         "read": 0,
         "shell": 0,
@@ -382,9 +371,7 @@
         "end": 1800000575010,
         "grouped": false,
         "id": "tool:tool-5",
-        "members": [
-          "tool:tool-5"
-        ],
+        "members": ["tool:tool-5"],
         "queries": 0,
         "read": 0,
         "shell": 0,

@@ -1,5 +1,5 @@
 //! Native presentation over the same disconnected desktop fixtures as headless.
-use gpui::{AnyWindowHandle, Bounds, WindowAppearance, prelude::*, px, size};
+use gpui::{prelude::*, px, size, AnyWindowHandle, Bounds, WindowAppearance};
 use std::{
     cell::{Cell, RefCell},
     path::Path,
@@ -9,7 +9,7 @@ use std::{
 };
 use zork_gui::{
     assets::EmbeddedAssets,
-    automation::{AutomationRoot, HeadlessAutomation, protocol::UserAction},
+    automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
     views::RootView,
 };
 

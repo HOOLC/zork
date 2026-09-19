@@ -526,7 +526,7 @@ pub mod stories;
 
 #[cfg(test)]
 mod tests {
-    use super::{Text, relative_time};
+    use super::{relative_time, Text};
     #[test]
     fn relative_time_handles_unknown_future_and_unit_boundaries() {
         let text = Text(std::rc::Rc::new(|key| format!("{key}:{{count}}")));

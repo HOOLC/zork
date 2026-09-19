@@ -2,13 +2,13 @@ use std::{sync::Arc, time::Duration};
 
 use futures_util::StreamExt;
 use reqwest::StatusCode;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tempfile::TempDir;
 use zork_agent::session::events::{Selection, SessionEvent, TurnOutcome};
 use zork_agent::session::service::{LiveSessionEvent, ServiceOptions};
 use zork_agent_api::{
-    DURABLE_EVENT_NAME, DurableEvent, EventQuery, SessionSnapshot, TEXT_DELTA_EVENT_NAME,
-    TextDeltaEvent,
+    DurableEvent, EventQuery, SessionSnapshot, TextDeltaEvent, DURABLE_EVENT_NAME,
+    TEXT_DELTA_EVENT_NAME,
 };
 use zork_agent_testkit::{PendingHttpRequest, RealAgent, TestWorld};
 
@@ -244,11 +244,9 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
         json!({"ok": false, "error": "not_probed"})
     );
     assert_eq!(public_profile["models"], profile["models"]);
-    assert!(
-        !public_profile
-            .to_string()
-            .contains("secret-that-must-not-be-returned")
-    );
+    assert!(!public_profile
+        .to_string()
+        .contains("secret-that-must-not-be-returned"));
 
     let unknown_session_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
     let unknown_selection = json!({
@@ -621,18 +619,16 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
     .await
     .expect("SSE delivered transient and durable events");
     assert_eq!(observed.first().unwrap().event, "snapshot");
-    assert!(
-        observed
-            .iter()
-            .filter(|frame| frame.event == "event")
-            .all(|frame| {
-                frame.id.as_ref().is_some_and(|id| {
-                    id.len() == 16
-                        && id.bytes().all(|byte| byte.is_ascii_digit())
-                        && frame.data["event_id"] == *id
-                })
+    assert!(observed
+        .iter()
+        .filter(|frame| frame.event == "event")
+        .all(|frame| {
+            frame.id.as_ref().is_some_and(|id| {
+                id.len() == 16
+                    && id.bytes().all(|byte| byte.is_ascii_digit())
+                    && frame.data["event_id"] == *id
             })
-    );
+        }));
     for frame in &observed {
         match frame.event.as_str() {
             DURABLE_EVENT_NAME => {
@@ -664,12 +660,10 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
     assert_eq!(initial.event, "snapshot");
     let snapshot: SessionSnapshot = serde_json::from_value(initial.data).unwrap();
     assert_eq!(snapshot.session_id, stream_session_id);
-    assert!(
-        snapshot
-            .cursor
-            .as_deref()
-            .is_some_and(|id| id >= reconnect_cursor.as_str())
-    );
+    assert!(snapshot
+        .cursor
+        .as_deref()
+        .is_some_and(|id| id >= reconnect_cursor.as_str()));
     assert_eq!(snapshot.aggregates.run_count, 1);
     assert_eq!(snapshot.aggregates.usage.reported_steps, 1);
 
@@ -739,16 +733,12 @@ async fn real_http_lifecycle_covers_profiles_sessions_messages_sse_and_auth() {
         contains_event_text(frames, "secondary isolated input") && contains_turn_finished(frames)
     })
     .await;
-    assert!(
-        primary_frames
-            .iter()
-            .all(|frame| !frame.data.to_string().contains("secondary isolated input"))
-    );
-    assert!(
-        secondary_frames
-            .iter()
-            .all(|frame| !frame.data.to_string().contains("primary isolated input"))
-    );
+    assert!(primary_frames
+        .iter()
+        .all(|frame| !frame.data.to_string().contains("secondary isolated input")));
+    assert!(secondary_frames
+        .iter()
+        .all(|frame| !frame.data.to_string().contains("primary isolated input")));
     reconnect_pump.abort();
     isolated_pump.abort();
 
@@ -990,12 +980,10 @@ async fn snapshot_reports_runtime_and_usage_while_history_is_details_only() {
     assert_eq!(before.data["runtime"]["context_limit"], 256000);
     assert!(before.data["runtime"]["context_tokens"].is_null());
     assert_eq!(before.data["runtime"]["profile"]["profile_id"], "fixture");
-    assert!(
-        !before
-            .data
-            .to_string()
-            .contains("secret-that-must-not-be-returned")
-    );
+    assert!(!before
+        .data
+        .to_string()
+        .contains("secret-that-must-not-be-returned"));
     send_mail(&agent, id, "Report actual usage").await;
     agent
         .request()

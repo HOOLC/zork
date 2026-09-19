@@ -23,7 +23,9 @@ pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
-pub use zork_liquid::tokens::{BUTTON_RADIUS, FIELD_RADIUS, CARD_RADIUS, COMPACT_CARD_RADIUS, ICON_BUTTON_RADIUS};
+pub use zork_liquid::tokens::{
+    BUTTON_RADIUS, CARD_RADIUS, COMPACT_CARD_RADIUS, FIELD_RADIUS, ICON_BUTTON_RADIUS,
+};
 pub const BUTTON_PADDING_X: f32 = 16.;
 pub const MODAL_RADIUS: f32 = CARD_RADIUS;
 pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
@@ -87,13 +89,19 @@ pub fn action_link(
         .when(!enabled, |v| v.cursor_default())
         .child(text.into())
 }
-pub fn page_action(
-    id: impl Into<gpui::ElementId>,
-    text: impl Into<gpui::SharedString>,
-) -> Action {
-    adaptive_action(id, text, ActionStyle {
-        icon: Some("icons/plus.svg"), icon_only: Some(false), ..Default::default()
-    }, CUE_UI.palette.canvas).h(px(BUTTON_HEIGHT)).text_size(px(11.))
+pub fn page_action(id: impl Into<gpui::ElementId>, text: impl Into<gpui::SharedString>) -> Action {
+    adaptive_action(
+        id,
+        text,
+        ActionStyle {
+            icon: Some("icons/plus.svg"),
+            icon_only: Some(false),
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
+    .h(px(BUTTON_HEIGHT))
+    .text_size(px(11.))
 }
 
 pub fn heading(
@@ -141,9 +149,9 @@ pub fn section() -> Div {
         .border_t(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(CUE_UI.palette.border))
 }
+use crate::components::liquid::controls::adaptive_action;
 /// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
 pub use crate::components::liquid::controls::{Action, ActionStyle};
-use crate::components::liquid::controls::adaptive_action;
 
 pub fn button(
     id: impl Into<gpui::ElementId>,
@@ -151,7 +159,17 @@ pub fn button(
     primary: bool,
     enabled: bool,
 ) -> Action {
-    adaptive_action(id, text, ActionStyle { primary, icon_only: Some(false), disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
+    adaptive_action(
+        id,
+        text,
+        ActionStyle {
+            primary,
+            icon_only: Some(false),
+            disabled: !enabled,
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
 }
 
 /// A pending request stays scoped to the action that started it.
@@ -162,7 +180,18 @@ pub fn busy_button(
     enabled: bool,
     busy: bool,
 ) -> Action {
-    adaptive_action(id, text, ActionStyle { primary, icon_only: Some(false), disabled: !enabled && !busy, busy, ..Default::default() }, CUE_UI.palette.canvas)
+    adaptive_action(
+        id,
+        text,
+        ActionStyle {
+            primary,
+            icon_only: Some(false),
+            disabled: !enabled && !busy,
+            busy,
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
 }
 /// Standard and compact actions share their outline with the feedback layer.
 #[derive(Clone, Copy)]
@@ -196,10 +225,19 @@ pub fn icon_button_sized(
     enabled: bool,
     size: IconButtonSize,
 ) -> Action {
-    adaptive_action(id, "", ActionStyle { icon_only: Some(true), disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
-        .size(px(size.extent()))
-        .gap_0()
-        .px_0()
+    adaptive_action(
+        id,
+        "",
+        ActionStyle {
+            icon_only: Some(true),
+            disabled: !enabled,
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
+    .size(px(size.extent()))
+    .gap_0()
+    .px_0()
 }
 /// Compact text actions use the same adaptive action material.
 pub fn quiet_button(
@@ -208,11 +246,20 @@ pub fn quiet_button(
     enabled: bool,
     size: IconButtonSize,
 ) -> Action {
-    adaptive_action(id, text, ActionStyle { quiet: true, disabled: !enabled, ..Default::default() }, CUE_UI.palette.canvas)
-        .h(px(size.extent()))
-        .w_auto()
-        .px_2()
-        .gap_1()
+    adaptive_action(
+        id,
+        text,
+        ActionStyle {
+            quiet: true,
+            disabled: !enabled,
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
+    .h(px(size.extent()))
+    .w_auto()
+    .px_2()
+    .gap_1()
 }
 pub fn choice(
     id: impl Into<gpui::ElementId>,
@@ -221,11 +268,27 @@ pub fn choice(
     enabled: bool,
 ) -> Action {
     use crate::components::liquid::controls::ButtonVariant;
-    adaptive_action(id, text, ActionStyle {
-        selected, disabled: !enabled, icon_only: Some(false),
-        variant: Some(if selected { ButtonVariant::Soft } else { ButtonVariant::Outline }),
-        ..Default::default()
-    }, CUE_UI.palette.canvas).aria_toggled(if selected { gpui::Toggled::True } else { gpui::Toggled::False })
+    adaptive_action(
+        id,
+        text,
+        ActionStyle {
+            selected,
+            disabled: !enabled,
+            icon_only: Some(false),
+            variant: Some(if selected {
+                ButtonVariant::Soft
+            } else {
+                ButtonVariant::Outline
+            }),
+            ..Default::default()
+        },
+        CUE_UI.palette.canvas,
+    )
+    .aria_toggled(if selected {
+        gpui::Toggled::True
+    } else {
+        gpui::Toggled::False
+    })
 }
 pub fn field(
     id: impl Into<gpui::ElementId>,
@@ -394,30 +457,68 @@ pub fn dropdown_with_icons<V: 'static>(
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
-    use crate::components::liquid::{overlay::{Choice, Placement, Popover, Selection, Trigger}, Material};
+    use crate::components::liquid::{
+        overlay::{Choice, Placement, Popover, Selection, Trigger},
+        Material,
+    };
     use std::{cell::RefCell, rc::Rc};
     let id = id.into();
-    let state = window.use_keyed_state(format!("{id}-popover"), cx, |_, cx| {
-        Rc::new(RefCell::new(Popover::new(cx)))
-    }).read(cx).clone();
+    let state = window
+        .use_keyed_state(format!("{id}-popover"), cx, |_, cx| {
+            Rc::new(RefCell::new(Popover::new(cx)))
+        })
+        .read(cx)
+        .clone();
     let measured = window.use_keyed_state(format!("{id}-width"), cx, |_, _| 0f32);
     let width = *measured.read(cx);
-    let choices = options.into_iter().map(|(id, label, checked)| Choice {
-        id, label: label.into(), checked: Some(checked), disabled: !enabled,
-    }).collect();
+    let choices = options
+        .into_iter()
+        .map(|(id, label, checked)| Choice {
+            id,
+            label: label.into(),
+            checked: Some(checked),
+            disabled: !enabled,
+        })
+        .collect();
     let popover = state.borrow_mut().render_with_icons(
-        id, label, choices, Selection::Single, Trigger::Field, open, enabled,
-        Placement::Window { width: width.max(32.) }, Material::default(), leading, option_icons,
-        window, cx, move |v, open, _, cx| set_open(v, open, cx),
+        id,
+        label,
+        choices,
+        Selection::Single,
+        Trigger::Field,
+        open,
+        enabled,
+        Placement::Window {
+            width: width.max(32.),
+        },
+        Material::default(),
+        leading,
+        option_icons,
+        window,
+        cx,
+        move |v, open, _, cx| set_open(v, open, cx),
         move |v, index, _, cx| choose(v, index, cx),
     );
-    div().relative().w_full().h(px(DROPDOWN_HEIGHT))
-        .child(gpui::canvas(move |bounds, _, cx| {
-            measured.update(cx, |width, cx| {
-                let next = bounds.size.width.as_f32();
-                if (*width - next).abs() > 0.1 { *width = next; cx.notify(); }
-            });
-        }, |_, _, _, _| {}).absolute().size_full())
+    div()
+        .relative()
+        .w_full()
+        .h(px(DROPDOWN_HEIGHT))
+        .child(
+            gpui::canvas(
+                move |bounds, _, cx| {
+                    measured.update(cx, |width, cx| {
+                        let next = bounds.size.width.as_f32();
+                        if (*width - next).abs() > 0.1 {
+                            *width = next;
+                            cx.notify();
+                        }
+                    });
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
         .child(popover)
         .into_any_element()
 }
@@ -481,13 +582,32 @@ pub fn avatar_picker<V: 'static>(
 ) -> Div {
     use crate::components::liquid::primitives::data::{portrait_choices, PortraitOption};
     let prefix = prefix.into();
-    let selected = AGENT_AVATARS.iter().position(|(key, _, _)| *key == selected).unwrap_or(0);
-    div().flex().flex_col().gap_2().child(label("头像")).child(portrait_choices(
-        prefix.clone(), AGENT_AVATARS.iter().map(|(key, title, _)| PortraitOption {
-            id: format!("{prefix}-{key}"), portrait: key, label: (*title).into(),
-        }).collect(), selected, enabled, 6, 32., 24.,
-        cx.listener(move |v, index: &usize, _, cx| choose(v, AGENT_AVATARS[*index].0, cx)),
-    ))
+    let selected = AGENT_AVATARS
+        .iter()
+        .position(|(key, _, _)| *key == selected)
+        .unwrap_or(0);
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(label("头像"))
+        .child(portrait_choices(
+            prefix.clone(),
+            AGENT_AVATARS
+                .iter()
+                .map(|(key, title, _)| PortraitOption {
+                    id: format!("{prefix}-{key}"),
+                    portrait: key,
+                    label: (*title).into(),
+                })
+                .collect(),
+            selected,
+            enabled,
+            6,
+            32.,
+            24.,
+            cx.listener(move |v, index: &usize, _, cx| choose(v, AGENT_AVATARS[*index].0, cx)),
+        ))
 }
 
 #[derive(Clone, Copy)]
@@ -503,7 +623,14 @@ pub fn status_notice(message: String, kind: NoticeKind) -> Div {
     let (_, fill) = feedback::colors(kind);
     div().w_full().child(
         surface("status-notice-surface", FIELD_RADIUS, fill, false)
-            .w_full().px_3().py_2()
-            .child(feedback::notice_content("status-notice", message, kind, None))
+            .w_full()
+            .px_3()
+            .py_2()
+            .child(feedback::notice_content(
+                "status-notice",
+                message,
+                kind,
+                None,
+            )),
     )
 }

@@ -789,7 +789,7 @@ fn history_bar_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryBar, history_bar_at, layout_history_bars};
+    use super::{history_bar_at, layout_history_bars, HistoryBar};
     use gpui::px;
     #[test]
     fn point_markers_pick_the_topmost_visible_bar_after_scaling() {

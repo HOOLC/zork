@@ -59,7 +59,10 @@ impl Motion {
             surface.prepare();
         }
         if let Some((from, to, _)) = &mut self.state.layout {
-            for pose in [from, to] { pose.cx += delta[0]; pose.cy += delta[1]; }
+            for pose in [from, to] {
+                pose.cx += delta[0];
+                pose.cy += delta[1];
+            }
         }
     }
     pub(super) fn travelling() -> Self {
@@ -86,8 +89,15 @@ impl Motion {
         cx: &mut Context<V>,
     ) {
         self.frame_for_owner(
-            from, to, pair, open, material, visible,
-            &cx.entity().into_any().downgrade(), window, cx,
+            from,
+            to,
+            pair,
+            open,
+            material,
+            visible,
+            &cx.entity().into_any().downgrade(),
+            window,
+            cx,
         );
     }
 
@@ -194,7 +204,9 @@ impl Motion {
         self.state.progress()
     }
     pub(super) fn expansion(&self) -> f64 {
-        self.surface.as_ref().map_or(0., |surface| self.state.expansion(&surface.simulation))
+        self.surface
+            .as_ref()
+            .map_or(0., |surface| self.state.expansion(&surface.simulation))
     }
     pub(super) fn alive(&self) -> bool {
         self.progress() > 0.001 || self.surface.as_ref().is_some_and(|s| s.simulation.moving())

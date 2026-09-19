@@ -223,8 +223,11 @@ impl AgentsView {
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(cx: &mut Context<Self>) -> Self {
         #[cfg(not(target_family = "wasm"))]
-        let client = Arc::new(StationClient::fixture(zork_ui::stories::page_fixture(),
-            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json")).expect("provider fixture")));
+        let client = Arc::new(StationClient::fixture(
+            zork_ui::stories::page_fixture(),
+            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
+                .expect("provider fixture"),
+        ));
         #[cfg(target_family = "wasm")]
         let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
@@ -294,13 +297,14 @@ impl AgentsView {
         );
     }
     fn valid_selection(&self) -> bool {
+        let Some((profile, model)) = self.profiles.get(self.profile).zip(self.selected_model())
+        else {
+            return false;
+        };
         crate::api::validate_selection(
             &self.source.snapshot().profiles,
-            self.profiles
-                .get(self.profile)
-                .map(|p| p.profile_id.as_str())
-                .unwrap_or(""),
-            self.selected_model().map(|m| m.id.as_str()).unwrap_or(""),
+            &profile.profile_id,
+            &model.id,
             &self.thinking,
         )
         .is_ok()
@@ -674,7 +678,16 @@ impl AgentsView {
                         v.message = None;
                         zork_ui::components::region::invalidate(cx, &["form"]);
                     }))
-                    .map(|button| self.modal.source("agent-create-dialog").bind(button, "添加小伙伴", ui::ActionStyle { icon: Some("icons/plus.svg"), ..Default::default() }))
+                    .map(|button| {
+                        self.modal.source("agent-create-dialog").bind(
+                            button,
+                            "添加小伙伴",
+                            ui::ActionStyle {
+                                icon: Some("icons/plus.svg"),
+                                ..Default::default()
+                            },
+                        )
+                    })
                     .automation(AutomationRole::Button, "创建小伙伴"),
             )
     }
@@ -737,106 +750,117 @@ impl AgentsView {
                                             let id =
                                                 agent["id"].as_str().unwrap_or_default().to_owned();
                                             let edit = agent.clone();
-                                            ui::quiet_button(format!("agent-settings-{id}"), "", true, ui::IconButtonSize::Standard)
-                                                .radius(ui::FIELD_RADIUS)
-                                                .justify_start()
-                                                .font_weight(FontWeight::NORMAL)
-                                                .w_full()
-                                                .h(px(64.))
-                                                .when(index > 0, |v| v.mt(px(2.)))
-                                                .px_2()
-                                                .text_size(px(12.))
-                                                .flex()
-                                                .items_center()
-                                                .gap(px(9.))
-
-                                                .child(ui::agent_avatar(
-                                                    agent["avatar"].as_str(),
-                                                    36.,
-                                                ))
-                                                .child(
-                                                    div()
-                                                        .flex_1()
-                                                        .min_w_0()
-                                                        .flex()
-                                                        .flex_col()
-                                                        .gap_1()
-                                                        .child(
-                                                            div()
-                                                                .truncate()
-                                                                .text_size(px(13.))
-                                                                .font_weight(FontWeight::MEDIUM)
-                                                                .child(
-                                                                    agent["name"]
+                                            ui::quiet_button(
+                                                format!("agent-settings-{id}"),
+                                                "",
+                                                true,
+                                                ui::IconButtonSize::Standard,
+                                            )
+                                            .radius(ui::FIELD_RADIUS)
+                                            .justify_start()
+                                            .font_weight(FontWeight::NORMAL)
+                                            .w_full()
+                                            .h(px(64.))
+                                            .when(index > 0, |v| v.mt(px(2.)))
+                                            .px_2()
+                                            .text_size(px(12.))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(9.))
+                                            .child(ui::agent_avatar(agent["avatar"].as_str(), 36.))
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .min_w_0()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .truncate()
+                                                            .text_size(px(13.))
+                                                            .font_weight(FontWeight::MEDIUM)
+                                                            .child(
+                                                                agent["name"]
+                                                                    .as_str()
+                                                                    .unwrap_or_default()
+                                                                    .to_owned(),
+                                                            ),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .truncate()
+                                                            .text_size(px(11.))
+                                                            .text_color(rgb(p.muted))
+                                                            .child(format!(
+                                                                "{} · {}",
+                                                                agent["model"]
+                                                                    .as_str()
+                                                                    .unwrap_or("未配置模型"),
+                                                                profile_label(
+                                                                    agent["profile_id"]
                                                                         .as_str()
-                                                                        .unwrap_or_default()
-                                                                        .to_owned(),
-                                                                ),
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .truncate()
-                                                                .text_size(px(11.))
-                                                                .text_color(rgb(p.muted))
-                                                                .child(format!(
-                                                                    "{} · {}",
-                                                                    agent["model"]
-                                                                        .as_str()
-                                                                        .unwrap_or("未配置模型"),
-                                                                    profile_label(
-                                                                        agent["profile_id"]
-                                                                            .as_str()
-                                                                            .unwrap_or(
-                                                                                "未配置连接"
-                                                                            )
-                                                                    )
-                                                                )),
-                                                        ),
-                                                )
-                                                .on_click(cx.listener(move |v, _, _, cx| {
-                                                    if !v.busy {
-                                                        v.avatar = edit["avatar"]
-                                                            .as_str()
-                                                            .unwrap_or("cat")
-                                                            .into();
-                                                        v.profile = v
-                                                            .profiles
-                                                            .iter()
-                                                            .position(|p| {
-                                                                Some(p.profile_id.as_str())
-                                                                    == edit["profile_id"].as_str()
-                                                            })
-                                                            .unwrap_or(usize::MAX);
-                                                        v.model = v
-                                                            .profiles
-                                                            .first()
-                                                            .and_then(|p| {
-                                                                p.models.iter().position(|m| {
-                                                                    Some(m.id.as_str())
-                                                                        == edit["model"].as_str()
-                                                                })
-                                                            })
-                                                            .unwrap_or(usize::MAX);
-                                                        v.thinking = edit["thinking"]
-                                                            .as_str()
-                                                            .unwrap_or_default()
-                                                            .into();
-                                                        v.editing_avatar = Some(edit.clone());
-                                                        v.message = None;
-                                                        zork_ui::components::region::invalidate(
-                                                            cx,
-                                                            &["form"],
-                                                        );
-                                                    }
-                                                }))
-                                                .map(|row| self.modal.source("agent-editor-dialog").bind(row, agent["name"].as_str().unwrap_or("小伙伴").to_owned(), ui::ActionStyle { disabled: self.busy, ..Default::default() }))
-                                                .automation(
-                                                    AutomationRole::Button,
-                                                    format!(
-                                                        "设置 {}",
-                                                        agent["name"].as_str().unwrap_or("小伙伴")
+                                                                        .unwrap_or("未配置连接")
+                                                                )
+                                                            )),
                                                     ),
+                                            )
+                                            .on_click(cx.listener(move |v, _, _, cx| {
+                                                if !v.busy {
+                                                    v.avatar = edit["avatar"]
+                                                        .as_str()
+                                                        .unwrap_or("cat")
+                                                        .into();
+                                                    v.profile = v
+                                                        .profiles
+                                                        .iter()
+                                                        .position(|p| {
+                                                            Some(p.profile_id.as_str())
+                                                                == edit["profile_id"].as_str()
+                                                        })
+                                                        .unwrap_or(usize::MAX);
+                                                    v.model = v
+                                                        .profiles
+                                                        .first()
+                                                        .and_then(|p| {
+                                                            p.models.iter().position(|m| {
+                                                                Some(m.id.as_str())
+                                                                    == edit["model"].as_str()
+                                                            })
+                                                        })
+                                                        .unwrap_or(usize::MAX);
+                                                    v.thinking = edit["thinking"]
+                                                        .as_str()
+                                                        .unwrap_or_default()
+                                                        .into();
+                                                    v.editing_avatar = Some(edit.clone());
+                                                    v.message = None;
+                                                    zork_ui::components::region::invalidate(
+                                                        cx,
+                                                        &["form"],
+                                                    );
+                                                }
+                                            }))
+                                            .map(|row| {
+                                                self.modal.source("agent-editor-dialog").bind(
+                                                    row,
+                                                    agent["name"]
+                                                        .as_str()
+                                                        .unwrap_or("小伙伴")
+                                                        .to_owned(),
+                                                    ui::ActionStyle {
+                                                        disabled: self.busy,
+                                                        ..Default::default()
+                                                    },
                                                 )
+                                            })
+                                            .automation(
+                                                AutomationRole::Button,
+                                                format!(
+                                                    "设置 {}",
+                                                    agent["name"].as_str().unwrap_or("小伙伴")
+                                                ),
+                                            )
                                         }),
                                 )
                         }),
@@ -859,8 +883,14 @@ impl Render for AgentsView {
             None
         };
         self.modal.sync(modal_key, window, cx);
-        let avatar_visible = self.modal.retain("agent-editor-dialog", self.editing_avatar.clone(), cx);
-        let create_visible = self.modal.retain("agent-create-dialog", show.then(|| self.editing.clone()), cx);
+        let avatar_visible =
+            self.modal
+                .retain("agent-editor-dialog", self.editing_avatar.clone(), cx);
+        let create_visible = self.modal.retain(
+            "agent-create-dialog",
+            show.then(|| self.editing.clone()),
+            cx,
+        );
         let displayed_editing = create_visible.clone().flatten();
         div()
             .flex()
@@ -911,7 +941,16 @@ impl Render for AgentsView {
                                         v.editing_avatar = None;
                                         v.edit_grants(grant_agent.clone(), cx);
                                     }))
-                                    .map(|button| self.modal.source("agent-create-dialog").bind(button, "管理授权", ui::ActionStyle { disabled: self.busy, ..Default::default() })),
+                                    .map(|button| {
+                                        self.modal.source("agent-create-dialog").bind(
+                                            button,
+                                            "管理授权",
+                                            ui::ActionStyle {
+                                                disabled: self.busy,
+                                                ..Default::default()
+                                            },
+                                        )
+                                    }),
                             )
                         }),
                     div()
@@ -980,63 +1019,66 @@ impl Render for AgentsView {
                                 |worker| {
                                     let label = if worker { "队员" } else { "领队" };
                                     ui::choice(
-                                        if worker { "agent-role-worker" } else { "agent-role-leader" },
-                                        "", self.worker == worker, !self.busy,
+                                        if worker {
+                                            "agent-role-worker"
+                                        } else {
+                                            "agent-role-leader"
+                                        },
+                                        "",
+                                        self.worker == worker,
+                                        !self.busy,
                                     )
-                                        .radius(10.)
-                                        .h_auto()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .flex_col()
-                                        .items_stretch()
-                                        .gap_0()
-                                        .whitespace_normal()
-                                        .px_4()
-                                        .py_3()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(ui::icon(
-                                                    if worker {
-                                                        "icons/checklist.svg"
-                                                    } else {
-                                                        "icons/sparkles.svg"
-                                                    },
-                                                    16.,
-                                                ))
-                                                .child(label)
-                                                .when(self.worker == worker, |v| {
-                                                    v.child(div().flex_1())
-                                                        .child(ui::icon("icons/check.svg", 14.))
-                                                }),
-                                        )
-                                        .child(
-                                            div()
-                                                .pt_2()
-                                                .text_size(px(12.))
-                                                .text_color(rgb(p.muted))
-                                                .child(if worker {
-                                                    "接收任务，独立执行"
+                                    .radius(10.)
+                                    .h_auto()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex_col()
+                                    .items_stretch()
+                                    .gap_0()
+                                    .whitespace_normal()
+                                    .px_4()
+                                    .py_3()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(ui::icon(
+                                                if worker {
+                                                    "icons/checklist.svg"
                                                 } else {
-                                                    "长期对话，协调任务"
-                                                }),
-                                        )
-                                        .on_click(cx.listener(move |v, _, _, cx| {
-                                            if !v.busy {
-                                                v.worker = worker;
-                                                zork_ui::components::region::invalidate(
-                                                    cx,
-                                                    &["form"],
-                                                );
-                                            }
-                                        }))
-                                        .automation_enabled(
-                                            !self.busy,
-                                            AutomationRole::Button,
-                                            label,
-                                        )
+                                                    "icons/sparkles.svg"
+                                                },
+                                                16.,
+                                            ))
+                                            .child(label)
+                                            .when(self.worker == worker, |v| {
+                                                v.child(div().flex_1())
+                                                    .child(ui::icon("icons/check.svg", 14.))
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .pt_2()
+                                            .text_size(px(12.))
+                                            .text_color(rgb(p.muted))
+                                            .child(if worker {
+                                                "接收任务，独立执行"
+                                            } else {
+                                                "长期对话，协调任务"
+                                            }),
+                                    )
+                                    .on_click(cx.listener(move |v, _, _, cx| {
+                                        if !v.busy {
+                                            v.worker = worker;
+                                            zork_ui::components::region::invalidate(cx, &["form"]);
+                                        }
+                                    }))
+                                    .automation_enabled(
+                                        !self.busy,
+                                        AutomationRole::Button,
+                                        label,
+                                    )
                                 },
                             )))
                             .child(self.field("agent-name", "名称", &self.name, cx))
@@ -1193,7 +1235,8 @@ impl Render for AgentsView {
                                     "创建小伙伴"
                                 },
                                 true,
-                                !self.busy && (displayed_editing.is_some() || self.valid_selection()),
+                                !self.busy
+                                    && (displayed_editing.is_some() || self.valid_selection()),
                                 self.busy,
                             )
                             .on_click(cx.listener(|v, _, _, cx| {
@@ -1204,7 +1247,8 @@ impl Render for AgentsView {
                                 }
                             }))
                             .automation_enabled(
-                                !self.busy && (displayed_editing.is_some() || self.valid_selection()),
+                                !self.busy
+                                    && (displayed_editing.is_some() || self.valid_selection()),
                                 AutomationRole::Button,
                                 if displayed_editing.is_some() {
                                     "保存授权"
@@ -1233,6 +1277,57 @@ impl Render for AgentsView {
 #[cfg(test)]
 mod pool_choice_tests {
     use super::*;
+    #[gpui::test]
+    fn profile_dropdown_renders_before_catalog_is_loaded(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext;
+        let client = Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None));
+        let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
+        for editing in [false, true] {
+            let window = cx.add_window(|_, cx| {
+                let mut view = AgentsView::new_inner(source.clone(), cx);
+                assert!(view.profiles.is_empty());
+                assert!(!view.valid_selection());
+                view.form_open = !editing;
+                view.editing_avatar = editing.then(|| json!({"id":"agent", "name":"Agent"}));
+                view
+            });
+            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+        }
+    }
+
+    #[cfg(feature = "headless-bench")]
+    #[gpui::test]
+    fn removed_profile_cannot_be_saved_as_automatic(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext;
+        let client = Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None));
+        let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
+        let view = cx.new(|cx| AgentsView::new_inner(source.clone(), cx));
+        source.seed(crate::api::AgentData {
+            profiles: Arc::new(
+                serde_json::from_value(json!([
+                    {"profile_id":"account","provider":"openai","models":[
+                        {"id":"model","thinking":["off"],"default_thinking":"off"}
+                    ]}
+                ]))
+                .unwrap(),
+            ),
+            ..Default::default()
+        });
+        view.update(cx, |view, cx| {
+            view.apply_source(source.subscribe().snapshot(), cx);
+            assert!(view.valid_selection());
+            view.editing_avatar = Some(json!({"id":"agent"}));
+            // A catalog refresh can remove the selected connection while the
+            // same model remains available through another connection.
+            view.profile = usize::MAX;
+            assert!(!view.valid_selection());
+            view.save_settings(cx);
+            assert!(!view.busy);
+            assert!(view.message.is_some());
+        });
+    }
+
     #[test]
     fn automatic_option_aggregates_enabled_models_without_mutating_catalog() {
         let profile: ProfileInfo =

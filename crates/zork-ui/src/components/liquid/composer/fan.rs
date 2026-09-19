@@ -1,7 +1,10 @@
 //! Complete attachment fan. Hosts supply immutable preview images and sampled
 //! presentation poses; content loading, file authority and mutations stay in core.
-use crate::{automation::{AutomationElementExt, AutomationRole}, controls as ui};
 use crate::components::attachment_fan::{self as geometry, Opening};
+use crate::{
+    automation::{AutomationElementExt, AutomationRole},
+    controls as ui,
+};
 use gpui::{prelude::*, *};
 use std::{rc::Rc, sync::Arc};
 
@@ -30,16 +33,34 @@ pub struct Ids {
     pub remove_prefix: String,
 }
 #[derive(Clone)]
-pub enum Action { Hover(bool), Toggle, Highlight(String, bool), Open(String), Remove(String) }
+pub enum Action {
+    Hover(bool),
+    Toggle,
+    Highlight(String, bool),
+    Open(String),
+    Remove(String),
+}
 pub type Handler = Rc<dyn Fn(Action, &mut Window, &mut App)>;
 
-pub fn render(ids: Ids, frame: Frame, label: SharedString, remove_label: SharedString, handler: Handler) -> Stateful<Div> {
+pub fn render(
+    ids: Ids,
+    frame: Frame,
+    label: SharedString,
+    remove_label: SharedString,
+    handler: Handler,
+) -> Stateful<Div> {
     render_with_source(ids, frame, label, remove_label, handler, None)
 }
 
 /// Bind the actual thumbnail control and its pixels to a consuming preview.
-pub fn render_with_source(ids: Ids, frame: Frame, label: SharedString, remove_label: SharedString,
-    handler: Handler, source: Option<super::super::overlay::SourceBinding>) -> Stateful<Div> {
+pub fn render_with_source(
+    ids: Ids,
+    frame: Frame,
+    label: SharedString,
+    remove_label: SharedString,
+    handler: Handler,
+    source: Option<super::super::overlay::SourceBinding>,
+) -> Stateful<Div> {
     let width = frame.width;
     let height = frame.height;
     let opening = frame.opening;
@@ -48,12 +69,27 @@ pub fn render_with_source(ids: Ids, frame: Frame, label: SharedString, remove_la
     let toggle = handler.clone();
     let mut files = frame.files;
     files.sort_by_key(|file| frame.expanded > 0.98 && file.active);
-    div().id(ids.root).relative().w(px(width)).h(px(height + below)).overflow_hidden()
+    div()
+        .id(ids.root)
+        .relative()
+        .w(px(width))
+        .h(px(height + below))
+        .overflow_hidden()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_hover(move |inside, window, cx| hover(Action::Hover(*inside), window, cx))
-        .on_click(move |_, window, cx| { cx.stop_propagation(); toggle(Action::Toggle, window, cx); })
-        .child(div().id(ids.toggle).absolute().top_0().w_full().h(px(12.))
-            .automation(AutomationRole::Button, label))
+        .on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            toggle(Action::Toggle, window, cx);
+        })
+        .child(
+            div()
+                .id(ids.toggle)
+                .absolute()
+                .top_0()
+                .w_full()
+                .h(px(12.))
+                .automation(AutomationRole::Button, label),
+        )
         .children(files.into_iter().filter(|file| file.visible).map(|file| {
             let pose = file.pose;
             let extent = pose.half_extent();
@@ -64,15 +100,24 @@ pub fn render_with_source(ids: Ids, frame: Frame, label: SharedString, remove_la
             let keyboard = handler.clone();
             let keyboard_id = file.id.clone();
             let departing = file.departing;
-            let mut hit = div().id(format!("{}{}", ids.file_prefix, file.id)).absolute()
+            let mut hit = div()
+                .id(format!("{}{}", ids.file_prefix, file.id))
+                .absolute()
                 .left(px(width * 0.5 + pose.center.x - extent.x))
                 .top(px(height + pose.center.y - extent.y))
-                .w(px(extent.x * 2.)).h(px(extent.y * 2.))
-                .when(!departing, |v| v.cursor_pointer().focusable().tab_stop(true))
-                .on_hover(move |hovered, w, cx| highlight(Action::Highlight(highlight_id.clone(), *hovered), w, cx))
+                .w(px(extent.x * 2.))
+                .h(px(extent.y * 2.))
+                .when(!departing, |v| {
+                    v.cursor_pointer().focusable().tab_stop(true)
+                })
+                .on_hover(move |hovered, w, cx| {
+                    highlight(Action::Highlight(highlight_id.clone(), *hovered), w, cx)
+                })
                 .on_click(move |_, w, cx| {
                     cx.stop_propagation();
-                    if !departing { activate(Action::Open(activate_id.clone()), w, cx); }
+                    if !departing {
+                        activate(Action::Open(activate_id.clone()), w, cx);
+                    }
                 })
                 .on_key_down(move |event, w, cx| {
                     if !departing && matches!(event.keystroke.key.as_str(), "enter" | "space") {
@@ -80,38 +125,89 @@ pub fn render_with_source(ids: Ids, frame: Frame, label: SharedString, remove_la
                         cx.stop_propagation();
                     }
                 });
-            hit = hit.child(clipped_image(file.image, pose, opening, 0., height,
-                    pose.width / (216. / 384.), pose.height / (304. / 384.))
-                    .absolute()
-                    .left(px(-(width * 0.5 + pose.center.x - extent.x)))
-                    .top(px(-(height + pose.center.y - extent.y)))
-                    .w(px(width)).h(px(height + below)));
+            hit = hit.child(
+                clipped_image(
+                    file.image,
+                    pose,
+                    opening,
+                    0.,
+                    height,
+                    pose.width / (216. / 384.),
+                    pose.height / (304. / 384.),
+                )
+                .absolute()
+                .left(px(-(width * 0.5 + pose.center.x - extent.x)))
+                .top(px(-(height + pose.center.y - extent.y)))
+                .w(px(width))
+                .h(px(height + below)),
+            );
             if file.removable && !departing {
                 let remove = handler.clone();
                 let id = file.id.clone();
-                hit = hit.child(ui::button(format!("{}{}", ids.remove_prefix, file.id), "", false, true)
-                    .absolute().right(px(-geometry::REMOVE_SIZE * 0.5)).top(px(-geometry::REMOVE_SIZE * 0.5))
-                    .size(px(geometry::REMOVE_SIZE)).radius(geometry::REMOVE_SIZE * 0.5).p_0()
-                    .child(ui::icon("icons/x.svg", geometry::REMOVE_GLYPH))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(move |_, w, cx| { cx.stop_propagation(); remove(Action::Remove(id.clone()), w, cx); })
-                    .automation(AutomationRole::Button, remove_label.clone()));
+                hit = hit.child(
+                    ui::button(format!("{}{}", ids.remove_prefix, file.id), "", false, true)
+                        .absolute()
+                        .right(px(-geometry::REMOVE_SIZE * 0.5))
+                        .top(px(-geometry::REMOVE_SIZE * 0.5))
+                        .size(px(geometry::REMOVE_SIZE))
+                        .radius(geometry::REMOVE_SIZE * 0.5)
+                        .p_0()
+                        .child(ui::icon("icons/x.svg", geometry::REMOVE_GLYPH))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(move |_, w, cx| {
+                            cx.stop_propagation();
+                            remove(Action::Remove(id.clone()), w, cx);
+                        })
+                        .automation(AutomationRole::Button, remove_label.clone()),
+                );
             }
             match source.as_ref().filter(|_| !departing) {
-                Some(source) => source.bind(hit, file.name.clone(), ui::ActionStyle { quiet: true, ..Default::default() })
-                    .automation_enabled(true, AutomationRole::Button, file.name).into_any_element(),
-                None => hit.automation_enabled(!departing, AutomationRole::Button, file.name).into_any_element(),
+                Some(source) => source
+                    .bind(
+                        hit,
+                        file.name.clone(),
+                        ui::ActionStyle {
+                            quiet: true,
+                            ..Default::default()
+                        },
+                    )
+                    .automation_enabled(true, AutomationRole::Button, file.name)
+                    .into_any_element(),
+                None => hit
+                    .automation_enabled(!departing, AutomationRole::Button, file.name)
+                    .into_any_element(),
             }
         }))
-        .when(frame.rim, |fan| fan.child(canvas(|_, _, _| (), move |bounds, _, window, _| {
-            let rim = opening.translated(gpui::point(bounds.center().x.as_f32(), bounds.top().as_f32() + height));
-            let lower = &rim.hole[2..6];
-            let point = |p: gpui::Point<f32>| gpui::point(px(p.x), px(p.y));
-            let mut path = PathBuilder::stroke(px(crate::components::liquid_composer::SLOT_BORDER_WIDTH));
-            path.move_to(point(lower[0][0]));
-            for curve in lower { path.cubic_bezier_to(point(curve[3]), point(curve[1]), point(curve[2])); }
-            if let Ok(path) = path.build() { window.paint_path(path, rgb(crate::components::liquid_composer::BORDER_COLOR)); }
-        }).absolute().size_full()))
+        .when(frame.rim, |fan| {
+            fan.child(
+                canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        let rim = opening.translated(gpui::point(
+                            bounds.center().x.as_f32(),
+                            bounds.top().as_f32() + height,
+                        ));
+                        let lower = &rim.hole[2..6];
+                        let point = |p: gpui::Point<f32>| gpui::point(px(p.x), px(p.y));
+                        let mut path = PathBuilder::stroke(px(
+                            crate::components::liquid_composer::SLOT_BORDER_WIDTH,
+                        ));
+                        path.move_to(point(lower[0][0]));
+                        for curve in lower {
+                            path.cubic_bezier_to(point(curve[3]), point(curve[1]), point(curve[2]));
+                        }
+                        if let Ok(path) = path.build() {
+                            window.paint_path(
+                                path,
+                                rgb(crate::components::liquid_composer::BORDER_COLOR),
+                            );
+                        }
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+        })
 }
 
 // Clip only image pixels. Painting an opaque front patch here would erase
@@ -183,19 +279,34 @@ fn clipped_image(
                     }),
                     |window| {
                         if let Some(image) = &image {
-                            let _ = window.paint_image(bounds, bounds, gpui::Corners::default(), image.clone(), 0, false);
+                            let _ = window.paint_image(
+                                bounds,
+                                bounds,
+                                gpui::Corners::default(),
+                                image.clone(),
+                                0,
+                                false,
+                            );
                         } else {
                             let (sin, cos) = pose.angle.to_radians().sin_cos();
-                            let points = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]
-                                .map(|(x, y)| {
+                            let points = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)].map(
+                                |(x, y)| {
                                     let (x, y) = (x * pose.width, y * pose.height);
-                                    gpui::point(bounds.center().x + px(x * cos - y * sin), bounds.center().y + px(x * sin + y * cos))
-                                });
+                                    gpui::point(
+                                        bounds.center().x + px(x * cos - y * sin),
+                                        bounds.center().y + px(x * sin + y * cos),
+                                    )
+                                },
+                            );
                             let mut path = gpui::PathBuilder::fill();
                             path.move_to(points[0]);
-                            for point in &points[1..] { path.line_to(*point); }
+                            for point in &points[1..] {
+                                path.line_to(*point);
+                            }
                             path.close();
-                            if let Ok(path) = path.build() { window.paint_path(path, rgb(0xFFFFFF)); }
+                            if let Ok(path) = path.build() {
+                                window.paint_path(path, rgb(0xFFFFFF));
+                            }
                         }
                     },
                 );

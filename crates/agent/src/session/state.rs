@@ -86,6 +86,8 @@ pub struct ActiveTurn {
     pub cancel_requested: bool,
     pub consecutive_provider_failures: u32,
     pub provider_retry_allowed: bool,
+    #[serde(default)]
+    pub unconfirmed_end_attempts: u32,
     #[serde(default, alias = "handoff", skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextProgress>,
 }
@@ -194,6 +196,8 @@ pub struct SessionState {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub configuration_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_turn_confirmation: Option<String>,
     pub workspace: String,
     #[serde(default)]
     pub context_config: zork_config::ContextConfig,
@@ -210,6 +214,8 @@ pub struct SessionState {
     pub active_step: Option<ActiveStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_turn_outcome: Option<TurnOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_turn_failure: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_step_failure: Option<StepFailureState>,
 
@@ -237,6 +243,7 @@ impl SessionState {
             selection: None,
             system_prompt: None,
             configuration_revision: None,
+            end_turn_confirmation: None,
             workspace: String::new(),
             context_config: zork_config::ContextConfig::default(),
             generation: GenerationState::new(0, None, Vec::new()),
@@ -246,6 +253,7 @@ impl SessionState {
             active_turn: None,
             active_step: None,
             last_turn_outcome: None,
+            last_turn_failure: None,
             last_step_failure: None,
             pending_tools: BTreeMap::new(),
             known_tools: BTreeMap::new(),
@@ -322,6 +330,7 @@ impl SessionState {
                 self.selection = Some(configuration.selection.clone());
                 self.system_prompt = configuration.system_prompt.clone();
                 self.configuration_revision = Some(configuration.revision.clone());
+                self.end_turn_confirmation = configuration.end_turn_confirmation.clone();
                 self.token_anchor = None;
             }
             SessionEvent::ContextConfigured { config } => {
@@ -340,9 +349,11 @@ impl SessionState {
                     cancel_requested: false,
                     consecutive_provider_failures: 0,
                     provider_retry_allowed: true,
+                    unconfirmed_end_attempts: 0,
                     context: None,
                 });
                 self.last_turn_outcome = None;
+                self.last_turn_failure = None;
             }
             SessionEvent::TurnCancelRequested { turn_id, .. } => {
                 if let Some(turn) = self
@@ -358,7 +369,10 @@ impl SessionState {
                 }
             }
             SessionEvent::TurnFinished {
-                turn_id, outcome, ..
+                turn_id,
+                outcome,
+                reason,
+                ..
             } => {
                 if self
                     .active_turn
@@ -373,6 +387,7 @@ impl SessionState {
                 self.active_step = None;
                 self.auto_wait = None;
                 self.last_turn_outcome = Some(*outcome);
+                self.last_turn_failure = reason.clone();
                 if self.failed_bad_request() {
                     // Keep inputs queued during context maintenance, but do not
                     // turn the rejected request into a new automatic turn.
@@ -456,17 +471,26 @@ impl SessionState {
                 provider_context,
                 provider_input: _,
                 completed_at_ms,
-            } => self.apply_step_completed(
-                step_id,
-                *purpose,
-                assistant_text,
-                provider_calls,
-                invocations,
-                *auto_wait_deadline_ms,
-                usage,
-                provider_context,
-                *completed_at_ms,
-            ),
+            } => {
+                let needs_end_confirmation = self.end_turn_confirmation.is_some()
+                    && invocations.is_empty()
+                    && !self
+                        .outstanding(tools)
+                        .iter()
+                        .any(|item| item.kind != "provider_step");
+                self.apply_step_completed(
+                    step_id,
+                    *purpose,
+                    assistant_text,
+                    provider_calls,
+                    invocations,
+                    *auto_wait_deadline_ms,
+                    usage,
+                    provider_context,
+                    *completed_at_ms,
+                    needs_end_confirmation,
+                );
+            }
             SessionEvent::StepFailed { step_id, error, .. } => {
                 self.update_token_anchor(step_id, error.usage.as_ref());
                 let bad_request = error.status_code == Some(400);
@@ -726,6 +750,11 @@ impl SessionState {
             }
         }
         if !consumed.is_empty() {
+            if purpose == Purpose::Conversation {
+                if let Some(turn) = &mut self.active_turn {
+                    turn.unconfirmed_end_attempts = 0;
+                }
+            }
             self.wait_deadline = None;
             self.generation.entries.push(GenerationEntry::Inputs {
                 inputs: consumed.clone(),
@@ -808,6 +837,7 @@ impl SessionState {
         usage: &Option<Usage>,
         provider_context: &Option<ProviderContext>,
         completed_at_ms: i64,
+        needs_end_confirmation: bool,
     ) {
         let active_step = self
             .active_step
@@ -892,6 +922,13 @@ impl SessionState {
         if let Some(turn) = &mut self.active_turn {
             turn.consecutive_provider_failures = 0;
             turn.provider_retry_allowed = true;
+            if purpose == Purpose::Conversation {
+                turn.unconfirmed_end_attempts = if needs_end_confirmation {
+                    turn.unconfirmed_end_attempts.saturating_add(1)
+                } else {
+                    0
+                };
+            }
         }
         self.last_step_failure = None;
         if let Some(streak) = &mut self.fault_streak {
@@ -1184,11 +1221,18 @@ impl SessionState {
         self.unconsumed_inputs.iter().any(|input| input.wake)
     }
 
+    pub fn end_confirmation_failure(&self) -> Option<&'static str> {
+        (self.end_turn_confirmation.is_some()
+            && self.active_turn.as_ref().is_some_and(|turn| turn.unconfirmed_end_attempts >= 3))
+            .then_some("The Agent repeatedly returned internal assistant text without continuing work or confirming the end of this turn. No automatic Chat message was published. Send a new input to resume.")
+    }
+
     fn failed_bad_request(&self) -> bool {
         self.last_turn_outcome == Some(TurnOutcome::Failed)
-            && self.last_step_failure.as_ref().is_some_and(|failure| {
-                failure.error.status_code == Some(400)
-            })
+            && self
+                .last_step_failure
+                .as_ref()
+                .is_some_and(|failure| failure.error.status_code == Some(400))
     }
 
     pub fn should_start_turn(&self) -> bool {

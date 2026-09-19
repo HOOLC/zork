@@ -8,39 +8,81 @@ use zork_ui::components::tooltip::DetailsTooltip;
 /// Core subscription adapter; the shared overlay owns presentation and hover.
 #[derive(Default)]
 pub(super) struct Overlay {
-    active: Option<Entity<Preview>>, observation: Option<gpui::Subscription>,
+    active: Option<Entity<Preview>>,
+    observation: Option<gpui::Subscription>,
     shared: Option<Entity<zork_ui::member_activity::Overlay>>,
 }
 impl Overlay {
     fn shared(&mut self, cx: &mut Context<Self>) -> Entity<zork_ui::member_activity::Overlay> {
-        if let Some(shared) = &self.shared { return shared.clone(); }
+        if let Some(shared) = &self.shared {
+            return shared.clone();
+        }
         let shared = cx.new(|_| Default::default());
-        cx.subscribe(&shared, |v, _, event: &zork_ui::member_activity::Closed, cx| {
-            if v.active.as_ref().is_some_and(|active| active.read(cx).member.id == event.0) { v.active = None; v.observation = None; }
-        }).detach();
-        self.shared = Some(shared.clone()); shared
+        cx.subscribe(
+            &shared,
+            |v, _, event: &zork_ui::member_activity::Closed, cx| {
+                if v.active
+                    .as_ref()
+                    .is_some_and(|active| active.read(cx).member.id == event.0)
+                {
+                    v.active = None;
+                    v.observation = None;
+                }
+            },
+        )
+        .detach();
+        self.shared = Some(shared.clone());
+        shared
     }
-    pub(super) fn show(&mut self, id: &str, anchor: gpui::Bounds<gpui::Pixels>, create: impl FnOnce(&mut gpui::App) -> Entity<Preview>, cx: &mut Context<Self>) {
-        if !self.active.as_ref().is_some_and(|active| active.read(cx).member.id == id) {
+    pub(super) fn show(
+        &mut self,
+        id: &str,
+        anchor: gpui::Bounds<gpui::Pixels>,
+        create: impl FnOnce(&mut gpui::App) -> Entity<Preview>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self
+            .active
+            .as_ref()
+            .is_some_and(|active| active.read(cx).member.id == id)
+        {
             let content = create(cx);
             self.observation = Some(cx.observe(&content, |v, _, cx| v.update_shared(cx)));
             self.active = Some(content);
         }
         let shared = self.shared(cx);
         let content = self.active.as_ref().unwrap().read(cx);
-        let details = content.details.clone(); let footer = content.locale.text("presence_history_hint").into();
-        shared.update(cx, |view, cx| view.show(id.into(), details, footer, anchor, cx)); cx.notify();
+        let details = content.details.clone();
+        let footer = content.locale.text("presence_history_hint").into();
+        shared.update(cx, |view, cx| {
+            view.show(id.into(), details, footer, anchor, cx)
+        });
+        cx.notify();
     }
     fn update_shared(&mut self, cx: &mut Context<Self>) {
         if let Some(content) = &self.active {
-            let content = content.read(cx); let id = content.member.id.clone(); let details = content.details.clone(); let footer = content.locale.text("presence_history_hint").into();
-            self.shared(cx).update(cx, |view, cx| view.update(&id, details, footer, cx));
+            let content = content.read(cx);
+            let id = content.member.id.clone();
+            let details = content.details.clone();
+            let footer = content.locale.text("presence_history_hint").into();
+            self.shared(cx)
+                .update(cx, |view, cx| view.update(&id, details, footer, cx));
         }
     }
-    pub(super) fn anchor(&mut self, id: &str, bounds: gpui::Bounds<gpui::Pixels>, cx: &mut Context<Self>) {
-        self.shared(cx).update(cx, |view, cx| view.anchor(id, bounds, cx));
+    pub(super) fn anchor(
+        &mut self,
+        id: &str,
+        bounds: gpui::Bounds<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.shared(cx)
+            .update(cx, |view, cx| view.anchor(id, bounds, cx));
     }
-    pub(super) fn retain(&mut self, ids: impl Iterator<Item = impl AsRef<str>>, cx: &mut Context<Self>) {
+    pub(super) fn retain(
+        &mut self,
+        ids: impl Iterator<Item = impl AsRef<str>>,
+        cx: &mut Context<Self>,
+    ) {
         let ids: Vec<_> = ids.map(|id| id.as_ref().to_owned()).collect();
         self.shared(cx).update(cx, |view, cx| view.retain(&ids, cx));
     }
@@ -49,7 +91,9 @@ impl Overlay {
     }
 }
 impl Render for Overlay {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement { self.shared(cx) }
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.shared(cx)
+    }
 }
 
 pub(super) struct Preview {

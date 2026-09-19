@@ -22,6 +22,19 @@ pub fn grant_references(local: Vec<String>, remote: &str) -> Vec<String> {
 mod settings_tests {
     use super::*;
     #[test]
+    fn missing_model_only_offers_an_existing_automatic_profile() {
+        assert!(compatible_profiles(&[], None, "").is_empty());
+        let catalog: Vec<ProfileInfo> = serde_json::from_value(serde_json::json!([
+            {"profile_id":"account","provider":"openai","models":[]}
+        ]))
+        .unwrap();
+        assert!(compatible_profiles(&catalog, None, "").is_empty());
+        let options = profile_options(&catalog);
+        assert_eq!(compatible_profiles(&options, None, ""), vec![0]);
+        assert_eq!(options[0].profile_id, "auto");
+    }
+
+    #[test]
     fn pasted_grants_share_separators_and_remove_duplicates() {
         assert_eq!(
             grant_references(
@@ -68,7 +81,11 @@ pub fn compatible_profiles(
     thinking: &str,
 ) -> Vec<usize> {
     let Some(model) = model else {
-        return vec![0];
+        return profiles
+            .iter()
+            .position(|profile| profile.profile_id == "auto")
+            .into_iter()
+            .collect();
     };
     profiles
         .iter()

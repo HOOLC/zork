@@ -261,7 +261,6 @@ pub fn content_indices(files: &[Artifact], pages: &PageCatalog) -> ContentCatalo
         .collect()
 }
 
-
 #[derive(Clone, Default)]
 pub(crate) struct ApplicationSource {
     pub applications: Arc<Vec<Application>>,

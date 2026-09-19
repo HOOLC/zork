@@ -70,6 +70,12 @@ Station 使用单一写者。业务事务可以暂存待发布消息；只有完
 
 Session 自通知只回到调用者自己的收件箱，不产生 Chat 消息、作者或系统通知。用户参与沿 [原业务工具](user-participation.md) 保持 pending 并接续；公开 request_id 不改变执行与权限所有权。
 
+Chat Agent 按 [turn 结束确认](agent-runtime.md#turn) 处理无工具的 assistant 收尾：内部正文留在 Session history，所需回复由模型主动发布，确认无需再发时用 `end`。发帖成功与模型处理成功独立；提醒不自动重发已提交或结果不明的消息。provider 或结束确认失败通过执行状态与历史保留具体原因。
+
+主动投递未填写 Chat 时，目的地来自本次执行的真实绑定：长期伙伴使用 home，Worker 使用该次 assignment 的 Chat，远端执行回到工作所属节点。不能借用另一份工作或 Worker home；显式指定其它节点时必须给出 Chat。
+
+后台 job 的终态与待投递 Session 事件原子提交，自通知也先持久排队。投递按 Session 保序，已接收的来源水位防止确认丢失后重复唤醒；收到 Agent 的持久确认才移除待投递记录。Station 重启恢复未投递事件；配置为不可重启的在途 job 报告效果未知，不重放命令。后台结果唤醒后仍遵守同一结束确认与主动发帖规则。
+
 <a id="compatibility"></a>
 
 ## 兼容与保留
