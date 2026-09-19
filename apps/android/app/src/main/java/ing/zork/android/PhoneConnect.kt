@@ -16,6 +16,13 @@ class QrScanActivity : CaptureActivity()
 
 @Composable
 internal fun PhoneConnectActions(model: ClientViewModel) {
+    model.meshSwitch?.let { confirmation ->
+        Text(confirmation.text("message"), color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp)
+        LiquidButton("确认切换", primary = true, onClick = model::confirmMeshSwitch, enabled = !model.busy, modifier = Modifier.fillMaxWidth())
+        LiquidButton("保留当前连接", quiet = true, onClick = model::cancelMeshSwitch, enabled = !model.busy)
+        model.notice?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
+        return
+    }
     var paste by remember { mutableStateOf(false) }
     var ticket by remember { mutableStateOf("") }
     var scanNotice by remember { mutableStateOf<String?>(null) }

@@ -475,6 +475,7 @@ impl Directory {
             local: false,
             group: None,
             mesh: Some(RemoteNode {
+                routes: None,
                 origin,
                 addr: (!addr.is_empty()).then(|| addr.into()),
             }),
@@ -770,6 +771,7 @@ impl Directory {
             {
                 saved.name = member.name.clone();
                 saved.mesh.as_mut().unwrap().addr = member.addr.clone();
+                saved.mesh.as_mut().unwrap().routes = member.routes.clone();
                 saved.clone()
             } else {
                 let node = SavedNode {
@@ -779,6 +781,7 @@ impl Directory {
                     token: None,
                     local: false,
                     mesh: Some(RemoteNode {
+                        routes: member.routes.clone(),
                         origin: member.origin.clone(),
                         addr: member.addr.clone(),
                     }),

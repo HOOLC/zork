@@ -13,6 +13,7 @@ async fn main() -> Result<()> {
         .execute(Command::BeginInvitation {
             ticket,
             name: "Notification fixture".into(),
+            switch_from: None,
         })
         .await?;
     let mut observer = client.local().observe(Key::Invitation)?;

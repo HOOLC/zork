@@ -4,7 +4,7 @@ use crate::{
     model_edit::{ConnectionInput, ModelInput},
     Client,
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -169,13 +169,9 @@ impl Client {
     ) -> Result<Value> {
         self.peer(&peer)?;
         let station = self.station(&peer)?;
-        let device = crate::state::Device::open(
-            station.clone(),
-            Some((self.store.clone(), peer.clone())),
-            true,
-        );
+        self.watch_devices().await?;
+        let device = self.directory.device(&peer).context("设备连接尚未就绪")?;
         device.start();
-        self.devices.insert(peer.clone(), device.clone());
         let profiles = device.profiles();
         match action {
             SettingsAction::OpenModels => {
@@ -320,22 +316,19 @@ mod tests {
         Arc,
     };
     fn save_node(client: &Client, url: String) {
-        client.stations.lock().unwrap().insert(
-            "node".into(),
-            Arc::new(crate::api::StationClient::new(url.clone(), None)),
-        );
+        let saved = crate::store::SavedNode {
+            id: "node".into(),
+            name: "fixture".into(),
+            url: url.clone(),
+            token: None,
+            local: false,
+            mesh: None,
+            group: None,
+        };
+        client.store.save_node(&saved).unwrap();
         client
-            .store
-            .save_node(&crate::store::SavedNode {
-                id: "node".into(),
-                name: "fixture".into(),
-                url,
-                token: None,
-                local: false,
-                mesh: None,
-                group: None,
-            })
-            .unwrap();
+            .directory
+            .insert_fixture(saved, Arc::new(crate::api::StationClient::new(url, None)));
     }
     #[tokio::test]
     async fn checked_version_and_tracked_result_survive_reopening_without_repeating_the_request() {

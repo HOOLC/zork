@@ -77,6 +77,7 @@ mod tests {
                 token: None,
                 local: false,
                 mesh: Some(RemoteNode {
+                    routes: None,
                     origin: origin.clone(),
                     addr: Some("127.0.0.1:12".into()),
                 }),

@@ -14,6 +14,20 @@ use tokio::{
 };
 use zork_config::MeshConfig;
 
+pub(crate) fn network_options(config: &MeshConfig) -> Result<synch_net::NetOptions> {
+    let mut effective = config.clone();
+    zork_config::services::ServicesConfig::load_from_install()?.apply_defaults(&mut effective)?;
+    Ok(synch_net::NetOptions {
+        offline: effective.offline,
+        bind_addr: effective.bind.as_deref().map(str::parse).transpose()?,
+        relay_urls: effective.relay_urls.unwrap_or_default(),
+        relay_quic_port: effective.relay_quic_port,
+        discovery_url: effective.discovery_url,
+        quic_discovery_urls: effective.quic_discovery_urls.unwrap_or_default(),
+        ..Default::default()
+    })
+}
+
 pub fn data_dir(root: &Path) -> PathBuf {
     root.join("mesh/synch")
 }
@@ -22,9 +36,17 @@ pub fn same_transport(a: &MeshConfig, b: &MeshConfig) -> bool {
         && a.offline == b.offline
         && a.bind == b.bind
         && a.relay_urls == b.relay_urls
+        && a.relay_quic_port == b.relay_quic_port
         && a.discovery_url == b.discovery_url
+        && a.quic_discovery_urls == b.quic_discovery_urls
 }
 pub fn validate(config: &MeshConfig) -> Result<()> {
+    ensure!(
+        config
+            .channel
+            .is_none_or(|channel| Some(channel) == zork_config::channel::current().ok()),
+        "mesh_channel_mismatch"
+    );
     if let Some(bind) = &config.bind {
         bind.parse::<std::net::SocketAddr>()
             .context("invalid Mesh bind address")?;
@@ -34,7 +56,9 @@ pub fn validate(config: &MeshConfig) -> Result<()> {
     }
     zork_config::services::ServicesConfig {
         relay_urls: config.relay_urls.clone(),
+        relay_quic_port: config.relay_quic_port,
         discovery_url: config.discovery_url.clone(),
+        quic_discovery_urls: config.quic_discovery_urls.clone(),
         cue: None,
     }
     .validate()?;
@@ -67,6 +91,9 @@ pub fn validate(config: &MeshConfig) -> Result<()> {
         );
     }
     for peer in &config.peers {
+        if let Some(routes) = &peer.routes {
+            routes.validate()?;
+        }
         ensure!(
             peer.origin.starts_with("key:")
                 && peer.origin.len() == 56
@@ -128,7 +155,16 @@ impl Drop for Runtime {
 }
 
 pub async fn start(root: &Path, config: &MeshConfig) -> Result<Runtime> {
-    start_mode(root, config, false).await
+    start_mode(root, config, false, None).await
+}
+
+/// Starts a node that also serves the native control protocol to its peers.
+pub async fn start_with_control(
+    root: &Path,
+    config: &MeshConfig,
+    control: Arc<dyn crate::control::ControlHandler>,
+) -> Result<Runtime> {
+    start_mode(root, config, false, Some(control)).await
 }
 
 /// A mobile/desktop access client owns an identity but never executes sockets
@@ -138,10 +174,15 @@ pub async fn start_client(root: &Path, config: &MeshConfig) -> Result<Runtime> {
         config.workspaces.is_empty(),
         "client cannot host workspaces"
     );
-    start_mode(root, config, true).await
+    start_mode(root, config, true, None).await
 }
 
-async fn start_mode(root: &Path, config: &MeshConfig, client_only: bool) -> Result<Runtime> {
+async fn start_mode(
+    root: &Path,
+    config: &MeshConfig,
+    client_only: bool,
+    control: Option<Arc<dyn crate::control::ControlHandler>>,
+) -> Result<Runtime> {
     validate(config)?;
     let (root, config) = (root.to_owned(), config.clone());
     let (ready, started) = oneshot::channel();
@@ -149,14 +190,25 @@ async fn start_mode(root: &Path, config: &MeshConfig, client_only: bool) -> Resu
     // waiting. An undelivered Runtime is dropped here and shuts itself down;
     // cancellation cannot drop a half-open engine while releasing its lock.
     tokio::spawn(async move {
-        let result = start_owned(&root, &config, client_only).await;
+        let result = start_owned(&root, &config, client_only, control).await;
         let _ = ready.send(result);
     });
     started.await.context("Mesh startup task failed")?
 }
 
-async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Result<Runtime> {
+async fn start_owned(
+    root: &Path,
+    config: &MeshConfig,
+    client_only: bool,
+    control: Option<Arc<dyn crate::control::ControlHandler>>,
+) -> Result<Runtime> {
     validate(config)?;
+    let channel = zork_config::channel::activate_for_data(root)?;
+    ensure!(
+        config.channel.is_none_or(|expected| expected == channel),
+        "mesh_channel_mismatch"
+    );
+    zork_config::channel::claim(root, channel)?;
     let data = data_dir(root);
     let init_data = data.clone();
     let (lock, clean_start) = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -188,18 +240,17 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
     .await??;
     synch_net::tls::install_crypto_provider();
     let mut options = synch_engine::NodeConfig::new(data.clone());
-    if client_only {
-        options.socket_workers = 0;
-    }
-    options.net.offline = config.offline;
+    // Zork serves native control; no node executes published socket programs.
+    options.socket_workers = 0;
+    let control_connections = Arc::new(crate::control::Connections::default());
+    options.net = network_options(config)?;
+    options.net.control = control.map(|handler| {
+        Arc::new(crate::control::ControlService::new(
+            handler,
+            control_connections.clone(),
+        )) as Arc<dyn synch_net::ControlProtocol>
+    });
     options.dns.no_tuf = config.offline;
-    options.net.bind_addr = match &config.bind {
-        Some(bind) => Some(bind.parse()?),
-        None if config.offline => Some("127.0.0.1:0".parse()?),
-        None => None,
-    };
-    options.net.relay_urls = config.relay_urls.clone().unwrap_or_default();
-    options.net.discovery_url = config.discovery_url.clone();
     let engine = synch_engine::Node::open(options).await?;
     // Publish the bound loopback endpoint before readoption: two same-host
     // peers must be able to find each other while both are still starting.
@@ -212,24 +263,22 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
     };
     // Discover current LAN ports even after a peer restarts. These are only
     // routing hints: QUIC still pins the key and Synch still checks membership.
-    if !config.offline && std::env::var_os("ZORK_MESH_LAN_DISCOVERY").is_none_or(|v| v != "0") {
-        match iroh_mdns_address_lookup::MdnsAddressLookup::builder()
-            .service_name("zork-mesh-v1")
-            .build(engine.net().endpoint().id())
-        {
-            Ok(mdns) => {
-                if let Ok(lookup) = engine.net().endpoint().address_lookup() {
-                    lookup.add(mdns);
-                }
-            }
-            Err(error) => {
-                tracing::warn!(%error, "LAN Mesh discovery unavailable; using configured discovery")
-            }
-        }
-    }
+    let lan_registration = if std::env::var_os("ZORK_MESH_LAN_DISCOVERY").is_none_or(|v| v != "0") {
+        Some(crate::lan_discovery::install(
+            engine.net().endpoint(),
+            "zork-mesh-v1",
+        )?)
+    } else {
+        None
+    };
     let alive = Arc::new(AtomicBool::new(true));
     let (startup_publish, mut pending_publish) = tokio::sync::mpsc::channel(1);
-    let handle = MeshNode::from_engine(engine.clone(), alive.clone(), startup_publish);
+    let handle = MeshNode::from_engine(
+        engine.clone(),
+        alive.clone(),
+        startup_publish,
+        control_connections,
+    );
     let setup: Result<()> = async {
         // Zork currently supports static key identities. Its own enrollment
         // service owns membership; there is no CLI or cloud-tunnel lifecycle.
@@ -259,7 +308,6 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
     let mut loops = JoinSet::new();
     let pushing = engine.clone();
     let mut stop_push = stop_loops.subscribe();
-    let (pending_head, mut outgoing_head) = tokio::sync::watch::channel(None);
     loops.spawn(async move {
         loop {
             tokio::select! {
@@ -269,50 +317,21 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
                     tokio::select! {
                         _ = stop_push.recv() => break,
                         result = async {
-                            // The bridge waits for its local publication;
-                            // business sources stage once without waiting for
-                            // peer delivery. Ongoing changes use the watcher.
+                            // Queue initial source scans without coupling local
+                            // readiness to a peer's network availability.
                             pushing.scan_source_and_stage_async(&request.space).await?;
-                            if request.flush {
-                                if let Some(head) = pushing.publish_staged().await? {
-                                    pending_head.send_replace(Some(head));
-                                }
-                            }
                             Ok::<_, synch_engine::EngineError>(())
                         } => {
                             let result = result.map_err(anyhow::Error::from);
                             if let Err(error) = &result {
                                 tracing::warn!(%error, "startup Mesh publication failed");
                             }
-                            let _ = request.done.send(result);
                         }
                     }
                 }
             }
         }
         "startup-publication"
-    });
-    let pushing = engine.clone();
-    let mut stop_push = stop_loops.subscribe();
-    loops.spawn(async move {
-        loop {
-            tokio::select! {
-                _ = stop_push.recv() => break,
-                changed = outgoing_head.changed() => {
-                    if changed.is_err() { break; }
-                    let Some(head) = outgoing_head.borrow_and_update().clone() else { continue; };
-                    tokio::select! {
-                        _ = stop_push.recv() => break,
-                        result = pushing.push_head(&head) => {
-                            if let Err(error) = result {
-                                tracing::warn!(%error, "startup Mesh push failed");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        "startup-push"
     });
     macro_rules! run {
         ($name:literal, $method:ident) => {{
@@ -352,6 +371,9 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
         // peer can wake. Synch still flushes its local publisher on stop, and
         // both completions precede releasing the engine and lifecycle lock.
         let draining_started = std::time::Instant::now();
+        if let Some(registration) = lan_registration {
+            registration.shutdown().await;
+        }
         let transport_stop = async {
             if client_only {
                 // Iroh can leave a closed QUIC connection in wait_all_draining
@@ -416,6 +438,14 @@ async fn start_owned(root: &Path, config: &MeshConfig, client_only: bool) -> Res
 }
 
 pub async fn configure(root: &Path, config: &MeshConfig, node: &MeshNode) -> Result<()> {
+    configure_changed(root, config, node, None).await
+}
+pub async fn configure_changed(
+    root: &Path,
+    config: &MeshConfig,
+    node: &MeshNode,
+    previous_config: Option<&MeshConfig>,
+) -> Result<()> {
     let ledger = root.join("mesh/managed-peers.json");
     let previous: Vec<String> = match tokio::fs::read(&ledger).await {
         Ok(bytes) => serde_json::from_slice(&bytes)?,
@@ -429,8 +459,28 @@ pub async fn configure(root: &Path, config: &MeshConfig, node: &MeshNode) -> Res
         node.untrust(origin).await?;
     }
     for peer in &config.peers {
-        node.trust(&peer.origin, &peer.name, peer.addr.as_deref())
-            .await?;
+        let previous = previous_config
+            .and_then(|previous| previous.peers.iter().find(|old| old.origin == peer.origin));
+        if previous == Some(peer) {
+            continue;
+        }
+        let routes_changed =
+            previous.is_none_or(|old| old.addr != peer.addr || old.routes != peer.routes);
+        node.trust(
+            &peer.origin,
+            &peer.name,
+            if routes_changed {
+                peer.addr.as_deref()
+            } else {
+                None
+            },
+        )
+        .await?;
+        if routes_changed {
+            if let Some(routes) = &peer.routes {
+                node.remember_routes(&peer.origin, routes).await?;
+            }
+        }
     }
     let temp = ledger.with_extension("tmp");
     tokio::fs::write(
@@ -440,36 +490,6 @@ pub async fn configure(root: &Path, config: &MeshConfig, node: &MeshNode) -> Res
     .await?;
     tokio::fs::rename(temp, ledger).await?;
     Ok(())
-}
-
-/// The remote Synch socket protocol remains compatible with existing peers.
-/// Its fixed eBPF program forwards authenticated requests to the host's ingress.
-/// All local administration and publication below are direct library calls.
-#[cfg(feature = "server")]
-pub async fn deploy_bridge(root: &Path, node: &MeshNode, port: u16) -> Result<String> {
-    let dir = root.join("mesh/control-source");
-    tokio::fs::create_dir_all(&dir).await?;
-    let source = crate::bridge::source_for_port(port)?;
-    let bytes = tokio::task::spawn_blocking(move || {
-        synch_cc::compile(
-            &source,
-            "zork-bridge.c",
-            &[("synch.h", synch_sock::sdk::HEADER)],
-            &[],
-        )
-    })
-    .await?
-    .context("compile fixed Mesh bridge")?;
-    let content = blake3::hash(&bytes);
-    node.add_filesystem_source("zork-control", &dir).await?;
-    let temp = root.join("mesh/bridge.o");
-    tokio::fs::write(&temp, bytes).await?;
-    tokio::fs::rename(temp, dir.join("mesh.sock")).await?;
-    let token = zork_config::random_token();
-    node.activate_bridge(token.clone(), 128).await?;
-    node.publish_for_startup("zork-control", "mesh.sock", content)
-        .await?;
-    Ok(token)
 }
 
 #[cfg(test)]
@@ -505,9 +525,8 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "server")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn startup_publication_does_not_wait_for_an_unresponsive_peer() -> Result<()> {
+    async fn initial_source_scans_do_not_wait_for_an_unresponsive_peer() -> Result<()> {
         let root = tempfile::tempdir()?;
         let peer_root = tempfile::tempdir()?;
         let mut runtime = start(root.path(), &config()).await?;
@@ -528,25 +547,8 @@ mod tests {
         std::fs::create_dir(&source)?;
         std::fs::write(source.join("entry"), b"ready locally")?;
         node.add_filesystem_source("startup", &source).await?;
-        // A watcher may have already staged this file. Startup must flush that
-        // batch rather than skipping an indexed but still unpublished version.
-        let engine = node.blocking(|engine| Ok(engine)).await?;
-        engine.scan_source_and_stage_async("startup").await?;
-        drop(engine);
-        tokio::time::timeout(
-            Duration::from_secs(3),
-            node.publish_for_startup("startup", "entry", blake3::hash(b"ready locally")),
-        )
-        .await
-        .context("local readiness waited for remote peer")??;
-        node.blocking(|engine| {
-            engine.resolve("startup", "entry", &synch_engine::VersionPolicy::Newest)?;
-            Ok(())
-        })
-        .await?;
-        // Station queues several sources after publishing its bridge. A local
-        // publication returning early is insufficient if those sends still wait
-        // behind the old publication's network push in the bounded queue.
+        // Control readiness no longer publishes a program. Queuing all real
+        // business sources must still remain independent of peer delivery.
         tokio::time::timeout(Duration::from_secs(3), async {
             for index in 0..3 {
                 let space = format!("startup-following-{index}");
@@ -755,7 +757,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "server")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn library_node_preserves_identity_without_a_control_service() -> Result<()> {
         let root = tempfile::Builder::new()
@@ -786,8 +787,6 @@ mod tests {
                 b"persist across Station restart",
             )
             .await?;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        deploy_bridge(root.path(), &node, listener.local_addr()?.port()).await?;
         tokio::time::timeout(Duration::from_secs(30), runtime.shutdown()).await??;
         ensure!(
             node.identity().await.is_err(),

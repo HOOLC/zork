@@ -10,6 +10,35 @@ pub struct MeshDevice {
     pub origin: String,
     pub name: String,
     pub addr: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routes: Option<MeshRoutes>,
+}
+
+/// Observed transport hints, bound to the enclosing device's authenticated key.
+/// These are refreshed by the endpoint; they never select a local NIC or bind.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MeshRoutes {
+    pub direct: Vec<std::net::SocketAddr>,
+    pub relays: Vec<String>,
+}
+impl MeshRoutes {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.direct.len() + self.relays.len() <= 24,
+            "too_many_peer_addresses"
+        );
+        for addr in &self.direct {
+            ensure!(
+                addr.port() != 0 && !addr.ip().is_unspecified() && !addr.ip().is_multicast(),
+                "invalid_device_address"
+            );
+        }
+        for relay in &self.relays {
+            crate::services::validate_endpoint(relay)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -20,6 +49,58 @@ pub struct MeshGroup {
     pub members: Vec<MeshDevice>,
     #[serde(default)]
     pub clients: Vec<MeshDevice>,
+}
+
+/// Binds a leave/switch confirmation to the membership the user reviewed.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MeshVersion {
+    pub authority: String,
+    pub revision: u64,
+}
+impl MeshVersion {
+    pub fn of(group: &MeshGroup) -> Self {
+        Self {
+            authority: group.authority.clone(),
+            revision: group.revision,
+        }
+    }
+    pub fn matches(&self, group: &MeshGroup) -> bool {
+        self.authority == group.authority && self.revision == group.revision
+    }
+}
+
+/// Detaches this device's grants; other members and all local business data stay.
+/// The caller preserves the previous directory before committing the change.
+pub fn detach(
+    config: &mut MeshConfig,
+    own_origin: &str,
+    expected: &MeshVersion,
+) -> Result<MeshGroup> {
+    let group = config
+        .group
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("mesh_membership_missing"))?;
+    ensure!(
+        expected.matches(group),
+        "mesh_membership_changed_refresh_required"
+    );
+    ensure!(
+        group.authority != own_origin || (group.members.len() == 1 && group.clients.is_empty()),
+        "当前设备管理这个 Mesh，请先移交管理职责或移除其它成员"
+    );
+    let group = group.clone();
+    let members: HashSet<_> = group
+        .members
+        .iter()
+        .chain(&group.clients)
+        .map(|member| member.origin.as_str())
+        .collect();
+    config
+        .peers
+        .retain(|peer| !members.contains(peer.origin.as_str()));
+    config.group = None;
+    Ok(group)
 }
 
 pub fn valid_origin(origin: &str) -> bool {
@@ -45,6 +126,9 @@ impl MeshDevice {
                 addr.port() != 0 && !addr.ip().is_unspecified() && !addr.ip().is_multicast(),
                 "invalid_device_address"
             );
+        }
+        if let Some(routes) = &self.routes {
+            routes.validate()?;
         }
         Ok(())
     }
@@ -112,6 +196,7 @@ impl MeshGroup {
                     origin: device.origin.clone(),
                     name: device.name.clone(),
                     addr: device.addr.clone(),
+                    routes: device.routes.clone(),
                     execute: vec![],
                     client: true,
                     collaborate: true,
@@ -123,6 +208,7 @@ impl MeshGroup {
                     origin: device.origin.clone(),
                     name: device.name.clone(),
                     addr: device.addr.clone(),
+                    routes: device.routes.clone(),
                     execute: vec![],
                     client: true,
                     collaborate: false,
@@ -143,6 +229,7 @@ mod tests {
     use super::*;
     fn device(c: char) -> MeshDevice {
         MeshDevice {
+            routes: None,
             origin: format!("key:{}", c.to_string().repeat(52)),
             name: c.to_string(),
             addr: None,
@@ -180,6 +267,7 @@ mod tests {
         let (a, b, c) = (device('y'), device('b'), device('n'));
         let mut config = MeshConfig::default();
         config.peers.push(MeshPeer {
+            routes: None,
             origin: c.origin.clone(),
             name: c.name.clone(),
             addr: None,

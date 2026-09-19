@@ -15,7 +15,7 @@ use tokio::{
     time::Instant,
 };
 use zork_client_types::adb::{Advertisement, HostState, LocalState};
-use zork_mesh::bridge::{Peer, Reply};
+use zork_mesh::control::{Peer, Reply};
 
 #[derive(Default)]
 pub struct Registry {

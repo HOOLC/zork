@@ -194,6 +194,7 @@ impl MeshAdmin {
                 let mut config = self.current().await?;
                 config.peers.retain(|p| p.origin != input.origin);
                 config.peers.push(zork_config::MeshPeer {
+                    routes: None,
                     origin: input.origin,
                     name: input.name,
                     addr: input.address,

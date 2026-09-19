@@ -140,7 +140,7 @@ impl LocalNode {
             .merge(self.wake.subscribe());
         if !already_running {
             let services = super::load_services()?;
-            services.apply_network(&mut config.mesh)?;
+            services.apply_defaults(&mut config.mesh)?;
             if fresh {
                 let mut listeners = vec![];
                 for binding in [

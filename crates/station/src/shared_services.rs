@@ -725,9 +725,9 @@ fn allowed(state: &AppState, origin: &str) -> bool {
 }
 pub async fn tunnel(
     state: AppState,
-    peer: zork_mesh::bridge::Peer,
+    peer: zork_mesh::control::Peer,
     request: Value,
-) -> Result<zork_mesh::bridge::Reply> {
+) -> Result<zork_mesh::control::Reply> {
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Envelope {
@@ -775,7 +775,7 @@ pub async fn tunnel(
         }
         cancel.send_replace(true);
     });
-    Ok(zork_mesh::bridge::Reply::Tunnel {
+    Ok(zork_mesh::control::Reply::Tunnel {
         upstream,
         cancelled,
         guard: None,

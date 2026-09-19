@@ -8,6 +8,8 @@ struct Pending {
     invitation: Invitation,
     name: String,
     network: Network,
+    #[serde(default)]
+    switch_from: Option<zork_config::membership::MeshVersion>,
 }
 impl Client {
     pub(crate) async fn next_invitation(&mut self) -> Result<Value> {
@@ -56,14 +58,21 @@ impl Client {
     pub(crate) fn invitation_snapshot(&self) -> Result<Value> {
         Ok(self.pending_invitation()?.map(|p| json!({"name":p.invitation.device.name,"expires_at":p.invitation.expires_at,"status":"waiting","id":p.invitation.id})).unwrap_or(Value::Null))
     }
-    pub(crate) async fn begin_invitation(&mut self, ticket: &str, name: &str) -> Result<Value> {
-        let invitation = zork_mesh::enrollment::ticket::resolve(
-            &self.root.join("invite-bootstrap"),
+    pub(crate) async fn begin_invitation(
+        &mut self,
+        ticket: &str,
+        name: &str,
+        switch_from: Option<zork_config::membership::MeshVersion>,
+    ) -> Result<Value> {
+        let node = self.runtime.as_ref().map(|runtime| runtime.node());
+        let invitation = crate::transport::resolve_invitation(
+            &self.root,
             ticket.trim(),
             InviteKind::Client,
+            node.as_ref(),
         )
         .await
-        .context("无法识别连接邀请，请扫描 Zork 的手机连接二维码")?;
+        .map_err(|error| anyhow::anyhow!("无法读取连接邀请：{error}"))?;
         ensure!(
             invitation.kind == InviteKind::Client,
             "这是执行设备邀请，请在桌面选择连接手机"
@@ -88,12 +97,35 @@ impl Client {
             );
             return self.snapshot();
         }
+        let current = self.store.current_mesh()?;
+        let switching = current
+            .as_ref()
+            .is_some_and(|group| group.authority != invitation.device.origin);
+        if switching {
+            let group = current.as_ref().unwrap();
+            if let Some(expected) = &switch_from {
+                ensure!(expected.matches(group), "Mesh 成员已变化，请重新确认切换");
+            } else {
+                let mut snapshot = self.snapshot()?;
+                snapshot["switch_confirmation"] = json!({
+                    "expected": zork_config::membership::MeshVersion::of(group),
+                    "target_name": invitation.device.name,
+                    "message": format!("切换到「{}」所在的 Mesh？本机保留聊天记录与草稿，原 Mesh 的其它成员不变。", invitation.device.name),
+                });
+                return Ok(snapshot);
+            }
+        } else {
+            ensure!(switch_from.is_none(), "Mesh 已变化，请重新读取邀请");
+        }
         let existing = self.store.nodes()?;
         let network = if existing.is_empty() {
             Network {
                 direct_only: invitation.offline,
                 relay_urls: invitation.relay_urls.clone(),
                 discovery_url: invitation.discovery_url.clone(),
+                relay_quic_port: invitation.relay_quic_port,
+                quic_discovery_urls: invitation.quic_discovery_urls.clone(),
+                channel: Some(invitation.channel),
             }
         } else {
             self.store.get("device", "network")?.unwrap_or_default()
@@ -107,6 +139,7 @@ impl Client {
                 invitation,
                 name: name.into(),
                 network,
+                switch_from,
             },
         )?;
         self.resume().await?;
@@ -150,6 +183,7 @@ async fn connect_invitation(
     let identity = node.identity().await?;
     ensure!(identity != invitation.device.origin, "不能连接到自己");
     let device = MeshDevice {
+        routes: Some(node.routes()?),
         origin: identity.clone(),
         name: pending.name.clone(),
         addr: None,
@@ -159,10 +193,13 @@ async fn connect_invitation(
         offline: invitation.offline,
         relay_urls: invitation.relay_urls.clone(),
         discovery_url: invitation.discovery_url.clone(),
-        bind: Some("0.0.0.0:0".into()),
+        relay_quic_port: invitation.relay_quic_port,
+        quic_discovery_urls: invitation.quic_discovery_urls.clone(),
+        channel: Some(invitation.channel),
+        bind: None,
         ..Default::default()
     };
-    let enrollment = Enrollment::bind(root, &config).await?;
+    let enrollment = Enrollment::bind_for_node(root, &config, node).await?;
     let begun = enrollment
         .exchange(
             invitation,
@@ -183,7 +220,7 @@ async fn connect_invitation(
     .await?;
     node.remember_peer_address(&invitation.device.origin, begun["address"].clone())
         .await?;
-    let reply = node.exchange(&invitation.device.origin, &json!({"v":1,"request":{"kind":"confirm_join","id":invitation.id,"secret":invitation.secret,"challenge":begun["challenge"]}})).await?;
+    let reply = node.exchange(&invitation.device.origin, &json!({"v":1,"request":{"kind":"confirm_join","id":invitation.id,"secret":invitation.secret,"challenge":begun["challenge"],"address":node.address()?}})).await?;
     ensure!(
         reply["ok"] == true,
         "{}",
@@ -223,7 +260,8 @@ async fn connect_invitation(
     );
     let nodes: Vec<_> = group
         .members
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|device| SavedNode {
             id: device.origin.clone(),
             name: device.name,
@@ -231,21 +269,14 @@ async fn connect_invitation(
             token: None,
             local: false,
             mesh: Some(RemoteNode {
+                routes: device.routes,
                 origin: device.origin,
                 addr: device.addr,
             }),
             group: Some(group.authority.clone()),
         })
         .collect();
-    for peer in &nodes {
-        node.trust(
-            &peer.id,
-            &peer.name,
-            peer.mesh.as_ref().and_then(|p| p.addr.as_deref()),
-        )
-        .await?;
-    }
-    store.accept_invitation_if(&invitation.id, &nodes, &pending.network)?;
+    store.accept_invitation_if(&invitation.id, &nodes, &pending.network, &group)?;
     Ok(None)
 }
 
@@ -293,8 +324,10 @@ async fn run_invitation(
     view: Arc<InvitationState>,
     generation: u64,
 ) {
-    let mut retry = zork_notify::retry::Retry::default();
+    let mut retry = zork_mesh::retry::DiscoveryBackoff::default();
+    let mut attempt = 0u64;
     loop {
+        attempt += 1;
         let result: Result<()> = async {
             let request = connect_invitation(&root, &store, &node, &pending).await?;
             let Some(request) = request else {
@@ -382,11 +415,25 @@ async fn run_invitation(
                 };
                 snapshot["notice"] = json!(notice);
                 snapshot["invitation"]["status"] = json!(status);
+                let delay = retry.next_delay();
+                snapshot["attempt"] = json!(attempt);
+                snapshot["retry_in_seconds"] = if terminal {
+                    Value::Null
+                } else {
+                    json!(delay.as_secs())
+                };
+                if !terminal {
+                    snapshot["notice"] = json!(format!(
+                        "暂时无法连接设备，{} 秒后重试（第 {} 次）",
+                        delay.as_secs(),
+                        attempt + 1
+                    ));
+                }
                 view.publish(generation, snapshot);
                 if terminal {
                     return;
                 }
-                retry.wait().await;
+                tokio::time::sleep(delay).await;
             }
         }
     }
@@ -399,6 +446,18 @@ mod tests {
     fn a_cancelled_claim_cannot_commit_peers_after_the_network_reply_arrives() {
         let root = tempfile::tempdir().unwrap();
         let store = ClientStore::open(root.path()).unwrap();
+        let authority = format!("key:{}", "y".repeat(52));
+        let group = MeshGroup {
+            authority: authority.clone(),
+            revision: 1,
+            members: vec![MeshDevice {
+                routes: None,
+                origin: authority,
+                name: "Station".into(),
+                addr: None,
+            }],
+            clients: vec![],
+        };
         store
             .put(
                 "device",
@@ -414,7 +473,7 @@ mod tests {
             )
             .unwrap();
         assert!(store
-            .accept_invitation_if("first", &[], &Network::default())
+            .accept_invitation_if("first", &[], &Network::default(), &group)
             .is_err());
         assert_eq!(
             store.get::<Value>("device", "invitation").unwrap().unwrap()["invitation"]["id"],
@@ -422,7 +481,7 @@ mod tests {
         );
         store.forget_invitation().unwrap();
         assert!(store
-            .accept_invitation_if("second", &[], &Network::default())
+            .accept_invitation_if("second", &[], &Network::default(), &group)
             .is_err());
     }
 }

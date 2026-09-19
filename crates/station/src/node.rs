@@ -97,6 +97,8 @@ pub fn router(app: AppState) -> Router {
             post(approve_client_invite),
         )
         .route("/v1/node/mesh/join", post(join_mesh))
+        .route("/v1/node/mesh/join/{id}", get(join_mesh_progress))
+        .route("/v1/node/mesh/leave", post(leave_mesh))
         .route("/v1/node/mesh/members/remove", post(remove_mesh_member))
         .route("/v1/node/mesh/clients", post(register_mesh_client))
         .route("/v1/node/agents", get(agents).post(create_agent))
@@ -739,16 +741,10 @@ async fn revoke_mesh_invite(
     };
     mesh_result(service.enrollment.revoke(&state.app, &id).await)
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct JoinMesh {
-    invitation: String,
-    name: Option<String>,
-}
 async fn join_mesh(
     State(state): State<NodeState>,
     headers: HeaderMap,
-    Json(body): Json<JoinMesh>,
+    Json(body): Json<zork_client_core::mesh_enrollment::JoinRequest>,
 ) -> Response {
     if !authorized(&state, &headers) {
         return error(
@@ -762,10 +758,58 @@ async fn join_mesh(
     mesh_result(
         service
             .enrollment
-            .join(&state.app, &body.invitation, body.name.as_deref())
+            .start_join(state.app.clone(), body)
+            .and_then(|progress| Ok(serde_json::to_value(progress)?)),
+    )
+}
+async fn join_mesh_progress(
+    State(state): State<NodeState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    let Some(service) = state.app.mesh.get() else {
+        return error(StatusCode::CONFLICT, "mesh_not_ready");
+    };
+    mesh_result(
+        service
+            .enrollment
+            .join_progress(Some(&id))
+            .and_then(|progress| Ok(serde_json::to_value(progress)?)),
+    )
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LeaveMesh {
+    expected: zork_config::membership::MeshVersion,
+}
+async fn leave_mesh(
+    State(state): State<NodeState>,
+    headers: HeaderMap,
+    Json(body): Json<LeaveMesh>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    let Some(service) = state.app.mesh.get() else {
+        return error(StatusCode::CONFLICT, "mesh_not_ready");
+    };
+    mesh_result(
+        service
+            .enrollment
+            .leave_mesh(&state.app, &body.expected)
             .await,
     )
 }
+
 async fn remove_mesh_member(
     State(state): State<NodeState>,
     headers: HeaderMap,
@@ -810,8 +854,13 @@ async fn mesh_config(State(state): State<NodeState>, headers: HeaderMap) -> Resp
     }
     match zork_config::load_config(&state.app.config.data_root) {
         Ok(config) => {
-            Json(json!({"config":config.mesh,"origin":state.app.mesh.get().map(|m|m.origin())}))
-                .into_response()
+            Json(json!({
+                "config": config.mesh,
+                "origin": state.app.mesh.get().map(|m| m.origin()),
+                "address": state.app.mesh.get().map(|m| m.address()),
+                "join": state.app.mesh.get().and_then(|m| m.enrollment.join_progress(None).ok().flatten()),
+            }))
+            .into_response()
         }
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }

@@ -59,6 +59,10 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     var invitation by mutableStateOf<JSONObject?>(null)
         private set
     private var invitationWatch: Job? = null
+    private var directoryWatch: Job? = null
+    var meshSwitch by mutableStateOf<JSONObject?>(null)
+        private set
+    private var switchTicket: String? = null
 
     var identity by mutableStateOf("")
         private set
@@ -199,6 +203,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         live?.cancel()
         historyWatch?.cancel()
         invitationWatch?.cancel()
+        directoryWatch?.cancel()
         if (value) watchDataReset()
         if (value) action {
             adbPlatform.start()
@@ -207,6 +212,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             ready = true
             refreshNotificationDelivery()
             watchAdb()
+            watchDirectory()
             reportVisibleConversation()
             pendingNotification?.let { openNotification(it) }
             settings?.device?.id?.let { watchSettings(it) }
@@ -321,14 +327,37 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    private fun applyDirectory(value: JSONObject) {
+        val previous = activePeer?.id
+        peers = value.optJSONArray("nodes").objects().map {
+            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "")
+        }
+        activePeer = peers.find { it.id == (previous ?: value.text("selected_peer")) }
+        deviceTrees = deviceTrees.filterKeys { id -> peers.any { it.id == id } }
+        if (previous != null && activePeer == null) {
+            live?.cancel(); closeHistory(); settingsWatch?.cancel()
+            conversation = null; settings = null; connected = false
+            replaceMessages(emptyList()); pending = emptyList(); participants = emptyList()
+            leaders = emptyList(); sessions = emptyList(); tasksByLeader = emptyMap()
+            cachedConversation = null
+        }
+    }
+
+    private fun watchDirectory() {
+        directoryWatch?.cancel()
+        directoryWatch = viewModelScope.launch {
+            try {
+                repo.directoryEvents().collect { frame -> applyDirectory(frame.value.getJSONObject("snapshot")) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { notice = error.message ?: "设备目录暂时不可用" }
+        }
+    }
+
     private fun applySnapshot(value: JSONObject) {
         invitation = value.optJSONObject("invitation")
         identity = value.text("identity")
         directOnly = value.optJSONObject("network")?.optBoolean("direct_only") ?: false
-        peers = value.optJSONArray("nodes").objects().map {
-            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "")
-        }
-        if (activePeer == null) activePeer = peers.find { it.id == value.text("selected_peer") }
+        applyDirectory(value)
     }
 
     private fun action(block: suspend () -> Unit) {
@@ -403,11 +432,25 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun beginInvitation(ticket: String) = action {
-        live?.cancel()
-        invitationWatch?.cancel()
-        applySnapshot(repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL))
+        val result = repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL)
+        result.optJSONObject("switch_confirmation")?.let {
+            meshSwitch = it; switchTicket = ticket; return@action
+        }
+        live?.cancel(); invitationWatch?.cancel()
+        applySnapshot(result)
         watchInvitation()
     }
+    fun confirmMeshSwitch() = action {
+        val confirmation = meshSwitch ?: return@action
+        val ticket = switchTicket ?: return@action
+        val result = repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL,
+            "switch_from" to confirmation.getJSONObject("expected"))
+        meshSwitch = null; switchTicket = null
+        live?.cancel(); invitationWatch?.cancel()
+        applySnapshot(result)
+        watchInvitation()
+    }
+    fun cancelMeshSwitch() { meshSwitch = null; switchTicket = null }
 
     fun cancelInvitation() = action {
         invitationWatch?.cancel()

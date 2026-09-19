@@ -1,0 +1,8 @@
+{
+  "relay_urls": ["https://relay.zork.ing"],
+  "discovery_url": "https://relay.zork.ing/pkarr",
+  "quic_discovery_urls": [
+    "https://aps1-1.relay.n0.iroh.link",
+    "https://usw1-1.relay.n0.iroh.link"
+  ]
+}

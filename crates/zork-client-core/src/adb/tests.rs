@@ -19,6 +19,7 @@ fn save_station(store: &ClientStore, id: &str, name: &str) -> Result<()> {
         token: None,
         local: false,
         mesh: Some(RemoteNode {
+            routes: None,
             origin: id.into(),
             addr: None,
         }),

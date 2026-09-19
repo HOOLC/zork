@@ -31,6 +31,7 @@ pub enum Key {
         query: Option<crate::resources::Inspection>,
     },
     Invitation,
+    Directory,
     Conversation {
         peer: String,
         session: Option<String>,
@@ -50,6 +51,7 @@ impl Key {
             | Self::LocalScripts
             | Self::Adb
             | Self::Invitation
+            | Self::Directory
             | Self::Notifications
             | Self::SharedFiles => "",
             Self::Resources { peer, .. } => peer.as_deref().unwrap_or(""),
@@ -98,6 +100,7 @@ enum Projection {
     Notifications(notifications::NotificationsWire),
     Resources(resources::ResourcesWire),
     Invitation(snapshot::SnapshotWire),
+    Directory(snapshot::SnapshotWire),
     Conversation(conversation::ConversationWire),
     History(history::HistoryWire),
     Settings(settings::SettingsWire),
@@ -177,6 +180,15 @@ impl WireSubscription {
             applied: 0,
         })
     }
+    pub(crate) fn from_directory(source: &zork_observe::ValueSource<Value>) -> Self {
+        Self {
+            projection: Projection::Directory(snapshot::SnapshotWire::new(source)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
+    }
     pub(crate) fn from_invitation(source: &zork_observe::ValueSource<Value>) -> Self {
         Self {
             projection: Projection::Invitation(snapshot::SnapshotWire::new(source)),
@@ -198,6 +210,7 @@ impl WireSubscription {
             | Key::LocalScripts
             | Key::Adb
             | Key::Invitation
+            | Key::Directory
             | Key::Notifications
             | Key::SharedFiles
             | Key::Resources { .. } => {
@@ -228,7 +241,9 @@ impl WireSubscription {
             Projection::SharedFiles(p) => p.signals(),
             Projection::Notifications(p) => p.wire.signals(),
             Projection::Resources(p) => p.signals(),
-            Projection::Invitation(p) | Projection::LocalScripts(p) => p.signals(),
+            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
+                p.signals()
+            }
             Projection::Conversation(p) => p.signals(),
             Projection::History(p) => p.signals(),
             Projection::Settings(p) => p.signals(),
@@ -248,7 +263,9 @@ impl WireSubscription {
             Projection::SharedFiles(p) => p.valid(),
             Projection::Notifications(p) => p.valid(),
             Projection::Resources(p) => p.valid(),
-            Projection::Invitation(p) | Projection::LocalScripts(p) => p.valid(),
+            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
+                p.valid()
+            }
             Projection::Conversation(p) => p.valid(),
             Projection::History(p) => p.valid(),
             Projection::Settings(p) => p.valid(),
@@ -269,7 +286,9 @@ impl WireSubscription {
             Projection::SharedFiles(p) => p.prepare()?,
             Projection::Notifications(p) => p.prepare()?,
             Projection::Resources(p) => p.prepare()?,
-            Projection::Invitation(p) | Projection::LocalScripts(p) => p.prepare()?,
+            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
+                p.prepare()?
+            }
             Projection::Conversation(p) => p.prepare()?,
             Projection::History(p) => p.prepare()?,
             Projection::Settings(p) => p.prepare()?,
@@ -299,7 +318,9 @@ impl WireSubscription {
             Projection::Notifications(p) => p.wire.finish(applied && valid),
             Projection::Resources(p) => p.finish(applied && valid),
             Projection::SharedFiles(p) => p.finish(applied && valid),
-            Projection::Invitation(p) | Projection::LocalScripts(p) => p.finish(applied && valid),
+            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
+                p.finish(applied && valid)
+            }
             Projection::Conversation(p) => p.finish(applied && valid),
             Projection::History(p) => p.finish(applied && valid),
             Projection::Settings(p) => p.finish(applied && valid),

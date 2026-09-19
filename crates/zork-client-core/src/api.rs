@@ -427,6 +427,17 @@ fn join_task_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::Task(std::io::Error::other(err.to_string()))
 }
 
+fn mesh_error_status(value: &serde_json::Value) -> u16 {
+    value["status"]
+        .as_u64()
+        .filter(|status| (400..600).contains(status))
+        .map(|status| status as u16)
+        .unwrap_or_else(|| match value["error"].as_str() {
+            Some("mesh_not_ready" | "mesh_starting" | "node_starting") => 503,
+            _ => 403,
+        })
+}
+
 async fn send_request(
     http: &Transport,
     base_url: &str,
@@ -439,7 +450,7 @@ async fn send_request(
         let response=control.exchange(origin,&serde_json::json!({"v":1,"request":{"kind":"client","method":method.as_str(),"path":path,"body":body}})).await.map_err(|e|ApiError::Task(std::io::Error::other(format!("{e:#}"))))?;
         if response["v"] != 1 || response["ok"] != true {
             return Err(ApiError::Api {
-                status: 403,
+                status: mesh_error_status(&response),
                 message: response["error"]
                     .as_str()
                     .unwrap_or("Mesh client request failed")
@@ -529,7 +540,11 @@ impl StationClient {
     pub(crate) fn same_connection(&self, other: &Self) -> bool {
         self.base_url == other.base_url
             && self.token == other.token
-            && self.is_mesh() == other.is_mesh()
+            && match (&self.http.mesh, &other.http.mesh) {
+                (Some((a, peer_a)), Some((b, peer_b))) => peer_a == peer_b && a.same_runtime(b),
+                (None, None) => true,
+                _ => false,
+            }
     }
     pub(crate) fn client_id(&self) -> &str {
         &self.client_id
@@ -541,17 +556,31 @@ impl StationClient {
             + 1
     }
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
-        let http = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(5))
+        let base_url = base_url.into();
+        let local = reqwest::Url::parse(&base_url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned))
+            .is_some_and(|host| {
+                host == "localhost"
+                    || host
+                        .trim_matches(['[', ']'])
+                        .parse::<std::net::IpAddr>()
+                        .is_ok_and(|ip| ip.is_loopback())
+            });
+        let builder = || {
+            let builder =
+                reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(5));
+            if local {
+                builder.no_proxy()
+            } else {
+                builder
+            }
+        };
+        let http = builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .expect("reqwest client");
-        // SSE is intentionally not given a total request timeout. Connection
-        // establishment is bounded, but a healthy event stream is long-lived.
-        let sse_http = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(5))
-            .build()
-            .expect("reqwest SSE client");
+        let sse_http = builder().build().expect("reqwest SSE client");
         let rt = ClientRuntime::Owned(Some(
             tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
@@ -572,7 +601,7 @@ impl StationClient {
                 http: sse_http,
                 mesh: None,
             },
-            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            base_url: base_url.trim_end_matches('/').to_owned(),
             token,
             rt,
             delivery_gate: tokio::sync::Mutex::new(()),
@@ -1125,7 +1154,7 @@ impl StationClient {
                     Ok(Some(value)) if value["v"] == 1 && value["ok"] == true => value,
                     Ok(Some(value)) => {
                         let _ = ready_tx.send(Err(ApiError::Api {
-                            status: 403,
+                            status: mesh_error_status(&value),
                             message: value["error"]
                                 .as_str()
                                 .unwrap_or("Mesh subscription rejected")
@@ -1185,7 +1214,7 @@ impl StationClient {
                     if value["v"] != 1 || value["ok"] != true {
                         let _ = tx
                             .send(Err(ApiError::Api {
-                                status: 403,
+                                status: mesh_error_status(&value),
                                 message: value["error"]
                                     .as_str()
                                     .unwrap_or("Mesh subscription rejected")

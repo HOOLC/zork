@@ -13,9 +13,13 @@ pub mod conversation;
 #[cfg(not(target_family = "wasm"))]
 pub mod data_reset;
 pub use zork_client_types::{comments, files};
+#[cfg(not(target_family = "wasm"))]
+pub use zork_config::channel;
 pub mod agent_edit;
 #[cfg(not(target_family = "wasm"))]
 mod catalog;
+#[cfg(not(target_family = "wasm"))]
+mod client_directory;
 #[cfg(not(target_family = "wasm"))]
 pub mod delivery;
 #[cfg(feature = "desktop")]
@@ -33,6 +37,8 @@ pub mod live;
 #[cfg(not(target_family = "wasm"))]
 pub mod local_scripts;
 pub mod locale;
+#[cfg(not(target_family = "wasm"))]
+pub mod mesh_enrollment;
 pub mod model_edit;
 #[cfg(not(target_family = "wasm"))]
 pub mod notifications;
@@ -40,6 +46,8 @@ pub mod notifications;
 pub mod pages;
 #[cfg(not(target_family = "wasm"))]
 pub mod preferences;
+#[cfg(not(target_family = "wasm"))]
+pub mod relay_account;
 #[cfg(not(target_family = "wasm"))]
 pub mod resources;
 #[cfg(not(target_family = "wasm"))]

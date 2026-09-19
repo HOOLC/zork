@@ -9,7 +9,7 @@ description: 排查 zork 的设备接入、Mesh 连接、远程任务投递和�
 
 - 确定访问客户端、执行节点、数据目录和生命周期所有者。端口、服务 URL、relay/discovery 从实际配置读取，多实例使用明确 `--data`。先用 `zork mesh status`、`zork service status` 和日志定位连接、邀请/成员、执行或服务层，不因诊断重新 join、安装或停止节点。
 - 区分独立 Station、客户端拥有节点和系统服务接管。supervisor 管理 Station，Agent 内嵌；`service uninstall` 撤销看护，不等于停止进程，`zork stop` 才停止节点。客户端切换不迁移执行设备或工作目录。
-- 启动等待分开核对本地运行时、历史恢复、本地发布与对端推送。正常关闭后重启、异常退出和数据库回滚分别验证；优化正常恢复不能跳过旧数据库的自身签名历史校验，也不能只测桥接发布而漏掉后续源扫描入队。
+- 启动等待分开核对本地运行时、历史恢复、本地发布与对端推送。正常关闭后重启、异常退出和数据库回滚分别验证；优化正常恢复不能跳过旧数据库的自身签名历史校验，也不能只检查传输就绪而漏掉后续源扫描入队。
 - ready 后接口仍停顿时采样业务与 Mesh 工作线程，检查后台发现、TLS 平台校验等同步调用是否占满执行器；不靠增加线程数、关闭探测或放宽证书校验掩盖阻塞。
 - 邀请由 Station 管理，重复 join 保留身份、Profile、任务和目录；邀请/管理凭据不进报告。成员管理节点离线不等于已有节点不能执行。relay/discovery 与账号控制面不同，客户端配置覆盖不自动改写运行中的 Station。
 - 业务操作丢回执时核对原请求与持久回执，未知结果不换 ID 重放；普通消息遵循 [Chat 发送约定](../../../docs/design/chat.md#身份与消息)。停止需确认真实结束。有效 Mesh 成员互信，不以旧 client/collaborate 标志追加授权；成员身份、来源元数据/CAS 与 Agent Skill 来源分别核对，树中可见不表示已下载或已绑定。
@@ -21,7 +21,8 @@ description: 排查 zork 的设备接入、Mesh 连接、远程任务投递和�
 
 - 接入、成员、撤权：`scripts/test-mesh-enrollment.py`。
 - 安装/复用：`scripts/test-native-installer.py`、`scripts/test-mesh-installer.py`；后者使用真实用户服务管理器。
-- 客户端成员状态/outbox：`scripts/test-client-mesh.py`；远端恢复/回执：`scripts/test-remote-workers.py`。
+- 手机成员目录及恢复：`scripts/test-mobile-mesh-directory.py`、`scripts/android/test_directory.py`；Chat、远程工具、文件与恢复按 `scripts/test-chat-channels.py`、`scripts/test-mesh-enrollment.py` 和 `scripts/test-shared-services.py` 的实际覆盖选择。
+- 网络与资源：`relay-proxy-lab` 检查代理 relay、独立 QAD 与凭据热更新，`transport-lifetime` 检查真实运行时的 FD 回收；LAN 运行期故障另用注入失败的监督测试。关闭后的异步回收需有界等待，不能只测安装失败或抬高 FD 上限。
 - relay 流量：`scripts/test-local-relay.py`；原生接入/后台接管：`scripts/test-mesh-experience-ui.py`。
 
 报告故障层和证据。允许直连的测试不证明强制 relay，同机 fixture 不证明物理跨网，源码通过不证明公开 Release 资产存在。

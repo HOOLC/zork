@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Channel tools and delivery across two real, isolated Mesh nodes with fake models."""
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -198,12 +199,11 @@ def main():
             assert local_script['status'] == 'committed' and local_script['interaction'] == expected_card
             script_invocation = 'android-script-' + uuid.uuid4().hex
             script_args = dict(script, target=a.origin, chat_id=script_chat,
-                reply_to=local_script['message_id'], attachments=[{'source_target': a.origin,
-                    'source_chat_id': channel, 'attachment_id': sent['attachments'][0]['id']}])
+                reply_to=local_script['message_id'])
             remote_script = operation(b, caller_b, 'chat.post_message.android_script', script_args, script_invocation)
             resent_script = operation(b, caller_b, 'chat.post_message.android_script', script_args, script_invocation)
             assert remote_script['interaction'] == expected_card
-            assert remote_script['attachments'][0]['content_root'] == sent['attachments'][0]['content_root']
+            assert not remote_script.get('attachments')
             assert remote_script['reply_to'] == local_script['message_id']
             assert resent_script['message_id'] != remote_script['message_id']
             assert not sql(b, "SELECT 1 FROM chat_outgoing WHERE json_extract(value,'$.rpc.invocation_id')=?", (script_invocation,))
@@ -256,9 +256,18 @@ def main():
             assert next(p for p in participants if p['author']['id'] == b.origin + '/caller-b')['subscribed'] is False
             passed('unsubscription retains authored participation and mentions cannot bypass it')
 
-            created = operation(b, caller_b, 'agent.create', {'target': a.origin, 'config': {
-                'name': 'Independent Agent', 'selection': {'profile_id': 'fixture',
-                    'model': 'fixture-model', 'thinking': 'off'}, 'instructions': 'Use the shared channel.'}})
+            create_id = 'create-' + uuid.uuid4().hex
+            with ThreadPoolExecutor(max_workers=1) as pending:
+                creation = pending.submit(operation, b, caller_b, 'agent.create', {'target': a.origin, 'config': {
+                    'name': 'Independent Agent', 'role': 'leader', 'selection': {'profile_id': 'fixture',
+                        'model': 'fixture-model', 'thinking': 'off'}, 'instructions': 'Use the shared channel.'}}, create_id)
+                notice = fixture.wait(lambda: next((m for m in mailbox(b, caller_b)
+                    if m.get('kind') == 'user_action_required' and m.get('invocation_id') == create_id), None), 'creation review notice')
+                card = operation(b, caller_b, 'chat.post_message', {'chat_id': home_b,
+                    'interaction': {'request_id': notice['request_id']}})
+                ok(b, 'POST', f"/v1/node/chats/{home_b}/messages/{card['message_id']}/agent-configuration",
+                    {'response_id': 'accept-create', 'accept': True, 'values': {}})
+                created = creation.result(timeout=30)
             identity = created['agent']['id']
             assert created['agent']['session_id'] is None
             assert not sql(a, 'SELECT 1 FROM chat_agent_home WHERE agent_id=?', (identity,))

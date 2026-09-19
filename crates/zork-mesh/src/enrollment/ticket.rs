@@ -11,6 +11,8 @@ pub struct Ticket {
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Bootstrap {
+    #[serde(default)]
+    channel: zork_config::channel::Channel,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     offline: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -40,18 +42,15 @@ impl Ticket {
     pub fn new(kind: InviteKind, address: EndpointAddr, config: &MeshConfig) -> Result<Self> {
         let bytes = SecretKey::generate().to_bytes();
         let token = bytes[..16].try_into().unwrap();
-        let direct = if config.offline {
-            Some(
-                address
-                    .ip_addrs()
-                    .filter(|a| !a.ip().is_unspecified())
-                    .min_by_key(|a| address_rank(a.ip(), config))
-                    .copied()
-                    .context("offline_invitation_needs_address")?,
-            )
-        } else {
-            None
-        };
+        let direct = address
+            .ip_addrs()
+            .filter(|addr| !addr.ip().is_unspecified() && !addr.ip().is_multicast())
+            .min_by_key(|addr| address_rank(addr.ip(), config))
+            .copied();
+        ensure!(
+            !config.offline || direct.is_some(),
+            "offline_invitation_needs_address"
+        );
         let mut endpoint = EndpointAddr::new(address.id);
         if let Some(addr) = direct {
             endpoint = endpoint.with_ip_addr(addr);
@@ -61,6 +60,7 @@ impl Ticket {
             endpoint,
             token,
             bootstrap: Bootstrap {
+                channel: config.channel.unwrap_or(zork_config::channel::current()?),
                 offline: config.offline,
                 address: direct,
                 discovery_url: config.discovery_url.clone(),
@@ -79,8 +79,17 @@ impl Ticket {
     pub fn encode(&self) -> Result<String> {
         let mut bytes = self.endpoint.id.as_bytes().to_vec();
         bytes.extend_from_slice(&self.token);
-        if self.bootstrap.offline || self.bootstrap.discovery_url.is_some() {
+        if self.bootstrap.offline
+            || self.bootstrap.address.is_some()
+            || self.bootstrap.discovery_url.is_some()
+            || self.bootstrap.channel == zork_config::channel::Channel::Dev
+        {
             let flags = u8::from(self.bootstrap.offline)
+                | if self.bootstrap.channel == zork_config::channel::Channel::Dev {
+                    16
+                } else {
+                    0
+                }
                 | self
                     .bootstrap
                     .address
@@ -134,10 +143,15 @@ impl Ticket {
         if bytes.len() > 48 {
             let flags = bytes[48];
             ensure!(
-                flags != 0 && flags & !15 == 0 && flags & 6 != 6,
+                flags != 0 && flags & !31 == 0 && flags & 6 != 6,
                 "invalid_bootstrap_flags"
             );
             bootstrap.offline = flags & 1 != 0;
+            bootstrap.channel = if flags & 16 != 0 {
+                zork_config::channel::Channel::Dev
+            } else {
+                zork_config::channel::Channel::Release
+            };
             let mut cursor = 49;
             let address_len = if flags & 2 != 0 {
                 4
@@ -206,28 +220,51 @@ impl Ticket {
             bootstrap,
         })
     }
-    pub async fn resolve(&self, root: &Path) -> Result<Invitation> {
-        let config = MeshConfig {
+    pub fn network_config(&self) -> Result<MeshConfig> {
+        ensure!(
+            self.bootstrap.channel == zork_config::channel::current()?,
+            "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+        );
+        Ok(MeshConfig {
             offline: self.bootstrap.offline,
             discovery_url: self.bootstrap.discovery_url.clone(),
-            bind: Some("0.0.0.0:0".into()),
+            bind: None,
             ..Default::default()
-        };
-        let transport =
-            tokio::time::timeout(Duration::from_secs(15), Enrollment::bind(root, &config))
-                .await
-                .context("bootstrap_bind_timeout")??;
+        })
+    }
+    pub async fn resolve(&self, root: &Path) -> Result<Invitation> {
+        self.resolve_with_owner(root, None).await
+    }
+    async fn resolve_with_owner(
+        &self,
+        root: &Path,
+        owner: Option<&crate::node::MeshNode>,
+    ) -> Result<Invitation> {
+        let config = self.network_config()?;
+        let transport = tokio::time::timeout(Duration::from_secs(15), async {
+            match owner {
+                Some(node) => Enrollment::bind_for_node(root, &config, node).await,
+                None => Enrollment::bind(root, &config).await,
+            }
+        })
+        .await
+        .context("bootstrap_bind_timeout")??;
+        let result = self.resolve_using(&transport).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), transport.close()).await;
+        result
+    }
+    pub async fn resolve_using(&self, transport: &Enrollment) -> Result<Invitation> {
         let result = transport
             .exchange_endpoint(
                 self.endpoint.clone(),
                 &json!({"op":"resolve","id":self.id(),"secret":self.secret(),"kind":self.kind}),
             )
             .await;
-        let _ = tokio::time::timeout(Duration::from_secs(3), transport.close()).await;
         let value = result?;
         let invite: Invitation = serde_json::from_value(value["invitation"].clone())?;
         ensure!(
-            invite.kind == self.kind
+            invite.channel == self.bootstrap.channel
+                && invite.kind == self.kind
                 && invite.id == self.id()
                 && invite.secret == self.secret()
                 && invite.endpoint.id == self.endpoint.id,
@@ -239,14 +276,34 @@ impl Ticket {
 }
 
 pub async fn resolve(root: &Path, value: &str, expected: InviteKind) -> Result<Invitation> {
+    resolve_owned(root, value, expected, None).await
+}
+pub async fn resolve_on_node(
+    root: &Path,
+    value: &str,
+    expected: InviteKind,
+    owner: &crate::node::MeshNode,
+) -> Result<Invitation> {
+    resolve_owned(root, value, expected, Some(owner)).await
+}
+async fn resolve_owned(
+    root: &Path,
+    value: &str,
+    expected: InviteKind,
+    owner: Option<&crate::node::MeshNode>,
+) -> Result<Invitation> {
     let invite = if Ticket::is_short(value) {
         let ticket = Ticket::decode(value)?;
         ensure!(ticket.kind == expected, "invite_kind_mismatch");
-        ticket.resolve(root).await?
+        ticket.resolve_with_owner(root, owner).await?
     } else {
         Invitation::decode(value)?
     };
     ensure!(invite.kind == expected, "invite_kind_mismatch");
+    ensure!(
+        invite.channel == zork_config::channel::current()?,
+        "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+    );
     Ok(invite)
 }
 

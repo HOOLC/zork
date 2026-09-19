@@ -45,10 +45,62 @@ use std::sync::{
     Arc,
 };
 use tokio::sync::watch;
-use tracing::info;
+use tracing::{info, warn};
 use zork_agent::{session::tools::ToolRegistry, AgentOptions, AgentRuntime};
 
+/// macOS starts services with a soft `RLIMIT_NOFILE` of 256. A Station serving
+/// chat, mesh, jobs and an embedded Agent reaches that quickly, and running out
+/// of descriptors surfaces as accept and read failures that every retry loop then
+/// spins on. Ask for the hard limit instead, capped so one process cannot claim
+/// the whole host limit.
+#[cfg(unix)]
+fn raise_file_limit() {
+    const CAP: u64 = 8192;
+    // SAFETY: both calls take a pointer to a `rlimit` this frame owns.
+    unsafe {
+        let mut limit = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
+            warn!(error = %std::io::Error::last_os_error(), "could not read the file descriptor limit");
+            return;
+        }
+        let Some(target) = desired_file_limit(limit.rlim_cur, limit.rlim_max, CAP) else {
+            info!(
+                soft = limit.rlim_cur,
+                hard = limit.rlim_max,
+                "file descriptor limit"
+            );
+            return;
+        };
+        let raised = libc::rlimit {
+            rlim_cur: target,
+            rlim_max: limit.rlim_max,
+        };
+        if libc::setrlimit(libc::RLIMIT_NOFILE, &raised) != 0 {
+            warn!(soft = limit.rlim_cur, error = %std::io::Error::last_os_error(), "could not raise the file descriptor limit");
+        } else {
+            info!(
+                soft = target,
+                hard = limit.rlim_max,
+                "raised file descriptor limit"
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn raise_file_limit() {}
+
+/// The soft limit to ask for, or `None` when the current one is already enough.
+fn desired_file_limit(soft: u64, hard: u64, cap: u64) -> Option<u64> {
+    let target = if hard == u64::MAX { cap } else { hard.min(cap) };
+    (target > soft).then_some(target)
+}
+
 fn main() -> Result<()> {
+    raise_file_limit();
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|_| anyhow::anyhow!("rustls crypto provider already installed"))?;
@@ -515,4 +567,40 @@ fn arm_shutdown_signal() -> std::io::Result<impl std::future::Future<Output = ()
     Ok(async {
         let _ = tokio::signal::ctrl_c().await;
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{desired_file_limit, raise_file_limit};
+
+    #[test]
+    fn file_limit_targets_the_hard_limit_without_exceeding_the_cap() {
+        // macOS launches services with a soft limit of 256 and no hard ceiling.
+        assert_eq!(desired_file_limit(256, u64::MAX, 8192), Some(8192));
+        assert_eq!(desired_file_limit(256, 1024, 8192), Some(1024));
+        // Nothing to do when the soft limit already reaches the target.
+        assert_eq!(desired_file_limit(8192, u64::MAX, 8192), None);
+        assert_eq!(desired_file_limit(1024, 1024, 8192), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn raising_the_file_limit_takes_effect() {
+        raise_file_limit();
+        let mut limit = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // SAFETY: pointer to a local this frame owns.
+        unsafe {
+            assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit), 0);
+        }
+        let reachable = 8192.min(limit.rlim_max);
+        assert!(
+            limit.rlim_cur >= reachable,
+            "soft limit {} stayed below the reachable {}",
+            limit.rlim_cur,
+            reachable
+        );
+    }
 }
