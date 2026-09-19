@@ -317,20 +317,13 @@ impl RootView {
             }
             _ => None,
         };
-        let root = cx.entity().downgrade();
         let locale = self.locale;
         self.history_details.update(cx, |view, cx| {
             view.configure(
                 self.selected_session.clone().unwrap_or_default(),
                 presentation,
                 resource,
-                self.history.json_open.clone(),
                 zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
-                Rc::new(move |cx| {
-                    let _ = root.update(cx, |_, cx| {
-                        zork_ui::components::region::invalidate(cx, &["history", "header"])
-                    });
-                }),
                 cx,
             )
         });

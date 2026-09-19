@@ -20,9 +20,7 @@ enum Target {
         id: String,
         group: bool,
         index: usize,
-        selection: Option<(i64, i64)>,
     },
-    Timeline,
 }
 
 struct Leaf<H: Host> {
@@ -38,7 +36,6 @@ struct Leaf<H: Host> {
 fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) -> gpui::AnyElement {
     let key = match &target {
         Target::Row { id, group, .. } => format!("history-live-row-{group}-{id}"),
-        Target::Timeline => "history-live-timeline".into(),
     };
     let root = cx.entity();
     let initial = target.clone();
@@ -51,7 +48,6 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
                 cx.subscribe(&root, |v: &mut Leaf<H>, _, update: &HistoryChanged, cx| {
                     if update.structure
                         || update.clock
-                        || matches!(v.target, Target::Timeline)
                         || v.observed.iter().any(|id| update.entries.contains(id))
                     {
                         v.revision = v.revision.wrapping_add(1);
@@ -85,7 +81,6 @@ fn element<H: Host>(target: Target, window: &mut Window, cx: &mut Context<H>) ->
 pub(super) fn row<H: Host>(
     view: &H,
     index: usize,
-    selection: Option<(i64, i64)>,
     window: &mut Window,
     cx: &mut Context<H>,
 ) -> gpui::AnyElement {
@@ -94,19 +89,14 @@ pub(super) fn row<H: Host>(
             id: view.history().row_entry(index).unwrap().id.clone(),
             group: view.history().rows[index].activity.is_none(),
             index,
-            selection,
         },
         window,
         cx,
     )
 }
 
-pub(super) fn timeline<H: Host>(window: &mut Window, cx: &mut Context<H>) -> gpui::AnyElement {
-    element(Target::Timeline, window, cx)
-}
-
 impl<H: Host> Render for Leaf<H> {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.clock = None;
         let mut delay = None;
         let mut observed = std::mem::take(&mut self.observed);
@@ -119,12 +109,7 @@ impl<H: Host> Render for Leaf<H> {
             .update(cx, |v, cx| {
                 let now = v.history().now();
                 match &mut self.target {
-                    Target::Row {
-                        id,
-                        group,
-                        index,
-                        selection,
-                    } => {
+                    Target::Row { id, group, index } => {
                         let matches = |i: usize| {
                             v.history().row_entry(i).is_some_and(|e| &e.id == id)
                                 && v.history().rows[i].activity.is_none() == *group
@@ -158,18 +143,7 @@ impl<H: Host> Render for Leaf<H> {
                                 );
                             }
                         }
-                        v.render_history_activity(*index, now, *selection, cx)
-                            .into_any_element()
-                    }
-                    Target::Timeline => {
-                        if v.history()
-                            .entries
-                            .iter()
-                            .any(|e| e.state == "running" && e.end.is_none())
-                        {
-                            delay = Some(Duration::from_secs(1));
-                        }
-                        v.render_history_timeline_panel(window, cx)
+                        v.render_history_activity(*index, now, cx)
                             .into_any_element()
                     }
                 }

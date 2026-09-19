@@ -57,7 +57,6 @@ pub struct State {
     pub rendered_width: f32,
     pub scroll: ListState,
     pub scroll_observed: bool,
-    pub timeline: Option<Entity<crate::history_timeline::Timeline>>,
     pub fixed_now: Option<i64>,
     pub clock_offset: i64,
 }
@@ -73,7 +72,6 @@ impl Default for State {
             rendered_width: 440.,
             scroll: ListState::new(1, ListAlignment::Top, px(200.)),
             scroll_observed: false,
-            timeline: None,
             fixed_now: None,
             clock_offset: 0,
         }
@@ -201,7 +199,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 self.history_text().text("history_older"),
             )
     }
-    fn render_history_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn render_history_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let paging = self.history_paging();
         if !self.history().scroll_observed {
             let list = self.history().scroll.clone();
@@ -211,11 +209,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             });
             self.history_mut().scroll_observed = true;
         }
-        let selection_range = self
-            .history()
-            .timeline
-            .as_ref()
-            .and_then(|view| view.read(cx).selection_range());
         div()
             .relative()
             .w_full()
@@ -225,6 +218,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .flex()
             .flex_col()
             .font_weight(FontWeight(450.))
+            .child(self.history_statistics().render(self.history_text()))
             .child(
                 div()
                     .id("history-ledger")
@@ -251,7 +245,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                 if index == 0 {
                                     v.render_history_older(cx).into_any_element()
                                 } else if index <= v.history_mut().rows.len() {
-                                    live::row(v, index - 1, selection_range, window, cx)
+                                    live::row(v, index - 1, window, cx)
                                 } else {
                                     div().into_any_element()
                                 }
@@ -262,46 +256,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     )
                     .automation(AutomationRole::ScrollArea, self.history_text().text("history_records")),
             )
-            .child(self.history_statistics().render(self.history_text()))
-            .child(live::timeline(window, cx))
     }
 
-    fn render_history_timeline_panel(
-        &mut self,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        let text = self.history_text();
-        if self.history().timeline.is_none() {
-            let timeline = cx.new(|cx| crate::history_timeline::Timeline::new(text.clone(), cx));
-            cx.subscribe(
-                &timeline,
-                |v, _, selected: &crate::history_timeline::Selected, cx| {
-                    v.history_select(selected.0, cx);
-                },
-            )
-            .detach();
-            cx.subscribe(
-                &timeline,
-                |_, _, _: &crate::history_timeline::Changed, cx| {
-                    crate::components::region::invalidate(cx, &["history", "header"]);
-                },
-            )
-            .detach();
-            self.history_mut().timeline = Some(timeline);
-        }
-        let timeline = self.history().timeline.as_ref().unwrap().clone();
-        timeline.update(cx, |view, cx| {
-            view.configure(
-                self.history().entries.clone(),
-                self.history().selected.clone(),
-                self.history().now(),
-                text,
-                cx,
-            )
-        });
-        timeline.into_any_element()
-    }
     /// A model reply is the row: Cue paints no icon and no label on it, so the
     /// Markdown document, its disclosure and the absolute record clock stand
     /// alone. Usage belongs to the page overview, never to one row.
@@ -324,7 +280,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         let toggle = id.to_owned();
         let mut footer = div().w_full().flex().flex_col().gap(px(2.)).pt(px(2.));
         if expanded {
-            footer = footer.child(record_time(entry.start.or(entry.end)));
+            footer = footer.child(record_time(index, entry.start.or(entry.end)));
         }
         let disclosure = div()
             .id(format!("history-output-disclosure-{index}"))
@@ -395,7 +351,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         &self,
         index: usize,
         now: i64,
-        selection_range: Option<(i64, i64)>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         self.history_row_built();
@@ -539,24 +494,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 _ => None,
             }
         };
-        let outside = selection_range.is_some_and(|(lo, hi)| {
-            let start = if group {
-                block.start_at
-            } else {
-                entry.start.or(entry.end)
-            };
-            let end = if group {
-                block
-                    .end_at
-                    .map(|end| if block.running { end.max(now) } else { end })
-            } else {
-                entry
-                    .end
-                    .or_else(|| (entry.state == "running").then_some(now))
-                    .or(entry.start)
-            };
-            end.is_none_or(|end| end < lo) || start.is_none_or(|start| start > hi)
-        });
         let id = entry.id.clone();
         let selected = self.history().selected.as_ref() == Some(&id);
         if !group && a.kind == Kind::Output {
@@ -567,7 +504,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         div()
             .id(("history-row", index))
             .when(selected, |v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
-            .when(outside, |v| v.opacity(0.3))
             .child(crate::components::history::activity_header_sources(
                 ("history-record", index),
                 ActivityHeader {
@@ -639,12 +575,15 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
 }
 /// Cue's record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
 /// only inside the content a disclosure reveals. Rows carry no relative age.
-fn record_time(timestamp: Option<i64>) -> Div {
+fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
+    let clock = timestamp.map_or_else(String::new, |ms| model::clock(Some(ms)));
     div()
+        .id(("history-output-clock", index))
         .mb(px(6.))
         .text_size(px(9.))
         .text_color(rgb(SUBTLE))
-        .child(timestamp.map_or_else(String::new, |ms| model::clock(Some(ms))))
+        .child(clock.clone())
+        .automation(AutomationRole::Status, clock)
 }
 
 /// Cue formats a thinking duration with one decimal below ten seconds.

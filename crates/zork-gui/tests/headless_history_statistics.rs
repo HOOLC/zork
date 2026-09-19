@@ -188,7 +188,6 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         .iter()
         .any(|e| e.id == "history-activity-toolbar"));
     let ledger = find("history-ledger");
-    let timeline = find("history-timeline-panel");
     let ledger_y = ledger.bounds.y + ledger.bounds.height * 0.6;
     assert!(
         stats.label.contains("130832") && stats.label.contains("74.7%"),
@@ -197,16 +196,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     );
     assert!(runtime_element.label.contains("128432 / 256000"));
     assert!(
-        ledger.bounds.y + ledger.bounds.height <= stats.bounds.y + 0.1,
-        "records must precede statistics"
+        stats.bounds.y + stats.bounds.height <= ledger.bounds.y + 0.1,
+        "the overview must precede the records"
     );
     assert!(
-        stats.bounds.y + stats.bounds.height <= timeline.bounds.y + 0.1,
-        "statistics must precede the timeline"
-    );
-    assert!(
-        (timeline.bounds.y + timeline.bounds.height - height).abs() <= 1.,
-        "timeline must stay at the bottom"
+        ledger.bounds.y + ledger.bounds.height <= height + 1.,
+        "the records must fill the page under the overview"
     );
     assert!(
         ledger.bounds.height >= height * 0.35,
@@ -221,7 +216,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     std::fs::write(
         out.join("layout.json"),
         serde_json::to_vec_pretty(&json!({
-            "ledger":ledger.bounds,"statistics":stats.bounds,"timeline":timeline.bounds
+            "statistics":stats.bounds,"ledger":ledger.bounds
         }))?,
     )?;
     assert!(stats.bounds.x >= 0. && stats.bounds.x + stats.bounds.width <= width);
@@ -270,27 +265,6 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "right panel did not shrink back: {restored_width} != {original_width}"
     );
     capture(&mut cx, "statistics.png")?;
-    let bars_before = snapshot
-        .elements
-        .iter()
-        .filter(|e| e.id.starts_with("history-bar-"))
-        .map(|e| (e.id.clone(), e.bounds))
-        .collect::<Vec<_>>();
-    action(
-        &mut cx,
-        json!({"type":"scroll", "target":{"x":timeline.bounds.x + timeline.bounds.width * 0.7,"y":timeline.bounds.y+24.},"delta_y":120}),
-    )?;
-    let zoomed = driver.snapshot(false);
-    assert!(
-        bars_before.iter().any(|(id, before)| zoomed
-            .elements
-            .iter()
-            .find(|e| &e.id == id)
-            .is_some_and(|e| (e.bounds.x - before.x).abs() > 1.
-                || (e.bounds.width - before.width).abs() > 1.)),
-        "bottom timeline did not zoom"
-    );
-    capture(&mut cx, "timeline-zoomed.png")?;
     action(
         &mut cx,
         json!({"type":"scroll","target":{"x":width-80.,"y":ledger_y},"delta_y":-600}),

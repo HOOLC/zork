@@ -11,7 +11,6 @@ pub struct Story {
     paging: Paging,
     details: Entity<Details>,
     presentation: Option<Presentation>,
-    tree: crate::components::json_tree::State,
 }
 impl EventEmitter<HistoryChanged> for Story {}
 impl Story {
@@ -67,7 +66,6 @@ impl Story {
             text,
             details,
             presentation: None,
-            tree: Default::default(),
             paging: Paging {
                 loaded: state != "loading",
                 busy: state == "loading",
@@ -156,17 +154,12 @@ impl Host for Story {
 }
 impl Render for Story {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let owner = cx.entity().downgrade();
         self.details.update(cx, |v, cx| {
             v.configure(
                 "demo".into(),
                 self.presentation.clone(),
                 None,
-                self.tree.clone(),
                 self.text.clone(),
-                Rc::new(move |cx| {
-                    let _ = owner.update(cx, |_, cx| cx.notify());
-                }),
                 cx,
             )
         });

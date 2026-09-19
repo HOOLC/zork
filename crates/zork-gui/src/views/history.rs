@@ -35,7 +35,6 @@ pub(super) struct HistoryState {
     loading_older: bool,
     loaded: bool,
     error: Option<String>,
-    json_open: zork_ui::components::json_tree::State,
 }
 impl Default for HistoryState {
     fn default() -> Self {
@@ -64,7 +63,6 @@ impl Default for HistoryState {
             loading_older: false,
             loaded: false,
             error: None,
-            json_open: Default::default(),
         }
     }
 }
@@ -148,7 +146,6 @@ impl RootView {
         self.history.overview_subscription = None;
         self.history.overview_updates = None;
         self.history.source = None;
-        self.history.timeline = None;
         self.chat_histories
             .insert(self.browser_host(), std::mem::take(&mut self.history));
     }
@@ -172,7 +169,6 @@ impl RootView {
         self.history.overview_subscription = None;
         self.history.overview_updates = None;
         self.history.source = None;
-        self.history.timeline = None;
         self.history.detail = None;
         self.history.agent_detail = None;
     }

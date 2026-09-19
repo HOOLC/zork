@@ -31,7 +31,7 @@ fn fixture() -> Vec<Record> {
     rows.push(record(
         2,
         json!({"kind":"step_completed","step_id":"reply","purpose":"conversation","completed_at_ms":NOW-88000,
-        "assistant_text":"我先读一遍历史投影，再合并连续的操作。","invocations":[]}),
+        "assistant_text":"我先读一遍历史投影，再合并连续的操作。历史页现在是 Cue 的活动页：概览在标题下方，记录行按操作分组，等待单独成行，回复是它自己的 Markdown 文档。我会逐行核对投影、分组、时长与绝对时钟，确认展开后仍能看到完整内容，然后把这次对齐的结论记录下来，并把它交给后续的评测与实现。如果记录行丢掉了来源、目标或状态，或者回复的文档被截断，这次对齐就不算完成；所以我在每一轮都重新读一遍投影，确认按时间排序的分组没有把等待错误地合并进常规操作，确认编辑与写入分开计数，确认发送与接收各有自己的措辞。页面的标题、执行记录滚动区、已到 Session 开始处、加载更早记录、正在加载记录和暂时无法加载都保持 Cue 的措辞，概览只统计整个会话的用量，绝不回到某一行。","invocations":[]}),
     ));
     for (i, name, args, time, state, data) in [
         (
@@ -89,8 +89,7 @@ fn fixture() -> Vec<Record> {
     rows
 }
 fn run(width: f32, height: f32) -> anyhow::Result<()> {
-    // Brand reads the platform preference on render. Keep these endpoint
-    // assertions reduced; the hover phases below explicitly enable motion.
+    // Brand reads the platform preference on render; the page itself is static.
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../artifacts/history-ux/validation/native-{}",
@@ -157,160 +156,107 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         out.join("initial.json"),
         serde_json::to_vec_pretty(&driver.snapshot(true))?,
     )?;
-    if std::env::var_os("ZORK_HISTORY_HOVER_CHECK").is_some() {
-        root_view.update(&mut cx, |v, cx| {
-            v.benchmark_story_history(fixture(), NOW, cx)
-        });
-        pump(&mut cx)?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-        cx.update(|cx| cx.set_reduce_motion(false));
-        let output =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/history-hover");
-        std::fs::create_dir_all(&output)?;
-        let snapshot = driver.snapshot(false);
-        std::fs::write(
-            output.join(format!("{width}-initial.json")),
-            serde_json::to_vec_pretty(&snapshot)?,
-        )?;
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-initial.png")))?;
-        let mut bars: Vec<_> = snapshot
+    // Cue's page keeps the overview above the records, the paging state, the
+    // rows and the reply disclosure. These replace the timeline-hover checks: a
+    // page that loses its rows, its state or its disclosure fails here.
+    let page = driver.snapshot(false);
+    let older = page
             .elements
             .iter()
-            .filter(|e| e.id.starts_with("history-bar-") && e.bounds.width > 0.)
-            .collect();
-        bars.sort_by(|a, b| a.bounds.x.total_cmp(&b.bounds.x));
-        let first = bars.first().expect("timeline nodes").bounds.clone();
-        let last = bars.last().expect("timeline nodes").bounds.clone();
-        let move_to = |cx: &mut HeadlessAppContext, x, y| -> anyhow::Result<()> {
-            cx.update_window(window.into(), |_, w, cx| {
-                driver.dispatch(
-                    serde_json::from_value(json!({"type":"move","target":{"x":x,"y":y}}))?,
-                    w,
-                    cx,
-                )
-            })??;
-            Ok(())
-        };
-        let tick = |cx: &mut HeadlessAppContext| -> anyhow::Result<f64> {
-            std::thread::sleep(Duration::from_millis(16));
-            cx.advance_clock(Duration::from_millis(16));
-            cx.run_until_parked();
-            let start = std::time::Instant::now();
-            cx.update_window(window.into(), |_, w, cx| {
-                w.simulate_next_frame(cx);
-            })?;
-            Ok(start.elapsed().as_secs_f64() * 1000.)
-        };
-        let pose = || {
+        .find(|e| e.id == "history-older")
+        .expect("the page state control is missing");
+    anyhow::ensure!(!older.enabled, "an idle page offered paging");
+    anyhow::ensure!(
+        page.elements
+            .iter()
+            .filter(|e| e.id.starts_with("history-record-"))
+            .count() >= 3,
+        "the page lost its records"
+    );
+    let disclosure_id = page
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-output-disclosure-") && e.label == "展开更多")
+        .expect("the reply disclosure is missing")
+        .id
+        .clone();
+    let reply_id = page
+        .elements
+        .iter()
+        .find(|e| {
+            e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影")
+        })
+        .expect("assistant reply is a history row")
+        .id
+        .clone();
+    let reply_label = || {
             driver
                 .snapshot(false)
                 .elements
                 .into_iter()
-                .find(|e| e.id == "history-span-detail")
-                .expect("hover card")
-                .bounds
+            .find(|e| e.id == reply_id)
+            .expect("assistant reply is a history row")
+            .label
         };
-        move_to(
-            &mut cx,
-            first.x + first.width / 2.,
-            first.y + first.height / 2.,
-        )?;
-        tick(&mut cx)?;
-        let initial = pose();
-        let mut baseline = Vec::new();
-        for _ in 0..20 {
-            baseline.push(tick(&mut cx)?);
-        }
-        let card_width = initial.width + 2.;
-        let destination_x =
-            (last.x + last.width / 2. - card_width / 2.).clamp(12., width - card_width - 12.) + 1.;
-        move_to(&mut cx, last.x + last.width / 2., last.y + last.height / 2.)?;
-        tick(&mut cx)?;
-        let switched = pose();
+    let reply_before = reply_label();
+    std::thread::sleep(Duration::from_millis(1100));
+    cx.advance_clock(Duration::from_millis(1100));
+    pump(&mut cx)?;
+    // Cue stamps the reply with an absolute clock, so the row holds still while
+    // the page keeps ticking; a relative clock would rewrite the line.
         anyhow::ensure!(
-            (switched.x - initial.x).abs() < (destination_x - initial.x).abs() - 0.5,
-            "new target jumped from the painted position: {} -> {}",
-            initial.x,
-            switched.x
+        reply_label() == reply_before,
+        "the reply row moved without new data: {reply_before} -> {}",
+        reply_label()
         );
-        let mut frames = Vec::new();
-        let mut moving = Vec::new();
-        for _ in 0..6 {
-            moving.push(tick(&mut cx)?);
-            frames.push(pose());
-        }
-        let midway = pose();
-        anyhow::ensure!((midway.x - initial.x).abs() > 1., "popover did not slide");
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-moving.png")))?;
-        move_to(&mut cx, 10., 10.)?;
-        tick(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":disclosure_id}}),
+    )?;
+    let expanded = driver.snapshot(false);
         anyhow::ensure!(
-            driver
-                .snapshot(false)
+        expanded
                 .elements
                 .iter()
-                .any(|e| e.id == "history-span-detail"),
-            "short gap closed the shared surface"
+            .any(|e| e.id == disclosure_id && e.label == "收起"),
+        "the reply disclosure did not open"
         );
-        let midway = pose();
-        move_to(
-            &mut cx,
-            first.x + first.width / 2.,
-            first.y + first.height / 2.,
-        )?;
-        tick(&mut cx)?;
-        anyhow::ensure!(
-            (pose().x - midway.x).abs() < (midway.x - initial.x).abs() - 0.5,
-            "reversal jumped"
-        );
-        for _ in 0..40 {
-            moving.push(tick(&mut cx)?);
-        }
-        anyhow::ensure!((pose().x - initial.x).abs() < 1., "reversal did not settle");
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-settled.png")))?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
-        move_to(&mut cx, last.x + last.width / 2., last.y + last.height / 2.)?;
-        tick(&mut cx)?;
-        let reduced = pose();
-        anyhow::ensure!(
-            (reduced.x - initial.x).abs() > 1.,
-            "reduced-motion did not snap"
-        );
-        move_to(&mut cx, 10., 10.)?;
-        for _ in 0..10 {
-            tick(&mut cx)?;
-        }
-        anyhow::ensure!(
-            !driver
-                .snapshot(false)
+    let clock = expanded
                 .elements
                 .iter()
-                .any(|e| e.id == "history-span-detail"),
-            "hover did not dismiss"
-        );
-        let pending = cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
-        anyhow::ensure!(pending == 0, "idle hover still requests frames");
-        baseline.sort_by(f64::total_cmp);
-        moving.sort_by(f64::total_cmp);
-        let percentile = |v: &[f64], p: f64| v[((v.len() - 1) as f64 * p).round() as usize];
+        .find(|e| e.id.starts_with("history-output-clock-"))
+        .map(|e| e.label.clone())
+        .expect("the expanded reply hid its absolute clock");
         anyhow::ensure!(
-            percentile(&moving, 0.95) < 8.33,
-            "hover exceeds CPU frame budget"
+        clock.len() == 8 && clock.matches(":").count() == 2,
+        "the record clock is not absolute wall time: {clock}"
         );
-        std::fs::write(
-            output.join(format!("{width}.json")),
-            serde_json::to_vec_pretty(&json!({
-                "initial":initial,"switched":switched,"frames":frames,"reduced":reduced,"idle_callbacks":pending,
-                "settled_p95_ms":percentile(&baseline,0.95),"moving_p95_ms":percentile(&moving,0.95),"moving_p99_ms":percentile(&moving,0.99)
-            }))?,
+    cx.capture_screenshot(window.into())?
+        .save(out.join("expanded-reply.png"))?;
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":disclosure_id}}),
         )?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-        println!("history hover {width}: slide, reverse, reduced motion, dismissal, idle and CPU budget passed");
-        return Ok(());
-    }
+    // An empty snapshot is a page state, not an error: no rows, no paging.
+    root_view.update(&mut cx, |v, cx| v.benchmark_story_history(vec![], NOW, cx));
+    pump(&mut cx)?;
+    let empty = driver.snapshot(false);
+    anyhow::ensure!(
+        empty
+            .elements
+            .iter()
+            .all(|e| !e.id.starts_with("history-record-")),
+        "an empty history kept rows"
+    );
+    anyhow::ensure!(
+        empty
+            .elements
+            .iter()
+            .any(|e| e.id == "history-older" && !e.enabled),
+        "the empty page lost its state"
+    );
+    root_view.update(&mut cx, |v, cx| v.benchmark_story_history(fixture(), NOW, cx));
+    pump(&mut cx)?;
     let snapshot = driver.snapshot(false);
     let bounds = |id: &str| {
         snapshot
@@ -450,21 +396,19 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"click","target":{"element_id":group_id}}),
     )?;
-    // A raw tool span inside the collapsed block must expand and reveal that
-    // exact invocation, not the hidden model row at the old list index.
-    let timeline = driver
-        .snapshot(false)
-        .elements
-        .into_iter()
-        .find(|e| {
-            e.id.starts_with("history-bar-")
-                && e.label.contains("shell.run")
+    // Re-opening the collapsed block must reveal that exact invocation, not
+    // the hidden model row at the old list index.
+    anyhow::ensure!(
+        !driver.snapshot(false).elements.iter().any(|e| {
+            e.id.starts_with("history-record-")
+                && e.label.starts_with("执行命令")
                 && e.label.contains("rg -n history")
-        })
-        .expect("shell timeline marker");
+        }),
+        "a collapsed group still exposed its members"
+    );
     action(
         &mut cx,
-        json!({"type":"click","target":{"element_id":timeline.id}}),
+        json!({"type":"click","target":{"element_id":group_id}}),
     )?;
     let shell = driver
         .snapshot(false)
@@ -475,7 +419,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
                 && e.label.starts_with("执行命令")
                 && e.label.contains("rg -n history")
         })
-        .expect("timeline revealed grouped tool");
+        .expect("expanding the group revealed the invocation");
     cx.capture_screenshot(window.into())?
         .save(out.join("expanded.png"))?;
     action(
@@ -633,8 +577,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "group extension moved the record being read"
     );
 
-    // A live source changes both a mounted row and an already open popup.
-    // No further mouse input is dispatched until after these assertions.
+    // A live source changes a mounted row: its absolute clock holds still while
+    // the page keeps ticking, and new data rewrites the line.
     let mut live_records = vec![
         record(
             900,
@@ -656,16 +600,6 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     root_view.update(&mut cx, |v, cx| v.benchmark_history_live_clock(cx));
     pump(&mut cx)?;
     eprintln!("history {width}: live clock ready");
-    let live_bar = driver
-        .snapshot(false)
-        .elements
-        .into_iter()
-        .find(|e| e.id.starts_with("history-bar-") && e.label.contains("live-render-source"))
-        .expect("live timeline bar");
-    action(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":live_bar.id}}),
-    )?;
     let live_row_id = driver
         .snapshot(false)
         .elements
@@ -682,32 +616,17 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .expect("live history row")
             .label
     };
-    let popup = || {
-        driver
-            .snapshot(false)
-            .elements
-            .into_iter()
-            .find(|e| e.id == "history-span-detail")
-            .expect("live history popup")
-    };
     let row_before = live_row();
-    let popup_before = popup();
-    let pointer = cx.update_window(window.into(), |_, w, _| w.mouse_position())?;
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
-    // Cue stamps a record with an absolute clock inside its disclosure, so a
-    // mounted line is stable while the live hover keeps advancing its duration.
+    // Cue stamps a record with an absolute clock, so a mounted line holds still
+    // until new data arrives; a relative clock would rewrite it on a tick.
     anyhow::ensure!(
         live_row() == row_before,
         "the absolute row clock moved without new data: {row_before} -> {}",
         live_row()
     );
-    anyhow::ensure!(
-        popup().label != popup_before.label,
-        "hover duration waited for mouse input"
-    );
-    let clock_after = popup().label;
     live_records.push(record(
         902,
         json!({"kind":"tool_result","result":{
@@ -723,21 +642,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     });
     pump(&mut cx)?;
     let row_after = live_row();
-    let popup_after = popup();
     anyhow::ensure!(
         row_after.contains("失败"),
         "row missed its source update: {row_after}"
     );
-    anyhow::ensure!(
-        popup_after.label.contains("失败"),
-        "open popup missed its source update"
-    );
-    anyhow::ensure!(
-        cx.update_window(window.into(), |_, w, _| w.mouse_position())? == pointer,
-        "data/clock regression moved the pointer"
-    );
     cx.capture_screenshot(window.into())?
-        .save(out.join("live-update-stationary-pointer.png"))?;
+        .save(out.join("live-update.png"))?;
     source.seed(zork_client_core::state::HistoryData {
         loaded: true,
         ..Default::default()
@@ -748,80 +658,31 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-span-detail"),
-        "removed entry left a stale popup"
+            .any(|e| e.id == live_row_id),
+        "a removed entry left its row behind"
     );
 
-    // Zoom first, then pan an adjacent span underneath a stationary pointer.
-    let mut wheel_records = Vec::new();
-    for i in 0..12 {
-        let time = NOW - 12000 + i as i64 * 1000;
-        wheel_records.push(record(
-            1000 + i * 3,
-            json!({"kind":"step_started","step_id":format!("wheel-{i}"),"started_at_ms":time-100}),
-        ));
-        wheel_records.push(record(1001+i*3, json!({"kind":"step_completed","step_id":format!("wheel-{i}"),"completed_at_ms":time,
-            "invocations":[{"invocation_id":format!("wheel-{i}"),"tool":"shell.run","arguments":{"command":format!("wheel-target-{i}")},"started_at_ms":time}]})));
-        wheel_records.push(record(1002+i*3, json!({"kind":"tool_result","result":{"invocation_id":format!("wheel-{i}"),"tool":"shell.run","outcome":"succeeded","finished_at_ms":time+400,"data":{}}})));
-    }
-    root_view.update(&mut cx, |v, cx| {
-        v.benchmark_story_history(wheel_records, NOW, cx)
-    });
-    pump(&mut cx)?;
-    action(
-        &mut cx,
-        json!({"type":"scroll","target":{"element_id":"history-timeline-panel"},"delta_y":120,"delta_x":0}),
-    )?;
-    let mut wheel_bars: Vec<_> = driver
-        .snapshot(false)
+    // The emptied source leaves the page state and no records behind.
+    let live_page = driver.snapshot(false);
+    anyhow::ensure!(
+        live_page.elements.iter().any(|e| e.id == "history-older"),
+        "the live page lost its state control"
+    );
+    anyhow::ensure!(
+        live_page
         .elements
-        .into_iter()
-        .filter(|e| {
-            e.id.starts_with("history-bar-")
-                && e.label.contains("wheel-target-")
-                && e.bounds.width > 2.
-        })
-        .collect();
-    wheel_bars.sort_by(|a, b| a.center.x.total_cmp(&b.center.x));
-    anyhow::ensure!(wheel_bars.len() >= 2, "zoom did not retain adjacent spans");
-    let first = &wheel_bars[wheel_bars.len() / 2 - 1];
-    let second = &wheel_bars[wheel_bars.len() / 2];
-    action(
-        &mut cx,
-        json!({"type":"move","target":{"x":first.center.x,"y":first.center.y}}),
-    )?;
-    let wheel_before = popup();
-    let pointer = cx.update_window(window.into(), |_, w, _| w.mouse_position())?;
-    action(
-        &mut cx,
-        json!({"type":"scroll","target":{"x":first.center.x,"y":first.center.y},"delta_y":0,"delta_x":first.center.x-second.center.x}),
-    )?;
-    let wheel_after = popup();
-    anyhow::ensure!(
-        wheel_after.label != wheel_before.label,
-        "wheel did not retarget the popup"
+            .iter()
+            .all(|e| !e.id.starts_with("history-record-")),
+        "an emptied source still painted records"
     );
-    let expected = second.label.split(" · ").last().unwrap();
-    anyhow::ensure!(
-        wheel_after.label.contains(expected),
-        "wheel selected the wrong span: {} vs {expected}",
-        wheel_after.label
-    );
-    anyhow::ensure!(
-        cx.update_window(window.into(), |_, w, _| w.mouse_position())? == pointer,
-        "wheel regression synthesized a pointer move"
-    );
-    cx.capture_screenshot(window.into())?
-        .save(out.join("wheel-stationary-pointer.png"))?;
     std::fs::write(
         out.join("live-checks.json"),
         serde_json::to_vec_pretty(&json!({
-            "row_before":row_before,"row_after":row_after,"popup_before":popup_before.label,"clock_after":clock_after,"popup_after":popup_after.label,
-            "wheel_before":wheel_before.label,"wheel_after":wheel_after.label,"pointer": {"x":pointer.x.as_f32(),"y":pointer.y.as_f32()}
+            "row_before":row_before,"row_after":row_after
         }))?,
     )?;
     println!(
-        "history {width}x{height}: rows, folding, timeline, live sources, clocks and stationary-pointer wheel passed"
+        "history {width}x{height}: records, folding, page states, live sources, absolute clocks and the reply disclosure passed"
     );
     Ok(())
 }
