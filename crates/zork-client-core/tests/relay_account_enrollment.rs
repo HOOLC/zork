@@ -60,7 +60,7 @@ async fn run() -> Result<()> {
     let ticket = invite["invitation"].as_str().context("short ticket")?;
     ensure!(
         zork_mesh::enrollment::ticket::Ticket::decode(ticket)?
-            .network_config()
+            .network_config()?
             .offline,
         "fixture must be offline"
     );
