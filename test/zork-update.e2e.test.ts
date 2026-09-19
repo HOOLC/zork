@@ -4,7 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { brokerRoot, getFreePort, removeTempRoot, spawnBinary, stopChild, waitForReady, writeConfig } from "./helpers.js";
 
@@ -19,29 +19,57 @@ describe.sequential("zork update", () => {
     }
   });
 
-  it("refuses to hot-reload a legacy supervisor before stopping any process", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "zork-legacy-supervisor-"));
-    cleanups.push(() => removeTempRoot(root));
-    await fs.mkdir(path.join(root, "run"));
-    const commands: string[] = [];
-    const server = net.createServer((socket) => {
-      socket.once("data", (data) => {
-        commands.push(data.toString().trim());
-        socket.end(JSON.stringify({ protocol: 1, pid: 123 }) + "\n");
+  describe("legacy supervisor", () => {
+    let commands: string[];
+    let stderr: string;
+    let statusSocket: net.Socket;
+    let commandResult: Promise<number | null>;
+
+    beforeEach(async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "zork-legacy-supervisor-"));
+      cleanups.push(() => removeTempRoot(root));
+      await fs.mkdir(path.join(root, "run"));
+      commands = [];
+      stderr = "";
+      let receiveStatus: (socket: net.Socket) => void;
+      const received = new Promise<net.Socket>((resolve) => {
+        receiveStatus = resolve;
       });
+      const server = net.createServer((socket) => {
+        socket.once("data", (data) => {
+          commands.push(data.toString().trim());
+          receiveStatus(socket);
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(path.join(root, "run/sup.sock"), resolve));
+      cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+      const command = spawnBinary("zork", { cwd: brokerRoot, args: ["update", "--data", root] });
+      cleanups.push(() => stopChild(command));
+      command.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+      command.stdout?.resume();
+      commandResult = new Promise<number | null>((resolve, reject) => {
+        command.once("close", resolve);
+        command.once("error", reject);
+      });
+      // Native process startup is fixture setup. Begin the rejection assertion
+      // only once the actual command asks the legacy supervisor for its status.
+      statusSocket = await Promise.race([
+        received,
+        commandResult.then(() => {
+          throw new Error(`zork exited before requesting supervisor status: ${stderr}`);
+        }),
+      ]);
     });
-    await new Promise<void>((resolve) => server.listen(path.join(root, "run/sup.sock"), resolve));
-    cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-    const command = spawnBinary("zork", { cwd: brokerRoot, args: ["update", "--data", root] });
-    let stderr = "";
-    command.stderr?.on("data", (data) => {
-      stderr += data.toString();
+
+    it("refuses to hot-reload before stopping any process", async () => {
+      statusSocket.end(JSON.stringify({ protocol: 1, pid: 123 }) + "\n");
+      const code = await commandResult;
+      expect(code).not.toBe(0);
+      expect(stderr).toContain("restart the zork supervisor once");
+      expect(commands).toEqual(["status"]);
     });
-    command.stdout?.resume();
-    const code = await new Promise<number | null>((resolve) => command.once("exit", resolve));
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("restart the zork supervisor once");
-    expect(commands).toEqual(["status"]);
   });
 
   it("restarts Station and its embedded Agent without restarting the supervisor", async () => {
