@@ -491,15 +491,35 @@ impl Card {
         }
         use crate::components::liquid::primitives::data::{portrait_choices, PortraitOption};
         let labels = ["熊猫", "狐狸", "章鱼"];
-        content.child(portrait_choices(
-            self.sid("portraits"), labels.into_iter().enumerate().map(|(index, label)| PortraitOption {
-                id: self.sid(&format!("choice-{index}-hit")), portrait: ["panda", "fox", "octopus"][index], label: label.into(),
-            }).collect(), self.selected, !self.disabled, 3, (w - 16.) / 3., 28.,
-            cx.listener(|v, index: &usize, _, cx| { v.selected = *index; v.retarget(); cx.notify(); }),
-        ))
-        .child(muted(format!("当前选择：{}", labels[self.selected]))
-            .id(self.sid("hint")).automation(AutomationRole::Status, "当前选择"))
-        .into_any_element()
+        content
+            .child(portrait_choices(
+                self.sid("portraits"),
+                labels
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, label)| PortraitOption {
+                        id: self.sid(&format!("choice-{index}-hit")),
+                        portrait: ["panda", "fox", "octopus"][index],
+                        label: label.into(),
+                    })
+                    .collect(),
+                self.selected,
+                !self.disabled,
+                3,
+                (w - 16.) / 3.,
+                28.,
+                cx.listener(|v, index: &usize, _, cx| {
+                    v.selected = *index;
+                    v.retarget();
+                    cx.notify();
+                }),
+            ))
+            .child(
+                muted(format!("当前选择：{}", labels[self.selected]))
+                    .id(self.sid("hint"))
+                    .automation(AutomationRole::Status, "当前选择"),
+            )
+            .into_any_element()
     }
     fn render_switch(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let switch = controls::toggle_with_surface(
@@ -1054,48 +1074,125 @@ impl Card {
     fn render_comments(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.selection.borrow_mut().begin_frame();
         let weak = cx.entity().downgrade();
-        let selection = SelectionContext::new(self.sid("source"), crate::comments::CommentSource {
-            session_id: "mock-session".into(), message_id: Some("mock-message".into()), ..Default::default()
-        }, self.document.plain_text(), self.selection.clone(), self.focus.clone(), Rc::new(move |cx| {
-            let _ = weak.update(cx, |_, cx| cx.notify());
-        }));
+        let selection = SelectionContext::new(
+            self.sid("source"),
+            crate::comments::CommentSource {
+                session_id: "mock-session".into(),
+                message_id: Some("mock-message".into()),
+                ..Default::default()
+            },
+            self.document.plain_text(),
+            self.selection.clone(),
+            self.focus.clone(),
+            Rc::new(move |cx| {
+                let _ = weak.update(cx, |_, cx| cx.notify());
+            }),
+        );
         let anchor = self.comment_anchor.clone();
-        let trigger = self.button("trigger", "添加评论", 90., Default::default(), CANVAS, window, cx)
+        let trigger = self
+            .button(
+                "trigger",
+                "添加评论",
+                90.,
+                Default::default(),
+                CANVAS,
+                window,
+                cx,
+            )
             .track_focus(&self.trigger_focus)
-            .child(canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {}).absolute().inset_0())
+            .child(
+                canvas(move |bounds, _, _| anchor.set(bounds), |_, _, _, _| {})
+                    .absolute()
+                    .inset_0(),
+            )
             .on_click(cx.listener(|v, _, window, cx| v.set_open(true, window, cx)))
             .automation(AutomationRole::Button, "添加评论");
-        let queue = crate::components::comments::queue(&self.id, &self.drafts, window, cx,
+        let queue = crate::components::comments::queue(
+            &self.id,
+            &self.drafts,
+            window,
+            cx,
             |v, comment, _, bounds, window, cx| {
                 let focus = window.focused(cx);
-                v.comment_editor.update(cx, |editor, cx| editor.open_at(crate::components::comments::EditorRequest {
-                    source: comment.source, editing: Some(comment.id), text: comment.comment, toolbar: false,
-                }, bounds, focus, window, cx));
+                v.comment_editor.update(cx, |editor, cx| {
+                    editor.open_at(
+                        crate::components::comments::EditorRequest {
+                            source: comment.source,
+                            editing: Some(comment.id),
+                            text: comment.comment,
+                            toolbar: false,
+                        },
+                        bounds,
+                        focus,
+                        window,
+                        cx,
+                    )
+                });
                 v.open = true;
                 cx.notify();
-            }, |v, key, cx| { v.drafts.retain(|draft| draft.id != key); cx.notify(); });
-        div().relative().w(px(self.width)).p(px(18.)).flex().flex_col().gap(px(16.))
-            .track_focus(&self.focus).tab_stop(false)
-            .child(message::render_selectable_document(&self.sid("quote"), &self.document, &selection))
-            .child(trigger).child(queue).child(self.comment_editor.clone())
+            },
+            |v, key, cx| {
+                v.drafts.retain(|draft| draft.id != key);
+                cx.notify();
+            },
+        );
+        div()
+            .relative()
+            .w(px(self.width))
+            .p(px(18.))
+            .flex()
+            .flex_col()
+            .gap(px(16.))
+            .track_focus(&self.focus)
+            .tab_stop(false)
+            .child(message::render_selectable_document(
+                &self.sid("quote"),
+                &self.document,
+                &selection,
+            ))
+            .child(trigger)
+            .child(queue)
+            .child(self.comment_editor.clone())
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
-                if v.selection.borrow_mut().update(e.position) { cx.notify(); }
-            }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|v, event: &MouseUpEvent, window, cx| {
-                if !v.selection.borrow().dragging { return; }
-                let bounds = v.selection.borrow().selected_bounds()
-                    .unwrap_or_else(|| Bounds::new(event.position, size(px(1.), px(1.))));
-                let selected = v.selection.borrow_mut().finish();
-                if let Some(source) = selected {
-                    v.quote = Some(source.quote.clone());
-                    let focus = window.focused(cx);
-                    v.comment_editor.update(cx, |editor, cx| editor.open_at(crate::components::comments::EditorRequest {
-                        source, editing: None, text: String::new(), toolbar: true,
-                    }, bounds, focus, window, cx));
-                    v.open = true;
+                if v.selection.borrow_mut().update(e.position) {
                     cx.notify();
                 }
-            })).into_any_element()
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|v, event: &MouseUpEvent, window, cx| {
+                    if !v.selection.borrow().dragging {
+                        return;
+                    }
+                    let bounds = v
+                        .selection
+                        .borrow()
+                        .selected_bounds()
+                        .unwrap_or_else(|| Bounds::new(event.position, size(px(1.), px(1.))));
+                    let selected = v.selection.borrow_mut().finish();
+                    if let Some(source) = selected {
+                        v.quote = Some(source.quote.clone());
+                        let focus = window.focused(cx);
+                        v.comment_editor.update(cx, |editor, cx| {
+                            editor.open_at(
+                                crate::components::comments::EditorRequest {
+                                    source,
+                                    editing: None,
+                                    text: String::new(),
+                                    toolbar: true,
+                                },
+                                bounds,
+                                focus,
+                                window,
+                                cx,
+                            )
+                        });
+                        v.open = true;
+                        cx.notify();
+                    }
+                }),
+            )
+            .into_any_element()
     }
     fn render_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         use liquid::overlay::Placement;
@@ -1516,23 +1613,25 @@ impl Render for Card {
                     .automation(AutomationRole::Status, self.status.clone()),
             );
         }
-        self.layout_cache.measure(result.on_key_down(cx.listener(|v, e: &KeyDownEvent, w, cx| {
-            if e.keystroke.key == "escape" && v.kind == Kind::Composer {
-                v.composer.member = None;
-                v.composer.hovered_member = None;
-                v.composer.member_leave = None;
-                v.composer.file = None;
-                v.composer.pinned = false;
-                v.composer.fan.target = 0.;
-                cx.notify();
-                cx.stop_propagation();
-            } else if e.keystroke.key == "escape"
-                && v.open
-                && !matches!(v.kind, Kind::Popover | Kind::Modal)
-            {
-                v.set_open(false, w, cx);
-                cx.stop_propagation();
-            }
-        })))
+        self.layout_cache.measure(
+            result.on_key_down(cx.listener(|v, e: &KeyDownEvent, w, cx| {
+                if e.keystroke.key == "escape" && v.kind == Kind::Composer {
+                    v.composer.member = None;
+                    v.composer.hovered_member = None;
+                    v.composer.member_leave = None;
+                    v.composer.file = None;
+                    v.composer.pinned = false;
+                    v.composer.fan.target = 0.;
+                    cx.notify();
+                    cx.stop_propagation();
+                } else if e.keystroke.key == "escape"
+                    && v.open
+                    && !matches!(v.kind, Kind::Popover | Kind::Modal)
+                {
+                    v.set_open(false, w, cx);
+                    cx.stop_propagation();
+                }
+            })),
+        )
     }
 }

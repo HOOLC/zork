@@ -34,7 +34,11 @@ impl PreviewState {
 impl RootView {
     #[cfg(feature = "headless-bench")]
     pub fn benchmark_attachment_overlay(&self, cx: &gpui::App) -> serde_json::Value {
-        self.drive.viewer.component.as_ref().map_or(serde_json::Value::Null, |view| view.read(cx).inspect())
+        self.drive
+            .viewer
+            .component
+            .as_ref()
+            .map_or(serde_json::Value::Null, |view| view.read(cx).inspect())
     }
 
     #[cfg(feature = "headless-bench")]

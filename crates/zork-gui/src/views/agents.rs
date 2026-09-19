@@ -153,17 +153,38 @@ impl RootView {
     pub(super) fn render_leader_home(&mut self, cx: &mut Context<Self>) -> Div {
         use zork_client_core::state::AgentAvailability;
         let availability = self.core_device.agent_availability();
-        if matches!(availability, AgentAvailability::Loading | AgentAvailability::Unavailable) {
-            return div().flex_1().min_w_0().min_h_0().flex().items_center().justify_center()
+        if matches!(
+            availability,
+            AgentAvailability::Loading | AgentAvailability::Unavailable
+        ) {
+            return div()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .flex()
+                .items_center()
+                .justify_center()
                 .child(if availability == AgentAvailability::Loading {
-                    div().child(zork_ui::components::loading::status(
-                        "device-home-loading", self.locale.text("device_home_loading"),
-                    )).into_any_element()
+                    div()
+                        .child(zork_ui::components::loading::status(
+                            "device-home-loading",
+                            self.locale.text("device_home_loading"),
+                        ))
+                        .into_any_element()
                 } else {
-                    div().id("device-home-unavailable").max_w(px(460.)).px_8()
+                    div()
+                        .id("device-home-unavailable")
+                        .max_w(px(460.))
+                        .px_8()
                         .child(zork_ui::controls::heading(
-                            self.locale.text("device_home_unavailable"), self.locale.text("device_home_unavailable_detail"),
-                        )).automation(AutomationRole::Status, self.locale.text("device_home_unavailable")).into_any_element()
+                            self.locale.text("device_home_unavailable"),
+                            self.locale.text("device_home_unavailable_detail"),
+                        ))
+                        .automation(
+                            AutomationRole::Status,
+                            self.locale.text("device_home_unavailable"),
+                        )
+                        .into_any_element()
                 });
         }
         let empty = availability == AgentAvailability::Empty;

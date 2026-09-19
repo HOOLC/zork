@@ -2,7 +2,10 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{
-        liquid::{overlay::{Dialog, DialogOptions, Placement, SourceBinding}, Material},
+        liquid::{
+            overlay::{Dialog, DialogOptions, Placement, SourceBinding},
+            Material,
+        },
         loading,
         message::{render_selectable_document, MessageDocument},
     },
@@ -273,7 +276,12 @@ impl Viewer {
         }
     }
 
-    fn render_preview(&mut self, artifact: Info, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_preview(
+        &mut self,
+        artifact: Info,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let image_view = artifact.image_view;
         let available = window.viewport_size();
         let width =
@@ -288,11 +296,18 @@ impl Viewer {
         } else {
             24.
         };
-        let stage_height = if image_view { (height - gutter * 2. - 96.).max(80.) }
-            else { (available.height.as_f32() - 240.).clamp(80., 440.) };
+        let stage_height = if image_view {
+            (height - gutter * 2. - 96.).max(80.)
+        } else {
+            (available.height.as_f32() - 240.).clamp(80., 440.)
+        };
         self.viewer.view_size = gpui::size(width - gutter * 2., stage_height);
         self.ensure_preview_raster(window.scale_factor(), cx);
-        self.viewer.focus = Some(if image_view { self.image_focus.clone() } else { self.dialog.focus_handle() });
+        self.viewer.focus = Some(if image_view {
+            self.image_focus.clone()
+        } else {
+            self.dialog.focus_handle()
+        });
         let focus = self
             .viewer
             .focus
@@ -322,27 +337,57 @@ impl Viewer {
         );
         let footer = self.preview_footer(narrow, cx);
         if !image_view {
-            let title_actions = div().flex().gap_1()
-                .child(preview_icon("drive-save", can_save)
-                    .child(ui::icon("icons/download.svg", 16.))
-                    .on_click(cx.listener(|v, _, _, cx| v.save_artifact_copy(cx)))
-                    .automation_enabled(can_save, AutomationRole::Button, self.locale.text("drive_save_copy")))
-                .child(self.viewer.menu.trigger_element(
-                    preview_icon("preview-more", true).child(ui::icon("icons/settings-three.svg", 16.)),
-                    &menu_focus, true, cx)
-                    .automation(AutomationRole::Button, self.locale.text("preview_more")));
-            let content = div().flex().flex_col().min_h_0().gap_3()
+            let title_actions = div()
+                .flex()
+                .gap_1()
+                .child(
+                    preview_icon("drive-save", can_save)
+                        .child(ui::icon("icons/download.svg", 16.))
+                        .on_click(cx.listener(|v, _, _, cx| v.save_artifact_copy(cx)))
+                        .automation_enabled(
+                            can_save,
+                            AutomationRole::Button,
+                            self.locale.text("drive_save_copy"),
+                        ),
+                )
+                .child(
+                    self.viewer
+                        .menu
+                        .trigger_element(
+                            preview_icon("preview-more", true)
+                                .child(ui::icon("icons/settings-three.svg", 16.)),
+                            &menu_focus,
+                            true,
+                            cx,
+                        )
+                        .automation(AutomationRole::Button, self.locale.text("preview_more")),
+                );
+            let content = div()
+                .flex()
+                .flex_col()
+                .min_h_0()
+                .gap_3()
                 .capture_key_down(cx.listener(|v, event: &KeyDownEvent, _, cx| {
-                    if v.viewer.menu.is_open() { return; }
+                    if v.viewer.menu.is_open() {
+                        return;
+                    }
                     if event.keystroke.modifiers.platform && event.keystroke.key == "c" {
                         if let Some(source) = v.viewer.selection.borrow_mut().finish() {
                             cx.write_to_clipboard(gpui::ClipboardItem::new_string(source.quote));
                         }
                         cx.stop_propagation();
-                    } else if !event.keystroke.modifiers.modified() && v.viewer.selection.borrow_mut().finish().is_none() {
+                    } else if !event.keystroke.modifiers.modified()
+                        && v.viewer.selection.borrow_mut().finish().is_none()
+                    {
                         match event.keystroke.key.as_str() {
-                            "left" => { v.move_preview(-1, cx); cx.stop_propagation(); }
-                            "right" => { v.move_preview(1, cx); cx.stop_propagation(); }
+                            "left" => {
+                                v.move_preview(-1, cx);
+                                cx.stop_propagation();
+                            }
+                            "right" => {
+                                v.move_preview(1, cx);
+                                cx.stop_propagation();
+                            }
                             _ => {}
                         }
                     }
@@ -350,13 +395,26 @@ impl Viewer {
                 .child(ui::text_role(subtitle, crate::design::TextRole::Metadata))
                 .child(body)
                 .children(self.preview_menu(window, cx));
-            return self.dialog.render_with_options(
-                "attachment-preview-dialog", artifact.name.clone(), content, Some(footer.into_any_element()),
-                self.data.info.as_ref().is_some_and(|info| !info.image_view), Placement::Window { width }, Material::default(),
-                DialogOptions { title_action: Some(title_actions.into_any_element()),
-                    notice: self.data.notice.map(|key| self.locale.text(key).to_owned()), ..Default::default() },
-                window, cx, |v, _, cx| v.close(cx),
-            ).unwrap_or_else(|| gpui::Empty.into_any_element());
+            return self
+                .dialog
+                .render_with_options(
+                    "attachment-preview-dialog",
+                    artifact.name.clone(),
+                    content,
+                    Some(footer.into_any_element()),
+                    self.data.info.as_ref().is_some_and(|info| !info.image_view),
+                    Placement::Window { width },
+                    Material::default(),
+                    DialogOptions {
+                        title_action: Some(title_actions.into_any_element()),
+                        notice: self.data.notice.map(|key| self.locale.text(key).to_owned()),
+                        ..Default::default()
+                    },
+                    window,
+                    cx,
+                    |v, _, cx| v.close(cx),
+                )
+                .unwrap_or_else(|| gpui::Empty.into_any_element());
         }
         let panel = div()
             .id("attachment-preview-dialog")
@@ -442,7 +500,8 @@ impl Viewer {
                     cx.notify();
                 }),
             )
-            .child(panel).into_any_element()
+            .child(panel)
+            .into_any_element()
     }
 
     fn preview_body(
@@ -849,21 +908,34 @@ impl Render for Viewer {
             self.retired = Some(info.clone());
         }
         let release = !document_open && !self.dialog.alive();
-        let Some(info) = self.data.info.clone().or_else(|| self.retired.clone()) else { return gpui::Empty.into_any_element(); };
+        let Some(info) = self.data.info.clone().or_else(|| self.retired.clone()) else {
+            return gpui::Empty.into_any_element();
+        };
         if !info.image_view {
             let result = self.render_preview(info, window, cx);
-            if release { self.retired = None; }
+            if release {
+                self.retired = None;
+            }
             return result;
         }
-        let retiring = self.retired.clone().map(|info| self.render_preview(info, window, cx));
-        if release { self.retired = None; }
-        div().children(retiring).child(deferred(
-            anchored()
-                .position(point(px(0.), px(0.)))
-                .child(self.render_preview(info, window, cx)),
-        )
-        .with_priority(100))
-        .into_any_element()
+        let retiring = self
+            .retired
+            .clone()
+            .map(|info| self.render_preview(info, window, cx));
+        if release {
+            self.retired = None;
+        }
+        div()
+            .children(retiring)
+            .child(
+                deferred(
+                    anchored()
+                        .position(point(px(0.), px(0.)))
+                        .child(self.render_preview(info, window, cx)),
+                )
+                .with_priority(100),
+            )
+            .into_any_element()
     }
 }
 

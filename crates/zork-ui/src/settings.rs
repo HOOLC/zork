@@ -6,8 +6,8 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
-mod notifications;
 pub mod data;
+mod notifications;
 pub use notifications::{notifications, NotificationAction, NotificationData};
 pub fn row(
     title: impl Into<gpui::SharedString>,

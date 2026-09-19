@@ -1,9 +1,9 @@
 //! Display-thread JNI adapter for the shared visual scene. This path never
 //! serializes business snapshots or sends per-node JNI calls on each frame.
 use jni::{
-    EnvUnowned,
     objects::{JByteBuffer, JFloatArray, JIntArray, JObject},
     sys::{jboolean, jdouble, jfloat, jint, jlong},
+    EnvUnowned,
 };
 use std::{
     cell::RefCell,
@@ -11,7 +11,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use zork_liquid::{
-    scene::{COMMAND_BYTES, MAX_COMMANDS, MAX_FRAME_BYTES, Scene},
+    scene::{Scene, COMMAND_BYTES, MAX_COMMANDS, MAX_FRAME_BYTES},
     tokens,
 };
 

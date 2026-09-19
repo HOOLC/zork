@@ -167,7 +167,13 @@ pub(super) async fn do_generate(
         "Authorization".to_owned(),
         format!("Bearer {}", execution.secret()),
     )]);
-    headers.extend(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+    headers.extend(
+        options
+            .headers
+            .as_ref()
+            .unwrap_or(execution.headers())
+            .clone(),
+    );
     let response = send_stream_timed(
         HttpRequest {
             method: HttpMethod::Post,
@@ -242,7 +248,13 @@ pub(super) async fn do_stream(
         "Authorization".to_owned(),
         format!("Bearer {}", execution.secret()),
     )]);
-    headers.extend(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+    headers.extend(
+        options
+            .headers
+            .as_ref()
+            .unwrap_or(execution.headers())
+            .clone(),
+    );
     let response = send_stream_timed(
         HttpRequest {
             method: HttpMethod::Post,

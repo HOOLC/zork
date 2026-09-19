@@ -3,9 +3,9 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use zork_config::skill_bundles::{valid_component, BundleSelection, BundleState};
-mod publication;
 #[cfg(target_os = "macos")]
 mod initial;
+mod publication;
 
 const MANIFEST: &str = ".bundle-manifest.json";
 pub struct BundleFile<'a> {
@@ -243,25 +243,37 @@ pub(super) fn install_initial(
         return Ok(false);
     }
     for (id, files) in groups {
-        ensure!(manifest(files)?.skills == [*id], "invalid initial Skill group");
+        ensure!(
+            manifest(files)?.skills == [*id],
+            "invalid initial Skill group"
+        );
     }
     #[cfg(target_os = "macos")]
     initial::install(&public, groups)?;
     // Keep the admission lock until every independent publication has completed.
     #[cfg(not(target_os = "macos"))]
     std::thread::scope(|scope| {
-        let workers = groups.iter().map(|(id, files)| {
-            let directory = public.join(id);
-            (*id, std::thread::Builder::new().name(format!("zork-skill-{id}"))
-                .spawn_scoped(scope, move || -> Result<String> {
-                    // A user-created directory racing setup must never be adopted.
-                    fs::create_dir(&directory)?;
-                    install_one(data_root, &directory.join(".zork"), files)
-                }))
-        }).collect::<Vec<_>>();
+        let workers = groups
+            .iter()
+            .map(|(id, files)| {
+                let directory = public.join(id);
+                (
+                    *id,
+                    std::thread::Builder::new()
+                        .name(format!("zork-skill-{id}"))
+                        .spawn_scoped(scope, move || -> Result<String> {
+                            // A user-created directory racing setup must never be adopted.
+                            fs::create_dir(&directory)?;
+                            install_one(data_root, &directory.join(".zork"), files)
+                        }),
+                )
+            })
+            .collect::<Vec<_>>();
         for (skill, worker) in workers {
             let result = match worker {
-                Ok(worker) => worker.join().unwrap_or_else(|_| Err(anyhow::anyhow!("Skill provisioning worker failed"))),
+                Ok(worker) => worker
+                    .join()
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("Skill provisioning worker failed"))),
                 Err(error) => Err(error.into()),
             };
             if let Err(error) = result {

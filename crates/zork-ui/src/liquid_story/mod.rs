@@ -1,11 +1,11 @@
 //! Interactive fixtures built from the shared Rust liquid surfaces and editors.
 //! These examples emit presentation events; they do not save settings or send messages.
-mod catalog;
 pub mod business;
+mod catalog;
 mod composer;
 pub use composer::{install as install_composer_fixture, Example as ComposerExample};
-mod playground;
 mod library;
+mod playground;
 mod primitives;
 mod render;
 use crate::components::{
@@ -102,9 +102,14 @@ impl Gallery {
     }
     fn region_stats(&self, cx: &App) -> Value {
         #[cfg(feature = "headless-bench")]
-        { json!(self.regions.counters(cx)) }
+        {
+            json!(self.regions.counters(cx))
+        }
         #[cfg(not(feature = "headless-bench"))]
-        { let _ = cx; Value::Null }
+        {
+            let _ = cx;
+            Value::Null
+        }
     }
     pub fn inspect(&self, cx: &App) -> Value {
         json!({"renderRegions":self.region_stats(cx),"businessExample":self.business_family.as_ref().and_then(|family|self.business_examples.get(family)).map(|view|view.read(cx).inspect(cx)),"businessCatalog":business::families(cx),"businessFamily":self.business_family,"engine":"rust-ddr","canonicalKinds":Kind::ALL.iter().map(|k|k.key()).collect::<Vec<_>>(),"catalog":Kind::ALL.iter().map(|kind|json!({"kind":kind.key(),"section":kind.section(),"group":kind.group()})).collect::<Vec<_>>(),"section":self.section,"group":self.group,"selectedKind":self.selected_kind.map(Kind::key),"panel":self.panel.map(playground::Panel::key),"dialog":self.modal.inspect(),"navigation":self.library.as_ref().map_or_else(Vec::new, |v| v.read(cx).navigation.surfaces()),"parameters":self.config.borrow().material,"slow":self.config.borrow().slow,"benchmarkCount":self.count,"recording":self.recording.is_some(),"lastRecord":self.last_record,"cards":self.cards.iter().map(|c|c.read(cx).inspect(cx)).collect::<Vec<_>>()})
@@ -319,41 +324,60 @@ impl Card {
     fn new(kind: Kind, id: String, config: Rc<RefCell<Config>>, cx: &mut Context<Self>) -> Self {
         crate::components::region::forget_on_release(cx);
         let comment_editor = cx.new(|cx| crate::components::comments::Editor::new(id.clone(), cx));
-        cx.subscribe(&comment_editor, |v, _, event: &crate::components::comments::Submit, cx| {
-            v.actions += 1;
-            let comment = crate::comments::DraftComment {
-                id: event.editing.clone().unwrap_or_else(|| format!("mock-comment-{}", v.actions)),
-                source: event.source.clone(), comment: event.text.clone(),
-            };
-            if let Some(old) = v.drafts.iter_mut().find(|old| old.id == comment.id) { *old = comment; }
-            else { v.drafts.push(comment); }
-            v.comment_editor.update(cx, |editor, cx| editor.dismiss(cx));
-            v.open = false;
-            v.status = format!("{} 条 mock 草稿", v.drafts.len());
-            cx.notify();
-        }).detach();
-        cx.subscribe(&comment_editor, |v, _, _: &crate::components::comments::Closed, cx| {
-            v.open = false;
-            v.selection.borrow_mut().clear();
-            cx.notify();
-        }).detach();
-        let input = if kind == Kind::Comments { comment_editor.read(cx).input() } else { cx.new(|cx| {
-            let input = ComposerInput::new(
-                if kind == Kind::Composer {
-                    "输入内容…"
-                } else if kind == Kind::Comments {
-                    "补充你的看法…"
+        cx.subscribe(
+            &comment_editor,
+            |v, _, event: &crate::components::comments::Submit, cx| {
+                v.actions += 1;
+                let comment = crate::comments::DraftComment {
+                    id: event
+                        .editing
+                        .clone()
+                        .unwrap_or_else(|| format!("mock-comment-{}", v.actions)),
+                    source: event.source.clone(),
+                    comment: event.text.clone(),
+                };
+                if let Some(old) = v.drafts.iter_mut().find(|old| old.id == comment.id) {
+                    *old = comment;
                 } else {
-                    "填写示例名称…"
-                },
-                cx,
-            );
-            if matches!(kind, Kind::Fields | Kind::Modal) {
-                input.single_line()
-            } else {
-                input
-            }
-        }) };
+                    v.drafts.push(comment);
+                }
+                v.comment_editor.update(cx, |editor, cx| editor.dismiss(cx));
+                v.open = false;
+                v.status = format!("{} 条 mock 草稿", v.drafts.len());
+                cx.notify();
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &comment_editor,
+            |v, _, _: &crate::components::comments::Closed, cx| {
+                v.open = false;
+                v.selection.borrow_mut().clear();
+                cx.notify();
+            },
+        )
+        .detach();
+        let input = if kind == Kind::Comments {
+            comment_editor.read(cx).input()
+        } else {
+            cx.new(|cx| {
+                let input = ComposerInput::new(
+                    if kind == Kind::Composer {
+                        "输入内容…"
+                    } else if kind == Kind::Comments {
+                        "补充你的看法…"
+                    } else {
+                        "填写示例名称…"
+                    },
+                    cx,
+                );
+                if matches!(kind, Kind::Fields | Kind::Modal) {
+                    input.single_line()
+                } else {
+                    input
+                }
+            })
+        };
         let second = cx.new(|cx| ComposerInput::new("访问凭据…", cx).single_line());
         let endpoint = cx.new(|cx| ComposerInput::new("服务地址…", cx).single_line());
         cx.observe(&input, |_, _, cx| cx.notify()).detach();
@@ -367,7 +391,6 @@ impl Card {
         cx.subscribe(&input, |v, _, _: &ComposerSubmit, cx| {
             if v.kind == Kind::Composer {
                 v.composer_intent(zork_client_types::composer::Intent::Submit, cx);
-
             }
         })
         .detach();
@@ -513,7 +536,7 @@ impl Card {
                 | Kind::Details
                 | Kind::Disclosure
                 | Kind::Attachments
-                    | Kind::Notice
+                | Kind::Notice
         ) {
             return;
         }
@@ -581,16 +604,34 @@ impl Card {
         if self.kind == Kind::Comments {
             if open {
                 let source = crate::comments::CommentSource {
-                    session_id: "mock-session".into(), message_id: Some("mock-message".into()),
-                    quote: self.quote.clone().unwrap_or_else(|| self.document.plain_text().to_owned()),
+                    session_id: "mock-session".into(),
+                    message_id: Some("mock-message".into()),
+                    quote: self
+                        .quote
+                        .clone()
+                        .unwrap_or_else(|| self.document.plain_text().to_owned()),
                     ..Default::default()
                 };
                 let bounds = self.comment_anchor.get();
                 let focus = Some(self.trigger_focus.clone());
-                self.comment_editor.update(cx, |editor, cx| editor.open_at(
-                    crate::components::comments::EditorRequest { source, editing: None, text: String::new(), toolbar: false },
-                    bounds, focus, window, cx));
-            } else { self.comment_editor.update(cx, |editor, cx| editor.dismiss(cx)); }
+                self.comment_editor.update(cx, |editor, cx| {
+                    editor.open_at(
+                        crate::components::comments::EditorRequest {
+                            source,
+                            editing: None,
+                            text: String::new(),
+                            toolbar: false,
+                        },
+                        bounds,
+                        focus,
+                        window,
+                        cx,
+                    )
+                });
+            } else {
+                self.comment_editor
+                    .update(cx, |editor, cx| editor.dismiss(cx));
+            }
             cx.notify();
             return;
         }
@@ -600,7 +641,6 @@ impl Card {
             if !matches!(self.kind, Kind::Popover | Kind::Modal) {
                 window.focus(&self.trigger_focus, cx);
             }
-
         }
         self.retarget();
         cx.notify();
@@ -659,13 +699,12 @@ impl Card {
                 .into_iter()
                 .filter(|v| !v.is_null())
                 .collect(),
-            Kind::Details
-            | Kind::Disclosure
-            | Kind::Attachments
-            | Kind::Notice => vec![self.panel.inspect()]
-                .into_iter()
-                .filter(|v| !v.is_null())
-                .collect(),
+            Kind::Details | Kind::Disclosure | Kind::Attachments | Kind::Notice => {
+                vec![self.panel.inspect()]
+                    .into_iter()
+                    .filter(|v| !v.is_null())
+                    .collect()
+            }
             _ => vec![],
         }
     }
@@ -675,10 +714,9 @@ impl Card {
             Kind::Popover => self.popover.samples().to_vec(),
             Kind::Modal => self.dialog.samples().to_vec(),
             Kind::Navigation | Kind::Rows => self.navigation.samples(),
-            Kind::Details
-            | Kind::Disclosure
-            | Kind::Attachments
-            | Kind::Notice => self.panel.samples().to_vec(),
+            Kind::Details | Kind::Disclosure | Kind::Attachments | Kind::Notice => {
+                self.panel.samples().to_vec()
+            }
             _ => self.frames.clone(),
         }
     }
@@ -688,15 +726,18 @@ impl Card {
             Kind::Popover => self.popover.visible(),
             Kind::Modal => self.dialog.visible(),
             Kind::Navigation | Kind::Rows => self.navigation.visible(),
-            Kind::Details
-            | Kind::Disclosure
-            | Kind::Attachments
-            | Kind::Notice => self.panel.visible(),
+            Kind::Details | Kind::Disclosure | Kind::Attachments | Kind::Notice => {
+                self.panel.visible()
+            }
             _ => self.surfaces.first().is_some_and(Surface::visible),
         }
     }
     fn inspect(&self, cx: &App) -> Value {
-        let mut costs = self.samples(cx).iter().map(|f| f.work_ms).collect::<Vec<_>>();
+        let mut costs = self
+            .samples(cx)
+            .iter()
+            .map(|f| f.work_ms)
+            .collect::<Vec<_>>();
         costs.sort_by(f64::total_cmp);
         let p95 = costs
             .get((costs.len() as f64 * 0.95).ceil().max(1.) as usize - 1)
@@ -775,7 +816,7 @@ impl Card {
                 | Kind::Details
                 | Kind::Disclosure
                 | Kind::Attachments
-                    | Kind::Notice
+                | Kind::Notice
         ) {
             if ((cfg.cycle && !cx.reduce_motion()) || self.pending.is_some()) && !self.pending_frame
             {

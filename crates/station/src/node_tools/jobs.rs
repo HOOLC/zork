@@ -15,7 +15,9 @@ impl Drop for Child {
     }
 }
 fn output(state: &AppState, id: &str) -> std::path::PathBuf {
-    zork_config::files_root(&state.config.data_root).join("device-output").join(id)
+    zork_config::files_root(&state.config.data_root)
+        .join("device-output")
+        .join(id)
 }
 pub async fn run(
     state: &AppState,

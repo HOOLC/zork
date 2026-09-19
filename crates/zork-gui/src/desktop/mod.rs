@@ -13,8 +13,8 @@ pub(crate) mod profile_quota;
 mod profiles;
 mod resources;
 mod shared_files;
-pub mod store;
 mod startup;
+pub mod store;
 pub mod transport;
 pub(crate) mod ui;
 #[cfg(feature = "headless-bench")]
@@ -106,7 +106,10 @@ pub struct DesktopRoot {
     error: Option<String>,
 }
 impl DesktopRoot {
-    pub fn install_startup(startup: zork_client_core::desktop::startup::Startup, cx: &mut gpui::App) {
+    pub fn install_startup(
+        startup: zork_client_core::desktop::startup::Startup,
+        cx: &mut gpui::App,
+    ) {
         assert!(
             !cx.has_global::<DesktopRuntime>(),
             "one desktop runtime per app"
@@ -228,7 +231,10 @@ impl DesktopRoot {
         view.apply_startup(startup_state, cx);
         view.startup_updates = Some(cx.spawn(async move |this, cx| {
             while let Some(state) = startup_updates.changed().await {
-                if this.update(cx, |view, cx| view.apply_startup(state, cx)).is_err() {
+                if this
+                    .update(cx, |view, cx| view.apply_startup(state, cx))
+                    .is_err()
+                {
                     return;
                 }
             }
@@ -341,17 +347,32 @@ impl DesktopRoot {
         self.apply_navigation(action.destination, cx);
     }
     fn apply_navigation(&mut self, destination: navigation::Destination, cx: &mut Context<Self>) {
-        let shared=matches!(destination,navigation::Destination::SharedFiles);
+        let shared = matches!(destination, navigation::Destination::SharedFiles);
         if shared {
-            self.managing=false;
-            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|{v.set_locale(self.client_settings.locale,cx);v.set_active(true,cx);});}
-            else {let source=self.source.shared_files();let locale=self.client_settings.locale;self.shared_files=Some(cx.new(|cx|shared_files::SharedFilesView::new(source,locale,cx)));}
+            self.managing = false;
+            if let Some(view) = &self.shared_files {
+                view.update(cx, |v, cx| {
+                    v.set_locale(self.client_settings.locale, cx);
+                    v.set_active(true, cx);
+                });
+            } else {
+                let source = self.source.shared_files();
+                let locale = self.client_settings.locale;
+                self.shared_files =
+                    Some(cx.new(|cx| shared_files::SharedFilesView::new(source, locale, cx)));
+            }
         } else if self.showing_shared_files {
-            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|v.set_active(false,cx));}
+            if let Some(view) = &self.shared_files {
+                view.update(cx, |v, cx| v.set_active(false, cx));
+            }
         }
-        self.showing_shared_files=shared;
-        self.navigation.update(cx,|v,cx|v.set_shared_files(shared,cx));
-        if shared {cx.notify();return;}
+        self.showing_shared_files = shared;
+        self.navigation
+            .update(cx, |v, cx| v.set_shared_files(shared, cx));
+        if shared {
+            cx.notify();
+            return;
+        }
         if let navigation::Destination::Manage(tab) = destination {
             self.managing = true;
             self.management_tab = tab;
@@ -413,13 +434,17 @@ impl DesktopRoot {
             cx.subscribe(
                 &active,
                 move |desktop, _, event: &crate::views::InspectResource, cx| {
-                    match desktop.source.inspection_node(&resource_node, &event.target) {
+                    match desktop
+                        .source
+                        .inspection_node(&resource_node, &event.target)
+                    {
                         Ok(node) => {
                             let core = desktop.source.resources();
                             let query = event.target.query.clone();
                             let locale = desktop.client_settings.locale;
                             desktop.resource_inspector = Some(cx.new(|cx| {
-                                resources::ResourcesView::inspector(core, node, query, locale, cx).from_source(event.source.clone(), cx)
+                                resources::ResourcesView::inspector(core, node, query, locale, cx)
+                                    .from_source(event.source.clone(), cx)
                             }));
                         }
                         Err(error) => {
@@ -431,7 +456,8 @@ impl DesktopRoot {
                                     error.to_string(),
                                     locale,
                                     cx,
-                                ).from_source(event.source.clone(), cx)
+                                )
+                                .from_source(event.source.clone(), cx)
                             }));
                         }
                     }
@@ -631,7 +657,9 @@ impl DesktopRoot {
     }
     fn start_node(&mut self, cx: &mut Context<Self>) {
         self.error = None;
-        if self.active.is_none() { self.managing = false; }
+        if self.active.is_none() {
+            self.managing = false;
+        }
         cx.global::<DesktopRuntime>().startup.start_local();
         cx.notify();
     }
@@ -639,7 +667,9 @@ impl DesktopRoot {
         if self.busy {
             return;
         }
-        if !cx.global::<DesktopRuntime>().startup.stop_local() { return; }
+        if !cx.global::<DesktopRuntime>().startup.stop_local() {
+            return;
+        }
         self.error = None;
         if let Some(previous) = &self.active {
             previous.update(cx, |view, cx| view.hide_browser(cx));
@@ -836,7 +866,12 @@ impl DesktopRoot {
             running: self.local_enabled,
             background: self.local.background(),
             start_at_login: self.local.start_at_login(),
-            busy: self.busy || matches!(self.startup_state.dependency(&node), zork_client_core::desktop::startup::Phase::Preparing | zork_client_core::desktop::startup::Phase::Stopping),
+            busy: self.busy
+                || matches!(
+                    self.startup_state.dependency(&node),
+                    zork_client_core::desktop::startup::Phase::Preparing
+                        | zork_client_core::desktop::startup::Phase::Stopping
+                ),
             notice: info
                 .and_then(|i| {
                     i["error"]
@@ -919,11 +954,21 @@ use zork_ui::node_directory::Host as _;
 
 impl Render for DesktopRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !(self.managing && self.management_tab == 4 && self.client_settings.page == client_settings::Page::Appearance) {
-            if let Some(view) = &self.client_settings.appearance { view.update(cx, |view, cx| view.cancel(cx)); }
+        if !(self.managing
+            && self.management_tab == 4
+            && self.client_settings.page == client_settings::Page::Appearance)
+        {
+            if let Some(view) = &self.client_settings.appearance {
+                view.update(cx, |view, cx| view.cancel(cx));
+            }
         }
-        if !(self.managing && self.management_tab == 4 && self.client_settings.page == client_settings::Page::Data) {
-            if let Some(view) = &self.client_settings.data { view.update(cx, |view, cx| view.cancel(cx)); }
+        if !(self.managing
+            && self.management_tab == 4
+            && self.client_settings.page == client_settings::Page::Data)
+        {
+            if let Some(view) = &self.client_settings.data {
+                view.update(cx, |view, cx| view.cancel(cx));
+            }
         }
         if !self.busy {
             if let Some(tag) = self.pending_notification.take() {
@@ -941,7 +986,10 @@ impl Render for DesktopRoot {
         }
         self.navigation.update(cx, |nav, cx| {
             nav.set_viewing(
-                !self.managing && !self.showing_shared_files && !self.add_device_open && window.is_window_active(),
+                !self.managing
+                    && !self.showing_shared_files
+                    && !self.add_device_open
+                    && window.is_window_active(),
                 cx,
             )
         });
@@ -955,14 +1003,24 @@ impl Render for DesktopRoot {
             window,
             cx,
         );
-        let rename_visible = self.rename_modal.retain("device-rename-dialog", self.rename_node_id.clone(), cx).is_some();
-        let add_device_visible = self.add_device_modal.retain("add-device-dialog", self.add_device_open.then_some(()), cx).is_some();
+        let rename_visible = self
+            .rename_modal
+            .retain("device-rename-dialog", self.rename_node_id.clone(), cx)
+            .is_some();
+        let add_device_visible = self
+            .add_device_modal
+            .retain("add-device-dialog", self.add_device_open.then_some(()), cx)
+            .is_some();
         let width = self
             .navigation
             .read(cx)
             .width(window.viewport_size().width.as_f32());
         if self.showing_shared_files {
-            if let Some(view)=&self.shared_files {view.update(cx,|v,cx|v.set_width(window.viewport_size().width.as_f32()-width,cx));}
+            if let Some(view) = &self.shared_files {
+                view.update(cx, |v, cx| {
+                    v.set_width(window.viewport_size().width.as_f32() - width, cx)
+                });
+            }
         }
         for (id, (_, _, profiles, _)) in &self.management_views {
             let visible = self.managing
@@ -1004,11 +1062,23 @@ impl Render for DesktopRoot {
                 }),
             );
         let content = if self.showing_shared_files {
-            div().size_full().flex().child(self.navigation.clone())
-                .child(div().flex_1().min_w_0().h_full().when_some(self.shared_files.clone(),|v,view|v.child(view)))
+            div()
+                .size_full()
+                .flex()
+                .child(self.navigation.clone())
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .when_some(self.shared_files.clone(), |v, view| v.child(view)),
+                )
         } else if !self.managing {
             if let Some(active) = self.active.clone() {
-                div().size_full().flex().flex_col()
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
                     .child(div().flex_1().min_h_0().child(active))
                     .when_some(self.startup_notice(cx), |v, notice| v.child(notice))
             } else {
@@ -1049,20 +1119,27 @@ impl Render for DesktopRoot {
                                 self.settings_tabs
                                     .tab("desktop-return".into(), false)
                                     .child(ui::icon("icons/arrow-left.svg", 16.))
-                                    .child(self.client_settings.locale.text(if self.active.is_some() {
-                                        "startup_return_chat"
-                                    } else {
-                                        "startup_return_home"
-                                    }))
+                                    .child(self.client_settings.locale.text(
+                                        if self.active.is_some() {
+                                            "startup_return_chat"
+                                        } else {
+                                            "startup_return_home"
+                                        },
+                                    ))
                                     .on_click(cx.listener(|v, _, _, cx| {
                                         v.managing = false;
                                         cx.notify();
                                     }))
-                                    .automation(AutomationRole::Button, self.client_settings.locale.text(if self.active.is_some() {
-                                        "startup_return_chat"
-                                    } else {
-                                        "startup_return_home"
-                                    })),
+                                    .automation(
+                                        AutomationRole::Button,
+                                        self.client_settings.locale.text(
+                                            if self.active.is_some() {
+                                                "startup_return_chat"
+                                            } else {
+                                                "startup_return_home"
+                                            },
+                                        ),
+                                    ),
                             )
                             .child(
                                 self.settings_tabs
@@ -1192,7 +1269,19 @@ impl Render for DesktopRoot {
                                                             cx,
                                                         )
                                                     }))
-                                                    .map(|tab| self.add_device_modal.source("add-device-dialog").bind(tab, "连接设备", ui::ActionStyle { quiet: true, icon: Some("icons/plus.svg"), ..Default::default() }))
+                                                    .map(|tab| {
+                                                        self.add_device_modal
+                                                            .source("add-device-dialog")
+                                                            .bind(
+                                                                tab,
+                                                                "连接设备",
+                                                                ui::ActionStyle {
+                                                                    quiet: true,
+                                                                    icon: Some("icons/plus.svg"),
+                                                                    ..Default::default()
+                                                                },
+                                                            )
+                                                    })
                                                     .automation(AutomationRole::Button, "连接设备"),
                                             ),
                                     ),
@@ -1255,10 +1344,18 @@ impl Render for DesktopRoot {
             })
             .when(rename_visible, |shell| {
                 shell.child(zork_ui::settings::rename_device::render(
-                    &self.rename_input, self.rename_busy, self.rename_error.clone(), &self.rename_modal, window, cx,
+                    &self.rename_input,
+                    self.rename_busy,
+                    self.rename_error.clone(),
+                    &self.rename_modal,
+                    window,
+                    cx,
                     |v, action, cx| match action {
                         zork_ui::settings::rename_device::Action::Save => v.save_device_name(cx),
-                        zork_ui::settings::rename_device::Action::Cancel => { v.rename_node_id = None; cx.notify(); },
+                        zork_ui::settings::rename_device::Action::Cancel => {
+                            v.rename_node_id = None;
+                            cx.notify();
+                        }
                     },
                 ))
             })
@@ -1291,21 +1388,62 @@ mod notification_story;
 
 impl zork_ui::node_directory::Host for DesktopRoot {
     fn nodes_data(&self) -> zork_ui::node_directory::Data {
-        zork_ui::node_directory::Data { nodes: self.nodes.iter().map(|n| zork_ui::node_directory::Node { id: n.id.clone(), name: n.name.clone(), remote: n.mesh.is_some() }).collect(),
-            running: self.local.running(), enabled: self.local_enabled,
-            busy: self.busy || matches!(self.startup_state.local, zork_client_core::desktop::startup::Phase::Preparing | zork_client_core::desktop::startup::Phase::Stopping),
-            background: self.local.background(), start_at_login: self.local.start_at_login(),
-            pairing: self.pairing, mesh_identity: self.mesh_identity.clone(), remote_name: self.remote_name.clone(), remote_origin: self.remote_origin.clone(), remote_addr: self.remote_addr.clone() }
+        zork_ui::node_directory::Data {
+            nodes: self
+                .nodes
+                .iter()
+                .map(|n| zork_ui::node_directory::Node {
+                    id: n.id.clone(),
+                    name: n.name.clone(),
+                    remote: n.mesh.is_some(),
+                })
+                .collect(),
+            running: self.local.running(),
+            enabled: self.local_enabled,
+            busy: self.busy
+                || matches!(
+                    self.startup_state.local,
+                    zork_client_core::desktop::startup::Phase::Preparing
+                        | zork_client_core::desktop::startup::Phase::Stopping
+                ),
+            background: self.local.background(),
+            start_at_login: self.local.start_at_login(),
+            pairing: self.pairing,
+            mesh_identity: self.mesh_identity.clone(),
+            remote_name: self.remote_name.clone(),
+            remote_origin: self.remote_origin.clone(),
+            remote_addr: self.remote_addr.clone(),
+        }
     }
     fn node_action(&mut self, action: zork_ui::node_directory::Action, cx: &mut Context<Self>) {
         use zork_ui::node_directory::Action;
         match action {
-            Action::Start => self.start_node(cx), Action::Stop => self.stop_node(cx),
-            Action::Background { enabled, at_login } => self.set_node_background(enabled, at_login, cx),
-            Action::Pair(id) => { let node = id.and_then(|id| self.nodes.iter().find(|n| n.id == id)).cloned(); self.start_pairing(node, cx); },
-            Action::CancelPair => { self.pairing = false; cx.notify(); }, Action::Connect => self.connect_remote(cx),
-            Action::Open(id) => { if let Some(node) = self.nodes.iter().find(|n| n.id == id).cloned() { self.open_node(node, cx); } },
-            Action::CopyIdentity => { if let Some(identity) = &self.mesh_identity { cx.write_to_clipboard(gpui::ClipboardItem::new_string(identity.clone())); } },
+            Action::Start => self.start_node(cx),
+            Action::Stop => self.stop_node(cx),
+            Action::Background { enabled, at_login } => {
+                self.set_node_background(enabled, at_login, cx)
+            }
+            Action::Pair(id) => {
+                let node = id
+                    .and_then(|id| self.nodes.iter().find(|n| n.id == id))
+                    .cloned();
+                self.start_pairing(node, cx);
+            }
+            Action::CancelPair => {
+                self.pairing = false;
+                cx.notify();
+            }
+            Action::Connect => self.connect_remote(cx),
+            Action::Open(id) => {
+                if let Some(node) = self.nodes.iter().find(|n| n.id == id).cloned() {
+                    self.open_node(node, cx);
+                }
+            }
+            Action::CopyIdentity => {
+                if let Some(identity) = &self.mesh_identity {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(identity.clone()));
+                }
+            }
         }
     }
 }

@@ -98,8 +98,9 @@ impl Fixture {
 
     fn frame(&mut self) -> Result<()> {
         self.cx.advance_clock(STEP);
-        self.cx
-            .update_window(self.window, |_, window, cx| { window.simulate_next_frame(cx); })?;
+        self.cx.update_window(self.window, |_, window, cx| {
+            window.simulate_next_frame(cx);
+        })?;
         self.cx.run_until_parked();
         Ok(())
     }

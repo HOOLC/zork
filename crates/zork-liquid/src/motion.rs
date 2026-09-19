@@ -256,13 +256,21 @@ impl Transition {
     /// Progress through the actual rectangle expansion, including translation.
     /// Visibility springs and numerical particle tails do not determine it.
     pub fn expansion(&self, simulation: &Simulation) -> f64 {
-        let Some((from, to, _)) = self.layout else { return 0.; };
+        let Some((from, to, _)) = self.layout else {
+            return 0.;
+        };
         let pose = simulation.pose();
         let values = |p: Pose| [p.left(), p.top(), p.left() + p.w, p.top() + p.h];
         let (start, target, current) = (values(from), values(to), values(pose));
         let distance = (0..4).map(|i| (target[i] - start[i]).powi(2)).sum::<f64>();
-        if distance <= f64::EPSILON { return 1.; }
-        ((0..4).map(|i| (current[i] - start[i]) * (target[i] - start[i])).sum::<f64>() / distance).clamp(0., 1.)
+        if distance <= f64::EPSILON {
+            return 1.;
+        }
+        ((0..4)
+            .map(|i| (current[i] - start[i]) * (target[i] - start[i]))
+            .sum::<f64>()
+            / distance)
+            .clamp(0., 1.)
     }
     pub fn alive(&self, simulation: &Simulation) -> bool {
         self.progress() > 0.001 || simulation.moving()

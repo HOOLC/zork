@@ -101,7 +101,8 @@ impl RootView {
         self.file_ui.draft = Default::default();
         self.file_ui.messages.borrow_mut().clear();
         self.comment_popover = None;
-        self.comment_editor.update(cx, |editor, cx| editor.reset(cx));
+        self.comment_editor
+            .update(cx, |editor, cx| editor.reset(cx));
         self.presence.scene = Default::default();
         self.close_conversation_artifact();
         self.transcript_selection.borrow_mut().clear();

@@ -1,6 +1,6 @@
 //! One reconnect policy for all clients. Subscribe before catch-up so messages
 //! delivered during the read remain buffered. Dropping the feed cancels its IO.
-use crate::api::{ApiError, StationClient, MessagePage, SseEvent};
+use crate::api::{ApiError, MessagePage, SseEvent, StationClient};
 use futures_channel::mpsc;
 use futures_util::{SinkExt, Stream, StreamExt};
 use std::{

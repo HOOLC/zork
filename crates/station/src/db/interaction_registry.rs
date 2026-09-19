@@ -1,6 +1,6 @@
 //! Durable registration identities and their lifecycle. Business state is stored
 //! by the registered owner; no card, submission or business result enters here.
-use super::{params, Connection, Context, StationDb, OptionalExtension, Result};
+use super::{params, Connection, Context, OptionalExtension, Result, StationDb};
 use crate::{db::chats::Topic, node_access::Subject};
 use serde::{Deserialize, Serialize};
 

@@ -59,8 +59,14 @@ impl Item {
         self.disabled = true;
         self
     }
-    pub fn icon(mut self, path: &'static str) -> Self { self.icon = Some(path); self }
-    pub fn detail(mut self, text: impl Into<SharedString>) -> Self { self.detail = Some(text.into()); self }
+    pub fn icon(mut self, path: &'static str) -> Self {
+        self.icon = Some(path);
+        self
+    }
+    pub fn detail(mut self, text: impl Into<SharedString>) -> Self {
+        self.detail = Some(text.into());
+        self
+    }
     pub fn check(mut self, checked: bool) -> Self {
         self.kind = ItemKind::Check(checked);
         self.keep_open = true;
@@ -105,7 +111,13 @@ impl Item {
         match self.kind {
             ItemKind::Heading => 26.,
             ItemKind::Separator => 9.,
-            _ => if self.detail.is_some() { 48. } else { 32. },
+            _ => {
+                if self.detail.is_some() {
+                    48.
+                } else {
+                    32.
+                }
+            }
         }
     }
 }
@@ -200,7 +212,9 @@ impl Menu {
         self.state.borrow_mut().close(w, cx);
     }
     pub fn open_at(&self, position: Point<Pixels>, focus: FocusHandle) {
-        self.anchor.bounds.set(Bounds::new(position, size(px(1.), px(1.))));
+        self.anchor
+            .bounds
+            .set(Bounds::new(position, size(px(1.), px(1.))));
         self.anchor.visible.set(true);
         self.state.borrow_mut().show(position, focus);
     }
@@ -215,15 +229,31 @@ impl Menu {
         let id = id.into();
         let label = label.into();
         let focus = controls::action_focus(id.clone(), window, cx);
-        let element = controls::action(id, label.clone(), width, 32., ActionStyle {
-            expanded: self.is_open(), opens_panel: true, ..Default::default()
-        }, CUE_UI.palette.canvas, window, cx);
+        let element = controls::action(
+            id,
+            label.clone(),
+            width,
+            32.,
+            ActionStyle {
+                expanded: self.is_open(),
+                opens_panel: true,
+                ..Default::default()
+            },
+            CUE_UI.palette.canvas,
+            window,
+            cx,
+        );
         self.trigger_element(element, &focus, true, cx)
-            .automation(AutomationRole::Button, label).into_any_element()
+            .automation(AutomationRole::Button, label)
+            .into_any_element()
     }
     /// Bind an icon, a rich row or an intrinsic action to the same menu lifecycle.
     pub fn trigger_element<V: 'static, E: ControlElement>(
-        &self, element: E, focus: &FocusHandle, enabled: bool, cx: &mut Context<V>,
+        &self,
+        element: E,
+        focus: &FocusHandle,
+        enabled: bool,
+        cx: &mut Context<V>,
     ) -> E {
         let bounds = Rc::new(Cell::new(Bounds::<Pixels>::default()));
         let capture = bounds.clone();
@@ -235,13 +265,22 @@ impl Menu {
         let layout_state = self.state.clone();
         let anchor = self.anchor.clone();
         let owner = cx.entity().downgrade();
-        element.control_focus(&focus).panel_source().aria_expanded(self.is_open())
+        element
+            .control_focus(&focus)
+            .panel_source()
+            .aria_expanded(self.is_open())
             .on_click(cx.listener(move |_, _, w, cx| {
-                if !enabled { return; }
+                if !enabled {
+                    return;
+                }
                 let mut state = state.borrow_mut();
-                if state.open { state.close(w, cx); }
-                else {
-                    state.show(bounds.get().bottom_left() + point(px(0.), px(6.)), focus.clone());
+                if state.open {
+                    state.close(w, cx);
+                } else {
+                    state.show(
+                        bounds.get().bottom_left() + point(px(0.), px(6.)),
+                        focus.clone(),
+                    );
                     state.source_bounds = Some(bounds.get());
                 }
                 cx.notify();
@@ -249,21 +288,38 @@ impl Menu {
             .on_key_down(cx.listener(move |_, e: &KeyDownEvent, w, cx| {
                 if enabled && matches!(e.keystroke.key.as_str(), "down" | "up") {
                     let mut state = keys.borrow_mut();
-                    state.show(key_bounds.get().bottom_left() + point(px(0.), px(6.)), key_focus.clone());
+                    state.show(
+                        key_bounds.get().bottom_left() + point(px(0.), px(6.)),
+                        key_focus.clone(),
+                    );
                     state.source_bounds = Some(key_bounds.get());
-                    cx.notify(); w.prevent_default(); cx.stop_propagation();
+                    cx.notify();
+                    w.prevent_default();
+                    cx.stop_propagation();
                 }
             }))
-            .control_overlay(canvas(move |b, w, cx| {
-                capture.set(b);
-                let changed = layout_state.borrow_mut().track_source(b);
-                if anchor.update(b, w) || changed { let _ = owner.update(cx, |_, cx| cx.notify()); }
-            }, |_, _, _, _| {}).absolute().inset_0().into_any_element())
+            .control_overlay(
+                canvas(
+                    move |b, w, cx| {
+                        capture.set(b);
+                        let changed = layout_state.borrow_mut().track_source(b);
+                        if anchor.update(b, w) || changed {
+                            let _ = owner.update(cx, |_, cx| cx.notify());
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+                .into_any_element(),
+            )
     }
     /// Host navigation can dismiss without moving focus away from its new target.
     pub fn dismiss(&self) {
         let mut state = self.state.borrow_mut();
-        state.open = false; state.path.clear(); state.generation = state.generation.wrapping_add(1);
+        state.open = false;
+        state.path.clear();
+        state.generation = state.generation.wrapping_add(1);
     }
     pub fn context_trigger<V: 'static>(
         &self,
@@ -275,16 +331,33 @@ impl Menu {
     ) -> AnyElement {
         let id = id.into();
         let focus = controls::action_focus(id.clone(), window, cx);
-        let element = surface(id, crate::controls::CARD_RADIUS, CUE_UI.palette.prompt, false)
-            .w(px(width)).min_h(px(100.)).p(px(18.)).flex().items_center().justify_center()
-            .role(Role::Group).aria_label("上下文菜单区域").child(content);
+        let element = surface(
+            id,
+            crate::controls::CARD_RADIUS,
+            CUE_UI.palette.prompt,
+            false,
+        )
+        .w(px(width))
+        .min_h(px(100.))
+        .p(px(18.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .role(Role::Group)
+        .aria_label("上下文菜单区域")
+        .child(content);
         self.context_element(element, &focus, true, cx)
-            .automation(AutomationRole::Button, "右键或长按打开菜单").into_any_element()
+            .automation(AutomationRole::Button, "右键或长按打开菜单")
+            .into_any_element()
     }
     /// Bind the full context-menu interaction to an existing control's actual
     /// geometry. Images and rich rows keep their original content and size.
     pub fn context_element<V: 'static, E: ControlElement>(
-        &self, element: E, focus: &FocusHandle, enabled: bool, cx: &mut Context<V>,
+        &self,
+        element: E,
+        focus: &FocusHandle,
+        enabled: bool,
+        cx: &mut Context<V>,
     ) -> E {
         let focus = focus.clone();
         let rect = Rc::new(Cell::new(Bounds::<Pixels>::default()));
@@ -299,101 +372,109 @@ impl Menu {
         let layout_state = self.state.clone();
         let anchor = self.anchor.clone();
         let owner = cx.entity().downgrade();
-        element.control_focus(&focus)
-        .aria_description("右键、长按或 Shift F10 打开菜单")
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(move |_, e: &MouseDownEvent, w, cx| {
-                if !enabled { return; }
-                right.borrow_mut().show(e.position, right_focus.clone());
-                w.prevent_default();
-                cx.stop_propagation();
-                cx.notify();
-            }),
-        )
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |_, e: &MouseDownEvent, w, cx| {
-                if !enabled { return; }
-                let generation = {
-                    let mut state = left.borrow_mut();
+        element
+            .control_focus(&focus)
+            .aria_description("右键、长按或 Shift F10 打开菜单")
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |_, e: &MouseDownEvent, w, cx| {
+                    if !enabled {
+                        return;
+                    }
+                    right.borrow_mut().show(e.position, right_focus.clone());
+                    w.prevent_default();
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |_, e: &MouseDownEvent, w, cx| {
+                    if !enabled {
+                        return;
+                    }
+                    let generation = {
+                        let mut state = left.borrow_mut();
+                        state.generation = state.generation.wrapping_add(1);
+                        state.press = Some(e.position);
+                        state.generation
+                    };
+                    let state = left.clone();
+                    let focus = left_focus.clone();
+                    let position = e.position;
+                    cx.spawn_in(w, async move |owner, cx| {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(550))
+                            .await;
+                        let _ = cx.update(|_, cx| {
+                            if state.borrow().generation == generation
+                                && state.borrow().press.is_some()
+                            {
+                                state.borrow_mut().show(position, focus);
+                                let _ = owner.update(cx, |_, cx| cx.notify());
+                            }
+                        });
+                    })
+                    .detach();
+                }),
+            )
+            .on_mouse_move(move |e: &MouseMoveEvent, _, _| {
+                let mut state = moved.borrow_mut();
+                if state
+                    .press
+                    .is_some_and(|p| (p - e.position).magnitude() > 6.)
+                {
+                    state.press = None;
                     state.generation = state.generation.wrapping_add(1);
-                    state.press = Some(e.position);
-                    state.generation
-                };
-                let state = left.clone();
-                let focus = left_focus.clone();
-                let position = e.position;
-                cx.spawn_in(w, async move |owner, cx| {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(550))
-                        .await;
-                    let _ = cx.update(|_, cx| {
-                        if state.borrow().generation == generation && state.borrow().press.is_some()
-                        {
-                            state.borrow_mut().show(position, focus);
-                            let _ = owner.update(cx, |_, cx| cx.notify());
-                        }
-                    });
-                })
-                .detach();
-            }),
-        )
-        .on_mouse_move(move |e: &MouseMoveEvent, _, _| {
-            let mut state = moved.borrow_mut();
-            if state
-                .press
-                .is_some_and(|p| (p - e.position).magnitude() > 6.)
-            {
-                state.press = None;
-                state.generation = state.generation.wrapping_add(1);
-            }
-        })
-        .on_mouse_up_out(MouseButton::Left, {
-            let release = release.clone();
-            move |_, _, _| {
+                }
+            })
+            .on_mouse_up_out(MouseButton::Left, {
+                let release = release.clone();
+                move |_, _, _| {
+                    let mut state = release.borrow_mut();
+                    state.press = None;
+                    state.generation = state.generation.wrapping_add(1);
+                }
+            })
+            .on_mouse_up(MouseButton::Left, move |_, _, _| {
                 let mut state = release.borrow_mut();
                 state.press = None;
                 state.generation = state.generation.wrapping_add(1);
-            }
-        })
-        .on_mouse_up(MouseButton::Left, move |_, _, _| {
-            let mut state = release.borrow_mut();
-            state.press = None;
-            state.generation = state.generation.wrapping_add(1);
-        })
-        .on_key_down(cx.listener(move |_, e: &KeyDownEvent, w, cx| {
-            if enabled && (e.keystroke.key == "menu"
-                || (e.keystroke.key == "f10" && e.keystroke.modifiers.shift))
-            {
-                keys.borrow_mut()
-                    .show(rect.get().bottom_left(), focus.clone());
-                cx.notify();
-                w.prevent_default();
-                cx.stop_propagation();
-            }
-        }))
-        .control_overlay(
-            canvas(
-                move |b, w, cx| {
-                    capture.set(b);
-                    let mut state = layout_state.borrow_mut();
-                    let changed = if state.open {
-                        let prior = anchor.bounds.get();
-                        state.origin += b.origin - prior.origin;
-                        prior != b
-                    } else {
-                        false
-                    };
-                    if anchor.update(b, w) || changed {
-                        let _ = owner.update(cx, |_, cx| cx.notify());
-                    }
-                },
-                |_, _, _, _| {},
+            })
+            .on_key_down(cx.listener(move |_, e: &KeyDownEvent, w, cx| {
+                if enabled
+                    && (e.keystroke.key == "menu"
+                        || (e.keystroke.key == "f10" && e.keystroke.modifiers.shift))
+                {
+                    keys.borrow_mut()
+                        .show(rect.get().bottom_left(), focus.clone());
+                    cx.notify();
+                    w.prevent_default();
+                    cx.stop_propagation();
+                }
+            }))
+            .control_overlay(
+                canvas(
+                    move |b, w, cx| {
+                        capture.set(b);
+                        let mut state = layout_state.borrow_mut();
+                        let changed = if state.open {
+                            let prior = anchor.bounds.get();
+                            state.origin += b.origin - prior.origin;
+                            prior != b
+                        } else {
+                            false
+                        };
+                        if anchor.update(b, w) || changed {
+                            let _ = owner.update(cx, |_, cx| cx.notify());
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+                .into_any_element(),
             )
-            .absolute()
-            .inset_0().into_any_element(),
-        )
     }
     pub fn render<V: 'static>(
         &self,
@@ -472,20 +553,28 @@ impl Menu {
         let outside_bounds = self.bounds.clone();
         for (depth, items) in levels.into_iter().enumerate() {
             let level_open = depth < active_levels;
-            let mut group = super::super::navigation::Group::keyed(format!("{id}-{depth}-hover"), window, cx);
-            group.configure(super::super::navigation::Style {
-                kind: super::super::navigation::Kind::Actions, framed: false,
-                parent: CUE_UI.palette.canvas, activate_on_arrow: false,
-                row_radius: crate::controls::MENU_RADIUS - 6.,
-            }, Material::default());
+            let mut group =
+                super::super::navigation::Group::keyed(format!("{id}-{depth}-hover"), window, cx);
+            group.configure(
+                super::super::navigation::Style {
+                    kind: super::super::navigation::Kind::Actions,
+                    framed: false,
+                    parent: CUE_UI.palette.canvas,
+                    activate_on_arrow: false,
+                    row_radius: crate::controls::MENU_RADIUS - 6.,
+                },
+                Material::default(),
+            );
             let width = (items
                 .iter()
                 .map(|item| {
-                    super::super::overlay::measure_label(&item.label, 12., window)
-                        .max(item.detail.as_ref().map_or(0., |detail| super::super::overlay::measure_label(detail, 11., window)))
-                        + item.shortcut.as_ref().map_or(0., |text| {
-                            super::super::overlay::measure_label(text, 11., window) + 20.
-                        })
+                    super::super::overlay::measure_label(&item.label, 12., window).max(
+                        item.detail.as_ref().map_or(0., |detail| {
+                            super::super::overlay::measure_label(detail, 11., window)
+                        }),
+                    ) + item.shortcut.as_ref().map_or(0., |text| {
+                        super::super::overlay::measure_label(text, 11., window) + 20.
+                    })
                 })
                 .fold(120_f32, f32::max)
                 + 52.)
@@ -609,38 +698,73 @@ impl Menu {
                     ItemKind::Check(v) | ItemKind::Radio(v) => Some(v),
                     _ => None,
                 };
-                let mut row = group.row(item_id, false, !disabled)
-                    .w(px(width - 12.)).h(px(item.height())).px(px(12.))
-                    .when_some(item.icon, |row, icon| row.child(crate::controls::icon(icon, 16.)))
-                    .child(div().flex_1().min_w_0().flex().flex_col()
-                        .child(div().truncate().child(item.label.clone()))
-                        .when_some(item.detail.clone(), |v, detail| v.child(div().truncate()
-                            .text_size(px(11.)).line_height(px(16.)).text_color(rgb(CUE_UI.palette.muted)).child(detail))))
-                    .when_some(checked, |row, checked| row.child(div().size(px(14.)).flex_shrink_0()
-                        .opacity(if checked { 1. } else { 0. }).child(crate::controls::icon("icons/check.svg", 14.))))
-                .role(match item.kind {
-                    ItemKind::Check(_) => Role::MenuItemCheckBox,
-                    ItemKind::Radio(_) => Role::MenuItemRadio,
-                    _ => Role::MenuItem,
-                })
-                .aria_label(item.label.clone())
-                .track_focus(&focus)
-                .tab_stop(false)
-                .when_some(checked, |v, checked| {
-                    v.aria_toggled(if checked {
-                        Toggled::True
-                    } else {
-                        Toggled::False
+                let mut row = group
+                    .row(item_id, false, !disabled)
+                    .w(px(width - 12.))
+                    .h(px(item.height()))
+                    .px(px(12.))
+                    .when_some(item.icon, |row, icon| {
+                        row.child(crate::controls::icon(icon, 16.))
                     })
-                })
-                .when(has_children, |v| {
-                    v.aria_expanded(path.get(depth) == Some(&index))
-                })
-                .a11y_synthetic_children(move |b| disabled_node(b.parent_node(), disabled));
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(div().truncate().child(item.label.clone()))
+                            .when_some(item.detail.clone(), |v, detail| {
+                                v.child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(11.))
+                                        .line_height(px(16.))
+                                        .text_color(rgb(CUE_UI.palette.muted))
+                                        .child(detail),
+                                )
+                            }),
+                    )
+                    .when_some(checked, |row, checked| {
+                        row.child(
+                            div()
+                                .size(px(14.))
+                                .flex_shrink_0()
+                                .opacity(if checked { 1. } else { 0. })
+                                .child(crate::controls::icon("icons/check.svg", 14.)),
+                        )
+                    })
+                    .role(match item.kind {
+                        ItemKind::Check(_) => Role::MenuItemCheckBox,
+                        ItemKind::Radio(_) => Role::MenuItemRadio,
+                        _ => Role::MenuItem,
+                    })
+                    .aria_label(item.label.clone())
+                    .track_focus(&focus)
+                    .tab_stop(false)
+                    .when_some(checked, |v, checked| {
+                        v.aria_toggled(if checked {
+                            Toggled::True
+                        } else {
+                            Toggled::False
+                        })
+                    })
+                    .when(has_children, |v| {
+                        v.aria_expanded(path.get(depth) == Some(&index))
+                    })
+                    .a11y_synthetic_children(move |b| disabled_node(b.parent_node(), disabled));
                 if has_children || item.shortcut.is_some() {
-                    row = row.child(div().flex_shrink_0().text_size(px(11.)).text_color(rgb(CUE_UI.palette.muted))
-                        .child(if has_children { crate::controls::icon("icons/chevron-right.svg", 12.).into_any_element() }
-                            else { item.shortcut.clone().unwrap().into_any_element() }));
+                    row = row.child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(11.))
+                            .text_color(rgb(CUE_UI.palette.muted))
+                            .child(if has_children {
+                                crate::controls::icon("icons/chevron-right.svg", 12.)
+                                    .into_any_element()
+                            } else {
+                                item.shortcut.clone().unwrap().into_any_element()
+                            }),
+                    );
                 }
                 let key = item.key.clone();
                 let keep_open = item.keep_open;
@@ -1004,7 +1128,10 @@ impl Menubar {
                 }
             }
         }
-        let following = self.menus.iter().any(|menu| menu.is_open() || menu.material.borrow().iter().any(Motion::alive));
+        let following = self
+            .menus
+            .iter()
+            .any(|menu| menu.is_open() || menu.material.borrow().iter().any(Motion::alive));
         row = row.child(self.anchor.measure(following, cx));
         row.on_key_down(cx.listener(move |_, e: &KeyDownEvent, w, cx| {
             if count == 0 {

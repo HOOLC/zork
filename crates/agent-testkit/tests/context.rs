@@ -396,14 +396,20 @@ async fn http_400_during_context_maintenance_preserves_inputs_without_restarting
             let mut failure = ProviderFailure::new("provider.http", true, "bad request");
             failure.status_code = Some(400);
             failure.provider_code = Some(code.into());
-            attempt.respond(Err(ModelError::ProviderFailed(failure))).unwrap();
-            let stopped = world.wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Failed) && state.active_turn.is_none()
-            }).await;
+            attempt
+                .respond(Err(ModelError::ProviderFailed(failure)))
+                .unwrap();
+            let stopped = world
+                .wait_for_state(&session, |state| {
+                    state.last_turn_outcome == Some(TurnOutcome::Failed)
+                        && state.active_turn.is_none()
+                })
+                .await;
             assert_eq!(stopped.generation.number, 1);
-            assert!(stopped.unconsumed_inputs.iter().any(|input| {
-                input.content == "Continue the remaining work." && !input.wake
-            }));
+            assert!(stopped
+                .unconsumed_inputs
+                .iter()
+                .any(|input| { input.content == "Continue the remaining work." && !input.wake }));
             assert!(!stopped.should_start_turn());
             world.restart().await.unwrap();
             world.clock.advance(Duration::from_secs(60));
@@ -411,8 +417,16 @@ async fn http_400_during_context_maintenance_preserves_inputs_without_restarting
             assert_eq!(restored.last_turn_outcome, Some(TurnOutcome::Failed));
             assert!(restored.active_turn.is_none());
             let events = world.events(&session);
-            assert_eq!(events.iter().filter(|e| matches!(e.event, SessionEvent::StepStarted { .. })).count(), 2);
-            assert!(!events.iter().any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| matches!(e.event, SessionEvent::StepStarted { .. }))
+                    .count(),
+                2
+            );
+            assert!(!events
+                .iter()
+                .any(|e| matches!(e.event, SessionEvent::ContextApplied { .. })));
             world.shutdown().await;
         }
     }

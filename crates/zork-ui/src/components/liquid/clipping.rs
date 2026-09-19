@@ -69,8 +69,9 @@ impl ContentClip {
             match &*cached_polygons {
                 Some((prior, polygons)) if Rc::ptr_eq(prior, &path) => polygons.clone(),
                 _ => {
-                    let polygons: std::sync::Arc<Polygons> =
-                        std::sync::Arc::new(path.loops.iter().map(|curves| flatten(curves)).collect());
+                    let polygons: std::sync::Arc<Polygons> = std::sync::Arc::new(
+                        path.loops.iter().map(|curves| flatten(curves)).collect(),
+                    );
                     *cached_polygons = Some((path.clone(), polygons.clone()));
                     polygons
                 }
@@ -221,11 +222,18 @@ impl ContentClip {
         let mut last = top;
         // Sweep only edges crossing the current ink row. Most of a rounded
         // control's contour cannot intersect a given row of its text.
-        let mut edges: Vec<_> = self.polygons.iter().flat_map(|polygon| {
-            polygon.iter().zip(polygon.iter().cycle().skip(1)).take(polygon.len())
-                .filter(|(a, b)| a[1] != b[1])
-                .map(|(&a, &b)| (a, b, a[1].min(b[1]), a[1].max(b[1])))
-        }).collect();
+        let mut edges: Vec<_> = self
+            .polygons
+            .iter()
+            .flat_map(|polygon| {
+                polygon
+                    .iter()
+                    .zip(polygon.iter().cycle().skip(1))
+                    .take(polygon.len())
+                    .filter(|(a, b)| a[1] != b[1])
+                    .map(|(&a, &b)| (a, b, a[1].min(b[1]), a[1].max(b[1])))
+            })
+            .collect();
         edges.sort_by(|a, b| a.2.total_cmp(&b.2));
         let mut active: Vec<usize> = Vec::with_capacity(4);
         let mut xs = Vec::with_capacity(4);
@@ -392,15 +400,16 @@ pub(super) fn flatten(curves: &[super::super::Cubic]) -> Vec<Point> {
         let tolerance = super::super::tessellation::TOLERANCE as f64;
         // A capsule's collapsed straight edge is a point, not a curved loop.
         // Coincident endpoints with distant handles still need subdivision.
-        let point_like = [c.c1, c.c2, c.to].into_iter().all(|p|
-            (p[0] - c.from[0]).powi(2) + (p[1] - c.from[1]).powi(2) <= tolerance * tolerance);
+        let point_like = [c.c1, c.c2, c.to].into_iter().all(|p| {
+            (p[0] - c.from[0]).powi(2) + (p[1] - c.from[1]).powi(2) <= tolerance * tolerance
+        });
         if depth == 0
             || point_like
-            || (length > 0.
-                && cross(c.c1).max(cross(c.c2))
-                    <= length * tolerance)
+            || (length > 0. && cross(c.c1).max(cross(c.c2)) <= length * tolerance)
         {
-            if out.last() != Some(&c.to) { out.push(c.to); }
+            if out.last() != Some(&c.to) {
+                out.push(c.to);
+            }
             return;
         }
         let mid = |a: Point, b: Point| [(a[0] + b[0]) / 2., (a[1] + b[1]) / 2.];
@@ -511,11 +520,17 @@ mod tests {
         assert_eq!(first_mask.size, second_mask.size);
         assert_eq!(second_mask.origin - first_mask.origin, b - a);
         for i in 0..80 {
-            StaticSurface::new(super::super::super::Pose::rect(0., 0., 100. + i as f64, 32., 16.), 0.6);
+            StaticSurface::new(
+                super::super::super::Pose::rect(0., 0., 100. + i as f64, 32., 16.),
+                0.6,
+            );
         }
         STATIC_GEOMETRY.with_borrow(|cache| assert!(cache.len() <= 64));
-        assert_eq!(first_clip.ink_bounds(ink(a), 16.), first_mask,
-            "eviction invalidated geometry still held by a control");
+        assert_eq!(
+            first_clip.ink_bounds(ink(a), 16.),
+            first_mask,
+            "eviction invalidated geometry still held by a control"
+        );
     }
 
     #[test]
@@ -543,20 +558,46 @@ mod tests {
 
     #[test]
     fn collapsed_capsule_edges_stay_compact_without_losing_closed_curves() {
-        let curves = rounded_rectangle(
-            super::super::super::Pose::rect(0., 0., 64., 32., 16.), 0.6);
+        let curves = rounded_rectangle(super::super::super::Pose::rect(0., 0., 64., 32., 16.), 0.6);
         let pill = flatten(&curves);
-        let redundant = curves.iter().flat_map(|curve| [*curve, super::super::super::Cubic {
-            from: curve.to, c1: curve.to, c2: curve.to, to: curve.to,
-        }]).collect::<Vec<_>>();
-        assert_eq!(pill, flatten(&redundant), "point segments expanded the clipping polygon");
+        let redundant = curves
+            .iter()
+            .flat_map(|curve| {
+                [
+                    *curve,
+                    super::super::super::Cubic {
+                        from: curve.to,
+                        c1: curve.to,
+                        c2: curve.to,
+                        to: curve.to,
+                    },
+                ]
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            pill,
+            flatten(&redundant),
+            "point segments expanded the clipping polygon"
+        );
         assert!(pill.windows(2).all(|points| points[0] != points[1]));
         let looped = flatten(&[super::super::super::Cubic {
-            from: [0., 0.], c1: [40., 0.], c2: [0., 40.], to: [0., 0.],
+            from: [0., 0.],
+            c1: [40., 0.],
+            c2: [0., 40.],
+            to: [0., 0.],
         }]);
-        let area = looped.iter().zip(looped.iter().cycle().skip(1)).take(looped.len())
-            .map(|(a, b)| a[0] * b[1] - b[0] * a[1]).sum::<f64>().abs() / 2.;
-        assert!(area > 200., "coincident endpoints erased a real curve: {area}");
+        let area = looped
+            .iter()
+            .zip(looped.iter().cycle().skip(1))
+            .take(looped.len())
+            .map(|(a, b)| a[0] * b[1] - b[0] * a[1])
+            .sum::<f64>()
+            .abs()
+            / 2.;
+        assert!(
+            area > 200.,
+            "coincident endpoints erased a real curve: {area}"
+        );
     }
 }
 
@@ -679,7 +720,9 @@ fn raster_bands(
 impl Element for TransformedContent {
     type RequestLayoutState = ();
     type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> { Some(self.id.clone()) }
+    fn id(&self) -> Option<ElementId> {
+        Some(self.id.clone())
+    }
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         None
     }
@@ -721,18 +764,28 @@ impl Element for TransformedContent {
             };
             if let Some(mut mask) = mask {
                 mask.bounds.origin += origin;
-                for vertex in mask.vertices_mut() { vertex.xy_position += origin; }
+                for vertex in mask.vertices_mut() {
+                    vertex.xy_position += origin;
+                }
                 use std::hash::{Hash, Hasher};
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                "retained-liquid-content".hash(&mut hasher);global_id.hash(&mut hasher);
+                "retained-liquid-content".hash(&mut hasher);
+                global_id.hash(&mut hasher);
                 let polygons = self.clip.polygons.clone();
                 let factor = window.scale_factor();
                 let key = hasher.finish();
-                if window.with_masked_retained_paint(
-                    key, bounds, self.scale, self.opacity, &mask,
-                    move || raster_bands(&polygons, origin, bounds, factor),
-                    |window| self.child.paint(window, cx),
-                ).is_some() {
+                if window
+                    .with_masked_retained_paint(
+                        key,
+                        bounds,
+                        self.scale,
+                        self.opacity,
+                        &mask,
+                        move || raster_bands(&polygons, origin, bounds, factor),
+                        |window| self.child.paint(window, cx),
+                    )
+                    .is_some()
+                {
                     *self.snapshot.borrow_mut() = window.retained_paint_snapshot(key);
                     return;
                 }
@@ -744,8 +797,10 @@ impl Element for TransformedContent {
         "liquid-fallback-content".hash(&mut key);
         global_id.hash(&mut key);
         let previous = self.snapshot.borrow().clone();
-        let (_, snapshot) = window.capture_paint_snapshot(key.finish(), bounds, previous.as_ref(),
-            |window| self.child.paint(window, cx));
+        let (_, snapshot) =
+            window.capture_paint_snapshot(key.finish(), bounds, previous.as_ref(), |window| {
+                self.child.paint(window, cx)
+            });
         *self.snapshot.borrow_mut() = Some(snapshot.clone());
         window.with_scaled_alpha_paint_clip(
             bounds.center(),
@@ -758,7 +813,14 @@ impl Element for TransformedContent {
 }
 
 impl ContentClip {
-    pub(crate) fn paint_snapshot_at(&self, snapshot: &PaintSnapshot, scale: f32, opacity: f32, offset: gpui::Point<Pixels>, window: &mut Window) -> bool {
+    pub(crate) fn paint_snapshot_at(
+        &self,
+        snapshot: &PaintSnapshot,
+        scale: f32,
+        opacity: f32,
+        offset: gpui::Point<Pixels>,
+        window: &mut Window,
+    ) -> bool {
         let factor = window.scale_factor();
         let bounds = snapshot.bounds().map(|value| px(value.0 / factor));
         let (origin, mask) = {
@@ -766,16 +828,34 @@ impl ContentClip {
             let mask = cache.geometry.borrow_mut().fill(&self.path);
             (cache.bounds.origin, mask)
         };
-        let Some(mut mask) = mask else { return false; };
+        let Some(mut mask) = mask else {
+            return false;
+        };
         mask.bounds.origin += origin;
-        for vertex in mask.vertices_mut() { vertex.xy_position += origin; }
+        for vertex in mask.vertices_mut() {
+            vertex.xy_position += origin;
+        }
         let polygons = self.polygons.clone();
         let destination = Bounds::new(bounds.origin + offset, bounds.size);
-        if window.paint_masked_snapshot_at(snapshot, bounds, scale, opacity, &mask,
-            move || raster_bands(&polygons, origin, destination, factor), offset) { return true; }
+        if window.paint_masked_snapshot_at(
+            snapshot,
+            bounds,
+            scale,
+            opacity,
+            &mask,
+            move || raster_bands(&polygons, origin, destination, factor),
+            offset,
+        ) {
+            return true;
+        }
         let bands = raster_bands(&self.polygons, origin, destination, factor);
-        window.with_scaled_alpha_paint_clip(destination.center(), scale, opacity, &bands,
-            |window| window.paint_snapshot_at(snapshot, offset));
+        window.with_scaled_alpha_paint_clip(
+            destination.center(),
+            scale,
+            opacity,
+            &bands,
+            |window| window.paint_snapshot_at(snapshot, offset),
+        );
         true
     }
 }

@@ -9,9 +9,9 @@ pub mod adb;
 pub mod api;
 pub mod composer;
 #[cfg(not(target_family = "wasm"))]
-pub mod data_reset;
-#[cfg(not(target_family = "wasm"))]
 pub mod conversation;
+#[cfg(not(target_family = "wasm"))]
+pub mod data_reset;
 pub use zork_client_types::{comments, files};
 pub mod agent_edit;
 #[cfg(not(target_family = "wasm"))]
@@ -43,13 +43,13 @@ pub mod preferences;
 #[cfg(not(target_family = "wasm"))]
 pub mod resources;
 #[cfg(not(target_family = "wasm"))]
-pub mod shared_files;
-#[cfg(not(target_family = "wasm"))]
 mod services;
 #[cfg(not(target_family = "wasm"))]
 mod settings;
 #[cfg(not(target_family = "wasm"))]
 pub mod settings_actions;
+#[cfg(not(target_family = "wasm"))]
+pub mod shared_files;
 pub mod state;
 pub use zork_observe as observe;
 #[cfg(not(target_family = "wasm"))]

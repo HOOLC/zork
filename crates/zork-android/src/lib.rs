@@ -335,15 +335,22 @@ mod android {
     #[cfg(debug_assertions)]
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_surf_zork_android_LocalScriptFixtureBridge_seed<'a>(
-        mut env: EnvUnowned<'a>, _this: JObject<'a>, root: JString<'a>, input: JString<'a>,
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        root: JString<'a>,
+        input: JString<'a>,
     ) -> JString<'a> {
         env.with_env(|env| -> Result<_, jni::errors::Error> {
-            let value = match super::local_script_fixture::seed(std::path::Path::new(&root.to_string()), &input.to_string()) {
+            let value = match super::local_script_fixture::seed(
+                std::path::Path::new(&root.to_string()),
+                &input.to_string(),
+            ) {
                 Ok(value) => serde_json::json!({"ok":true,"data":value}),
                 Err(error) => serde_json::json!({"ok":false,"error":error.to_string()}),
             };
             JString::from_str(env, value.to_string())
-        }).resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }
 
     #[cfg(debug_assertions)]
@@ -490,18 +497,49 @@ mod android {
     ) -> JString<'a> {
         env.with_env(|env| -> Result<_, jni::errors::Error> {
             let result = (|| -> anyhow::Result<()> {
-                let directory = env.call_method(&context, jni_str!("getNoBackupFilesDir"), jni_sig!(() -> java.io.File), &[])?.l()?;
-                let path = env.call_method(directory, jni_str!("getAbsolutePath"), jni_sig!(() -> java.lang.String), &[])?.l()?;
+                let directory = env
+                    .call_method(
+                        &context,
+                        jni_str!("getNoBackupFilesDir"),
+                        jni_sig!(() -> java.io.File),
+                        &[],
+                    )?
+                    .l()?;
+                let path = env
+                    .call_method(
+                        directory,
+                        jni_str!("getAbsolutePath"),
+                        jni_sig!(() -> java.lang.String),
+                        &[],
+                    )?
+                    .l()?;
                 let path = JString::cast_local(env, path)?.to_string();
                 let root = std::path::PathBuf::from(root.to_string());
-                anyhow::ensure!(root == std::path::Path::new(&path).join("client"), "只能清空当前应用的数据");
+                anyhow::ensure!(
+                    root == std::path::Path::new(&path).join("client"),
+                    "只能清空当前应用的数据"
+                );
                 let host = super::host(&root)?;
                 host.local.data_reset().clear(confirmed, || {
                     let service = JString::from_str(env, "activity")?;
-                    let manager = env.call_method(&context, jni_str!("getSystemService"), jni_sig!((java.lang.String) -> java.lang.Object), &[JValue::Object(service.as_ref())])?.l()?;
+                    let manager = env
+                        .call_method(
+                            &context,
+                            jni_str!("getSystemService"),
+                            jni_sig!((java.lang.String) -> java.lang.Object),
+                            &[JValue::Object(service.as_ref())],
+                        )?
+                        .l()?;
                     // The OS terminates every process belonging to this package
                     // and clears preferences, files, databases and caches together.
-                    let accepted = env.call_method(manager, jni_str!("clearApplicationUserData"), jni_sig!(() -> boolean), &[])?.z()?;
+                    let accepted = env
+                        .call_method(
+                            manager,
+                            jni_str!("clearApplicationUserData"),
+                            jni_sig!(() -> boolean),
+                            &[],
+                        )?
+                        .z()?;
                     anyhow::ensure!(accepted, "系统未接受清空数据请求，请重试");
                     Ok(())
                 })
@@ -511,7 +549,8 @@ mod android {
                 Err(error) => serde_json::json!({"ok":false,"error":error.to_string()}),
             };
             JString::from_str(env, reply.to_string())
-        }).resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }
 
     #[unsafe(no_mangle)]

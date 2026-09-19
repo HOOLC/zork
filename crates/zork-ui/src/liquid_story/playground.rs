@@ -47,28 +47,50 @@ impl Panel {
 }
 
 impl Gallery {
-    fn library(&mut self, width: f32, parent: u32, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn library(
+        &mut self,
+        width: f32,
+        parent: u32,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let props = super::library::Props {
-            width, parent, section: self.section, group: self.group,
-            selected_kind: self.selected_kind, business_family: self.business_family.clone(),
-            families: business::families(cx), enabled: self.recording.is_none(),
+            width,
+            parent,
+            section: self.section,
+            group: self.group,
+            selected_kind: self.selected_kind,
+            business_family: self.business_family.clone(),
+            families: business::families(cx),
+            enabled: self.recording.is_none(),
             material: self.config.borrow().material,
         };
         if let Some(library) = &self.library {
             if library.read(cx).props != props {
-                library.update(cx, |v, cx| { v.props = props; cx.notify(); });
+                library.update(cx, |v, cx| {
+                    v.props = props;
+                    cx.notify();
+                });
                 crate::components::region::invalidate(cx, &["playground-library"]);
             }
         } else {
             let parent = cx.entity().downgrade();
             self.library = Some(cx.new(|cx| {
                 crate::components::region::forget_on_release(cx);
-                super::library::Library { props, parent, navigation: liquid::navigation::Navigation::new() }
+                super::library::Library {
+                    props,
+                    parent,
+                    navigation: liquid::navigation::Navigation::new(),
+                }
             }));
         }
-        self.regions.auto_height("playground-library", width, cx, |v, _, _| {
-            crate::components::region::tracked_view(v.library.as_ref().expect("directory entity").clone()).into_any_element()
-        })
+        self.regions
+            .auto_height("playground-library", width, cx, |v, _, _| {
+                crate::components::region::tracked_view(
+                    v.library.as_ref().expect("directory entity").clone(),
+                )
+                .into_any_element()
+            })
     }
 
     fn parameter_panel(&self, width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -383,7 +405,17 @@ pub(super) struct BackgroundView {
 }
 impl Render for BackgroundView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Background { width, layout, selected_kind, benchmark, business_example, title, help, cards, enabled } = self.props.clone();
+        let Background {
+            width,
+            layout,
+            selected_kind,
+            benchmark,
+            business_example,
+            title,
+            help,
+            cards,
+            enabled,
+        } = self.props.clone();
         let offset = self.scroll.offset();
         let scrolled = offset != self.scroll_offset;
         self.scroll_offset = offset;
@@ -398,21 +430,26 @@ impl Render for BackgroundView {
                 "liquid-library",
                 layout.navigation.unwrap(),
                 wb::Rail::Navigation,
-                self.parent.update(cx, |v, cx| v.library(
-                    layout
-                        .navigation
-                        .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| w - 24.),
-                    if library_inline {
-                        crate::design::CUE_UI.palette.sidebar
-                    } else {
-                        WHITE
-                    },
-                    window,
-                    cx,
-                )).unwrap_or_else(|_| gpui::Empty.into_any_element()),
+                self.parent
+                    .update(cx, |v, cx| {
+                        v.library(
+                            layout
+                                .navigation
+                                .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| w - 24.),
+                            if library_inline {
+                                crate::design::CUE_UI.palette.sidebar
+                            } else {
+                                WHITE
+                            },
+                            window,
+                            cx,
+                        )
+                    })
+                    .unwrap_or_else(|_| gpui::Empty.into_any_element()),
             ));
         }
-        let show_demo = cards.iter()
+        let show_demo = cards
+            .iter()
             .any(|card| !matches!(card.read(cx).kind, Kind::Primitive(_)));
         let mut content = wb::content(inner).child(wb::page_heading(
             title,
@@ -435,7 +472,9 @@ impl Render for BackgroundView {
                     )
                     .on_click(cx.listener(|v, _, _, cx| {
                         let _ = v.parent.update(cx, |v, cx| {
-                            if v.recording.is_some() { return; }
+                            if v.recording.is_some() {
+                                return;
+                            }
                             for card in v.active_cards(cx) {
                                 card.update(cx, |v, cx| v.demo(cx));
                             }
@@ -451,7 +490,11 @@ impl Render for BackgroundView {
             }),
         ));
         if benchmark {
-            content = content.child(self.parent.update(cx, |v, cx| v.benchmark_controls(window, cx)).unwrap_or_else(|_| div()));
+            content = content.child(
+                self.parent
+                    .update(cx, |v, cx| v.benchmark_controls(window, cx))
+                    .unwrap_or_else(|_| div()),
+            );
         }
         let mut grid = wb::grid();
         for card in cards {
@@ -459,7 +502,9 @@ impl Render for BackgroundView {
                 // A scroll changes every view origin. Measure those children
                 // in this layout pass instead of discovering cache misses in
                 // prepaint and running a separate root layout for each card.
-                if scrolled { v.layout_cache.invalidate(); }
+                if scrolled {
+                    v.layout_cache.invalidate();
+                }
                 let mut changed = false;
                 if (v.width - card_width).abs() > 0.01 {
                     v.layout(card_width);
@@ -478,9 +523,15 @@ impl Render for BackgroundView {
             grid = grid.child(wb::slot(card_width).child(cache.element(card, px(card_width))));
         }
         content = content
-            .child(if let Some(example) = business_example { example.into_any_element() } else { grid.into_any_element() })
+            .child(if let Some(example) = business_example {
+                example.into_any_element()
+            } else {
+                grid.into_any_element()
+            })
             .child(wb::description("本页操作使用独立演示数据。"));
-        body = body.child(wb::viewport("liquid-playground-content", gutter, content).track_scroll(&self.scroll));
+        body = body.child(
+            wb::viewport("liquid-playground-content", gutter, content).track_scroll(&self.scroll),
+        );
         if inspector_inline {
             body = body.child(wb::rail(
                 "liquid-inspector",
@@ -489,13 +540,19 @@ impl Render for BackgroundView {
                 wb::column(20.)
                     .child(wb::section_title("演示参数", "调整材料的形变与过渡。"))
                     .child(
-                        self.parent.update(cx, |v, cx| v.parameter_panel(
-                            layout
-                                .inspector
-                                .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| w - 32.),
-                            window,
-                            cx,
-                        )).unwrap_or_else(|_| div()),
+                        self.parent
+                            .update(cx, |v, cx| {
+                                v.parameter_panel(
+                                    layout
+                                        .inspector
+                                        .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| {
+                                            w - 32.
+                                        }),
+                                    window,
+                                    cx,
+                                )
+                            })
+                            .unwrap_or_else(|_| div()),
                     ),
             ));
         }
@@ -508,7 +565,8 @@ impl Render for Gallery {
         let width = window.viewport_size().width.as_f32();
         let selected_kind = self.focused.or(self.selected_kind);
         let benchmark = self.group == 4;
-        let business_active = self.section == Section::Scenarios && self.focused.is_none() && !benchmark;
+        let business_active =
+            self.section == Section::Scenarios && self.focused.is_none() && !benchmark;
         let business_families = business::families(cx);
         if business_active && self.business_family.is_none() {
             self.business_family = business_families.first().map(|(key, _)| key.clone());
@@ -519,10 +577,14 @@ impl Render for Gallery {
         }
         let business_example = if business_active {
             self.business_family.clone().map(|family| {
-                self.business_examples.entry(family.clone()).or_insert_with(||
-                    cx.new(|cx| business::Example::new(&family, cx))).clone()
+                self.business_examples
+                    .entry(family.clone())
+                    .or_insert_with(|| cx.new(|cx| business::Example::new(&family, cx)))
+                    .clone()
             })
-        } else { None };
+        } else {
+            None
+        };
         let mut layout = wb::Layout::new(
             width,
             self.focused.is_none(),
@@ -554,11 +616,17 @@ impl Render for Gallery {
         liquid::press::set_playback_rate(if cfg.slow { 0.3 } else { 1. }, cx);
         self.record_frame(window, cx);
         let (title, help) = if business_active {
-            (business_families.iter().find(|(family, _)| Some(family) == self.business_family.as_ref())
-                .map_or_else(|| "业务组件".to_owned(), |(_, title)| title.clone()),
-             "与项目使用同一个业务组件，当前传入 mock 参数。".to_owned())
+            (
+                business_families
+                    .iter()
+                    .find(|(family, _)| Some(family) == self.business_family.as_ref())
+                    .map_or_else(|| "业务组件".to_owned(), |(_, title)| title.clone()),
+                "与项目使用同一个业务组件，当前传入 mock 参数。".to_owned(),
+            )
         } else {
-            let (title, help) = selected_kind.map_or(GROUPS[self.group], |kind| (kind.title(), kind.description()));
+            let (title, help) = selected_kind.map_or(GROUPS[self.group], |kind| {
+                (kind.title(), kind.description())
+            });
             (title.to_owned(), help.to_owned())
         };
         let gutter = layout.gutter;
@@ -619,24 +687,43 @@ impl Render for Gallery {
             actions,
         );
 
-        let props = Background { width, layout, selected_kind, benchmark, business_example, title, help,
-            cards: self.active_cards(cx), enabled: self.recording.is_none() };
+        let props = Background {
+            width,
+            layout,
+            selected_kind,
+            benchmark,
+            business_example,
+            title,
+            help,
+            cards: self.active_cards(cx),
+            enabled: self.recording.is_none(),
+        };
         if let Some(background) = &self.background {
             if background.read(cx).props != props {
-                background.update(cx, |v, cx| { v.props = props; cx.notify(); });
+                background.update(cx, |v, cx| {
+                    v.props = props;
+                    cx.notify();
+                });
                 crate::components::region::invalidate(cx, &["playground-body"]);
             }
         } else {
             let parent = cx.entity().downgrade();
             self.background = Some(cx.new(|cx| {
                 crate::components::region::forget_on_release(cx);
-                BackgroundView { props, parent, scroll: ScrollHandle::new(), scroll_offset: point(px(0.), px(0.)) }
+                BackgroundView {
+                    props,
+                    parent,
+                    scroll: ScrollHandle::new(),
+                    scroll_offset: point(px(0.), px(0.)),
+                }
             }));
         }
         // Keep each example's input/layout cache independent while the GPU
         // reuses unchanged page pixels during material-only animation.
         let render_background = |v: &mut Gallery, _: &mut Window, _: &mut Context<Gallery>| {
-            crate::components::region::tracked_view(v.background.as_ref().expect("page background").clone())
+            crate::components::region::tracked_view(
+                v.background.as_ref().expect("page background").clone(),
+            )
         };
         let scrolling = self.background.as_ref().is_some_and(|background| {
             let view = background.read(cx);
@@ -645,9 +732,11 @@ impl Render for Gallery {
         let background = if scrolling {
             // Moving page pixels cannot reuse a color texture. Drawing them
             // directly avoids an extra offscreen pass on every wheel update.
-            self.regions.uncached("playground-body", cx, render_background)
+            self.regions
+                .uncached("playground-body", cx, render_background)
         } else {
-            self.regions.gpu_uncached("playground-body", cx, render_background)
+            self.regions
+                .gpu_uncached("playground-body", cx, render_background)
         };
         let body = div().w_full().flex_1().min_h_0().child(background);
         let overlay = self.presented_panel.and_then(|panel| {

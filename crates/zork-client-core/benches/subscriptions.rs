@@ -8,7 +8,7 @@ mod wire;
 use serde_json::{json, Value};
 use std::{hint::black_box, sync::Arc, time::Instant};
 use zork_client_core::{
-    api::{StationClient, MessageMetadata, Role, SseEvent},
+    api::{MessageMetadata, Role, SseEvent, StationClient},
     state::{ConversationData, Device},
     transcript::TranscriptLine,
 };

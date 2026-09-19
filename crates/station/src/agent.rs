@@ -1,4 +1,4 @@
-use crate::db::{StationDb, ProactiveBindingRow, SessionBindingRow, SessionRow};
+use crate::db::{ProactiveBindingRow, SessionBindingRow, SessionRow, StationDb};
 use anyhow::{Context, Result};
 use axum::http::StatusCode;
 #[cfg(test)]

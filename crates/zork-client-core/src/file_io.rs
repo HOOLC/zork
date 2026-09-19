@@ -1,7 +1,10 @@
 //! File snapshot export; destinations come from a platform file picker.
 pub fn default_destination() -> std::path::PathBuf {
-    std::env::var_os("HOME").or_else(||std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from).map(|root|root.join("Downloads")).unwrap_or_default()
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .map(|root| root.join("Downloads"))
+        .unwrap_or_default()
 }
 pub fn save_snapshot(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;

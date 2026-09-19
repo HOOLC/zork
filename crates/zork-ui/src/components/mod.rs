@@ -26,12 +26,12 @@ pub mod region;
 
 pub mod message_preview;
 
-pub mod liquid_composer;
 pub mod liquid;
+pub mod liquid_composer;
 
 pub mod collapse;
-pub mod workbench;
 pub mod smooth;
+pub mod workbench;
 
 pub mod message_reader;
 

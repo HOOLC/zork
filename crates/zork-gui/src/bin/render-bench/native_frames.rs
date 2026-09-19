@@ -42,15 +42,22 @@ struct PlaygroundScroll {
     min_displacement_px: f32,
 }
 
-fn is_false(value: &bool) -> bool { !value }
+fn is_false(value: &bool) -> bool {
+    !value
+}
 
 fn thread_cpu_time() -> Option<Duration> {
-    static ENABLED: std::sync::LazyLock<bool> = std::sync::LazyLock::new(||
-        std::env::var_os("ZORK_BENCH_THREAD_CPU").is_some());
-    if !*ENABLED { return None; }
+    static ENABLED: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var_os("ZORK_BENCH_THREAD_CPU").is_some());
+    if !*ENABLED {
+        return None;
+    }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
-        let mut time = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut time = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) } == 0 {
             return Some(Duration::new(time.tv_sec as u64, time.tv_nsec as u32));
         }
@@ -79,7 +86,10 @@ async fn frame(
     let thread_started = thread_cpu_time();
     let continuous = matches!(
         input,
-        FrameInput::Scroll(_) | FrameInput::ScrollAt(_, _) | FrameInput::Jump(_, _) | FrameInput::Refresh
+        FrameInput::Scroll(_)
+            | FrameInput::ScrollAt(_, _)
+            | FrameInput::Jump(_, _)
+            | FrameInput::Refresh
     );
     window.update(cx, |_, window, cx| -> anyhow::Result<()> {
         match input {
@@ -103,11 +113,15 @@ async fn frame(
                 );
             }
             FrameInput::ScrollAt(position, delta) => {
-                window.dispatch_event(PlatformInput::ScrollWheel(ScrollWheelEvent {
-                    position: point(px(position[0]), px(position[1])),
-                    delta: ScrollDelta::Pixels(point(px(0.), px(delta))),
-                    modifiers: Modifiers::default(), touch_phase: TouchPhase::Moved,
-                }), cx);
+                window.dispatch_event(
+                    PlatformInput::ScrollWheel(ScrollWheelEvent {
+                        position: point(px(position[0]), px(position[1])),
+                        delta: ScrollDelta::Pixels(point(px(0.), px(delta))),
+                        modifiers: Modifiers::default(),
+                        touch_phase: TouchPhase::Moved,
+                    }),
+                    cx,
+                );
             }
         }
         window.simulate_next_frame(cx);
@@ -116,10 +130,16 @@ async fn frame(
     // The preceding App update flushes notifications before deciding to draw.
     let (receiver, continuing, input_counts) = window.update(cx, |_, window, cx| {
         let receiver = window.benchmark_frame(cx, offscreen)?;
-        Ok::<_, anyhow::Error>((receiver, window.has_animation_frames(), window.benchmark_input_counts()))
+        Ok::<_, anyhow::Error>((
+            receiver,
+            window.has_animation_frames(),
+            window.benchmark_input_counts(),
+        ))
     })??;
     let cpu_done = Instant::now();
-    let thread_elapsed = thread_started.zip(thread_cpu_time()).map(|(start, end)| end.saturating_sub(start));
+    let thread_elapsed = thread_started
+        .zip(thread_cpu_time())
+        .map(|(start, end)| end.saturating_sub(start));
     let Some(receiver) = receiver else {
         return Ok(None);
     };
@@ -483,7 +503,8 @@ async fn measure_liquid(
         ("reversing", true, 12),
         ("returning", false, 28),
     ] {
-        window.update(cx, |_, window, _| window.render_to_image())??
+        window
+            .update(cx, |_, window, _| window.render_to_image())??
             .save(output.join(format!("liquid-{phase}-before-transfer.png")))?;
         let action = serde_json::from_value(if opening {
             json!({"type":"click","target":{"element_id":"liquid-library-toggle"}})
@@ -499,11 +520,14 @@ async fn measure_liquid(
             config.offscreen,
         )
         .await?;
-        window.update(cx, |_, window, _| window.render_to_image())??
+        window
+            .update(cx, |_, window, _| window.render_to_image())??
             .save(output.join(format!("liquid-{phase}-after-transfer.png")))?;
         let destination = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
-        anyhow::ensure!(destination["dialog"]["destinationLayer"] == if opening { "modal" } else { "source" },
-            "layer did not change at the start of the operation: {destination}");
+        anyhow::ensure!(
+            destination["dialog"]["destinationLayer"] == if opening { "modal" } else { "source" },
+            "layer did not change at the start of the operation: {destination}"
+        );
         for index in 0..count {
             cx.background_executor()
                 .timer(Duration::from_millis(25))
@@ -545,7 +569,8 @@ async fn measure_liquid(
         serde_json::to_vec_pretty(&visual_frames)?,
     )?;
     if config.playground {
-        report.borrow_mut()["playground"] = playground::measure(window, gallery, driver, config, &output, cx).await?;
+        report.borrow_mut()["playground"] =
+            playground::measure(window, gallery, driver, config, &output, cx).await?;
     }
     window.update(cx, |_, window, _| window.remove_window())?;
     Ok(())

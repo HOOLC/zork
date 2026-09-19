@@ -53,8 +53,7 @@ fn aimux_failure(stage: &'static str, error: AiMuxError) -> ModelError {
         _ => (None, None),
     };
     let message = error.to_string();
-    let retryable =
-        !provider_failure_is_certainly_permanent(status_code, provider_code.as_deref());
+    let retryable = !provider_failure_is_certainly_permanent(status_code, provider_code.as_deref());
     ModelError::ProviderFailed(ProviderFailure {
         stage,
         retryable,
@@ -137,7 +136,11 @@ impl ProviderRouter {
             .collect::<Vec<_>>();
         let headers = request_headers(
             execution.provider(),
-            if request.independent { &request.step_id } else { &request.session_id },
+            if request.independent {
+                &request.step_id
+            } else {
+                &request.session_id
+            },
             execution.headers(),
         );
         let options = CallOptions {
@@ -219,8 +222,14 @@ fn request_headers(
         // per request from its durable Session/step identity, without changing auth.
         headers.retain(|key, _| !key.eq_ignore_ascii_case("x-opencode-session"));
         headers.insert("x-opencode-session".into(), routing_id.into());
-        if !headers.keys().any(|key| key.eq_ignore_ascii_case("user-agent")) {
-            headers.insert("User-Agent".into(), concat!("zork-agent/", env!("CARGO_PKG_VERSION")).into());
+        if !headers
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("user-agent"))
+        {
+            headers.insert(
+                "User-Agent".into(),
+                concat!("zork-agent/", env!("CARGO_PKG_VERSION")).into(),
+            );
         }
     }
     if provider == "xai"
@@ -264,7 +273,13 @@ async fn stream_request(
             let mut config = OpenAIConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
                 .with_provider(execution.provider().to_owned())
-                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+                .with_headers(
+                    options
+                        .headers
+                        .as_ref()
+                        .unwrap_or(execution.headers())
+                        .clone(),
+                );
             config.retry_config.max_retries = 0;
             OpenAIProvider::new(config)
                 .model(execution.model())
@@ -275,7 +290,13 @@ async fn stream_request(
         "anthropic-messages" => {
             let mut config = AnthropicConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
-                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+                .with_headers(
+                    options
+                        .headers
+                        .as_ref()
+                        .unwrap_or(execution.headers())
+                        .clone(),
+                );
             config.retry_config.max_retries = 0;
             AnthropicProvider::new(config)
                 .model(execution.model())
@@ -296,7 +317,13 @@ async fn generate_request(
             let mut config = OpenAIConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
                 .with_provider(execution.provider().to_owned())
-                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+                .with_headers(
+                    options
+                        .headers
+                        .as_ref()
+                        .unwrap_or(execution.headers())
+                        .clone(),
+                );
             config.retry_config.max_retries = 0;
             OpenAIProvider::new(config)
                 .model(execution.model())
@@ -307,7 +334,13 @@ async fn generate_request(
         "anthropic-messages" => {
             let mut config = AnthropicConfig::new(execution.secret().to_owned())
                 .with_base_url(execution.base_url().to_owned())
-                .with_headers(options.headers.as_ref().unwrap_or(execution.headers()).clone());
+                .with_headers(
+                    options
+                        .headers
+                        .as_ref()
+                        .unwrap_or(execution.headers())
+                        .clone(),
+                );
             config.retry_config.max_retries = 0;
             AnthropicProvider::new(config)
                 .model(execution.model())
@@ -1003,7 +1036,13 @@ mod tests {
             ),
             (400, "context_length_exceeded", "context limit", false, true),
             (400, "rate_limit_exceeded", "slow down", false, false),
-            (400, "", "Request is missing x-opencode-session", false, false),
+            (
+                400,
+                "",
+                "Request is missing x-opencode-session",
+                false,
+                false,
+            ),
             (429, "rate_limit_exceeded", "slow down", true, false),
             (502, "upstream_error", missing, true, false),
         ] {
@@ -1148,8 +1187,14 @@ mod tests {
         assert!(!first.contains_key("X-OpenCode-Session"));
         assert!(first["User-Agent"].starts_with("zork-agent/"));
         assert_eq!(first["x-custom"], "keep");
-        assert_eq!(first, request_headers("opencode-go", "session-a", &configured));
-        assert_ne!(first["x-opencode-session"], request_headers("opencode-go", "session-b", &configured)["x-opencode-session"]);
+        assert_eq!(
+            first,
+            request_headers("opencode-go", "session-a", &configured)
+        );
+        assert_ne!(
+            first["x-opencode-session"],
+            request_headers("opencode-go", "session-b", &configured)["x-opencode-session"]
+        );
         let configured = HashMap::from([("user-agent".into(), "custom-zork/1".into())]);
         let headers = request_headers("opencode-go", "session-a", &configured);
         assert_eq!(headers["user-agent"], "custom-zork/1");

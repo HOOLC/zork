@@ -667,7 +667,12 @@ impl StationClient {
     ) -> Result<serde_json::Value, ApiError> {
         #[cfg(feature = "headless-bench")]
         if let Some(fixture) = &self.fixture {
-            return fixture.node_request(method, path, body).map_err(|error| ApiError::Api { status: 400, message: error.to_string() });
+            return fixture
+                .node_request(method, path, body)
+                .map_err(|error| ApiError::Api {
+                    status: 400,
+                    message: error.to_string(),
+                });
         }
         let http = self.http.clone();
         let base_url = self.base_url.clone();
@@ -1045,7 +1050,10 @@ impl StationClient {
     pub async fn list_profiles(&self) -> Result<Vec<ProfileInfo>, ApiError> {
         #[cfg(feature = "headless-bench")]
         if let Some(fixture) = &self.fixture {
-            return fixture.list_profiles().map_err(|error| ApiError::Api { status: 400, message: error.to_string() });
+            return fixture.list_profiles().map_err(|error| ApiError::Api {
+                status: 400,
+                message: error.to_string(),
+            });
         }
         let http = self.http.clone();
         let base_url = self.base_url.clone();

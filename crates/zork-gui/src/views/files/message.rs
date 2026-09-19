@@ -224,13 +224,18 @@ pub(in crate::views) fn render(
             };
             let (root, group, session) = (root.clone(), files.clone(), session.to_owned());
             row = row.child(
-                source.bind(item.on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    let _ = root.update(cx, |v, cx| {
-                        v.open_message_files(group.clone(), selected, &session, window, cx)
-                    });
-                }), file.name.clone(), zork_ui::controls::ActionStyle::default())
-                .automation(AutomationRole::Button, file.name.clone()),
+                source
+                    .bind(
+                        item.on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            let _ = root.update(cx, |v, cx| {
+                                v.open_message_files(group.clone(), selected, &session, window, cx)
+                            });
+                        }),
+                        file.name.clone(),
+                        zork_ui::controls::ActionStyle::default(),
+                    )
+                    .automation(AutomationRole::Button, file.name.clone()),
             );
         }
         rows.push(row);

@@ -162,18 +162,49 @@ fn unsupported(message_id: &str) -> Card {
 }
 
 /// Shared native/Web projection. Platform support never changes the source message.
-pub fn local_script_card(message_id: &str, script: &zork_client_types::local_script::Card, android: bool) -> Card {
+pub fn local_script_card(
+    message_id: &str,
+    script: &zork_client_types::local_script::Card,
+    android: bool,
+) -> Card {
     let mut details = Vec::new();
     if let Some(description) = &script.description {
-        details.push(Detail { label_key:"local_script_description".into(), value:description.clone() });
+        details.push(Detail {
+            label_key: "local_script_description".into(),
+            value: description.clone(),
+        });
     }
-    details.push(Detail { label_key:"local_script_source".into(), value:script.source.clone() });
+    details.push(Detail {
+        label_key: "local_script_source".into(),
+        value: script.source.clone(),
+    });
     let can_run = android && script.validate().is_ok();
-    Card { message_id:message_id.into(), title:script.title.clone(), localized_title:false,
-        status_key:if can_run { "local_script_ready" } else { "local_script_readonly" }.into(),
-        description_key:None, fields:vec![], details,
-        actions:if can_run { vec![CardAction { id:"run_local_script".into(), label_key:"local_script_run".into(), primary:true, open_url:None }] } else { vec![] },
-        editable:false, error:None }
+    Card {
+        message_id: message_id.into(),
+        title: script.title.clone(),
+        localized_title: false,
+        status_key: if can_run {
+            "local_script_ready"
+        } else {
+            "local_script_readonly"
+        }
+        .into(),
+        description_key: None,
+        fields: vec![],
+        details,
+        actions: if can_run {
+            vec![CardAction {
+                id: "run_local_script".into(),
+                label_key: "local_script_run".into(),
+                primary: true,
+                open_url: None,
+            }]
+        } else {
+            vec![]
+        },
+        editable: false,
+        error: None,
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -243,8 +274,11 @@ pub(crate) fn view(
 ) -> Option<Box<Card>> {
     let raw = metadata.interaction.as_deref()?;
     if let Some(script) = zork_client_types::local_script::Card::parse(raw) {
-        return Some(Box::new(local_script_card(metadata.id.as_deref().unwrap_or_default(), &script,
-            cfg!(all(target_os = "android", feature = "local-scripts")))));
+        return Some(Box::new(local_script_card(
+            metadata.id.as_deref().unwrap_or_default(),
+            &script,
+            cfg!(all(target_os = "android", feature = "local-scripts")),
+        )));
     }
     if let Some(request) = request(metadata) {
         let initial = initial_result(metadata);

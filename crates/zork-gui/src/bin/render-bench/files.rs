@@ -2,7 +2,7 @@
 use gpui::{AnyWindowHandle, Entity, HeadlessAppContext};
 use std::{path::Path, time::Duration};
 use zork_gui::{
-    automation::{HeadlessAutomation, protocol::UserAction},
+    automation::{protocol::UserAction, HeadlessAutomation},
     views::RootView,
 };
 

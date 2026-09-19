@@ -39,7 +39,9 @@ pub fn provision_bundled(data_root: &Path) -> Result<()> {
     match super::bundled::install_initial(data_root, &groups) {
         Ok(true) => return Ok(()),
         Ok(false) => {}
-        Err(error) => tracing::warn!(%error, "Initial Skill provisioning unavailable; checking each distribution"),
+        Err(error) => {
+            tracing::warn!(%error, "Initial Skill provisioning unavailable; checking each distribution")
+        }
     }
     for (skill, files) in groups {
         if let Err(error) = super::bundled::install(data_root, &files) {

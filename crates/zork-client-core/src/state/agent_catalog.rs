@@ -1,6 +1,6 @@
 //! Shared agent catalog and edit commands, independent of any UI executor.
 use super::{Observable, Profiles, Subscription};
-use crate::api::{StationClient, ProfileInfo};
+use crate::api::{ProfileInfo, StationClient};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
@@ -36,7 +36,8 @@ impl AgentSubscription {
         reset: bool,
     ) -> AgentUpdate {
         let update = AgentUpdate {
-            agents_changed: self.previous.agents != state.agents || self.previous.loaded != state.loaded,
+            agents_changed: self.previous.agents != state.agents
+                || self.previous.loaded != state.loaded,
             profiles_changed: self.previous.profiles != state.profiles,
             origin_changed: self.previous.node_origin != state.node_origin,
             error_changed: self.previous.error != state.error,
@@ -170,7 +171,10 @@ impl Agents {
         self.state.publish(state.clone());
     }
     pub(crate) fn seed_agents(&self, agents: Arc<Vec<Value>>, loaded: bool) {
-        self.commit(|s| { s.agents = agents; s.loaded = loaded; });
+        self.commit(|s| {
+            s.agents = agents;
+            s.loaded = loaded;
+        });
     }
     pub(crate) fn sync_profiles(&self, profiles: Arc<Vec<ProfileInfo>>) {
         self.commit(|s| s.profiles = profiles);
@@ -185,7 +189,10 @@ impl Agents {
         if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
             match device.refresh_replica_catalog().await {
                 Ok(true) => {
-                    self.commit(|s| { s.error = None; s.loaded = true; });
+                    self.commit(|s| {
+                        s.error = None;
+                        s.loaded = true;
+                    });
                     return Ok(());
                 }
                 Err(error) => {

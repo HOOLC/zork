@@ -145,63 +145,61 @@ fn main() {
     zork_client_core::desktop::trace_startup("gui.before_application");
     let app = application();
     zork_client_core::desktop::trace_startup("gui.application_created");
-    app
-        .with_assets(EmbeddedAssets)
-        .run(move |cx: &mut App| {
-            let startup = startup.finish().unwrap_or_else(|error| {
-                eprintln!("无法打开客户端运行时：{error:#}");
-                std::process::exit(1);
-            });
-            DesktopRoot::install_startup(startup, cx);
-            zork_client_core::desktop::trace_startup("gui.run_callback");
-            zork_gui::assets::init_fonts(cx);
-            zork_client_core::desktop::trace_startup("gui.fonts_ready");
-            components::init(cx);
-            zork_client_core::desktop::trace_startup("gui.components_ready");
-            cx.set_window_appearance(Some(WindowAppearance::Light));
-            let window_options = gpui::WindowOptions {
-                window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(initial_size.0), px(initial_size.1)),
-                    cx,
-                ))),
-                titlebar: Some(native_titlebar_options()),
-                window_min_size: Some(size(px(900.0), px(600.0))),
-                ..Default::default()
-            };
-            if let Some(dev) = automation.as_ref() {
-                dev.install(cx);
-            }
-            zork_client_core::desktop::trace_startup("gui.before_window");
-            let window: AnyWindowHandle = if automation.is_some() {
-                cx.open_window(window_options, |window, cx| {
-                    window.on_window_should_close(cx, |_, cx| {
-                        cx.quit();
-                        true
-                    });
-                    let root = cx.new(DesktopRoot::new);
-                    cx.new(|_| AutomationRoot::new(root))
-                })
-                .expect("failed to open window")
-                .into()
-            } else {
-                cx.open_window(window_options, |window, cx| {
-                    window.on_window_should_close(cx, |_, cx| {
-                        cx.quit();
-                        true
-                    });
-                    cx.new(DesktopRoot::new)
-                })
-                .expect("failed to open window")
-                .into()
-            };
-            zork_client_core::desktop::trace_startup("gui.window_opened");
-            if let Some(dev) = automation.take() {
-                dev.attach(window, cx);
-            }
-            cx.activate(true);
-            zork_client_core::desktop::trace_startup("gui.activated");
+    app.with_assets(EmbeddedAssets).run(move |cx: &mut App| {
+        let startup = startup.finish().unwrap_or_else(|error| {
+            eprintln!("无法打开客户端运行时：{error:#}");
+            std::process::exit(1);
         });
+        DesktopRoot::install_startup(startup, cx);
+        zork_client_core::desktop::trace_startup("gui.run_callback");
+        zork_gui::assets::init_fonts(cx);
+        zork_client_core::desktop::trace_startup("gui.fonts_ready");
+        components::init(cx);
+        zork_client_core::desktop::trace_startup("gui.components_ready");
+        cx.set_window_appearance(Some(WindowAppearance::Light));
+        let window_options = gpui::WindowOptions {
+            window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
+                None,
+                size(px(initial_size.0), px(initial_size.1)),
+                cx,
+            ))),
+            titlebar: Some(native_titlebar_options()),
+            window_min_size: Some(size(px(900.0), px(600.0))),
+            ..Default::default()
+        };
+        if let Some(dev) = automation.as_ref() {
+            dev.install(cx);
+        }
+        zork_client_core::desktop::trace_startup("gui.before_window");
+        let window: AnyWindowHandle = if automation.is_some() {
+            cx.open_window(window_options, |window, cx| {
+                window.on_window_should_close(cx, |_, cx| {
+                    cx.quit();
+                    true
+                });
+                let root = cx.new(DesktopRoot::new);
+                cx.new(|_| AutomationRoot::new(root))
+            })
+            .expect("failed to open window")
+            .into()
+        } else {
+            cx.open_window(window_options, |window, cx| {
+                window.on_window_should_close(cx, |_, cx| {
+                    cx.quit();
+                    true
+                });
+                cx.new(DesktopRoot::new)
+            })
+            .expect("failed to open window")
+            .into()
+        };
+        zork_client_core::desktop::trace_startup("gui.window_opened");
+        if let Some(dev) = automation.take() {
+            dev.attach(window, cx);
+        }
+        cx.activate(true);
+        zork_client_core::desktop::trace_startup("gui.activated");
+    });
 }
 
 #[cfg(test)]

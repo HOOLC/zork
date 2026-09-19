@@ -159,7 +159,10 @@ async fn run_supervisor(
     // Publish the control socket only after that registration succeeds.
     if let Err(error) = identity.register() {
         terminate_child(&mut station);
-        if wait_for_exit(&mut station, Duration::from_secs(8)).await.is_err() {
+        if wait_for_exit(&mut station, Duration::from_secs(8))
+            .await
+            .is_err()
+        {
             let _ = station.kill().await;
         }
         let _ = fs::remove_file(&pid_path);
@@ -511,8 +514,12 @@ fn sighup() -> impl std::future::Future<Output = ()> {
         .expect("listen for SIGHUP");
     async move {
         #[cfg(unix)]
-        { hangup.recv().await; }
+        {
+            hangup.recv().await;
+        }
         #[cfg(not(unix))]
-        { std::future::pending::<()>().await; }
+        {
+            std::future::pending::<()>().await;
+        }
     }
 }

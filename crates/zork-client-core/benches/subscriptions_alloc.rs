@@ -14,7 +14,7 @@ use std::{
     },
 };
 use zork_client_core::{
-    api::{StationClient, MessageMetadata, Role, SseEvent},
+    api::{MessageMetadata, Role, SseEvent, StationClient},
     state::{ConversationData, Device},
     transcript::TranscriptLine,
 };

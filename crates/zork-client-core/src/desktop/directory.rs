@@ -253,22 +253,36 @@ impl Directory {
             })
             .collect()
     }
-    fn shared_file_clients(&self) -> Vec<(String,String,bool,Arc<StationClient>)> {
-        self.snapshot().nodes.iter().filter(|node| !self.store.replica_revoked(&node.id).unwrap_or(true)).filter_map(|node| {
-            self.connection(&node.id).ok().map(|(_,client)|(node.id.clone(),node.name.clone(),node.local,client))
-        }).collect()
+    fn shared_file_clients(&self) -> Vec<(String, String, bool, Arc<StationClient>)> {
+        self.snapshot()
+            .nodes
+            .iter()
+            .filter(|node| !self.store.replica_revoked(&node.id).unwrap_or(true))
+            .filter_map(|node| {
+                self.connection(&node.id)
+                    .ok()
+                    .map(|(_, client)| (node.id.clone(), node.name.clone(), node.local, client))
+            })
+            .collect()
     }
     pub fn shared_files(&self) -> Arc<crate::shared_files::SharedFiles> {
-        self.shared_files.get_or_init(|| {
-            let source=crate::shared_files::SharedFiles::new(self.store.clone());
-            self.refresh_shared_files(&source);
-            source
-        }).clone()
+        self.shared_files
+            .get_or_init(|| {
+                let source = crate::shared_files::SharedFiles::new(self.store.clone());
+                self.refresh_shared_files(&source);
+                source
+            })
+            .clone()
     }
     fn refresh_shared_files(&self, source: &Arc<crate::shared_files::SharedFiles>) {
         source.replace_devices(self.shared_file_clients());
-        let states = self.devices.lock().unwrap().iter()
-            .map(|(id, (device, _))| (id.clone(), device.snapshot())).collect::<Vec<_>>();
+        let states = self
+            .devices
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, (device, _))| (id.clone(), device.snapshot()))
+            .collect::<Vec<_>>();
         for (id, state) in states {
             if let Ok((_, client)) = self.connection(&id) {
                 source.update_device(&id, &client, &state);

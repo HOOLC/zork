@@ -1,19 +1,18 @@
 //! The approved composer layout rendered with the shared liquid material.
 //! Hosts supply core capabilities and handle intents. Editor, hover, focus and
 //! fan expansion are presentation state; this module contains no send policy.
+use super::controls::ControlElement;
 use super::{Pose, Surface, SurfaceColors};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{
-        attachment_fan as fan_geometry, liquid_composer as spec,
-        text_input::ComposerInput,
+        attachment_fan as fan_geometry, liquid_composer as spec, text_input::ComposerInput,
     },
     controls,
     design::{BRAND_ACCENT, CUE_UI},
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
-use super::controls::ControlElement;
 pub mod fan;
 mod scene;
 pub use scene::Scene;
@@ -187,7 +186,9 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     let editor_height =
         (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME).clamp(0., EDITOR_MAX);
     let input = editor.clone();
-    let editor_id = presentation.as_ref().map_or_else(|| format!("{id}-editor"), |p| p.editor_id.clone());
+    let editor_id = presentation
+        .as_ref()
+        .map_or_else(|| format!("{id}-editor"), |p| p.editor_id.clone());
     let editor_view = positioned(
         p.left() + TEXT_INSET as f64,
         p.top() + spec::TOP_EXTENSION as f64 + spec::EDITOR_TOP_INSET as f64,
@@ -205,14 +206,30 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     })
     .when(!c.editable, |v| v.child("此会话不可发送消息"));
     let focus_editor = handler.clone();
-    let plate = positioned(p.left(), p.top(), p.w, p.h).id(format!("{id}-surface"))
-        .occlude().on_mouse_down(MouseButton::Left, move |_, w, cx| {
-            if c.editable { focus_editor(Action::FocusEditor, w, cx); }
+    let plate = positioned(p.left(), p.top(), p.w, p.h)
+        .id(format!("{id}-surface"))
+        .occlude()
+        .on_mouse_down(MouseButton::Left, move |_, w, cx| {
+            if c.editable {
+                focus_editor(Action::FocusEditor, w, cx);
+            }
         });
-    let mut content = div().relative().size_full()
-        .child(surface.guard(plate).automation(AutomationRole::Status, "消息输入区"))
-        .child(surface.guard(editor_view).automation_enabled(c.editable, AutomationRole::TextInput,
-            presentation.as_ref().map_or_else(|| SharedString::from("消息输入"), |p| p.editor_label.clone())));
+    let mut content = div()
+        .relative()
+        .size_full()
+        .child(
+            surface
+                .guard(plate)
+                .automation(AutomationRole::Status, "消息输入区"),
+        )
+        .child(surface.guard(editor_view).automation_enabled(
+            c.editable,
+            AutomationRole::TextInput,
+            presentation.as_ref().map_or_else(
+                || SharedString::from("消息输入"),
+                |p| p.editor_label.clone(),
+            ),
+        ));
     for (key, attach, x) in [
         ("attach", true, p.left() + 6.),
         ("send", false, p.left() + p.w - 30.),
@@ -221,7 +238,16 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
             positioned(x, p.top() + p.h - 30., 24., 24.).child(
                 surface
                     .guard(action(
-                        presentation.as_ref().map_or_else(|| format!("{id}-{key}"), |p| if attach { p.attach_id.clone() } else { p.primary_id.clone() }),
+                        presentation.as_ref().map_or_else(
+                            || format!("{id}-{key}"),
+                            |p| {
+                                if attach {
+                                    p.attach_id.clone()
+                                } else {
+                                    p.primary_id.clone()
+                                }
+                            },
+                        ),
                         attach,
                         if attach { c.editable } else { c.enabled },
                         c.stop,
@@ -233,14 +259,32 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                     .automation_enabled(
                         if attach { c.editable } else { c.enabled },
                         AutomationRole::Button,
-                        presentation.as_ref().map_or_else(|| SharedString::from(if attach { "添加附件" } else if c.stop { "停止当前运行" } else { "发送消息" }),
-                            |p| if attach { p.attach_label.clone() } else { p.primary_label.clone() }),
+                        presentation.as_ref().map_or_else(
+                            || {
+                                SharedString::from(if attach {
+                                    "添加附件"
+                                } else if c.stop {
+                                    "停止当前运行"
+                                } else {
+                                    "发送消息"
+                                })
+                            },
+                            |p| {
+                                if attach {
+                                    p.attach_label.clone()
+                                } else {
+                                    p.primary_label.clone()
+                                }
+                            },
+                        ),
                     ),
             ),
         );
     }
     for (i, member) in snapshot.members.iter().enumerate() {
-        let mp = surface.simulation.group_pose(presentation.as_ref().map_or(i + 1, |p| p.member_groups[i]));
+        let mp = surface
+            .simulation
+            .group_pose(presentation.as_ref().map_or(i + 1, |p| p.member_groups[i]));
         let member_id = member.id.clone();
         let hover_id = member.id.clone();
         let hover_handler = handler.clone();
@@ -248,19 +292,44 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         let reveal = zork_liquid::recipes::member_reveal(mp.w) as f32;
         let measured = handler.clone();
         let measured_id = member.id.clone();
-        let avatar = controls::quiet_button(format!("{id}-member-{}", member.id), "", true, controls::IconButtonSize::Standard)
-            .size(px(AVATAR)).p_0().radius(8.)
-            .control_overlay(canvas(move |bounds, w, cx| measured(Action::MemberAnchor(measured_id.clone(), bounds), w, cx), |_, _, _, _| {}).absolute().inset_0().into_any_element())
-            .child(controls::agent_portrait(Some(&member.avatar), AVATAR))
-            .on_hover(move |hovered, w, cx| {
-                hover_handler(
-                    Action::MemberHover(hovered.then(|| hover_id.clone())),
-                    w,
-                    cx,
-                )
-            })
-            .on_click(move |_, w, cx| handler(Action::Member(member_id.clone()), w, cx))
-            .automation(AutomationRole::Button, format!("{} · 活动记录", presentation.as_ref().map_or(member.id.as_str(), |p| p.member_names[i].as_str())));
+        let avatar = controls::quiet_button(
+            format!("{id}-member-{}", member.id),
+            "",
+            true,
+            controls::IconButtonSize::Standard,
+        )
+        .size(px(AVATAR))
+        .p_0()
+        .radius(8.)
+        .control_overlay(
+            canvas(
+                move |bounds, w, cx| {
+                    measured(Action::MemberAnchor(measured_id.clone(), bounds), w, cx)
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+            .into_any_element(),
+        )
+        .child(controls::agent_portrait(Some(&member.avatar), AVATAR))
+        .on_hover(move |hovered, w, cx| {
+            hover_handler(
+                Action::MemberHover(hovered.then(|| hover_id.clone())),
+                w,
+                cx,
+            )
+        })
+        .on_click(move |_, w, cx| handler(Action::Member(member_id.clone()), w, cx))
+        .automation(
+            AutomationRole::Button,
+            format!(
+                "{} · 活动记录",
+                presentation
+                    .as_ref()
+                    .map_or(member.id.as_str(), |p| p.member_names[i].as_str())
+            ),
+        );
         content = content.child(
             positioned(
                 mp.left() + PORTRAIT_INSET as f64,
@@ -273,14 +342,24 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
             .gap(px(8.))
             .overflow_hidden()
             .child(avatar)
-            .when(member.active && mp.w > 32.5, |row| row.child(
-                div().id(format!("{id}-activity-{}", member.id))
-                    .flex_1().min_w_0().pr(px(12. - PORTRAIT_INSET))
-                    .text_size(px(12.)).line_height(px(20.))
-                    .text_color(rgb(presentation.as_ref().map_or(spec::TEXT_COLOR, |p| p.member_colors[i])))
-                    .truncate().opacity(reveal).child(member.label.clone())
-                    .automation(AutomationRole::Status, member.label.clone()),
-            ))
+            .when(member.active && mp.w > 32.5, |row| {
+                row.child(
+                    div()
+                        .id(format!("{id}-activity-{}", member.id))
+                        .flex_1()
+                        .min_w_0()
+                        .pr(px(12. - PORTRAIT_INSET))
+                        .text_size(px(12.))
+                        .line_height(px(20.))
+                        .text_color(rgb(presentation
+                            .as_ref()
+                            .map_or(spec::TEXT_COLOR, |p| p.member_colors[i])))
+                        .truncate()
+                        .opacity(reveal)
+                        .child(member.label.clone())
+                        .automation(AutomationRole::Status, member.label.clone()),
+                )
+            }),
         );
     }
     for bubble in bubbles {
@@ -329,16 +408,13 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         .relative()
         .w(px(width))
         .h(px(height))
-        .child(
-            surface
-                .layer(
-                    format!("{id}-material"),
-                    width,
-                    height,
-                    SurfaceColors::filled(spec::SURFACE_COLOR, CUE_UI.palette.canvas),
-                    content,
-                ),
-        )
+        .child(surface.layer(
+            format!("{id}-material"),
+            width,
+            height,
+            SurfaceColors::filled(spec::SURFACE_COLOR, CUE_UI.palette.canvas),
+            content,
+        ))
         .children(custom_fan)
         .when(!has_custom_fan && !snapshot.files.is_empty(), |v| {
             v.child(render_fan(
@@ -366,29 +442,83 @@ pub fn opening(body: Pose, count: usize, expanded: f32) -> Option<fan_geometry::
 }
 
 fn render_fan(
-    id: &str, body: Pose, state: &Snapshot, expanded: f32, pinned: bool,
-    handler: Handler, _: &mut Window, _: &mut App,
+    id: &str,
+    body: Pose,
+    state: &Snapshot,
+    expanded: f32,
+    pinned: bool,
+    handler: Handler,
+    _: &mut Window,
+    _: &mut App,
 ) -> AnyElement {
     let available = (body.w as f32 - 24.).max(100.);
-    let geometry = fan_geometry::poses(state.files.len().min(fan_geometry::MAX_FILES), expanded, available);
-    let (width, height) = fan_geometry::dimensions(state.files.len().min(fan_geometry::MAX_FILES), available);
+    let geometry = fan_geometry::poses(
+        state.files.len().min(fan_geometry::MAX_FILES),
+        expanded,
+        available,
+    );
+    let (width, height) =
+        fan_geometry::dimensions(state.files.len().min(fan_geometry::MAX_FILES), available);
     let center = (body.left() + body.w - width as f64 / 2. - 12.).max(body.cx);
-    let ids = fan::Ids { root: format!("{id}-fan"), toggle: format!("{id}-fan-toggle"),
-        file_prefix: format!("{id}-file-"), remove_prefix: format!("{id}-remove-") };
-    let frame = fan::Frame { files: state.files.iter().zip(geometry).map(|(file, pose)| fan::File {
-        id: file.id.to_string(), name: file.name.clone(), pose, image: None,
-        visible: true, departing: false, active: false, removable: pinned && expanded > 0.98,
-    }).collect(), width, height, opening: fan_geometry::Opening::new(fan_geometry::Shape::for_count(state.files.len()), expanded), expanded, rim: true };
+    let ids = fan::Ids {
+        root: format!("{id}-fan"),
+        toggle: format!("{id}-fan-toggle"),
+        file_prefix: format!("{id}-file-"),
+        remove_prefix: format!("{id}-remove-"),
+    };
+    let frame = fan::Frame {
+        files: state
+            .files
+            .iter()
+            .zip(geometry)
+            .map(|(file, pose)| fan::File {
+                id: file.id.to_string(),
+                name: file.name.clone(),
+                pose,
+                image: None,
+                visible: true,
+                departing: false,
+                active: false,
+                removable: pinned && expanded > 0.98,
+            })
+            .collect(),
+        width,
+        height,
+        opening: fan_geometry::Opening::new(
+            fan_geometry::Shape::for_count(state.files.len()),
+            expanded,
+        ),
+        expanded,
+        rim: true,
+    };
     let handler = Rc::new(move |action, w: &mut Window, cx: &mut App| match action {
         fan::Action::Hover(hover) => handler(Action::FanHover(hover), w, cx),
         fan::Action::Toggle => handler(Action::ToggleFan, w, cx),
         fan::Action::Open(id) => {
-            if pinned { if let Ok(id) = id.parse() { handler(Action::OpenFile(id), w, cx); } }
-            else { handler(Action::ToggleFan, w, cx); }
+            if pinned {
+                if let Ok(id) = id.parse() {
+                    handler(Action::OpenFile(id), w, cx);
+                }
+            } else {
+                handler(Action::ToggleFan, w, cx);
+            }
         }
-        fan::Action::Remove(id) => { if let Ok(id) = id.parse() { handler(Action::RemoveFile(id), w, cx); } }
-        fan::Action::Highlight(_, _) => {},
+        fan::Action::Remove(id) => {
+            if let Ok(id) = id.parse() {
+                handler(Action::RemoveFile(id), w, cx);
+            }
+        }
+        fan::Action::Highlight(_, _) => {}
     });
-    fan::render(ids, frame, "展开或固定附件预览".into(), "移除附件".into(), handler)
-        .absolute().left(px(center as f32 - width / 2.)).top(px(body.top() as f32 - height)).into_any_element()
+    fan::render(
+        ids,
+        frame,
+        "展开或固定附件预览".into(),
+        "移除附件".into(),
+        handler,
+    )
+    .absolute()
+    .left(px(center as f32 - width / 2.))
+    .top(px(body.top() as f32 - height))
+    .into_any_element()
 }

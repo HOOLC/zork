@@ -141,7 +141,8 @@ impl<T: 'static> Regions<T> {
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         let view = self.ensure(name, cx, render);
-        RegionElement { rasterized: false,
+        RegionElement {
+            rasterized: false,
             measured: Some(view.read(cx).layout.clone()),
             view,
             style: None,
@@ -162,7 +163,8 @@ impl<T: 'static> Regions<T> {
             measured: Some(view.read(cx).layout.clone()),
             view,
             style: None,
-        }.into_any_element()
+        }
+        .into_any_element()
     }
     pub fn element(
         &mut self,
@@ -172,7 +174,8 @@ impl<T: 'static> Regions<T> {
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         let view = self.ensure(name, cx, render);
-        RegionElement { rasterized: false,
+        RegionElement {
+            rasterized: false,
             measured: Some(view.read(cx).layout.clone()),
             view,
             style: Some(style),
@@ -189,7 +192,8 @@ impl<T: 'static> Regions<T> {
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         let view = self.ensure(name, cx, render);
-        RegionElement { rasterized: true,
+        RegionElement {
+            rasterized: true,
             measured: Some(view.read(cx).layout.clone()),
             view,
             style: Some(style),
@@ -209,7 +213,10 @@ impl<T: 'static> Regions<T> {
         self.auto_height_inner(name, width_key, cx, render, false)
     }
     pub fn gpu_auto_height(
-        &mut self, name: &str, width_key: f32, cx: &mut Context<T>,
+        &mut self,
+        name: &str,
+        width_key: f32,
+        cx: &mut Context<T>,
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         self.auto_height_inner(name, width_key, cx, render, true)
@@ -237,14 +244,16 @@ impl<T: 'static> Regions<T> {
         let layout = view.read(cx).layout.clone();
         let width_changed = layout.width.replace(width_key) != width_key;
         if layout.dirty.get() || width_changed || layout.size.get().is_none() {
-            RegionElement { rasterized,
+            RegionElement {
+                rasterized,
                 view,
                 style: None,
                 measured: Some(layout),
             }
             .into_any_element()
         } else {
-            RegionElement { rasterized,
+            RegionElement {
+                rasterized,
                 measured: Some(layout.clone()),
                 view,
                 style: Some(
@@ -363,7 +372,8 @@ impl gpui::Element for MeasuredElement {
 /// Track a separately observed child view inside a cached region, including
 /// deferred popovers in its automation replay. The child controls its redraws.
 pub fn tracked_view<V: Render>(view: Entity<V>) -> gpui::AnyElement {
-    RegionElement { rasterized: false,
+    RegionElement {
+        rasterized: false,
         view,
         style: None,
         measured: None,
@@ -421,12 +431,18 @@ impl<V: Render> gpui::Element for RegionElement<V> {
             carrier.child(self.view.clone()).into_any_element()
         } else if let Some(style) = &self.style {
             let element = self.view.clone().cached(style.clone());
-            if self.rasterized { element.rasterized().into_any_element() }
-            else { element.into_any_element() }
+            if self.rasterized {
+                element.rasterized().into_any_element()
+            } else {
+                element.into_any_element()
+            }
         } else if self.measured.is_some() {
             let element = self.view.clone().measure_cached();
-            if self.rasterized { element.rasterized().into_any_element() }
-            else { element.into_any_element() }
+            if self.rasterized {
+                element.rasterized().into_any_element()
+            } else {
+                element.into_any_element()
+            }
         } else {
             self.view.clone().into_any_element()
         };
@@ -665,7 +681,10 @@ mod tests {
 
 #[cfg(test)]
 mod nested_cache_tests {
-    use gpui::{prelude::*, div, px, AppContext, Context, Entity, Render, StyleRefinement, TestAppContext, Window};
+    use gpui::{
+        div, prelude::*, px, AppContext, Context, Entity, Render, StyleRefinement, TestAppContext,
+        Window,
+    };
     use std::{cell::Cell, rc::Rc};
     struct Child(Rc<Cell<usize>>);
     impl Render for Child {

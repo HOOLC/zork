@@ -64,6 +64,7 @@ export default defineConfig({
     printWidth: 320,
     overrides: [{ files: ["apps/zork-design/**/*"], options: { printWidth: 120 } }],
     ignorePatterns: [
+      "vendor/**",
       "apps/zork-design/archive/**",
       "apps/zork-design/assets/**",
       "apps/zork-design/components/**",

@@ -3,7 +3,7 @@ use futures_util::FutureExt;
 use serde_json::{json, Value};
 use std::{hint::black_box, sync::Arc, time::Instant};
 use zork_client_core::{
-    api::{StationClient, SseEvent},
+    api::{SseEvent, StationClient},
     state::{ConversationData, Device},
     store::ClientStore,
     subscriptions::{Key, WireSubscription},

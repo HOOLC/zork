@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::*, px, rgb, Context, Div, Entity, FocusHandle, FollowMode,
-    KeyDownEvent, ListAlignment, ListState, Render, Styled, Task, Window,
+    div, prelude::*, px, rgb, Context, Div, Entity, FocusHandle, FollowMode, KeyDownEvent,
+    ListAlignment, ListState, Render, Styled, Task, Window,
 };
 
 #[cfg(feature = "headless-bench")]
 use crate::api::SessionStatus;
-use crate::api::{AgentStatus, StationClient, ProductTask, Role, SessionSummary};
+use crate::api::{AgentStatus, ProductTask, Role, SessionSummary, StationClient};
 use crate::automation::{AutomationElementExt, AutomationRole};
 use crate::components::text_input::{
     ComposerEdited, ComposerFilesPasted, ComposerInput, ComposerLayoutChanged, ComposerSubmit,
@@ -158,7 +158,11 @@ pub struct RootView {
 
     message_motion: message_presentation::MessageMotion,
     message_reader: Entity<zork_ui::components::message_reader::Reader>,
-    pending_reader_selection: Option<(crate::comments::CommentSource, gpui::Bounds<gpui::Pixels>, gpui::FocusHandle)>,
+    pending_reader_selection: Option<(
+        crate::comments::CommentSource,
+        gpui::Bounds<gpui::Pixels>,
+        gpui::FocusHandle,
+    )>,
     history_details: Entity<zork_ui::history_details::Details>,
     resource_source: zork_ui::components::liquid::overlay::SourceBinding,
     files_menu: Entity<zork_ui::conversation_contents::Menu>,
@@ -260,7 +264,10 @@ impl RootView {
             &composer_input,
             |view, _input, _event: &ComposerSubmit, cx| {
                 if view.selected_session.is_some() {
-                    view.send_composer(zork_ui::components::liquid::departure::Origin::Composer, cx);
+                    view.send_composer(
+                        zork_ui::components::liquid::departure::Origin::Composer,
+                        cx,
+                    );
                 }
             },
         )
@@ -282,36 +289,77 @@ impl RootView {
         .detach();
         let comment_editor = cx.new(|cx| zork_ui::components::comments::Editor::new("", cx));
         let comment_input = comment_editor.read(cx).input();
-        cx.subscribe(&comment_editor, |view, _, event: &zork_ui::components::comments::Submit, cx| {
-            view.add_comment(event, cx)
-        }).detach();
-        cx.subscribe(&comment_editor, |view, _, _: &zork_ui::components::comments::Closed, cx| {
-            view.dismiss_selection(cx)
-        }).detach();
-        let files_menu = cx.new(|cx| zork_ui::conversation_contents::Menu::new(
-            zork_ui::resources::Text(Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())), cx));
-        cx.subscribe(&files_menu, |view, _, event: &zork_ui::conversation_contents::OpenChanged, cx| {
-            view.set_conversation_files_open(event.0);
-            zork_ui::components::region::invalidate_all(cx);
-        }).detach();
-        cx.subscribe(&files_menu, |view, _, event: &zork_ui::conversation_contents::All, cx| {
-            view.open_content_tab(match event.0 {
-                zork_ui::conversation_contents::Kind::Page => zork_client_core::pages::ContentKind::Page,
-                zork_ui::conversation_contents::Kind::File => zork_client_core::pages::ContentKind::File,
-            }, cx);
-        }).detach();
-        let history_details = cx.new(|cx| zork_ui::history_details::Details::new(
-            zork_ui::resources::Text(Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())), cx));
-        cx.subscribe(&history_details, |view, _, _: &zork_ui::history_details::Closed, cx| {
-            view.history.detail = None; view.history.agent_detail = None;
-            zork_ui::components::region::invalidate_all(cx);
-        }).detach();
+        cx.subscribe(
+            &comment_editor,
+            |view, _, event: &zork_ui::components::comments::Submit, cx| {
+                view.add_comment(event, cx)
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &comment_editor,
+            |view, _, _: &zork_ui::components::comments::Closed, cx| view.dismiss_selection(cx),
+        )
+        .detach();
+        let files_menu = cx.new(|cx| {
+            zork_ui::conversation_contents::Menu::new(
+                zork_ui::resources::Text(Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())),
+                cx,
+            )
+        });
+        cx.subscribe(
+            &files_menu,
+            |view, _, event: &zork_ui::conversation_contents::OpenChanged, cx| {
+                view.set_conversation_files_open(event.0);
+                zork_ui::components::region::invalidate_all(cx);
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &files_menu,
+            |view, _, event: &zork_ui::conversation_contents::All, cx| {
+                view.open_content_tab(
+                    match event.0 {
+                        zork_ui::conversation_contents::Kind::Page => {
+                            zork_client_core::pages::ContentKind::Page
+                        }
+                        zork_ui::conversation_contents::Kind::File => {
+                            zork_client_core::pages::ContentKind::File
+                        }
+                    },
+                    cx,
+                );
+            },
+        )
+        .detach();
+        let history_details = cx.new(|cx| {
+            zork_ui::history_details::Details::new(
+                zork_ui::resources::Text(Rc::new(|key| crate::i18n::Locale::ZhCn.text(key).into())),
+                cx,
+            )
+        });
+        cx.subscribe(
+            &history_details,
+            |view, _, _: &zork_ui::history_details::Closed, cx| {
+                view.history.detail = None;
+                view.history.agent_detail = None;
+                zork_ui::components::region::invalidate_all(cx);
+            },
+        )
+        .detach();
         let message_reader = cx.new(zork_ui::components::message_reader::Reader::new);
-        cx.subscribe(&message_reader, |view, _, event: &zork_ui::components::message_reader::Selected, cx| {
-            if Some(&event.source.session_id) != view.selected_session.as_ref() { return; }
-            view.pending_reader_selection = Some((event.source.clone(), event.bounds, event.focus.clone()));
-            cx.notify();
-        }).detach();
+        cx.subscribe(
+            &message_reader,
+            |view, _, event: &zork_ui::components::message_reader::Selected, cx| {
+                if Some(&event.source.session_id) != view.selected_session.as_ref() {
+                    return;
+                }
+                view.pending_reader_selection =
+                    Some((event.source.clone(), event.bounds, event.focus.clone()));
+                cx.notify();
+            },
+        )
+        .detach();
         let browser = {
             let browser = cx.new(crate::browser::BrowserPanel::new);
             cx.subscribe(
@@ -332,7 +380,8 @@ impl RootView {
                 |view, _, closed: &crate::browser::NativePageClosed, cx| {
                     view.close_content_tab(&closed.0);
                     if closed.0 == "message" {
-                        view.message_reader.update(cx, |reader, cx| reader.dismiss(cx));
+                        view.message_reader
+                            .update(cx, |reader, cx| reader.dismiss(cx));
                         view.regions.retain(|key| key != "message-reader");
                     }
                     if closed.0 == "history" {
@@ -405,7 +454,8 @@ impl RootView {
             chat_histories: HashMap::new(),
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
-                let device = zork_client_core::state::Device::open(client.clone(), local_cache, true);
+                let device =
+                    zork_client_core::state::Device::open(client.clone(), local_cache, true);
                 zork_client_core::desktop::trace_startup("gui.workspace_device_ready");
                 device
             },
@@ -736,7 +786,8 @@ impl RootView {
         self.save_reading_position();
         self.save_chat_history();
         self.message_motion = Default::default();
-        self.message_reader.update(cx, |reader, cx| reader.dismiss(cx));
+        self.message_reader
+            .update(cx, |reader, cx| reader.dismiss(cx));
         self.browser
             .update(cx, |panel, cx| panel.close_native_page("message", cx));
         self.selected_session = Some(id.to_owned());
@@ -835,7 +886,11 @@ impl RootView {
             .find(|s| Some(&s.session_id) == self.selected_session.as_ref())
             .is_some_and(zork_client_core::conversation::can_send)
     }
-    fn send_composer(&mut self, origin: zork_ui::components::liquid::departure::Origin, cx: &mut Context<Self>) {
+    fn send_composer(
+        &mut self,
+        origin: zork_ui::components::liquid::departure::Origin,
+        cx: &mut Context<Self>,
+    ) {
         if self.preparing_files > 0 {
             return;
         }
@@ -926,10 +981,25 @@ impl Render for RootView {
             window.focus(&focus_handle, cx);
         }
 
-        if let Some((source, bounds, focus)) = self.pending_reader_selection.take().filter(|(source, _, _)| Some(&source.session_id) == self.selected_session.as_ref()) {
-            self.comment_editor.update(cx, |editor, cx| editor.open_at(zork_ui::components::comments::EditorRequest {
-                source: source.clone(), editing: None, text: String::new(), toolbar: true,
-            }, bounds, Some(focus), window, cx));
+        if let Some((source, bounds, focus)) = self
+            .pending_reader_selection
+            .take()
+            .filter(|(source, _, _)| Some(&source.session_id) == self.selected_session.as_ref())
+        {
+            self.comment_editor.update(cx, |editor, cx| {
+                editor.open_at(
+                    zork_ui::components::comments::EditorRequest {
+                        source: source.clone(),
+                        editing: None,
+                        text: String::new(),
+                        toolbar: true,
+                    },
+                    bounds,
+                    Some(focus),
+                    window,
+                    cx,
+                )
+            });
             self.comment_popover = Some(comments::CommentPopover { source });
         }
         self.focus_artifact_preview(window, cx);
@@ -1262,15 +1332,34 @@ impl RootView {
 
     fn render_panel_tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
         self.configure_conversation_files(cx);
-        let members = if self.can_send_selected() { vec![] } else {
-            self.conversation_members().into_iter().map(|member| zork_ui::conversation_toolbar::Member {
-                id: member.id, name: member.name, avatar: member.avatar,
-            }).collect()
+        let members = if self.can_send_selected() {
+            vec![]
+        } else {
+            self.conversation_members()
+                .into_iter()
+                .map(|member| zork_ui::conversation_toolbar::Member {
+                    id: member.id,
+                    name: member.name,
+                    avatar: member.avatar,
+                })
+                .collect()
         };
-        zork_ui::conversation_toolbar::render(members, self.files_menu.clone(), self.panel_tools_right_inset(cx), self.locale.text("history_title").into(), cx,
+        zork_ui::conversation_toolbar::render(
+            members,
+            self.files_menu.clone(),
+            self.panel_tools_right_inset(cx),
+            self.locale.text("history_title").into(),
+            cx,
             |v, id, cx| {
-                if let Some(member) = v.conversation_members().into_iter().find(|member| member.id == id) { v.toggle_history(&member.session_id, cx); }
-            })
+                if let Some(member) = v
+                    .conversation_members()
+                    .into_iter()
+                    .find(|member| member.id == id)
+                {
+                    v.toggle_history(&member.session_id, cx);
+                }
+            },
+        )
     }
 
     fn render_transcript(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1560,14 +1649,33 @@ impl RootView {
         });
 
         let history = if item_count == 0 && !has_activity {
-            zork_ui::components::message_placeholder::render(zork_ui::components::message_placeholder::Data {
-                loading: self.messages_loading,
-                message: self.locale.text(if self.messages_loading { "loading_messages" }
-                    else if !self.agent_online && self.connection_error.is_some() { "device_no_cached_messages" }
-                    else if self.connection_error.is_some() { "task_unavailable" }
-                    else if self.messages_failed { "messages_load_failed" } else { "waiting_first_update" }).into(),
-                older: self.has_older.then(|| (self.locale.text("load_earlier").to_owned(), !self.loading_older)),
-            }, cx, |view, cx| view.load_older(cx))
+            zork_ui::components::message_placeholder::render(
+                zork_ui::components::message_placeholder::Data {
+                    loading: self.messages_loading,
+                    message: self
+                        .locale
+                        .text(if self.messages_loading {
+                            "loading_messages"
+                        } else if !self.agent_online && self.connection_error.is_some() {
+                            "device_no_cached_messages"
+                        } else if self.connection_error.is_some() {
+                            "task_unavailable"
+                        } else if self.messages_failed {
+                            "messages_load_failed"
+                        } else {
+                            "waiting_first_update"
+                        })
+                        .into(),
+                    older: self.has_older.then(|| {
+                        (
+                            self.locale.text("load_earlier").to_owned(),
+                            !self.loading_older,
+                        )
+                    }),
+                },
+                cx,
+                |view, cx| view.load_older(cx),
+            )
         } else {
             div()
                 .flex_1()
@@ -1614,15 +1722,20 @@ impl RootView {
             .items_center()
             .when(self.message_motion.unread > 0, |frame| {
                 frame.child(
-                    crate::desktop::ui::quiet_button("messages-new", "", true, crate::desktop::ui::IconButtonSize::Standard)
-                        .mb_2()
-                        .px_3()
-                        .py_1()
-                        .h_auto()
-                        .text_size(px(12.))
-                        .child(self.locale.text("messages_new"))
-                        .on_click(cx.listener(|v, _, _, cx| v.animate_message_tail(cx)))
-                        .automation(AutomationRole::Button, self.locale.text("messages_new")),
+                    crate::desktop::ui::quiet_button(
+                        "messages-new",
+                        "",
+                        true,
+                        crate::desktop::ui::IconButtonSize::Standard,
+                    )
+                    .mb_2()
+                    .px_3()
+                    .py_1()
+                    .h_auto()
+                    .text_size(px(12.))
+                    .child(self.locale.text("messages_new"))
+                    .on_click(cx.listener(|v, _, _, cx| v.animate_message_tail(cx)))
+                    .automation(AutomationRole::Button, self.locale.text("messages_new")),
                 )
             })
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
@@ -1826,50 +1939,60 @@ fn render_line(
     let expand_document = cached.clone();
     let expand_root = reader_root.clone();
     zork_ui::components::message_row::Row {
-        index, user: *role == Role::User, document, content_width, selection,
-        preview_limit, expanded,
+        index,
+        user: *role == Role::User,
+        document,
+        content_width,
+        selection,
+        preview_limit,
+        expanded,
         text: zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
         reader_source,
         author_is_agent: metadata.author_agent_id.is_some(),
         avatar: metadata.author_avatar.as_deref(),
-        author_name: metadata.author_name.clone(), device,
+        author_name: metadata.author_name.clone(),
+        device,
         time: metadata.created_at.as_ref().map(|time| {
             chrono::DateTime::parse_from_rfc3339(time)
                 .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
                 .unwrap_or_else(|_| time.clone())
         }),
-    }.render(window, move |_, cx| {
-                    let cached = expand_document.clone();
-                    let root = expand_root.clone();
-                    cx.defer(move |cx| {
-                        let _ = root.update(cx, |v, cx| {
-                            let was_following = v.transcript_list.is_following_tail();
-                            let mut anchor = v.transcript_list.logical_scroll_top();
-                            let expanded = !cached.expanded.get();
-                            cached.expanded.set(expanded);
-                            v.message_motion.scroll = None;
-                            v.transcript_selection.borrow_mut().clear();
-                            if !expanded && anchor.item_ix == index {
-                                anchor.offset_in_item = px(0.);
-                            }
-                            v.transcript_list.splice(index..index + 1, 1);
-                            if was_following {
-                                // Preserve tail-following across aperture height
-                                // changes instead of freezing with splice+scroll_to
-                                // which stops following via `scroll_to`.
-                                v.transcript_list.set_follow_mode(FollowMode::Tail);
-                                v.transcript_list.scroll_to_end();
-                            } else {
-                                v.transcript_list.scroll_to(anchor);
-                            }
-                            zork_ui::components::region::invalidate(cx, &["transcript"]);
-                        });
-                    });
-    }, move |_, cx| {
-        let _ = reader_root.update(cx, |v, cx| v.open_message_reader(index, cx));
-    })
+    }
+    .render(
+        window,
+        move |_, cx| {
+            let cached = expand_document.clone();
+            let root = expand_root.clone();
+            cx.defer(move |cx| {
+                let _ = root.update(cx, |v, cx| {
+                    let was_following = v.transcript_list.is_following_tail();
+                    let mut anchor = v.transcript_list.logical_scroll_top();
+                    let expanded = !cached.expanded.get();
+                    cached.expanded.set(expanded);
+                    v.message_motion.scroll = None;
+                    v.transcript_selection.borrow_mut().clear();
+                    if !expanded && anchor.item_ix == index {
+                        anchor.offset_in_item = px(0.);
+                    }
+                    v.transcript_list.splice(index..index + 1, 1);
+                    if was_following {
+                        // Preserve tail-following across aperture height
+                        // changes instead of freezing with splice+scroll_to
+                        // which stops following via `scroll_to`.
+                        v.transcript_list.set_follow_mode(FollowMode::Tail);
+                        v.transcript_list.scroll_to_end();
+                    } else {
+                        v.transcript_list.scroll_to(anchor);
+                    }
+                    zork_ui::components::region::invalidate(cx, &["transcript"]);
+                });
+            });
+        },
+        move |_, cx| {
+            let _ = reader_root.update(cx, |v, cx| v.open_message_reader(index, cx));
+        },
+    )
 }
-
 
 fn agent_status_label(status: &AgentStatus, locale: Locale) -> String {
     match status {

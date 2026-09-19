@@ -33,7 +33,12 @@ pub(crate) use zork_client_core::preferences::{MESSAGE_PREVIEW_MAX, MESSAGE_PREV
 
 #[cfg(test)]
 fn dragged_preview_height(start: u32, delta: f32) -> u32 {
-    zork_ui::settings::appearance::dragged_height(start, delta, MESSAGE_PREVIEW_MIN, MESSAGE_PREVIEW_MAX)
+    zork_ui::settings::appearance::dragged_height(
+        start,
+        delta,
+        MESSAGE_PREVIEW_MIN,
+        MESSAGE_PREVIEW_MAX,
+    )
 }
 
 pub(crate) fn load_message_preview_height(store: &super::store::ClientStore) -> u32 {
@@ -54,11 +59,18 @@ impl DesktopRoot {
         self.client_settings.reset = (*updates.snapshot()).clone();
         self.client_settings.reset_updates = Some(cx.spawn(async move |this, cx| {
             while let Some(snapshot) = updates.changed().await {
-                if this.update(cx, |view, cx| {
-                    view.client_settings.reset = (*snapshot).clone();
-                    if snapshot.phase == zork_client_core::data_reset::Phase::Restarting { cx.quit(); }
-                    cx.notify();
-                }).is_err() { return; }
+                if this
+                    .update(cx, |view, cx| {
+                        view.client_settings.reset = (*snapshot).clone();
+                        if snapshot.phase == zork_client_core::data_reset::Phase::Restarting {
+                            cx.quit();
+                        }
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    return;
+                }
             }
         }));
     }
@@ -119,13 +131,29 @@ impl DesktopRoot {
         };
         let content = match state.page {
             Page::Appearance => {
-                let data = zork_ui::settings::appearance::Data { height: state.message_preview_height,
-                    automatic: 240, minimum: MESSAGE_PREVIEW_MIN, maximum: MESSAGE_PREVIEW_MAX };
-                let text = zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
-                let view = if let Some(view) = &state.appearance { view.clone() } else {
-                    let view = cx.new(|cx| zork_ui::settings::appearance::Appearance::new(data, text.clone(), cx));
-                    cx.subscribe(&view, |v, _, event: &zork_ui::settings::appearance::Changed, cx| v.save_message_preview_height(event.0, cx)).detach();
-                    self.client_settings.appearance = Some(view.clone()); view
+                let data = zork_ui::settings::appearance::Data {
+                    height: state.message_preview_height,
+                    automatic: 240,
+                    minimum: MESSAGE_PREVIEW_MIN,
+                    maximum: MESSAGE_PREVIEW_MAX,
+                };
+                let text =
+                    zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
+                let view = if let Some(view) = &state.appearance {
+                    view.clone()
+                } else {
+                    let view = cx.new(|cx| {
+                        zork_ui::settings::appearance::Appearance::new(data, text.clone(), cx)
+                    });
+                    cx.subscribe(
+                        &view,
+                        |v, _, event: &zork_ui::settings::appearance::Changed, cx| {
+                            v.save_message_preview_height(event.0, cx)
+                        },
+                    )
+                    .detach();
+                    self.client_settings.appearance = Some(view.clone());
+                    view
                 };
                 view.update(cx, |v, cx| v.configure(data, text, cx));
                 div().child(view)
@@ -133,12 +161,24 @@ impl DesktopRoot {
             Page::Notifications => self.render_notification_settings(cx),
             Page::Account => self.render_account(cx),
             Page::Data => {
-                let data = zork_ui::settings::data::Data { busy: state.reset.busy(), error: state.reset.error.clone() };
-                let text = zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
-                let view = if let Some(view) = &state.data { view.clone() } else {
-                    let view = cx.new(|cx| zork_ui::settings::data::DataSettings::new(data.clone(), text.clone(), cx));
-                    cx.subscribe(&view, |v, _, _: &zork_ui::settings::data::Confirmed, _| v.source.clear_data(true)).detach();
-                    self.client_settings.data = Some(view.clone()); view
+                let data = zork_ui::settings::data::Data {
+                    busy: state.reset.busy(),
+                    error: state.reset.error.clone(),
+                };
+                let text =
+                    zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
+                let view = if let Some(view) = &state.data {
+                    view.clone()
+                } else {
+                    let view = cx.new(|cx| {
+                        zork_ui::settings::data::DataSettings::new(data.clone(), text.clone(), cx)
+                    });
+                    cx.subscribe(&view, |v, _, _: &zork_ui::settings::data::Confirmed, _| {
+                        v.source.clear_data(true)
+                    })
+                    .detach();
+                    self.client_settings.data = Some(view.clone());
+                    view
                 };
                 view.update(cx, |v, cx| v.configure(data, text, cx));
                 div().child(view)

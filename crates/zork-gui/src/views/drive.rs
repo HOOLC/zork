@@ -169,7 +169,11 @@ impl RootView {
     }
 
     pub(super) fn set_conversation_files_open(&mut self, open: bool) {
-        self.drive.files_session = if open { self.selected_session.clone() } else { None };
+        self.drive.files_session = if open {
+            self.selected_session.clone()
+        } else {
+            None
+        };
     }
     pub(super) fn sync_conversation_files(&mut self, cx: &mut Context<Self>) {
         if self.drive.files_session != self.selected_session {
@@ -183,16 +187,20 @@ impl RootView {
         self.drive.files_session.take().is_some()
     }
 
-    pub(super) fn configure_conversation_files(
-        &self,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn configure_conversation_files(&self, cx: &mut Context<Self>) {
         let contents = self.conversation_contents();
         let pages = self.content_rows(contents.pages.clone(), cx);
         let files = self.content_rows(contents.files.clone(), cx);
         let locale = self.locale;
-        self.files_menu.update(cx, |menu, cx| menu.configure(pages, files,
-            zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())), 384_f32.min(self.composer_surface_width), cx));
+        self.files_menu.update(cx, |menu, cx| {
+            menu.configure(
+                pages,
+                files,
+                zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
+                384_f32.min(self.composer_surface_width),
+                cx,
+            )
+        });
     }
     pub(super) fn focus_artifact_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_preview_focus(window, cx);

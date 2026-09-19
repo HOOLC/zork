@@ -12,7 +12,7 @@ use tracing::{info, warn};
 use ulid::Ulid;
 
 use crate::config::{now_rfc3339, RuntimeConfig};
-use crate::db::{StationDb, JobRow};
+use crate::db::{JobRow, StationDb};
 
 const MAX_RUNTIME_MS: u64 = 12 * 60 * 60 * 1000;
 

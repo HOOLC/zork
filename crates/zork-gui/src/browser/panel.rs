@@ -215,7 +215,11 @@ impl BrowserPanel {
             panel_resizing: false,
             resize_offset: 0.,
             resize_max_width: f32::MAX,
-            chrome: zork_ui::browser_chrome::Chrome::new(address.clone(), zork_ui::resources::Text(Rc::new(|key| Locale::default().text(key).into())), cx),
+            chrome: zork_ui::browser_chrome::Chrome::new(
+                address.clone(),
+                zork_ui::resources::Text(Rc::new(|key| Locale::default().text(key).into())),
+                cx,
+            ),
             connection: None,
             grants: HashMap::new(),
             grant_connected: false,

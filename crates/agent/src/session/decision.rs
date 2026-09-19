@@ -367,9 +367,13 @@ mod tests {
                 provider_retry_limit: 10,
                 context_attempt_limit: 3,
             };
-            assert!(matches!(decide(&state, &world), Decision::FinishTurn {
-                outcome: TurnOutcome::Failed, ..
-            }));
+            assert!(matches!(
+                decide(&state, &world),
+                Decision::FinishTurn {
+                    outcome: TurnOutcome::Failed,
+                    ..
+                }
+            ));
         }
     }
 

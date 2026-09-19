@@ -170,19 +170,15 @@ mod listing_tests {
             .unwrap();
         assert_eq!(second["entries"].as_array().unwrap().len(), 40);
         let other = tempfile::tempdir().unwrap();
-        assert!(
-            files
-                .clone()
-                .list_page_async(other.path().into(), Some(cursor.clone()), 100)
-                .await
-                .is_err()
-        );
+        assert!(files
+            .clone()
+            .list_page_async(other.path().into(), Some(cursor.clone()), 100)
+            .await
+            .is_err());
         std::fs::write(root.path().join("new.txt"), b"new").unwrap();
-        assert!(
-            files
-                .list_page_async(root.path().into(), Some(cursor), 100)
-                .await
-                .is_err()
-        );
+        assert!(files
+            .list_page_async(root.path().into(), Some(cursor), 100)
+            .await
+            .is_err());
     }
 }

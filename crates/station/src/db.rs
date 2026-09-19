@@ -267,7 +267,8 @@ impl StationDb {
     fn initialize_schema(&self) -> Result<()> {
         {
             let mut connection = self.conn.lock().expect("db mutex");
-            let conn = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let conn =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             conn.execute_batch(
                 r#"
             CREATE TABLE IF NOT EXISTS sessions (
