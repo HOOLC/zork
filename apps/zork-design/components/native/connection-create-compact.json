@@ -15,19 +15,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 210.0
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 210.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 105.0
       },
       "actions": [
@@ -95,19 +95,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 773.0,
+        "x": 708.0,
         "y": 39.0,
-        "width": 93.0,
+        "width": 103.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 773.0,
+        "x": 708.0,
         "y": 39.0,
-        "width": 93.0,
+        "width": 103.0,
         "height": 32.0
       },
       "center": {
-        "x": 819.5,
+        "x": 759.5,
         "y": 55.0
       },
       "actions": [
@@ -122,19 +122,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 274.0,
+        "x": 89.0,
         "y": 118.0,
         "width": 40.0,
         "height": 40.0
       },
       "visible_bounds": {
-        "x": 274.0,
+        "x": 89.0,
         "y": 118.0,
         "width": 40.0,
         "height": 40.0
       },
       "center": {
-        "x": 294.0,
+        "x": 109.0,
         "y": 138.0
       },
       "actions": [
@@ -148,20 +148,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 534.0,
-        "y": 452.0,
-        "width": 59.0,
+        "x": 538.0,
+        "y": 448.0,
+        "width": 57.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 534.0,
-        "y": 452.0,
-        "width": 59.0,
+        "x": 538.0,
+        "y": 448.0,
+        "width": 57.0,
         "height": 32.0
       },
       "center": {
-        "x": 563.5,
-        "y": 468.0
+        "x": 566.5,
+        "y": 464.0
       },
       "actions": [
         "click",
@@ -176,15 +176,15 @@
       "visible": true,
       "bounds": {
         "x": 180.0,
-        "y": 92.0,
+        "y": 96.0,
         "width": 540.0,
-        "height": 416.0
+        "height": 408.0
       },
       "visible_bounds": {
         "x": 180.0,
-        "y": 92.0,
+        "y": 96.0,
         "width": 540.0,
-        "height": 416.0
+        "height": 408.0
       },
       "center": {
         "x": 450.0,
@@ -202,19 +202,19 @@
       "visible": true,
       "bounds": {
         "x": 664.0,
-        "y": 114.0,
+        "y": 118.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 664.0,
-        "y": 114.0,
+        "y": 118.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 680.0,
-        "y": 130.0
+        "y": 134.0
       },
       "actions": [
         "click",
@@ -228,20 +228,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 180.0,
-        "y": 432.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 204.0,
+        "y": 448.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "visible_bounds": {
-        "x": 180.0,
-        "y": 432.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 204.0,
+        "y": 448.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 470.0
+        "y": 464.0
       },
       "actions": [
         "move"
@@ -254,19 +254,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 262.0,
+        "x": 77.0,
         "y": 98.0,
-        "width": 616.0,
+        "width": 746.0,
         "height": 80.0
       },
       "visible_bounds": {
-        "x": 262.0,
+        "x": 77.0,
         "y": 98.0,
-        "width": 616.0,
+        "width": 746.0,
         "height": 80.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 138.0
       },
       "actions": [
@@ -282,19 +282,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 388.0,
+        "y": 384.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 388.0,
+        "y": 384.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 404.0
+        "y": 400.0
       },
       "actions": [
         "click",
@@ -310,19 +310,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 314.0,
+        "y": 310.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 314.0,
+        "y": 310.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 330.0
+        "y": 326.0
       },
       "actions": [
         "click",
@@ -336,19 +336,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 326.0,
+        "x": 141.0,
         "y": 150.5,
-        "width": 425.0,
+        "width": 555.0,
         "height": 16.0
       },
       "visible_bounds": {
-        "x": 326.0,
+        "x": 141.0,
         "y": 150.5,
-        "width": 425.0,
+        "width": 555.0,
         "height": 16.0
       },
       "center": {
-        "x": 538.5,
+        "x": 418.5,
         "y": 158.5
       },
       "actions": [
@@ -362,20 +362,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 601.0,
-        "y": 452.0,
-        "width": 95.0,
+        "x": 603.0,
+        "y": 448.0,
+        "width": 93.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 601.0,
-        "y": 452.0,
-        "width": 95.0,
+        "x": 603.0,
+        "y": 448.0,
+        "width": 93.0,
         "height": 32.0
       },
       "center": {
-        "x": 648.5,
-        "y": 468.0
+        "x": 649.5,
+        "y": 464.0
       },
       "actions": [
         "click",

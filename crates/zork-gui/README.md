@@ -11,10 +11,11 @@ Device folds are local navigation state; tasks remain directly visible under eac
 
 The right panel keeps its tabs, active page, open/expanded state, width and address draft per device/conversation during the client session. Switching chats restores that chat’s panel, including its history view and reading position; closing a tab does not affect other chats. Inactive history views suspend subscriptions and clocks until revisited.
 
-Visible history rows and the timeline hover card observe changes to their own
-entry IDs. Relative labels wake at their next displayed boundary; running
-durations and timeline spans update each second. Layout changes, including wheel
-zoom and pan, recheck the stationary pointer against the newly laid out spans.
+Visible history rows observe changes to their own entry IDs. Completed records
+show absolute clocks only inside disclosures; visible thinking and wait labels
+share the session's calibrated clock. Inline disclosures preserve the reading
+anchor until the reader returns to the latest record. Ordinary operations group
+without hiding their failure count or the latest active member.
 Member previews share a floating surface above the avatar group and retain the
 member's own conversation feed while open. Navigation and floating surfaces use
 the shared distance-adaptive slide curve: near targets remain quick, long travel
@@ -149,7 +150,7 @@ A visible assistant reply exists only after the Agent explicitly invokes
   inserts a newline.
 - `MessageDocument` parses the coding-message subset of GFM and renders
   headings, emphasis, strike-through, inline/fenced code, lists/task lists,
-  block quotes, rules, tables, and links with the shared Cue palette.
+  block quotes, rules, tables, and links with the shared Zork palette.
   Fenced code keeps its language label, cached syntax colors and horizontal
   scrolling in both selectable messages and component previews. Inline code
   uses a subdued monospace treatment without a rectangular background.

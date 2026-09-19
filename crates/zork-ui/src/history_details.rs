@@ -1,7 +1,7 @@
 //! Complete history entry/agent dialog. The host supplies projected data and actions.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    components::{json_tree, liquid::overlay::SourceBinding},
+    components::liquid::overlay::SourceBinding,
     controls as ui,
     design::CUE_UI,
     history::Entry,
@@ -30,8 +30,6 @@ struct Data {
     key: String,
     presentation: Presentation,
     resource: Option<Resource>,
-    tree: json_tree::State,
-    changed: Rc<dyn Fn(&mut App)>,
 }
 pub struct Closed;
 pub struct Details {
@@ -58,9 +56,7 @@ impl Details {
         key: String,
         presentation: Option<Presentation>,
         resource: Option<Resource>,
-        tree: json_tree::State,
         text: Text,
-        changed: Rc<dyn Fn(&mut App)>,
         cx: &mut Context<Self>,
     ) {
         let updated = self
@@ -68,13 +64,11 @@ impl Details {
             .as_ref()
             .map(|data| (&data.key, &data.presentation))
             != presentation.as_ref().map(|p| (&key, p))
-            || self.text.text("history_raw") != text.text("history_raw");
+            || self.text.text("history_summary_details") != text.text("history_summary_details");
         self.data = presentation.map(|presentation| Data {
             key,
             presentation,
             resource,
-            tree,
-            changed,
         });
         self.text = text;
         if updated {
@@ -125,51 +119,77 @@ impl Render for Details {
                 )
                 .when_some(role.clone(), |v, role| v.child(div().mt_2().child(role)))
                 .into_any_element(),
-            Presentation::Entry(entry) => div()
-                .id("history-detail-scroll")
-                .max_h(px((window.viewport_size().height.as_f32() - 180.).max(120.)))
-                .overflow_y_scroll()
-                .p_3()
-                .text_size(px(12.))
-                .line_height(px(18.))
-                .child(div().mb_3().child(entry.summary.clone()))
-                .when_some(data.resource.clone(), |body, resource| {
-                    let open = resource.open;
-                    body.child(
-                        resource
-                            .source
-                            .bind(
-                                ui::button(
-                                    "history-resource-details",
-                                    resource.label.clone(),
-                                    false,
-                                    true,
-                                )
-                                .on_click(cx.listener(move |_, _, _, cx| open(cx))),
-                                resource.label.clone(),
-                                ui::ActionStyle::default(),
+            Presentation::Entry(entry) => {
+                let projection = crate::history::activity::Projection::new([entry]);
+                let file = projection
+                    .activities
+                    .first()
+                    .and_then(|a| a.details.files.first());
+                div()
+                    .id("history-detail-scroll")
+                    .max_h(px((window.viewport_size().height.as_f32() - 180.).max(120.)))
+                    .overflow_y_scroll()
+                    .p_3()
+                    .text_size(px(12.))
+                    .line_height(px(18.))
+                    .when_some(entry.start.or(entry.end), |v, at| {
+                        // Cue's record clock: absolute, 9px, tertiary.
+                        v.child(
+                            div()
+                                .mb(px(6.))
+                                .text_size(px(9.))
+                                .text_color(rgb(CUE_UI.palette.subtle))
+                                .child(crate::history::clock(Some(at))),
+                        )
+                    })
+                    .child(if let Some(file) = file {
+                        div()
+                            .mb_3()
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(rgb(CUE_UI.palette.subtle))
+                                    .mb_3()
+                                    .child(file.path.clone()),
                             )
-                            .automation(AutomationRole::Button, resource.label),
-                    )
-                })
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(rgb(CUE_UI.palette.muted))
-                        .child(self.text.text("history_raw")),
-                )
-                .children(entry.raw.iter().enumerate().map(|(n, value)| {
-                    json_tree::render(
-                        data.tree.clone(),
-                        data.changed.clone(),
-                        value,
-                        format!("{}:{n}", entry.id),
-                        0,
-                        None,
-                        cx,
-                    )
-                }))
-                .into_any_element(),
+                            .when_some(file.previous.clone(), |v, previous| {
+                                v.child(
+                                    div()
+                                        .font_family(crate::assets::CODE_FONT_FAMILY)
+                                        .child(previous),
+                                )
+                            })
+                            .child(
+                                div()
+                                    .font_family(crate::assets::CODE_FONT_FAMILY)
+                                    .text_size(px(11.))
+                                    .line_height(px(19.8))
+                                    .child(file.content.clone()),
+                            )
+                    } else {
+                        div().mb_3().child(entry.summary.clone())
+                    })
+                    .when_some(data.resource.clone(), |body, resource| {
+                        let open = resource.open;
+                        body.child(
+                            resource
+                                .source
+                                .bind(
+                                    ui::button(
+                                        "history-resource-details",
+                                        resource.label.clone(),
+                                        false,
+                                        true,
+                                    )
+                                    .on_click(cx.listener(move |_, _, _, cx| open(cx))),
+                                    resource.label.clone(),
+                                    ui::ActionStyle::default(),
+                                )
+                                .automation(AutomationRole::Button, resource.label),
+                        )
+                    })
+                    .into_any_element()
+            }
         };
         let title = self
             .text

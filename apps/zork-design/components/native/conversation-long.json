@@ -1,0 +1,92 @@
+{
+  "api_version": "v1",
+  "revision": 12,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 900.0,
+    "height": 700.0
+  },
+  "elements": [
+    {
+      "id": "message-expand-0",
+      "role": "button",
+      "label": "展开全文",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 392.0,
+        "y": 258.0,
+        "width": 49.0,
+        "height": 44.0
+      },
+      "visible_bounds": {
+        "x": 392.0,
+        "y": 258.0,
+        "width": 49.0,
+        "height": 44.0
+      },
+      "center": {
+        "x": 416.5,
+        "y": 280.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "message-full-0",
+      "role": "button",
+      "label": "弹窗查看",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 789.0,
+        "y": 258.0,
+        "width": 71.0,
+        "height": 44.0
+      },
+      "visible_bounds": {
+        "x": 789.0,
+        "y": 258.0,
+        "width": 71.0,
+        "height": 44.0
+      },
+      "center": {
+        "x": 824.5,
+        "y": 280.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 700.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 700.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 350.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

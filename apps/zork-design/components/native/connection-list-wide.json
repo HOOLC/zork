@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 12,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,20 +15,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 204.5
+        "height": 210.0
       },
       "visible_bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 204.5
+        "height": 210.0
       },
       "center": {
-        "x": 760.0,
-        "y": 102.25
+        "x": 640.0,
+        "y": 105.0
       },
       "actions": [
         "move"
@@ -41,23 +41,49 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 1028.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 898.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 1028.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 898.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "center": {
-        "x": 1074.5,
-        "y": 56.0
+        "x": 949.5,
+        "y": 55.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-avatar-fixture",
+      "role": "status",
+      "label": "openai",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 279.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "visible_bounds": {
+        "x": 279.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "center": {
+        "x": 299.0,
+        "y": 138.0
+      },
+      "actions": [
         "move"
       ]
     },
@@ -68,23 +94,49 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 399.0,
-        "y": 100.5,
-        "width": 722.0,
-        "height": 72.0
+        "x": 267.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "visible_bounds": {
-        "x": 399.0,
-        "y": 100.5,
-        "width": 722.0,
-        "height": 72.0
+        "x": 267.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "center": {
-        "x": 760.0,
-        "y": 136.5
+        "x": 640.0,
+        "y": 138.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-quota-summary-fixture",
+      "role": "status",
+      "label": "5小时 剩余 72% · 7天 剩余 38%",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 331.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "visible_bounds": {
+        "x": 331.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "center": {
+        "x": 608.5,
+        "y": 158.5
+      },
+      "actions": [
         "move"
       ]
     },

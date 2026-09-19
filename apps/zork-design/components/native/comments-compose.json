@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 13,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -9,26 +9,53 @@
   },
   "elements": [
     {
-      "id": "comments-compose-comment-input",
-      "role": "text_input",
-      "label": "针对选中文字评论",
+      "id": "comments-compose-add-comment",
+      "role": "button",
+      "label": "添加评论",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 45.0,
-        "y": 120.5,
-        "width": 278.0,
-        "height": 64.0
+        "x": 24.0,
+        "y": 24.0,
+        "width": 512.0,
+        "height": 32.0
       },
       "visible_bounds": {
-        "x": 45.0,
-        "y": 120.5,
-        "width": 278.0,
-        "height": 64.0
+        "x": 24.0,
+        "y": 24.0,
+        "width": 512.0,
+        "height": 32.0
       },
       "center": {
-        "x": 184.0,
-        "y": 152.5
+        "x": 280.0,
+        "y": 40.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "comments-compose-comment-input",
+      "role": "text_input",
+      "label": "评论内容",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 40.0,
+        "y": 148.0,
+        "width": 272.0,
+        "height": 76.0
+      },
+      "visible_bounds": {
+        "x": 40.0,
+        "y": 148.0,
+        "width": 272.0,
+        "height": 76.0
+      },
+      "center": {
+        "x": 176.0,
+        "y": 186.0
       },
       "actions": [
         "click",
@@ -43,20 +70,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 291.0,
-        "y": 45.0,
-        "width": 32.0,
-        "height": 32.0
+        "x": 288.0,
+        "y": 80.0,
+        "width": 24.0,
+        "height": 24.0
       },
       "visible_bounds": {
-        "x": 291.0,
-        "y": 45.0,
-        "width": 32.0,
-        "height": 32.0
+        "x": 288.0,
+        "y": 80.0,
+        "width": 24.0,
+        "height": 24.0
       },
       "center": {
-        "x": 307.0,
-        "y": 61.0
+        "x": 300.0,
+        "y": 92.0
       },
       "actions": [
         "click",
@@ -66,24 +93,24 @@
     {
       "id": "comments-compose-comment-queue-add",
       "role": "button",
-      "label": "添加到输入框",
+      "label": "加入评论队列",
       "enabled": false,
       "visible": true,
       "bounds": {
-        "x": 240.0,
-        "y": 192.5,
-        "width": 83.0,
+        "x": 40.0,
+        "y": 236.0,
+        "width": 128.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 240.0,
-        "y": 192.5,
-        "width": 83.0,
+        "x": 40.0,
+        "y": 236.0,
+        "width": 128.0,
         "height": 32.0
       },
       "center": {
-        "x": 281.5,
-        "y": 208.5
+        "x": 104.0,
+        "y": 252.0
       },
       "actions": [
         "click",
@@ -97,20 +124,72 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 45.0,
-        "y": 85.0,
-        "width": 278.0,
-        "height": 27.5
+        "x": 40.0,
+        "y": 116.0,
+        "width": 272.0,
+        "height": 20.0
       },
       "visible_bounds": {
-        "x": 45.0,
-        "y": 85.0,
-        "width": 278.0,
-        "height": 27.5
+        "x": 40.0,
+        "y": 116.0,
+        "width": 272.0,
+        "height": 20.0
       },
       "center": {
-        "x": 184.0,
-        "y": 98.75
+        "x": 176.0,
+        "y": 126.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "comments-compose-selection-flyout",
+      "role": "status",
+      "label": "选中文字操作",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 40.0,
+        "y": 80.0,
+        "width": 272.0,
+        "height": 188.0
+      },
+      "visible_bounds": {
+        "x": 40.0,
+        "y": 80.0,
+        "width": 272.0,
+        "height": 188.0
+      },
+      "center": {
+        "x": 176.0,
+        "y": 174.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "comments-compose-selection-flyout-material-content",
+      "role": "status",
+      "label": "内容面板",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 24.0,
+        "y": 64.0,
+        "width": 304.0,
+        "height": 220.0
+      },
+      "visible_bounds": {
+        "x": 24.0,
+        "y": 64.0,
+        "width": 304.0,
+        "height": 220.0
+      },
+      "center": {
+        "x": 176.0,
+        "y": 174.0
       },
       "actions": [
         "move"
@@ -152,17 +231,17 @@
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 221.5
+        "height": 48.0
       },
       "visible_bounds": {
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 221.5
+        "height": 48.0
       },
       "center": {
         "x": 280.0,
-        "y": 134.75
+        "y": 48.0
       },
       "actions": [
         "move"

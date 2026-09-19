@@ -136,7 +136,7 @@ pub fn catalog() -> Vec<Story> {
         (
             "history",
             "执行历史",
-            &["collapsed", "expanded", "empty", "error"][..],
+            &["collapsed", "expanded", "narrow", "empty", "error"][..],
             "crates/zork-ui/src/components/history.rs",
             "history",
         ),
@@ -252,6 +252,9 @@ pub fn catalog() -> Vec<Story> {
             if family == "field" && *state == "error" {
                 story.target = "story-field-surface".into();
             }
+            if family == "navigation" && matches!(*state, "gap" | "fold-open" | "fold-closed") {
+                story.target = "story-component".into();
+            }
             if family == "brand" {
                 story.target = format!("brand-{state}");
             }
@@ -261,6 +264,10 @@ pub fn catalog() -> Vec<Story> {
             }
             if family == "icons" {
                 story.height = 560.;
+            }
+            if family == "history" {
+                story.width = if *state == "narrow" { 320. } else { 560. };
+                story.height = 600.;
             }
             match (family, *state) {
                 ("button", "hover") => story
@@ -426,11 +433,15 @@ impl Render for PrimitiveStory {
         let p = CUE_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
             "interaction" => div().child(self.extra.clone().unwrap()).into_any_element(),
-            "loading" => if state == "button" {
-                ui::busy_button(self.id("loading-button"), "保存中…", true, false, true).into_any_element()
-            } else {
-                crate::components::loading::status(self.id("loading-status"), "正在加载…").into_any_element()
-            },
+            "loading" => {
+                if state == "button" {
+                    ui::busy_button(self.id("loading-button"), "保存中…", true, false, true)
+                        .into_any_element()
+                } else {
+                    crate::components::loading::status(self.id("loading-status"), "正在加载…")
+                        .into_any_element()
+                }
+            }
             "button" => div()
                 .flex()
                 .child(
@@ -446,7 +457,8 @@ impl Render for PrimitiveStory {
                         state != "disabled",
                     )
                     .when(state == "with-icon", |v| {
-                        v.pl(px(12.)).child(ui::icon("icons/plus.svg", 14.).text_color(rgb(p.canvas)))
+                        v.pl(px(12.))
+                            .child(ui::icon("icons/plus.svg", 14.).text_color(rgb(p.canvas)))
                             .child("添加连接")
                     })
                     .when(self.grouped && state == "hover", |v| {
@@ -511,13 +523,28 @@ impl Render for PrimitiveStory {
             .into_any_element(),
             "choice" => crate::components::liquid::controls::deferred_segmented(
                 self.id("choice-active"),
-                ["订阅账号", "API 接入"].into_iter().enumerate().map(|(index, label)| crate::components::liquid::controls::Segment {
-                    id: self.id(&format!("story-choice-{index}")), label: label.into(), disabled: false,
-                }).collect(),
-                vec![], Some(self.selected), crate::components::liquid::controls::SegmentKind::Choice,
-                state != "disabled", CUE_UI.palette.canvas,
-                cx.listener(|v, index: &usize, _, cx| { v.selected = *index; cx.notify(); }),
-            ).into_any_element(),
+                ["订阅账号", "API 接入"]
+                    .into_iter()
+                    .enumerate()
+                    .map(
+                        |(index, label)| crate::components::liquid::controls::Segment {
+                            id: self.id(&format!("story-choice-{index}")),
+                            label: label.into(),
+                            disabled: false,
+                        },
+                    )
+                    .collect(),
+                vec![],
+                Some(self.selected),
+                crate::components::liquid::controls::SegmentKind::Choice,
+                state != "disabled",
+                CUE_UI.palette.canvas,
+                cx.listener(|v, index: &usize, _, cx| {
+                    v.selected = *index;
+                    cx.notify();
+                }),
+            )
+            .into_any_element(),
             "dropdown" => ui::dropdown_with_icons(
                 self.id("story-select"),
                 if state == "empty" {
@@ -696,32 +723,47 @@ impl Render for PrimitiveStory {
                 };
                 if state == "hover" {
                     let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                    let overlay = window.use_keyed_state(self.id("details-overlay"), cx, |_, _| crate::components::tooltip::DetailsOverlay::default());
-                    tabs.surface(tabs.column()
-                        .w(px(240.))
-                        .child(
-                            tabs.tab(self.id("tooltip-leader-trigger"), false)
-                                .child(ui::agent_avatar(Some("fox"), 20.))
-                                .child("产品 Leader")
-                                .automation(AutomationRole::Button, "产品 Leader")
-                                .map(|row| crate::components::tooltip::trigger(row, leader, overlay.clone())),
-                        )
-                        .child(
-                            tabs.tab(self.id("tooltip-task-trigger"), false)
-                                .child(ui::icon("icons/checklist.svg", 16.))
-                                .child("完善导航交互")
-                                .automation(AutomationRole::Button, "完善导航交互")
-                                .map(|row| crate::components::tooltip::trigger(row, task, overlay.clone())),
-                        )
-                        .child(overlay)
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(rgb(p.muted))
-                                .child("悬停查看详情，移开后关闭"),
-                        )
-)
-                        .into_any_element()
+                    let overlay = window.use_keyed_state(self.id("details-overlay"), cx, |_, _| {
+                        crate::components::tooltip::DetailsOverlay::default()
+                    });
+                    tabs.surface(
+                        tabs.column()
+                            .w(px(240.))
+                            .child(
+                                tabs.tab(self.id("tooltip-leader-trigger"), false)
+                                    .child(ui::agent_avatar(Some("fox"), 20.))
+                                    .child("产品 Leader")
+                                    .automation(AutomationRole::Button, "产品 Leader")
+                                    .map(|row| {
+                                        crate::components::tooltip::trigger(
+                                            row,
+                                            leader,
+                                            overlay.clone(),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                tabs.tab(self.id("tooltip-task-trigger"), false)
+                                    .child(ui::icon("icons/checklist.svg", 16.))
+                                    .child("完善导航交互")
+                                    .automation(AutomationRole::Button, "完善导航交互")
+                                    .map(|row| {
+                                        crate::components::tooltip::trigger(
+                                            row,
+                                            task,
+                                            overlay.clone(),
+                                        )
+                                    }),
+                            )
+                            .child(overlay)
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(rgb(p.muted))
+                                    .child("悬停查看详情，移开后关闭"),
+                            ),
+                    )
+                    .into_any_element()
                 } else {
                     if state == "leader" {
                         leader.card()
@@ -801,71 +843,125 @@ impl Render for PrimitiveStory {
             "navigation" if state.starts_with("fold-") => {
                 let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
                 let fold = crate::components::collapse::Collapse::new(
-                    self.id("navigation-fold"), state == "fold-open", 240., window, cx,
+                    self.id("navigation-fold"),
+                    state == "fold-open",
+                    240.,
+                    window,
+                    cx,
                 );
                 let focus = fold.header_focus(cx);
                 let interactive = fold.interactive(cx);
-                let body = fold.mounted(cx).then(|| tabs.column().pt(px(2.))
-                    .children((0..4).map(|i| tabs.tab(self.id(&format!("fold-task-{i}")), i == 1)
-                        .tab_stop(interactive).pl(px(30.)).child(format!("Task {}", i + 1))
-                        .automation(AutomationRole::Button, format!("Task {}", i + 1))))
-                    .into_any_element());
+                let body = fold.mounted(cx).then(|| {
+                    tabs.column()
+                        .pt(px(2.))
+                        .children((0..4).map(|i| {
+                            tabs.tab(self.id(&format!("fold-task-{i}")), i == 1)
+                                .tab_stop(interactive)
+                                .pl(px(30.))
+                                .child(format!("Task {}", i + 1))
+                                .automation(AutomationRole::Button, format!("Task {}", i + 1))
+                        }))
+                        .into_any_element()
+                });
                 let owner = cx.entity().downgrade();
-                tabs.surface(div().w(px(240.)).flex().flex_col()
-                    .child(tabs.tab(self.id("fold-header"), false).track_focus(&focus)
-                        .child(ui::icon("icons/node.svg", 20.)).child("mini1")
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.story.state = if v.story.state == "fold-open" { "fold-closed" } else { "fold-open" }.into();
-                            cx.notify();
-                        })).automation(AutomationRole::Button, "mini1"))
-                    .child(fold.element(body, move |_, cx| {
-                        let _ = owner.update(cx, |_, cx| cx.notify());
-                    }, cx))
-                    .child(tabs.tab(self.id("fold-following"), false)
-                        .child(ui::icon("icons/node.svg", 20.)).child("mini2")
-                        .automation(AutomationRole::Button, "mini2"))
-                ).into_any_element()
+                tabs.surface(
+                    div()
+                        .w(px(240.))
+                        .flex()
+                        .flex_col()
+                        .child(
+                            tabs.tab(self.id("fold-header"), false)
+                                .track_focus(&focus)
+                                .child(ui::icon("icons/node.svg", 20.))
+                                .child("mini1")
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.story.state = if v.story.state == "fold-open" {
+                                        "fold-closed"
+                                    } else {
+                                        "fold-open"
+                                    }
+                                    .into();
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, "mini1"),
+                        )
+                        .child(fold.element(
+                            body,
+                            move |_, cx| {
+                                let _ = owner.update(cx, |_, cx| cx.notify());
+                            },
+                            cx,
+                        ))
+                        .child(
+                            tabs.tab(self.id("fold-following"), false)
+                                .child(ui::icon("icons/node.svg", 20.))
+                                .child("mini2")
+                                .automation(AutomationRole::Button, "mini2"),
+                        ),
+                )
+                .into_any_element()
             }
             "navigation" if state == "gap" => {
                 let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                tabs.surface(tabs.column().w(px(240.))
-                    .child(tabs.tab(self.id("gap-tab-first"), self.selected == 0)
-                        .child("外观")
-                        .on_click(cx.listener(|v, _, _, cx| { v.selected = 0; cx.notify(); }))
-                        .automation(AutomationRole::Button, "外观"))
-                    .child(div().h(px(48.)))
-                    .child(tabs.tab(self.id("gap-tab-second"), self.selected == 1)
-                        .child("账号")
-                        .on_click(cx.listener(|v, _, _, cx| { v.selected = 1; cx.notify(); }))
-                        .automation(AutomationRole::Button, "账号")))
-                    .into_any_element()
+                tabs.surface(
+                    tabs.column()
+                        .w(px(240.))
+                        .child(
+                            tabs.tab(self.id("gap-tab-first"), self.selected == 0)
+                                .child("外观")
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.selected = 0;
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, "外观"),
+                        )
+                        .child(div().h(px(48.)))
+                        .child(
+                            tabs.tab(self.id("gap-tab-second"), self.selected == 1)
+                                .child("账号")
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.selected = 1;
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, "账号"),
+                        ),
+                )
+                .into_any_element()
             }
             "navigation" => {
                 let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                tabs.surface(tabs.column()
-                .w(px(240.))
-                .child(
-                    tabs.tab(self.id("story-nav"), state.starts_with("selected"))
-                        .when(self.grouped && matches!(state, "hover" | "selected-hover"), |v| {
-                            v.bg(rgb(crate::design::INTERACTION.neutral_hover))
-                        })
-                        .when(self.grouped && state.ends_with("focus"), |v| v.border_color(rgb(crate::design::INTERACTION.focus_border)))
-                        .child(ui::icon("icons/node.svg", 20.))
-                        .child(div().flex_1().min_w_0().text_ellipsis().child(if state == "long" { "产品设计与研发协作 · 本地工作设备" } else { "mini1" }))
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.story.state = if v.story.state.starts_with("selected") {
-                                "default"
-                            } else {
-                                "selected"
-                            }
-                            .into();
-                            cx.notify();
-                        }))
-                        .automation(AutomationRole::Button, "mini1"),
+                tabs.surface(
+                    tabs.column().w(px(240.)).child(
+                        tabs.tab(self.id("story-nav"), state.starts_with("selected"))
+                            .when(
+                                self.grouped && matches!(state, "hover" | "selected-hover"),
+                                |v| v.bg(rgb(crate::design::INTERACTION.neutral_hover)),
+                            )
+                            .when(self.grouped && state.ends_with("focus"), |v| {
+                                v.border_color(rgb(crate::design::INTERACTION.focus_border))
+                            })
+                            .child(ui::icon("icons/node.svg", 20.))
+                            .child(div().flex_1().min_w_0().text_ellipsis().child(
+                                if state == "long" {
+                                    "产品设计与研发协作 · 本地工作设备"
+                                } else {
+                                    "mini1"
+                                },
+                            ))
+                            .on_click(cx.listener(|v, _, _, cx| {
+                                v.story.state = if v.story.state.starts_with("selected") {
+                                    "default"
+                                } else {
+                                    "selected"
+                                }
+                                .into();
+                                cx.notify();
+                            }))
+                            .automation(AutomationRole::Button, "mini1"),
+                    ),
                 )
-)
                 .into_any_element()
-            },
+            }
             "markdown" if state == "table" => {
                 use crate::components::selection::SelectionContext;
                 let document = message::MessageDocument::parse(

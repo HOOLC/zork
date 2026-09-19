@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 11,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -16,15 +16,15 @@
       "visible": true,
       "bounds": {
         "x": 370.0,
-        "y": 287.0,
+        "y": 291.0,
         "width": 540.0,
-        "height": 226.0
+        "height": 218.0
       },
       "visible_bounds": {
         "x": 370.0,
-        "y": 287.0,
+        "y": 291.0,
         "width": 540.0,
-        "height": 226.0
+        "height": 218.0
       },
       "center": {
         "x": 640.0,
@@ -42,19 +42,19 @@
       "visible": true,
       "bounds": {
         "x": 854.0,
-        "y": 309.0,
+        "y": 313.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 854.0,
-        "y": 309.0,
+        "y": 313.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 870.0,
-        "y": 325.0
+        "y": 329.0
       },
       "actions": [
         "click",
@@ -68,19 +68,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
         "height": 94.0
       },
       "visible_bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
         "height": 94.0
       },
       "center": {
-        "x": 760.0,
+        "x": 640.0,
         "y": 47.0
       },
       "actions": [
@@ -90,7 +90,7 @@
     {
       "id": "mesh-connect-device-tab",
       "role": "button",
-      "label": "连接其它设备 · 已选中",
+      "label": "连接其它设备",
       "enabled": true,
       "visible": true,
       "bounds": {
@@ -149,19 +149,19 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 457.0,
+        "y": 453.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 457.0,
+        "y": 453.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 473.0
+        "y": 469.0
       },
       "actions": [
         "click",

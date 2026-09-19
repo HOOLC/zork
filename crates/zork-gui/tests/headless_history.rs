@@ -22,8 +22,17 @@ fn fixture() -> Vec<Record> {
     let mut rows = vec![record(
         0,
         json!({"kind":"input_appended", "input":{
-        "input_id":"input-0", "request_id":"fixture-user-message", "content":"保留时间线，连续常规操作合并；等待独立显示。", "received_at_ms":NOW-90000}}),
+        "input_id":"input-0", "request_id":"fixture-user-message", "content":"查看执行历史，连续工具操作分组；等待独立显示。", "received_at_ms":NOW-90000}}),
     )];
+    rows.push(record(
+        1,
+        json!({"kind":"step_started","step_id":"reply","purpose":"conversation","started_at_ms":NOW-89000}),
+    ));
+    rows.push(record(
+        2,
+        json!({"kind":"step_completed","step_id":"reply","purpose":"conversation","completed_at_ms":NOW-88000,
+        "assistant_text":"我先读一遍历史投影，再合并连续的操作。历史页现在是 Cue 的活动页：概览在标题下方，记录行按操作分组，等待单独成行，回复是它自己的 Markdown 文档。我会逐行核对投影、分组、时长与绝对时钟，确认展开后仍能看到完整内容，然后把这次对齐的结论记录下来，并把它交给后续的评测与实现。如果记录行丢掉了来源、目标或状态，或者回复的文档被截断，这次对齐就不算完成；所以我在每一轮都重新读一遍投影，确认按时间排序的分组没有把等待错误地合并进常规操作，确认编辑与写入分开计数，确认发送与接收各有自己的措辞。页面的标题、执行记录滚动区、已到 Session 开始处、加载更早记录、正在加载记录和暂时无法加载都保持 Cue 的措辞，概览只统计整个会话的用量，绝不回到某一行。","invocations":[]}),
+    ));
     for (i, name, args, time, state, data) in [
         (
             1,
@@ -68,7 +77,7 @@ fn fixture() -> Vec<Record> {
     ] {
         rows.push(record(i*3, json!({"kind":"step_started","step_id":format!("s{i}"),"purpose":"conversation","started_at_ms":time-1000})));
         rows.push(record(i*3+1, json!({"kind":"step_completed","step_id":format!("s{i}"),"completed_at_ms":time,
-            "assistant_text":"INTERNAL-MODEL-TEXT-MUST-NOT-BE-A-MESSAGE", "invocations":[{
+            "invocations":[{
                 "invocation_id":format!("tool-{i}"),"tool":name,"arguments":args,"started_at_ms":time}]})));
         rows.push(record(i*3+2, json!({"kind":"tool_result","result":{
             "invocation_id":format!("tool-{i}"),"tool":name,"outcome":state,"data":data,"finished_at_ms":time+10}})));
@@ -80,8 +89,7 @@ fn fixture() -> Vec<Record> {
     rows
 }
 fn run(width: f32, height: f32) -> anyhow::Result<()> {
-    // Brand reads the platform preference on render. Keep these endpoint
-    // assertions reduced; the hover phases below explicitly enable motion.
+    // Brand reads the platform preference on render; the page itself is static.
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../artifacts/history-ux/validation/native-{}",
@@ -110,7 +118,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             view.benchmark_replace_messages(
                 vec![zork_gui::views::TranscriptLine::Message {
                     role: zork_gui::api::Role::User,
-                    content: "保留时间线，连续常规操作合并；等待独立显示。".into(),
+                    content: "查看执行历史，连续工具操作分组；等待独立显示。".into(),
                     metadata: serde_json::from_value(
                         json!({"id":"fixture-user-message","author_name":"测试用户"}),
                     )
@@ -142,166 +150,138 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         pump(cx)
     };
     pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     cx.capture_screenshot(window.into())?
         .save(out.join("initial.png"))?;
     std::fs::write(
         out.join("initial.json"),
         serde_json::to_vec_pretty(&driver.snapshot(true))?,
     )?;
-    if std::env::var_os("ZORK_HISTORY_HOVER_CHECK").is_some() {
-        root_view.update(&mut cx, |v, cx| {
-            v.benchmark_story_history(fixture(), NOW, cx)
-        });
-        pump(&mut cx)?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-        cx.update(|cx| cx.set_reduce_motion(false));
-        let output =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/history-hover");
-        std::fs::create_dir_all(&output)?;
-        let snapshot = driver.snapshot(false);
-        std::fs::write(
-            output.join(format!("{width}-initial.json")),
-            serde_json::to_vec_pretty(&snapshot)?,
-        )?;
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-initial.png")))?;
-        let mut bars: Vec<_> = snapshot
+    // Cue's page keeps the overview above the records, the paging state, the
+    // rows and the reply disclosure. These replace the timeline-hover checks: a
+    // page that loses its rows, its state or its disclosure fails here.
+    let page = driver.snapshot(false);
+    let older = page
+        .elements
+        .iter()
+        .find(|e| e.id == "history-older")
+        .expect("the page state control is missing");
+    anyhow::ensure!(!older.enabled, "an idle page offered paging");
+    anyhow::ensure!(
+        page.elements
+            .iter()
+            .filter(|e| e.id.starts_with("history-record-"))
+            .count()
+            >= 3,
+        "the page lost its records"
+    );
+    let disclosure_id = page
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-output-disclosure-") && e.label == "展开更多")
+        .expect("the reply disclosure is missing")
+        .id
+        .clone();
+    let reply_id = page
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影"))
+        .expect("assistant reply is a history row")
+        .id
+        .clone();
+    let reply_label = || {
+        driver
+            .snapshot(false)
+            .elements
+            .into_iter()
+            .find(|e| e.id == reply_id)
+            .expect("assistant reply is a history row")
+            .label
+    };
+    let reply_before = reply_label();
+    std::thread::sleep(Duration::from_millis(1100));
+    cx.advance_clock(Duration::from_millis(1100));
+    pump(&mut cx)?;
+    // Cue stamps the reply with an absolute clock, so the row holds still while
+    // the page keeps ticking; a relative clock would rewrite the line.
+    anyhow::ensure!(
+        reply_label() == reply_before,
+        "the reply row moved without new data: {reply_before} -> {}",
+        reply_label()
+    );
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":disclosure_id}}),
+    )?;
+    // The expanded reply is taller than the narrow window, so its disclosure and
+    // clock sit below the fold there. Their state is what this checks, so read
+    // the snapshot with hidden elements included.
+    let expanded = driver.snapshot(true);
+    anyhow::ensure!(
+        expanded
             .elements
             .iter()
-            .filter(|e| e.id.starts_with("history-bar-") && e.bounds.width > 0.)
-            .collect();
-        bars.sort_by(|a, b| a.bounds.x.total_cmp(&b.bounds.x));
-        let first = bars.first().expect("timeline nodes").bounds.clone();
-        let last = bars.last().expect("timeline nodes").bounds.clone();
-        let move_to = |cx: &mut HeadlessAppContext, x, y| -> anyhow::Result<()> {
-            cx.update_window(window.into(), |_, w, cx| {
-                driver.dispatch(
-                    serde_json::from_value(json!({"type":"move","target":{"x":x,"y":y}}))?,
-                    w,
-                    cx,
-                )
-            })??;
-            Ok(())
-        };
-        let tick = |cx: &mut HeadlessAppContext| -> anyhow::Result<f64> {
-            std::thread::sleep(Duration::from_millis(16));
-            cx.advance_clock(Duration::from_millis(16));
-            cx.run_until_parked();
-            let start = std::time::Instant::now();
-            cx.update_window(window.into(), |_, w, cx| {
-                w.simulate_next_frame(cx);
-            })?;
-            Ok(start.elapsed().as_secs_f64() * 1000.)
-        };
-        let pose = || {
-            driver
-                .snapshot(false)
-                .elements
-                .into_iter()
-                .find(|e| e.id == "history-span-detail")
-                .expect("hover card")
-                .bounds
-        };
-        move_to(
-            &mut cx,
-            first.x + first.width / 2.,
-            first.y + first.height / 2.,
-        )?;
-        tick(&mut cx)?;
-        let initial = pose();
-        let mut baseline = Vec::new();
-        for _ in 0..20 {
-            baseline.push(tick(&mut cx)?);
-        }
-        let card_width = initial.width + 2.;
-        let destination_x =
-            (last.x + last.width / 2. - card_width / 2.).clamp(12., width - card_width - 12.) + 1.;
-        move_to(&mut cx, last.x + last.width / 2., last.y + last.height / 2.)?;
-        tick(&mut cx)?;
-        let switched = pose();
-        anyhow::ensure!(
-            (switched.x - initial.x).abs() < (destination_x - initial.x).abs() - 0.5,
-            "new target jumped from the painted position: {} -> {}",
-            initial.x,
-            switched.x
-        );
-        let mut frames = Vec::new();
-        let mut moving = Vec::new();
-        for _ in 0..6 {
-            moving.push(tick(&mut cx)?);
-            frames.push(pose());
-        }
-        let midway = pose();
-        anyhow::ensure!((midway.x - initial.x).abs() > 1., "popover did not slide");
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-moving.png")))?;
-        move_to(&mut cx, 10., 10.)?;
-        tick(&mut cx)?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|e| e.id == "history-span-detail"),
-            "short gap closed the shared surface"
-        );
-        let midway = pose();
-        move_to(
-            &mut cx,
-            first.x + first.width / 2.,
-            first.y + first.height / 2.,
-        )?;
-        tick(&mut cx)?;
-        anyhow::ensure!(
-            (pose().x - midway.x).abs() < (midway.x - initial.x).abs() - 0.5,
-            "reversal jumped"
-        );
-        for _ in 0..40 {
-            moving.push(tick(&mut cx)?);
-        }
-        anyhow::ensure!((pose().x - initial.x).abs() < 1., "reversal did not settle");
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("{width}-settled.png")))?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
-        move_to(&mut cx, last.x + last.width / 2., last.y + last.height / 2.)?;
-        tick(&mut cx)?;
-        let reduced = pose();
-        anyhow::ensure!(
-            (reduced.x - initial.x).abs() > 1.,
-            "reduced-motion did not snap"
-        );
-        move_to(&mut cx, 10., 10.)?;
-        for _ in 0..10 {
-            tick(&mut cx)?;
-        }
-        anyhow::ensure!(
-            !driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|e| e.id == "history-span-detail"),
-            "hover did not dismiss"
-        );
-        let pending = cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
-        anyhow::ensure!(pending == 0, "idle hover still requests frames");
-        baseline.sort_by(f64::total_cmp);
-        moving.sort_by(f64::total_cmp);
-        let percentile = |v: &[f64], p: f64| v[((v.len() - 1) as f64 * p).round() as usize];
-        anyhow::ensure!(
-            percentile(&moving, 0.95) < 8.33,
-            "hover exceeds CPU frame budget"
-        );
-        std::fs::write(
-            output.join(format!("{width}.json")),
-            serde_json::to_vec_pretty(&json!({
-                "initial":initial,"switched":switched,"frames":frames,"reduced":reduced,"idle_callbacks":pending,
-                "settled_p95_ms":percentile(&baseline,0.95),"moving_p95_ms":percentile(&moving,0.95),"moving_p99_ms":percentile(&moving,0.99)
-            }))?,
-        )?;
-        std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-        println!("history hover {width}: slide, reverse, reduced motion, dismissal, idle and CPU budget passed");
-        return Ok(());
-    }
+            .any(|e| e.id == disclosure_id && e.label == "收起"),
+        "the reply disclosure did not open"
+    );
+    let clock = expanded
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-output-clock-"))
+        .map(|e| e.label.clone())
+        .expect("the expanded reply hid its absolute clock");
+    anyhow::ensure!(
+        clock.len() == 8 && clock.matches(":").count() == 2,
+        "the record clock is not absolute wall time: {clock}"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(out.join("expanded-reply.png"))?;
+    // The expanded reply outgrows the narrow window, so its disclosure sits
+    // below the fold there; scroll the page back onto it before toggling.
+    let ledger = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|e| e.id == "history-ledger")
+        .map(|e| e.bounds)
+        .expect("history ledger");
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"x":ledger.x + ledger.width * 0.5,"y":ledger.y + ledger.height * 0.5},"delta_y":-800}),
+    )?;
+    action(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":disclosure_id}}),
+    )?;
+    // An empty snapshot is a page state, not an error: no rows, no paging.
+    root_view.update(&mut cx, |v, cx| v.benchmark_story_history(vec![], NOW, cx));
+    pump(&mut cx)?;
+    let empty = driver.snapshot(false);
+    anyhow::ensure!(
+        empty
+            .elements
+            .iter()
+            .all(|e| !e.id.starts_with("history-record-")),
+        "an empty history kept rows"
+    );
+    anyhow::ensure!(
+        empty
+            .elements
+            .iter()
+            .any(|e| e.id == "history-older" && !e.enabled),
+        "the empty page lost its state"
+    );
+    root_view.update(&mut cx, |v, cx| {
+        v.benchmark_story_history(fixture(), NOW, cx)
+    });
+    pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     let snapshot = driver.snapshot(false);
     let bounds = |id: &str| {
         snapshot
@@ -324,9 +304,11 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         );
     }
     let older = bounds("history-older");
-    let activity = bounds("history-page");
+    // Cue pads the scroll region 16px, so the page state spans the padded list
+    // rather than the whole page.
+    let activity = bounds("history-ledger");
     anyhow::ensure!(
-        (older.width - activity.width).abs() < 1.,
+        (older.width - activity.width).abs() < 34.,
         "paging status is not centered across the list"
     );
     if std::env::var_os("ZORK_SCROLL_ALL_MESSAGES").is_some() {
@@ -344,8 +326,9 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         snapshot
             .elements
             .iter()
-            .any(|e| e.id.starts_with("history-target-") && e.enabled && e.label == "测试用户"),
-        "received message did not resolve its durable source receipt"
+            .any(|e| e.id.starts_with("history-record-")
+                && e.label.contains("收到来自 测试用户 的消息")),
+        "the user's message did not read its durable source receipt"
     );
     let page = snapshot
         .elements
@@ -362,31 +345,42 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         .find(|e| {
             e.id.starts_with("history-record-")
                 && e.label.contains("读取 1 个文件")
-                && e.label.contains("命令 1 次")
+                && e.label.contains("执行 1 条命令")
         })
         .expect("routine summary visible");
     let group_id = group.id.clone();
+    // Cue's reply row is its Markdown document, so it legitimately exceeds the
+    // single-line row height; every other row still has to stay compact.
+    let reply = snapshot
+        .elements
+        .iter()
+        .find(|e| e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影"))
+        .expect("assistant reply is a history row");
     anyhow::ensure!(
         snapshot
             .elements
             .iter()
-            .filter(|e| e.id.starts_with("history-record-"))
+            .filter(|e| e.id.starts_with("history-record-") && e.id != reply.id)
             .all(|e| e.bounds.height <= 46.),
         "history item exceeded two lines"
     );
-    anyhow::ensure!(!snapshot.elements.iter().any(|e|e.id.starts_with("history-record-")&&e.label.contains("INTERNAL-MODEL-TEXT")),"internal model text leaked");
+    anyhow::ensure!(
+        reply.label.contains("我先读一遍历史投影") && !reply.label.starts_with("输出"),
+        "the reply row does not read as its own text: {}",
+        reply.label
+    );
     anyhow::ensure!(
         snapshot
             .elements
             .iter()
-            .any(|e| e.id.starts_with("history-record-") && e.label.contains("等待 15s")),
+            .any(|e| e.id.starts_with("history-record-") && e.label.contains("已等待 15s")),
         "wait duration did not end on mailbox wake"
     );
-    if !snapshot
-        .elements
-        .iter()
-        .any(|e| e.id.starts_with("history-record-") && e.label.contains("history_empty_state"))
-    {
+    if !snapshot.elements.iter().any(|e| {
+        e.id.starts_with("history-record-")
+            && e.label.contains("cargo test --locked")
+            && e.label.contains("失败")
+    }) {
         action(
             &mut cx,
             json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":-400}),
@@ -397,7 +391,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .any(|e| e.id.starts_with("history-record-")
-                    && e.label.contains("history_empty_state")),
+                    && e.label.contains("cargo test --locked")
+                    && e.label.contains("失败")),
             "failed command was folded or unreachable"
         );
         cx.capture_screenshot(window.into())?
@@ -427,21 +422,19 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"click","target":{"element_id":group_id}}),
     )?;
-    // A raw tool span inside the collapsed block must expand and reveal that
-    // exact invocation, not the hidden model row at the old list index.
-    let timeline = driver
-        .snapshot(false)
-        .elements
-        .into_iter()
-        .find(|e| {
-            e.id.starts_with("history-bar-")
-                && e.label.contains("shell.run")
+    // Re-opening the collapsed block must reveal that exact invocation, not
+    // the hidden model row at the old list index.
+    anyhow::ensure!(
+        !driver.snapshot(false).elements.iter().any(|e| {
+            e.id.starts_with("history-record-")
+                && e.label.starts_with("执行命令")
                 && e.label.contains("rg -n history")
-        })
-        .expect("shell timeline marker");
+        }),
+        "a collapsed group still exposed its members"
+    );
     action(
         &mut cx,
-        json!({"type":"click","target":{"element_id":timeline.id}}),
+        json!({"type":"click","target":{"element_id":group_id}}),
     )?;
     let shell = driver
         .snapshot(false)
@@ -452,7 +445,25 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
                 && e.label.starts_with("执行命令")
                 && e.label.contains("rg -n history")
         })
-        .expect("timeline revealed grouped tool");
+        .expect("expanding the group revealed the invocation");
+    let ledger = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|e| e.id == "history-ledger")
+        .expect("history viewport")
+        .bounds;
+    // Expanding a group preserves its anchor, so a narrow viewport may leave
+    // the last child below the fold. Reach it with the same scroll as a user.
+    if shell.bounds.y + shell.bounds.height > ledger.y + ledger.height - 48.
+        || shell.bounds.y < ledger.y
+    {
+        action(
+            &mut cx,
+            json!({"type":"scroll","target":{"element_id":"history-ledger"},
+                "delta_y":ledger.y + ledger.height * 0.5 - shell.bounds.y - shell.bounds.height * 0.5}),
+        )?;
+    }
     cx.capture_screenshot(window.into())?
         .save(out.join("expanded.png"))?;
     action(
@@ -464,35 +475,19 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-detail-dialog"),
-        "details did not open"
+            .any(|e| e.id.starts_with("history-inline-detail-") && e.label.contains("matches")),
+        "tool details did not expand inline"
     );
     cx.capture_screenshot(window.into())?
         .save(out.join("details.png"))?;
-    action(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
-    let modal_state = cx.update_window(window.into(), |_, w, cx| {
-        root_view.read(cx).benchmark_history_modal(w, cx)
-    })?;
-    if driver
-        .snapshot(false)
-        .elements
-        .iter()
-        .any(|e| e.id == "history-detail-dialog")
-    {
-        cx.capture_screenshot(window.into())?
-            .save(out.join("failed-detail-escape.png"))?;
-        std::fs::write(
-            out.join("failed-detail-escape.json"),
-            serde_json::to_vec_pretty(&modal_state)?,
-        )?;
-    }
+    action(&mut cx, json!({"type":"key","keystroke":"enter"}))?;
     anyhow::ensure!(
         !driver
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-detail-dialog"),
-        "Escape did not close details: {modal_state}"
+            .any(|e| e.id.starts_with("history-inline-detail-")),
+        "Enter did not collapse the focused tool"
     );
     // Collapse first so the target stays in the compact viewport.
     action(
@@ -546,12 +541,24 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .map(|e| e.bounds.y)
             .ok_or_else(|| anyhow::anyhow!("anchor disappeared: {text}"))
     };
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
+    std::fs::write(
+        out.join("pagination-top.json"),
+        serde_json::to_vec_pretty(&driver.snapshot(true))?,
+    )?;
     let original_y = row_y("分页锚点 030")?;
     for start in [20, 10] {
         root_view.update(&mut cx, |v, cx| {
             v.benchmark_prepend_history(page_records(start), cx)
         });
         pump(&mut cx)?;
+        std::fs::write(
+            out.join(format!("pagination-{start}.json")),
+            serde_json::to_vec_pretty(&driver.snapshot(true))?,
+        )?;
         anyhow::ensure!(
             (row_y("分页锚点 030")? - original_y).abs() < 0.5,
             "paging from the top moved the existing record"
@@ -589,6 +596,10 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         v.benchmark_story_history(writes(false), NOW, cx)
     });
     pump(&mut cx)?;
+    action(
+        &mut cx,
+        json!({"type":"scroll","target":{"element_id":"history-ledger"},"delta_y":10000}),
+    )?;
     let write_y = row_y("anchor-file-1.txt")?;
     root_view.update(&mut cx, |v, cx| {
         v.benchmark_prepend_history(writes(true), cx)
@@ -610,8 +621,8 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "group extension moved the record being read"
     );
 
-    // A live source changes both a mounted row and an already open popup.
-    // No further mouse input is dispatched until after these assertions.
+    // A live source changes a mounted row: its absolute clock holds still while
+    // the page keeps ticking, and new data rewrites the line.
     let mut live_records = vec![
         record(
             900,
@@ -633,16 +644,6 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     root_view.update(&mut cx, |v, cx| v.benchmark_history_live_clock(cx));
     pump(&mut cx)?;
     eprintln!("history {width}: live clock ready");
-    let live_bar = driver
-        .snapshot(false)
-        .elements
-        .into_iter()
-        .find(|e| e.id.starts_with("history-bar-") && e.label.contains("live-render-source"))
-        .expect("live timeline bar");
-    action(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":live_bar.id}}),
-    )?;
     let live_row_id = driver
         .snapshot(false)
         .elements
@@ -659,29 +660,17 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .expect("live history row")
             .label
     };
-    let popup = || {
-        driver
-            .snapshot(false)
-            .elements
-            .into_iter()
-            .find(|e| e.id == "history-span-detail")
-            .expect("live history popup")
-    };
     let row_before = live_row();
-    let popup_before = popup();
-    let pointer = cx.update_window(window.into(), |_, w, _| w.mouse_position())?;
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
+    // Cue stamps a record with an absolute clock, so a mounted line holds still
+    // until new data arrives; a relative clock would rewrite it on a tick.
     anyhow::ensure!(
-        live_row() != row_before,
-        "visible row clock waited for mouse input"
+        live_row() == row_before,
+        "the absolute row clock moved without new data: {row_before} -> {}",
+        live_row()
     );
-    anyhow::ensure!(
-        popup().label != popup_before.label,
-        "hover duration waited for mouse input"
-    );
-    let clock_after = popup().label;
     live_records.push(record(
         902,
         json!({"kind":"tool_result","result":{
@@ -697,21 +686,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     });
     pump(&mut cx)?;
     let row_after = live_row();
-    let popup_after = popup();
     anyhow::ensure!(
         row_after.contains("失败"),
         "row missed its source update: {row_after}"
     );
-    anyhow::ensure!(
-        popup_after.label.contains("失败"),
-        "open popup missed its source update"
-    );
-    anyhow::ensure!(
-        cx.update_window(window.into(), |_, w, _| w.mouse_position())? == pointer,
-        "data/clock regression moved the pointer"
-    );
     cx.capture_screenshot(window.into())?
-        .save(out.join("live-update-stationary-pointer.png"))?;
+        .save(out.join("live-update.png"))?;
     source.seed(zork_client_core::state::HistoryData {
         loaded: true,
         ..Default::default()
@@ -722,80 +702,31 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "history-span-detail"),
-        "removed entry left a stale popup"
+            .any(|e| e.id == live_row_id),
+        "a removed entry left its row behind"
     );
 
-    // Zoom first, then pan an adjacent span underneath a stationary pointer.
-    let mut wheel_records = Vec::new();
-    for i in 0..12 {
-        let time = NOW - 12000 + i as i64 * 1000;
-        wheel_records.push(record(
-            1000 + i * 3,
-            json!({"kind":"step_started","step_id":format!("wheel-{i}"),"started_at_ms":time-100}),
-        ));
-        wheel_records.push(record(1001+i*3, json!({"kind":"step_completed","step_id":format!("wheel-{i}"),"completed_at_ms":time,
-            "invocations":[{"invocation_id":format!("wheel-{i}"),"tool":"shell.run","arguments":{"command":format!("wheel-target-{i}")},"started_at_ms":time}]})));
-        wheel_records.push(record(1002+i*3, json!({"kind":"tool_result","result":{"invocation_id":format!("wheel-{i}"),"tool":"shell.run","outcome":"succeeded","finished_at_ms":time+400,"data":{}}})));
-    }
-    root_view.update(&mut cx, |v, cx| {
-        v.benchmark_story_history(wheel_records, NOW, cx)
-    });
-    pump(&mut cx)?;
-    action(
-        &mut cx,
-        json!({"type":"scroll","target":{"element_id":"history-timeline-panel"},"delta_y":120,"delta_x":0}),
-    )?;
-    let mut wheel_bars: Vec<_> = driver
-        .snapshot(false)
-        .elements
-        .into_iter()
-        .filter(|e| {
-            e.id.starts_with("history-bar-")
-                && e.label.contains("wheel-target-")
-                && e.bounds.width > 2.
-        })
-        .collect();
-    wheel_bars.sort_by(|a, b| a.center.x.total_cmp(&b.center.x));
-    anyhow::ensure!(wheel_bars.len() >= 2, "zoom did not retain adjacent spans");
-    let first = &wheel_bars[wheel_bars.len() / 2 - 1];
-    let second = &wheel_bars[wheel_bars.len() / 2];
-    action(
-        &mut cx,
-        json!({"type":"move","target":{"x":first.center.x,"y":first.center.y}}),
-    )?;
-    let wheel_before = popup();
-    let pointer = cx.update_window(window.into(), |_, w, _| w.mouse_position())?;
-    action(
-        &mut cx,
-        json!({"type":"scroll","target":{"x":first.center.x,"y":first.center.y},"delta_y":0,"delta_x":first.center.x-second.center.x}),
-    )?;
-    let wheel_after = popup();
+    // The emptied source leaves the page state and no records behind.
+    let live_page = driver.snapshot(false);
     anyhow::ensure!(
-        wheel_after.label != wheel_before.label,
-        "wheel did not retarget the popup"
-    );
-    let expected = second.label.split(" · ").last().unwrap();
-    anyhow::ensure!(
-        wheel_after.label.contains(expected),
-        "wheel selected the wrong span: {} vs {expected}",
-        wheel_after.label
+        live_page.elements.iter().any(|e| e.id == "history-older"),
+        "the live page lost its state control"
     );
     anyhow::ensure!(
-        cx.update_window(window.into(), |_, w, _| w.mouse_position())? == pointer,
-        "wheel regression synthesized a pointer move"
+        live_page
+            .elements
+            .iter()
+            .all(|e| !e.id.starts_with("history-record-")),
+        "an emptied source still painted records"
     );
-    cx.capture_screenshot(window.into())?
-        .save(out.join("wheel-stationary-pointer.png"))?;
     std::fs::write(
         out.join("live-checks.json"),
         serde_json::to_vec_pretty(&json!({
-            "row_before":row_before,"row_after":row_after,"popup_before":popup_before.label,"clock_after":clock_after,"popup_after":popup_after.label,
-            "wheel_before":wheel_before.label,"wheel_after":wheel_after.label,"pointer": {"x":pointer.x.as_f32(),"y":pointer.y.as_f32()}
+            "row_before":row_before,"row_after":row_after
         }))?,
     )?;
     println!(
-        "history {width}x{height}: rows, folding, timeline, live sources, clocks and stationary-pointer wheel passed"
+        "history {width}x{height}: records, folding, page states, live sources, absolute clocks and the reply disclosure passed"
     );
     Ok(())
 }

@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 15,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -44,17 +44,17 @@
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 98.0
+        "height": 86.0
       },
       "visible_bounds": {
         "x": 24.0,
         "y": 24.0,
         "width": 512.0,
-        "height": 98.0
+        "height": 86.0
       },
       "center": {
         "x": 280.0,
-        "y": 73.0
+        "y": 67.0
       },
       "actions": [
         "move"
@@ -95,19 +95,19 @@
       "visible": true,
       "bounds": {
         "x": 24.0,
-        "y": 64.0,
+        "y": 58.0,
         "width": 240.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 24.0,
-        "y": 64.0,
+        "y": 58.0,
         "width": 240.0,
         "height": 32.0
       },
       "center": {
         "x": 144.0,
-        "y": 80.0
+        "y": 74.0
       },
       "actions": [
         "click",

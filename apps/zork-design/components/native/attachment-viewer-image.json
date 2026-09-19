@@ -1,0 +1,281 @@
+{
+  "api_version": "v1",
+  "revision": 16,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 900.0,
+    "height": 760.0
+  },
+  "elements": [
+    {
+      "id": "attachment-viewer-open",
+      "role": "button",
+      "label": "打开附件预览",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 16.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "drive-close-preview",
+      "role": "button",
+      "label": "关闭",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 836.0,
+        "y": 32.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 836.0,
+        "y": 32.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 852.0,
+        "y": 48.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "drive-preview",
+      "role": "scroll_area",
+      "label": "文件预览",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 32.0,
+        "y": 80.0,
+        "width": 836.0,
+        "height": 600.0
+      },
+      "visible_bounds": {
+        "x": 32.0,
+        "y": 80.0,
+        "width": 836.0,
+        "height": 600.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 380.0
+      },
+      "actions": [
+        "move",
+        "scroll"
+      ]
+    },
+    {
+      "id": "preview-actual",
+      "role": "button",
+      "label": "实际尺寸",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 735.0,
+        "y": 696.0,
+        "width": 56.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 735.0,
+        "y": 696.0,
+        "width": 56.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 763.0,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "preview-fit",
+      "role": "button",
+      "label": "适应",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 823.0,
+        "y": 696.0,
+        "width": 41.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 823.0,
+        "y": 696.0,
+        "width": 41.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 843.5,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "preview-next",
+      "role": "button",
+      "label": "下一个附件",
+      "enabled": false,
+      "visible": true,
+      "bounds": {
+        "x": 112.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 112.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 128.0,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "preview-previous",
+      "role": "button",
+      "label": "上一个附件",
+      "enabled": false,
+      "visible": true,
+      "bounds": {
+        "x": 32.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 32.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 48.0,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "preview-zoom-in",
+      "role": "button",
+      "label": "放大",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 791.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 791.0,
+        "y": 696.0,
+        "width": 32.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 807.0,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "preview-zoom-out",
+      "role": "button",
+      "label": "缩小",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 710.0,
+        "y": 696.0,
+        "width": 25.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 710.0,
+        "y": 696.0,
+        "width": 25.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 722.5,
+        "y": 712.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 760.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 900.0,
+        "height": 760.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 380.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

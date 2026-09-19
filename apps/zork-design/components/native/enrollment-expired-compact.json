@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 7,
+  "revision": 12,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -16,15 +16,15 @@
       "visible": true,
       "bounds": {
         "x": 180.0,
-        "y": 169.0,
+        "y": 173.0,
         "width": 540.0,
-        "height": 261.5
+        "height": 253.5
       },
       "visible_bounds": {
         "x": 180.0,
-        "y": 169.0,
+        "y": 173.0,
         "width": 540.0,
-        "height": 261.5
+        "height": 253.5
       },
       "center": {
         "x": 450.0,
@@ -42,19 +42,19 @@
       "visible": true,
       "bounds": {
         "x": 664.0,
-        "y": 191.0,
+        "y": 195.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 664.0,
-        "y": 191.0,
+        "y": 195.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 680.0,
-        "y": 207.0
+        "y": 211.0
       },
       "actions": [
         "click",
@@ -68,19 +68,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 94.0
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 94.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 47.0
       },
       "actions": [
@@ -90,7 +90,7 @@
     {
       "id": "mesh-connect-device-tab",
       "role": "button",
-      "label": "连接其它设备 · 已选中",
+      "label": "连接其它设备",
       "enabled": true,
       "visible": true,
       "bounds": {
@@ -149,19 +149,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 374.5,
+        "y": 370.5,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 374.5,
+        "y": 370.5,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 450.0,
-        "y": 390.5
+        "y": 386.5
       },
       "actions": [
         "click",
@@ -176,19 +176,19 @@
       "visible": true,
       "bounds": {
         "x": 204.0,
-        "y": 339.0,
+        "y": 335.0,
         "width": 492.0,
         "height": 19.5
       },
       "visible_bounds": {
         "x": 204.0,
-        "y": 339.0,
+        "y": 335.0,
         "width": 492.0,
         "height": 19.5
       },
       "center": {
         "x": 450.0,
-        "y": 348.75
+        "y": 344.75
       },
       "actions": [
         "move"

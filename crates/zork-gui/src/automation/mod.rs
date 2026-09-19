@@ -64,6 +64,12 @@ pub struct DevAutomation {
 }
 
 impl DevAutomation {
+    #[cfg(feature = "headless-bench")]
+    pub fn in_process_driver(&self) -> HeadlessAutomation {
+        HeadlessAutomation {
+            registry: self.registry.clone(),
+        }
+    }
     pub fn bind(port: u16, token: Option<String>) -> std::io::Result<Self> {
         let token = match token {
             Some(token) if !token.is_empty() => token,

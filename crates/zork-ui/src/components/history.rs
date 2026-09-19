@@ -5,37 +5,81 @@ use crate::{
     design::CUE_UI,
     history::Entry,
 };
-use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight};
+use gpui::{div, prelude::*, px, relative, rgb, rgba, Context, Div, FontWeight};
 
 // Restrained semantic accents, shared by rows, destinations and the timeline.
 pub const SEND_COLOR: u32 = 0x536779;
 pub const RECEIVE_COLOR: u32 = 0x5A6D62;
 pub const MODEL_COLOR: u32 = 0x92969D;
 
-/// Shared two-line history geometry. The host resolves labels and destinations;
-/// no network, identity lookup or argument parsing occurs during row rendering.
+/// Cue's session-activity accents are its utility ramp step 700: a received row
+/// is utility blue, a sent row utility purple, a wait utility warning and a
+/// failure utility error. The timeline keeps its own neutral accents.
+pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
+pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
+pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
+pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
+
+/// The 12% accent tint Cue puts behind a row icon, matching its `inset: 3px -2px`
+/// chip on the 16px icon box.
+fn accent_chip(color: u32) -> gpui::Rgba {
+    rgba((color << 8) | 0x1F)
+}
+
+/// `font-variant-numeric: tabular-nums`, which Cue puts on its clocks, waits
+/// and overview facts. gpui exposes the OpenType `tnum` feature instead.
+pub fn tabular_nums() -> gpui::FontFeatures {
+    gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".to_owned(), 1)]))
+}
+
+/// Rows Cue marks with an observable activity kind carry the accent chip and the
+/// accented label; ordinary operation rows stay neutral.
+pub fn activity_accent(kind: Kind) -> bool {
+    matches!(
+        kind,
+        Kind::Input | Kind::SendMessage | Kind::SendFile | Kind::Notify | Kind::Wait
+    )
+}
+
+/// Shared history geometry. The host resolves labels and destinations; no
+/// network, identity lookup or argument parsing occurs during row rendering.
 pub struct ActivityHeader {
-    pub icon: &'static str,
+    pub focus: gpui::FocusHandle,
+    /// A model reply carries only its Markdown document: it gets no icon box
+    /// and no label, so the whole line is absent.
+    pub icon: Option<&'static str>,
     pub color: u32,
+    /// Cue marks rows with an observable activity kind by accenting the icon and
+    /// label and tinting a chip behind the icon; neutral operation rows stay muted.
+    pub accent: bool,
     pub action: String,
-    pub connector: Option<String>,
     pub subject: Option<String>,
     pub clickable_subject: bool,
     pub summary: String,
-    pub time: String,
+    /// A text row renders its trailing text as tail prose at the line size;
+    /// an operation row renders its target and status at 11px.
+    pub tail: bool,
     pub status: Option<String>,
-    pub nested: bool,
-    pub group: bool,
+    pub failed: bool,
+    /// A live row spins Cue's loading ring in place of its static icon.
+    pub live: bool,
+    /// Cue's wait label and record clocks use tabular figures.
+    pub tabular: bool,
+    /// A group heading is `.cue-session-group-summary`: it shrinks and ellipsises.
+    pub group_summary: bool,
+    /// An expanded group heading carries Cue's 12px rotated chevron.
+    pub chevron: bool,
 }
 
 pub fn activity_header<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    cx: &Context<V>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    activity_header_sources(id, header, (None, None), cx, open, navigate)
+    activity_header_sources(id, header, (None, None), window, cx, open, navigate)
 }
 
 pub fn activity_header_sources<V: 'static>(
@@ -45,179 +89,240 @@ pub fn activity_header_sources<V: 'static>(
         Option<crate::components::liquid::overlay::SourceBinding>,
         Option<crate::components::liquid::overlay::SourceBinding>,
     ),
-    cx: &Context<V>,
+    _window: &mut gpui::Window,
+    cx: &mut Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
     let face = header.action.clone();
     let icon = header.icon;
     let open = std::rc::Rc::new(open);
-    let keyboard_open = open.clone();
     let navigate = std::rc::Rc::new(navigate);
-    let keyboard_navigate = navigate.clone();
     let id = id.into();
+    let focus = header.focus.clone();
+    let click_focus = focus.clone();
+    let spinner = format!("history-spinner-{id:?}");
     let accessible = format!(
-        "{} {} {} {} {} {}",
+        "{} {} {} {}",
         header.action,
-        header.connector.as_deref().unwrap_or_default(),
         header.subject.as_deref().unwrap_or_default(),
         header.summary,
         header.status.as_deref().unwrap_or_default(),
-        header.time,
     );
     let subject_id = format!("history-target-{id:?}");
     let subject_label = header.subject.clone().unwrap_or_default();
+    // Cue accents an activity label and leaves an operation label tertiary.
+    let label_color = if header.accent {
+        header.color
+    } else if !header.tail && !header.group_summary {
+        0x4C4C4C
+    } else {
+        0x5E5E5E
+    };
+    // `.cue-session-icon` is tertiary; an accent row tints it with the action
+    // colour, a failed tool paints it error and a live row without an activity
+    // kind reads primary.
+    let icon_color = if header.failed {
+        ACTIVITY_ERROR_COLOR
+    } else if header.accent {
+        header.color
+    } else if header.live {
+        0x1B1B1B
+    } else {
+        0x5E5E5E
+    };
+    let status_color = if header.failed {
+        ACTIVITY_ERROR_COLOR
+    } else {
+        0x5E5E5E
+    };
     div()
         .id(id)
-        .focusable()
+        .track_focus(&focus)
         .tab_stop(true)
         .flex()
-        .items_start()
+        .items_center()
         .gap(px(8.))
-        .px(px(8.))
-        .pl(px(if header.nested { 32. } else { 8. }))
-        .py(px(3.))
+        .w_full()
+        .min_h(px(if header.tail || header.group_summary {
+            26.
+        } else {
+            30.
+        }))
         .min_w_0()
+        .text_size(px(12.))
+        .text_color(rgb(0x4C4C4C))
         .cursor_pointer()
-        .hover(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
         .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
-        .on_click(cx.listener(move |v, _, window, cx| open(v, window, cx)))
-        .on_key_down(
-            cx.listener(move |v, event: &gpui::KeyDownEvent, window, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    cx.stop_propagation();
-                    keyboard_open(v, window, cx);
-                }
-            }),
-        )
-        .child(
-            div()
-                .w(px(16.))
-                .h(px(20.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .child(
-                    crate::controls::icon(header.icon, 14.).text_color(rgb(CUE_UI.palette.muted)),
-                ),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .h(px(20.))
-                        .min_w_0()
-                        .child(
+        .on_click(cx.listener(move |v, _, window, cx| {
+            window.focus(&click_focus, cx);
+            open(v, window, cx);
+        }))
+        .when_some(icon, |v, path| {
+            v.child(
+                div()
+                    .relative()
+                    .w(px(16.))
+                    .h(px(26.))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(header.accent, |v| {
+                        v.child(
                             div()
-                                .min_w_0()
-                                .text_size(px(if header.group { 11. } else { 12. }))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(header.color))
-                                .truncate()
-                                .child(header.action),
+                                .absolute()
+                                .left(px(-2.))
+                                .top(px(3.))
+                                .w(px(20.))
+                                .h(px(20.))
+                                .rounded(px(5.))
+                                .bg(accent_chip(header.color)),
                         )
-                        .when_some(header.connector, |v, text| {
-                            v.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(px(12.))
-                                    .font_weight(FontWeight::NORMAL)
-                                    .text_color(rgb(CUE_UI.palette.muted))
-                                    .child(text),
+                    })
+                    .child(if header.live {
+                        div()
+                            .text_color(rgb(icon_color))
+                            .child(
+                                crate::components::loading::indicator(spinner.clone(), 14.)
+                                    .without_delay(),
                             )
-                        })
-                        .when_some(header.subject, |v, text| {
-                            let subject = div()
-                                .min_w_0()
-                                .text_size(px(12.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(if header.clickable_subject {
-                                    SEND_COLOR
-                                } else {
-                                    CUE_UI.palette.text
-                                }))
-                                .truncate()
-                                .child(text);
-                            if !header.clickable_subject {
-                                // Plain source labels have no fake disabled-button node or hitbox.
-                                return v.child(subject.into_any_element());
-                            }
-                            v.child(
-                                subject
-                                    .id(subject_id)
-                                    .focusable()
-                                    .tab_stop(true)
-                                    .cursor_pointer()
-                                    .hover(|v| v.underline())
-                                    .focus_visible(|v| v.underline())
-                                    .on_click(cx.listener(move |v, _, window, cx| {
-                                        cx.stop_propagation();
-                                        navigate(v, window, cx);
-                                    }))
-                                    .on_key_down(cx.listener(
-                                        move |v, event: &gpui::KeyDownEvent, window, cx| {
-                                            if matches!(
-                                                event.keystroke.key.as_str(),
-                                                "enter" | "space"
-                                            ) {
-                                                cx.stop_propagation();
-                                                keyboard_navigate(v, window, cx);
-                                            }
-                                        },
-                                    ))
-                                    .map(|subject| match sources.1 {
-                                        Some(source) => source
-                                            .bind(
-                                                subject,
-                                                subject_label.clone(),
-                                                crate::controls::ActionStyle {
-                                                    quiet: true,
-                                                    ..Default::default()
-                                                },
-                                            )
-                                            .automation(AutomationRole::Button, subject_label)
-                                            .into_any_element(),
-                                        None => subject
-                                            .automation(AutomationRole::Button, subject_label)
-                                            .into_any_element(),
-                                    }),
+                            .into_any_element()
+                    } else {
+                        crate::controls::icon(path, 14.)
+                            .text_color(rgb(icon_color))
+                            .into_any_element()
+                    }),
+            )
+        })
+        .child(match header.group_summary {
+            // `.cue-session-group-summary` shrinks and ellipsises its counts.
+            true => div()
+                .min_w_0()
+                .text_size(px(11.))
+                .text_color(rgb(label_color))
+                .whitespace_nowrap()
+                .truncate()
+                .when(header.tabular, |v| v.font_features(tabular_nums()))
+                .child(header.action),
+            // `.cue-session-label` is `flex: none` at 11px, medium when accented.
+            false => div()
+                .min_w_0()
+                .when(header.tail, |v| v.flex_shrink_0())
+                .when(!header.tail, |v| v.truncate())
+                .text_size(px(11.))
+                .font_weight(if header.accent {
+                    FontWeight::MEDIUM
+                } else {
+                    FontWeight::NORMAL
+                })
+                .text_color(rgb(label_color))
+                .whitespace_nowrap()
+                .when(header.tabular, |v| v.font_features(tabular_nums()))
+                .child(header.action),
+        })
+        .when(header.chevron, |v| {
+            v.child(
+                crate::controls::icon("cue/chevron-down.svg", 12.)
+                    .text_color(rgb(0x5E5E5E))
+                    .flex_shrink_0(),
+            )
+        })
+        .when_some(header.subject, |v, text| {
+            // `.cue-session-record-target` may shrink (`flex: 0 1 auto`) so a
+            // long target ellipsises instead of pushing the status off the line.
+            let subject = div()
+                .min_w_0()
+                .text_size(px(11.))
+                .text_color(rgb(if header.clickable_subject {
+                    0x1B1B1B
+                } else {
+                    0x4C4C4C
+                }))
+                .truncate()
+                .child(text);
+            if !header.clickable_subject {
+                // Plain targets carry no link decoration and no extra hitbox.
+                return v.child(subject.into_any_element());
+            }
+            v.child(
+                subject
+                    .id(subject_id)
+                    .focusable()
+                    .tab_stop(true)
+                    .cursor_pointer()
+                    .underline()
+                    .on_click(cx.listener(move |v, _, window, cx| {
+                        cx.stop_propagation();
+                        navigate(v, window, cx);
+                    }))
+                    .map(|subject| match sources.1 {
+                        Some(source) => source
+                            .bind(
+                                subject,
+                                subject_label.clone(),
+                                crate::controls::ActionStyle {
+                                    quiet: true,
+                                    ..Default::default()
+                                },
                             )
-                        })
-                        .child(div().flex_1())
-                        .when_some(header.status, |v, text| {
-                            v.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(header.color))
-                                    .child(text),
-                            )
-                        })
+                            .automation(AutomationRole::Button, subject_label)
+                            .into_any_element(),
+                        None => subject
+                            .automation(AutomationRole::Button, subject_label)
+                            .into_any_element(),
+                    }),
+            )
+        })
+        .when(!header.summary.is_empty(), |v| {
+            // `.cue-session-tail` right-aligns and clips a text row's trailing
+            // prose; an operation target keeps its own width before the status.
+            if header.tail {
+                return v.child(
+                    div()
+                        .relative()
+                        .flex()
+                        .flex_shrink(1.)
+                        .min_w_0()
+                        .overflow_hidden()
+                        .justify_end()
+                        .text_size(px(12.))
+                        .text_color(rgb(0x4C4C4C))
                         .child(
                             div()
-                                .flex_shrink_0()
-                                .text_size(px(11.))
-                                .text_color(rgb(CUE_UI.palette.muted))
-                                .child(header.time),
-                        ),
-                )
-                .when(!header.summary.is_empty(), |v| {
-                    v.child(
-                        div()
-                            .h(px(20.))
-                            .line_height(px(20.))
-                            .text_size(px(12.))
-                            .text_color(rgb(CUE_UI.palette.muted))
-                            .truncate()
-                            .child(header.summary),
-                    )
-                }),
-        )
+                                .flex_none()
+                                .min_w(relative(1.))
+                                .pl(px(12.))
+                                .whitespace_nowrap()
+                                .child(header.summary),
+                        )
+                        .child(div().absolute().left_0().top_0().bottom_0().w(px(12.)).bg(
+                            gpui::linear_gradient(
+                                90.,
+                                gpui::linear_color_stop(rgb(0xFFFFFF), 0.),
+                                gpui::linear_color_stop(rgba(0xFFFFFF00), 1.),
+                            ),
+                        )),
+                );
+            }
+            v.child(
+                div()
+                    .min_w_0()
+                    .text_size(px(11.))
+                    .text_color(rgb(0x4C4C4C))
+                    .truncate()
+                    .child(header.summary),
+            )
+        })
+        .when_some(header.status, |v, text| {
+            v.child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(10.))
+                    .text_color(rgb(status_color))
+                    .child(text),
+            )
+        })
         .map(|header| match sources.0 {
             Some(source) => source
                 .bind(
@@ -225,7 +330,7 @@ pub fn activity_header_sources<V: 'static>(
                     face,
                     crate::controls::ActionStyle {
                         quiet: true,
-                        icon: Some(icon),
+                        icon,
                         ..Default::default()
                     },
                 )
@@ -235,6 +340,13 @@ pub fn activity_header_sources<V: 'static>(
                 .automation(AutomationRole::Button, accessible)
                 .into_any_element(),
         })
+}
+
+pub fn focus_for(id: String, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::FocusHandle {
+    window
+        .use_keyed_state(id, cx, |_, cx| cx.focus_handle().tab_stop(true))
+        .read(cx)
+        .clone()
 }
 pub fn color(entry: &Entry) -> u32 {
     if matches!(entry.state.as_str(), "failed" | "timed_out") {
@@ -280,19 +392,23 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
 }
 pub fn activity_color(kind: Kind, state: &str) -> u32 {
     if matches!(state, "failed" | "timed_out") {
-        return CUE_UI.palette.danger;
+        return ACTIVITY_ERROR_COLOR;
     }
     match kind {
-        Kind::Received => RECEIVE_COLOR,
-        Kind::SendMessage | Kind::SendFile | Kind::Notify => SEND_COLOR,
-        Kind::Assign | Kind::Rework | Kind::Wait | Kind::Cancel => CUE_UI.palette.muted,
-        Kind::Error => CUE_UI.palette.danger,
-        _ => CUE_UI.palette.text,
+        Kind::Input => ACTIVITY_RECEIVE_COLOR,
+        Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
+        Kind::Wait => ACTIVITY_WAIT_COLOR,
+        Kind::Error => ACTIVITY_ERROR_COLOR,
+        // Output, thinking and ordinary operations read neutral, as Cue's
+        // text-tertiary icon and secondary label do.
+        _ => CUE_UI.palette.subtle,
     }
 }
 pub fn kind_label(kind: Kind) -> &'static str {
     match kind {
-        Kind::Received => "history_receive_message",
+        Kind::Input => "history_item_input",
+        Kind::Output => "history_model_message",
+        Kind::Thinking => "history_item_thinking",
         Kind::SendMessage => "history_send_message",
         Kind::SendFile => "history_send_file",
         Kind::Notify => "history_notify",
@@ -318,7 +434,8 @@ pub fn kind_label(kind: Kind) -> &'static str {
 }
 pub fn kind_icon(kind: Kind) -> &'static str {
     match kind {
-        Kind::Received => "history/receive.svg",
+        Kind::Input => "history/receive.svg",
+        Kind::Output | Kind::Thinking => "cue/sparkles.svg",
         Kind::SendMessage => "history/send.svg",
         Kind::SendFile => "history/attachment.svg",
         Kind::Notify => "history/notify.svg",

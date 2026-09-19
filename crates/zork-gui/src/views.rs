@@ -1782,10 +1782,6 @@ impl RootView {
         } else {
             0.
         };
-        self.history.rendered_width = self
-            .browser
-            .read(cx)
-            .resolved_width(window.viewport_size().width.as_f32() - rail);
         let available = f32::from(window.viewport_size().width) - rail;
         // An overlay may cover the page, but its workspace still occupies width.
         // Use the same condition as the rendered split, not page visibility.

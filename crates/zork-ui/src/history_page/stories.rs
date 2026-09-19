@@ -11,7 +11,6 @@ pub struct Story {
     paging: Paging,
     details: Entity<Details>,
     presentation: Option<Presentation>,
-    tree: crate::components::json_tree::State,
 }
 impl EventEmitter<HistoryChanged> for Story {}
 impl Story {
@@ -34,13 +33,23 @@ impl Story {
         .into();
         let projection = Projection::new(entries.iter());
         let mut expanded = HashSet::new();
+        let mut output_expanded = HashSet::new();
         if state == "expanded" {
             if let Some(block) = projection.blocks.iter().find(|b| b.is_group()) {
                 expanded.insert(entries[projection.activities[block.start].entry].id.clone());
             }
+            // The expanded story reveals the complete shared Markdown body.
+            if let Some(activity) = projection
+                .activities
+                .iter()
+                .find(|a| a.kind == Kind::Output)
+            {
+                output_expanded.insert(entries[activity.entry].id.clone());
+            }
         }
         let rows = projection.rows(entries.iter(), &expanded);
-        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.));
+        let scroll = ListState::new(rows.len() + 1, ListAlignment::Top, px(200.))
+            .with_uniform_item_height(px(26.));
         let details = cx.new(|cx| Details::new(text.clone(), cx));
         cx.subscribe(&details, |v, _, _: &crate::history_details::Closed, cx| {
             v.presentation = None;
@@ -53,14 +62,15 @@ impl Story {
                 projection,
                 rows,
                 expanded,
+                output_expanded,
                 scroll,
                 fixed_now: fixture["history"]["now"].as_i64(),
                 ..Default::default()
-            },
+            }
+            .with_metrics(),
             text,
             details,
             presentation: None,
-            tree: Default::default(),
             paging: Paging {
                 loaded: state != "loading",
                 busy: state == "loading",
@@ -84,18 +94,17 @@ impl Host for Story {
         self.details.read(cx).source()
     }
     fn history_subject(&self, a: &Activity, _: &Entry) -> (Option<String>, Option<Jump>) {
-        use activity::Subject;
+        use crate::history::activity::Subject;
         match &a.subject {
             Some(Subject::Agent(id)) => (Some("产品领队".into()), Some(Jump::Agent(id.clone()))),
-            Some(Subject::Conversation) => (
-                Some("组件复用会话".into()),
-                Some(Jump::Conversation("demo".into())),
-            ),
+            Some(Subject::Conversation) => {
+                (Some("聊天".into()), Some(Jump::Conversation("demo".into())))
+            }
             Some(Subject::Invocation(id)) => {
                 (Some(id.clone()), Some(Jump::Entry(format!("tool:{id}"))))
             }
             Some(Subject::User) => (Some(self.text.text("history_user")), None),
-            _ if a.kind == Kind::Received => (Some(self.text.text("history_source_unknown")), None),
+            _ if a.kind == Kind::Input => (Some(self.text.text("history_source_unknown")), None),
             _ => (None, None),
         }
     }
@@ -107,7 +116,7 @@ impl Host for Story {
                 self.paging.busy = false;
                 self.paging.loaded = true;
             }
-            Action::OpenEntry(id) | Action::Jump(Jump::Entry(id)) => {
+            Action::OpenEntry(id) | Action::Jump(Jump::File(id)) => {
                 self.presentation = self
                     .state
                     .entries
@@ -115,6 +124,12 @@ impl Host for Story {
                     .find(|e| e.id == id)
                     .cloned()
                     .map(Presentation::Entry);
+            }
+            Action::Jump(Jump::Entry(id)) => {
+                let index = self.state.entries.iter().position(|e| e.id == id);
+                if let Some(index) = index {
+                    self.history_select(index, cx);
+                }
             }
             Action::Jump(Jump::Agent(id)) => {
                 self.presentation = Some(Presentation::Agent {
@@ -133,15 +148,16 @@ impl Host for Story {
     }
     fn history_statistics(&mut self) -> Statistics {
         Statistics {
-            usage: model::usage::UsageSummary::new(self.state.entries.iter()),
-            complete: !self.paging.busy,
-            loaded: self.paging.loaded,
+            usage: self.state.loaded_usage.clone(),
+            calls: self.state.model_calls,
+            models: self.state.models.clone(),
             runtime: Runtime {
-                profile: Some("演示连接".into()),
-                model: Some("演示模型".into()),
-                thinking: Some("high".into()),
-                context_tokens: Some(32000),
-                context_limit: Some(128000),
+                name: "产品领队".into(),
+                avatar: Some("fox".into()),
+                role: Some("领队".into()),
+                environment: Some("Studio Mac".into()),
+                provider: Some("Codex".into()),
+                model: Some("gpt-5.4".into()),
                 ..Default::default()
             },
         }
@@ -149,22 +165,21 @@ impl Host for Story {
 }
 impl Render for Story {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let owner = cx.entity().downgrade();
         self.details.update(cx, |v, cx| {
             v.configure(
                 "demo".into(),
                 self.presentation.clone(),
                 None,
-                self.tree.clone(),
                 self.text.clone(),
-                Rc::new(move |cx| {
-                    let _ = owner.update(cx, |_, cx| cx.notify());
-                }),
                 cx,
             )
         });
         div()
             .size_full()
+            .font_family("Inter Variable")
+            .text_size(px(12.))
+            .line_height(px(18.))
+            .bg(rgb(CUE_UI.palette.canvas))
             .child(self.render_history_page(window, cx))
             .child(self.details.clone())
     }

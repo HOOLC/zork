@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 10,
+  "revision": 14,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,20 +15,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 1017.0,
-        "y": 40.0,
-        "width": 104.0,
+        "x": 886.0,
+        "y": 39.0,
+        "width": 115.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 1017.0,
-        "y": 40.0,
-        "width": 104.0,
+        "x": 886.0,
+        "y": 39.0,
+        "width": 115.0,
         "height": 32.0
       },
       "center": {
-        "x": 1069.0,
-        "y": 56.0
+        "x": 943.5,
+        "y": 55.0
       },
       "actions": [
         "click",
@@ -43,22 +43,48 @@
       "visible": true,
       "bounds": {
         "x": 474.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 474.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 490.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-bear-portrait",
+      "role": "status",
+      "label": "小熊",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 478.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 478.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 490.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -70,22 +96,48 @@
       "visible": true,
       "bounds": {
         "x": 434.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 434.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 450.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-bunny-portrait",
+      "role": "status",
+      "label": "小兔",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 438.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 438.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -96,20 +148,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 736.0,
-        "y": 571.0,
-        "width": 59.0,
+        "x": 740.0,
+        "y": 615.0,
+        "width": 57.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 736.0,
-        "y": 571.0,
-        "width": 59.0,
+        "x": 740.0,
+        "y": 615.0,
+        "width": 57.0,
         "height": 32.0
       },
       "center": {
-        "x": 765.5,
-        "y": 587.0
+        "x": 768.5,
+        "y": 631.0
       },
       "actions": [
         "click",
@@ -124,22 +176,48 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 410.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-cat-portrait",
+      "role": "status",
+      "label": "小猫",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 398.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 398.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 410.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -151,22 +229,48 @@
       "visible": true,
       "bounds": {
         "x": 594.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 594.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 610.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-chick-portrait",
+      "role": "status",
+      "label": "小鸡",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 598.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 598.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 610.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -178,22 +282,48 @@
       "visible": true,
       "bounds": {
         "x": 554.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 554.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 570.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-deer-portrait",
+      "role": "status",
+      "label": "小鹿",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 558.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 558.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 570.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -205,22 +335,48 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 410.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-dog-portrait",
+      "role": "status",
+      "label": "小狗",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 398.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 398.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 410.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -232,22 +388,48 @@
       "visible": true,
       "bounds": {
         "x": 514.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 514.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 530.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-fox-portrait",
+      "role": "status",
+      "label": "狐狸",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 518.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 518.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 530.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -259,22 +441,48 @@
       "visible": true,
       "bounds": {
         "x": 474.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 474.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 490.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-koala-portrait",
+      "role": "status",
+      "label": "考拉",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 478.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 478.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 490.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -286,22 +494,48 @@
       "visible": true,
       "bounds": {
         "x": 594.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 594.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 610.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-octopus-portrait",
+      "role": "status",
+      "label": "章鱼",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 598.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 598.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 610.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -313,22 +547,48 @@
       "visible": true,
       "bounds": {
         "x": 434.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 434.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 450.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-owl-portrait",
+      "role": "status",
+      "label": "猫头鹰",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 438.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 438.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 450.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -340,22 +600,48 @@
       "visible": true,
       "bounds": {
         "x": 554.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 554.0,
-        "y": 316.0,
+        "y": 491.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 570.0,
-        "y": 332.0
+        "y": 508.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-panda-portrait",
+      "role": "status",
+      "label": "熊猫",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 558.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 558.0,
+        "y": 493.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 570.0,
+        "y": 505.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -367,22 +653,48 @@
       "visible": true,
       "bounds": {
         "x": 514.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "visible_bounds": {
         "x": 514.0,
-        "y": 356.0,
+        "y": 533.0,
         "width": 32.0,
-        "height": 32.0
+        "height": 34.0
       },
       "center": {
         "x": 530.0,
-        "y": 372.0
+        "y": 550.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-avatar-penguin-portrait",
+      "role": "status",
+      "label": "企鹅",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 518.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "visible_bounds": {
+        "x": 518.0,
+        "y": 535.5,
+        "width": 24.0,
+        "height": 24.0
+      },
+      "center": {
+        "x": 530.0,
+        "y": 547.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -393,20 +705,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 803.0,
-        "y": 571.0,
-        "width": 83.0,
+        "x": 805.0,
+        "y": 615.0,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 803.0,
-        "y": 571.0,
-        "width": 83.0,
+        "x": 805.0,
+        "y": 615.0,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 844.5,
-        "y": 587.0
+        "x": 845.5,
+        "y": 631.0
       },
       "actions": [
         "click",
@@ -421,19 +733,19 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 507.0,
+        "y": 269.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 507.0,
+        "y": 269.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 523.0
+        "y": 285.0
       },
       "actions": [
         "click",
@@ -448,19 +760,46 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 431.5,
+        "y": 417.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 431.5,
+        "y": 417.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 447.5
+        "y": 433.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "agent-edit-thinking-select",
+      "role": "button",
+      "label": "选择思考深度",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 394.0,
+        "y": 343.0,
+        "width": 492.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 394.0,
+        "y": 343.0,
+        "width": 492.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 640.0,
+        "y": 359.0
       },
       "actions": [
         "click",
@@ -475,15 +814,15 @@
       "visible": true,
       "bounds": {
         "x": 370.0,
-        "y": 173.0,
+        "y": 129.0,
         "width": 540.0,
-        "height": 454.0
+        "height": 542.0
       },
       "visible_bounds": {
         "x": 370.0,
-        "y": 173.0,
+        "y": 129.0,
         "width": 540.0,
-        "height": 454.0
+        "height": 542.0
       },
       "center": {
         "x": 640.0,
@@ -501,19 +840,19 @@
       "visible": true,
       "bounds": {
         "x": 854.0,
-        "y": 195.0,
+        "y": 151.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 854.0,
-        "y": 195.0,
+        "y": 151.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 870.0,
-        "y": 211.0
+        "y": 167.0
       },
       "actions": [
         "click",
@@ -527,20 +866,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 370.0,
-        "y": 551.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 394.0,
+        "y": 615.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "visible_bounds": {
-        "x": 370.0,
-        "y": 551.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 394.0,
+        "y": 615.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 589.0
+        "y": 631.0
       },
       "actions": [
         "move"
@@ -553,20 +892,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 399.0,
-        "y": 170.0,
+        "x": 279.0,
+        "y": 167.5,
         "width": 722.0,
         "height": 64.0
       },
       "visible_bounds": {
-        "x": 399.0,
-        "y": 170.0,
+        "x": 279.0,
+        "y": 167.5,
         "width": 722.0,
         "height": 64.0
       },
       "center": {
-        "x": 760.0,
-        "y": 202.0
+        "x": 640.0,
+        "y": 199.5
       },
       "actions": [
         "click",
@@ -580,20 +919,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 266.0
+        "height": 263.5
       },
       "visible_bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 266.0
+        "height": 263.5
       },
       "center": {
-        "x": 760.0,
-        "y": 133.0
+        "x": 640.0,
+        "y": 131.75
       },
       "actions": [
         "move"

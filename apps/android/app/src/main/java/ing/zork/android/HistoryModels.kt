@@ -111,7 +111,8 @@ internal data class HistoryFrame(val peer: String, val session: String, val entr
             value.optJSONObject("overview")?.let(::historyOverview), value.has("overview"),
             value.optJSONObject("detail")?.let(::historyDetail), value.has("detail"),
             value.optJSONArray("blocks")?.objects()?.map { block ->
-                val counts = listOf("read" to "读取", "written" to "写入", "shell" to "命令", "queries" to "查询")
+                val counts = listOf("read" to "读取", "written" to "写入", "edited" to "编辑", "shell" to "命令",
+                    "queries" to "查询", "thinking" to "思考", "other" to "其他操作", "failed" to "失败")
                     .mapNotNull { (key, label) -> block.optInt(key).takeIf { it > 0 }?.let { "$label $it" } }
                 val ids = block.optJSONArray("members") ?: JSONArray()
                 HistoryBlock(block.text("id"), (0 until ids.length()).map(ids::getString), block.optBoolean("grouped"),
@@ -188,7 +189,8 @@ internal fun historyStateLabel(state: String) = when (state) {
     "received" -> "已接收"; "cancelled", "canceled", "interrupted" -> "已取消"; else -> state
 }
 internal fun historyTitle(action: String, kind: String): String = when (kind) {
-    "received" -> "收到输入"; "send_message" -> "发送消息"; "send_file" -> "发送文件"; "notify" -> "发送通知"
+    "input", "received" -> "收到输入"; "output" -> "模型回复"; "thinking" -> "思考中"
+    "send_message" -> "发送消息"; "send_file" -> "发送文件"; "notify" -> "发送通知"
     "assign" -> "分配任务"; "rework" -> "要求返工"; "workers" -> "查询队员"; "tasks" -> "查询任务"
     "read" -> "读取文件"; "write" -> "写入文件"; "edit" -> "编辑文件"; "shell" -> "执行命令"
     "browser" -> "浏览器操作"; "wait" -> "等待"; "end" -> "结束执行"; "cancel" -> "取消任务"

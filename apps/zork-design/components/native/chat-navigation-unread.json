@@ -1,0 +1,306 @@
+{
+  "api_version": "v1",
+  "revision": 14,
+  "coordinate_space": "window_content_logical_pixels",
+  "scale_factor": 2.0,
+  "viewport": {
+    "width": 320.0,
+    "height": 760.0
+  },
+  "elements": [
+    {
+      "id": "brand-header",
+      "role": "status",
+      "label": "Zork",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 72.0,
+        "y": 0.0,
+        "width": 120.0,
+        "height": 48.0
+      },
+      "visible_bounds": {
+        "x": 72.0,
+        "y": 0.0,
+        "width": 120.0,
+        "height": 48.0
+      },
+      "center": {
+        "x": 132.0,
+        "y": 24.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "desktop-manage",
+      "role": "button",
+      "label": "设置",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 720.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 720.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 736.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "device-add",
+      "role": "button",
+      "label": "连接设备",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 686.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 686.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 702.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "device-demo-device",
+      "role": "button",
+      "label": "工作设备 · 在线",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 88.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 88.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 104.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "leader-demo-device-leader",
+      "role": "button",
+      "label": "产品领队",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 122.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 122.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 138.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "leader-task-demo-device-chat-0",
+      "role": "button",
+      "label": "产品讨论 1",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 156.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 156.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 172.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "leader-task-demo-device-chat-1",
+      "role": "button",
+      "label": "产品讨论 2",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 190.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 190.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 206.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "leader-task-demo-device-chat-2",
+      "role": "button",
+      "label": "产品讨论 3",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 224.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 224.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 240.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "navigation-shared-files",
+      "role": "button",
+      "label": "共享文件",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 56.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 56.0,
+        "width": 184.0,
+        "height": 32.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 72.0
+      },
+      "actions": [
+        "click",
+        "move"
+      ]
+    },
+    {
+      "id": "story-component",
+      "role": "status",
+      "label": "组件画布",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 320.0,
+        "height": 760.0
+      },
+      "visible_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 320.0,
+        "height": 760.0
+      },
+      "center": {
+        "x": 160.0,
+        "y": 380.0
+      },
+      "actions": [
+        "move"
+      ]
+    },
+    {
+      "id": "zork-brand",
+      "role": "status",
+      "label": "Zork",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 8.0,
+        "y": 0.0,
+        "width": 184.0,
+        "height": 48.0
+      },
+      "visible_bounds": {
+        "x": 8.0,
+        "y": 0.0,
+        "width": 184.0,
+        "height": 48.0
+      },
+      "center": {
+        "x": 100.0,
+        "y": 24.0
+      },
+      "actions": [
+        "move"
+      ]
+    }
+  ]
+}

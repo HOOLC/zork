@@ -417,8 +417,10 @@ mod tests {
             "treated a draining supervisor as absent"
         );
         drop(lease);
+        // Filesystem wakeups can advance the exponential retry past one second.
+        // Allow the production 15-second drain deadline plus scheduling slack.
         assert!(!received
-            .recv_timeout(Duration::from_secs(1))
+            .recv_timeout(Duration::from_secs(16))
             .unwrap()
             .unwrap());
         worker.join().unwrap();

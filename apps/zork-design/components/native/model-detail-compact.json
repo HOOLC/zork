@@ -15,19 +15,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 210.0
       },
       "visible_bounds": {
-        "x": 240.0,
+        "x": 55.0,
         "y": 0.0,
-        "width": 660.0,
+        "width": 790.0,
         "height": 210.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 105.0
       },
       "actions": [
@@ -121,19 +121,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 773.0,
+        "x": 708.0,
         "y": 39.0,
-        "width": 93.0,
+        "width": 103.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 773.0,
+        "x": 708.0,
         "y": 39.0,
-        "width": 93.0,
+        "width": 103.0,
         "height": 32.0
       },
       "center": {
-        "x": 819.5,
+        "x": 759.5,
         "y": 55.0
       },
       "actions": [
@@ -148,19 +148,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 274.0,
+        "x": 89.0,
         "y": 118.0,
         "width": 40.0,
         "height": 40.0
       },
       "visible_bounds": {
-        "x": 274.0,
+        "x": 89.0,
         "y": 118.0,
         "width": 40.0,
         "height": 40.0
       },
       "center": {
-        "x": 294.0,
+        "x": 109.0,
         "y": 138.0
       },
       "actions": [
@@ -227,19 +227,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 262.0,
+        "x": 77.0,
         "y": 98.0,
-        "width": 616.0,
+        "width": 746.0,
         "height": 80.0
       },
       "visible_bounds": {
-        "x": 262.0,
+        "x": 77.0,
         "y": 98.0,
-        "width": 616.0,
+        "width": 746.0,
         "height": 80.0
       },
       "center": {
-        "x": 570.0,
+        "x": 450.0,
         "y": 138.0
       },
       "actions": [
@@ -254,19 +254,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 600.0,
+        "x": 602.0,
         "y": 361.0,
-        "width": 96.0,
+        "width": 94.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 600.0,
+        "x": 602.0,
         "y": 361.0,
-        "width": 96.0,
+        "width": 94.0,
         "height": 32.0
       },
       "center": {
-        "x": 648.0,
+        "x": 649.0,
         "y": 377.0
       },
       "actions": [
@@ -283,17 +283,17 @@
       "bounds": {
         "x": 513.0,
         "y": 361.0,
-        "width": 79.0,
+        "width": 81.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 513.0,
         "y": 361.0,
-        "width": 79.0,
+        "width": 81.0,
         "height": 32.0
       },
       "center": {
-        "x": 552.5,
+        "x": 553.5,
         "y": 377.0
       },
       "actions": [
@@ -388,19 +388,19 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 326.0,
+        "x": 141.0,
         "y": 150.5,
-        "width": 425.0,
+        "width": 555.0,
         "height": 16.0
       },
       "visible_bounds": {
-        "x": 326.0,
+        "x": 141.0,
         "y": 150.5,
-        "width": 425.0,
+        "width": 555.0,
         "height": 16.0
       },
       "center": {
-        "x": 538.5,
+        "x": 418.5,
         "y": 158.5
       },
       "actions": [
@@ -410,23 +410,23 @@
     {
       "id": "profile-quota-updated",
       "role": "status",
-      "label": "额度更新于 1天前",
+      "label": "额度更新于 11天前",
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 567.0,
+        "x": 562.0,
         "y": 194.0,
-        "width": 85.0,
+        "width": 90.0,
         "height": 18.0
       },
       "visible_bounds": {
-        "x": 567.0,
+        "x": 562.0,
         "y": 194.0,
-        "width": 85.0,
+        "width": 90.0,
         "height": 18.0
       },
       "center": {
-        "x": 609.5,
+        "x": 607.0,
         "y": 203.0
       },
       "actions": [
@@ -462,7 +462,7 @@
     {
       "id": "profile-quota-window-1",
       "role": "status",
-      "label": "7天 剩余 38% 5天后重置",
+      "label": "7天 剩余 38% 即将重置",
       "enabled": true,
       "visible": true,
       "bounds": {

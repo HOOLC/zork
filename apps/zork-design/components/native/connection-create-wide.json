@@ -1,6 +1,6 @@
 {
   "api_version": "v1",
-  "revision": 10,
+  "revision": 14,
   "coordinate_space": "window_content_logical_pixels",
   "scale_factor": 2.0,
   "viewport": {
@@ -15,20 +15,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 204.5
+        "height": 210.0
       },
       "visible_bounds": {
-        "x": 365.0,
+        "x": 245.0,
         "y": 0.0,
         "width": 790.0,
-        "height": 204.5
+        "height": 210.0
       },
       "center": {
-        "x": 760.0,
-        "y": 102.25
+        "x": 640.0,
+        "y": 105.0
       },
       "actions": [
         "move"
@@ -42,19 +42,19 @@
       "visible": true,
       "bounds": {
         "x": 641.0,
-        "y": 335.0,
+        "y": 336.0,
         "width": 241.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 641.0,
-        "y": 335.0,
+        "y": 336.0,
         "width": 241.0,
         "height": 32.0
       },
       "center": {
         "x": 761.5,
-        "y": 351.0
+        "y": 352.0
       },
       "actions": [
         "click",
@@ -69,19 +69,19 @@
       "visible": true,
       "bounds": {
         "x": 398.0,
-        "y": 335.0,
+        "y": 336.0,
         "width": 241.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 398.0,
-        "y": 335.0,
+        "y": 336.0,
         "width": 241.0,
         "height": 32.0
       },
       "center": {
         "x": 518.5,
-        "y": 351.0
+        "y": 352.0
       },
       "actions": [
         "click",
@@ -95,23 +95,49 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 1028.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 898.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 1028.0,
-        "y": 40.0,
-        "width": 93.0,
+        "x": 898.0,
+        "y": 39.0,
+        "width": 103.0,
         "height": 32.0
       },
       "center": {
-        "x": 1074.5,
-        "y": 56.0
+        "x": 949.5,
+        "y": 55.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-avatar-fixture",
+      "role": "status",
+      "label": "openai",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 279.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "visible_bounds": {
+        "x": 279.0,
+        "y": 118.0,
+        "width": 40.0,
+        "height": 40.0
+      },
+      "center": {
+        "x": 299.0,
+        "y": 138.0
+      },
+      "actions": [
         "move"
       ]
     },
@@ -122,20 +148,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 724.0,
-        "y": 554.0,
-        "width": 59.0,
+        "x": 728.0,
+        "y": 548.0,
+        "width": 57.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 724.0,
-        "y": 554.0,
-        "width": 59.0,
+        "x": 728.0,
+        "y": 548.0,
+        "width": 57.0,
         "height": 32.0
       },
       "center": {
-        "x": 753.5,
-        "y": 570.0
+        "x": 756.5,
+        "y": 564.0
       },
       "actions": [
         "click",
@@ -150,19 +176,19 @@
       "visible": true,
       "bounds": {
         "x": 370.0,
-        "y": 189.5,
+        "y": 196.0,
         "width": 540.0,
-        "height": 420.5
+        "height": 408.0
       },
       "visible_bounds": {
         "x": 370.0,
-        "y": 189.5,
+        "y": 196.0,
         "width": 540.0,
-        "height": 420.5
+        "height": 408.0
       },
       "center": {
         "x": 640.0,
-        "y": 399.75
+        "y": 400.0
       },
       "actions": [
         "move"
@@ -176,19 +202,19 @@
       "visible": true,
       "bounds": {
         "x": 854.0,
-        "y": 211.5,
+        "y": 218.0,
         "width": 32.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 854.0,
-        "y": 211.5,
+        "y": 218.0,
         "width": 32.0,
         "height": 32.0
       },
       "center": {
         "x": 870.0,
-        "y": 227.5
+        "y": 234.0
       },
       "actions": [
         "click",
@@ -202,20 +228,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 370.0,
-        "y": 534.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 394.0,
+        "y": 548.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "visible_bounds": {
-        "x": 370.0,
-        "y": 534.0,
-        "width": 540.0,
-        "height": 76.0
+        "x": 394.0,
+        "y": 548.0,
+        "width": 492.0,
+        "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 572.0
+        "y": 564.0
       },
       "actions": [
         "move"
@@ -228,20 +254,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 399.0,
-        "y": 100.5,
-        "width": 722.0,
-        "height": 72.0
+        "x": 267.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "visible_bounds": {
-        "x": 399.0,
-        "y": 100.5,
-        "width": 722.0,
-        "height": 72.0
+        "x": 267.0,
+        "y": 98.0,
+        "width": 746.0,
+        "height": 80.0
       },
       "center": {
-        "x": 760.0,
-        "y": 136.5
+        "x": 640.0,
+        "y": 138.0
       },
       "actions": [
         "click",
@@ -256,19 +282,19 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 490.0,
+        "y": 484.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 490.0,
+        "y": 484.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 506.0
+        "y": 500.0
       },
       "actions": [
         "click",
@@ -284,22 +310,48 @@
       "visible": true,
       "bounds": {
         "x": 394.0,
-        "y": 414.5,
+        "y": 410.0,
         "width": 492.0,
         "height": 32.0
       },
       "visible_bounds": {
         "x": 394.0,
-        "y": 414.5,
+        "y": 410.0,
         "width": 492.0,
         "height": 32.0
       },
       "center": {
         "x": 640.0,
-        "y": 430.5
+        "y": 426.0
       },
       "actions": [
         "click",
+        "move"
+      ]
+    },
+    {
+      "id": "profile-quota-summary-fixture",
+      "role": "status",
+      "label": "5小时 剩余 72% · 7天 剩余 38%",
+      "enabled": true,
+      "visible": true,
+      "bounds": {
+        "x": 331.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "visible_bounds": {
+        "x": 331.0,
+        "y": 150.5,
+        "width": 555.0,
+        "height": 16.0
+      },
+      "center": {
+        "x": 608.5,
+        "y": 158.5
+      },
+      "actions": [
         "move"
       ]
     },
@@ -310,20 +362,20 @@
       "enabled": true,
       "visible": true,
       "bounds": {
-        "x": 791.0,
-        "y": 554.0,
-        "width": 95.0,
+        "x": 793.0,
+        "y": 548.0,
+        "width": 93.0,
         "height": 32.0
       },
       "visible_bounds": {
-        "x": 791.0,
-        "y": 554.0,
-        "width": 95.0,
+        "x": 793.0,
+        "y": 548.0,
+        "width": 93.0,
         "height": 32.0
       },
       "center": {
-        "x": 838.5,
-        "y": 570.0
+        "x": 839.5,
+        "y": 564.0
       },
       "actions": [
         "click",
