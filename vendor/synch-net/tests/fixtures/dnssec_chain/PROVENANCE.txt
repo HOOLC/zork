@@ -1,0 +1,39 @@
+A real DNSSEC delegation chain, captured from the live DNS.
+
+Collected 2026-08-16 (unix 1786866288) over UDP/53 from 8.8.8.8 with the DO
+bit set, for the apex `cloudflare.com.`:
+
+  cloudflare-com.der          the chain as this design encodes it — DER
+                              `SEQUENCE OF SEQUENCE { IA5String, OCTET STRING }`,
+                              apex link first, root link last:
+                                link 0  cloudflare.com.  DNSKEY + RRSIG
+                                                       + DS + RRSIG      (487 B)
+                                link 1  com.             DNSKEY + RRSIG
+                                                       + DS + RRSIG      (609 B)
+                                link 2  .                DNSKEY + RRSIG (1111 B)
+                              2261 bytes of DER in total. The apex link's
+                              DNSKEY RRset + RRSIG were captured the same day
+                              over DoH from dns.google and spliced in front of
+                              the DS material: the key-set walk proves the
+                              apex RRset (DS → KSK → RRset), so the apex link
+                              carries it like every ancestor link does. The
+                              RRset holds cloudflare.com's real KSK/ZSK pair —
+                              a genuine split-key zone, which is exactly the
+                              shape the walk exists for.
+  cloudflare-com-dnskey.bin   the wire DNSKEY rdata of cloudflare.com's KSK
+                              (flags 257, protocol 3, algorithm 13, key tag
+                              2371) — the key the apex DS covers. The proven
+                              set the walk returns must contain it, and must
+                              not stop at it.
+
+Nothing in this repository authored any of these bytes. They exercise the
+parts of `synch_net::chain` a synthetic zone cannot: RSASHA256 (algorithm 8)
+at the root, ECDSAP256SHA256 (algorithm 13) at `com.` and below, a real
+multi-level DS ladder, real RRSIG canonical-form serialization, and the ICANN
+root trust anchor hickory ships (KSK-2017, tag 20326).
+
+These RRSIGs expire weeks after capture, which is exactly the point: the
+validator never looks at a clock, so this fixture keeps verifying for as long
+as the keys themselves stand. It will finally stop verifying when `com.` or
+the root rotates the *keys* — at which point the fixture is regenerated with
+the script recorded in docs/REKOR-ZONE-KEY.md §9.

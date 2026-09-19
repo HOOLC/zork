@@ -23,6 +23,7 @@ mod imp {
         pub(crate) tls_config: rustls::ClientConfig,
         /// User-facing configuration.
         pub(crate) user_config: NetReportConfig,
+        pub(crate) proxy_url: Option<url::Url>,
     }
 
     impl Options {
@@ -31,8 +32,14 @@ mod imp {
                 quic_config: None,
                 tls_config,
                 user_config: NetReportConfig::default(),
+                proxy_url: None,
             }
         }
+        pub(crate) fn proxy_url(mut self, proxy_url: Option<url::Url>) -> Self {
+            self.proxy_url = proxy_url;
+            self
+        }
+
         /// Enable quic probes
         pub(crate) fn quic_config(mut self, quic_config: Option<QuicConfig>) -> Self {
             self.quic_config = quic_config;

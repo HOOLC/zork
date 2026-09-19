@@ -381,7 +381,7 @@ fn markdown_code_overflow(fixture: &mut Fixture) -> Result<()> {
 }
 
 fn shared_service_link_opens_panel(fixture: &mut Fixture) -> Result<()> {
-    let origin = zork_mesh::bridge::key_origin(&"00".repeat(32))?;
+    let origin = zork_mesh::control::key_origin(&"00".repeat(32))?;
     fixture.replace_message(&format!(
         "[打开共享服务](zork://service/{}/{}/)",
         origin.trim_start_matches("key:"),

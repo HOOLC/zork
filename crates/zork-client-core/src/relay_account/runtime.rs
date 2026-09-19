@@ -2,7 +2,7 @@ use super::*;
 use std::future::Future;
 use tokio::task::JoinHandle;
 
-/// Short-lived relay admission. Never contains a refresh credential.
+/// Short-lived cloud account access. Never contains a refresh credential.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Access {
     origin: String,
@@ -38,7 +38,7 @@ impl From<&RelaySession> for Access {
     }
 }
 
-/// Owned by a Station/client runtime, never by a view or observer.
+/// Owned by the account controller, never by a view or observer.
 pub struct RelayAccountTask {
     task: JoinHandle<()>,
 }
@@ -48,18 +48,6 @@ impl Drop for RelayAccountTask {
     }
 }
 impl Account {
-    pub fn attach_mesh(&self, node: zork_mesh::node::MeshNode) -> Result<RelayAccountTask> {
-        let origin = self.origin.clone();
-        self.maintain(move |access| {
-            let node = node.clone();
-            let origin = origin.clone();
-            async move {
-                node.set_relay_access(&origin, access.as_ref().map(Access::token))
-                    .await
-            }
-        })
-    }
-
     /// The sink receives complete current values, including an initial None.
     /// File notifications are registered before reading. Only expiry deadlines
     /// and failed operations use timers; a logged-out idle client does not poll.

@@ -1,4 +1,4 @@
-//! Offline invitation bootstrap and approval must work without an account.
+//! Invitation bootstrap and approval must work without an account.
 use anyhow::{ensure, Context, Result};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -34,7 +34,7 @@ async fn wait(client: &Client, phase: &str) -> Result<Value> {
                 wire.finish(frame["batch"].as_u64().unwrap(), true);
                 ensure!(
                     value["invitation"]["status"] != "login_required",
-                    "offline invitation requested Google login"
+                    "invitation requested Google login"
                 );
                 if value["invitation"]["status"] == phase
                     || (phase == "joined" && value["joined_peer"].is_string())
@@ -50,19 +50,21 @@ async fn wait(client: &Client, phase: &str) -> Result<Value> {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "isolated Station supplied by the account delivery harness"]
-async fn offline_short_invitation_joins_and_recovers_without_google() -> Result<()> {
+async fn short_invitation_joins_and_recovers_without_google() -> Result<()> {
     Box::pin(run()).await
 }
 async fn run() -> Result<()> {
+    let offline = std::env::var("ZORK_ENROLLMENT_PUBLIC").as_deref() != Ok("1");
     let root = tempfile::tempdir()?;
     let mut client = Client::open(root.path())?;
     let invite = admin(reqwest::Method::POST, "/v1/node/mesh/client-invites", None).await?;
     let ticket = invite["invitation"].as_str().context("short ticket")?;
     ensure!(
         zork_mesh::enrollment::ticket::Ticket::decode(ticket)?
-            .network_config()
-            .offline,
-        "fixture must be offline"
+            .network_config()?
+            .offline
+            == offline,
+        "fixture network mode mismatch"
     );
     command(
         &mut client,
@@ -99,25 +101,45 @@ async fn run() -> Result<()> {
         .context("joined peer")?
         .to_owned();
     ensure!(
-        joined["network"]["direct_only"] == true,
-        "offline choice was lost"
+        joined["network"]["direct_only"] == offline,
+        "network choice was lost"
     );
     ensure!(
         zork_config::relay_account::load(root.path())?.is_none(),
-        "LAN join issued an account credential"
+        "Mesh join issued an account credential"
     );
     command(
         &mut client,
         json!({"op":"read","peer":peer,"path":"/v1/node/agents"}),
     )
     .await?;
+    // A relay connection does not grant access to an unrelated device.
+    let outsider_root = tempfile::tempdir()?;
+    let config = zork_config::MeshConfig {
+        enabled: true,
+        offline,
+        ..Default::default()
+    };
+    let (mut outsider, _) =
+        zork_client_core::transport::start(outsider_root.path(), &config).await?;
+    let outsider_node = outsider.node();
+    outsider_node.trust(&peer, "expected Station", None).await?;
+    let denied = outsider_node
+        .exchange(&peer, &json!({"v":1,"request":{"kind":"client","method":"GET","path":"/v1/node/agents","body":null}}))
+        .await;
+    outsider.shutdown().await?;
+    ensure!(
+        denied?["error"] == "mesh_peer_not_paired",
+        "relay admission granted an unpaired device business access"
+    );
+    println!("PASS: native Station rejects an unpaired device independently of relay admission");
     client.pause().await?;
     drop(client);
     let mut client = Client::open(root.path())?;
     let resumed = command(&mut client, json!({"op":"resume"})).await?;
     ensure!(
-        resumed["identity"] == identity && resumed["network"]["direct_only"] == true,
-        "offline identity did not recover"
+        resumed["identity"] == identity && resumed["network"]["direct_only"] == offline,
+        "identity and network choice did not recover"
     );
     command(
         &mut client,

@@ -170,7 +170,7 @@ mod tests {
     use super::*;
     #[test]
     fn links_preserve_paths_and_reject_noncanonical_targets() {
-        let key = crate::bridge::key_origin(&"00".repeat(32)).unwrap();
+        let key = crate::control::key_origin(&"00".repeat(32)).unwrap();
         let key = key.trim_start_matches("key:");
         let url = format!("zork://service/{key}/{}/a?q=1#part", "a".repeat(32));
         let link = ServiceLink::parse(&url).unwrap();

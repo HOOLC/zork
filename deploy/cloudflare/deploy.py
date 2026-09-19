@@ -78,7 +78,7 @@ def configuration(args):
             values["GOOGLE_CLIENT_SECRET"] = web["client_secret"]
         if callback not in web.get("redirect_uris", []):
             missing.append("Google authorized redirect URI: " + callback)
-    else:
+    elif config["vars"].get("GOOGLE_CLIENT_ID"):
         missing.append("Google Web OAuth JSON at " + str(args.google_client))
     if not (args.token_file.exists() or os.environ.get("CLOUDFLARE_API_TOKEN") or wrangler_authenticated()):
         missing.append("Cloudflare API token file/environment, or an interactive Wrangler login")
@@ -224,7 +224,7 @@ def deploy(args, values, missing):
         if not confirmed:
             raise ValueError("Worker deployed, but relay cutover is not confirmed; retry the admin restart before acceptance")
         print("Old relay process retired. New connections will start the deployed image.")
-    print("Worker deployed. Real Google login and native lifecycle acceptance are still required.")
+    print("Worker deployed. Native relay acceptance is required; verify Google login separately if configured.")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

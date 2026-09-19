@@ -115,7 +115,7 @@ impl DesktopRoot {
             .child(ui::heading(locale.text(title), locale.text(description)))
             .when(self.account_state.subject.is_none(), |view| {
                 view.child(ui::text_role(
-                    "公网连接需要登录 Zork；局域网可直接连接。",
+                    "Mesh 连接无需账号；可按需登录云端服务。",
                     TextRole::Description,
                 ))
                 .child(

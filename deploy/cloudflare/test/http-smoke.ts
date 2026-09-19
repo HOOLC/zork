@@ -59,4 +59,4 @@ assert.deepEqual(new Uint8Array(await (await fetch(url)).arrayBuffer()), writes.
 assert.equal((await fetch(`${base}/pkarr/${"y".repeat(52)}`)).status, 404);
 assert.equal((await fetch(`${base}/metrics`)).status, 404);
 assert.equal((await fetch(`${base}/relay`)).status, 426);
-console.log("PASS: signed PUT/GET; relay WebSocket is Google-login gated");
+console.log("PASS: signed PUT/GET; relay requires WebSocket upgrade; Google account flow is separate");

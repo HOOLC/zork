@@ -1,18 +1,22 @@
 # Cloudflare relay control plane
 
-The Worker admits Google-authenticated accounts to one official iroh relay
-container. Mesh invitations establish member trust; account login does not grant
-access to another member's files or tools. LAN, direct connections and signed pkarr
-discovery remain independent of Google login. UDP discovery and hole-punching
-policy are separate transport responsibilities.
+The Worker coordinates signed discovery and one official iroh relay container.
+Device-held keys and local Mesh membership authorize native peer requests; the
+cloud cannot grant membership or decrypt end-to-end business traffic. Relay and
+LAN/direct connections work without a Google account.
 
-A strongly consistent Durable Object owns each account's sessions and relay
-connections. Access credentials expire; refresh credentials rotate and have both
-idle and absolute expiry. Retrying a lost refresh response uses the same persisted
-request ID. Reusing an older credential outside that retry revokes its session.
-Session revocation and account blocking close existing WebSockets, and byte, frame and
-connection limits apply across all sessions of an account. Enforcement constants
-and request contracts live in [the implementation](src/account.ts).
+One shared Durable Object bounds relay connections, upgrade attempts, bytes and
+frames, including pending upgrades and empty frames. These service-wide limits
+protect operating cost; they do not guarantee availability against an attacker
+who consumes the shared budget. Limits and protocol enforcement live in
+[the relay implementation](src/relay.ts). No business RPC or additional bridge
+protocol passes through the Worker: it forwards native iroh relay frames.
+
+Optional cloud accounts have separate sessions. Access credentials expire;
+refresh credentials rotate with idle and absolute expiry. Retrying a lost refresh
+response uses the persisted request ID; reuse outside that retry revokes the
+session. Account logout, expiry and blocking do not close Mesh connections.
+Account contracts live in [the account implementation](src/account.ts).
 
 The browser returns a one-use code to a loopback listener, bound to client state
 and PKCE. Google tokens, access tokens and refresh tokens are not placed in that
@@ -27,7 +31,7 @@ Use the pnpm version declared in package.json and frozen dependencies:
     cd deploy/cloudflare
     pnpm install --ignore-workspace --frozen-lockfile
 
-In Google Auth Platform, create a **Web application** OAuth client. Configure the
+For optional cloud accounts, in Google Auth Platform create a **Web application** OAuth client. Configure the
 consent screen for openid and email; add the intended account as a test user
 while the application is in testing. Register this exact callback, replacing the
 host for a different deployment:
@@ -53,8 +57,9 @@ forwarded across origins. Register the new Google callback before cutting over.
 Copy wrangler.jsonc to the ignored wrangler.local.json. Set account_id, the Worker
 name, vars.PUBLIC_ORIGIN and its custom-domain route. The helper always takes code,
 bindings and migrations from the checked-in template; an old private config cannot
-silently omit the new session storage. Google client ID comes from the private
-Google JSON. Its registered redirect must match the configured origin.
+silently omit the new session storage. When configured, the Google client ID comes from the private
+Google JSON and its registered redirect must match the configured origin. With no
+Google client ID, relay and discovery can be deployed without Google credentials.
 
     python3 deploy.py check --config wrangler.local.json
     python3 deploy.py prepare --config wrangler.local.json --output /path/to/candidate
@@ -96,15 +101,16 @@ rollout starts replacement; it does not prove the old process has exited. The
 restart preserves account and discovery storage. Ordinary compatible redeploys
 can let the rollout drain existing connections.
 
-Verify real Google consent, native relay protocol traffic, automatic renewal,
-relogin without Station restart, server revocation and reconnect denial. A healthy
+Verify native relay business traffic without account credentials and rejection
+of unpaired peers by the receiving device. Verify optional Google consent,
+renewal and server session revocation separately; they must not interrupt Mesh. A healthy
 /healthz only proves Worker reachability. Local mock Google identity tests do not
 prove the real OAuth client's configuration or consent screen.
 
 Desktop and Android expose Zork account login before device connection and in
 settings. The desktop profile owns one private session shared by its embedded
 client and owned Station, including after background service takeover. An
-independent Station keeps its own account. For a headless host, run:
+independent Station needs no account for Mesh. For optional cloud login on a headless host, run:
 
     zork account login --device --no-browser --data /path/to/station-data
 
@@ -113,7 +119,7 @@ device, and select a Google account. The requesting core polls with its private
 PKCE verifier; no loopback tunnel or pre-existing Mesh connection is needed.
 Use the same --data as the Station being tested. Do not copy account files or Mesh
 identities between development and release profiles. CLI help describes session
-revocation and account-wide logout. When offline, logout disables local access,
+revocation and account-wide logout. When offline, logout disables local account credentials,
 retains a private revocation record and returns a pending result. The running
 account controller or another logout attempt retries it; only server confirmation
 means remote logout finished.
@@ -151,16 +157,14 @@ the repository root after rebuilding Station:
 
     python3 scripts/android/test_enrollment.py --test relay_account_enrollment
 
-The native regression uses the production CLI, Station, credential controller and
-official relay container. Only Google's external identity provider is a local
-RS256 fixture. It waits through the production renewal interval. Test entrypoints
-are separate from the deploy bundle.
+The native regression uses the production CLI, Station and official relay
+container without Google configuration. Account UI tests use a local RS256 Google
+fixture. Test entrypoints are separate from the deploy bundle.
 
 Keep the previous Worker version and image, the deployment metadata saved by the
 helper, and the private signing key for rollback. Durable Object migrations are
 forward-only: retain the account classes/bindings and storage when rolling back
-application logic. Do not roll back to the old stateless JWT admission path, which
-cannot honor revoked sessions or enforce connected-account limits. Key rotation
-invalidates future admission but is not a substitute for targeted session/account
-revocation of existing sockets. Never restore a stale account database to undo a
-revocation.
+application logic. Retain relay budget storage across compatible updates so a
+restart cannot reset consumed quotas. Never restore a stale account database to
+undo a revocation. Rolling back to account-gated relay admission changes the
+transport contract and is not an interchangeable rollback.

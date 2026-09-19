@@ -3,12 +3,7 @@
 pub mod ticket;
 use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use iroh::{
-    address_lookup::{PkarrPublisher, PkarrResolver},
-    endpoint::presets,
-    tls::CaTlsConfig,
-    Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey,
-};
+use iroh::{endpoint::presets, tls::CaTlsConfig, Endpoint, EndpointAddr, SecretKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{future::Future, path::Path, sync::Arc, time::Duration};
@@ -37,6 +32,12 @@ impl InviteKind {
 pub struct Invitation {
     #[serde(default, skip_serializing_if = "InviteKind::is_station")]
     pub kind: InviteKind,
+    #[serde(default)]
+    pub channel: zork_config::channel::Channel,
+    #[serde(default)]
+    pub relay_quic_port: Option<u16>,
+    #[serde(default)]
+    pub quic_discovery_urls: Option<Vec<String>>,
     pub version: u32,
     pub id: String,
     pub secret: String,
@@ -70,7 +71,14 @@ struct CompactTicket(
     bool,
     Option<Vec<String>>,
     Option<String>,
+    #[serde(default)] Option<TicketNetwork>,
 );
+#[derive(Serialize, Deserialize)]
+struct TicketNetwork {
+    channel: zork_config::channel::Channel,
+    relay_quic_port: Option<u16>,
+    quic_discovery_urls: Option<Vec<String>>,
+}
 
 impl Invitation {
     pub fn encode(&self) -> Result<String> {
@@ -85,6 +93,11 @@ impl Invitation {
                 self.offline,
                 self.relay_urls.clone(),
                 self.discovery_url.clone(),
+                Some(TicketNetwork {
+                    channel: self.channel,
+                    relay_quic_port: self.relay_quic_port,
+                    quic_discovery_urls: self.quic_discovery_urls.clone(),
+                }),
             );
             let mut encoder =
                 flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
@@ -103,6 +116,11 @@ impl Invitation {
                 self.offline,
                 self.relay_urls.clone(),
                 self.discovery_url.clone(),
+                Some(TicketNetwork {
+                    channel: self.channel,
+                    relay_quic_port: self.relay_quic_port,
+                    quic_discovery_urls: self.quic_discovery_urls.clone(),
+                }),
             );
             // Distinct envelope from the phone tuple: changing the prefix alone
             // can never change an invitation's role.
@@ -138,9 +156,13 @@ impl Invitation {
                     offline,
                     relay_urls,
                     discovery_url,
+                    network,
                 ) = serde_json::from_slice(&decoded)?;
                 Self {
                     kind: InviteKind::Client,
+                    channel: network.as_ref().map(|n| n.channel).unwrap_or_default(),
+                    relay_quic_port: network.as_ref().and_then(|n| n.relay_quic_port),
+                    quic_discovery_urls: network.and_then(|n| n.quic_discovery_urls),
                     version: PROTOCOL,
                     id,
                     secret,
@@ -163,10 +185,14 @@ impl Invitation {
                         offline,
                         relay_urls,
                         discovery_url,
+                        network,
                     ),
                 ): (u32, CompactTicket) = serde_json::from_slice(&decoded)?;
                 Self {
                     kind: InviteKind::Station,
+                    channel: network.as_ref().map(|n| n.channel).unwrap_or_default(),
+                    relay_quic_port: network.as_ref().and_then(|n| n.relay_quic_port),
+                    quic_discovery_urls: network.and_then(|n| n.quic_discovery_urls),
                     version,
                     id,
                     secret,
@@ -197,7 +223,9 @@ impl Invitation {
         invite.device.validate()?;
         zork_config::services::ServicesConfig {
             relay_urls: invite.relay_urls.clone(),
+            relay_quic_port: invite.relay_quic_port,
             discovery_url: invite.discovery_url.clone(),
+            quic_discovery_urls: invite.quic_discovery_urls.clone(),
         }
         .validate()?;
         ensure!(
@@ -212,10 +240,12 @@ impl Invitation {
 }
 
 pub struct Enrollment {
-    endpoint: Endpoint,
     offline: bool,
-    relay_urls: Vec<String>,
-    relay_access: crate::relay_access::RelayAccess,
+    endpoint: Endpoint,
+    http_route: synch_net::RelayHttpRoute,
+    relay_access: Arc<synch_net::RelayAccess>,
+    discovery: tokio::sync::Mutex<Option<crate::lan_discovery::Registration>>,
+    local: std::sync::Mutex<Option<crate::local_discovery::Registration>>,
 }
 
 impl Enrollment {
@@ -246,63 +276,72 @@ impl Enrollment {
             }
             Err(e) => return Err(e.into()),
         };
-        let mut builder = Endpoint::builder(presets::N0)
-            .secret_key(key)
-            .ca_tls_config(CaTlsConfig::system())
-            .alpns(vec![ALPN.to_vec()]);
-        if config.offline {
-            builder = builder
-                .relay_mode(RelayMode::Disabled)
-                .clear_address_lookup();
-        } else {
-            if let Some(relays) = &config.relay_urls {
-                builder = builder.relay_mode(RelayMode::Custom(
-                    relays
-                        .iter()
-                        .map(|s| s.parse::<RelayUrl>())
-                        .collect::<std::result::Result<Vec<_>, _>>()?
-                        .into_iter()
-                        .collect(),
-                ));
-            }
-            if let Some(discovery) = &config.discovery_url {
-                let url: url::Url = discovery.parse()?;
-                builder = builder
-                    .clear_address_lookup()
-                    .address_lookup(PkarrPublisher::builder(url.clone()))
-                    .address_lookup(PkarrResolver::builder(url));
-            }
-        }
-        if let Some(addr) = &config.bind {
-            let mut addr: std::net::SocketAddr = addr.parse()?;
+        let mut options = crate::managed::network_options(config)?;
+        if let Some(addr) = &mut options.bind_addr {
             addr.set_port(0);
-            builder = builder.clear_ip_transports().bind_addr(addr)?;
         }
+        let (builder, http_route) = synch_net::configure_endpoint(
+            Endpoint::builder(presets::N0)
+                .secret_key(key)
+                .ca_tls_config(CaTlsConfig::system())
+                .alpns(vec![ALPN.to_vec()]),
+            &options,
+        )
+        .await?;
+        let endpoint = builder.bind().await?;
+        let discovery = if std::env::var_os("ZORK_MESH_LAN_DISCOVERY").is_none_or(|v| v != "0") {
+            Some(crate::lan_discovery::install(
+                &endpoint,
+                "zork-enrollment-v1",
+            )?)
+        } else {
+            None
+        };
+        let local = crate::local_discovery::install(&endpoint).await?;
+        let relay_access = synch_net::RelayAccess::new(endpoint.clone(), &options)?;
         Ok(Self {
-            endpoint: builder.bind().await?,
             offline: config.offline,
-            relay_urls: config.relay_urls.clone().unwrap_or_default(),
-            relay_access: Default::default(),
+            endpoint,
+            relay_access,
+            http_route,
+            discovery: tokio::sync::Mutex::new(discovery),
+            local: std::sync::Mutex::new(local),
         })
     }
 
-    pub async fn set_relay_access(&self, origin: &str, token: Option<&str>) -> Result<()> {
-        if self.offline {
-            return Ok(());
-        }
-        self.relay_access
-            .apply(&self.endpoint, &self.relay_urls, origin, token)
-            .await
+    pub async fn bind_for_node(
+        root: &Path,
+        config: &MeshConfig,
+        node: &crate::node::MeshNode,
+    ) -> Result<Self> {
+        let transport = Self::bind(root, config).await?;
+        node.register_relay_endpoint(&transport.relay_access)
+            .await?;
+        Ok(transport)
+    }
+
+    pub async fn set_relay_access(&self, origin: &str, access_token: Option<&str>) -> Result<()> {
+        self.relay_access.set(origin, access_token).await?;
+        Ok(())
     }
 
     pub async fn address(&self) -> EndpointAddr {
-        if !self.offline {
+        let current = self.endpoint.addr();
+        if !self.offline
+            && current.ip_addrs().next().is_none()
+            && current.relay_urls().next().is_none()
+        {
             let _ = tokio::time::timeout(Duration::from_secs(5), self.endpoint.online()).await;
         }
         self.endpoint.addr()
     }
     pub async fn close(&self) {
+        if let Some(discovery) = self.discovery.lock().await.take() {
+            discovery.shutdown().await;
+        }
         self.endpoint.close().await;
+        self.http_route.shutdown().await;
+        self.local.lock().unwrap().take();
     }
 
     pub async fn exchange(&self, invitation: &Invitation, body: &Value) -> Result<Value> {
@@ -338,13 +377,21 @@ impl Enrollment {
     {
         let handler = Arc::new(handler);
         let slots = Arc::new(tokio::sync::Semaphore::new(8));
-        while let Some(incoming) = self.endpoint.accept().await {
+        let mut requests = tokio::task::JoinSet::new();
+        loop {
+            let incoming = tokio::select! {
+                incoming = self.endpoint.accept() => incoming,
+                _ = requests.join_next(), if !requests.is_empty() => continue,
+            };
+            let Some(incoming) = incoming else {
+                break;
+            };
             let Ok(slot) = slots.clone().try_acquire_owned() else {
                 incoming.refuse();
                 continue;
             };
             let handler = handler.clone();
-            tokio::spawn(async move {
+            requests.spawn(async move {
                 let _slot = slot;
                 let _ = tokio::time::timeout(Duration::from_secs(50), async {
                     let connection = incoming.await?;
@@ -370,6 +417,7 @@ impl Enrollment {
                 .await;
             });
         }
+        requests.shutdown().await;
         Ok(())
     }
 }
@@ -390,11 +438,15 @@ mod tests {
         let client = Enrollment::bind(b.path(), &config).await.unwrap();
         let invitation = Invitation {
             kind: InviteKind::Station,
+            channel: Default::default(),
+            relay_quic_port: None,
+            quic_discovery_urls: None,
             version: 1,
             id: ulid::Ulid::new().to_string(),
             secret: secret(),
             endpoint: server.address().await,
             device: MeshDevice {
+                routes: None,
                 origin: format!("key:{}", "y".repeat(52)),
                 name: "fixture".into(),
                 addr: None,

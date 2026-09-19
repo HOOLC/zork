@@ -104,6 +104,7 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
             check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
         }
     }
+    fun directoryEvents() = observations.directory()
     fun historyEvents(peer: String, session: String) = observations.history(peer, session)
     suspend fun historyOlder(peer: String, session: String) = observations.historyChange(peer, session, "older")
     suspend fun historyNewer(peer: String, session: String) = observations.historyChange(peer, session, "newer")

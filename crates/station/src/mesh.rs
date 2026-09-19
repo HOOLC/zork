@@ -16,9 +16,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::Path, sync::Arc, time::Duration};
-use tokio::net::TcpListener;
 use zork_mesh::{
-    bridge::{self, BridgeAuth, Peer},
+    control::{Peer, Reply},
     managed,
     node::MeshNode,
 };
@@ -50,8 +49,7 @@ struct PeerStatus {
 }
 pub struct Prepared {
     pub service: Arc<MeshService>,
-    listener: TcpListener,
-    auth: Arc<BridgeAuth>,
+    state: Arc<std::sync::OnceLock<AppState>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -95,6 +93,8 @@ enum RpcRequest {
         id: String,
         secret: String,
         challenge: String,
+        #[serde(default)]
+        address: Option<Value>,
     },
     Membership {
         action: String,
@@ -144,6 +144,19 @@ enum RpcRequest {
 }
 
 type WatchTopic = zork_mesh::feed::Watch;
+
+fn station_peers(config: &zork_config::MeshConfig) -> impl Iterator<Item = &zork_config::MeshPeer> {
+    // Access clients share trust for reads, but do not host a Station control
+    // service. Legacy permission flags do not describe that endpoint role.
+    config.peers.iter().filter(|peer| {
+        !config.group.as_ref().is_some_and(|group| {
+            group
+                .clients
+                .iter()
+                .any(|client| client.origin == peer.origin)
+        })
+    })
+}
 
 impl MeshService {
     pub async fn execution_history(
@@ -215,14 +228,9 @@ impl MeshService {
     }
     async fn participation_call(&self, origin: &str, request: RpcRequest) -> Result<Value> {
         self.peer(origin)?;
+        let payload = json!({"v":1,"request":request});
         // Connection setup is bounded; waiting for user participation is not.
-        let reply = self
-            .node
-            .subscribe(origin, &json!({"v":1,"request":request}))
-            .await?
-            .next()
-            .await?
-            .context("mesh_interaction_transport_closed")?;
+        let reply = self.node.exchange(origin, &payload).await?;
         ensure!(
             reply["error"] != "invalid_mesh_request",
             "interaction_unsupported"
@@ -263,11 +271,11 @@ impl MeshService {
         if previous == config {
             return Ok(());
         }
-        managed::configure(&self.root, &config, &self.node).await?;
+        managed::configure_changed(&self.root, &config, &self.node, Some(&previous)).await?;
         {
             let mut peers = self.peers.lock().expect("mesh peer cache");
-            peers.retain(|origin, _| config.peers.iter().any(|p| p.origin == *origin));
-            for peer in &config.peers {
+            peers.retain(|origin, _| station_peers(&config).any(|p| p.origin == *origin));
+            for peer in station_peers(&config) {
                 let status = peers
                     .entry(peer.origin.clone())
                     .or_insert_with(|| PeerStatus {
@@ -385,6 +393,7 @@ impl MeshService {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
+        self.enrollment.stop_join().await;
         self.adb.shutdown();
         self.services.disconnect().await;
         let tasks = std::mem::take(&mut *self.tasks.lock().expect("Mesh tasks"));
@@ -416,6 +425,28 @@ impl MeshService {
     pub fn origin(&self) -> &str {
         &self.origin
     }
+    /// What this node currently publishes: the relays it can be reached
+    /// through and the direct sockets it holds.
+    ///
+    /// An empty direct list is the honest answer for a node that has not
+    /// learned a reachable address of its own — the state a network that drops
+    /// address discovery leaves it in, and the state in which every peer
+    /// connection falls back to a relay.
+    pub fn address(&self) -> Value {
+        match self.node.address() {
+            Ok(address) => json!({
+                "relays": address
+                    .relay_urls()
+                    .map(|relay| relay.as_str().to_string())
+                    .collect::<Vec<_>>(),
+                "direct": address
+                    .ip_addrs()
+                    .map(|addr| addr.to_string())
+                    .collect::<Vec<_>>(),
+            }),
+            Err(_) => Value::Null,
+        }
+    }
     pub(crate) fn file_tree(&self) -> MeshNode {
         self.node.clone()
     }
@@ -427,10 +458,17 @@ impl MeshService {
         zork_config::services::ServicesConfig::load_for_data_root(
             &zork_config::relay_account::resolve_root(root)?,
         )?
-        .apply_network(&mut config)?;
+        .apply_defaults(&mut config)?;
         managed::validate(&config)?;
-        let runtime = managed::start(root, &config).await?;
-        let runtime = zork_client_core::transport::own(root, &config, runtime)?;
+        let control_state = Arc::new(std::sync::OnceLock::new());
+        let runtime = managed::start_with_control(
+            root,
+            &config,
+            Arc::new(ControlIngress {
+                state: control_state.clone(),
+            }),
+        )
+        .await?;
         let node = runtime.node();
         let origin = node.identity().await?;
         ensure!(
@@ -456,8 +494,7 @@ impl MeshService {
         std::fs::create_dir_all(&skills)?;
         node.add_filesystem_source(zork_config::tree::SKILLS_SPACE, &skills)
             .await?;
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let token = managed::deploy_bridge(root, &node, listener.local_addr()?.port()).await?;
+        node.retire_source("zork-control").await?;
         node.schedule_source_scan(zork_config::tree::SHARED_FILES_SPACE)
             .await?;
         node.schedule_source_scan(zork_config::tree::SKILLS_SPACE)
@@ -467,9 +504,7 @@ impl MeshService {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        let peers = config
-            .peers
-            .iter()
+        let peers = station_peers(&config)
             .map(|p| {
                 (
                     p.origin.clone(),
@@ -502,8 +537,7 @@ impl MeshService {
                 owner_subscriptions: Default::default(),
                 shared_files: Default::default(),
             }),
-            listener,
-            auth: Arc::new(BridgeAuth::new(token)?),
+            state: control_state,
         }))
     }
 
@@ -548,7 +582,7 @@ impl MeshService {
     }
     pub async fn remote_workers(&self, leader_id: &str) -> Vec<Value> {
         let config = self.config().unwrap_or_default();
-        let requests=config.peers.iter().map(|peer|async move {
+        let requests=station_peers(&config).map(|peer|async move {
             let result=tokio::time::timeout(Duration::from_secs(3),self.call(&peer.origin,RpcRequest::Workers{leader_id:leader_id.into()})).await;
             match result {Ok(Ok(value))=>value["items"].as_array().into_iter().flatten().filter_map(|item|Some(json!({"id":format!("{}/{}",peer.origin,item["id"].as_str()?),"name":item["name"],"node":peer.name,"origin":peer.origin}))).collect::<Vec<_>>(),_=>vec![]}
         });
@@ -664,17 +698,15 @@ impl MeshService {
     }
     async fn call(&self, origin: &str, request: RpcRequest) -> Result<Value> {
         self.peer(origin)?;
-        let response = self
-            .node
-            .exchange(origin, &serde_json::to_value(Envelope { v: 1, request })?)
-            .await?;
-        ensure!(response["v"] == 1, "mesh_protocol_version");
+        let payload = json!({"v":1,"request":request});
+        let reply = self.node.exchange(origin, &payload).await?;
+        ensure!(reply["v"] == 1, "mesh_protocol_version");
         ensure!(
-            response["ok"] == true,
+            reply["ok"] == true,
             "{}",
-            response["error"].as_str().unwrap_or("mesh_request_failed")
+            reply["error"].as_str().unwrap_or("mesh_request_failed")
         );
-        Ok(response["data"].clone())
+        Ok(reply["data"].clone())
     }
 }
 
@@ -710,6 +742,16 @@ async fn membership_request(
                     state,
                     origin,
                     body["name"].as_str().context("device_name_required")?,
+                )
+                .await
+        }
+        "update_routes" => {
+            service
+                .enrollment
+                .update_routes(
+                    state,
+                    origin,
+                    serde_json::from_value(body["routes"].clone())?,
                 )
                 .await
         }
@@ -785,14 +827,9 @@ async fn maintain_membership(service: Arc<MeshService>, state: AppState) {
         retry.reset();
         watchers.retain(|origin, (previous, task)| {
             !task.is_finished()
-                && config
-                    .peers
-                    .iter()
-                    .any(|p| p.origin == *origin && p == previous)
+                && station_peers(&config).any(|p| p.origin == *origin && p == previous)
         });
-        for peer in config
-            .peers
-            .iter()
+        for peer in station_peers(&config)
             .filter(|p| !watchers.contains_key(&p.origin))
             .cloned()
             .collect::<Vec<_>>()
@@ -907,8 +944,148 @@ async fn watch_peer(service: Arc<MeshService>, state: AppState, peer: zork_confi
     }
 }
 
+/// Serves the native control ALPN: peer requests straight into the station's
+/// request dispatcher, with no socket program and no loopback hop.
+struct ControlIngress {
+    state: Arc<std::sync::OnceLock<AppState>>,
+}
+
+impl std::fmt::Debug for ControlIngress {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ControlIngress")
+            .finish_non_exhaustive()
+    }
+}
+
+impl zork_mesh::control::ControlHandler for ControlIngress {
+    fn serve(
+        &self,
+        peer: Peer,
+        request: Value,
+        mut stream: zork_mesh::control::ControlStream,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> {
+        let state = self.state.clone();
+        Box::pin(async move {
+            let Some(state) = state.get().cloned() else {
+                stream
+                    .write(&json!({"v":1,"ok":false,"status":503,"error":"mesh_not_ready"}))
+                    .await?;
+                return Ok(());
+            };
+            match dispatch(state, peer, request).await {
+                Ok(Reply::Once(value)) => stream.write(&value).await,
+                Ok(Reply::Subscription(mut rx)) => {
+                    while let Some(frame) = rx.recv().await {
+                        stream.write(&frame).await?;
+                    }
+                    Ok(())
+                }
+                Ok(Reply::Tunnel {
+                    mut upstream,
+                    mut cancelled,
+                    guard,
+                }) => {
+                    let _guard = guard;
+                    ensure!(!*cancelled.borrow(), "tunnel_cancelled");
+                    stream.write(&json!({"v":1,"ok":true})).await?;
+                    tokio::select! {
+                        result = stream.splice(&mut upstream) => result,
+                        _ = async { while !*cancelled.borrow_and_update() { if cancelled.changed().await.is_err() { break; } } } => Ok(()),
+                    }
+                }
+                Err(error) => {
+                    stream
+                        .write(&json!({"v":1,"ok":false,"error":error.to_string()}))
+                        .await
+                }
+            }
+        })
+    }
+}
+
+/// Dispatches one inbound request authenticated by the native control ALPN.
+pub async fn dispatch(state: AppState, peer: Peer, request: Value) -> Result<Reply> {
+    if matches!(
+        request.pointer("/request/kind").and_then(Value::as_str),
+        Some("adb_register" | "adb_stream")
+    ) {
+        return Ok(match crate::adb::handle(state, peer, request).await {
+            Ok(reply) => reply,
+            Err(error) => Reply::Once(json!({"v":1,"ok":false,"error":error.to_string()})),
+        });
+    }
+    if request.pointer("/request/kind").and_then(Value::as_str) == Some("watch_tool") {
+        let result = async {
+            ensure!(request["v"] == 1, "mesh_protocol_version");
+            let body = serde_json::from_value(request["request"]["body"].clone())?;
+            crate::tool_stream::remote(state, &peer.origin, body).await
+        }
+        .await;
+        return Ok(match result {
+            Ok(rx) => Reply::Subscription(rx),
+            Err(error) => Reply::Once(json!({"error":error.to_string()})),
+        });
+    }
+    if request.pointer("/request/kind").and_then(Value::as_str) == Some("service") {
+        return match crate::shared_services::tunnel(state, peer, request).await {
+            Ok(reply) => Ok(reply),
+            Err(error) => Ok(Reply::Once(
+                json!({"v":1,"ok":false,"error":error.to_string()}),
+            )),
+        };
+    }
+    if matches!(
+        request.pointer("/request/kind").and_then(Value::as_str),
+        Some("watch" | "subscribe" | "watch_peer" | "watch_assignment")
+    ) {
+        return match mesh_subscription(&state, peer, request).await {
+            Ok(rx) => Ok(Reply::Subscription(rx)),
+            Err(e) => Ok(Reply::Once(json!({"v":1,"ok":false,"error":e.to_string()}))),
+        };
+    }
+    if matches!(
+        request.pointer("/request/kind").and_then(Value::as_str),
+        Some("node_tool" | "mcp" | "business_card" | "interaction_registration" | "client_browser")
+    ) || (request.pointer("/request/kind").and_then(Value::as_str) == Some("channel_tool")
+        && request
+            .pointer("/request/body/tool")
+            .and_then(Value::as_str)
+            .is_some_and(|tool| {
+                zork_agent_station_tools::channels::participating(
+                    tool,
+                    &request["request"]["body"]["arguments"],
+                )
+            }))
+    {
+        // These asynchronous operations may wait for resources
+        // or user participation. Complete the stream handshake
+        // before waiting; setup deadlines do not bound execution.
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let result = tokio::select! {
+                _ = tx.closed() => return,
+                result = handle(&state,peer,request) => result,
+            };
+            let reply = match result {
+                Ok(data) => json!({"v":1,"ok":true,"data":data}),
+                Err(error) => json!({"v":1,"ok":false,"error":error.to_string()}),
+            };
+            let _ = tx.send(reply).await;
+        });
+        return Ok(Reply::Subscription(rx));
+    }
+    let response = handle(&state, peer, request).await;
+    Ok(Reply::Once(match response {
+        Ok(data) => json!({"v":1,"ok":true,"data":data}),
+        Err(error) => json!({"v":1,"ok":false,"error":error.to_string()}),
+    }))
+}
+
 pub fn start(prepared: Prepared, state: AppState) {
+    let _ = prepared.state.set(state.clone());
     let service = prepared.service;
+    service.enrollment.resume_join(state.clone());
     let shared_files = crate::shared_files::SharedFiles::new(service.node.clone());
     let _ = service.shared_files.set(shared_files.clone());
     let owner = service.clone();
@@ -923,106 +1100,10 @@ pub fn start(prepared: Prepared, state: AppState) {
         service.clone(),
         state.clone(),
     )));
-    let ingress_state = state.clone();
-    tasks.push(tokio::spawn(async move {
-        if let Err(error) =
-            bridge::serve_subscriptions(prepared.listener, prepared.auth, move |peer, request| {
-                let state = ingress_state.clone();
-                async move {
-                    if matches!(
-                        request.pointer("/request/kind").and_then(Value::as_str),
-                        Some("adb_register" | "adb_stream")
-                    ) {
-                        return Ok(match crate::adb::handle(state, peer, request).await {
-                            Ok(reply) => reply,
-                            Err(error) => bridge::Reply::Once(
-                                json!({"v":1,"ok":false,"error":error.to_string()}),
-                            ),
-                        });
-                    }
-                    if request.pointer("/request/kind").and_then(Value::as_str)
-                        == Some("watch_tool")
-                    {
-                        let result = async {
-                            ensure!(request["v"] == 1, "mesh_protocol_version");
-                            let body = serde_json::from_value(request["request"]["body"].clone())?;
-                            crate::tool_stream::remote(state, &peer.origin, body).await
-                        }
-                        .await;
-                        return Ok(match result {
-                            Ok(rx) => bridge::Reply::Subscription(rx),
-                            Err(error) => bridge::Reply::Once(json!({"error":error.to_string()})),
-                        });
-                    }
-                    if request.pointer("/request/kind").and_then(Value::as_str) == Some("service") {
-                        return match crate::shared_services::tunnel(state, peer, request).await {
-                            Ok(reply) => Ok(reply),
-                            Err(error) => Ok(bridge::Reply::Once(
-                                json!({"v":1,"ok":false,"error":error.to_string()}),
-                            )),
-                        };
-                    }
-                    if matches!(
-                        request.pointer("/request/kind").and_then(Value::as_str),
-                        Some("watch" | "subscribe" | "watch_peer" | "watch_assignment")
-                    ) {
-                        return match mesh_subscription(&state, peer, request).await {
-                            Ok(rx) => Ok(bridge::Reply::Subscription(rx)),
-                            Err(e) => Ok(bridge::Reply::Once(
-                                json!({"v":1,"ok":false,"error":e.to_string()}),
-                            )),
-                        };
-                    }
-                    if matches!(
-                        request.pointer("/request/kind").and_then(Value::as_str),
-                        Some(
-                            "node_tool"
-                                | "mcp"
-                                | "business_card"
-                                | "interaction_registration"
-                                | "client_browser"
-                        )
-                    ) || (request.pointer("/request/kind").and_then(Value::as_str)
-                        == Some("channel_tool")
-                        && request
-                            .pointer("/request/body/tool")
-                            .and_then(Value::as_str)
-                            .is_some_and(|tool| {
-                                zork_agent_station_tools::channels::participating(
-                                    tool,
-                                    &request["request"]["body"]["arguments"],
-                                )
-                            }))
-                    {
-                        // These asynchronous operations may wait for resources
-                        // or user participation. Complete the stream handshake
-                        // before waiting; setup deadlines do not bound execution.
-                        let (tx, rx) = tokio::sync::mpsc::channel(1);
-                        tokio::spawn(async move {
-                            let result = tokio::select! {
-                                _ = tx.closed() => return,
-                                result = handle(&state,peer,request) => result,
-                            };
-                            let reply = match result {
-                                Ok(data) => json!({"v":1,"ok":true,"data":data}),
-                                Err(error) => json!({"v":1,"ok":false,"error":error.to_string()}),
-                            };
-                            let _ = tx.send(reply).await;
-                        });
-                        return Ok(bridge::Reply::Subscription(rx));
-                    }
-                    let response = handle(&state, peer, request).await;
-                    Ok(bridge::Reply::Once(match response {
-                        Ok(data) => json!({"v":1,"ok":true,"data":data}),
-                        Err(error) => json!({"v":1,"ok":false,"error":error.to_string()}),
-                    }))
-                }
-            })
-            .await
-        {
-            tracing::error!(%error,"Mesh ingress stopped");
-        }
-    }));
+    tasks.push(crate::enrollment::start_routes(
+        service.enrollment.clone(),
+        state.clone(),
+    ));
     tasks.push(tokio::spawn(async move {
         if let Err(error) = state.db.mesh_recover_dispatch() {
             tracing::error!(%error,"Mesh recovery failed");
@@ -1061,11 +1142,12 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         id,
         secret,
         challenge,
+        address,
     } = &envelope.request
     {
         return service
             .enrollment
-            .confirm(state, &peer.origin, id, secret, challenge)
+            .confirm(state, &peer.origin, id, secret, challenge, address.clone())
             .await;
     }
     if let RpcRequest::Membership { action, body } = &envelope.request {

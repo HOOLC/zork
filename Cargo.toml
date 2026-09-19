@@ -25,7 +25,7 @@ members = [
   "crates/zork-client-types",
   "crates/zork-android",
 ]
-exclude = ["vendor/iroh", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial", "vendor/rustls-platform-verifier"]
+exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial", "vendor/rustls-platform-verifier"]
 resolver = "2"
 
 [workspace.package]
@@ -150,6 +150,7 @@ opt-level = 3
 # makes GPUI 1.17 action dispatch call std::time::Instant on wasm.
 [patch.crates-io]
 iroh = { path = "vendor/iroh" }
+swarm-discovery = { path = "vendor/swarm-discovery" }
 rustls-platform-verifier = { path = "vendor/rustls-platform-verifier" }
 gpui-unofficial = { path = "vendor/gpui-unofficial" }
 gpui-base-uo = { path = "vendor/gpui-base-uo" }
@@ -160,3 +161,4 @@ gpui-web-gpui-unofficial = { path = "vendor/gpui-web-gpui-unofficial" }
 
 [patch."https://github.com/AFK-surf/synchronicity.git"]
 synch-engine = { path = "vendor/synch-engine" }
+synch-net = { path = "vendor/synch-net" }

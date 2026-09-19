@@ -796,7 +796,7 @@ impl DirectAddrUpdateState {
             self.port_mapper.deactivate();
             return;
         }
-        if self.relay_map.is_empty() {
+        if self.relay_map.is_empty() && !net_reporter.has_qad_servers() {
             debug!("skipping net_report, empty RelayMap");
             self.sock.net_report.set((None, why)).ok();
             return;
@@ -1051,6 +1051,7 @@ impl EndpointInner {
                 ipv6: has_ipv6_transport,
             });
             net_report::Options::new(tls_config.clone())
+                .proxy_url(proxy_url)
                 .quic_config(qad_config)
                 .net_report_config(net_report_config)
         };

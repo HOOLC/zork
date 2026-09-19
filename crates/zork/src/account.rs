@@ -45,6 +45,8 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             _ => anyhow::bail!("unknown account argument"),
         }
     }
+    let channel = zork_config::channel::activate_for_data(&data)?;
+    zork_config::channel::claim(&data, channel)?;
     let account = Account::configured(data)?;
     match command.as_str() {
         "login" if device => {

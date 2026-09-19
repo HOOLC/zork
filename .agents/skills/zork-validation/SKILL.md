@@ -22,7 +22,7 @@ Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow
 - 导航/历史：[Chat](../../../docs/design/chat.md#navigation)、[历史](../../../docs/design/execution-history.md)、`scripts/test-chat-navigation.py`；文件和 Skill 按 [共享文件](../zork-shared-files/SKILL.md) / [运行时 Skill](../zork-agent-skills/SKILL.md) 选入口。
 - Android：`scripts/android/build.py` 与对应 instrumentation，遵循 [手机范围](../../../docs/design/interface.md#mobile)。通知 fixture 只在独立模拟器运行。
 - 液态/文本：[UI parity](../zork-ui-parity/SKILL.md)，CPU/GPU 报告用 `scripts/storybook/test_liquid_frame_budget.py` 匹配同产物。
-- macOS 身份：`scripts/test-macos-notification-identity.py`、`scripts/test-macos-process-identities.py`。主入口与实际 GUI 必须同签名身份，deep 签名通过不保证 OS 接受；横幅/声音/冷启动点击另测，不改正式应用权限。
+- macOS 身份：`scripts/test-macos-notification-identity.py`、`scripts/test-macos-process-identities.py`。主入口与实际 GUI 必须同签名身份，deep 签名通过不保证 OS 接受；横幅/声音/冷启动点击另测，不改正式应用权限。局域网验收沿正常 App 入口启动；固定 bundle ID 和安装路径，可靠继承网络授权仍需有效 Apple 签名。注销 Launch Services 不等于删除本地网络权限记录，不能据此报告重复权限已清理。
 - DeepSWE：`benchmarks/deep-swe/README.md` 与 `pnpm benchmark:deep-swe:test`；适配器测试不证明模型评测通过。
 
 选定脚本前读其当前参数与 fixture 范围。

@@ -107,6 +107,9 @@ pub(super) struct SocketState {
     pub(super) quic_client: Option<QuicClient>,
     /// The DNS resolver to use for probes that need to resolve DNS records.
     pub(super) dns_resolver: DnsResolver,
+    pub(super) qad_dns_resolver: DnsResolver,
+    pub(super) qad_servers: Vec<Arc<RelayConfig>>,
+    pub(super) proxy_url: Option<url::Url>,
 }
 
 impl Client {
@@ -290,6 +293,7 @@ impl Actor {
                 .and_then(|l| l.preferred_relay.clone());
 
             let dns_resolver = self.socket_state.dns_resolver.clone();
+            let proxy_url = self.socket_state.proxy_url.clone();
             let dm = self.relay_map.clone();
             let token = token.clone();
             #[cfg(not(wasm_browser))]
@@ -307,6 +311,7 @@ impl Actor {
                                     &dm,
                                     preferred_relay,
                                     tls_config,
+                                    proxy_url.as_ref(),
                                 ),
                             )
                             .await
@@ -522,6 +527,8 @@ impl Probe {
                     relay.url.clone(),
                     #[cfg(not(wasm_browser))]
                     tls_config,
+                    #[cfg(not(wasm_browser))]
+                    socket_state.proxy_url.as_ref(),
                 )
                 .await
                 {
@@ -569,6 +576,7 @@ async fn check_captive_portal(
     dm: &RelayMap,
     preferred_relay: Option<RelayUrl>,
     tls_config: rustls::ClientConfig,
+    proxy_url: Option<&url::Url>,
 ) -> Result<bool, CaptivePortalError> {
     // If we have a preferred relay and we can use it for non-QAD requests, try that;
     // otherwise, pick a random one suitable for non-STUN requests.
@@ -594,7 +602,10 @@ async fn check_captive_portal(
     let mut builder = reqwest_client_builder(tls_config, dns_resolver.clone())
         .redirect(reqwest::redirect::Policy::none());
 
-    if let Some(Host::Domain(domain)) = url.host() {
+    if let Some(proxy) = proxy_url {
+        builder = builder.proxy(reqwest::Proxy::all(proxy.as_str()).map_err(|err| e!(CaptivePortalError::CreateReqwestClient, err))?);
+    }
+    if let Some(Host::Domain(domain)) = url.host() && proxy_url.is_none() {
         // Use our own resolver rather than getaddrinfo
         //
         // Be careful, a non-zero port will override the port in the URI.
@@ -816,6 +827,7 @@ async fn run_https_probe(
     #[cfg(not(wasm_browser))] dns_resolver: &DnsResolver,
     relay: RelayUrl,
     #[cfg(not(wasm_browser))] tls_config: rustls::ClientConfig,
+    #[cfg(not(wasm_browser))] proxy_url: Option<&url::Url>,
 ) -> Result<HttpsProbeReport, MeasureHttpsLatencyError> {
     trace!("HTTPS probe start");
     let url = relay.join(RELAY_PROBE_PATH)?;
@@ -834,7 +846,11 @@ async fn run_https_probe(
     }
 
     #[cfg(not(wasm_browser))]
-    if let Some(Host::Domain(domain)) = url.host() {
+    if let Some(proxy) = proxy_url {
+        builder = builder.proxy(reqwest::Proxy::all(proxy.as_str()).map_err(|err| e!(MeasureHttpsLatencyError::CreateReqwestClient, err))?);
+    }
+    #[cfg(not(wasm_browser))]
+    if let Some(Host::Domain(domain)) = url.host() && proxy_url.is_none() {
         // Use our own resolver rather than getaddrinfo
         //
         // Be careful, a non-zero port will override the port in the URI.
@@ -905,6 +921,7 @@ mod tests {
             CaTlsConfig::insecure_skip_verify()
                 .client_config(default_provider())
                 .expect("infallible"),
+            None,
         )
         .await?;
 

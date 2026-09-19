@@ -85,27 +85,21 @@ try {
   const nodeLog = await fs.open(path.join(output, "station.log"), "w", 0o600);
   const station = spawn(path.resolve(binDir, "zork-station"), ["--data", nodeRoot], { env, stdio: ["ignore", nodeLog.fd, nodeLog.fd] });
   processes.push(station);
-  await until(async () => {
-    const response = await h!.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + account.token } });
-    return response.status === 200 && Number(((await response.json()) as any).relay_connections) >= 2;
-  }, "owned Station data/enrollment relay connections");
-  pass("same-profile Station uses the desktop session for real official-relay handshakes");
+  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+  const budget = budgets.get(budgets.idFromName("primary"));
+  await until(async () => Number((await budget.statistics())?.bytes) > 128, "owned Station native relay traffic");
+  pass("owned Station completes official-relay handshakes independently of the desktop account");
   const oldAccess = account.token;
   await exec(path.resolve(binDir, "zork"), ["account", "refresh", "--data", nodeRoot, "--json"], { env, timeout: 20000 });
   account = JSON.parse(await fs.readFile(path.join(root, "account/relay.json"), "utf8")).current;
   assert.notEqual(account.token, oldAccess);
-  const accounts: any = await h.mf.getDurableObjectNamespace("ACCOUNTS");
-  const owner = accounts.get(accounts.idFromName(account.subject));
-  await until(async () => {
-    const response = await h!.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + account.token } });
-    return Number((await owner.statistics()).quota?.connects) >= 4 && response.status === 200 && Number(((await response.json()) as any).relay_connections) >= 2;
-  }, "shared-profile refresh hot reconnect");
+  assert.equal((await h.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + account.token } })).status, 200);
   pass("a CLI refresh rotates the shared session while the desktop and Station remain running");
   await fs.writeFile(path.join(ui, "relay-ready"), "ready");
   await until(() => exists(path.join(ui, "complete.json")), "desktop logout");
   assert.equal((await h.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + account.token } })).status, 401);
   assert.equal(station.exitCode, null);
-  pass("desktop logout revokes both live Station connections without stopping LAN node");
+  pass("desktop logout revokes its cloud session while Station remains running");
   await until(async () => desktop.exitCode === 0, "desktop exit");
   for (const image of ["signed-in.png", "signed-out.png"]) await fs.copyFile(path.join(ui, image), path.join(output, image));
   await fs.writeFile(path.join(output, "result.json"), JSON.stringify({ passed: true, checks, fixture: root }, null, 2));

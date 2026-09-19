@@ -17,6 +17,9 @@ pub struct Network {
     pub direct_only: bool,
     pub relay_urls: Option<Vec<String>>,
     pub discovery_url: Option<String>,
+    pub relay_quic_port: Option<u16>,
+    pub quic_discovery_urls: Option<Vec<String>>,
+    pub channel: Option<zork_config::channel::Channel>,
 }
 
 #[derive(Deserialize)]
@@ -115,9 +118,15 @@ pub enum Command {
     BeginInvitation {
         ticket: String,
         name: String,
+        #[serde(default)]
+        switch_from: Option<zork_config::membership::MeshVersion>,
     },
     PollInvitation,
     NextInvitation,
+    ConfirmInvitationSwitch {
+        input_id: String,
+        expected: zork_config::membership::MeshVersion,
+    },
     CancelInvitation,
     SavePeer {
         origin: String,
@@ -234,6 +243,7 @@ impl Command {
 /// An independent store handle: no Tokio/transport lock is held during edits.
 #[derive(Clone)]
 pub struct LocalClient {
+    directory: Arc<zork_observe::ValueSource<Value>>,
     account: Arc<relay_account::controller::Controller>,
     data_reset: Arc<data_reset::Controller>,
     local_scripts: Arc<local_scripts::Controller>,
@@ -292,6 +302,11 @@ impl LocalClient {
                 kind,
                 query,
             );
+        }
+        if matches!(key, subscriptions::Key::Directory) {
+            return Ok(subscriptions::WireSubscription::from_directory(
+                &self.directory,
+            ));
         }
         if matches!(key, subscriptions::Key::Invitation) {
             return Ok(subscriptions::WireSubscription::from_invitation(
@@ -698,15 +713,13 @@ pub struct Client {
     host_generation: u64,
     background_service: Option<String>,
     resources: Arc<resources::Resources>,
-    resource_watchers: std::collections::HashMap<String, zork_notify::Task<()>>,
+    directory: Arc<client_directory::Directory>,
     invitation: Arc<enrollment::InvitationState>,
     invitation_job: Option<zork_notify::Task<()>>,
     services: Arc<services::Views>,
     root: PathBuf,
     store: Arc<ClientStore>,
     runtime: Option<transport::Runtime>,
-    stations: Mutex<std::collections::HashMap<String, Arc<api::StationClient>>>,
-    devices: std::collections::HashMap<String, Arc<state::Device>>,
 }
 
 impl Drop for Client {
@@ -718,6 +731,7 @@ impl Drop for Client {
 impl Client {
     pub fn local(&self) -> LocalClient {
         LocalClient {
+            directory: self.directory.source.clone(),
             account: self.account.clone(),
             data_reset: self.data_reset.clone(),
             local_scripts: self.local_scripts.clone(),
@@ -731,20 +745,31 @@ impl Client {
     }
     pub fn open(root: &Path) -> Result<Self> {
         ensure!(root.is_absolute(), "client data directory must be absolute");
+        let channel = zork_config::channel::activate_for_data(root)?;
+        zork_config::channel::claim(root, channel)?;
         let store = Arc::new(ClientStore::open(root)?);
         settings_actions::recover_operations(&store)?;
+        let adb = adb::Controller::new(store.clone())?;
+        let shared_files = shared_files::SharedFiles::new(store.clone());
+        let resources = resources::Resources::new(vec![]);
+        let directory = client_directory::Directory::new(
+            store.clone(),
+            resources.clone(),
+            shared_files.clone(),
+            adb.clone(),
+        )?;
         Ok(Self {
             account: relay_account::controller::Controller::open(root)?,
             data_reset: Arc::new(data_reset::Controller::default()),
             local_scripts: local_scripts::Controller::new(store.clone()),
-            adb: adb::Controller::new(store.clone())?,
+            adb,
             adb_background_service: None,
-            shared_files: shared_files::SharedFiles::new(store.clone()),
+            shared_files,
             foreground: false,
             host_generation: 0,
             background_service: None,
-            resources: resources::Resources::new(vec![]),
-            resource_watchers: Default::default(),
+            resources,
+            directory,
             invitation: Arc::new(enrollment::InvitationState::new(
                 enrollment::public_snapshot(&store, false)?,
             )),
@@ -753,8 +778,6 @@ impl Client {
             store,
             runtime: None,
             services: Default::default(),
-            stations: Mutex::new(std::collections::HashMap::new()),
-            devices: Default::default(),
         })
     }
 
@@ -763,15 +786,19 @@ impl Client {
             enabled: true,
             offline: network.direct_only,
             // Mobile peers must be reachable over LAN, including in direct-only mode.
-            bind: Some("0.0.0.0:0".into()),
+            bind: None,
             relay_urls: network.relay_urls.clone(),
             discovery_url: network.discovery_url.clone(),
+            relay_quic_port: network.relay_quic_port,
+            quic_discovery_urls: network.quic_discovery_urls.clone(),
+            channel: network.channel,
             peers: self
                 .store
                 .nodes()?
                 .into_iter()
                 .filter_map(|n| {
                     n.mesh.map(|remote| MeshPeer {
+                        routes: remote.routes,
                         origin: remote.origin,
                         name: n.name,
                         addr: remote.addr,
@@ -787,7 +814,7 @@ impl Client {
             zork_config::services::ServicesConfig::load_for_data_root(
                 &zork_config::relay_account::resolve_root(&self.root)?,
             )?
-            .apply_network(&mut config)?;
+            .apply_defaults(&mut config)?;
         }
         managed::validate(&config)?;
         Ok(config)
@@ -816,105 +843,26 @@ impl Client {
             self.store.put("device", "identity", &identity)?;
             self.runtime = Some(runtime);
         }
-        self.watch_devices()?;
+        self.watch_devices().await?;
         self.watch_invitation()?;
         self.adb.start(self.node()?);
         Ok(())
     }
 
-    fn watch_devices(&mut self) -> Result<()> {
-        if self.runtime.is_none() {
-            return Ok(());
+    async fn watch_devices(&self) -> Result<()> {
+        if let Some(runtime) = &self.runtime {
+            self.directory.start(runtime.node()).await?;
         }
-        for peer in self.store.nodes()? {
-            if self.devices.contains_key(&peer.id) {
-                continue;
-            }
-            let client = self.station(&peer.id)?;
-            let device = state::Device::open(
-                client.clone(),
-                Some((self.store.clone(), peer.id.clone())),
-                true,
-            );
-            device.start();
-            device.profiles().restore_authorization()?;
-            let source = self.resources.clone();
-            let shared_files = self.shared_files.clone();
-            let adb = self.adb.clone();
-            let id = peer.id.clone();
-            let mut changes =
-                device.subscribe_domains(state::Domains::CONNECTION | state::Domains::MESH);
-            self.resource_watchers.insert(
-                id.clone(),
-                zork_notify::Task(tokio::spawn(async move {
-                    loop {
-                        let state = changes.snapshot().state;
-                        shared_files.update_device(&id, &client, &state);
-                        if state.revoked {
-                            adb.peer_revoked(&id);
-                            source.revoke(&id);
-                            return;
-                        }
-                        if changes.changed().await.is_none() {
-                            return;
-                        }
-                    }
-                })),
-            );
-            self.devices.insert(peer.id, device);
-        }
-        self.sync_resources()?;
-        Ok(())
-    }
-
-    fn sync_resources(&self) -> Result<()> {
-        let clients = self
-            .store
-            .nodes()?
-            .into_iter()
-            .filter_map(|peer| {
-                let device = self.devices.get(&peer.id)?;
-                if device.snapshot().revoked {
-                    return None;
-                }
-                Some(
-                    self.station(&peer.id)
-                        .map(|client| (peer.id, peer.name, client)),
-                )
-            })
-            .collect::<Result<Vec<_>>>()?;
-        self.shared_files.replace_devices(
-            clients
-                .iter()
-                .map(|(id, name, client)| (id.clone(), name.clone(), false, client.clone()))
-                .collect(),
-        );
-        for (id, _, client) in &clients {
-            if let Some(device) = self.devices.get(id) {
-                self.shared_files
-                    .update_device(id, client, &device.snapshot());
-            }
-        }
-        self.resources.replace_devices(clients);
-        self.adb.devices_changed();
         Ok(())
     }
 
     pub async fn pause(&mut self) -> Result<()> {
         self.adb.pause();
-        self.resource_watchers.clear();
-        self.resources.replace_devices(vec![]);
-        self.shared_files.pause();
+        self.directory.stop().await;
         self.invitation_job.take();
         self.invitation
             .replace(enrollment::public_snapshot(&self.store, false)?);
         self.services.clear();
-        for device in self.devices.values() {
-            device.profiles().suspend_authorization();
-            device.stop_sync();
-        }
-        self.devices.clear();
-        self.stations.lock().expect("Station clients").clear();
         if let Some(mut runtime) = self.runtime.take() {
             runtime.shutdown().await?;
         }
@@ -932,14 +880,7 @@ impl Client {
     }
 
     fn snapshot(&self) -> Result<Value> {
-        Ok(json!({
-            "invitation": self.invitation_snapshot()?,
-            "identity": self.store.get::<String>("device", "identity")?,
-            "running": self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
-            "nodes": self.store.nodes()?,
-            "selected_peer": self.store.get::<Option<String>>("device","last-node")?.flatten(),
-            "network": self.store.get::<Network>("device", "network")?.unwrap_or_default(),
-        }))
+        enrollment::public_snapshot(&self.store, self.runtime.as_ref().is_some_and(|r| !r.is_finished()))
     }
 
     async fn request(
@@ -958,6 +899,7 @@ impl Client {
             path.starts_with("/v1/") && !path.contains('#') && path.len() < 4096,
             "invalid Station path"
         );
+        self.directory.refresh().await?;
         let client = self.station(peer)?;
         let device = state::Device::open(
             client.clone(),
@@ -987,21 +929,7 @@ impl Client {
     }
 
     fn station(&self, peer: &str) -> Result<Arc<api::StationClient>> {
-        let mut clients = self.stations.lock().expect("Station clients");
-        if let Some(client) = clients.get(peer) {
-            return Ok(client.clone());
-        }
-        let node = self.node()?;
-        Ok(clients
-            .entry(peer.into())
-            .or_insert_with(|| {
-                Arc::new(api::StationClient::mesh_on(
-                    node,
-                    peer.into(),
-                    tokio::runtime::Handle::current(),
-                ))
-            })
-            .clone())
+        self.directory.station(peer)
     }
 
     /// Every JNI operation has a bounded payload. Stable messages are committed
@@ -1034,7 +962,7 @@ impl Client {
                     self.host_generation = generation;
                     self.foreground = visible;
                     if !visible {
-                        for device in self.devices.values() {
+                        for device in self.directory.devices() {
                             device.report_view(None, false, false);
                         }
                     }
@@ -1063,7 +991,7 @@ impl Client {
                     self.peer(peer)?;
                 }
                 anyhow::ensure!(query.is_none() || peer.is_some(), "请选择所属设备");
-                self.sync_resources()?;
+                self.directory.refresh().await?;
                 let resources = self.resources.clone();
                 tokio::spawn(async move {
                     if let Some(query) = query {
@@ -1075,7 +1003,7 @@ impl Client {
                 Ok(json!({}))
             }
             Command::SharedFiles { operation } => {
-                self.sync_resources()?;
+                self.directory.refresh().await?;
                 let source = self.shared_files.clone();
                 tokio::spawn(async move {
                     let _ = source.dispatch(operation).await;
@@ -1129,7 +1057,7 @@ impl Client {
                 self.snapshot()
             }
             Command::Snapshot => {
-                self.watch_devices()?;
+                self.watch_devices().await?;
                 self.snapshot()
             }
             Command::Network { network } => {
@@ -1139,11 +1067,14 @@ impl Client {
                 self.resume().await?;
                 self.snapshot()
             }
-            Command::BeginInvitation { ticket, name } => {
-                self.begin_invitation(&ticket, &name).await
-            }
+            Command::BeginInvitation {
+                ticket,
+                name,
+                switch_from,
+            } => self.begin_invitation(&ticket, &name, switch_from).await,
             Command::PollInvitation => self.poll_invitation().await,
             Command::NextInvitation => self.next_invitation().await,
+            Command::ConfirmInvitationSwitch { input_id, expected } => self.confirm_invitation_switch(&input_id, expected).await,
             Command::CancelInvitation => self.cancel_invitation().await,
             Command::SavePeer {
                 origin,
@@ -1158,6 +1089,7 @@ impl Client {
                         .context("地址格式为 IP:端口")?;
                 }
                 let peer = MeshPeer {
+                    routes: None,
                     origin: origin.clone(),
                     name: name.into(),
                     addr: address.clone(),
@@ -1184,12 +1116,13 @@ impl Client {
                     token: None,
                     local: false,
                     mesh: Some(RemoteNode {
+                        routes: None,
                         origin,
                         addr: address,
                     }),
                     group: None,
                 })?;
-                self.watch_devices()?;
+                self.watch_devices().await?;
                 self.snapshot()
             }
             Command::RemovePeer { peer } => {
@@ -1200,7 +1133,7 @@ impl Client {
                 if let Ok(node) = self.node() {
                     node.untrust(&peer).await?;
                 }
-                if let Some(device) = self.devices.remove(&peer) {
+                if let Some(device) = self.directory.device(&peer) {
                     device.stop_sync();
                     device.revoke_replica_access()?;
                 } else {
@@ -1208,9 +1141,7 @@ impl Client {
                 }
                 self.store.remove_node(&peer)?;
                 self.adb.peer_revoked(&peer);
-                self.stations.lock().expect("Station clients").remove(&peer);
-                self.resource_watchers.remove(&peer);
-                self.sync_resources()?;
+                self.directory.refresh().await?;
                 self.snapshot()
             }
             Command::Settings { peer, cached_only } => {
@@ -1312,7 +1243,7 @@ impl Client {
                         .strip_prefix("/v1/im/sessions/")
                         .and_then(|p| p.strip_suffix("/cancel"))
                     {
-                        if let Some(device) = self.devices.get(&peer) {
+                        if let Some(device) = self.directory.device(&peer) {
                             device.conversation(id).stopping();
                         }
                     }
@@ -1443,6 +1374,7 @@ mod tests {
                 local: false,
                 group: None,
                 mesh: Some(RemoteNode {
+                    routes: None,
                     origin: peer.clone(),
                     addr: None,
                 }),

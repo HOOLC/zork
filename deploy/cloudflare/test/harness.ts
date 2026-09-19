@@ -11,6 +11,7 @@ export async function harness(
     persist?: string;
     port?: number;
     signingKey?: string;
+    noGoogle?: boolean;
   } = {},
 ) {
   const origin = options.origin ?? "https://relay.example";
@@ -48,13 +49,13 @@ export async function harness(
       ...(options.persist ? { resourcePersistencePath: options.persist } : {}),
       bindings: {
         PUBLIC_ORIGIN: origin,
-        GOOGLE_CLIENT_ID: "test-google-client",
+        GOOGLE_CLIENT_ID: options.noGoogle ? "" : "test-google-client",
         GOOGLE_CLIENT_SECRET: randomSecret(),
         AUTH_SIGNING_KEY: signingKey,
         ADMIN_TOKEN: adminToken,
       },
       serviceBindings: options.relay ? { TEST_RELAY: { external: { address: new URL(options.relay).host, http: {} } } } : {},
-      durableObjects: Object.fromEntries(["Account", "LoginAttempt", "LoginLimiter", "Relay", "DiscoveryRecord"].map((className, i) => [["ACCOUNTS", "LOGINS", "LOGIN_LIMITS", "RELAY", "RECORDS"][i], { className, useSQLite: true }])),
+      durableObjects: Object.fromEntries(["Account", "LoginAttempt", "LoginLimiter", "Relay", "DiscoveryRecord", "RelayBudget"].map((className, i) => [["ACCOUNTS", "LOGINS", "LOGIN_LIMITS", "RELAY", "RECORDS", "RELAY_BUDGET"][i], { className, useSQLite: true }])),
       outboundService: async (request) => {
         const url = new URL(request.url);
         if (url.href === "https://www.googleapis.com/oauth2/v3/certs") {

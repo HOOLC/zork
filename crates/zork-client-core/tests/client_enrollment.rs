@@ -1,6 +1,6 @@
 //! Run with the isolated Station from scripts/android/test_enrollment.py.
 use serde_json::{json, Value};
-use zork_client_core::{Client, Command};
+use zork_client_core::{subscriptions::Key, Client, Command};
 use zork_mesh::enrollment::InviteKind;
 
 async fn command(client: &mut Client, value: Value) -> anyhow::Result<Value> {
@@ -60,6 +60,26 @@ async fn begin(client: &mut Client, invite: &Value) -> Value {
     .unwrap()
 }
 
+async fn invitation_until(client: &mut Client, predicate: impl Fn(&Value) -> bool) -> Value {
+    command(client, json!({"op":"resume"})).await.unwrap();
+    let mut observer = client.local().observe(Key::Invitation).unwrap();
+    let mut changes = observer.signals();
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        loop {
+            if let Some(frame) = observer.prepare().unwrap() {
+                let value = frame["snapshot"].clone();
+                observer.finish(frame["batch"].as_u64().unwrap(), true);
+                if predicate(&value) {
+                    return value;
+                }
+            }
+            changes.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("invitation subscription did not reach the required state")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires isolated Station; use scripts/android/test_enrollment.py"]
 async fn phone_requires_approval_and_survives_restart_without_node_privileges() {
@@ -76,15 +96,16 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     assert_eq!(ticket.kind, InviteKind::Client);
     assert_eq!(invite["scope"], "client");
     assert!(invite.get("command").is_none());
-    begin(&mut client, &invite).await;
     let preclaim = status(&invite["id"]).await;
     assert!(
         approve(&invite, &preclaim).await.is_err(),
         "unverified claim must never be approved"
     );
-    let waiting = command(&mut client, json!({"op":"poll_invitation"}))
-        .await
-        .unwrap();
+    begin(&mut client, &invite).await;
+    let waiting = invitation_until(&mut client, |value| {
+        value["invitation"]["status"] == "awaiting_approval"
+    })
+    .await;
     assert_eq!(waiting["invitation"]["status"], "awaiting_approval");
     assert!(waiting["nodes"].as_array().unwrap().is_empty());
     let identity = waiting["identity"].clone();
@@ -106,9 +127,8 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     let otherdir = tempfile::tempdir().unwrap();
     let mut other = Client::open(otherdir.path()).unwrap();
     begin(&mut other, &invite).await;
-    assert!(command(&mut other, json!({"op":"poll_invitation"}))
-        .await
-        .is_err());
+    let rejected = invitation_until(&mut other, |value| value["done"] == true).await;
+    assert_eq!(rejected["invitation"]["status"], "conflict");
     other.pause().await.unwrap();
     // Process recreation keeps the same device and invitation, before approval.
     client.pause().await.unwrap();
@@ -117,9 +137,10 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     let resumed = command(&mut client, json!({"op":"resume"})).await.unwrap();
     assert_eq!(resumed["identity"], identity);
     approve(&invite, &claim).await.unwrap();
-    let accepted = command(&mut client, json!({"op":"poll_invitation"}))
-        .await
-        .unwrap();
+    let accepted = invitation_until(&mut client, |value| {
+        value["done"] == true && value["invitation"].is_null()
+    })
+    .await;
     assert!(accepted["invitation"].is_null());
     assert_eq!(accepted["joined_peer"], ticket.device.origin);
     let config = admin(reqwest::Method::GET, "/v1/node/mesh", None)
@@ -163,9 +184,10 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     .unwrap();
     // Same identity may recover the same receipt, without adding a duplicate grant.
     begin(&mut client, &invite).await;
-    command(&mut client, json!({"op":"poll_invitation"}))
-        .await
-        .unwrap();
+    invitation_until(&mut client, |value| {
+        value["done"] == true && value["invitation"].is_null()
+    })
+    .await;
     admin(
         reqwest::Method::POST,
         "/v1/node/mesh/members/remove",
@@ -200,9 +222,10 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     .unwrap();
     legacy["invitation"] = json!(full.encode().unwrap());
     begin(&mut denied_client, &legacy).await;
-    command(&mut denied_client, json!({"op":"poll_invitation"}))
-        .await
-        .unwrap();
+    invitation_until(&mut denied_client, |value| {
+        value["invitation"]["status"] == "awaiting_approval"
+    })
+    .await;
     admin(
         reqwest::Method::DELETE,
         &format!("/v1/node/mesh/invites/{}", denied["id"].as_str().unwrap()),
@@ -210,9 +233,8 @@ async fn phone_requires_approval_and_survives_restart_without_node_privileges() 
     )
     .await
     .unwrap();
-    assert!(command(&mut denied_client, json!({"op":"poll_invitation"}))
-        .await
-        .is_err());
+    let rejected = invitation_until(&mut denied_client, |value| value["done"] == true).await;
+    assert_eq!(rejected["invitation"]["status"], "revoked");
     let cancelled = command(&mut denied_client, json!({"op":"cancel_invitation"}))
         .await
         .unwrap();

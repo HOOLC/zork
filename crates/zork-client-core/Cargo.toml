@@ -23,6 +23,7 @@ base64 = "0.22"
 getrandom.workspace = true
 sha2 = "0.10.9"
 zork-agent-api = { path = "../agent-api" }
+tracing = "0.1"
 bytes = "1"
 reqwest.workspace = true
 thiserror = "2.0.17"

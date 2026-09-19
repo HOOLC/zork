@@ -19,6 +19,7 @@ fn client_mesh() {
             local: false,
             group: None,
             mesh: Some(zork_gui::desktop::store::RemoteNode {
+                routes: None,
                 origin: peer.origin.clone(),
                 addr: peer.addr.clone(),
             }),

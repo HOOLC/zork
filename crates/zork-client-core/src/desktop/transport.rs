@@ -88,6 +88,9 @@ impl ClientMesh {
         config.mesh.enabled = true;
         if let Some(network) = network {
             config.mesh.offline = network.offline;
+            config.mesh.channel = network.channel;
+            config.mesh.relay_quic_port = network.relay_quic_port;
+            config.mesh.quic_discovery_urls = network.quic_discovery_urls.clone();
         }
         config.mesh.relay_urls = network
             .and_then(|n| n.relay_urls.clone())
@@ -95,7 +98,7 @@ impl ClientMesh {
         config.mesh.discovery_url = network
             .and_then(|n| n.discovery_url.clone())
             .or(config.mesh.discovery_url);
-        services.apply_network(&mut config.mesh)?;
+        services.apply_defaults(&mut config.mesh)?;
         config.mesh.workspaces.clear();
         config.mesh.peers = nodes
             .iter()
@@ -112,9 +115,14 @@ impl ClientMesh {
                         .get::<String>(&node.id, "mesh-origin")
                         .ok()
                         .flatten()
-                        .map(|origin| crate::store::RemoteNode { origin, addr: None })
+                        .map(|origin| crate::store::RemoteNode {
+                            routes: None,
+                            origin,
+                            addr: None,
+                        })
                 });
                 remote.map(|remote| zork_config::MeshPeer {
+                    routes: remote.routes,
                     origin: remote.origin,
                     name: node.name.clone(),
                     addr: remote.addr,
@@ -158,11 +166,14 @@ impl ClientMesh {
             });
         }
         let current = state.as_mut().context("embedded client Mesh missing")?;
-        current.executor.block_on(zork_mesh::managed::configure(
-            &self.root,
-            &config.mesh,
-            &self.control(),
-        ))?;
+        current
+            .executor
+            .block_on(zork_mesh::managed::configure_changed(
+                &self.root,
+                &config.mesh,
+                &self.control(),
+                Some(&current.config),
+            ))?;
         current.config = config.mesh;
         ensure!(!self.quitting.load(Ordering::Acquire), "客户端正在退出");
         let origin = current.origin.clone();
