@@ -143,6 +143,11 @@ uses a loopback reverse forward and checks the real settings UI through JNI.
 These local fixtures validate the product flow; real Google consent must also
 be checked against the deployed OAuth client.
 
+For Google-independent LAN bootstrap, run the isolated Station regression from
+the repository root after rebuilding Station:
+
+    python3 scripts/android/test_enrollment.py --test relay_account_enrollment
+
 The native regression uses the production CLI, Station, credential controller and
 official relay container. Only Google's external identity provider is a local
 RS256 fixture. It waits through the production renewal interval. Test entrypoints

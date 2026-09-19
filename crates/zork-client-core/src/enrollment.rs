@@ -79,10 +79,21 @@ impl Client {
         self.store.get("device", "invitation")
     }
     pub(crate) fn enrollment_network(&self) -> Result<Network> {
-        Ok(self
-            .pending_invitation()?
-            .map(|p| p.network)
-            .unwrap_or(self.store.get("device", "network")?.unwrap_or_default()))
+        if let Some(pending) = self.pending_invitation()? {
+            return Ok(pending.network);
+        }
+        if self.store.nodes()?.is_empty() {
+            if let Some(input) = self.store.get::<Input>("device", "invitation_input")? {
+                let config =
+                    zork_mesh::enrollment::ticket::Ticket::decode(&input.ticket)?.network_config();
+                return Ok(Network {
+                    direct_only: config.offline,
+                    relay_urls: config.relay_urls,
+                    discovery_url: config.discovery_url,
+                });
+            }
+        }
+        Ok(self.store.get("device", "network")?.unwrap_or_default())
     }
     pub(crate) fn invitation_snapshot(&self) -> Result<Value> {
         Ok(public_snapshot(&self.store, self.runtime.is_some())?["invitation"].clone())
@@ -106,6 +117,7 @@ impl Client {
                 ensure!(existing.ticket == ticket, "请先取消当前连接邀请");
             } else {
                 ensure!(self.pending_invitation()?.is_none(), "请先取消当前连接邀请");
+                self.pause().await?;
                 self.store.put(
                     "device",
                     "invitation_input",
@@ -355,6 +367,9 @@ async fn resolve_input(
 ) -> Result<Pending> {
     let mut retry = zork_notify::retry::Retry::default();
     let mut changes = account.subscribe();
+    let public_relay = !zork_mesh::enrollment::ticket::Ticket::decode(&input.ticket)?
+        .network_config()
+        .offline;
     loop {
         match crate::transport::resolve_invitation(root, &input.ticket, InviteKind::Client).await {
             Ok(invitation) => {
@@ -391,7 +406,7 @@ async fn resolve_input(
                 if snapshot["invitation"]["id"] != input.id {
                     anyhow::bail!("invitation_cancelled");
                 }
-                let login = !account.snapshot().authenticated;
+                let login = public_relay && !account.snapshot().authenticated;
                 snapshot["done"] = json!(terminal);
                 snapshot["invitation"]["status"] = json!(if terminal {
                     "failed"
