@@ -137,11 +137,14 @@ Product entry-point checks use the same local Worker and signed Google fixture:
     cargo test --locked -p zork-gui --features headless-bench --test headless_relay_account --no-run
     pnpm exec tsx test/product-account.ts /path/to/headless_relay_account /path/to/fresh/binaries /path/to/report
     pnpm exec tsx test/android-account.ts /path/to/fresh.apk emulator-SERIAL /path/to/report
+    pnpm exec tsx test/device-browser.ts /path/to/browser-report
 
 The Android runner requires an isolated emulator. It installs a fixed APK copy,
 uses a loopback reverse forward and checks the real settings UI through JNI.
 These local fixtures validate the product flow; real Google consent must also
 be checked against the deployed OAuth client.
+The browser check submits the actual confirmation form in Chromium; an HTTP
+302 alone does not verify Origin, cookies or browser navigation policy.
 
 For Google-independent LAN bootstrap, run the isolated Station regression from
 the repository root after rebuilding Station:
