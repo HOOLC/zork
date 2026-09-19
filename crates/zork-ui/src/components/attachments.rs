@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Context};
 
@@ -53,7 +53,7 @@ pub fn message_image_with_padding(
     width: f32,
     padding: f32,
 ) -> ui::Action {
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let ratio = image
         .as_ref()
         .map(|image| {
@@ -201,7 +201,7 @@ pub fn row_source<V: 'static>(
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     let label = format!("{name}, {meta}");
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
         .radius(ui::FIELD_RADIUS)
         .font_weight(gpui::FontWeight::NORMAL)
@@ -361,7 +361,7 @@ pub fn card_source<V: 'static>(
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     let label = format!("查看附件 {name}");
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     ui::button(id, "", false, enabled)
         .radius(ui::COMPACT_CARD_RADIUS)
         .font_weight(gpui::FontWeight::NORMAL)

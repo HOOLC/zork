@@ -408,7 +408,7 @@ fn settings_sidebar_process(output: &std::path::Path) -> anyhow::Result<()> {
     std::fs::write(
         &services,
         serde_json::to_vec(
-            &json!({"cue":{"issuer":"https://account.invalid","client_id":"fixture"}}),
+            &json!({"relay_urls":["http://127.0.0.1:9"],"discovery_url":"http://127.0.0.1:9/pkarr"}),
         )?,
     )?;
     let status = std::process::Command::new(std::env::current_exe()?)

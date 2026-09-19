@@ -532,7 +532,7 @@ mod tests {
                 "ts": "111.223",
                 "text": "",
                 "blocks": [{ "type": "section" }],
-                "attachments": [{ "title": "CUE-1180" }]
+                "attachments": [{ "title": "ZORK-1180" }]
             }
         });
         let (_, parsed) = parse_socket_payload("events_api", &payload, &bot()).unwrap();
@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(parsed["slackMessage"]["username"], "Linear");
         assert_eq!(
             parsed["slackMessage"]["attachments"][0]["title"],
-            "CUE-1180"
+            "ZORK-1180"
         );
     }
 

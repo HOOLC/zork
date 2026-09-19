@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{prelude::*, *};
@@ -60,7 +60,7 @@ impl Appearance {
 }
 impl Render for Appearance {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let height = self.draft.unwrap_or(if self.data.height == 0 {
             self.data.automatic
         } else {

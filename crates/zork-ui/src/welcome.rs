@@ -1,7 +1,7 @@
 //! Welcome panel with independently retained copy and the shared animated brand.
 use crate::{
     components::{brand::Brand, region::Regions},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 #[derive(Clone, PartialEq)]
@@ -61,7 +61,7 @@ impl Render for Welcome {
                             .text_center()
                             .text_size(px(13.))
                             .line_height(px(22.))
-                            .text_color(rgb(CUE_UI.palette.muted))
+                            .text_color(rgb(ZORK_UI.palette.muted))
                             .child(view.data.description.clone()),
                     )
                     .into_any_element()
@@ -97,7 +97,7 @@ pub fn story(state: &str, text: crate::resources::Text, cx: &mut App) -> Entity<
             } else {
                 crate::components::brand::BrandMotion::Icon
             },
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
         )
     });
     cx.new(|_| {

@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
@@ -34,7 +34,7 @@ pub fn render<V: 'static>(
             .child(
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child("连接此设备的小伙伴都会看到新名称。"),
             ),
         div()

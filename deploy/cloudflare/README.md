@@ -1,114 +1,166 @@
-# Cloudflare Mesh services
+# Cloudflare relay control plane
 
-Deploy an official **iroh-relay 1.1.0** container and a pkarr HTTP discovery service.
-The relay protocol is compatible with Zork's iroh 1.0.3 dependency. Cloudflare
-terminates public TLS; the relay falls back from TLS-exporter authentication to
-its signed challenge handshake. Peer traffic remains encrypted end to end by iroh.
+The Worker admits Google-authenticated accounts to one official iroh relay
+container. Mesh invitations establish member trust; account login does not grant
+access to another member's files or tools. LAN, direct connections and signed pkarr
+discovery remain independent of Google login. UDP discovery and hole-punching
+policy are separate transport responsibilities.
 
-The Worker exposes:
+A strongly consistent Durable Object owns each account's sessions and relay
+connections. Access credentials expire; refresh credentials rotate and have both
+idle and absolute expiry. Retrying a lost refresh response uses the same persisted
+request ID. Reusing an older credential outside that retry revokes its session.
+Session revocation and account blocking close existing WebSockets, and byte, frame and
+connection limits apply across all sessions of an account. Enforcement constants
+and request contracts live in [the implementation](src/account.ts).
 
-| Path                            | Purpose                                                      |
-| ------------------------------- | ------------------------------------------------------------ |
-| `/relay`                        | Official iroh WebSocket relay, routed to one container       |
-| `/pkarr/<z-base-32-public-key>` | Signed address record PUT and GET                            |
-| `/healthz`, `/ping`             | Worker reachability, not an end-to-end relay readiness check |
+The browser returns a one-use code to a loopback listener, bound to client state
+and PKCE. Google tokens, access tokens and refresh tokens are not placed in that
+callback URL. Google identity verification uses its public keys and checks issuer,
+audience, nonce, expiry and verified email. Invocation logging is disabled because
+OAuth requests contain one-use codes; do not enable full URL/header capture.
 
-## Deploy
+## Configure
 
-Use Node.js 22+ and pnpm 10.33.0. Docker must support Linux amd64 images. The
-Cloudflare account must have Workers/Containers available; resource usage is billed
-by Cloudflare. The configuration caps the relay at one `lite` container. Active
-connections keep the relay running; this is not a zero-cost idle Worker deployment.
+Use the pnpm version declared in package.json and frozen dependencies:
 
-```sh
-cd deploy/cloudflare
-npx --yes pnpm@10.33.0 install --frozen-lockfile
-cp wrangler.jsonc wrangler.local.json
-```
+    cd deploy/cloudflare
+    pnpm install --ignore-workspace --frozen-lockfile
 
-Edit the ignored `wrangler.local.json` to set `account_id`, an unused Worker name,
-and `vars.ALLOWED_KEYS` (comma-separated lowercase 64-character hex endpoint public
-keys). Set a custom domain with `routes: [{"pattern":"relay.example.com",
-"custom_domain":true}]`. No private keys or invitation secrets belong in this file.
+In Google Auth Platform, create a **Web application** OAuth client. Configure the
+consent screen for openid and email; add the intended account as a test user
+while the application is in testing. Register this exact callback, replacing the
+host for a different deployment:
 
-Include each device's Mesh identity, the desktop transport identity, and any
-invitation/enrollment endpoint identity that needs to use this relay. An empty
-allowlist denies all endpoints. Adding new devices therefore includes updating
-this infrastructure allowlist; a Zork invitation alone does not grant relay access.
+    https://relay.zork.ing/v1/auth/google/callback
 
-```sh
-npx --yes pnpm@10.33.0 exec wrangler login --device
-npx --yes pnpm@10.33.0 types
-npx --yes pnpm@10.33.0 check
-npx --yes pnpm@10.33.0 test
-npx --yes pnpm@10.33.0 run deploy
-```
+Save the downloaded Web client JSON outside the checkout. The default location is
+~/zork-deploy/google-oauth.json. For Cloudflare, run `pnpm exec wrangler login` and approve the browser prompt.
+Use `pnpm exec wrangler login --device` if the browser is on another machine.
+Alternatively, save a Cloudflare API token in ~/zork-deploy/cloudflare-api-token. Both must have mode 600.
+The deployment identity needs access to the target account's Workers, Durable
+Objects and Containers, and the target zone's Worker routes/custom domain.
+Cloudflare Containers must be enabled and Docker must build Linux amd64 images.
+See [Cloudflare API token setup](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+and [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect).
 
-`deploy.py` uses a temporary Docker configuration for the 15-minute registry token,
-so SSH/background deployment does not require an unlocked macOS keychain. It retains
-the current Docker host and CLI plugin paths, and deletes the temporary credentials
-on exit. It does not change global Docker settings.
+The canonical service is `https://relay.zork.ing`; its custom-domain route also
+serves account endpoints and signed discovery. Wrangler creates the custom-domain
+DNS mapping and certificate in the account containing the active `zork.ing` zone.
+When migrating from a different issuer origin, sign in again; credentials are never
+forwarded across origins. Register the new Google callback before cutting over.
 
-The relay's allowlist is read when its process starts. After changing allowed keys,
-ensure the existing relay container has restarted before treating the change as
-effective. Existing client connections will need to reconnect. Discovery checks
-the current allowlist on every request.
+Copy wrangler.jsonc to the ignored wrangler.local.json. Set account_id, the Worker
+name, vars.PUBLIC_ORIGIN and its custom-domain route. The helper always takes code,
+bindings and migrations from the checked-in template; an old private config cannot
+silently omit the new session storage. Google client ID comes from the private
+Google JSON. Its registered redirect must match the configured origin.
 
-## Client configuration
+    python3 deploy.py check --config wrangler.local.json
+    python3 deploy.py prepare --config wrangler.local.json --output /path/to/candidate
 
-```json
-{
-  "relay_urls": ["https://relay.example.com"],
-  "discovery_url": "https://relay.example.com/pkarr"
-}
-```
+The check reports missing inputs without their values. Preparation can produce a
+reviewable candidate with configuration gaps recorded: a bundled production
+Worker, the pinned relay image archive, public deployment configuration and
+SHA-256 manifest. It performs a Wrangler dry run and an amd64 container build.
+It rejects an existing output directory to preserve a reviewed candidate.
 
-Apply this through the service configuration described in
-[`docs/design/devices.md`](../../docs/design/devices.md). The running Station
-needs its Mesh configuration updated separately. That operation restarts the
-Station, so check for active tasks first. Preserve membership, grants and identities.
-`offline: true` must be disabled for public services to work.
+## Deploy and accept
 
-## Validation
+After filling configuration gaps, prepare a **new** candidate. Deploy exactly that
+candidate:
 
-The unit tests cover signed packets, tampering, timestamp bounds and body limits.
-`test/http-smoke.ts` runs against a real local or remote Worker and checks signed
-PUT/GET, retries, stale/conflicting writes, concurrent ordering and denied access.
+    python3 deploy.py deploy --config wrangler.local.json --output /path/to/candidate
 
-For protocol interoperability, build the native probe from the repository root:
+The helper checks artifact hashes and configuration, loads the fixed image, stores
+Worker secrets, and deploys. It generates independent random signing and admin
+keys in ~/zork-deploy/session-keys.json on first use. Retain that private file for
+subsequent deploys; it is not part of the candidate. A temporary Docker config
+avoids an SSH session's locked macOS keychain without modifying global settings.
+Secret files are never embedded in the Worker or passed as command-line values.
 
-```sh
-CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4 \
-  python3 scripts/lib/build_env.py -- cargo build --locked -p zork-mesh --example network-probe
-```
+A deployment command succeeding is not acceptance. Use a clean, isolated data
+directory and the freshly built CLI/Station against the deployed origin:
 
-Run the resulting `network-probe init <isolated-directory>` and put both printed
-public keys in the allowlist. Then run:
+    zork account login --data /path/to/isolated-data
+    zork account status --data /path/to/isolated-data --json
+    zork account refresh --data /path/to/isolated-data
+    zork account sessions --data /path/to/isolated-data
+    zork account logout --data /path/to/isolated-data
 
-```sh
-network-probe check <isolated-directory> https://relay.example.com https://relay.example.com/pkarr 90
-```
+For the first upgrade from stateless admission, add `--restart-relay` to the
+deploy command. After deployment it uses the private admin credential to retire
+the old relay process and its untracked sockets. Verify that pre-upgrade WebSockets
+have closed and new connections use the deployed image. An immediate Cloudflare
+rollout starts replacement; it does not prove the old process has exited. The
+restart preserves account and discovery storage. Ordinary compatible redeploys
+can let the rollout drain existing connections.
 
-It disables direct IP transports, resolves by endpoint ID through the custom pkarr
-service, transfers and hashes 4 MiB twice, with a 90-second idle period in between.
-This proves forced relay transport; two endpoints on one machine do not establish
-physical-device or cellular-network interoperability.
+Verify real Google consent, native relay protocol traffic, automatic renewal,
+relogin without Station restart, server revocation and reconnect denial. A healthy
+/healthz only proves Worker reachability. Local mock Google identity tests do not
+prove the real OAuth client's configuration or consent screen.
 
-## Storage and operational limits
+Desktop and Android expose Zork account login before device connection and in
+settings. The desktop profile owns one private session shared by its embedded
+client and owned Station, including after background service takeover. An
+independent Station keeps its own account. For a headless host, run:
 
-Discovery uses one SQLite Durable Object per allowed public key. Ed25519 signatures
-and the DNS packet are verified before storage. Older timestamps and conflicting
-records at the same timestamp cannot overwrite newer data, even with concurrent
-requests. Packets are limited to 1072 bytes and timestamps to the last 24 hours
-(with 5 minutes of future clock tolerance). Expired records return 404 while their
-timestamps remain as replay protection. GETs are not edge-cached.
+    zork account login --device --no-browser --data /path/to/station-data
 
-This service implements pkarr HTTP publishing/resolution, not authoritative DNS or
-DHT discovery. UDP address discovery is disabled on this container; iroh direct
-peer connectivity remains independent. The single relay is an initial deployment,
-not a redundant multi-region service. Metrics are available inside the container
-on port 9090 and are not exposed by the public Worker.
+Open the printed authorization link on any browser, confirm the requesting
+device, and select a Google account. The requesting core polls with its private
+PKCE verifier; no loopback tunnel or pre-existing Mesh connection is needed.
+Use the same --data as the Station being tested. Do not copy account files or Mesh
+identities between development and release profiles. CLI help describes session
+revocation and account-wide logout. When offline, logout disables local access,
+retains a private revocation record and returns a pending result. The running
+account controller or another logout attempt retries it; only server confirmation
+means remote logout finished.
 
-Use `wrangler tail --config wrangler.local.json`, Cloudflare container logs, and
-the native probe together. A successful `/healthz` is not proof of relay availability.
-Keep the previous Worker version/image and device network configuration for rollback.
+The relay process accepts only the Worker's internal forwarding and has no public
+container endpoint. All admitted peers reach the same container; independently
+routing upgrades would split the relay. The container's metrics port is internal.
+Signed discovery stores bounded, verified packets; it is neither an account
+directory nor a device allowlist.
+
+## Local regression and rollback
+
+    pnpm types
+    pnpm check
+    pnpm test
+    # After rebuilding zork and zork-station with --locked:
+    pnpm exec tsx test/native-lifecycle.ts /path/to/fresh/binaries /path/to/report
+
+Product entry-point checks use the same local Worker and signed Google fixture:
+
+    cargo test --locked -p zork-gui --features headless-bench --test headless_relay_account --no-run
+    pnpm exec tsx test/product-account.ts /path/to/headless_relay_account /path/to/fresh/binaries /path/to/report
+    pnpm exec tsx test/android-account.ts /path/to/fresh.apk emulator-SERIAL /path/to/report
+    pnpm exec tsx test/device-browser.ts /path/to/browser-report
+
+The Android runner requires an isolated emulator. It installs a fixed APK copy,
+uses a loopback reverse forward and checks the real settings UI through JNI.
+These local fixtures validate the product flow; real Google consent must also
+be checked against the deployed OAuth client.
+The browser check submits the actual confirmation form in Chromium; an HTTP
+302 alone does not verify Origin, cookies or browser navigation policy.
+
+For Google-independent LAN bootstrap, run the isolated Station regression from
+the repository root after rebuilding Station:
+
+    python3 scripts/android/test_enrollment.py --test relay_account_enrollment
+
+The native regression uses the production CLI, Station, credential controller and
+official relay container. Only Google's external identity provider is a local
+RS256 fixture. It waits through the production renewal interval. Test entrypoints
+are separate from the deploy bundle.
+
+Keep the previous Worker version and image, the deployment metadata saved by the
+helper, and the private signing key for rollback. Durable Object migrations are
+forward-only: retain the account classes/bindings and storage when rolling back
+application logic. Do not roll back to the old stateless JWT admission path, which
+cannot honor revoked sessions or enforce connected-account limits. Key rotation
+invalidates future admission but is not a substitute for targeted session/account
+revocation of existing sockets. Never restore a stale account database to undo a
+revocation.

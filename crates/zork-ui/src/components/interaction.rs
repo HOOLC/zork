@@ -4,7 +4,7 @@ use super::text_input::ComposerInput;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{
     div, prelude::*, px, rgb, Context, Entity, EventEmitter, FontWeight, SharedString, Window,
@@ -198,7 +198,7 @@ impl InteractionCard {
         let content = div()
             .text_size(px(13.))
             .line_height(px(20.))
-            .text_color(rgb(CUE_UI.palette.text))
+            .text_color(rgb(ZORK_UI.palette.text))
             .child(shown);
         let mut row = div().flex().flex_col().gap_1().min_w(px(0.));
         row = if expanded {
@@ -235,7 +235,7 @@ impl InteractionCard {
 
 impl Render for InteractionCard {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let mut body = super::liquid::panel::inline(format!("interaction-card-{}", self.view.id))
             .w_full()
             .min_w(px(0.))

@@ -138,7 +138,7 @@ impl SharedFilesView {
             .into_any_element()
     }
     fn row(&self, index: usize, grid: bool, cx: &Context<Self>) -> Div {
-        let p = crate::design::CUE_UI.palette;
+        let p = crate::design::ZORK_UI.palette;
         let (id, name, folder, versions, offline, action) = if self.data.location.is_none() {
             let space = &self.data.spaces[index];
             (
@@ -232,7 +232,7 @@ impl SharedFilesView {
         div().w_full().px(px(16.)).py(px(2.)).child(line)
     }
     fn preview(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let p = crate::design::CUE_UI.palette;
+        let p = crate::design::ZORK_UI.palette;
         let Some(preview) = &self.data.preview else {
             return div();
         };
@@ -429,7 +429,7 @@ impl SharedFilesView {
             }),
         );
         let items = vec![
-            Item::new("shared-refresh", self.locale.text("refresh")).icon("cue/reload.svg"),
+            Item::new("shared-refresh", self.locale.text("refresh")).icon("interface/reload.svg"),
             Item::new(
                 "shared-layout",
                 self.locale.text(if self.data.layout == Layout::List {
@@ -496,7 +496,7 @@ impl Render for SharedFilesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let more_focus =
             crate::components::liquid::controls::action_focus("shared-more", window, cx);
-        let p = crate::design::CUE_UI.palette;
+        let p = crate::design::ZORK_UI.palette;
         let available = self
             .available_width
             .unwrap_or_else(|| window.viewport_size().width.as_f32());

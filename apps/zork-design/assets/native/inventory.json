@@ -9,7 +9,7 @@
       "families": {
         "avatars": 12,
         "brand": 7,
-        "cue": 34,
+        "interface": 34,
         "icons": 59,
         "illustrations": 8,
         "motion": 4,
@@ -23,7 +23,7 @@
       "families": {
         "avatars": 12,
         "brand": 7,
-        "cue": 34,
+        "interface": 34,
         "icons": 59,
         "illustrations": 8,
         "motion": 4,
@@ -303,343 +303,333 @@
     },
     {
       "checkout": "current",
-      "path": "cue/arrow-left.svg",
-      "snapshot": "current/cue/arrow-left.svg",
-      "family": "cue",
+      "path": "interface/arrow-left.svg",
+      "snapshot": "current/interface/arrow-left.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "17ba1d79bb68e283c212fd7883d34d715dfa5ae8e398914dfbf3cd182a0db4d2",
-      "source": "crates/zork-gui/assets/cue/arrow-left.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-left.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/arrow-right.svg",
-      "snapshot": "current/cue/arrow-right.svg",
-      "family": "cue",
+      "path": "interface/arrow-right.svg",
+      "snapshot": "current/interface/arrow-right.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d1cc2f4a095fdaaff61775fcc9f84749a363f72368e3ebc1a1bb6feb04be2685",
-      "source": "crates/zork-gui/assets/cue/arrow-right.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-right.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/arrow-up.svg",
-      "snapshot": "current/cue/arrow-up.svg",
-      "family": "cue",
+      "path": "interface/arrow-up.svg",
+      "snapshot": "current/interface/arrow-up.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "6ace723725a6fe0bf2b3c5e53bbfebe97aec2f654ef773234af1e20e906a68c4",
-      "source": "crates/zork-gui/assets/cue/arrow-up.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-up.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/bars-three.svg",
-      "snapshot": "current/cue/bars-three.svg",
-      "family": "cue",
+      "path": "interface/bars-three.svg",
+      "snapshot": "current/interface/bars-three.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "ad3e8e750c6449884987c997611f2b766fa7506d9f5e1dd934c11100847c2360",
-      "source": "crates/zork-gui/assets/cue/bars-three.svg"
+      "source": "crates/zork-gui/assets/interface/bars-three.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/check.svg",
-      "snapshot": "current/cue/check.svg",
-      "family": "cue",
+      "path": "interface/check.svg",
+      "snapshot": "current/interface/check.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "f3fe531f8cd02651e6b26f39c67feaf27bf90fb311f33ea7fdd69fba0a081a85",
-      "source": "crates/zork-gui/assets/cue/check.svg"
+      "source": "crates/zork-gui/assets/interface/check.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/chevron-down.svg",
-      "snapshot": "current/cue/chevron-down.svg",
-      "family": "cue",
+      "path": "interface/chevron-down.svg",
+      "snapshot": "current/interface/chevron-down.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "29e7238440f803b30a1dbdff6a528f3f4e2d9be77555ad7f031ee20c6d769ca0",
-      "source": "crates/zork-gui/assets/cue/chevron-down.svg"
+      "source": "crates/zork-gui/assets/interface/chevron-down.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/circle-dashed.svg",
-      "snapshot": "current/cue/circle-dashed.svg",
-      "family": "cue",
+      "path": "interface/circle-dashed.svg",
+      "snapshot": "current/interface/circle-dashed.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "f34f335880510df2c757caae70c4919ef15c6f3081ee95250fbbc88a2d001548",
-      "source": "crates/zork-gui/assets/cue/circle-dashed.svg"
+      "source": "crates/zork-gui/assets/interface/circle-dashed.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/circle-x.svg",
-      "snapshot": "current/cue/circle-x.svg",
-      "family": "cue",
+      "path": "interface/circle-x.svg",
+      "snapshot": "current/interface/circle-x.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "6f21e60a8665eb0ed5260bab341cbff80a6370efc8efe966b847d02be8ab8eae",
-      "source": "crates/zork-gui/assets/cue/circle-x.svg"
+      "source": "crates/zork-gui/assets/interface/circle-x.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/clock.svg",
-      "snapshot": "current/cue/clock.svg",
-      "family": "cue",
+      "path": "interface/clock.svg",
+      "snapshot": "current/interface/clock.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "9e43f2094399456fef336d70c9043c22db404a8ed2b84ffbb952135e1d6de3be",
-      "source": "crates/zork-gui/assets/cue/clock.svg"
+      "source": "crates/zork-gui/assets/interface/clock.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/download.svg",
-      "snapshot": "current/cue/download.svg",
-      "family": "cue",
+      "path": "interface/download.svg",
+      "snapshot": "current/interface/download.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "fd1b9c3e5b29a5ceb665dbf5dce936d4b1278e76162d98c2bd8da8c5862d051b",
-      "source": "crates/zork-gui/assets/cue/download.svg"
+      "source": "crates/zork-gui/assets/interface/download.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/file.svg",
-      "snapshot": "current/cue/file.svg",
-      "family": "cue",
+      "path": "interface/file.svg",
+      "snapshot": "current/interface/file.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "808c8ea5be44d06d494b7b062982c9c0af53da49bec80a74037e4212d94c1426",
-      "source": "crates/zork-gui/assets/cue/file.svg"
+      "source": "crates/zork-gui/assets/interface/file.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/filter2.svg",
-      "snapshot": "current/cue/filter2.svg",
-      "family": "cue",
+      "path": "interface/filter2.svg",
+      "snapshot": "current/interface/filter2.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "2d937e537f3d17e2e8c66a1b0d5745246c1883d6d18b9076bb0b5c9a01651163",
-      "source": "crates/zork-gui/assets/cue/filter2.svg"
+      "source": "crates/zork-gui/assets/interface/filter2.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/folder1.svg",
-      "snapshot": "current/cue/folder1.svg",
-      "family": "cue",
+      "path": "interface/folder1.svg",
+      "snapshot": "current/interface/folder1.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "c11d3bf4d46b27521b337ae2c3cdd2750c1417d6d60d638f3e6f7836c744cb57",
-      "source": "crates/zork-gui/assets/cue/folder1.svg"
+      "source": "crates/zork-gui/assets/interface/folder1.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/folder2.svg",
-      "snapshot": "current/cue/folder2.svg",
-      "family": "cue",
+      "path": "interface/folder2.svg",
+      "snapshot": "current/interface/folder2.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "bc6d6617e14f30ea3673fa2cbdb34a20ed5a48e4555a5fabd917bcd9b8d15a54",
-      "source": "crates/zork-gui/assets/cue/folder2.svg"
+      "source": "crates/zork-gui/assets/interface/folder2.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/home.svg",
-      "snapshot": "current/cue/home.svg",
-      "family": "cue",
+      "path": "interface/home.svg",
+      "snapshot": "current/interface/home.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "26adb85d88bac5b8bcbe0a39084ba8883e0d07525d9e7efd2b011d151a062843",
-      "source": "crates/zork-gui/assets/cue/home.svg"
+      "source": "crates/zork-gui/assets/interface/home.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/inbox.svg",
-      "snapshot": "current/cue/inbox.svg",
-      "family": "cue",
+      "path": "interface/inbox.svg",
+      "snapshot": "current/interface/inbox.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "716f76cffb78872eec050f6107d4bb0d33293269f90a58b4cfdc3d7c6e4aa8b3",
-      "source": "crates/zork-gui/assets/cue/inbox.svg"
+      "source": "crates/zork-gui/assets/interface/inbox.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/layout-column.svg",
-      "snapshot": "current/cue/layout-column.svg",
-      "family": "cue",
+      "path": "interface/layout-column.svg",
+      "snapshot": "current/interface/layout-column.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "65fbf66cc5509c262b3cd58ca1261e6b2d240b7fcfe7cf38ef079ec15aee2ffd",
-      "source": "crates/zork-gui/assets/cue/layout-column.svg"
+      "source": "crates/zork-gui/assets/interface/layout-column.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/list-checks.svg",
-      "snapshot": "current/cue/list-checks.svg",
-      "family": "cue",
+      "path": "interface/list-checks.svg",
+      "snapshot": "current/interface/list-checks.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "4d50c12bb76026f7ff27bb1b976e023b4d11f7602385167226436ca6a8e1b008",
-      "source": "crates/zork-gui/assets/cue/list-checks.svg"
+      "source": "crates/zork-gui/assets/interface/list-checks.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/loader.svg",
-      "snapshot": "current/cue/loader.svg",
-      "family": "cue",
+      "path": "interface/loader.svg",
+      "snapshot": "current/interface/loader.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "88a052f0a5afb199d245db75b3fcc254a0284de0dba169d9030434ea983ebef2",
-      "source": "crates/zork-gui/assets/cue/loader.svg"
+      "source": "crates/zork-gui/assets/interface/loader.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/mascot.svg",
-      "snapshot": "current/cue/mascot.svg",
-      "family": "cue",
-      "registered": true,
-      "references": [],
-      "sha256": "e0eef9435f8c47398d53bcf284c074610d6658fd5fdb571c223ac6fc4a8dbe23",
-      "source": "crates/zork-gui/assets/cue/mascot.svg"
-    },
-    {
-      "checkout": "current",
-      "path": "cue/microphone-filled.svg",
-      "snapshot": "current/cue/microphone-filled.svg",
-      "family": "cue",
+      "path": "interface/microphone-filled.svg",
+      "snapshot": "current/interface/microphone-filled.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "e8c72b1feea4f4f636ce0cfeeaa74f7ccc35a3b9f224b5b1019079c4a9067efa",
-      "source": "crates/zork-gui/assets/cue/microphone-filled.svg"
+      "source": "crates/zork-gui/assets/interface/microphone-filled.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/panel-left.svg",
-      "snapshot": "current/cue/panel-left.svg",
-      "family": "cue",
+      "path": "interface/panel-left.svg",
+      "snapshot": "current/interface/panel-left.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d91e489429fb77bdc761905abed9b056b1350ac57a82e3fb11a96e1002206b4b",
-      "source": "crates/zork-gui/assets/cue/panel-left.svg"
+      "source": "crates/zork-gui/assets/interface/panel-left.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/panel-right.svg",
-      "snapshot": "current/cue/panel-right.svg",
-      "family": "cue",
+      "path": "interface/panel-right.svg",
+      "snapshot": "current/interface/panel-right.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b345c93914901ae8685ce1ec8798c04c22b9c1f6b89f0408e747f7700ab9a342",
-      "source": "crates/zork-gui/assets/cue/panel-right.svg"
+      "source": "crates/zork-gui/assets/interface/panel-right.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/paperclip.svg",
-      "snapshot": "current/cue/paperclip.svg",
-      "family": "cue",
+      "path": "interface/paperclip.svg",
+      "snapshot": "current/interface/paperclip.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "90c39f3672cb30b17cc612d114b96423a7bf50026c251954a7bac7857f762125",
-      "source": "crates/zork-gui/assets/cue/paperclip.svg"
+      "source": "crates/zork-gui/assets/interface/paperclip.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/plus.svg",
-      "snapshot": "current/cue/plus.svg",
-      "family": "cue",
+      "path": "interface/plus.svg",
+      "snapshot": "current/interface/plus.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "c0ac8746598df8148ed44ef2678b1ea1c8286bb6fe886e1c928b58755de305fc",
-      "source": "crates/zork-gui/assets/cue/plus.svg"
+      "source": "crates/zork-gui/assets/interface/plus.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/puzzle.svg",
-      "snapshot": "current/cue/puzzle.svg",
-      "family": "cue",
+      "path": "interface/puzzle.svg",
+      "snapshot": "current/interface/puzzle.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "bb8c3ac861e66839856b3bc9a20f46c06886fe811a0f1623c6ba6b67daa1fbb7",
-      "source": "crates/zork-gui/assets/cue/puzzle.svg"
+      "source": "crates/zork-gui/assets/interface/puzzle.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/reload.svg",
-      "snapshot": "current/cue/reload.svg",
-      "family": "cue",
+      "path": "interface/reload.svg",
+      "snapshot": "current/interface/reload.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "7dac8acb86c90a4e874ddbddf34509e81cbdd0fb158b9393d13ceac5fea4e3ab",
-      "source": "crates/zork-gui/assets/cue/reload.svg"
+      "source": "crates/zork-gui/assets/interface/reload.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/search.svg",
-      "snapshot": "current/cue/search.svg",
-      "family": "cue",
+      "path": "interface/search.svg",
+      "snapshot": "current/interface/search.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "8d35365288e564401c866f86b2eb0dd5e925217012b61d2b42c42b0821d7603d",
-      "source": "crates/zork-gui/assets/cue/search.svg"
+      "source": "crates/zork-gui/assets/interface/search.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/settings-slider-horizontal.svg",
-      "snapshot": "current/cue/settings-slider-horizontal.svg",
-      "family": "cue",
+      "path": "interface/settings-slider-horizontal.svg",
+      "snapshot": "current/interface/settings-slider-horizontal.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b6c865fc3bfda2969a64d7c0c727d80e324248acc578bd34363cf8482d403807",
-      "source": "crates/zork-gui/assets/cue/settings-slider-horizontal.svg"
+      "source": "crates/zork-gui/assets/interface/settings-slider-horizontal.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/settings-slider-three.svg",
-      "snapshot": "current/cue/settings-slider-three.svg",
-      "family": "cue",
+      "path": "interface/settings-slider-three.svg",
+      "snapshot": "current/interface/settings-slider-three.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "af2a297c70bcbadc06da39cc9ccdf364d5953c847c62abd9f95d852fcd950c6c",
-      "source": "crates/zork-gui/assets/cue/settings-slider-three.svg"
+      "source": "crates/zork-gui/assets/interface/settings-slider-three.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/settings.svg",
-      "snapshot": "current/cue/settings.svg",
-      "family": "cue",
+      "path": "interface/settings.svg",
+      "snapshot": "current/interface/settings.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "747c541f9e7a3bdc93025d8c7592c222730b210c8f6411aa4cf3f2a4eee14392",
-      "source": "crates/zork-gui/assets/cue/settings.svg"
+      "source": "crates/zork-gui/assets/interface/settings.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/shapes-plus-x-square-circle.svg",
-      "snapshot": "current/cue/shapes-plus-x-square-circle.svg",
-      "family": "cue",
+      "path": "interface/shapes-plus-x-square-circle.svg",
+      "snapshot": "current/interface/shapes-plus-x-square-circle.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b6633fce4a5693f09eed814218309681bc4d611d53de34eb822e68f2a61bc1de",
-      "source": "crates/zork-gui/assets/cue/shapes-plus-x-square-circle.svg"
+      "source": "crates/zork-gui/assets/interface/shapes-plus-x-square-circle.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/sparkles.svg",
-      "snapshot": "current/cue/sparkles.svg",
-      "family": "cue",
+      "path": "interface/sparkles.svg",
+      "snapshot": "current/interface/sparkles.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d4881c1bf3dc494a1b77397cc1fcc37876373213fc0bfa318902a511a5528a7f",
-      "source": "crates/zork-gui/assets/cue/sparkles.svg"
+      "source": "crates/zork-gui/assets/interface/sparkles.svg"
     },
     {
       "checkout": "current",
-      "path": "cue/x.svg",
-      "snapshot": "current/cue/x.svg",
-      "family": "cue",
+      "path": "interface/x.svg",
+      "snapshot": "current/interface/x.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "e76b67a2f4ddbe1388919e39ddde7fa93bd35f706aff8abde3429ad0d659bc82",
-      "source": "crates/zork-gui/assets/cue/x.svg"
+      "source": "crates/zork-gui/assets/interface/x.svg"
     },
     {
       "checkout": "current",
@@ -2173,343 +2163,333 @@
     },
     {
       "checkout": "implementation",
-      "path": "cue/arrow-left.svg",
-      "snapshot": "implementation/cue/arrow-left.svg",
-      "family": "cue",
+      "path": "interface/arrow-left.svg",
+      "snapshot": "implementation/interface/arrow-left.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "17ba1d79bb68e283c212fd7883d34d715dfa5ae8e398914dfbf3cd182a0db4d2",
-      "source": "crates/zork-gui/assets/cue/arrow-left.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-left.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/arrow-right.svg",
-      "snapshot": "implementation/cue/arrow-right.svg",
-      "family": "cue",
+      "path": "interface/arrow-right.svg",
+      "snapshot": "implementation/interface/arrow-right.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d1cc2f4a095fdaaff61775fcc9f84749a363f72368e3ebc1a1bb6feb04be2685",
-      "source": "crates/zork-gui/assets/cue/arrow-right.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-right.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/arrow-up.svg",
-      "snapshot": "implementation/cue/arrow-up.svg",
-      "family": "cue",
+      "path": "interface/arrow-up.svg",
+      "snapshot": "implementation/interface/arrow-up.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "6ace723725a6fe0bf2b3c5e53bbfebe97aec2f654ef773234af1e20e906a68c4",
-      "source": "crates/zork-gui/assets/cue/arrow-up.svg"
+      "source": "crates/zork-gui/assets/interface/arrow-up.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/bars-three.svg",
-      "snapshot": "implementation/cue/bars-three.svg",
-      "family": "cue",
+      "path": "interface/bars-three.svg",
+      "snapshot": "implementation/interface/bars-three.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "ad3e8e750c6449884987c997611f2b766fa7506d9f5e1dd934c11100847c2360",
-      "source": "crates/zork-gui/assets/cue/bars-three.svg"
+      "source": "crates/zork-gui/assets/interface/bars-three.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/check.svg",
-      "snapshot": "implementation/cue/check.svg",
-      "family": "cue",
+      "path": "interface/check.svg",
+      "snapshot": "implementation/interface/check.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "f3fe531f8cd02651e6b26f39c67feaf27bf90fb311f33ea7fdd69fba0a081a85",
-      "source": "crates/zork-gui/assets/cue/check.svg"
+      "source": "crates/zork-gui/assets/interface/check.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/chevron-down.svg",
-      "snapshot": "implementation/cue/chevron-down.svg",
-      "family": "cue",
+      "path": "interface/chevron-down.svg",
+      "snapshot": "implementation/interface/chevron-down.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "29e7238440f803b30a1dbdff6a528f3f4e2d9be77555ad7f031ee20c6d769ca0",
-      "source": "crates/zork-gui/assets/cue/chevron-down.svg"
+      "source": "crates/zork-gui/assets/interface/chevron-down.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/circle-dashed.svg",
-      "snapshot": "implementation/cue/circle-dashed.svg",
-      "family": "cue",
+      "path": "interface/circle-dashed.svg",
+      "snapshot": "implementation/interface/circle-dashed.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "f34f335880510df2c757caae70c4919ef15c6f3081ee95250fbbc88a2d001548",
-      "source": "crates/zork-gui/assets/cue/circle-dashed.svg"
+      "source": "crates/zork-gui/assets/interface/circle-dashed.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/circle-x.svg",
-      "snapshot": "implementation/cue/circle-x.svg",
-      "family": "cue",
+      "path": "interface/circle-x.svg",
+      "snapshot": "implementation/interface/circle-x.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "6f21e60a8665eb0ed5260bab341cbff80a6370efc8efe966b847d02be8ab8eae",
-      "source": "crates/zork-gui/assets/cue/circle-x.svg"
+      "source": "crates/zork-gui/assets/interface/circle-x.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/clock.svg",
-      "snapshot": "implementation/cue/clock.svg",
-      "family": "cue",
+      "path": "interface/clock.svg",
+      "snapshot": "implementation/interface/clock.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "9e43f2094399456fef336d70c9043c22db404a8ed2b84ffbb952135e1d6de3be",
-      "source": "crates/zork-gui/assets/cue/clock.svg"
+      "source": "crates/zork-gui/assets/interface/clock.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/download.svg",
-      "snapshot": "implementation/cue/download.svg",
-      "family": "cue",
+      "path": "interface/download.svg",
+      "snapshot": "implementation/interface/download.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "fd1b9c3e5b29a5ceb665dbf5dce936d4b1278e76162d98c2bd8da8c5862d051b",
-      "source": "crates/zork-gui/assets/cue/download.svg"
+      "source": "crates/zork-gui/assets/interface/download.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/file.svg",
-      "snapshot": "implementation/cue/file.svg",
-      "family": "cue",
+      "path": "interface/file.svg",
+      "snapshot": "implementation/interface/file.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "808c8ea5be44d06d494b7b062982c9c0af53da49bec80a74037e4212d94c1426",
-      "source": "crates/zork-gui/assets/cue/file.svg"
+      "source": "crates/zork-gui/assets/interface/file.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/filter2.svg",
-      "snapshot": "implementation/cue/filter2.svg",
-      "family": "cue",
+      "path": "interface/filter2.svg",
+      "snapshot": "implementation/interface/filter2.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "2d937e537f3d17e2e8c66a1b0d5745246c1883d6d18b9076bb0b5c9a01651163",
-      "source": "crates/zork-gui/assets/cue/filter2.svg"
+      "source": "crates/zork-gui/assets/interface/filter2.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/folder1.svg",
-      "snapshot": "implementation/cue/folder1.svg",
-      "family": "cue",
+      "path": "interface/folder1.svg",
+      "snapshot": "implementation/interface/folder1.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "c11d3bf4d46b27521b337ae2c3cdd2750c1417d6d60d638f3e6f7836c744cb57",
-      "source": "crates/zork-gui/assets/cue/folder1.svg"
+      "source": "crates/zork-gui/assets/interface/folder1.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/folder2.svg",
-      "snapshot": "implementation/cue/folder2.svg",
-      "family": "cue",
+      "path": "interface/folder2.svg",
+      "snapshot": "implementation/interface/folder2.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "bc6d6617e14f30ea3673fa2cbdb34a20ed5a48e4555a5fabd917bcd9b8d15a54",
-      "source": "crates/zork-gui/assets/cue/folder2.svg"
+      "source": "crates/zork-gui/assets/interface/folder2.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/home.svg",
-      "snapshot": "implementation/cue/home.svg",
-      "family": "cue",
+      "path": "interface/home.svg",
+      "snapshot": "implementation/interface/home.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "26adb85d88bac5b8bcbe0a39084ba8883e0d07525d9e7efd2b011d151a062843",
-      "source": "crates/zork-gui/assets/cue/home.svg"
+      "source": "crates/zork-gui/assets/interface/home.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/inbox.svg",
-      "snapshot": "implementation/cue/inbox.svg",
-      "family": "cue",
+      "path": "interface/inbox.svg",
+      "snapshot": "implementation/interface/inbox.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "716f76cffb78872eec050f6107d4bb0d33293269f90a58b4cfdc3d7c6e4aa8b3",
-      "source": "crates/zork-gui/assets/cue/inbox.svg"
+      "source": "crates/zork-gui/assets/interface/inbox.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/layout-column.svg",
-      "snapshot": "implementation/cue/layout-column.svg",
-      "family": "cue",
+      "path": "interface/layout-column.svg",
+      "snapshot": "implementation/interface/layout-column.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "65fbf66cc5509c262b3cd58ca1261e6b2d240b7fcfe7cf38ef079ec15aee2ffd",
-      "source": "crates/zork-gui/assets/cue/layout-column.svg"
+      "source": "crates/zork-gui/assets/interface/layout-column.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/list-checks.svg",
-      "snapshot": "implementation/cue/list-checks.svg",
-      "family": "cue",
+      "path": "interface/list-checks.svg",
+      "snapshot": "implementation/interface/list-checks.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "4d50c12bb76026f7ff27bb1b976e023b4d11f7602385167226436ca6a8e1b008",
-      "source": "crates/zork-gui/assets/cue/list-checks.svg"
+      "source": "crates/zork-gui/assets/interface/list-checks.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/loader.svg",
-      "snapshot": "implementation/cue/loader.svg",
-      "family": "cue",
+      "path": "interface/loader.svg",
+      "snapshot": "implementation/interface/loader.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "88a052f0a5afb199d245db75b3fcc254a0284de0dba169d9030434ea983ebef2",
-      "source": "crates/zork-gui/assets/cue/loader.svg"
+      "source": "crates/zork-gui/assets/interface/loader.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/mascot.svg",
-      "snapshot": "implementation/cue/mascot.svg",
-      "family": "cue",
-      "registered": true,
-      "references": [],
-      "sha256": "e0eef9435f8c47398d53bcf284c074610d6658fd5fdb571c223ac6fc4a8dbe23",
-      "source": "crates/zork-gui/assets/cue/mascot.svg"
-    },
-    {
-      "checkout": "implementation",
-      "path": "cue/microphone-filled.svg",
-      "snapshot": "implementation/cue/microphone-filled.svg",
-      "family": "cue",
+      "path": "interface/microphone-filled.svg",
+      "snapshot": "implementation/interface/microphone-filled.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "e8c72b1feea4f4f636ce0cfeeaa74f7ccc35a3b9f224b5b1019079c4a9067efa",
-      "source": "crates/zork-gui/assets/cue/microphone-filled.svg"
+      "source": "crates/zork-gui/assets/interface/microphone-filled.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/panel-left.svg",
-      "snapshot": "implementation/cue/panel-left.svg",
-      "family": "cue",
+      "path": "interface/panel-left.svg",
+      "snapshot": "implementation/interface/panel-left.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d91e489429fb77bdc761905abed9b056b1350ac57a82e3fb11a96e1002206b4b",
-      "source": "crates/zork-gui/assets/cue/panel-left.svg"
+      "source": "crates/zork-gui/assets/interface/panel-left.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/panel-right.svg",
-      "snapshot": "implementation/cue/panel-right.svg",
-      "family": "cue",
+      "path": "interface/panel-right.svg",
+      "snapshot": "implementation/interface/panel-right.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b345c93914901ae8685ce1ec8798c04c22b9c1f6b89f0408e747f7700ab9a342",
-      "source": "crates/zork-gui/assets/cue/panel-right.svg"
+      "source": "crates/zork-gui/assets/interface/panel-right.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/paperclip.svg",
-      "snapshot": "implementation/cue/paperclip.svg",
-      "family": "cue",
+      "path": "interface/paperclip.svg",
+      "snapshot": "implementation/interface/paperclip.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "90c39f3672cb30b17cc612d114b96423a7bf50026c251954a7bac7857f762125",
-      "source": "crates/zork-gui/assets/cue/paperclip.svg"
+      "source": "crates/zork-gui/assets/interface/paperclip.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/plus.svg",
-      "snapshot": "implementation/cue/plus.svg",
-      "family": "cue",
+      "path": "interface/plus.svg",
+      "snapshot": "implementation/interface/plus.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "c0ac8746598df8148ed44ef2678b1ea1c8286bb6fe886e1c928b58755de305fc",
-      "source": "crates/zork-gui/assets/cue/plus.svg"
+      "source": "crates/zork-gui/assets/interface/plus.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/puzzle.svg",
-      "snapshot": "implementation/cue/puzzle.svg",
-      "family": "cue",
+      "path": "interface/puzzle.svg",
+      "snapshot": "implementation/interface/puzzle.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "bb8c3ac861e66839856b3bc9a20f46c06886fe811a0f1623c6ba6b67daa1fbb7",
-      "source": "crates/zork-gui/assets/cue/puzzle.svg"
+      "source": "crates/zork-gui/assets/interface/puzzle.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/reload.svg",
-      "snapshot": "implementation/cue/reload.svg",
-      "family": "cue",
+      "path": "interface/reload.svg",
+      "snapshot": "implementation/interface/reload.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "7dac8acb86c90a4e874ddbddf34509e81cbdd0fb158b9393d13ceac5fea4e3ab",
-      "source": "crates/zork-gui/assets/cue/reload.svg"
+      "source": "crates/zork-gui/assets/interface/reload.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/search.svg",
-      "snapshot": "implementation/cue/search.svg",
-      "family": "cue",
+      "path": "interface/search.svg",
+      "snapshot": "implementation/interface/search.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "8d35365288e564401c866f86b2eb0dd5e925217012b61d2b42c42b0821d7603d",
-      "source": "crates/zork-gui/assets/cue/search.svg"
+      "source": "crates/zork-gui/assets/interface/search.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/settings-slider-horizontal.svg",
-      "snapshot": "implementation/cue/settings-slider-horizontal.svg",
-      "family": "cue",
+      "path": "interface/settings-slider-horizontal.svg",
+      "snapshot": "implementation/interface/settings-slider-horizontal.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b6c865fc3bfda2969a64d7c0c727d80e324248acc578bd34363cf8482d403807",
-      "source": "crates/zork-gui/assets/cue/settings-slider-horizontal.svg"
+      "source": "crates/zork-gui/assets/interface/settings-slider-horizontal.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/settings-slider-three.svg",
-      "snapshot": "implementation/cue/settings-slider-three.svg",
-      "family": "cue",
+      "path": "interface/settings-slider-three.svg",
+      "snapshot": "implementation/interface/settings-slider-three.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "af2a297c70bcbadc06da39cc9ccdf364d5953c847c62abd9f95d852fcd950c6c",
-      "source": "crates/zork-gui/assets/cue/settings-slider-three.svg"
+      "source": "crates/zork-gui/assets/interface/settings-slider-three.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/settings.svg",
-      "snapshot": "implementation/cue/settings.svg",
-      "family": "cue",
+      "path": "interface/settings.svg",
+      "snapshot": "implementation/interface/settings.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "747c541f9e7a3bdc93025d8c7592c222730b210c8f6411aa4cf3f2a4eee14392",
-      "source": "crates/zork-gui/assets/cue/settings.svg"
+      "source": "crates/zork-gui/assets/interface/settings.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/shapes-plus-x-square-circle.svg",
-      "snapshot": "implementation/cue/shapes-plus-x-square-circle.svg",
-      "family": "cue",
+      "path": "interface/shapes-plus-x-square-circle.svg",
+      "snapshot": "implementation/interface/shapes-plus-x-square-circle.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "b6633fce4a5693f09eed814218309681bc4d611d53de34eb822e68f2a61bc1de",
-      "source": "crates/zork-gui/assets/cue/shapes-plus-x-square-circle.svg"
+      "source": "crates/zork-gui/assets/interface/shapes-plus-x-square-circle.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/sparkles.svg",
-      "snapshot": "implementation/cue/sparkles.svg",
-      "family": "cue",
+      "path": "interface/sparkles.svg",
+      "snapshot": "implementation/interface/sparkles.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "d4881c1bf3dc494a1b77397cc1fcc37876373213fc0bfa318902a511a5528a7f",
-      "source": "crates/zork-gui/assets/cue/sparkles.svg"
+      "source": "crates/zork-gui/assets/interface/sparkles.svg"
     },
     {
       "checkout": "implementation",
-      "path": "cue/x.svg",
-      "snapshot": "implementation/cue/x.svg",
-      "family": "cue",
+      "path": "interface/x.svg",
+      "snapshot": "implementation/interface/x.svg",
+      "family": "interface",
       "registered": true,
       "references": [],
       "sha256": "e76b67a2f4ddbe1388919e39ddde7fa93bd35f706aff8abde3429ad0d659bc82",
-      "source": "crates/zork-gui/assets/cue/x.svg"
+      "source": "crates/zork-gui/assets/interface/x.svg"
     },
     {
       "checkout": "implementation",

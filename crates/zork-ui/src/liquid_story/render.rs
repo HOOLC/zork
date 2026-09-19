@@ -14,7 +14,7 @@ use crate::{
 };
 
 const CANVAS: u32 = wb::CANVAS;
-const WHITE: u32 = crate::design::CUE_UI.palette.canvas;
+const WHITE: u32 = crate::design::ZORK_UI.palette.canvas;
 const LINE: u32 = crate::design::LIQUID_OUTLINE;
 
 fn positioned(x: f64, y: f64, w: f64, h: f64) -> Div {
@@ -30,7 +30,7 @@ fn muted(text: impl Into<SharedString>) -> Div {
 }
 fn caption(text: impl Into<SharedString>) -> Div {
     ui::text_role(text, crate::design::TextRole::Label)
-        .text_color(rgb(crate::design::CUE_UI.palette.text))
+        .text_color(rgb(crate::design::ZORK_UI.palette.text))
 }
 
 impl Card {

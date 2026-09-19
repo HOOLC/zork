@@ -12,7 +12,7 @@ class NativeAutomation:
             cls.ui_url + path,
             data=None if body is None else json.dumps(body).encode(),
             headers={
-                "Authorization": "Bearer cue-shell-fixture",
+                "Authorization": "Bearer zork-shell-fixture",
                 "Content-Type": "application/json",
             },
         )

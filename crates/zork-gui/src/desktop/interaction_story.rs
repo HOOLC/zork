@@ -1,6 +1,6 @@
 //! Shared production component with a core-owned, offline business adapter.
 use super::interaction_view;
-use crate::{design::CUE_UI, i18n::Locale};
+use crate::{design::ZORK_UI, i18n::Locale};
 use gpui::{div, prelude::*, px, rgb, Context, Entity, Window};
 use zork_client_core::interactions::preview::Preview;
 use zork_ui::components::interaction::InteractionCard;
@@ -37,7 +37,7 @@ impl Render for InteractionStory {
             .id("interaction-story")
             .size_full()
             .overflow_y_scroll()
-            .bg(rgb(CUE_UI.palette.canvas))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .p_6()
             .child(div().max_w(px(620.)).mx_auto().child(self.card.clone()))
     }

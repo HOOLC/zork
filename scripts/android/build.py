@@ -8,6 +8,7 @@ with the host compiler's matching rust-src (Homebrew Rust on mini1).
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,6 +26,24 @@ NDK_VERSION = "28.2.13676358"
 def run(command, env, **kwargs):
     print("+", " ".join(str(x) for x in command), flush=True)
     return subprocess.run(command, cwd=ROOT, env=env, check=True, **kwargs)
+
+
+def verify_jni(library, llvm, env):
+    """Reject a package whose native exports no longer match the Kotlin namespace."""
+    symbols = subprocess.check_output([str(llvm / "llvm-nm"), "-D", "--defined-only", str(library)], env=env, text=True)
+    expected = []
+    for source in (APP / "app/src/main/java").rglob("*.kt"):
+        text = source.read_text()
+        package = re.search(r"^package ([\w.]+)", text, re.M)
+        if not package:
+            continue
+        for owner, body in re.findall(r"(?:internal )?object (\w+)\s*\{(.*?)\n\}", text, re.S):
+            for method in re.findall(r"external fun (\w+)\s*\(", body):
+                expected.append("Java_" + package[1].replace(".", "_") + "_" + owner + "_" + method)
+    missing = [symbol for symbol in expected if not re.search(r"\b" + re.escape(symbol) + r"$", symbols, re.M)]
+    if missing:
+        raise SystemExit("Missing packaged JNI exports: " + ", ".join(missing))
+    print(f"Verified {len(expected)} Kotlin/native JNI bindings", flush=True)
 
 
 def main():
@@ -84,6 +103,7 @@ def main():
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", TARGET],
         cwd=ROOT, env=env, text=True))
+    verify_jni(native / "libzork_android.so", llvm, env)
     # The vendored compatibility patch preserves the exact upstream JNI ABI.
     versions = {p["name"]: p["version"] for p in metadata["packages"]
                 if p["name"] in ("rustls-platform-verifier", "rustls-platform-verifier-android")}

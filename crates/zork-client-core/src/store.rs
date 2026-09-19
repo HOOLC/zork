@@ -313,7 +313,7 @@ impl ClientStore {
         }
         tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','network',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",[serde_json::to_string(network)?])?;
         tx.execute(
-            "DELETE FROM cache WHERE node='device' AND key='invitation'",
+            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
             [],
         )?;
         if let Some(group) = group {
@@ -326,9 +326,34 @@ impl ClientStore {
         self.notifications_changed();
         Ok(())
     }
+    pub(crate) fn update_invitation_input_if(
+        &self,
+        id: &str,
+        input: &impl Serialize,
+    ) -> Result<()> {
+        let changed = self.0.lock().expect("client database").execute(
+            "UPDATE cache SET value=?1 WHERE node='device' AND key='invitation_input' AND json_extract(value,'$.id')=?2",
+            params![serde_json::to_string(input)?, id],
+        )?;
+        anyhow::ensure!(changed == 1, "invitation_cancelled");
+        Ok(())
+    }
+    pub(crate) fn resolve_invitation_if(&self, id: &str, pending: &impl Serialize) -> Result<()> {
+        let mut conn = self.0.lock().expect("client database");
+        let tx = conn.transaction()?;
+        let owner: Option<String> = tx.query_row("SELECT json_extract(value,'$.id') FROM cache WHERE node='device' AND key='invitation_input'", [], |row| row.get(0)).optional()?.flatten();
+        anyhow::ensure!(owner.as_deref() == Some(id), "invitation_cancelled");
+        tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','invitation',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value", [serde_json::to_string(pending)?])?;
+        tx.execute(
+            "DELETE FROM cache WHERE node='device' AND key='invitation_input'",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn forget_invitation(&self) -> Result<()> {
         self.0.lock().expect("client database").execute(
-            "DELETE FROM cache WHERE node='device' AND key='invitation'",
+            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
             [],
         )?;
         Ok(())

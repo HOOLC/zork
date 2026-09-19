@@ -142,7 +142,7 @@ fn main() -> anyhow::Result<()> {
             "composer action insets differ: left={left}, right={right}, bottom={bottom}"
         );
         anyhow::ensure!(
-            (zork_ui::design::CUE_UI.composer.surface_radius - send.width / 2. - right).abs()
+            (zork_ui::design::ZORK_UI.composer.surface_radius - send.width / 2. - right).abs()
                 < 0.01,
             "send button is not concentric with the composer corner"
         );

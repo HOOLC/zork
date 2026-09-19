@@ -21,3 +21,6 @@ zork-config = { path = "../zork-config" }
 zork-client-core = { path = "../zork-client-core" }
 zork-mesh = { path = "../zork-mesh" }
 zork-notify = { path = "../zork-notify" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -226,7 +226,6 @@ impl Invitation {
             relay_quic_port: invite.relay_quic_port,
             discovery_url: invite.discovery_url.clone(),
             quic_discovery_urls: invite.quic_discovery_urls.clone(),
-            cue: None,
         }
         .validate()?;
         ensure!(
@@ -241,12 +240,12 @@ impl Invitation {
 }
 
 pub struct Enrollment {
+    offline: bool,
     endpoint: Endpoint,
     http_route: synch_net::RelayHttpRoute,
     relay_access: Arc<synch_net::RelayAccess>,
     discovery: tokio::sync::Mutex<Option<crate::lan_discovery::Registration>>,
     local: std::sync::Mutex<Option<crate::local_discovery::Registration>>,
-    offline: bool,
 }
 
 impl Enrollment {
@@ -301,12 +300,12 @@ impl Enrollment {
         let local = crate::local_discovery::install(&endpoint).await?;
         let relay_access = synch_net::RelayAccess::new(endpoint.clone(), &options)?;
         Ok(Self {
+            offline: config.offline,
             endpoint,
             relay_access,
             http_route,
             discovery: tokio::sync::Mutex::new(discovery),
             local: std::sync::Mutex::new(local),
-            offline: config.offline,
         })
     }
 

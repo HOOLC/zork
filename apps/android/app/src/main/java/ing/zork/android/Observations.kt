@@ -55,6 +55,7 @@ internal class Observations(private val root: String) {
     fun notifications() = frames("notifications", "", null, frameAligned = false)
     fun localScripts() = frames("local_scripts", "", null, JSONObject().put("projection", "local_scripts"), frameAligned = false)
     fun adb() = frames("adb", "", null, JSONObject().put("projection", "adb"), frameAligned = false)
+    fun account() = frames("account", "", null, JSONObject().put("projection", "account"), frameAligned = false)
     fun dataReset() = frames("data_reset", "", null, JSONObject().put("projection", "data_reset"), frameAligned = false)
     fun sharedFiles() = frames("shared_files", "", null, JSONObject().put("projection", "shared_files"))
     fun resources(selection: ResourceSelection) = frames("resources", selection.peer.orEmpty(), null,

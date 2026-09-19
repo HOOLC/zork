@@ -325,7 +325,7 @@ impl Startup {
 
     pub fn shutdown(&self) -> impl Future<Output = ()> + Send + 'static {
         self.recovery.stopping.store(true, Ordering::Release);
-        self.directory.cancel_account();
+        let _ = self.directory.cancel_account();
         let local = self.directory.local.shutdown();
         let transport = self.directory.transport.shutdown();
         async move {

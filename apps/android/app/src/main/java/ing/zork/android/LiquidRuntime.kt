@@ -333,7 +333,7 @@ internal class LiquidSceneHost {
             val loops = output.int; val borders = output.int; val active = output.int; val tracks = output.int
             val x = output.float; val y = output.float; val width = output.float; val height = output.float; val progress = output.float
             val contentOpacity = output.float; val backdropOpacity = output.float
-            output.float // Expansion is diagnostic; the shared scene owns its entry cue.
+            output.float // Expansion is diagnostic; the shared scene owns its entry signal.
             val presentation = output.int
             nodes[id]?.decode(output, flags, loops, borders, active, tracks, x, y, width, height, progress, contentOpacity, backdropOpacity, presentation)
             output.position(start + length)

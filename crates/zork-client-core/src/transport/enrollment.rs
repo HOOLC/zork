@@ -1,40 +1,34 @@
-//! Bootstrap uses profile account storage while keeping its identity separate.
-use crate::relay_account::{Access, Account};
+//! Invitation transport with the same account lifecycle as the data endpoint.
+use crate::relay_account::{Access, Account, RelayAccountTask};
 use anyhow::{ensure, Context, Result};
-use std::{path::Path, sync::Arc, time::Duration};
-use zork_mesh::{
-    enrollment::{ticket::Ticket, Enrollment, Invitation, InviteKind},
-    node::MeshNode,
-};
+use std::{ops::Deref, path::Path, sync::Arc, time::Duration};
+use zork_config::MeshConfig;
+use zork_mesh::enrollment::{ticket::Ticket, Invitation, InviteKind};
 
-pub async fn resolve_invitation(
-    root: &Path,
-    value: &str,
-    expected: InviteKind,
-    owner: Option<&MeshNode>,
-) -> Result<Invitation> {
-    if let Some(node) = owner {
-        return zork_mesh::enrollment::ticket::resolve_on_node(
-            &root.join("invite-bootstrap"),
-            value,
-            expected,
-            node,
-        )
-        .await;
+pub struct Enrollment {
+    _account: Option<RelayAccountTask>,
+    transport: Arc<zork_mesh::enrollment::Enrollment>,
+}
+impl Deref for Enrollment {
+    type Target = zork_mesh::enrollment::Enrollment;
+    fn deref(&self) -> &Self::Target {
+        &self.transport
     }
-    let invite = if Ticket::is_short(value) {
-        let ticket = Ticket::decode(value)?;
-        ensure!(ticket.kind == expected, "invite_kind_mismatch");
-        let mut config = ticket.network_config()?;
-        zork_config::services::ServicesConfig::load_from_install()?.apply_defaults(&mut config)?;
-        let transport = Arc::new(
-            tokio::time::timeout(
-                Duration::from_secs(15),
-                Enrollment::bind(&root.join("invite-bootstrap"), &config),
-            )
-            .await
-            .context("bootstrap_bind_timeout")??,
-        );
+}
+impl Enrollment {
+    pub async fn bind(root: &Path, config: &MeshConfig) -> Result<Self> {
+        Self::bind_at(root, root, config).await
+    }
+    async fn bind_at(root: &Path, key_root: &Path, config: &MeshConfig) -> Result<Self> {
+        let mut effective = config.clone();
+        if !effective.offline {
+            zork_config::services::ServicesConfig::load_for_data_root(
+                &zork_config::relay_account::resolve_root(root)?,
+            )?
+            .apply_defaults(&mut effective)?;
+        }
+        let config = &effective;
+        let transport = Arc::new(zork_mesh::enrollment::Enrollment::bind(key_root, config).await?);
         let account = if config.offline {
             None
         } else {
@@ -42,7 +36,7 @@ pub async fn resolve_invitation(
                 .map(|origin| Account::new(root, &origin))
                 .transpose()?
         };
-        let _account = if let Some(account) = account {
+        let task = if let Some(account) = account {
             let origin = account.origin().to_owned();
             let access = account.cached_access()?;
             transport
@@ -61,6 +55,38 @@ pub async fn resolve_invitation(
         } else {
             None
         };
+        Ok(Self {
+            _account: task,
+            transport,
+        })
+    }
+}
+
+/// Account storage stays in the profile root, separate from bootstrap identity.
+pub async fn resolve_invitation(
+    root: &Path,
+    value: &str,
+    expected: InviteKind,
+) -> Result<Invitation> {
+    let invite = if Ticket::is_short(value) {
+        let ticket = Ticket::decode(value)?;
+        ensure!(ticket.kind == expected, "invite_kind_mismatch");
+        let mut config = ticket.network_config()?;
+        if !config.offline {
+            let services = zork_config::services::ServicesConfig::load_for_data_root(
+                &zork_config::relay_account::resolve_root(root)?,
+            )?;
+            config.relay_urls = services.relay_urls;
+            if config.discovery_url.is_none() {
+                config.discovery_url = services.discovery_url;
+            }
+        }
+        let transport = tokio::time::timeout(
+            Duration::from_secs(15),
+            Enrollment::bind_at(root, &root.join("invite-bootstrap"), &config),
+        )
+        .await
+        .context("bootstrap_bind_timeout")??;
         let result = ticket.resolve_using(&transport).await;
         let _ = tokio::time::timeout(Duration::from_secs(3), transport.close()).await;
         result?

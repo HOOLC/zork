@@ -5,7 +5,7 @@ use crate::{
     api::ProfileInfo,
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, FontWeight, Window};
 #[cfg(test)]
@@ -645,7 +645,7 @@ impl AgentsView {
 }
 impl AgentsView {
     fn render_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         div()
             .flex()
             .items_start()
@@ -692,7 +692,7 @@ impl AgentsView {
             )
     }
     fn render_list(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         div().when(!self.agents.is_empty(), |v| {
             v.child(
                 div().flex().flex_col().gap_0().children(
@@ -873,7 +873,7 @@ impl gpui::EventEmitter<ui::OpenAgent> for AgentsView {}
 impl Render for AgentsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_skills(cx);
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let show = self.form_open || self.editing.is_some();
         let modal_key = if self.editing_avatar.is_some() {
             Some("agent-editor-dialog")

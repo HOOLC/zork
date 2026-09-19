@@ -208,7 +208,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "records lost their primary reading space: {}",
         ledger.bounds.height
     );
-    // Cue moves the model above the token/cache pair at this breakpoint.
+    // The history page moves the model above the token/cache pair at this breakpoint.
     let tokens = find("history-tokens").bounds;
     let cache = find("history-cache").bounds;
     assert!((tokens.y - cache.y).abs() < 1.);

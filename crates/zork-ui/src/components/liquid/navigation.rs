@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc};
@@ -196,7 +196,7 @@ impl Navigation {
             .iter()
             .position(|focus| focus.contains_focused(window, cx))
             .filter(|_| window.last_input_was_keyboard());
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let mut panel = div()
             .id(id.clone())
             .relative()
@@ -314,7 +314,7 @@ fn navigation_row<V: 'static>(
     choose: Rc<dyn Fn(&mut V, usize, &mut Context<V>)>,
     cx: &mut Context<V>,
 ) -> AnyElement {
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let id = navigation_id;
     let item_key = item.id.clone();
     let activate_focus = focus.clone();

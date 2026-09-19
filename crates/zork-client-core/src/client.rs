@@ -25,6 +25,9 @@ pub struct Network {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    Account {
+        operation: relay_account::controller::Action,
+    },
     LocalScript {
         operation: local_scripts::Action,
     },
@@ -120,6 +123,10 @@ pub enum Command {
     },
     PollInvitation,
     NextInvitation,
+    ConfirmInvitationSwitch {
+        input_id: String,
+        expected: zork_config::membership::MeshVersion,
+    },
     CancelInvitation,
     SavePeer {
         origin: String,
@@ -197,7 +204,8 @@ impl Command {
     pub fn is_local(&self) -> bool {
         matches!(
             self,
-            Self::LocalScript { .. }
+            Self::Account { .. }
+                | Self::LocalScript { .. }
                 | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
                 | Self::SharedFiles { .. }
@@ -236,6 +244,7 @@ impl Command {
 #[derive(Clone)]
 pub struct LocalClient {
     directory: Arc<zork_observe::ValueSource<Value>>,
+    account: Arc<relay_account::controller::Controller>,
     data_reset: Arc<data_reset::Controller>,
     local_scripts: Arc<local_scripts::Controller>,
     adb: Arc<adb::Controller>,
@@ -255,6 +264,11 @@ impl LocalClient {
     /// Independent observation lane. Opening/reading/waiting never takes the
     /// command executor lock or starts a second device controller.
     pub fn observe(&self, key: subscriptions::Key) -> Result<subscriptions::WireSubscription> {
+        if matches!(key, subscriptions::Key::Account) {
+            return Ok(subscriptions::WireSubscription::from_account(
+                &self.account.source,
+            ));
+        }
         if matches!(key, subscriptions::Key::DataReset) {
             return Ok(subscriptions::WireSubscription::from_data_reset(
                 &self.data_reset.source,
@@ -343,6 +357,10 @@ impl LocalClient {
     }
     pub fn execute(&self, command: Command) -> Result<Value> {
         match command {
+            Command::Account { operation } => {
+                self.account.submit(operation)?;
+                Ok(json!({}))
+            }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
             Command::Adb { operation } => self.adb.execute(operation),
             Command::SharedFiles { operation } => {
@@ -685,6 +703,7 @@ fn find_peer(store: &ClientStore, peer: &str) -> Result<SavedNode> {
 }
 
 pub struct Client {
+    account: Arc<relay_account::controller::Controller>,
     data_reset: Arc<data_reset::Controller>,
     local_scripts: Arc<local_scripts::Controller>,
     adb: Arc<adb::Controller>,
@@ -713,6 +732,7 @@ impl Client {
     pub fn local(&self) -> LocalClient {
         LocalClient {
             directory: self.directory.source.clone(),
+            account: self.account.clone(),
             data_reset: self.data_reset.clone(),
             local_scripts: self.local_scripts.clone(),
             adb: self.adb.clone(),
@@ -739,6 +759,7 @@ impl Client {
             adb.clone(),
         )?;
         Ok(Self {
+            account: relay_account::controller::Controller::open(root)?,
             data_reset: Arc::new(data_reset::Controller::default()),
             local_scripts: local_scripts::Controller::new(store.clone()),
             adb,
@@ -761,7 +782,7 @@ impl Client {
     }
 
     fn config(&self, network: &Network) -> Result<MeshConfig> {
-        let config = MeshConfig {
+        let mut config = MeshConfig {
             enabled: true,
             offline: network.direct_only,
             // Mobile peers must be reachable over LAN, including in direct-only mode.
@@ -789,6 +810,12 @@ impl Client {
                 .collect(),
             ..Default::default()
         };
+        if !config.offline {
+            zork_config::services::ServicesConfig::load_for_data_root(
+                &zork_config::relay_account::resolve_root(&self.root)?,
+            )?
+            .apply_defaults(&mut config)?;
+        }
         managed::validate(&config)?;
         Ok(config)
     }
@@ -853,14 +880,7 @@ impl Client {
     }
 
     fn snapshot(&self) -> Result<Value> {
-        Ok(json!({
-            "invitation": self.invitation_snapshot()?,
-            "identity": self.store.get::<String>("device", "identity")?,
-            "running": self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
-            "nodes": self.store.nodes()?,
-            "selected_peer": self.store.get::<Option<String>>("device","last-node")?.flatten(),
-            "network": self.store.get::<Network>("device", "network")?.unwrap_or_default(),
-        }))
+        enrollment::public_snapshot(&self.store, self.runtime.as_ref().is_some_and(|r| !r.is_finished()))
     }
 
     async fn request(
@@ -916,6 +936,10 @@ impl Client {
     /// before network I/O and never acquire a new ID merely because of a retry.
     pub async fn execute(&mut self, command: Command) -> Result<Value> {
         match command {
+            Command::Account { operation } => {
+                self.account.submit(operation)?;
+                Ok(json!({}))
+            }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
             Command::Adb { operation } => self.adb.execute(operation),
             Command::AdbBackgroundService { running, instance } => {
@@ -1050,6 +1074,7 @@ impl Client {
             } => self.begin_invitation(&ticket, &name, switch_from).await,
             Command::PollInvitation => self.poll_invitation().await,
             Command::NextInvitation => self.next_invitation().await,
+            Command::ConfirmInvitationSwitch { input_id, expected } => self.confirm_invitation_switch(&input_id, expected).await,
             Command::CancelInvitation => self.cancel_invitation().await,
             Command::SavePeer {
                 origin,

@@ -138,9 +138,7 @@ def build_app(args, repo, app):
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
     if args.services_config:
         services=json.loads(args.services_config.read_text())
-        assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls','cue'}
-        if services.get('cue') is not None:
-            assert not set(services['cue'])-{'issuer','client_id','redirect_uri'}
+        assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix, channel), f)
@@ -152,7 +150,7 @@ def build_app(args, repo, app):
             if digest(binaries/name) != expected:
                 raise RuntimeError('Binary differs from the captured Cargo build: '+name)
         (resources/'build.json').write_text(json.dumps(build, indent=2)+'\n')
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.

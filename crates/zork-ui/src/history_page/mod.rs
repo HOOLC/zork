@@ -11,7 +11,7 @@ use crate::history::{
 };
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{prelude::*, *};
@@ -234,7 +234,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             crate::components::region::invalidate(cx, &["history", "header"]);
         }
     }
-    /// `.cue-session-page-state`: a centred 11px tertiary line 10px above the
+    /// The page state: a centred 11px tertiary line 10px above the
     /// records, holding the loading, failed, paging, start and empty states.
     fn render_history_older(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let paging = self.history_paging();
@@ -339,8 +339,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             )
             .child(self.history_statistics().render(self.history_text(), width))
             .child(
-                // `.cue-session-body` holds the scroll region the follow button
-                // floats over; `.cue-session-timeline` pads the records 12/16/24.
+                // The page body holds the scroll region the follow button
+                // floats over; the record list pads the records 12/16/24.
                 div()
                     .relative()
                     .flex_1()
@@ -402,12 +402,15 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                         .rounded_full()
                                         .border_1()
                                         .border_color(rgb(BORDER))
-                                        .bg(rgb(CUE_UI.palette.canvas))
+                                        .bg(rgb(ZORK_UI.palette.canvas))
                                         .shadow_sm()
                                         .text_size(px(11.))
                                         .text_color(rgb(DIM))
                                         .cursor_pointer()
-                                        .child(crate::controls::icon("cue/chevron-down.svg", 12.))
+                                        .child(crate::controls::icon(
+                                            "interface/chevron-down.svg",
+                                            12.,
+                                        ))
                                         .child(self.history_text().text("history_latest"))
                                         .on_click(cx.listener(|v, _, _, cx| {
                                             cx.stop_propagation();
@@ -431,7 +434,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         cx.notify();
     }
 
-    /// A model reply is the row: Cue paints no icon and no label on it, so the
+    /// A model reply is the row: it has no icon or label, so the
     /// Markdown document, its disclosure and the absolute record clock stand
     /// alone. Usage belongs to the page overview, never to one row.
     fn render_history_output(
@@ -445,7 +448,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let expanded = self.history().output_expanded.contains(id);
-        // `.cue-session-timeline` pads the records 16px on both sides, so the
+        // the record list pads the records 16px on both sides, so the
         // document lays out at the panel width minus that inset.
         let width = (self.history().rendered_width - 32.).max(1.);
         let document = self.history().document(id, text);
@@ -468,8 +471,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         let toggle = id.to_owned();
         let click_focus = focus.clone();
-        // `.cue-session-output-disclosure` sits 8px under the document; the
-        // record clock, when revealed, carries Cue's 6px bottom margin.
+        // The output disclosure sits 8px under the document; the
+        // record clock, when revealed, carries a 6px bottom margin.
         let mut footer = div().w_full().flex().flex_col();
         if expanded {
             footer = footer.child(record_time(index, entry.start.or(entry.end)));
@@ -488,7 +491,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .child(disclosure_label.clone())
             .when(expanded, |v| {
                 v.child(
-                    crate::controls::icon("cue/chevron-down.svg", 12.).with_transformation(
+                    crate::controls::icon("interface/chevron-down.svg", 12.).with_transformation(
                         gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI)),
                     ),
                 )
@@ -527,7 +530,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             more: false,
             expanded,
             fade: false,
-            background: rgb(CUE_UI.palette.canvas).into(),
+            background: rgb(ZORK_UI.palette.canvas).into(),
         }
     }
 
@@ -553,7 +556,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let row = div().id(("history-row", index)).py(px(18.)).child(
-            // Cue's reply row is a plain document: no icon, no label, no
+            // The reply row is a plain document: no icon, no label, no
             // status. The automation surface still names it by its text.
             div()
                 .id(("history-record", index))
@@ -629,7 +632,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .collect::<Vec<_>>()
             .join(" · ")
         } else if a.kind == Kind::Input {
-            // Cue reads the user's own message as a receipt from its resolved
+            // The history page reads the user's own message as a receipt from its resolved
             // source, with no separate target on the line.
             let unknown = self.history_text().text("history_source_unknown");
             let name = subject
@@ -686,7 +689,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             self.history_text().text(kind_label(a.kind)).to_owned()
         };
         let mut summary = if group {
-            // Cue's group line carries only its counts; the members appear when
+            // The group line carries only its counts; the members appear when
             // the group is expanded.
             String::new()
         } else if matches!(
@@ -758,7 +761,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 ("history-record", index),
                 ActivityHeader {
                     focus,
-                    // Cue paints a group with a console when every member is a
+                    // A group uses a console when every member is a
                     // command and with a folder otherwise.
                     icon: Some(if group {
                         if block.counts.shell > 0
@@ -769,10 +772,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         {
                             "history/terminal.svg"
                         } else {
-                            "cue/folder1.svg"
+                            "interface/folder1.svg"
                         }
                     } else if matches!(entry.state.as_str(), "failed" | "timed_out") {
-                        "cue/x.svg"
+                        "interface/x.svg"
                     } else {
                         kind_icon(a.kind)
                     }),
@@ -891,7 +894,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     .cursor_pointer()
                     .focusable()
                     .tab_stop(true)
-                    .child(crate::controls::icon("cue/file.svg", 13.))
+                    .child(crate::controls::icon("interface/file.svg", 13.))
                     .child(
                         div()
                             .min_w_0()
@@ -924,7 +927,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             )
     }
 }
-/// Cue's record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
+/// The record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
 /// only inside the content a disclosure reveals. Rows carry no relative age.
 fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
     let clock = timestamp.map_or_else(String::new, |ms| model::clock(Some(ms)));
@@ -938,7 +941,7 @@ fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
         .automation(AutomationRole::Status, clock)
 }
 
-/// Cue formats a thinking duration with one decimal below ten seconds.
+/// Format a thinking duration with one decimal below ten seconds.
 fn thinking_seconds(ms: i64) -> String {
     let seconds = (ms.max(0) as f64) / 1000.;
     if ms < 10_000 {
@@ -949,7 +952,7 @@ fn thinking_seconds(ms: i64) -> String {
 }
 
 /// The wait's own timing: the finished elapsed, the live progress against the
-/// requested maximum, or Cue's unmeasured and maximum-only wording.
+/// requested maximum, or unmeasured and maximum-only wording.
 fn wait_time(a: &Activity, entry: &Entry, now: i64, text: &Text) -> String {
     let maximum = a
         .requested_wait_ms

@@ -4133,7 +4133,7 @@ mod tests {
         );
 
         // Correct token: the endpoint reaches the connected state.
-        let good_map: RelayMap = RelayConfig::new(relay_url, None)
+        let good_map: RelayMap = RelayConfig::new(relay_url.clone(), None)
             .with_auth_token(TOKEN)
             .into();
         let good_ep = Endpoint::builder(presets::Minimal)
@@ -4145,6 +4145,48 @@ mod tests {
             .await
             .std_context("waiting for endpoint to come online")?;
 
+        // Zork: updating a live map must replace the actor's cached bearer.
+        good_ep
+            .insert_relay(
+                relay_url.clone(),
+                Arc::new(
+                    RelayConfig::new(relay_url.clone(), None).with_auth_token("rotated-invalid"),
+                ),
+            )
+            .await;
+        let mut status = good_ep.home_relay_status().stream();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(value) = status.next().await {
+                if value.iter().any(|s| s.last_error().is_some()) {
+                    return;
+                }
+            }
+            panic!("relay status ended");
+        })
+        .await
+        .std_context("changed credential must reach the real relay")?;
+        good_ep
+            .insert_relay(
+                relay_url.clone(),
+                Arc::new(RelayConfig::new(relay_url.clone(), None).with_auth_token(TOKEN)),
+            )
+            .await;
+        tokio::time::timeout(Duration::from_secs(10), good_ep.online())
+            .await
+            .std_context("valid replacement must reconnect")?;
+        good_ep.remove_relay(&relay_url).await;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(value) = status.next().await {
+                if value.is_empty() {
+                    return;
+                }
+            }
+            panic!("relay status ended");
+        })
+        .await
+        .std_context("removed home relay must disconnect")?;
+        good_ep.close().await;
+        bad_ep.close().await;
         Ok(())
     }
 }

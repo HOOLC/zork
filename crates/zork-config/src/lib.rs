@@ -564,7 +564,8 @@ pub fn load_config(data_root: &Path) -> Result<FileConfig> {
     let raw = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let mut value: serde_json::Value =
         serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
-    // Retire the prototype bearer field; credentials only live in origin-bound account storage.
+    // The first relay prototype persisted bearer credentials in MeshConfig.
+    // Discard that obsolete field; admission only reads origin-bound sessions.
     if let Some(mesh) = value
         .get_mut("mesh")
         .and_then(serde_json::Value::as_object_mut)

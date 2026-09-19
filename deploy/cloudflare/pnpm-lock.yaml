@@ -14,6 +14,12 @@ importers:
       dns-packet:
         specifier: 5.6.1
         version: 5.6.1
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
+      ulid:
+        specifier: 3.0.2
+        version: 3.0.2
     devDependencies:
       '@types/dns-packet':
         specifier: 5.6.5
@@ -21,6 +27,15 @@ importers:
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
+      miniflare:
+        specifier: 5.20260907.0-alpha
+        version: 5.20260907.0-alpha
       tsx:
         specifier: 4.23.13
         version: 4.23.13
@@ -628,6 +643,12 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
+
+  jsonc-parser@3.3.1:
+    resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
+
   kleur@4.1.5:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
@@ -666,6 +687,10 @@ packages:
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
+    hasBin: true
+
+  ulid@3.0.2:
+    resolution: {integrity: sha512-yu26mwteFYzBAot7KVMqFGCVpsF6g8wXfJzQUHvu1no3+rRRSFcSV2nKeYvNPLD2J4b08jYBDhHUjeH0ygIl9w==}
     hasBin: true
 
   undici-types@6.21.0:
@@ -1117,6 +1142,10 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  jose@6.2.12: {}
+
+  jsonc-parser@3.3.1: {}
+
   kleur@4.1.5: {}
 
   miniflare@5.20260907.0-alpha:
@@ -1181,6 +1210,8 @@ snapshots:
       fsevents: 2.3.3
 
   typescript@5.9.3: {}
+
+  ulid@3.0.2: {}
 
   undici-types@6.21.0: {}
 

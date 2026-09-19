@@ -419,7 +419,7 @@ impl RootView {
             .iter()
             .map(|(m, _)| {
                 if m.failed {
-                    CUE_UI.palette.danger
+                    ZORK_UI.palette.danger
                 } else {
                     TEXT
                 }

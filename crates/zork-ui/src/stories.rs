@@ -8,7 +8,7 @@ use crate::{
         text_input::ComposerInput,
     },
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     navigation,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, Window};
@@ -346,7 +346,7 @@ impl PrimitiveStory {
             "header" => BrandMotion::Header,
             _ => BrandMotion::Linked,
         };
-        let brand = cx.new(|_| Brand::new(motion, CUE_UI.palette.canvas));
+        let brand = cx.new(|_| Brand::new(motion, ZORK_UI.palette.canvas));
         let selected = if story.family == "avatar-picker" {
             3
         } else {
@@ -430,7 +430,7 @@ impl Render for PrimitiveStory {
             window.focus(&self.focus, cx);
         }
         let state = self.story.state.as_str();
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
             "interaction" => div().child(self.extra.clone().unwrap()).into_any_element(),
             "loading" => {
@@ -538,7 +538,7 @@ impl Render for PrimitiveStory {
                 Some(self.selected),
                 crate::components::liquid::controls::SegmentKind::Choice,
                 state != "disabled",
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 cx.listener(|v, index: &usize, _, cx| {
                     v.selected = *index;
                     cx.notify();
@@ -1126,7 +1126,7 @@ impl Render for FamilyStories {
                 window.focus(&focus, cx);
             });
         }
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let width = f32::from(window.viewport_size().width);
         let columns = if width >= 1000. && self.family != "icons" {
             2.

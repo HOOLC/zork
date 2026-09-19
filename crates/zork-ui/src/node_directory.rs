@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 #[derive(Clone)]
@@ -41,7 +41,7 @@ pub trait Host: Sized + 'static {
     fn node_action(&mut self, action: Action, cx: &mut Context<Self>);
     fn render_nodes(&self, cx: &mut Context<Self>) -> Div {
         let data = self.nodes_data();
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let running = data.running;
         let enabled = data.enabled;
         div()

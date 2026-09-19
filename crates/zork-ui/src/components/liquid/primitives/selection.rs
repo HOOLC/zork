@@ -5,7 +5,7 @@ use super::super::{
 use super::{disabled_node, surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::{BRAND_ACCENT, CUE_UI, LIQUID_OUTLINE},
+    design::{BRAND_ACCENT, LIQUID_OUTLINE, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
@@ -70,7 +70,7 @@ pub fn checkbox<V: 'static>(
                     },
                     12.,
                 )
-                .text_color(rgb(CUE_UI.palette.canvas)),
+                .text_color(rgb(ZORK_UI.palette.canvas)),
             )
         });
     let square = skin(
@@ -221,7 +221,7 @@ pub fn group<V: 'static>(
             selected.first().copied(),
             controls::SegmentKind::Toggle,
             !disabled,
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             window,
             cx,
             move |v, i, cx| change(v, mode.change(&selected, i), cx),
@@ -288,16 +288,16 @@ pub fn group<V: 'static>(
                         BRAND_ACCENT
                     } else {
                         if cards {
-                            CUE_UI.palette.prompt
+                            ZORK_UI.palette.prompt
                         } else {
-                            CUE_UI.palette.canvas
+                            ZORK_UI.palette.canvas
                         }
                     },
                     border: (!checked).then_some(LIQUID_OUTLINE),
                     parent: if cards {
-                        CUE_UI.palette.prompt
+                        ZORK_UI.palette.prompt
                     } else {
-                        CUE_UI.palette.canvas
+                        ZORK_UI.palette.canvas
                     },
                     focused: false,
                 },
@@ -309,7 +309,7 @@ pub fn group<V: 'static>(
                     .when(checked, |v| {
                         v.child(
                             crate::controls::icon("icons/check.svg", 12.)
-                                .text_color(rgb(CUE_UI.palette.canvas)),
+                                .text_color(rgb(ZORK_UI.palette.canvas)),
                         )
                     }),
                 window,
@@ -327,7 +327,7 @@ pub fn group<V: 'static>(
                 v.child(
                     div()
                         .text_size(px(12.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(text),
                 )
             });
@@ -343,7 +343,7 @@ pub fn group<V: 'static>(
                     disabled: inert,
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
             )
@@ -352,9 +352,9 @@ pub fn group<V: 'static>(
                 item.id.clone(),
                 crate::controls::CARD_RADIUS,
                 if cards {
-                    CUE_UI.palette.prompt
+                    ZORK_UI.palette.prompt
                 } else {
-                    CUE_UI.palette.canvas
+                    ZORK_UI.palette.canvas
                 },
                 false,
             )
@@ -451,7 +451,7 @@ pub fn toggle<V: 'static>(
             disabled,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
         window,
         cx,
     )

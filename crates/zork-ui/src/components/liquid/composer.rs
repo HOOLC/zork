@@ -9,7 +9,7 @@ use crate::{
         attachment_fan as fan_geometry, liquid_composer as spec, text_input::ComposerInput,
     },
     controls,
-    design::{BRAND_ACCENT, CUE_UI},
+    design::{BRAND_ACCENT, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
@@ -412,7 +412,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
             format!("{id}-material"),
             width,
             height,
-            SurfaceColors::filled(spec::SURFACE_COLOR, CUE_UI.palette.canvas),
+            SurfaceColors::filled(spec::SURFACE_COLOR, ZORK_UI.palette.canvas),
             content,
         ))
         .children(custom_fan)

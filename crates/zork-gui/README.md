@@ -29,7 +29,7 @@ The sidebar and settings navigation also expose **Mesh resources**: a read-only,
 
 “Connect device” offers separate phone and other-device panes. Phone access uses a short QR invitation and explicit desktop approval; other devices use the Station join command. Delivered conversation artifacts remain available for native preview, cached offline viewing and saving. Local files, drops and clipboard images become immutable conversation-owned snapshots before delivery.
 
-The native asset family now uses semantic `icons/*.svg` paths, all 12 Agent avatars and the current 136 × 44 Fold wordmark. Historical Cue files remain embedded only for compatibility; the actual Cue account login retains its external service identity. [`assets/usage-v2.json`](assets/usage-v2.json) records every mounted icon, scene and motion carrier, including assets with no native carrier.
+The native asset family now uses semantic `icons/*.svg` paths, all 12 Agent avatars and the Zork wordmark. Shared interface resources use `interface/*.svg`; Zork account login authorizes the configured Zork relay. [`assets/usage-v2.json`](assets/usage-v2.json) records every mounted icon, scene and motion carrier, including assets with no native carrier.
 
 The sidebar and settings header place the Zork wordmark alongside the native traffic lights, without an extra title row. Hover scrubs the approved 2000 ms contour animation toward the icon; leaving reverses from the currently painted frame, and re-entering continues forward from that point. Other approved carriers retain their linked icon/letters (805 ms), wordmark (675 ms), icon (680 ms), and onboarding contour animation (2000 ms). GPUI timers are capped at 60 fps and stop at the endpoint. The upper half squashes, blinks and jumps down as one group with rounded separation; the lower half crawls left into Z, then the upper-left piece becomes o and the upper-right piece separates into rk with soft edges and a short settling overshoot. Every frame centres the visible body bounds. SVG and GPUI share sampled 128-point contours, with the notch retained on the lower contour. On macOS, the actual `NSWorkspace.accessibilityDisplayShouldReduceMotion` preference selects static endpoints without autoplay or loops.
 
@@ -171,7 +171,7 @@ A visible assistant reply exists only after the Agent explicitly invokes
   plain monospace text.
 - One window; no diff/handoff pane (P3).
 
-The executable UI contracts live in `tests/cue_ui_contract.rs`,
+The executable UI contracts live in `tests/ui_contract.rs`,
 `tests/component_port_regression.rs`, and `tests/message_rendering_regression.rs`.
 The palette and geometry are defined in `src/design.rs`.
 

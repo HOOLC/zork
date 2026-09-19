@@ -23,11 +23,11 @@ mod code;
 #[path = "message_text.rs"]
 mod text_cache;
 
-const TEXT: u32 = crate::design::CUE_UI.palette.text;
-const MUTED: u32 = crate::design::CUE_UI.palette.muted;
-const BORDER: u32 = crate::design::CUE_UI.palette.border;
-const CODE_FILL: u32 = crate::design::CUE_UI.palette.sidebar;
-const LINK: u32 = crate::design::CUE_UI.palette.accent;
+const TEXT: u32 = crate::design::ZORK_UI.palette.text;
+const MUTED: u32 = crate::design::ZORK_UI.palette.muted;
+const BORDER: u32 = crate::design::ZORK_UI.palette.border;
+const CODE_FILL: u32 = crate::design::ZORK_UI.palette.sidebar;
+const LINK: u32 = crate::design::ZORK_UI.palette.accent;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InlineStyle {
@@ -641,7 +641,7 @@ fn append_inline_children(children: &[Node], inherited: &InlineStyle, output: &m
     }
 }
 
-/// Parse and render one assistant message with the Cue text palette.
+/// Parse and render one assistant message with the shared text palette.
 pub fn render_markdown(id: &str, source: &str) -> AnyElement {
     let document = MessageDocument::parse(source);
     render_document(id, &document)

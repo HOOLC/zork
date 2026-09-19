@@ -1,4 +1,4 @@
-//! Cue session ledger adapted to Zork's durable Agent events. Association is
+//! Session ledger for Zork's durable Agent events. Association is
 //! exclusively by step/invocation ID; a result can precede its start in a page.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

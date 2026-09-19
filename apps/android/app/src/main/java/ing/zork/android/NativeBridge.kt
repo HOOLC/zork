@@ -88,6 +88,7 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     fun settingsEvents(peer: String) = observations.settings(peer)
     fun notificationEvents() = observations.notifications()
     fun adbEvents() = observations.adb()
+    fun accountEvents() = observations.account()
     fun dataResetEvents() = observations.dataReset()
     suspend fun clearData() = withContext(Dispatchers.IO) {
         val response = JSONObject(NativeBridge.clearData(root, true, applicationContext))

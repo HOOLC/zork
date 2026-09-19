@@ -2,7 +2,7 @@
 use super::{agents::AgentsView, profiles::ProfilesView, ui};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, AnyView, Context, Window};
 use serde_json::{json, Value};
@@ -750,7 +750,7 @@ impl Render for StoryHost {
         let inner = if self.settings {
             div()
                 .size_full()
-                .bg(rgb(CUE_UI.palette.canvas))
+                .bg(rgb(ZORK_UI.palette.canvas))
                 .child(ui::settings_content(self.inner.clone()))
         } else {
             div().size_full().child(self.inner.clone())
@@ -760,8 +760,8 @@ impl Render for StoryHost {
             .size_full()
             .font_family("Inter Variable")
             .text_size(px(13.))
-            .text_color(rgb(CUE_UI.palette.text))
-            .bg(rgb(CUE_UI.palette.canvas))
+            .text_color(rgb(ZORK_UI.palette.text))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .child(inner)
             .automation(AutomationRole::Status, "组件画布")
     }

@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::{ComposerEdited, ComposerInput},
     controls as ui,
-    design::{TextRole, CUE_UI},
+    design::{TextRole, ZORK_UI},
     resources::Text,
 };
 use gpui::{prelude::*, *};
@@ -151,7 +151,7 @@ impl Render for List {
             .min_h_0()
             .flex()
             .flex_col()
-            .bg(rgb(CUE_UI.palette.canvas))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .child(
                 div()
                     .p_4()
@@ -405,7 +405,7 @@ impl Render for Menu {
                         ui::IconButtonSize::Compact,
                     )
                     .text_size(px(11.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(ui::icon("icons/file.svg", 14.))
                     .child(label.clone()),
                     label.clone(),

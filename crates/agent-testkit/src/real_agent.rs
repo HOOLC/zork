@@ -287,6 +287,16 @@ impl RealAgent {
         }
         if let Some(service) = self.service.take() {
             service.shutdown().await;
+            // Axum's drain signal can precede the last connection state's drop.
+            // Keep our owner alive until those clones retire, then synchronously
+            // release the store before reopening the same data directory.
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                while Arc::strong_count(&service) > 1 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("retired HTTP connections still hold the Agent service");
             drop(service);
         }
     }

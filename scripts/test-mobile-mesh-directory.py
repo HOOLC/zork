@@ -119,6 +119,12 @@ class Phone:
 def phone_invite(phone, node, switch_from=None):
     invite = admin(node, 'POST', '/v1/node/mesh/client-invites')
     result = phone.command('begin_invitation', ticket=invite['invitation'], name='Directory phone', switch_from=switch_from)
+    if (result.get('invitation') or {}).get('status') == 'resolving':
+        pending_id = result['invitation']['id']
+        result = phone.wait('invitation', lambda value:
+            (value.get('invitation') or {}).get('id') in (pending_id, invite['id']) and
+            (value.get('switch_confirmation') or (value.get('invitation') or {}).get('status') == 'awaiting_approval' or value.get('done')))
+        assert not result.get('done'), result
     return invite, result
 
 
@@ -192,8 +198,20 @@ def main():
 
         invite, preview = phone_invite(phone, d)
         expected = preview['switch_confirmation']['expected']
+        input_id = preview['switch_confirmation']['input_id']
         assert {n['id'] for n in preview['nodes']} == {a.origin, b.origin}
+        claim = next(i for i in admin(d, 'GET', '/v1/node/mesh/invites')['items'] if i['id'] == invite['id'])
+        assert not claim.get('device'), 'an unconfirmed switch must not claim the new Mesh'
+        phone.close()
+        phone = Phone(root / 'phone')
+        restored = phone.command('resume')
+        assert restored['switch_confirmation']['expected'] == expected
+        phone.command('confirm_invitation_switch', input_id='retired-input', expected=expected, expect_error=True)
+        phone.command('confirm_invitation_switch', input_id=input_id, expected=dict(expected, revision=expected['revision'] + 1), expect_error=True)
+        phone.nodes([a.origin, b.origin])
+        assert phone.read(b.origin)['name'] == 'b'
         phone.command('cancel_invitation')
+        phone.command('confirm_invitation_switch', input_id=input_id, expected=expected, expect_error=True)
         phone.nodes([a.origin, b.origin])
         phone.command('begin_invitation', ticket=invite['invitation'], name='Directory phone', switch_from=expected)
         phone.wait('invitation', lambda value: (value.get('invitation') or {}).get('status') == 'awaiting_approval')
@@ -203,9 +221,10 @@ def main():
         admin(d, 'DELETE', '/v1/node/mesh/invites/' + invite['id'])
         phone.command('begin_invitation', ticket=invite['invitation'], name='Directory phone', switch_from=expected, expect_error=True)
         phone.nodes([a.origin, b.origin])
-        passed('switch preview, cancel and rejected invitation keep the current Mesh usable')
+        passed('persisted switch confirmation, stale-version rejection, cancel and revoked invitations keep the current Mesh usable')
 
-        invite, _ = phone_invite(phone, d, expected)
+        invite, preview = phone_invite(phone, d)
+        phone.command('confirm_invitation_switch', input_id=preview['switch_confirmation']['input_id'], expected=preview['switch_confirmation']['expected'])
         approve(phone, d, invite)
         phone.nodes([d.origin])
         assert phone.read(d.origin)['name'] == 'switch-target'

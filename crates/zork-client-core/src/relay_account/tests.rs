@@ -168,3 +168,136 @@ async fn rejected_logout_does_not_claim_remote_revocation() {
     );
     server.abort();
 }
+
+#[tokio::test]
+async fn profile_account_is_shared_without_copying_refresh_credentials() {
+    let root = tempfile::tempdir().unwrap();
+    storage::bind_profile(root.path()).unwrap();
+    storage::bind_profile(root.path()).unwrap();
+    let origin = "http://127.0.0.1:9";
+    let client = Account::new(root.path().join("transport"), origin).unwrap();
+    let station = Account::new(root.path().join("node"), origin).unwrap();
+    assert_eq!(client.data_root(), station.data_root());
+    save(root.path(), Some(saved(origin, storage::now() + 300)));
+    assert!(client.cached_access().unwrap().is_some());
+    assert!(station.cached_access().unwrap().is_some());
+    client.logout(false).await.unwrap();
+    assert!(station.cached_access().unwrap().is_none());
+    assert!(!storage::path(&root.path().join("node")).exists());
+    assert!(!storage::path(&root.path().join("transport")).exists());
+}
+
+#[tokio::test]
+async fn account_controller_cancellation_fences_a_late_device_start_and_observers_see_no_tokens() {
+    use axum::{routing::post, Json, Router};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let started = Arc::new(tokio::sync::Notify::new());
+    let released = Arc::new(tokio::sync::Notify::new());
+    let cancelled = Arc::new(AtomicUsize::new(0));
+    let app = Router::new().route("/v1/auth/device", post({
+        let (origin, started, released) = (origin.clone(), started.clone(), released.clone());
+        move |Json(body): Json<serde_json::Value>| {
+            let (origin, started, released) = (origin.clone(), started.clone(), released.clone());
+            async move {
+                started.notify_one(); released.notified().await;
+                Json(serde_json::json!({"verification_uri":format!("{origin}/v1/auth/device/{}",body["id"].as_str().unwrap()),"expires_at":storage::now()+300,"interval":3}))
+            }
+        }
+    })).route("/v1/auth/device/cancel", post({
+        let cancelled = cancelled.clone();
+        move || { let cancelled = cancelled.clone(); async move { cancelled.fetch_add(1,Ordering::SeqCst); Json(serde_json::json!({"cancelled":true})) } }
+    }));
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let controller =
+        controller::Controller::new(Account::new(root.path(), &origin).unwrap()).unwrap();
+    let mut wire = crate::subscriptions::WireSubscription::from_account(&controller.source);
+    let first = wire.prepare().unwrap().unwrap();
+    assert_eq!(first["snapshot"]["authenticated"], false);
+    assert!(wire.finish(first["batch"].as_u64().unwrap(), false));
+    controller.submit(controller::Action::Login).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), started.notified())
+        .await
+        .unwrap();
+    controller.submit(controller::Action::Cancel).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while storage::read(root.path()).unwrap().login_attempt.is_some() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    released.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while cancelled.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let state = controller.snapshot();
+    assert!(!state.busy());
+    assert!(state.login_url.is_none());
+    assert!(!state.authenticated);
+    assert!(storage::load(root.path()).unwrap().is_none());
+    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !controller.snapshot().authenticated {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let frame = wire.prepare().unwrap().unwrap();
+    assert_eq!(frame["from"], 0);
+    assert_eq!(frame["snapshot"]["authenticated"], true);
+    assert!(!frame.to_string().contains("test-access"));
+    assert!(!frame.to_string().contains("test-refresh"));
+    assert!(wire.finish(frame["batch"].as_u64().unwrap(), true));
+    drop(controller);
+    server.abort();
+}
+
+#[tokio::test]
+async fn cancelling_one_owner_does_not_cancel_a_newer_process_login() {
+    let root = tempfile::tempdir().unwrap();
+    let account = Account::new(root.path(), "https://relay.example").unwrap();
+    account.reserve_login("first").await.unwrap();
+    account.reserve_login("second").await.unwrap();
+    account.cancel_login("first").await.unwrap();
+    assert_eq!(
+        storage::read(root.path()).unwrap().login_attempt.as_deref(),
+        Some("second")
+    );
+}
+
+#[tokio::test]
+async fn malformed_private_and_remote_values_never_escape_through_error_chains() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new()
+        .fallback(|| async { axum::Json(serde_json::json!({"sessions":"sensitive-test-marker"})) });
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    let account = Account::new(root.path(), &origin).unwrap();
+    let error = account.sessions().await.unwrap_err();
+    assert!(!format!("{error:#}").contains("sensitive-test-marker"));
+    std::fs::write(
+        storage::path(root.path()),
+        br#"{"version":"sensitive-test-marker"}"#,
+    )
+    .unwrap();
+    let error = storage::read(root.path()).unwrap_err();
+    assert!(!format!("{error:#}").contains("sensitive-test-marker"));
+    server.abort();
+}

@@ -13,6 +13,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     let mut all = false;
     let mut json = false;
     let mut no_browser = false;
+    let mut device = false;
     let mut session = None;
     let mut i = 0;
     while i < argv.len() {
@@ -27,6 +28,10 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             }
             "--json" => {
                 json = true;
+                i += 1;
+            }
+            "--device" if command == "login" => {
+                device = true;
                 i += 1;
             }
             "--no-browser" if command == "login" => {
@@ -44,6 +49,18 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     zork_config::channel::claim(&data, channel)?;
     let account = Account::configured(data)?;
     match command.as_str() {
+        "login" if device => {
+            let login = account.begin_device_login(&zork_config::device_name()).await?;
+            println!("Open this URL on any device to log in to Zork:\n{}", login.url());
+            if !no_browser { let _ = open_browser(login.url()); }
+            let status = tokio::select! {
+                result = login.finish() => result?,
+                _ = tokio::signal::ctrl_c() => { login.cancel().await?; anyhow::bail!("Google login cancelled"); }
+            };
+            if json { println!("{}", serde_json::to_string(&status)?); }
+            else { println!("Logged in as {}. Relay access updates automatically.", status.email.or(status.subject).unwrap_or_default()); }
+            Ok(())
+        }
         "login" => {
             let login = account.begin_login(&zork_config::device_name()).await?;
             if no_browser {
@@ -150,7 +167,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             Ok(())
         }
         _ => anyhow::bail!(
-            "Usage: zork account login|status|refresh|sessions|revoke SESSION_ID|logout [--all] [--data DIR] [--json]"
+            "Usage: zork account login [--device] [--no-browser]|status|refresh|sessions|revoke SESSION_ID|logout [--all] [--data DIR] [--json]"
         ),
     }
 }

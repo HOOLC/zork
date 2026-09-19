@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
@@ -36,7 +36,7 @@ pub fn render<V: 'static>(
                 .id(format!("header-member-{}", member.id))
                 .size(px(26.))
                 .rounded_full()
-                .bg(rgb(CUE_UI.palette.canvas))
+                .bg(rgb(ZORK_UI.palette.canvas))
                 .cursor_pointer()
                 .child(ui::agent_avatar(member.avatar.as_deref(), 26.))
                 .on_click(cx.listener(move |v, _, _, cx| open(v, member.id.clone(), cx)))

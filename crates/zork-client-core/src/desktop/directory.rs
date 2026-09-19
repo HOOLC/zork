@@ -1,9 +1,5 @@
 //! Device directory, membership and host operations. Views only observe `DirectoryData`.
-use super::{
-    account::{AccountFlow, AccountIdentity},
-    node::LocalNode,
-    transport::ClientMesh,
-};
+use super::{node::LocalNode, transport::ClientMesh};
 use crate::{
     api::StationClient,
     state::{Device, Observable, Subscription},
@@ -22,10 +18,6 @@ pub struct DirectoryData {
     pub nodes: Arc<Vec<SavedNode>>,
     pub local_enabled: bool,
     pub mesh_identity: Option<String>,
-    pub account: Option<AccountIdentity>,
-    pub account_available: bool,
-    pub account_busy: bool,
-    pub account_url: Option<String>,
     pub info: Arc<HashMap<String, Value>>,
     pub updating: HashSet<String>,
     pub error: Option<String>,
@@ -52,7 +44,7 @@ pub struct Directory {
     host_watch: Mutex<Option<zork_notify::files::FileWatch>>,
     host_observer: Mutex<Option<(u64, HostConnection)>>,
     host_generation: std::sync::atomic::AtomicU64,
-    account_attempt: Mutex<Option<Arc<zork_notify::io::Cancellation>>>,
+    pub account: Arc<crate::relay_account::controller::Controller>,
     application_sources: Mutex<HashMap<String, crate::pages::ApplicationSource>>,
     resources: std::sync::OnceLock<Arc<crate::resources::Resources>>,
     shared_files: std::sync::OnceLock<Arc<crate::shared_files::SharedFiles>>,
@@ -76,18 +68,11 @@ impl Directory {
             Ok(value) => (value, None),
             Err(e) => (false, Some(e.to_string())),
         };
-        let account: Option<AccountIdentity> = store.get("account", "identity")?;
-        let account = account.filter(|a| {
-            super::load_services()
-                .ok()
-                .and_then(|s| s.cue)
-                .is_some_and(|s| s.issuer == a.issuer && s.client_id == a.client_id)
-        });
+        zork_config::relay_account::bind_profile(root)?;
+        let account = crate::relay_account::controller::Controller::open(root)?;
         let state = DirectoryData {
             nodes: Arc::new(store.nodes()?),
             local_enabled,
-            account,
-            account_available: super::load_services().ok().and_then(|s| s.cue).is_some(),
             error,
             preferences: crate::preferences::read(&store),
             ..Default::default()
@@ -109,7 +94,7 @@ impl Directory {
             host_watch: Default::default(),
             host_observer: Default::default(),
             host_generation: Default::default(),
-            account_attempt: Default::default(),
+            account,
             connections: Mutex::new(HashMap::new()),
             next_binding: std::sync::atomic::AtomicU64::new(1),
             application_sources: Default::default(),
@@ -213,7 +198,7 @@ impl Directory {
         let source = self.clone();
         std::thread::spawn(move || {
             let _ = source.data_reset.clear(confirmed, || {
-                source.cancel_account();
+                let _ = source.cancel_account();
                 source.local.stop()?;
                 super::data_reset::restart(&source.data_lease)
             });
@@ -508,76 +493,17 @@ impl Directory {
         self.commit(|s| s.local_enabled = false);
         self.local.stop()
     }
-    pub fn login_account(self: &Arc<Self>) -> Result<()> {
-        let mut attempt = self.account_attempt.lock().unwrap();
-        anyhow::ensure!(attempt.is_none(), "登录仍在进行");
-        let cancel = Arc::new(zork_notify::io::Cancellation::new()?);
-        *attempt = Some(cancel.clone());
-        self.commit(|s| {
-            s.account_busy = true;
-            s.account_url = None;
-            s.error = None;
-        });
-        let source = self.clone();
-        std::thread::spawn(move || {
-            let result = (|| {
-                let config = super::load_services()?
-                    .cue
-                    .context("尚未配置 Cue 账号服务地址和 client_id")?;
-                let flow = AccountFlow::prepare(config, cancel.clone())?;
-                {
-                    let attempt = source.account_attempt.lock().unwrap();
-                    anyhow::ensure!(
-                        attempt.as_ref().is_some_and(|a| Arc::ptr_eq(a, &cancel)),
-                        "登录已取消"
-                    );
-                    source.commit(|s| s.account_url = Some(flow.url.clone()));
-                }
-                flow.finish()
-            })();
-            source.complete_account(&cancel, result);
-        });
-        Ok(())
+    pub fn login_account(&self) -> Result<()> {
+        self.account
+            .submit(crate::relay_account::controller::Action::Login)
     }
-    fn complete_account(
-        &self,
-        cancel: &Arc<zork_notify::io::Cancellation>,
-        result: Result<AccountIdentity>,
-    ) {
-        let mut attempt = self.account_attempt.lock().unwrap();
-        if !attempt.as_ref().is_some_and(|a| Arc::ptr_eq(a, cancel)) {
-            return;
-        }
-        attempt.take();
-        let result = result.and_then(|identity| {
-            self.store.put("account", "identity", &identity)?;
-            Ok(identity)
-        });
-        self.commit(|s| {
-            s.account_busy = false;
-            s.account_url = None;
-            match result {
-                Ok(identity) => s.account = Some(identity),
-                Err(e) => s.error = Some(e.to_string()),
-            }
-        });
-    }
-    pub fn cancel_account(&self) {
-        let mut attempt = self.account_attempt.lock().unwrap();
-        if let Some(cancel) = attempt.take() {
-            cancel.cancel();
-        }
-        self.commit(|s| {
-            s.account_busy = false;
-            s.account_url = None;
-        });
+    pub fn cancel_account(&self) -> Result<()> {
+        self.account
+            .submit(crate::relay_account::controller::Action::Cancel)
     }
     pub fn logout(&self) -> Result<()> {
-        self.cancel_account();
-        self.store
-            .put("account", "identity", &Option::<AccountIdentity>::None)?;
-        self.commit(|s| s.account = None);
-        Ok(())
+        self.account
+            .submit(crate::relay_account::controller::Action::Logout)
     }
     pub fn select(&self, id: &str) -> Result<()> {
         self.store.put("device", "last-node", &id)
@@ -841,41 +767,6 @@ impl Drop for Directory {
 mod tests {
     use super::*;
     use std::time::Duration;
-
-    #[test]
-    fn cancelled_account_result_cannot_persist_identity_or_end_the_next_attempt() {
-        let root = tempfile::tempdir().unwrap();
-        let directory = Directory::open(root.path()).unwrap();
-        let old = Arc::new(zork_notify::io::Cancellation::new().unwrap());
-        *directory.account_attempt.lock().unwrap() = Some(old.clone());
-        directory.cancel_account();
-        assert!(old.is_cancelled());
-        let next = Arc::new(zork_notify::io::Cancellation::new().unwrap());
-        *directory.account_attempt.lock().unwrap() = Some(next.clone());
-        directory.commit(|s| s.account_busy = true);
-        directory.complete_account(
-            &old,
-            Ok(AccountIdentity {
-                issuer: "https://issuer.example.test".into(),
-                client_id: "fixture".into(),
-                subject: "old-user".into(),
-                name: "Old User".into(),
-                email: None,
-                expires_at: 1,
-            }),
-        );
-        assert!(directory.snapshot().account.is_none());
-        assert!(directory.snapshot().account_busy);
-        assert!(Arc::ptr_eq(
-            directory.account_attempt.lock().unwrap().as_ref().unwrap(),
-            &next
-        ));
-        assert!(directory
-            .store
-            .get::<AccountIdentity>("account", "identity")
-            .unwrap()
-            .is_none());
-    }
 
     #[tokio::test]
     async fn replacing_connection_rejects_late_metadata_and_reuses_unchanged_binding() {

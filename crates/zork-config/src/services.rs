@@ -20,33 +20,6 @@ pub struct ServicesConfig {
     pub relay_quic_port: Option<u16>,
     pub discovery_url: Option<String>,
     pub quic_discovery_urls: Option<Vec<String>>,
-    pub cue: Option<CueAccountConfig>,
-}
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct CueAccountConfig {
-    pub issuer: String,
-    pub client_id: String,
-    #[serde(default = "default_cue_redirect")]
-    pub redirect_uri: String,
-}
-fn default_cue_redirect() -> String {
-    "http://127.0.0.1:43025/oauth/callback".into()
-}
-pub fn validate_cue_redirect(value: &str) -> Result<()> {
-    let url = url::Url::parse(value)?;
-    ensure!(
-        url.scheme() == "http"
-            && url.host_str() == Some("127.0.0.1")
-            && url.port().is_some_and(|p| p > 0)
-            && url.path() == "/oauth/callback"
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.query().is_none()
-            && url.fragment().is_none(),
-        "Cue redirect_uri must be http://127.0.0.1:<port>/oauth/callback and registered with Cue"
-    );
-    Ok(())
 }
 impl ServicesConfig {
     /// Compiled-in public Mesh endpoints. Packaged and user files overlay this.
@@ -54,18 +27,25 @@ impl ServicesConfig {
         serde_json::from_str(include_str!("services.default.json"))
             .expect("packaged service defaults")
     }
-
-    /// Packaged defaults, then the app bundle file, then `ZORK_SERVICES_CONFIG`.
     pub fn load_from_install() -> Result<Self> {
+        Self::installed(None)
+    }
+    pub fn load_for_data_root(root: &Path) -> Result<Self> {
+        Self::installed(Some(root))
+    }
+    fn installed(root: Option<&Path>) -> Result<Self> {
         let bundled = std::env::current_exe()
             .ok()
             .and_then(|exe| bundled_services(&exe));
-        let user = std::env::var_os("ZORK_SERVICES_CONFIG").map(std::path::PathBuf::from);
+        let explicit = std::env::var_os("ZORK_SERVICES_CONFIG").map(std::path::PathBuf::from);
+        if let Some(path) = &explicit {
+            ensure!(path.is_file(), "ZORK_SERVICES_CONFIG file does not exist");
+        }
+        let user = explicit.or_else(|| root.map(|root| root.join("services.json")));
         Self::load(bundled.as_deref(), user.as_deref())
     }
 
-    /// The override replaces individual top-level fields. In particular `cue`
-    /// is replaced atomically so an issuer never inherits another client's ID.
+    /// The override replaces individual top-level endpoint fields.
     pub fn load(bundled: Option<&Path>, user: Option<&Path>) -> Result<Self> {
         let mut merged =
             serde_json::to_value(Self::packaged_defaults()).context("packaged service defaults")?;
@@ -152,14 +132,6 @@ impl ServicesConfig {
                 validate_endpoint(url)?;
             }
         }
-        if let Some(cue) = &self.cue {
-            validate_endpoint(&cue.issuer)?;
-            validate_cue_redirect(&cue.redirect_uri)?;
-            ensure!(
-                !cue.client_id.trim().is_empty() && cue.client_id.len() <= 512,
-                "Cue client_id is required"
-            );
-        }
         Ok(())
     }
 }
@@ -223,22 +195,20 @@ mod tests {
     }
 
     #[test]
-    fn overrides_replace_endpoint_sets_and_account_together() {
+    fn overrides_replace_endpoint_sets() {
         let dir = tempfile::tempdir().unwrap();
         let bundled = dir.path().join("bundled.json");
         let user = dir.path().join("user.json");
-        std::fs::write(&bundled,r#"{"relay_urls":["https://old.example"],"cue":{"issuer":"https://old.example","client_id":"old"}}"#).unwrap();
-        std::fs::write(&user,r#"{"relay_urls":["http://127.0.0.1:3340"],"cue":{"issuer":"http://127.0.0.1:4200","client_id":"local-zork"}}"#).unwrap();
+        std::fs::write(&bundled, r#"{"relay_urls":["https://old.example"]}"#).unwrap();
+        std::fs::write(&user, r#"{"relay_urls":["http://127.0.0.1:3340"]}"#).unwrap();
         let effective = ServicesConfig::load(Some(&bundled), Some(&user)).unwrap();
         assert_eq!(effective.relay_urls.unwrap(), vec!["http://127.0.0.1:3340"]);
-        assert_eq!(effective.cue.unwrap().client_id, "local-zork");
-        std::fs::write(&user, r#"{"cue":{"issuer":"https://new.example"}}"#).unwrap();
+        std::fs::write(
+            &user,
+            r#"{"account":{"issuer":"https://unrelated.example"}}"#,
+        )
+        .unwrap();
         assert!(ServicesConfig::load(Some(&bundled), Some(&user)).is_err());
-        std::fs::write(&user, r#"{"cue":null}"#).unwrap();
-        assert!(ServicesConfig::load(Some(&bundled), Some(&user))
-            .unwrap()
-            .cue
-            .is_none());
     }
     #[test]
     fn network_overrides_replace_stale_endpoints_without_changing_node_policy() {
@@ -286,7 +256,7 @@ mod tests {
             assert!(validate_endpoint(url).is_err(), "{url}");
         }
         assert!(validate_endpoint("http://127.0.0.1:4200").is_ok());
-        assert!(validate_endpoint("https://cue.example").is_ok());
+        assert!(validate_endpoint("https://relay.example").is_ok());
     }
 
     #[test]

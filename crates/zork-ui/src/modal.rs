@@ -2,7 +2,7 @@
 use crate::controls as ui;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, App, Context, FocusHandle, FontWeight, MouseButton, Window};
 use std::{
@@ -314,7 +314,7 @@ fn modal_preview_with_title_action<V: 'static>(
         .max_h(max_height)
         .flex()
         .flex_col()
-        .bg(rgb(CUE_UI.palette.canvas))
+        .bg(rgb(ZORK_UI.palette.canvas))
         .border(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(crate::design::LIQUID_OUTLINE))
         .child(contents)
@@ -386,7 +386,7 @@ pub(crate) fn panel_contents_with_title_action(
         .map(|item| (item.editor, Some(item.action)))
         .unwrap_or((None, None));
     let has_footer = footer.is_some();
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let escape_close = close.clone();
     div()
         .id(format!("{id}-content"))

@@ -8,7 +8,7 @@ use super::{
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::{ComposerEdited, ComposerInput},
-    design::{CUE_UI, LIQUID_OUTLINE},
+    design::{LIQUID_OUTLINE, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use std::{cell::Cell, rc::Rc};
@@ -123,12 +123,12 @@ impl Render for OneTimeCode {
                     0.6,
                     SurfaceColors {
                         fill: if selected && !selection.is_empty() {
-                            CUE_UI.palette.selected
+                            ZORK_UI.palette.selected
                         } else {
-                            CUE_UI.palette.canvas
+                            ZORK_UI.palette.canvas
                         },
                         border: Some(LIQUID_OUTLINE),
-                        parent: CUE_UI.palette.canvas,
+                        parent: ZORK_UI.palette.canvas,
                         focused: selected && focus.is_focused(window) && !disabled,
                     },
                     div()
@@ -218,7 +218,7 @@ pub fn password<V: 'static>(
             disabled,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
         window,
         cx,
     )
@@ -272,7 +272,7 @@ pub fn password<V: 'static>(
                         (width - 58.).max(40.),
                         32.,
                         false,
-                        CUE_UI.palette.canvas,
+                        ZORK_UI.palette.canvas,
                         window,
                         cx,
                     )
@@ -332,7 +332,7 @@ pub fn field(
                     .aria_label(error.clone())
                     .text_size(px(12.))
                     .line_height(px(18.))
-                    .text_color(rgb(CUE_UI.palette.danger))
+                    .text_color(rgb(ZORK_UI.palette.danger))
                     .child(error),
             )
         })

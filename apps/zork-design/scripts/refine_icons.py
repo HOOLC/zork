@@ -5,13 +5,13 @@ import json,shutil,hashlib
 ROOT=Path(__file__).resolve().parents[1]
 NATIVE=ROOT.parents[1]/'crates/zork-ui/assets'
 ET.register_namespace('', 'http://www.w3.org/2000/svg')
-extra={'home':'cue/home.svg','arrow-right':'cue/arrow-right.svg','clock':'cue/clock.svg','panel-right':'cue/panel-right.svg','reload':'cue/reload.svg','file':'cue/file.svg','filter':'cue/filter2.svg','columns':'cue/layout-column.svg','microphone':'cue/microphone-filled.svg','sparkles':'cue/sparkles.svg','checklist':'cue/list-checks.svg','puzzle':'cue/puzzle.svg','shapes':'cue/shapes-plus-x-square-circle.svg','settings-three':'cue/settings-slider-three.svg','loader':'cue/loader.svg','terminal':'icons/phosphor-terminal-window.svg','brain':'icons/phosphor-brain.svg','cube':'icons/phosphor-cube.svg','stop':'icons/phosphor-stop-fill.svg'}
+extra={'home':'interface/home.svg','arrow-right':'interface/arrow-right.svg','clock':'interface/clock.svg','panel-right':'interface/panel-right.svg','reload':'interface/reload.svg','file':'interface/file.svg','filter':'interface/filter2.svg','columns':'interface/layout-column.svg','microphone':'interface/microphone-filled.svg','sparkles':'interface/sparkles.svg','checklist':'interface/list-checks.svg','puzzle':'interface/puzzle.svg','shapes':'interface/shapes-plus-x-square-circle.svg','settings-three':'interface/settings-slider-three.svg','loader':'interface/loader.svg','terminal':'icons/phosphor-terminal-window.svg','brain':'icons/phosphor-brain.svg','cube':'icons/phosphor-cube.svg','stop':'icons/phosphor-stop-fill.svg'}
 manifest_path=ROOT/'assets/manifest.json';manifest=json.loads(manifest_path.read_text())
 for name,source in extra.items():
  p=ROOT/f'assets/icons/interface/{name}.svg'
  if not p.exists():shutil.copy2(NATIVE/source,p)
  if not any(i['path']==str(p.relative_to(ROOT)) for i in manifest['items']):
-  manifest['items'].append({'path':str(p.relative_to(ROOT)),'category':'interface-extension','status':'normalized-native-resource','source':str((NATIVE/source).relative_to(ROOT.parents[1])),'origin':'Phosphor / MIT' if source.startswith('icons/') else 'Cue shared company resource / Central Icons; existing project authorization','sha256':''})
+  manifest['items'].append({'path':str(p.relative_to(ROOT)),'category':'interface-extension','status':'normalized-native-resource','source':str((NATIVE/source).relative_to(ROOT.parents[1])),'origin':'Phosphor / MIT' if source.startswith('icons/') else 'Central Icons shared company resource; existing project authorization','sha256':''})
 for p in [*ROOT.joinpath('assets/icons/product').glob('*.svg'),*ROOT.joinpath('assets/icons/interface').glob('*.svg')]:
  backup=ROOT/'archive/pre-rounded-icons'/p.relative_to(ROOT/'assets/icons');backup.parent.mkdir(parents=True,exist_ok=True)
  if not backup.exists():shutil.copy2(p,backup)
@@ -35,6 +35,5 @@ for item in manifest['items']:
  p=ROOT/item['path'];item['sha256']=hashlib.sha256(p.read_bytes()).hexdigest()
 manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
 shutil.copy2(NATIVE/'icons/PHOSPHOR_LICENSE.txt',ROOT/'licenses/Phosphor-MIT.txt')
-shutil.copy2(NATIVE/'cue/README.md',ROOT/'licenses/Cue-resource-provenance.md')
-shutil.copy2(NATIVE/'cue/icons.json',ROOT/'licenses/Central-Icons-sources.json')
+shutil.copy2(NATIVE/'interface/icons.json',ROOT/'licenses/Central-Icons-sources.json')
 print('Rounded functional set:',len(list((ROOT/'assets/icons').rglob('*.svg'))))

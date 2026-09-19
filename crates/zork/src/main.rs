@@ -13,6 +13,8 @@ mod account;
 mod mcp;
 mod mesh;
 mod service;
+#[cfg(all(test, unix))]
+mod tests;
 mod upgrade;
 
 fn usage() -> &'static str {
@@ -101,8 +103,10 @@ async fn send_reload(argv: Vec<String>) -> Result<()> {
     )
     .await??;
     let status: serde_json::Value = serde_json::from_str(&reply)?;
-    anyhow::ensure!(status["agent_mode"] == "embedded",
-        "the running supervisor uses a standalone Agent; restart the zork supervisor once to activate the embedded Agent (hot reload is not supported for this migration)");
+    anyhow::ensure!(
+        status["agent_mode"] == "embedded",
+        "the running supervisor uses a standalone Agent; restart the zork supervisor once to activate the embedded Agent (hot reload is not supported for this migration)"
+    );
     let mut stream = UnixStream::connect(&sock)
         .await
         .with_context(|| format!("zork is not running ({})", sock.display()))?;

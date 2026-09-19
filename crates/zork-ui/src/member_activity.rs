@@ -5,7 +5,7 @@ use crate::{
         liquid::panel::{Content, FloatingPanel, FloatingStyle, Side},
         tooltip::DetailsTooltip,
     },
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 use std::{collections::HashMap, rc::Rc, time::Duration};
@@ -120,13 +120,13 @@ impl Render for Overlay {
         let content = div()
             .id(format!("detail-tooltip-{}", details.key))
             .w_full()
-            .text_color(rgb(CUE_UI.palette.text))
+            .text_color(rgb(ZORK_UI.palette.text))
             .child(details.content())
             .child(
                 div()
                     .mt(px(12.))
                     .text_size(px(10.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(presentation.footer.clone()),
             )
             .automation(

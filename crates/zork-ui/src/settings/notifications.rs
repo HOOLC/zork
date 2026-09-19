@@ -33,7 +33,7 @@ pub fn notifications<V: 'static>(
     action: impl Fn(&mut V, NotificationAction, &mut Context<V>) + 'static,
 ) -> Div {
     let action = Rc::new(action);
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let mut content = div().flex().flex_col().gap_3();
     for (index, (id, title, detail, selected)) in [
         (

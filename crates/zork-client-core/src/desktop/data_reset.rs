@@ -37,6 +37,14 @@ pub struct Lease {
     _file: File,
 }
 
+impl Drop for Lease {
+    fn drop(&mut self) {
+        // The core lease ends even if a spawned child briefly inherited the
+        // descriptor. Closing only this handle would leave that copy locked.
+        let _ = self._file.unlock();
+    }
+}
+
 fn metadata(path: &Path) -> Result<Option<fs::Metadata>> {
     match fs::symlink_metadata(path) {
         Ok(value) => Ok(Some(value)),
@@ -423,6 +431,9 @@ mod tests {
             .open(&lease.layout.lock)
             .unwrap();
         assert!(other.try_lock().is_err());
+        // A concurrently spawned child can inherit the open file description
+        // until exec closes it. Its descriptor must not extend the core lease.
+        let _inherited_descriptor = lease._file.try_clone().unwrap();
         drop(lease);
         assert!(other.try_lock().is_ok());
     }

@@ -443,7 +443,7 @@ impl Render for ComposerInput {
         let style = input::InputEditorStyle {
             foreground: color,
             caret: color,
-            muted_foreground: gpui::rgb(crate::design::CUE_UI.palette.subtle).into(),
+            muted_foreground: gpui::rgb(crate::design::ZORK_UI.palette.subtle).into(),
             selection: rgba(0x339CFF30).into(),
             ..Default::default()
         };

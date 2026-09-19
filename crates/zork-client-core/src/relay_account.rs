@@ -1,8 +1,11 @@
 //! Public relay account operations. Mesh membership and LAN access are independent.
+pub mod controller;
+mod device;
 mod login;
 mod runtime;
 #[cfg(test)]
 mod tests;
+pub use device::DeviceLogin;
 pub use login::Login;
 pub use runtime::{Access, RelayAccountTask};
 
@@ -70,7 +73,7 @@ impl Account {
             .timeout(Duration::from_secs(12))
             .build()?;
         Ok(Self {
-            root: root.into(),
+            root: storage::resolve_root(&root.into())?,
             origin: storage::canonical_origin(origin)?,
             http,
         })
@@ -78,7 +81,8 @@ impl Account {
     pub fn configured(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let mut config = zork_config::ensure_layout(&root)?.mesh;
-        zork_config::services::ServicesConfig::load_from_install()?.apply_defaults(&mut config)?;
+        zork_config::services::ServicesConfig::load_for_data_root(&storage::resolve_root(&root)?)?
+            .apply_network(&mut config)?;
         let origin = storage::control_origin(config.relay_urls.as_deref())
             .context("public relay origin is not configured")?;
         Self::new(root, &origin)
@@ -149,7 +153,7 @@ impl Account {
             };
             return Err(ApiError { status, code }.into());
         }
-        serde_json::from_slice(&bytes).context("invalid relay response")
+        serde_json::from_slice(&bytes).map_err(|_| anyhow::anyhow!("invalid relay response"))
     }
     fn session_from(&self, tokens: Tokens) -> Result<RelaySession> {
         let now = storage::now();
@@ -293,6 +297,16 @@ impl Account {
             }
         }
         Ok(status)
+    }
+    pub(crate) fn local_identity(&self) -> Result<(Option<String>, Option<String>, bool, usize)> {
+        let file = storage::read(&self.root)?;
+        let session = self.matching(&file).filter(|s| s.renewable());
+        Ok((
+            session.map(|s| s.subject.clone()),
+            session.and_then(|s| s.email.clone()),
+            session.is_some_and(|s| s.active()),
+            file.pending_revocations.len(),
+        ))
     }
     async fn clear_if_same(&self, session: &RelaySession) -> Result<()> {
         let _lock = self.lock().await?;

@@ -15,7 +15,7 @@ pub struct Login {
     attempt: String,
     url: String,
 }
-fn secret() -> Result<String> {
+pub(super) fn secret() -> Result<String> {
     let mut bytes = [0; 32];
     getrandom::fill(&mut bytes)?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
@@ -66,13 +66,7 @@ impl Login {
         &self.url
     }
     pub async fn cancel(&self) -> Result<()> {
-        let _lock = self.account.lock().await?;
-        let mut account = storage::read(&self.account.root)?;
-        if account.login_attempt.as_deref() == Some(&self.attempt) {
-            account.login_attempt = None;
-            storage::write(&self.account.root, &account)?;
-        }
-        Ok(())
+        self.account.cancel_login(&self.attempt).await
     }
     pub async fn finish(&self) -> Result<Status> {
         let result = tokio::time::timeout(Duration::from_secs(300), self.receive()).await;
@@ -125,16 +119,36 @@ impl Login {
         ensure!(!code.is_empty(), "Google login was cancelled");
         let tokens: Tokens = self.account.request(Method::POST, "/v1/auth/token", None,
             Some(serde_json::json!({ "code": code, "code_verifier": self.verifier, "redirect_uri": self.redirect }))).await?;
-        let session = self.account.session_from(tokens)?;
+        self.account.complete_login(&self.attempt, tokens).await
+    }
+}
+impl Account {
+    pub(super) async fn reserve_login(&self, attempt: &str) -> Result<()> {
+        let _lock = self.lock().await?;
+        let mut file = storage::read(&self.root)?;
+        file.login_attempt = Some(attempt.to_owned());
+        storage::write(&self.root, &file)
+    }
+    pub(super) async fn cancel_login(&self, attempt: &str) -> Result<()> {
+        let _lock = self.lock().await?;
+        let mut file = storage::read(&self.root)?;
+        if file.login_attempt.as_deref() == Some(attempt) {
+            file.login_attempt = None;
+            storage::write(&self.root, &file)?;
+        }
+        Ok(())
+    }
+    pub(super) async fn complete_login(&self, attempt: &str, tokens: Tokens) -> Result<()> {
+        let session = self.session_from(tokens)?;
         {
-            let _lock = self.account.lock().await?;
-            let mut account = storage::read(&self.account.root)?;
-            if account.login_attempt.as_deref() != Some(&self.attempt) {
+            let _lock = self.lock().await?;
+            let mut account = storage::read(&self.root)?;
+            if account.login_attempt.as_deref() != Some(attempt) {
                 account.pending_revocations.push(Revocation {
                     session,
                     all: false,
                 });
-                storage::write(&self.account.root, &account)?;
+                storage::write(&self.root, &account)?;
                 anyhow::bail!("Google login was superseded or cancelled");
             }
             if let Some(previous) = account.current.replace(session) {
@@ -144,9 +158,9 @@ impl Login {
                 });
             }
             account.login_attempt = None;
-            storage::write(&self.account.root, &account)?;
+            storage::write(&self.root, &account)?;
         }
-        let _ = self.account.flush_revocations().await;
+        let _ = self.flush_revocations().await;
         Ok(())
     }
 }

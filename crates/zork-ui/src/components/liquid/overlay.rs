@@ -4,7 +4,7 @@ use super::presentation::{FramePaint, Presentation, Recipe, Target};
 use super::{controls, Material, Pose, Surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::{CUE_UI, LIQUID_OUTLINE},
+    design::{LIQUID_OUTLINE, ZORK_UI},
 };
 use controls::ControlElement;
 use gpui::{prelude::*, *};
@@ -453,7 +453,7 @@ impl Popover {
         } else {
             trigger_pose
         };
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let focused = enabled && focus.is_focused(window) && window.last_input_was_keyboard();
         let trigger = if floating {
             let face = popover_face(
@@ -1556,7 +1556,7 @@ impl Dialog {
 
 fn dialog_recipe(floating: bool) -> Recipe {
     Recipe {
-        fill: CUE_UI.palette.canvas,
+        fill: ZORK_UI.palette.canvas,
         border: Some(LIQUID_OUTLINE),
         backdrop: floating.then_some(56),
         initial_scale: 0.96,

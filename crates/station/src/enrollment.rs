@@ -11,12 +11,13 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use zork_client_core::transport::Enrollment;
 use zork_config::{
     membership::{MeshDevice, MeshGroup},
     MeshConfig,
 };
 use zork_mesh::{
-    enrollment::{self, Enrollment, Invitation, InviteKind},
+    enrollment::{self, Invitation, InviteKind},
     node::MeshNode,
 };
 
@@ -69,7 +70,7 @@ struct BeginJoin {
 impl EnrollmentService {
     pub async fn new(root: &Path, config: &MeshConfig, node: MeshNode) -> Result<Self> {
         Ok(Self {
-            transport: Enrollment::bind_for_node(root, config, &node).await?,
+            transport: Enrollment::bind(root, config).await?,
             origin: node.identity().await?,
             node,
             root: root.into(),

@@ -56,13 +56,18 @@ internal data class DeviceTree(val leaders: List<JSONObject>, val sessions: List
 
 internal class ClientViewModel(app: Application, private val repo: ClientRepository) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, ClientRepository(app))
+    var account by mutableStateOf<JSONObject?>(null)
+        private set
+    var accountError by mutableStateOf<String?>(null)
+        private set
+    private var accountWatch: Job? = null
+
     var invitation by mutableStateOf<JSONObject?>(null)
         private set
     private var invitationWatch: Job? = null
     private var directoryWatch: Job? = null
     var meshSwitch by mutableStateOf<JSONObject?>(null)
         private set
-    private var switchTicket: String? = null
 
     var identity by mutableStateOf("")
         private set
@@ -204,7 +209,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         historyWatch?.cancel()
         invitationWatch?.cancel()
         directoryWatch?.cancel()
-        if (value) watchDataReset()
+        if (value) { watchDataReset(); watchAccount() }
         if (value) action {
             adbPlatform.start()
             applySnapshot(repo.command("snapshot"))
@@ -226,11 +231,29 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             notificationsWatch?.cancel()
             adbWatch?.cancel()
             dataResetWatch?.cancel()
+            accountWatch?.cancel()
             adbPlatform.stop()
             NotificationPlatform.releaseHost(repo, hostGeneration)
             connected = false
         }
     }
+
+    private fun watchAccount() {
+        accountWatch?.cancel()
+        accountWatch = viewModelScope.launch {
+            try { repo.accountEvents().collect { frame -> account = frame.value.getJSONObject("snapshot"); accountError = null } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { accountError = e.message }
+        }
+    }
+    fun accountAction(action: String) {
+        viewModelScope.launch {
+            try { accountError = null; repo.command("account", "operation" to action) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { accountError = e.message }
+        }
+    }
+    fun accountBrowserFailed() { accountError = "无法打开浏览器，请使用登录链接在浏览器中继续。" }
 
     private fun watchAdb() {
         if (!foreground) return
@@ -354,6 +377,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     private fun applySnapshot(value: JSONObject) {
+        meshSwitch = value.optJSONObject("switch_confirmation")
         invitation = value.optJSONObject("invitation")
         identity = value.text("identity")
         directOnly = value.optJSONObject("network")?.optBoolean("direct_only") ?: false
@@ -434,7 +458,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     fun beginInvitation(ticket: String) = action {
         val result = repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL)
         result.optJSONObject("switch_confirmation")?.let {
-            meshSwitch = it; switchTicket = ticket; return@action
+            meshSwitch = it; return@action
         }
         live?.cancel(); invitationWatch?.cancel()
         applySnapshot(result)
@@ -442,19 +466,19 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
     fun confirmMeshSwitch() = action {
         val confirmation = meshSwitch ?: return@action
-        val ticket = switchTicket ?: return@action
-        val result = repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL,
-            "switch_from" to confirmation.getJSONObject("expected"))
-        meshSwitch = null; switchTicket = null
+        val result = repo.command("confirm_invitation_switch", "input_id" to confirmation.getString("input_id"),
+            "expected" to confirmation.getJSONObject("expected"))
+        meshSwitch = null
         live?.cancel(); invitationWatch?.cancel()
         applySnapshot(result)
         watchInvitation()
     }
-    fun cancelMeshSwitch() { meshSwitch = null; switchTicket = null }
+    fun cancelMeshSwitch() = cancelInvitation()
 
     fun cancelInvitation() = action {
         invitationWatch?.cancel()
         applySnapshot(repo.command("cancel_invitation"))
+        meshSwitch = null
         startLive()
     }
 

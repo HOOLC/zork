@@ -1,7 +1,7 @@
 //! Shared embedded client-only Mesh startup. Hosts supply paths, configuration
 //! and a Tokio executor; no Station, Agent, workspace scanner or socket pool.
 mod enrollment;
-pub use enrollment::resolve_invitation;
+pub use enrollment::{resolve_invitation, Enrollment};
 use std::path::Path;
 use zork_config::MeshConfig;
 use zork_mesh::managed;
@@ -33,7 +33,10 @@ impl Runtime {
 }
 pub fn own(root: &Path, config: &MeshConfig, network: managed::Runtime) -> anyhow::Result<Runtime> {
     let mut config = config.clone();
-    zork_config::services::ServicesConfig::load_from_install()?.apply_defaults(&mut config)?;
+    zork_config::services::ServicesConfig::load_for_data_root(
+        &zork_config::relay_account::resolve_root(root)?,
+    )?
+    .apply_defaults(&mut config)?;
     let account = if config.offline {
         None
     } else {

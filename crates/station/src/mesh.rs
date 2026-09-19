@@ -451,10 +451,14 @@ impl MeshService {
         self.node.clone()
     }
     pub async fn prepare(root: &Path) -> Result<Option<Prepared>> {
-        let config = zork_config::load_config(root)?.mesh;
+        let mut config = zork_config::load_config(root)?.mesh;
         if !config.enabled {
             return Ok(None);
         }
+        zork_config::services::ServicesConfig::load_for_data_root(
+            &zork_config::relay_account::resolve_root(root)?,
+        )?
+        .apply_defaults(&mut config)?;
         managed::validate(&config)?;
         let control_state = Arc::new(std::sync::OnceLock::new());
         let runtime = managed::start_with_control(
