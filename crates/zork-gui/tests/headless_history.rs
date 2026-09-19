@@ -31,7 +31,7 @@ fn fixture() -> Vec<Record> {
     rows.push(record(
         2,
         json!({"kind":"step_completed","step_id":"reply","purpose":"conversation","completed_at_ms":NOW-88000,
-        "assistant_text":"我先读一遍历史投影，再合并连续的操作。历史页现在是 Cue 的活动页：概览在标题下方，记录行按操作分组，等待单独成行，回复是它自己的 Markdown 文档。我会逐行核对投影、分组、时长与绝对时钟，确认展开后仍能看到完整内容，然后把这次对齐的结论记录下来，并把它交给后续的评测与实现。如果记录行丢掉了来源、目标或状态，或者回复的文档被截断，这次对齐就不算完成；所以我在每一轮都重新读一遍投影，确认按时间排序的分组没有把等待错误地合并进常规操作，确认编辑与写入分开计数，确认发送与接收各有自己的措辞。页面的标题、执行记录滚动区、已到 Session 开始处、加载更早记录、正在加载记录和暂时无法加载都保持 Cue 的措辞，概览只统计整个会话的用量，绝不回到某一行。","invocations":[]}),
+        "assistant_text":"我先读一遍历史投影，再合并连续的操作。历史页现在是独立的活动页：概览在标题下方，记录行按操作分组，等待单独成行，回复是它自己的 Markdown 文档。我会逐行核对投影、分组、时长与绝对时钟，确认展开后仍能看到完整内容，然后把这次对齐的结论记录下来，并把它交给后续的评测与实现。如果记录行丢掉了来源、目标或状态，或者回复的文档被截断，这次对齐就不算完成；所以我在每一轮都重新读一遍投影，确认按时间排序的分组没有把等待错误地合并进常规操作，确认编辑与写入分开计数，确认发送与接收各有自己的措辞。页面的标题、执行记录滚动区、已到 Session 开始处、加载更早记录、正在加载记录和暂时无法加载都使用统一的措辞，概览只统计整个会话的用量，绝不回到某一行。","invocations":[]}),
     ));
     for (i, name, args, time, state, data) in [
         (
@@ -160,7 +160,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         out.join("initial.json"),
         serde_json::to_vec_pretty(&driver.snapshot(true))?,
     )?;
-    // Cue's page keeps the overview above the records, the paging state, the
+    // The history page keeps the overview above the records, the paging state, the
     // rows and the reply disclosure. These replace the timeline-hover checks: a
     // page that loses its rows, its state or its disclosure fails here.
     let page = driver.snapshot(false);
@@ -205,7 +205,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
-    // Cue stamps the reply with an absolute clock, so the row holds still while
+    // The history page stamps the reply with an absolute clock, so the row holds still while
     // the page keeps ticking; a relative clock would rewrite the line.
     anyhow::ensure!(
         reply_label() == reply_before,
@@ -304,7 +304,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         );
     }
     let older = bounds("history-older");
-    // Cue pads the scroll region 16px, so the page state spans the padded list
+    // The history page pads the scroll region 16px, so the page state spans the padded list
     // rather than the whole page.
     let activity = bounds("history-ledger");
     anyhow::ensure!(
@@ -349,7 +349,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         })
         .expect("routine summary visible");
     let group_id = group.id.clone();
-    // Cue's reply row is its Markdown document, so it legitimately exceeds the
+    // The reply row is its Markdown document, so it legitimately exceeds the
     // single-line row height; every other row still has to stay compact.
     let reply = snapshot
         .elements
@@ -664,7 +664,7 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
-    // Cue stamps a record with an absolute clock, so a mounted line holds still
+    // The history page stamps a record with an absolute clock, so a mounted line holds still
     // until new data arrives; a relative clock would rewrite it on a tick.
     anyhow::ensure!(
         live_row() == row_before,

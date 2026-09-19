@@ -133,7 +133,7 @@ impl Render for Details {
                     .text_size(px(12.))
                     .line_height(px(18.))
                     .when_some(entry.start.or(entry.end), |v, at| {
-                        // Cue's record clock: absolute, 9px, tertiary.
+                        // The record clock: absolute, 9px, tertiary.
                         v.child(
                             div()
                                 .mb(px(6.))

@@ -700,14 +700,14 @@ mod tests {
             .map(|entry| (entry.id.clone(), detail(entry)))
             .collect::<serde_json::Map<_, _>>();
         let blocks = history["blocks"].as_array().unwrap();
-        // Cue reads the assistant's text as its own row, so that reply breaks
+        // The history page reads the assistant's text as its own row, so that reply breaks
         // the routine run between two operations: every operation stands alone
         // instead of folding into one group.
         assert!(
             blocks.iter().all(|b| b["grouped"] == false),
             "a reply must separate the operations: {blocks:?}"
         );
-        // Cue paints the assistant's reply as its own visible row.
+        // The history page paints the assistant's reply as its own visible row.
         assert!(history["entries"]
             .as_array()
             .unwrap()

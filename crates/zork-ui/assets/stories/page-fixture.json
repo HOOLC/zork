@@ -157,7 +157,7 @@
             "outcome": "succeeded",
             "finished_at_ms": 1789824515500,
             "data": {
-              "content": "export const history = { followLatest: true };\n// 同一组数据，验证原生与 Cue。"
+              "content": "export const history = { followLatest: true };\n// 同一组数据，验证原生历史呈现。"
             }
           }
         }
