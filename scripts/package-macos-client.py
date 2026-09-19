@@ -70,7 +70,7 @@ def sign_app(app, signer, identity):
     verify_app(app)
 
 
-def stage_binaries(app, binaries, assets, version, launcher, prefix):
+def stage_binaries(app, binaries, assets, version, launcher, prefix='ing.zork'):
     mac = app / 'Contents/MacOS'
     helpers = []
     for name in COMPONENTS:

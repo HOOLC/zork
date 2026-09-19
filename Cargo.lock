@@ -14073,6 +14073,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing-subscriber",
  "ulid",
  "zork-client-core",
  "zork-config",

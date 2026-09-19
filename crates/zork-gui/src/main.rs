@@ -109,6 +109,14 @@ fn main() {
         eprintln!("failed to prepare Zork app: {error}");
         std::process::exit(1);
     });
+    // Packaged apps redirect stderr to their own data directory. Keep core
+    // transport failures observable there; RUST_LOG enables scoped diagnostics.
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+        )
+        .with_ansi(false)
+        .try_init();
     zork_client_core::desktop::trace_startup("gui.environment_ready");
     let startup = zork_client_core::desktop::startup::Startup::prepare().unwrap_or_else(|error| {
         eprintln!("无法打开客户端运行时：{error:#}");
