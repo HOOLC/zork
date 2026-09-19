@@ -12,12 +12,13 @@ pub const SEND_COLOR: u32 = 0x536779;
 pub const RECEIVE_COLOR: u32 = 0x5A6D62;
 pub const MODEL_COLOR: u32 = 0x92969D;
 
-/// Cue's session-activity accents. Its session history paints a received row
-/// with the light-theme utility blue and a sent row with the utility purple,
-/// hues this repo owns no token for; a wait and a failure already map to the
-/// palette's warning and danger. The timeline keeps its own neutral accents.
+/// Cue's session-activity accents are its utility ramp step 700: a received row
+/// is utility blue, a sent row utility purple, a wait utility warning and a
+/// failure utility error. The timeline keeps its own neutral accents.
 pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
 pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
+pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
+pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
 
 /// The 12% accent tint Cue puts behind a row icon, matching its `inset: 3px -2px`
 /// chip on the 16px icon box.
@@ -34,25 +35,27 @@ pub fn activity_accent(kind: Kind) -> bool {
     )
 }
 
-/// Shared two-line history geometry. The host resolves labels and destinations;
-/// no network, identity lookup or argument parsing occurs during row rendering.
+/// Shared history geometry. The host resolves labels and destinations; no
+/// network, identity lookup or argument parsing occurs during row rendering.
 pub struct ActivityHeader {
-    pub icon: &'static str,
+    /// A model reply carries only its Markdown document: it gets no icon box
+    /// and no label, so the whole line is absent.
+    pub icon: Option<&'static str>,
     pub color: u32,
     /// Cue marks rows with an observable activity kind by accenting the icon and
     /// label and tinting a chip behind the icon; neutral operation rows stay muted.
     pub accent: bool,
     pub action: String,
-    pub connector: Option<String>,
     pub subject: Option<String>,
     pub clickable_subject: bool,
     pub summary: String,
-    pub time: String,
+    /// A text row renders its trailing text as tail prose at the line size;
+    /// an operation row renders its target and status at 11px.
+    pub tail: bool,
     pub status: Option<String>,
-    pub nested: bool,
-    /// An optional body under the summary line. The model lane passes its
-    /// Markdown document here, which then replaces the plain summary line.
-    pub body: Option<gpui::AnyElement>,
+    pub failed: bool,
+    /// A live row spins Cue's loading ring in place of its static icon.
+    pub live: bool,
 }
 
 pub fn activity_header<V: 'static>(
@@ -68,10 +71,7 @@ pub fn activity_header<V: 'static>(
 pub fn activity_header_sources<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    sources: (
-        Option<crate::components::liquid::overlay::SourceBinding>,
-        Option<crate::components::liquid::overlay::SourceBinding>,
-    ),
+    sources: (Option<crate::components::liquid::overlay::SourceBinding>, Option<crate::components::liquid::overlay::SourceBinding>),
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
@@ -83,28 +83,40 @@ pub fn activity_header_sources<V: 'static>(
     let navigate = std::rc::Rc::new(navigate);
     let keyboard_navigate = navigate.clone();
     let id = id.into();
+    let spinner = format!("history-spinner-{id:?}");
     let accessible = format!(
-        "{} {} {} {} {} {}",
+        "{} {} {} {}",
         header.action,
-        header.connector.as_deref().unwrap_or_default(),
         header.subject.as_deref().unwrap_or_default(),
         header.summary,
         header.status.as_deref().unwrap_or_default(),
-        header.time,
     );
     let subject_id = format!("history-target-{id:?}");
     let subject_label = header.subject.clone().unwrap_or_default();
+    // Cue accents an activity label and leaves an operation label tertiary.
+    let label_color = if header.accent {
+        header.color
+    } else {
+        CUE_UI.palette.subtle
+    };
+    let status_color = if header.failed {
+        ACTIVITY_ERROR_COLOR
+    } else {
+        CUE_UI.palette.subtle
+    };
     div()
         .id(id)
         .focusable()
         .tab_stop(true)
         .flex()
-        .items_start()
+        .items_center()
         .gap(px(8.))
         .px(px(8.))
-        .pl(px(if header.nested { 32. } else { 8. }))
-        .py(px(3.))
+        .w_full()
+        .min_h(px(26.))
         .min_w_0()
+        .text_size(px(12.))
+        .text_color(rgb(CUE_UI.palette.muted))
         .cursor_pointer()
         .hover(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
         .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
@@ -117,158 +129,123 @@ pub fn activity_header_sources<V: 'static>(
                 }
             }),
         )
-        .child(
-            div()
-                .relative()
-                .w(px(16.))
-                .h(px(20.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .when(header.accent, |v| {
-                    v.child(
-                        div()
-                            .absolute()
-                            .left(px(-2.))
-                            .top(px(0.))
-                            .size(px(20.))
-                            .rounded(px(5.))
-                            .bg(accent_chip(header.color)),
-                    )
-                })
-                .child(crate::controls::icon(header.icon, 14.).text_color(rgb(header.color))),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .h(px(20.))
-                        .min_w_0()
-                        .child(
+        .when_some(icon, |v, path| {
+            v.child(
+                div()
+                    .relative()
+                    .w(px(16.))
+                    .h(px(26.))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(header.accent, |v| {
+                        v.child(
                             div()
-                                .min_w_0()
-                                .text_size(px(11.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(header.color))
-                                .truncate()
-                                .child(header.action),
+                                .absolute()
+                                .left(px(-2.))
+                                .top(px(3.))
+                                .w(px(20.))
+                                .h(px(20.))
+                                .rounded(px(5.))
+                                .bg(accent_chip(header.color)),
                         )
-                        .when_some(header.connector, |v, text| {
-                            v.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(px(11.))
-                                    .font_weight(FontWeight::NORMAL)
-                                    .text_color(rgb(CUE_UI.palette.muted))
-                                    .child(text),
-                            )
-                        })
-                        .when_some(header.subject, |v, text| {
-                            let subject = div()
-                                .min_w_0()
-                                .text_size(px(11.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(CUE_UI.palette.text))
-                                .truncate()
-                                .child(text);
-                            if !header.clickable_subject {
-                                // Plain source labels have no fake disabled-button node or hitbox.
-                                return v.child(subject.into_any_element());
-                            }
-                            v.child(
-                                subject
-                                    .id(subject_id)
-                                    .focusable()
-                                    .tab_stop(true)
-                                    .cursor_pointer()
-                                    .hover(|v| v.underline())
-                                    .focus_visible(|v| v.underline())
-                                    .on_click(cx.listener(move |v, _, window, cx| {
-                                        cx.stop_propagation();
-                                        navigate(v, window, cx);
-                                    }))
-                                    .on_key_down(cx.listener(
-                                        move |v, event: &gpui::KeyDownEvent, window, cx| {
-                                            if matches!(
-                                                event.keystroke.key.as_str(),
-                                                "enter" | "space"
-                                            ) {
-                                                cx.stop_propagation();
-                                                keyboard_navigate(v, window, cx);
-                                            }
-                                        },
-                                    ))
-                                    .map(|subject| match sources.1 {
-                                        Some(source) => source
-                                            .bind(
-                                                subject,
-                                                subject_label.clone(),
-                                                crate::controls::ActionStyle {
-                                                    quiet: true,
-                                                    ..Default::default()
-                                                },
-                                            )
-                                            .automation(AutomationRole::Button, subject_label)
-                                            .into_any_element(),
-                                        None => subject
-                                            .automation(AutomationRole::Button, subject_label)
-                                            .into_any_element(),
-                                    }),
-                            )
-                        })
-                        .child(div().flex_1())
-                        .when_some(header.status, |v, text| {
-                            v.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(header.color))
-                                    .child(text),
-                            )
-                        })
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .text_size(px(10.))
-                                .text_color(rgb(CUE_UI.palette.muted))
-                                .child(header.time),
-                        ),
-                )
-                .when(header.body.is_none() && !header.summary.is_empty(), |v| {
-                    v.child(
+                    })
+                    .child(if header.live {
                         div()
-                            .h(px(20.))
-                            .line_height(px(20.))
-                            .text_size(px(12.))
-                            .text_color(rgb(CUE_UI.palette.muted))
-                            .truncate()
-                            .child(header.summary),
-                    )
+                            .text_color(rgb(header.color))
+                            .child(
+                                crate::components::loading::indicator(spinner.clone(), 14.)
+                                    .without_delay(),
+                            )
+                            .into_any_element()
+                    } else {
+                        crate::controls::icon(path, 14.)
+                            .text_color(rgb(header.color))
+                            .into_any_element()
+                    }),
+            )
+        })
+        .child(
+            div()
+                .flex_shrink_0()
+                .text_size(px(11.))
+                .font_weight(if header.accent {
+                    FontWeight::MEDIUM
+                } else {
+                    FontWeight::NORMAL
                 })
-                .when_some(header.body, |v, body| v.child(body)),
+                .text_color(rgb(label_color))
+                .whitespace_nowrap()
+                .child(header.action),
         )
-        .map(|header| match sources.0 {
-            Some(source) => source
-                .bind(
-                    header,
-                    face,
-                    crate::controls::ActionStyle {
-                        quiet: true,
-                        icon: Some(icon),
-                        ..Default::default()
-                    },
-                )
-                .automation(AutomationRole::Button, accessible)
-                .into_any_element(),
-            None => header
-                .automation(AutomationRole::Button, accessible)
-                .into_any_element(),
+        .when_some(header.subject, |v, text| {
+            let subject = div()
+                .flex_shrink_0()
+                .text_size(px(11.))
+                .text_color(rgb(if header.clickable_subject {
+                    CUE_UI.palette.text
+                } else {
+                    CUE_UI.palette.muted
+                }))
+                .truncate()
+                .child(text);
+            if !header.clickable_subject {
+                // Plain targets carry no link decoration and no extra hitbox.
+                return v.child(subject.into_any_element());
+            }
+            v.child(
+                subject
+                    .id(subject_id)
+                    .focusable()
+                    .tab_stop(true)
+                    .cursor_pointer()
+                    .underline()
+                    .on_click(cx.listener(move |v, _, window, cx| {
+                        cx.stop_propagation();
+                        navigate(v, window, cx);
+                    }))
+                    .on_key_down(cx.listener(
+                        move |v, event: &gpui::KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                cx.stop_propagation();
+                                keyboard_navigate(v, window, cx);
+                            }
+                        },
+                    ))
+                    .map(|subject| match sources.1 {
+                        Some(source) => source.bind(subject, subject_label.clone(), crate::controls::ActionStyle { quiet: true, ..Default::default() }).automation(AutomationRole::Button, subject_label).into_any_element(),
+                        None => subject.automation(AutomationRole::Button, subject_label).into_any_element(),
+                    }),
+            )
+        })
+        .when(!header.summary.is_empty(), |v| {
+            let summary = div()
+                .min_w_0()
+                .text_size(px(if header.tail { 12. } else { 11. }))
+                .text_color(rgb(CUE_UI.palette.muted))
+                .truncate()
+                .child(header.summary);
+            // A tail fills the line to its right edge; an operation target keeps
+            // its own width and lets the status follow it directly.
+            v.child(if header.tail {
+                summary.flex_1().into_any_element()
+            } else {
+                summary.into_any_element()
+            })
+        })
+        .when_some(header.status, |v, text| {
+            v.child(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(10.))
+                    .text_color(rgb(status_color))
+                    .child(text),
+            )
+        })
+         .map(|header| match sources.0 {
+            Some(source) => source.bind(header, face, crate::controls::ActionStyle { quiet: true, icon, ..Default::default() }).automation(AutomationRole::Button, accessible).into_any_element(),
+            None => header.automation(AutomationRole::Button, accessible).into_any_element(),
         })
 }
 pub fn color(entry: &Entry) -> u32 {
@@ -315,16 +292,16 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
 }
 pub fn activity_color(kind: Kind, state: &str) -> u32 {
     if matches!(state, "failed" | "timed_out") {
-        return CUE_UI.palette.danger;
+        return ACTIVITY_ERROR_COLOR;
     }
     match kind {
         Kind::Input => ACTIVITY_RECEIVE_COLOR,
         Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
-        Kind::Wait => CUE_UI.palette.warning,
-        Kind::Error => CUE_UI.palette.danger,
+        Kind::Wait => ACTIVITY_WAIT_COLOR,
+        Kind::Error => ACTIVITY_ERROR_COLOR,
         // Output, thinking and ordinary operations read neutral, as Cue's
         // text-tertiary icon and secondary label do.
-        _ => CUE_UI.palette.muted,
+        _ => CUE_UI.palette.subtle,
     }
 }
 pub fn kind_label(kind: Kind) -> &'static str {

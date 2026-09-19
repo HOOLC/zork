@@ -345,6 +345,7 @@ fn blocks(entries: &List<Entry>) -> Value {
                 .collect::<Vec<_>>();
             json!({"id":members[0],"members":members,"grouped":block.is_group(),
             "summary":block.summary,"read":block.counts.read,"written":block.counts.written,
+            "edited":block.counts.edited,
             "shell":block.counts.shell,"queries":block.counts.queries,
             "start":block.start_at,"end":block.end_at})
         })
@@ -469,6 +470,7 @@ mod tests {
         assert_eq!(groups[0]["members"].as_array().unwrap().len(), 6);
         assert_eq!(groups[0]["read"], 1);
         assert_eq!(groups[0]["written"], 1);
+        assert_eq!(groups[0]["edited"], 1);
         assert_eq!(groups[0]["shell"], 1);
         assert_eq!(groups[0]["queries"], 1);
         assert!(groups[1..].iter().all(|g| g["grouped"] == false));
@@ -662,16 +664,20 @@ mod tests {
             .iter()
             .map(|entry| (entry.id.clone(), detail(entry)))
             .collect::<serde_json::Map<_, _>>();
-        assert!(history["blocks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|b| b["grouped"] == true && b["read"] == 1 && b["written"] == 1));
+        let blocks = history["blocks"].as_array().unwrap();
+        // Cue reads the assistant's text as its own row, so that reply breaks
+        // the routine run between two operations: every operation stands alone
+        // instead of folding into one group.
+        assert!(
+            blocks.iter().all(|b| b["grouped"] == false),
+            "a reply must separate the operations: {blocks:?}"
+        );
+        // Cue paints the assistant's reply as its own visible row.
         assert!(history["entries"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["lane"] == 1 && e["visible"] == false));
+            .any(|e| e["lane"] == 1 && e["visible"] == true && e["kind"] == "output"));
         source.seed_records(vec![
             Record {event_id:"earlier-read".into(),metadata:Default::default(),event:json!({"kind":"step_completed","step_id":"earlier-step","completed_at_ms":start+650,
                 "invocations":[{"invocation_id":"earlier-read","tool":"file.read","started_at_ms":start+700,"arguments":{"path":"src/extra.rs"}}]})},

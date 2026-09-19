@@ -353,8 +353,9 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         snapshot
             .elements
             .iter()
-            .any(|e| e.id.starts_with("history-target-") && e.enabled && e.label == "测试用户"),
-        "received message did not resolve its durable source receipt"
+            .any(|e| e.id.starts_with("history-record-")
+                && e.label.contains("收到来自 测试用户 的消息")),
+        "the user's message did not read its durable source receipt"
     );
     let page = snapshot
         .elements
@@ -371,36 +372,37 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         .find(|e| {
             e.id.starts_with("history-record-")
                 && e.label.contains("读取 1 个文件")
-                && e.label.contains("命令 1 次")
+                && e.label.contains("执行 1 条命令")
         })
         .expect("routine summary visible");
     let group_id = group.id.clone();
-    // An output row carries a Markdown body, so it legitimately exceeds the
-    // two-line row height; every other row still has to stay compact.
+    // Cue's reply row is its Markdown document, so it legitimately exceeds the
+    // single-line row height; every other row still has to stay compact.
+    let reply = snapshot
+        .elements
+        .iter()
+        .find(|e| {
+            e.id.starts_with("history-record-") && e.label.contains("我先读一遍历史投影")
+        })
+        .expect("assistant reply is a history row");
     anyhow::ensure!(
         snapshot
             .elements
             .iter()
-            .filter(|e| e.id.starts_with("history-record-"))
-            .filter(|e| !e.label.starts_with("输出"))
+            .filter(|e| e.id.starts_with("history-record-") && e.id != reply.id)
             .all(|e| e.bounds.height <= 46.),
         "history item exceeded two lines"
     );
-    let reply = snapshot
-        .elements
-        .iter()
-        .find(|e| e.id.starts_with("history-record-") && e.label.starts_with("输出"))
-        .expect("assistant reply is a history row");
     anyhow::ensure!(
-        reply.label.contains("我先读一遍历史投影"),
-        "the reply row does not read its own text: {}",
+        reply.label.contains("我先读一遍历史投影") && !reply.label.starts_with("输出"),
+        "the reply row does not read as its own text: {}",
         reply.label
     );
     anyhow::ensure!(
         snapshot
             .elements
             .iter()
-            .any(|e| e.id.starts_with("history-record-") && e.label.contains("等待 15s")),
+            .any(|e| e.id.starts_with("history-record-") && e.label.contains("已等待 15s")),
         "wait duration did not end on mailbox wake"
     );
     if !snapshot
@@ -694,9 +696,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
     std::thread::sleep(Duration::from_millis(1100));
     cx.advance_clock(Duration::from_millis(1100));
     pump(&mut cx)?;
+    // Cue stamps a record with an absolute clock inside its disclosure, so a
+    // mounted line is stable while the live hover keeps advancing its duration.
     anyhow::ensure!(
-        live_row() != row_before,
-        "visible row clock waited for mouse input"
+        live_row() == row_before,
+        "the absolute row clock moved without new data: {row_before} -> {}",
+        live_row()
     );
     anyhow::ensure!(
         popup().label != popup_before.label,

@@ -19,6 +19,7 @@ use gpui::{prelude::*, *};
 use std::{collections::HashSet, time::Duration};
 const DIM: u32 = CUE_UI.palette.muted;
 const TEXT: u32 = CUE_UI.palette.text;
+const SUBTLE: u32 = CUE_UI.palette.subtle;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
@@ -181,7 +182,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 if paging.busy && (!paging.loaded || paging.loading_older) {
                     "history_loading"
                 } else if paging.error {
-                    "history_retry"
+                    "history_failed"
                 } else if paging.older {
                     "history_older"
                 } else {
@@ -235,7 +236,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                     .p_4()
                                     .text_size(px(12.))
                                     .text_color(rgb(DIM))
-                                    .child(self.history_text().text("history_no_activity")),
+                                    .child(self.history_text().text("history_empty")),
                             )
                         },
                     )
@@ -259,7 +260,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         .flex_1()
                         .min_h_0(),
                     )
-                    .automation(AutomationRole::ScrollArea, "History records"),
+                    .automation(AutomationRole::ScrollArea, self.history_text().text("history_records")),
             )
             .child(self.history_statistics().render(self.history_text()))
             .child(live::timeline(window, cx))
@@ -301,10 +302,9 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         timeline.into_any_element()
     }
-    /// A model reply reads as a bounded Markdown document. `MessagePreview`
-    /// measures it once per layout, clips it to roughly five lines and only
-    /// offers the disclosure when the text actually overflows that clip; the
-    /// token breakdown stays behind the disclosure.
+    /// A model reply is the row: Cue paints no icon and no label on it, so the
+    /// Markdown document, its disclosure and the absolute record clock stand
+    /// alone. Usage belongs to the page overview, never to one row.
     fn render_history_output(
         &self,
         index: usize,
@@ -324,25 +324,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         let toggle = id.to_owned();
         let mut footer = div().w_full().flex().flex_col().gap(px(2.)).pt(px(2.));
         if expanded {
-            let mut parts: Vec<String> = Vec::new();
-            if let Some(model) = entry.model.as_ref().filter(|model| !model.is_empty()) {
-                parts.push(format!("{} {model}", self.history_text().text("history_model")));
-            }
-            if let Some(usage) = entry.usage.as_ref() {
-                let input = usage["input_tokens"].as_u64().unwrap_or(0);
-                let output = usage["output_tokens"].as_u64().unwrap_or(0);
-                parts.push(
-                    self.history_text()
-                        .text("history_token_breakdown")
-                        .replace("{input}", &input.to_string())
-                        .replace("{output}", &output.to_string()),
-                );
-            }
-            if !parts.is_empty() {
-                footer = footer.child(div().text_size(px(11.)).text_color(rgb(DIM)).child(
-                    parts.join(" \u{b7} "),
-                ));
-            }
+            footer = footer.child(record_time(entry.start.or(entry.end)));
         }
         let disclosure = div()
             .id(format!("history-output-disclosure-{index}"))
@@ -351,7 +333,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .gap(px(4.))
             .cursor_pointer()
             .text_size(px(11.))
-            .text_color(rgb(DIM))
+            .text_color(rgb(SUBTLE))
             .hover(|v| v.underline())
             .child(disclosure_label.clone())
             .when(expanded, |v| {
@@ -377,6 +359,38 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         }
     }
 
+    /// The model reply alone owns a Markdown body, so it is the one row with no
+    /// line: no icon box, no label, no status.
+    fn render_history_reply(
+        &self,
+        index: usize,
+        activity: &Activity,
+        entry: &Entry,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let mut row = div()
+            .id(("history-row", index))
+            .my(px(18.))
+            .child(
+                // Cue's reply row is a plain document: no icon, no label, no
+                // status. The automation surface still names it by its text.
+                div()
+                    .id(("history-record", index))
+                    .child(self.render_history_output(
+                        index,
+                        &entry.id,
+                        &activity.summary,
+                        entry,
+                        cx,
+                    ))
+                    .automation(AutomationRole::Status, activity.summary.clone()),
+            );
+        if self.history().selected.as_deref() == Some(entry.id.as_str()) {
+            row = row.bg(rgb(CUE_UI.palette.sidebar_hover));
+        }
+        row
+    }
+
     fn render_history_activity(
         &self,
         index: usize,
@@ -395,13 +409,14 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 .id(("history-row", index))
                 .px(px(12.))
                 .py(px(6.))
-                .child(div().h(px(1.)).w_full().bg(rgba(0x80808030)));
+                .child(div().h(px(1.)).w_full().bg(rgba(0x80808030)))
+                .into_any_element();
         }
         let first_entry =
             &self.history().entries[self.history().projection.activities[block.start].entry];
         let group_id = first_entry.id.clone();
         let group = row.activity.is_none();
-        let (subject, jump) = if group {
+        let (mut subject, jump) = if group {
             (None, None)
         } else {
             self.history_subject(a, entry)
@@ -409,10 +424,11 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         let action = if group {
             let counts = &block.counts;
             [
-                (counts.read, "history_read_count"),
-                (counts.written, "history_write_count"),
-                (counts.shell, "history_shell_count"),
-                (counts.queries, "history_query_count"),
+                (counts.read, "history_group_read"),
+                (counts.written, "history_group_write"),
+                (counts.edited, "history_group_edit"),
+                (counts.shell, "history_group_command"),
+                (counts.queries, "history_group_query"),
             ]
             .into_iter()
             .filter(|(count, _)| *count > 0)
@@ -423,71 +439,86 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             })
             .collect::<Vec<_>>()
             .join(" · ")
-        } else {
-            let mut label = if a.kind == Kind::UnknownTool {
-                activity::preview(&entry.action)
-            } else {
-                self.history_text().text(kind_label(a.kind)).to_owned()
-            };
-            if a.kind == Kind::Wait {
-                if let Some(duration) = entry.duration(now) {
-                    label.push(' ');
-                    label.push_str(&model::duration(duration));
-                }
-            }
-            label
-        };
-        let connector = (!group
-            && subject.is_some()
-            && subject.as_deref()
-                != Some(self.history_text().text("history_source_unknown").as_str())
-            && matches!(
-                a.kind,
-                Kind::Input
-                    | Kind::SendMessage
-                    | Kind::SendFile
-                    | Kind::Notify
-                    | Kind::Assign
-                    | Kind::Rework
-            ))
-        .then(|| {
+        } else if a.kind == Kind::Input {
+            // Cue reads the user's own message as a receipt from its resolved
+            // source, with no separate target on the line.
+            let unknown = self.history_text().text("history_source_unknown");
+            let name = subject
+                .take()
+                .filter(|name| name != &unknown)
+                .unwrap_or_else(|| self.history_text().text("history_ref_fallback").to_owned());
             self.history_text()
-                .text(if a.kind == Kind::Input {
-                    "history_from"
-                } else {
-                    "history_to"
-                })
-                .to_owned()
-        });
+                .text("history_message_received_from")
+                .replace("{name}", &name)
+        } else if a.kind == Kind::Thinking {
+            match entry.start.or(entry.end) {
+                Some(start) => self
+                    .history_text()
+                    .text("history_thinking_duration")
+                    .replace("{seconds}", &thinking_seconds(now.saturating_sub(start))),
+                None => self.history_text().text("history_thinking_unmeasured").to_owned(),
+            }
+        } else if matches!(a.kind, Kind::SendMessage | Kind::SendFile) {
+            if subject.is_some() {
+                self.history_text().text("history_message_send_to").to_owned()
+            } else {
+                self.history_text()
+                    .text("history_message_send_to_name")
+                    .replace(
+                        "{name}",
+                        &self.history_text().text("history_ref_fallback").to_owned(),
+                    )
+            }
+        } else if a.kind == Kind::Wait {
+            let reason = a
+                .summary
+                .strip_prefix("waiting for ")
+                .or_else(|| a.summary.strip_prefix("wait for "))
+                .or_else(|| a.summary.trim_start().strip_prefix("等待"))
+                .map(str::trim)
+                .filter(|reason| !reason.is_empty());
+            let mut label = reason.map_or_else(
+                || self.history_text().text("history_action_wait").to_owned(),
+                |reason| {
+                    self.history_text()
+                        .text("history_wait_target")
+                        .replace("{reason}", reason)
+                },
+            );
+            label.push(' ');
+            label.push_str(&wait_time(a, entry, now, &self.history_text()));
+            label
+        } else if a.kind == Kind::UnknownTool {
+            activity::preview(&entry.action)
+        } else {
+            self.history_text().text(kind_label(a.kind)).to_owned()
+        };
         let mut summary = if group {
-            block.summary.clone()
+            // Cue's group line carries only its counts; the members appear when
+            // the group is expanded.
+            String::new()
+        } else if matches!(
+            a.kind,
+            Kind::Thinking | Kind::Wait | Kind::SendMessage | Kind::SendFile
+        ) {
+            // A wait reason and a message body already read as the label, so
+            // these rows carry no trailing text.
+            String::new()
         } else {
             a.summary.clone()
         };
         if !group && subject.as_ref() == Some(&summary) {
             summary.clear();
         }
-        if a.kind == Kind::Wait && summary.is_empty() {
-            if let Some(ms) = a.requested_wait_ms {
-                summary = self
-                    .history_text()
-                    .text("history_wait_requested")
-                    .replace("{duration}", &model::duration(ms));
-            }
-        }
+        let tail = matches!(a.kind, Kind::Input);
         let status = if group {
             None
         } else {
             match entry.state.as_str() {
-                "running" => Some(
-                    self.history_text()
-                        .text(if a.kind == Kind::Wait {
-                            "history_waiting"
-                        } else {
-                            "history_running"
-                        })
-                        .into(),
-                ),
+                // A wait and a live call read as their own label: only a
+                // failure or a cancellation adds a status there.
+                "running" if matches!(a.kind, Kind::Wait | Kind::Thinking | Kind::Output) => None,
+                "running" => Some(self.history_text().text("history_running").into()),
                 "failed" | "timed_out" => Some(self.history_text().text("history_error").into()),
                 "cancelled" | "interrupted" => {
                     Some(self.history_text().text("history_cancelled").into())
@@ -508,7 +539,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 _ => None,
             }
         };
-        let first = if group { first_entry } else { entry };
         let outside = selection_range.is_some_and(|(lo, hi)| {
             let start = if group {
                 block.start_at
@@ -529,10 +559,11 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         });
         let id = entry.id.clone();
         let selected = self.history().selected.as_ref() == Some(&id);
-        let body = (!group && a.kind == Kind::Output).then(|| {
-            self.render_history_output(index, &id, &a.summary, entry, cx)
-                .into_any_element()
-        });
+        if !group && a.kind == Kind::Output {
+            return self.render_history_reply(index, a, entry, cx).into_any_element();
+        }
+        let live = entry.state == "running"
+            && !matches!(a.kind, Kind::SendMessage | Kind::SendFile | Kind::Notify);
         div()
             .id(("history-row", index))
             .when(selected, |v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
@@ -540,26 +571,36 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .child(crate::components::history::activity_header_sources(
                 ("history-record", index),
                 ActivityHeader {
-                    icon: if group {
-                        "history/operations.svg"
+                    // Cue paints a group with a console when every member is a
+                    // command and with a folder otherwise.
+                    icon: Some(if group {
+                        if block.counts.shell > 0
+                            && block.counts.read == 0
+                            && block.counts.written == 0
+                            && block.counts.edited == 0
+                            && block.counts.queries == 0
+                        {
+                            "history/terminal.svg"
+                        } else {
+                            "cue/folder1.svg"
+                        }
                     } else {
                         kind_icon(a.kind)
-                    },
+                    }),
                     color: if group {
-                        DIM
+                        SUBTLE
                     } else {
                         activity_color(a.kind, &entry.state)
                     },
                     accent: !group && activity_accent(a.kind),
                     action,
-                    connector,
                     subject,
                     clickable_subject: jump.is_some(),
                     summary,
-                    time: relative_time(first.start.or(first.end), now, &self.history_text()),
+                    tail,
                     status,
-                    nested: row.activity.is_some() && block.is_group(),
-                    body,
+                    failed: matches!(entry.state.as_str(), "failed" | "timed_out"),
+                    live,
                 },
                 (
                     (!group).then(|| self.history_source(cx)),
@@ -593,25 +634,52 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     }
                 },
             ))
+            .into_any_element()
     }
 }
-fn relative_time(timestamp: Option<i64>, now: i64, locale: &Text) -> String {
-    let Some(time) = timestamp else {
-        return locale.text("history_unknown_time").into();
-    };
-    let age = now.saturating_sub(time);
-    if age < 0 {
-        return locale.text("history_clock_ahead").into();
+/// Cue's record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
+/// only inside the content a disclosure reveals. Rows carry no relative age.
+fn record_time(timestamp: Option<i64>) -> Div {
+    div()
+        .mb(px(6.))
+        .text_size(px(9.))
+        .text_color(rgb(SUBTLE))
+        .child(timestamp.map_or_else(String::new, |ms| model::clock(Some(ms))))
+}
+
+/// Cue formats a thinking duration with one decimal below ten seconds.
+fn thinking_seconds(ms: i64) -> String {
+    let seconds = (ms.max(0) as f64) / 1000.;
+    if ms < 10_000 {
+        format!("{seconds:.1}").trim_end_matches(".0").to_owned()
+    } else {
+        format!("{:.0}", seconds)
     }
-    let seconds = age / 1000;
-    let (key, value) = match seconds {
-        0..=4 => return locale.text("history_relative_just_now").into(),
-        5..=59 => ("history_relative_seconds", seconds),
-        60..=3599 => ("history_relative_minutes", seconds / 60),
-        3600..=86399 => ("history_relative_hours", seconds / 3600),
-        _ => ("history_relative_days", seconds / 86400),
-    };
-    locale.text(key).replace("{count}", &value.to_string())
+}
+
+/// The wait's own timing: the finished elapsed, the live progress against the
+/// requested maximum, or Cue's unmeasured and maximum-only wording.
+fn wait_time(a: &Activity, entry: &Entry, now: i64, text: &Text) -> String {
+    let maximum = a
+        .requested_wait_ms
+        .map(|ms| (ms.max(0) as f64 / 1000.).round() as i64);
+    let elapsed = entry.duration(now).map(|ms| (ms.max(0) as f64 / 1000.).floor() as i64);
+    match (elapsed, maximum) {
+        (Some(elapsed), _) if entry.state != "running" => text
+            .text("history_wait_finished")
+            .replace("{elapsed}", &elapsed.to_string()),
+        (Some(elapsed), Some(maximum)) => text
+            .text("history_wait_progress")
+            .replace("{elapsed}", &elapsed.to_string())
+            .replace("{maximum}", &maximum.to_string()),
+        (_, Some(maximum)) => format!(
+            "{} · {}",
+            text.text("history_wait_maximum")
+                .replace("{maximum}", &maximum.to_string()),
+            text.text("history_wait_unmeasured")
+        ),
+        _ => text.text("history_wait_unmeasured").to_owned(),
+    }
 }
 
 #[cfg(feature = "stories")]
@@ -619,18 +687,87 @@ pub mod stories;
 
 #[cfg(test)]
 mod tests {
-    use super::{relative_time, Text};
-    #[test]
-    fn relative_time_handles_unknown_future_and_unit_boundaries() {
-        let text = Text(std::rc::Rc::new(|key| format!("{key}:{{count}}")));
-        for (timestamp, now, expected) in [
-            (None, 1000, "history_unknown_time:{count}"),
-            (Some(1001), 1000, "history_clock_ahead:{count}"),
-            (Some(0), 59000, "history_relative_seconds:59"),
-            (Some(0), 60000, "history_relative_minutes:1"),
-            (Some(0), 3600000, "history_relative_hours:1"),
-        ] {
-            assert_eq!(relative_time(timestamp, now, &text), expected);
+    use super::{model, thinking_seconds, wait_time, Text};
+    use crate::history::activity::{Activity, Kind};
+    use crate::history::Entry;
+    use std::rc::Rc;
+
+    /// Only the wait wording needs templates; every other key reads as itself.
+    fn text() -> Text {
+        Text(Rc::new(|key| match key {
+            "history_wait_finished" => "waited {elapsed}s".to_owned(),
+            "history_wait_progress" => "{elapsed}s/{maximum}s".to_owned(),
+            "history_wait_maximum" => "<={maximum}s".to_owned(),
+            "history_wait_unmeasured" => "unmeasured".to_owned(),
+            _ => key.to_owned(),
+        }))
+    }
+
+    fn entry(state: &str, start: i64, end: Option<i64>) -> Entry {
+        Entry {
+            id: "wait".into(),
+            lane: 2,
+            action: "wait".into(),
+            summary: String::new(),
+            start: Some(start),
+            end,
+            state: state.into(),
+            raw: vec![],
+            usage: None,
+            model: None,
+            outcome_summary: None,
         }
+    }
+
+    fn wait(seconds: Option<f64>) -> Activity {
+        Activity {
+            entry: 0,
+            kind: Kind::Wait,
+            subject: None,
+            summary: String::new(),
+            routine: None,
+            requested_wait_ms: seconds.map(|seconds| (seconds * 1000.) as i64),
+        }
+    }
+
+    #[test]
+    fn a_record_clock_is_absolute_wall_time() {
+        let clock = model::clock(Some(15_000));
+        assert_eq!(clock.len(), 8, "{clock}");
+        assert_eq!(clock.matches(':').count(), 2, "{clock}");
+        assert_eq!(model::clock(None), "—");
+    }
+
+    #[test]
+    fn a_thinking_duration_keeps_one_decimal_below_ten_seconds() {
+        for (ms, expected) in [(0, "0"), (4_000, "4"), (4_500, "4.5"), (42_000, "42")] {
+            assert_eq!(thinking_seconds(ms), expected);
+        }
+    }
+
+    #[test]
+    fn a_wait_reads_its_finished_elapsed_or_its_remaining_maximum() {
+        let text = text();
+        assert_eq!(
+            wait_time(
+                &wait(Some(20.)),
+                &entry("succeeded", 0, Some(15_000)),
+                20_000,
+                &text
+            ),
+            "waited 15s"
+        );
+        assert_eq!(
+            wait_time(&wait(Some(20.)), &entry("running", 0, None), 5_000, &text),
+            "5s/20s"
+        );
+        assert_eq!(
+            wait_time(&wait(Some(20.)), &entry("running", 0, None), 0, &text),
+            "0s/20s"
+        );
+        assert_eq!(
+            wait_time(&wait(None), &entry("running", 0, None), 5_000, &text),
+            "unmeasured"
+        );
     }
 }

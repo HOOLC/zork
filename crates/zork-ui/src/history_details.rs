@@ -132,6 +132,16 @@ impl Render for Details {
                 .p_3()
                 .text_size(px(12.))
                 .line_height(px(18.))
+                .when_some(entry.start.or(entry.end), |v, at| {
+                    // Cue's record clock: absolute, 9px, tertiary.
+                    v.child(
+                        div()
+                            .mb(px(6.))
+                            .text_size(px(9.))
+                            .text_color(rgb(CUE_UI.palette.subtle))
+                            .child(crate::history::clock(Some(at))),
+                    )
+                })
                 .child(div().mb_3().child(entry.summary.clone()))
                 .when_some(data.resource.clone(), |body, resource| {
                     let open = resource.open;

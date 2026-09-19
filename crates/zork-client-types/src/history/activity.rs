@@ -63,6 +63,7 @@ pub enum Subject {
 pub enum Routine {
     Read(String),
     Write(String),
+    Edit(String),
     Shell,
     Query,
 }
@@ -82,6 +83,7 @@ pub struct Activity {
 pub struct Counts {
     pub read: usize,
     pub written: usize,
+    pub edited: usize,
     pub shell: usize,
     pub queries: usize,
 }
@@ -135,6 +137,7 @@ impl Projection {
             }
             let mut reads = BTreeSet::new();
             let mut writes = BTreeSet::new();
+            let mut edits = BTreeSet::new();
             let mut counts = Counts::default();
             let mut labels = Vec::new();
             let mut start_at = None;
@@ -157,6 +160,9 @@ impl Projection {
                     Some(Routine::Write(path)) => {
                         writes.insert(path);
                     }
+                    Some(Routine::Edit(path)) => {
+                        edits.insert(path);
+                    }
                     Some(Routine::Shell) => counts.shell += 1,
                     Some(Routine::Query) => counts.queries += 1,
                     None => {}
@@ -167,6 +173,7 @@ impl Projection {
             }
             counts.read = reads.len();
             counts.written = writes.len();
+            counts.edited = edits.len();
             blocks.push(Block {
                 start,
                 end,
@@ -497,7 +504,8 @@ fn project(index: usize, entry: &Entry) -> Option<Activity> {
                     Routine::Read(p)
                 }
             }),
-            Kind::Write | Kind::Edit => field(args, "path").map(Routine::Write),
+            Kind::Write => field(args, "path").map(Routine::Write),
+            Kind::Edit => field(args, "path").map(Routine::Edit),
             Kind::Help | Kind::History | Kind::ChatHistory | Kind::Workers | Kind::Tasks => {
                 Some(Routine::Query)
             }

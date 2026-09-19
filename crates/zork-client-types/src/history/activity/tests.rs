@@ -155,7 +155,7 @@ fn model_replies_are_bounded_like_the_disclosure_they_render() {
 }
 
 #[test]
-fn routine_groups_count_files_not_edits_and_stop_at_important_events() {
+fn routine_groups_count_files_per_operation_and_stop_at_important_events() {
     let mut records = tool(
         "a",
         "file.write",
@@ -205,6 +205,7 @@ fn routine_groups_count_files_not_edits_and_stop_at_important_events() {
         p.blocks[0].counts,
         Counts {
             written: 1,
+            edited: 1,
             queries: 1,
             shell: 1,
             read: 0

@@ -145,7 +145,7 @@
           "step_id": "step-1",
           "purpose": "conversation",
           "completed_at_ms": 1788687723000,
-          "assistant_text": "先检查配置，再运行测试。",
+          "assistant_text": "## 检查结果\n\n配置已就绪，测试跑完有 1 个用例没过。\n\n- `pnpm test`：1 个用例失败，断言超时\n- 失败用例：sessionHistory 的行高断言\n\n```ts\nexpect(rows.every((row) => row.height <= 46)).toBe(true);\n```\n\n下一步：修这条断言，然后重跑。",
           "usage": {
             "input_tokens": 1200,
             "output_tokens": 180,
