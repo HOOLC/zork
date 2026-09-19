@@ -184,6 +184,7 @@ async fn interrupting_an_observed_run_cannot_cancel_its_successor() {
 #[tokio::test(flavor = "multi_thread")]
 async fn agent_configuration_is_applied_at_request_boundary_without_resetting_context() {
     let config = Arc::new(Mutex::new(Configuration {
+        end_turn_confirmation: None,
         revision: "one".into(),
         selection: selection(),
         system_prompt: Some("First Agent instructions".into()),
@@ -230,5 +231,26 @@ async fn agent_configuration_is_applied_at_request_boundary_without_resetting_co
         Some("two")
     );
     next.respond_text("done").unwrap();
+    world.wait_for_state(&id, |s| s.active_turn.is_none()).await;
+    // A product prompt/confirmation contract can change without editing the
+    // Agent definition. The existing Session must adopt it at the next boundary.
+    config.lock().unwrap().system_prompt = Some("New host prompt, same Agent revision".into());
+    config.lock().unwrap().end_turn_confirmation = Some("Confirm with end".into());
+    world.send_mail(&id, "one more turn").await.unwrap();
+    let refreshed = world.request().await;
+    assert_eq!(
+        refreshed.transcript[0].content.as_ref(),
+        "New host prompt, same Agent revision"
+    );
+    refreshed.respond_text("internal only").unwrap();
+    let confirmation = world.request().await;
+    assert!(confirmation
+        .transcript
+        .iter()
+        .any(|message| message.content.contains("Confirm with end")));
+    confirmation
+        .respond_call("end", "end", serde_json::json!({}))
+        .unwrap();
+    world.wait_for_state(&id, |s| s.active_turn.is_none()).await;
     world.shutdown().await;
 }

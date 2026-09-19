@@ -18,6 +18,20 @@ impl ModelExecutor for FakeProvider {
     > {
         Box::pin(async move {
             let latest = request.transcript.last();
+            if latest.is_some_and(|message| message.content.contains("[runtime.end_confirmation]"))
+            {
+                return Ok(ModelOutcome {
+                    text: String::new(),
+                    tool_calls: vec![dynamic_call(
+                        format!("fake-end:{}", request.step_id),
+                        "end",
+                        serde_json::json!({}),
+                    )],
+                    provider_context: None,
+                    usage: None,
+                    provider_input: None,
+                });
+            }
             if let Some(message) = pending_script(&request.transcript) {
                 let input_content = fake_input_content(&message.content);
                 if let Some(Value::Object(document)) = fake_input_document(&input_content) {

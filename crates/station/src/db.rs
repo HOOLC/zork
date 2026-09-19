@@ -13,6 +13,7 @@ mod artifacts;
 pub mod chats;
 mod conversation_files;
 pub(crate) mod interaction_registry;
+mod job_events;
 pub mod mesh;
 mod message_source;
 pub(crate) mod pages;
@@ -379,6 +380,13 @@ impl StationDb {
               last_event_kind TEXT,
               last_event_summary TEXT
             );
+            CREATE TABLE IF NOT EXISTS job_mailbox (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_key TEXT NOT NULL,
+                event_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_job_mailbox_session ON job_mailbox(session_key, sequence);
+
             CREATE TABLE IF NOT EXISTS admin_events (
               sequence INTEGER PRIMARY KEY AUTOINCREMENT,
               kind TEXT NOT NULL,
@@ -1445,7 +1453,7 @@ impl StationDb {
             }
             "cancelled" => {
                 conn.execute(
-                    "UPDATE background_jobs SET status = ?1, cancelled_at = ?2, completed_at = ?2, updated_at = ?2 WHERE id = ?3",
+                    "UPDATE background_jobs SET status = ?1, cancelled_at = ?2, completed_at = ?2, updated_at = ?2 WHERE id = ?3 AND status IN ('registered','running')",
                     params![status, now, id],
                 )?;
             }

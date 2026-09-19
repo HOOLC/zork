@@ -170,6 +170,13 @@ pub fn decide(state: &SessionState, world: &DecisionWorld) -> Decision {
         }
     }
 
+    if state.end_confirmation_failure().is_some() {
+        return Decision::FinishTurn {
+            outcome: TurnOutcome::Failed,
+            outstanding: world.outstanding.clone(),
+        };
+    }
+
     if let Some(wait) = &state.wait_deadline {
         if world.now_ms >= wait.deadline_ms {
             return Decision::ReachDeadline {
@@ -337,6 +344,7 @@ mod tests {
                 cancel_requested: false,
                 consecutive_provider_failures: 1,
                 provider_retry_allowed: true,
+                unconfirmed_end_attempts: 0,
                 context: purpose.is_context().then_some(ContextProgress {
                     purpose,
                     attempts: 0,
@@ -387,6 +395,7 @@ mod tests {
             cancel_requested: false,
             consecutive_provider_failures: 1,
             provider_retry_allowed: true,
+            unconfirmed_end_attempts: 0,
             context: Some(ContextProgress {
                 purpose: Purpose::Handoff,
                 attempts: 0,

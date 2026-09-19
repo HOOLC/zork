@@ -715,9 +715,9 @@ fn builtin_contracts() -> Result<Vec<(BuiltinKind, ToolContract)>, ToolDefinitio
             BuiltinKind::End,
             ToolContract {
                 name: super::events::END_TOOL_NAME.into(),
-                version: version()?,
-                initial_description: "Finish the current turn while leaving unfinished work. Replies without tool calls finish automatically when nothing is outstanding.".into(),
-                detailed_description: "If the runtime reports unfinished items, resolve them or call end with acknowledge_outstanding=true to explicitly finish while leaving the disclosed items outstanding. Without outstanding work, simply reply without tool calls to finish.".into(),
+                version: ToolVersion::new("builtin-end-2")?,
+                initial_description: "Explicitly finish the current turn after handling its work and intended replies. This confirms no further action or message publication is needed now; it does not publish assistant text.".into(),
+                detailed_description: "Use end to confirm that this turn needs no further work or message publication. Publish intended replies through the host's messaging tools first and check their actual results. If unfinished items are reported, resolve them or use acknowledge_outstanding=true to leave only the already disclosed items outstanding. Background results and later input can start another turn. This ends execution of the turn, not a task or Chat. Standalone sessions may also finish naturally; when the runtime requests end confirmation, assistant text alone cannot finish.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {"acknowledge_outstanding": {"type": "boolean"}},

@@ -325,6 +325,7 @@ fn write_finished_session(
             started_at_ms: 0,
         },
         SessionEvent::TurnFinished {
+            reason: None,
             turn_id,
             outcome: TurnOutcome::Finished,
             outstanding: Vec::new(),

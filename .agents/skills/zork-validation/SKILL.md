@@ -17,7 +17,7 @@ Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow
 
 - 桌面普通逻辑：`pnpm test:desktop`。完整桌面/发布验证：`scripts/test-desktop-headless.py`；先读覆盖，避免重复运行。原生显示性能用 `scripts/test-desktop-performance.py`，需要解锁桌面。
 - 启动恢复与聊天可用：`scripts/test-desktop-startup.py --app /path/to/Zork.app`，覆盖已有 Mesh 身份、返回导航、用户发送及 Agent 实际回复回到客户端，以及离线缓存、准备失败与重试。首屏、节点 ready、用户消息送达或模型收到输入都不能代替完整聊天往返；同时覆盖 Mesh 未就绪时的本地回复，记录首屏后的操作时间。缓存探针只读，正常退出与强制终止分别取证，不把强杀后的恢复冒充普通重启。它不更改关键门禁的阈值。
-- Agent/Station：[执行合同](../../../docs/design/agent-runtime.md) 及相关 mailbox、嵌入与升级测试；生产 Agent 在 Station 内。真实供应商验证使用显式提供的私有 Profile 和隔离 Session/workspace，覆盖生产调用链的工具往返、后续 turn 与重启回放；裸 HTTP 成功不能代替该链路验收。[Go 真实回归入口](../../../crates/agent-testkit/tests/opencode_live.rs) 默认不运行，不向在用会话提交测试输入。
+- Agent/Station：[执行合同](../../../docs/design/agent-runtime.md) 及相关 mailbox、嵌入与升级测试；生产 Agent 在 Station 内。[Chat 接续回归](../../../scripts/test-agent-continuation.py) 覆盖结束确认、后台持久投递和失败呈现；选择真实模式时显式提供私有 Profile。真实供应商验证使用显式提供的私有 Profile 和隔离 Session/workspace，覆盖生产调用链的工具往返、后续 turn 与重启回放；裸 HTTP 成功不能代替该链路验收。[Go 真实回归入口](../../../crates/agent-testkit/tests/opencode_live.rs) 默认不运行，不向在用会话提交测试输入。
 - 用户参与：[合同](../../../docs/design/user-participation.md)、`scripts/test-user-interactions.py` 与 core 测试。分别验证不含业务载荷的登记合同和业务卡片链路；用普通生产 `agent.create/update` 核对原 invocation 的实际效果、局部修改、重复/取消和恢复，不能用通用等待探针代替。
 - 导航/历史：[Chat](../../../docs/design/chat.md#navigation)、[历史](../../../docs/design/execution-history.md)、`scripts/test-chat-navigation.py`；文件和 Skill 按 [共享文件](../zork-shared-files/SKILL.md) / [运行时 Skill](../zork-agent-skills/SKILL.md) 选入口。
 - Android：`scripts/android/build.py` 与对应 instrumentation，遵循 [手机范围](../../../docs/design/interface.md#mobile)。通知 fixture 只在独立模拟器运行。

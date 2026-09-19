@@ -421,9 +421,14 @@ impl SessionState {
             tools,
             waiting,
             failure: self
-                .last_step_failure
+                .last_turn_failure
                 .as_ref()
-                .map(|failure| bounded(&failure.error.message)),
+                .map(|reason| bounded(reason))
+                .or_else(|| {
+                    self.last_step_failure
+                        .as_ref()
+                        .map(|failure| bounded(&failure.error.message))
+                }),
         };
         OverviewProjection {
             session_id: self.session_id.clone(),

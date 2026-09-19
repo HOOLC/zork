@@ -383,6 +383,7 @@ async fn serve(
         });
     }
     // Listeners remain alive while Agent drains, including tool callbacks and final status delivery.
+    let _job_delivery = state.jobs.start_delivery();
     state.jobs.restore().await?;
     zork_config::startup::mark("station.jobs_restored");
     for session in state.db.list_sessions()? {
