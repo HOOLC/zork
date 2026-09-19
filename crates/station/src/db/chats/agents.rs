@@ -87,6 +87,7 @@ impl StationDb {
                 thinking: agent.thinking.clone(),
             },
             system_prompt: Some(crate::node::agent_prompt(&agent)),
+            end_turn_confirmation: Some(crate::agent::END_TURN_CONFIRMATION.into()),
         }))
     }
 

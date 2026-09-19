@@ -79,26 +79,33 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
     if input.tool == "agent.list" && input.arguments.get("target").is_none() {
         return agents::discover(state, &who, &input.arguments).await;
     }
-    let target = input.arguments["target"]
+    let mut target = input.arguments["target"]
         .as_str()
         .unwrap_or("local")
         .to_owned();
-    if !local(state, &target) {
-        // Local channel reads and replies use the authenticated Station and
-        // its message store; restoring Mesh peers must not block them.
-        node_access::ready(state)?;
-        access(state, &target)?;
-    }
     let mut args = input.arguments.clone();
     args.as_object_mut().unwrap().remove("target");
     if zork_agent_station_tools::channels::sends_message(&input.tool) && args["chat_id"].is_null() {
         // A publishing call without an explicit destination goes to the caller's own
         // Chat. Recording it here keeps the persisted request self-describing.
-        let home = state
+        let (own_target, chat) = state
             .db
-            .agent_home(&who.agent)?
-            .context("chat_id is required: this Agent has no Chat of its own")?;
-        args["chat_id"] = json!(home.chat_id);
+            .session_chat_destination(&who.session)?
+            .context("chat_id is required: this Session has no Chat of its own")?;
+        ensure!(
+            input.arguments["target"].is_null()
+                || target == own_target
+                || (local(state, &target) && local(state, &own_target)),
+            "chat_id is required when target differs from this Session's Chat owner"
+        );
+        target = own_target;
+        args["chat_id"] = json!(chat);
+    }
+    if !local(state, &target) {
+        // Local channel reads and replies use the authenticated Station and
+        // its message store; restoring Mesh peers must not block them.
+        node_access::ready(state)?;
+        access(state, &target)?;
     }
     let key = format!("outgoing-{}", fingerprint(&(&who, &input.invocation_id))?);
     let mutation = zork_agent_station_tools::channels::mutating(&input.tool);

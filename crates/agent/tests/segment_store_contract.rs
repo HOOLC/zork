@@ -159,6 +159,7 @@ fn last_commit_read_returns_a_complete_normally_finished_commit() {
                     started_at_ms: 2,
                 },
                 SessionEvent::TurnFinished {
+                    reason: None,
                     turn_id: "turn-a".into(),
                     outcome: TurnOutcome::Finished,
                     outstanding: Vec::new(),

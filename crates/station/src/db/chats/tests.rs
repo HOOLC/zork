@@ -720,6 +720,11 @@ fn work_contexts_and_initial_delivery_are_bound_to_each_chat() {
     assert_eq!(two.title, "two");
     for (chat, session) in [(&one, &first), (&two, &second)] {
         assert_eq!(
+            db.session_chat_destination(session.id.as_deref().unwrap())
+                .unwrap(),
+            Some(("local".into(), chat.chat_id.clone()))
+        );
+        assert_eq!(
             db.chat_execution("worker", "local", &chat.chat_id)
                 .unwrap()
                 .unwrap()
@@ -751,6 +756,48 @@ fn work_contexts_and_initial_delivery_are_bound_to_each_chat() {
         .iter()
         .filter(|n| n.message.message_id.starts_with("assignment-"))
         .all(|n| n.work.as_ref().unwrap().initial));
+}
+
+#[test]
+fn remote_worker_default_publication_uses_its_owner_chat_not_the_local_mirror_or_home() {
+    let (_root, db) = database();
+    let (mirror, session) = assigned_chat(&db, "creator", "remote", "worker");
+    db.insert_node_agent(
+        &serde_json::from_value(json!({
+            "id":"worker", "name":"Worker", "role":"worker", "profile_id":"fixture",
+            "model":"model", "thinking":"off", "instructions":"", "allowed_leaders":["creator"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let home = channel(&db, "unrelated-worker-home");
+    db.set_agent_home("worker", &home.chat_id).unwrap();
+    let owner_chat = ulid::Ulid::new().to_string();
+    let assignment = crate::db::mesh::Assignment {
+        assignment_id: format!("worker-{owner_chat}"),
+        task_id: "owner-task".into(),
+        owner_origin: "key:owner".into(),
+        executor_origin: "key:executor".into(),
+        workspace_id: "workspace".into(),
+        goal: "Report back to the owning Chat".into(),
+        worker: Some(crate::db::mesh::WorkerTarget {
+            leader_id: "creator".into(),
+            worker_id: "worker".into(),
+        }),
+    };
+    db.mesh_receive_assignment(&assignment).unwrap();
+    db.mesh_bind_executor(&assignment.assignment_id, &session)
+        .unwrap();
+    assert_ne!(mirror.chat_id, owner_chat);
+    assert_eq!(
+        db.session_chat_destination(session.id.as_deref().unwrap())
+            .unwrap(),
+        Some(("key:owner".into(), owner_chat))
+    );
+    assert!(db
+        .session_chat_destination("missing-session")
+        .unwrap()
+        .is_none());
 }
 
 #[test]

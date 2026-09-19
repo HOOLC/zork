@@ -16,13 +16,25 @@ use crate::db::{JobRow, StationDb};
 
 const MAX_RUNTIME_MS: u64 = 12 * 60 * 60 * 1000;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct JobEvent {
     pub session_key: String,
     pub job_id: String,
     pub kind: String,
     pub event_kind: String,
     pub summary: String,
+}
+
+impl JobEvent {
+    fn for_job(job: &JobRow, event_kind: &str, summary: String) -> Self {
+        Self {
+            session_key: job.session_key.clone(),
+            job_id: job.id.clone(),
+            kind: job.kind.clone(),
+            event_kind: event_kind.into(),
+            summary,
+        }
+    }
 }
 
 pub struct JobSupervisor {
@@ -44,17 +56,73 @@ impl JobSupervisor {
 
     pub async fn restore(self: &Arc<Self>) -> Result<()> {
         for job in self.db.list_jobs()? {
-            if job.restart_on_boot && matches!(job.status.as_str(), "registered" | "running") {
+            if !matches!(job.status.as_str(), "registered" | "running") {
+                continue;
+            }
+            if job.restart_on_boot {
                 if let Err(error) = self.spawn_job(&job).await {
                     warn!(job_id = %job.id, error = %error, "restore job failed");
-                    self.db
-                        .update_job_status(&job.id, "failed", Some(&error.to_string()), None)?;
+                    self.db.finish_job(
+                        &JobEvent::for_job(
+                            &job,
+                            "job_failed",
+                            format!("Background job could not restart: {error}"),
+                        ),
+                        false,
+                    )?;
                 } else {
                     tokio::spawn(watch_job_exit(self.clone(), job.id.clone()));
                 }
+            } else {
+                self.db.finish_job(&JobEvent::for_job(&job, "job_interrupted",
+                    "Station restarted before recording this background job's outcome. Its effects are unknown; inspect them before retrying. The job was not restarted.".into()), false)?;
             }
         }
         Ok(())
+    }
+
+    pub fn start_delivery(&self) -> zork_notify::Task<()> {
+        let db = self.db.clone();
+        let agent = self.agent.clone();
+        let mut changes = db.realtime.listen(crate::realtime::JOB_EVENTS);
+        zork_notify::Task(tokio::spawn(async move {
+            let mut retry = zork_notify::retry::Retry::default();
+            loop {
+                changes.checkpoint();
+                let mut failed = false;
+                let mut progress = false;
+                match db.pending_job_events() {
+                    Ok(events) => {
+                        for (sequence, event) in events {
+                            let delivered =
+                                crate::delivery::handle_job_event(&agent, &db, event, sequence)
+                                    .await;
+                            match delivered.and_then(|()| db.acknowledge_job_event(sequence)) {
+                                Ok(()) => progress = true,
+                                Err(error) => {
+                                    failed = true;
+                                    warn!(sequence, %error, "background result awaits mailbox retry");
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        failed = true;
+                        warn!(%error, "background result outbox unavailable");
+                    }
+                }
+                if progress {
+                    retry.reset();
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+                if failed {
+                    tokio::select! { _ = retry.wait() => {}, changed = changes.changed() => if changed.is_err() { return; } }
+                } else if changes.changed().await.is_err() {
+                    return;
+                }
+            }
+        }))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -102,7 +170,17 @@ impl JobSupervisor {
             updated_at: now,
         };
         self.db.insert_job(&job)?;
-        self.spawn_job(&job).await?;
+        if let Err(error) = self.spawn_job(&job).await {
+            self.db.finish_job(
+                &JobEvent::for_job(
+                    &job,
+                    "job_failed",
+                    format!("Background job could not start: {error}"),
+                ),
+                false,
+            )?;
+            return Err(error);
+        }
         tokio::spawn(watch_job_exit(self.clone(), id.clone()));
         self.db.get_job(&id)?.context("job missing after register")
     }
@@ -117,9 +195,9 @@ impl JobSupervisor {
         if !matches!(job.status.as_str(), "registered" | "running") {
             anyhow::bail!("job_not_cancellable:{}", job.status);
         }
-        self.stop_child(&job.id).await;
         self.db
             .update_job_status(&job.id, "cancelled", None, None)?;
+        self.stop_child(&job.id).await;
         self.db
             .get_job(&job.id)?
             .context("job missing after cancel")
@@ -131,37 +209,22 @@ impl JobSupervisor {
         summary: &str,
         session_key: &str,
     ) -> Result<&'static str> {
-        let job = match job_id {
-            Some(job_id) => {
-                let job = self.db.get_job(job_id)?.context("job_not_found")?;
-                if job.session_key != session_key {
-                    anyhow::bail!("job_session_mismatch");
-                }
-                Some(job)
-            }
-            None => None,
-        };
+        if let Some(job_id) = job_id {
+            let job = self.db.get_job(job_id)?.context("job_not_found")?;
+            anyhow::ensure!(job.session_key == session_key, "job_session_mismatch");
+        }
         let binding = self
             .db
             .get_binding(session_key)?
             .context("session_not_found")?;
-        crate::delivery::handle_job_event(
-            &self.agent,
-            &self.db,
-            JobEvent {
-                session_key: binding.key().to_owned(),
-                job_id: job_id.unwrap_or("notify").to_string(),
-                kind: "notify".into(),
-                event_kind: "notify".into(),
-                summary: summary.to_string(),
-            },
-        )
-        .await?;
-        if let Some(job) = job {
-            self.db
-                .update_job_status(&job.id, &job.status, None, Some(("notify", summary)))?;
-        }
-        Ok("delivered")
+        self.db.queue_job_event(&JobEvent {
+            session_key: binding.key().to_owned(),
+            job_id: job_id.unwrap_or("notify").to_string(),
+            kind: "notify".into(),
+            event_kind: "notify".into(),
+            summary: summary.to_string(),
+        })?;
+        Ok("queued")
     }
 
     pub fn job_json(job: &JobRow) -> Value {
@@ -179,7 +242,7 @@ impl JobSupervisor {
         })
     }
 
-    async fn spawn_job(&self, job: &JobRow) -> Result<()> {
+    async fn spawn_job(self: &Arc<Self>, job: &JobRow) -> Result<()> {
         let mut running = self.running.lock().await;
         if running.contains_key(&job.id) {
             return Ok(());
@@ -236,36 +299,30 @@ impl JobSupervisor {
         }
         self.db.update_job_status(&job.id, "running", None, None)?;
         let job_id = job.id.clone();
-        let session_key = job.session_key.clone();
-        let kind = job.kind.clone();
         running.insert(job.id.clone(), child);
         drop(running);
         // Explicitly restartable service jobs are persistent processes, not
         // bounded batch work. Their lifetime ends on cancellation or process exit.
         if !(job.kind == "service" && job.restart_on_boot) {
-            let timeout_db = self.db.clone();
-            let timeout_agent = self.agent.clone();
+            let supervisor = Arc::downgrade(self);
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(MAX_RUNTIME_MS)).await;
-                if let Ok(Some(job)) = timeout_db.get_job(&job_id) {
-                    if matches!(job.status.as_str(), "running" | "registered") {
-                        timeout_db
-                            .update_job_status(&job_id, "failed", Some("timeout"), None)
-                            .ok();
-                        if let Err(error) = crate::delivery::handle_job_event(
-                            &timeout_agent,
-                            &timeout_db,
-                            JobEvent {
-                                session_key,
-                                job_id: job_id.clone(),
-                                kind,
-                                event_kind: "job_timeout".into(),
-                                summary: "Background job timed out after 12h.".into(),
-                            },
-                        )
-                        .await
-                        {
-                            warn!(job_id = %job_id, error = %error, "job timeout mailbox delivery failed");
+                let Some(supervisor) = supervisor.upgrade() else {
+                    return;
+                };
+                if let Ok(Some(job)) = supervisor.db.get_job(&job_id) {
+                    match supervisor.db.finish_job(
+                        &JobEvent::for_job(
+                            &job,
+                            "job_timeout",
+                            "Background job timed out after 12h.".into(),
+                        ),
+                        false,
+                    ) {
+                        Ok(true) => supervisor.stop_child(&job_id).await,
+                        Ok(false) => {}
+                        Err(error) => {
+                            warn!(job_id = %job_id, %error, "job timeout persistence failed")
                         }
                     }
                 }
@@ -290,6 +347,7 @@ pub async fn watch_job_exit(supervisor: Arc<JobSupervisor>, job_id: String) {
             return;
         }
     };
+    let mut retry = zork_notify::retry::Retry::default();
     loop {
         let mut running = supervisor.running.lock().await;
         let Some(child) = running.get_mut(&job_id) else {
@@ -297,45 +355,32 @@ pub async fn watch_job_exit(supervisor: Arc<JobSupervisor>, job_id: String) {
         };
         match child.try_wait() {
             Ok(Some(status)) => {
-                running.remove(&job_id);
-                drop(running);
                 let ok = status.success();
                 let summary = if ok {
                     format!("Background job {job_id} finished.")
                 } else {
                     format!("Background job {job_id} failed ({status}).")
                 };
-                let job = supervisor.db.get_job(&job_id).ok().flatten();
-                supervisor
-                    .db
-                    .update_job_status(
-                        &job_id,
-                        if ok { "succeeded" } else { "failed" },
-                        if ok { None } else { Some(&summary) },
-                        None,
-                    )
-                    .ok();
-                if let Some(job) = job {
-                    if let Err(error) = crate::delivery::handle_job_event(
-                        &supervisor.agent,
-                        &supervisor.db,
-                        JobEvent {
-                            session_key: job.session_key,
-                            job_id: job.id,
-                            kind: job.kind,
-                            event_kind: if ok {
-                                "job_exit".into()
-                            } else {
-                                "job_failed".into()
-                            },
+                let committed = supervisor.db.get_job(&job_id).and_then(|job| {
+                    let job = job.context("job_not_found")?;
+                    supervisor.db.finish_job(
+                        &JobEvent::for_job(
+                            &job,
+                            if ok { "job_exit" } else { "job_failed" },
                             summary,
-                        },
+                        ),
+                        ok,
                     )
-                    .await
-                    {
-                        warn!(job_id = %job_id, error = %error, "job completion mailbox delivery failed");
-                    }
+                });
+                if let Err(error) = committed {
+                    // try_wait retains the observed status. Do not discard it
+                    // before both the terminal row and notification are durable.
+                    drop(running);
+                    warn!(job_id = %job_id, %error, "job completion persistence awaits retry");
+                    retry.wait().await;
+                    continue;
                 }
+                running.remove(&job_id);
                 return;
             }
             Ok(None) => {

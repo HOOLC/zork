@@ -16,6 +16,7 @@ pub const ACTIVITY: u64 = 64;
 pub const WORK: u64 = 128;
 pub const SYNC: u64 = 256;
 pub const NODE: u64 = 512;
+pub const JOB_EVENTS: u64 = 1024;
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Revision {

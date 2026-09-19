@@ -313,6 +313,8 @@ pub enum SessionEvent {
     TurnFinished {
         turn_id: String,
         outcome: TurnOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         outstanding: Vec<OutstandingItem>,
         finished_at_ms: i64,
