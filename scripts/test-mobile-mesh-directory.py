@@ -159,6 +159,9 @@ def main():
         phone.command('draft', peer=b.origin, session='preserved-draft', content='draft before switch')
         for peer in (a, b):
             assert phone.read(peer.origin)['name'] == peer.root.name
+        f.wait(lambda: all({p['origin'] for p in admin(peer, 'GET', '/v1/mesh')['peers']}
+            == {other.origin for other in (a, b) if other is not peer} for peer in (a, b)),
+            'Station capability subscriptions exclude access clients while phone reads remain authorized')
         passed('approved phone discovers and uses every existing member through core subscriptions')
 
         join(c, b)

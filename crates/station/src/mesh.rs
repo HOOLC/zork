@@ -145,6 +145,19 @@ enum RpcRequest {
 
 type WatchTopic = zork_mesh::feed::Watch;
 
+fn station_peers(config: &zork_config::MeshConfig) -> impl Iterator<Item = &zork_config::MeshPeer> {
+    // Access clients share trust for reads, but do not host a Station control
+    // service. Legacy permission flags do not describe that endpoint role.
+    config.peers.iter().filter(|peer| {
+        !config.group.as_ref().is_some_and(|group| {
+            group
+                .clients
+                .iter()
+                .any(|client| client.origin == peer.origin)
+        })
+    })
+}
+
 impl MeshService {
     pub async fn execution_history(
         &self,
@@ -261,8 +274,8 @@ impl MeshService {
         managed::configure_changed(&self.root, &config, &self.node, Some(&previous)).await?;
         {
             let mut peers = self.peers.lock().expect("mesh peer cache");
-            peers.retain(|origin, _| config.peers.iter().any(|p| p.origin == *origin));
-            for peer in &config.peers {
+            peers.retain(|origin, _| station_peers(&config).any(|p| p.origin == *origin));
+            for peer in station_peers(&config) {
                 let status = peers
                     .entry(peer.origin.clone())
                     .or_insert_with(|| PeerStatus {
@@ -488,9 +501,7 @@ impl MeshService {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        let peers = config
-            .peers
-            .iter()
+        let peers = station_peers(&config)
             .map(|p| {
                 (
                     p.origin.clone(),
@@ -568,7 +579,7 @@ impl MeshService {
     }
     pub async fn remote_workers(&self, leader_id: &str) -> Vec<Value> {
         let config = self.config().unwrap_or_default();
-        let requests=config.peers.iter().map(|peer|async move {
+        let requests=station_peers(&config).map(|peer|async move {
             let result=tokio::time::timeout(Duration::from_secs(3),self.call(&peer.origin,RpcRequest::Workers{leader_id:leader_id.into()})).await;
             match result {Ok(Ok(value))=>value["items"].as_array().into_iter().flatten().filter_map(|item|Some(json!({"id":format!("{}/{}",peer.origin,item["id"].as_str()?),"name":item["name"],"node":peer.name,"origin":peer.origin}))).collect::<Vec<_>>(),_=>vec![]}
         });
@@ -813,14 +824,9 @@ async fn maintain_membership(service: Arc<MeshService>, state: AppState) {
         retry.reset();
         watchers.retain(|origin, (previous, task)| {
             !task.is_finished()
-                && config
-                    .peers
-                    .iter()
-                    .any(|p| p.origin == *origin && p == previous)
+                && station_peers(&config).any(|p| p.origin == *origin && p == previous)
         });
-        for peer in config
-            .peers
-            .iter()
+        for peer in station_peers(&config)
             .filter(|p| !watchers.contains_key(&p.origin))
             .cloned()
             .collect::<Vec<_>>()
