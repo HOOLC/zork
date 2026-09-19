@@ -297,13 +297,14 @@ impl AgentsView {
         );
     }
     fn valid_selection(&self) -> bool {
+        let Some((profile, model)) = self.profiles.get(self.profile).zip(self.selected_model())
+        else {
+            return false;
+        };
         crate::api::validate_selection(
             &self.source.snapshot().profiles,
-            self.profiles
-                .get(self.profile)
-                .map(|p| p.profile_id.as_str())
-                .unwrap_or(""),
-            self.selected_model().map(|m| m.id.as_str()).unwrap_or(""),
+            &profile.profile_id,
+            &model.id,
             &self.thinking,
         )
         .is_ok()
@@ -1276,6 +1277,57 @@ impl Render for AgentsView {
 #[cfg(test)]
 mod pool_choice_tests {
     use super::*;
+    #[gpui::test]
+    fn profile_dropdown_renders_before_catalog_is_loaded(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext;
+        let client = Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None));
+        let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
+        for editing in [false, true] {
+            let window = cx.add_window(|_, cx| {
+                let mut view = AgentsView::new_inner(source.clone(), cx);
+                assert!(view.profiles.is_empty());
+                assert!(!view.valid_selection());
+                view.form_open = !editing;
+                view.editing_avatar = editing.then(|| json!({"id":"agent", "name":"Agent"}));
+                view
+            });
+            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+        }
+    }
+
+    #[cfg(feature = "headless-bench")]
+    #[gpui::test]
+    fn removed_profile_cannot_be_saved_as_automatic(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext;
+        let client = Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None));
+        let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
+        let view = cx.new(|cx| AgentsView::new_inner(source.clone(), cx));
+        source.seed(crate::api::AgentData {
+            profiles: Arc::new(
+                serde_json::from_value(json!([
+                    {"profile_id":"account","provider":"openai","models":[
+                        {"id":"model","thinking":["off"],"default_thinking":"off"}
+                    ]}
+                ]))
+                .unwrap(),
+            ),
+            ..Default::default()
+        });
+        view.update(cx, |view, cx| {
+            view.apply_source(source.subscribe().snapshot(), cx);
+            assert!(view.valid_selection());
+            view.editing_avatar = Some(json!({"id":"agent"}));
+            // A catalog refresh can remove the selected connection while the
+            // same model remains available through another connection.
+            view.profile = usize::MAX;
+            assert!(!view.valid_selection());
+            view.save_settings(cx);
+            assert!(!view.busy);
+            assert!(view.message.is_some());
+        });
+    }
+
     #[test]
     fn automatic_option_aggregates_enabled_models_without_mutating_catalog() {
         let profile: ProfileInfo =

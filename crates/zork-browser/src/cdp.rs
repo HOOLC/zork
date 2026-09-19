@@ -318,13 +318,14 @@ impl Cdp {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
-    fn script(root: &Path, body: &str) -> PathBuf {
-        let path = root.join("runtime");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
-        path
+    fn script(name: &str) -> PathBuf {
+        // Keep executable fixtures immutable. A concurrent fork can inherit a
+        // just-written script's open descriptor and make Linux reject exec
+        // with ETXTBSY until that unrelated child closes it.
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name)
     }
 
     #[test]
@@ -333,7 +334,7 @@ mod tests {
         let profile = root.path().join("profile");
         std::fs::create_dir(&profile).unwrap();
         std::fs::write(profile.join("process.log"), "previous-attempt-secret\n").unwrap();
-        let executable = script(root.path(), "echo missing-framework >&2; exit 42");
+        let executable = script("runtime-failure.sh");
         let error = Cdp::launch_runtime(&profile, &executable, TIMEOUT, |_, _| {})
             .err()
             .expect("runtime must fail");
@@ -346,7 +347,7 @@ mod tests {
     #[test]
     fn handshake_timeout_reaps_the_actual_runtime_before_returning() {
         let root = tempfile::tempdir().unwrap();
-        let executable = script(root.path(), "exec /bin/sleep 60");
+        let executable = script("runtime-timeout.sh");
         let profile = root.path().join("profile");
         std::fs::create_dir(&profile).unwrap();
         let process = spawn_runtime(&profile, &executable).unwrap();

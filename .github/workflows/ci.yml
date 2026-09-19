@@ -17,7 +17,7 @@ permissions:
 jobs:
   static:
     name: Main branch static checks
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -151,6 +151,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install Linux UI dependencies
+        if: matrix.suite == 'ui'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: Restore CI target cache
         id: target
         uses: actions/cache/restore@v4
