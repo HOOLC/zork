@@ -15,6 +15,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
+def digest(path):
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 # Helper identifiers follow the product name. This pass moves them to the project
 # domain and to the Station wording, so an installed app re-registers its helpers
@@ -33,15 +36,16 @@ def copy_binary(source, destination):
         shutil.copy2(source, destination)
 
 
-def app_info(version, prefix):
-    return {'CFBundleIdentifier': prefix + '.desktop', 'CFBundleName': 'Zork',
-            'CFBundleDisplayName': 'Zork', 'CFBundleIconFile': 'Zork.icns',
+def app_info(version, prefix='ing.zork', channel='release'):
+    name = 'Zork Dev' if channel == 'dev' else 'Zork'
+    return {'CFBundleIdentifier': prefix + '.desktop', 'CFBundleName': name,
+            'CFBundleDisplayName': name, 'CFBundleIconFile': 'Zork.icns',
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': version, 'CFBundleVersion': version,
             'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
             'NSPrincipalClass': 'NSApplication',
             'NSLocalNetworkUsageDescription': '用于发现并连接同一网络中的已配对设备，同步消息和任务。',
-            'NSBonjourServices': ['_zork-mesh-v1._udp']}
+            'NSBonjourServices': ['_zork-mesh-v1._udp', '_zork-enrollment-v1._udp']}
 
 
 def verify_app(app):
@@ -66,7 +70,7 @@ def sign_app(app, signer, identity):
     verify_app(app)
 
 
-def stage_binaries(app, binaries, assets, version, launcher, prefix):
+def stage_binaries(app, binaries, assets, version, launcher, prefix='ing.zork'):
     mac = app / 'Contents/MacOS'
     helpers = []
     for name in COMPONENTS:
@@ -109,6 +113,9 @@ def stage_binaries(app, binaries, assets, version, launcher, prefix):
 
 def build_app(args, repo, app):
     prefix = args.id_prefix
+    channel = getattr(args, 'channel', 'release')
+    if (prefix == 'ing.zork-dev' and channel != 'dev') or (prefix == 'ing.zork' and channel != 'release'):
+        raise RuntimeError('Bundle identity and data channel must match; set --channel explicitly')
     version=json.loads((repo/'packages/zork/package.json').read_text())['version']
     mac=app/'Contents/MacOS';resources=app/'Contents/Resources'
     mac.mkdir(parents=True);resources.mkdir()
@@ -131,11 +138,19 @@ def build_app(args, repo, app):
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
     if args.services_config:
         services=json.loads(args.services_config.read_text())
-        assert isinstance(services,dict) and not set(services)-{'relay_urls','discovery_url'}
+        assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
-        plistlib.dump(app_info(version, prefix), f)
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
+        plistlib.dump(app_info(version, prefix, channel), f)
+    (resources/'channel').write_text(channel+'\n')
+    record = getattr(args, 'build_record', None)
+    if record:
+        build = json.loads(record.read_text())
+        for name, expected in build['binaries'].items():
+            if digest(binaries/name) != expected:
+                raise RuntimeError('Binary differs from the captured Cargo build: '+name)
+        (resources/'build.json').write_text(json.dumps(build, indent=2)+'\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.
@@ -146,13 +161,18 @@ def build_app(args, repo, app):
 def main():
     parser=argparse.ArgumentParser(description='Update the one persistent app for this worktree')
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
-    parser.add_argument('--id-prefix',default='ing.zork',help='Bundle identifier prefix; the app uses <prefix>.desktop')
+    parser.add_argument('--channel',choices=['release','dev'],default='release',help='Signed data and identity channel')
+    parser.add_argument('--id-prefix',help='Override bundle prefix for isolated test identities')
+    parser.add_argument('--build-record',type=Path,help='Captured Cargo build provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
     parser.add_argument('--output',type=Path,help='Explicitly export an archive to this directory')
     parser.add_argument('--launch',action='store_true',help='Launch after update even if not previously running')
     parser.add_argument('--run',nargs=argparse.REMAINDER,help='Run tests against the updated {app}; retain the app afterward')
     args=parser.parse_args()
+    args.id_prefix = args.id_prefix or ('ing.zork-dev' if args.channel == 'dev' else 'ing.zork')
+    if args.channel == 'dev' and args.id_prefix == 'ing.zork':
+        parser.error('dev cannot use the release bundle identity')
     if args.run == []:
         parser.error('--run requires a command')
     repo=Path(__file__).resolve().parents[1]

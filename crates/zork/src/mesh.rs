@@ -60,6 +60,19 @@ impl LocalStation {
         );
         Ok(value)
     }
+    fn core_client(&self) -> Result<zork_client_core::api::StationClient> {
+        let config = zork_config::load_config(&self.root)?;
+        let token_path = self.root.join("run/node-token.json");
+        let token = if token_path.exists() {
+            serde_json::from_slice::<String>(&std::fs::read(token_path)?)?
+        } else {
+            config.admin.token
+        };
+        Ok(zork_client_core::api::StationClient::new(
+            zork_config::loopback_base_url(&config.bind.runtime),
+            Some(token),
+        ))
+    }
     async fn ready(&self) -> bool {
         let Ok(config) = zork_config::load_config(&self.root) else {
             return false;
@@ -101,6 +114,11 @@ async fn choose_root(explicit: Option<PathBuf>) -> Result<PathBuf> {
         .filter(|r| zork_config::config_path(r).exists())
     {
         let root = root.canonicalize()?;
+        if zork_config::channel::recorded(&root)?.unwrap_or_default()
+            != zork_config::channel::current()?
+        {
+            continue;
+        }
         if installed.contains(&root) {
             continue;
         }
@@ -162,17 +180,29 @@ fn install_binaries(root: &Path) -> Result<PathBuf> {
 }
 
 pub async fn run(mut argv: Vec<String>) -> Result<()> {
-    ensure!(!argv.is_empty(), "mesh requires invite, join or status");
+    ensure!(
+        !argv.is_empty(),
+        "mesh requires invite, join, switch, leave or status"
+    );
     let action = argv.remove(0);
     let mut explicit = None;
     let mut name = None;
     let mut ticket = None;
     let mut index = 0;
     let mut json_output = false;
+    let mut confirmed = false;
     while index < argv.len() {
         let argument = &argv[index];
         match argument.as_str() {
             "--json" => json_output = true,
+            "--yes" => confirmed = true,
+            "--channel" => {
+                index += 1;
+                let value = argv.get(index).context("missing channel")?;
+                zork_config::channel::set_host_channel(zork_config::channel::Channel::parse(
+                    value,
+                )?)?;
+            }
             "--data" | "--name" => {
                 index += 1;
                 let value = argv.get(index).context("missing option value")?.clone();
@@ -182,7 +212,11 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                     _ => unreachable!(),
                 }
             }
-            value if !value.starts_with('-') && action == "join" && ticket.is_none() => {
+            value
+                if !value.starts_with('-')
+                    && matches!(action.as_str(), "join" | "switch")
+                    && ticket.is_none() =>
+            {
                 ticket = Some(value.to_owned())
             }
             _ => anyhow::bail!("unknown mesh option {argument}"),
@@ -190,22 +224,17 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
         index += 1;
     }
     ensure!(
-        matches!(action.as_str(), "install" | "invite" | "join" | "status"),
+        matches!(
+            action.as_str(),
+            "install" | "invite" | "join" | "switch" | "leave" | "status"
+        ),
         "unknown mesh action"
     );
     let root = choose_root(explicit).await?;
-    let invitation = if action == "join" {
-        Some(
-            zork_client_core::transport::resolve_invitation(
-                &root,
-                ticket.as_deref().context("join requires an invitation")?,
-                zork_mesh::enrollment::InviteKind::Station,
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
+    let channel = zork_config::channel::activate_for_data(&root)?;
+    if matches!(action.as_str(), "join" | "switch") {
+        ensure!(ticket.is_some(), "join requires an invitation");
+    }
     if action == "status" {
         ensure!(
             zork_config::config_path(&root).exists(),
@@ -220,13 +249,61 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             println!("{value}");
         } else {
             println!("Station: {}", root.display());
+            let listed = |values: &Value| {
+                let items = values
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|item| item.as_str())
+                    .collect::<Vec<_>>();
+                if items.is_empty() {
+                    "none".to_string()
+                } else {
+                    items.join(", ")
+                }
+            };
+            println!("  direct: {}", listed(&value["address"]["direct"]));
+            println!("  relays: {}", listed(&value["address"]["relays"]));
             for peer in value["config"]["peers"].as_array().into_iter().flatten() {
                 println!("  {}", peer["name"].as_str().unwrap_or("Device"));
+            }
+            if let Some(join) = value.get("join").filter(|join| !join.is_null()) {
+                println!(
+                    "接入：{}（尝试 {} 次）",
+                    join["label"].as_str().unwrap_or("状态未知"),
+                    join["attempt"]
+                );
+                if let Some(seconds) = join["retry_in_seconds"].as_u64() {
+                    println!("  {seconds} 秒后重试");
+                }
             }
         }
         return Ok(());
     }
+    if action == "leave" {
+        let station = LocalStation::new(root.clone())?;
+        station.verify().await?;
+        let config = zork_config::load_config(&root)?;
+        let group = config.mesh.group.context("当前设备尚未加入 Mesh")?;
+        ensure!(
+            confirmed,
+            "将断开本机与当前 Mesh 的连接，保留本机数据和其它成员。确认后请加 --yes 重试。"
+        );
+        let client = station.core_client()?;
+        let value = zork_client_core::mesh_enrollment::leave(
+            &client,
+            &zork_config::membership::MeshVersion::of(&group),
+        )
+        .await?;
+        if json_output {
+            println!("{value}");
+        } else {
+            println!("已离开 Mesh，本机身份、文件和历史保留。");
+        }
+        return Ok(());
+    }
     let installed = zork_config::config_path(&root).exists();
+    zork_config::channel::claim(&root, channel)?;
     zork_config::ensure_layout(&root)?;
     let root = root.canonicalize()?;
     let _setup = zork_config::service::exclusive_lock(&root.join("run/mesh-setup.lock"))
@@ -257,28 +334,6 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
                         *binding = listener.local_addr()?.to_string();
                         listeners.push(listener);
-                    }
-                }
-                if let Some(invite) = &invitation {
-                    if config.mesh.group.is_none() && config.mesh.peers.is_empty() {
-                        config.mesh.offline = invite.offline;
-                        config.mesh.relay_urls = invite.relay_urls.clone();
-                        config.mesh.discovery_url = invite.discovery_url.clone();
-                        if invite.offline && config.mesh.bind.is_none() {
-                            let address: std::net::SocketAddr = invite
-                                .device
-                                .addr
-                                .as_deref()
-                                .context("Offline invitation needs a LAN address")?
-                                .parse()?;
-                            let socket = std::net::UdpSocket::bind(if address.is_ipv4() {
-                                "0.0.0.0:0"
-                            } else {
-                                "[::]:0"
-                            })?;
-                            socket.connect(address)?;
-                            config.mesh.bind = Some(socket.local_addr()?.to_string());
-                        }
                     }
                 }
                 config.mesh.enabled = true;
@@ -335,15 +390,22 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     let mut config: zork_config::MeshConfig = serde_json::from_value(value["config"].clone())?;
     let previous = config.clone();
     config.enabled = true;
-    // A running, unpaired Station must use the invitation's network too.
-    // Existing memberships/manual peers retain their operator-selected transport.
-    if config.peers.is_empty() && config.group.is_none() {
-        if let Some(invite) = &invitation {
-            config.offline = invite.offline;
-            config.relay_urls = invite.relay_urls.clone();
-            config.discovery_url = invite.discovery_url.clone();
-        }
-    }
+    let switch_from = if action == "switch" {
+        let group = previous
+            .group
+            .as_ref()
+            .context("当前没有 Mesh，请使用 mesh join")?;
+        ensure!(
+            confirmed,
+            "将从当前 Mesh 切换到邀请中的 Mesh，保留本机数据和其它成员。确认后请加 --yes 重试。"
+        );
+        let expected = zork_config::membership::MeshVersion::of(group);
+        Some(expected)
+    } else {
+        None
+    };
+    // Enabling Mesh is a local prerequisite. Invitation resolution and membership
+    // live in the Station operation; joining never rewrites operator network choices.
     let mut replaced_pid = None;
     if config != previous {
         let status = station
@@ -364,14 +426,26 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             changes.checkpoint();
             events.refresh()?;
             let ready = async {
-                let status = station.request(reqwest::Method::GET, "/v1/node/status", None).await?;
-                if replaced_pid.as_ref().is_some_and(|pid| *pid == status["pid"]) { return Ok::<_, anyhow::Error>(false); }
-                let value = station.request(reqwest::Method::GET, "/v1/node/mesh", None).await?;
+                let status = station
+                    .request(reqwest::Method::GET, "/v1/node/status", None)
+                    .await?;
+                if replaced_pid
+                    .as_ref()
+                    .is_some_and(|pid| *pid == status["pid"])
+                {
+                    return Ok::<_, anyhow::Error>(false);
+                }
+                let value = station
+                    .request(reqwest::Method::GET, "/v1/node/mesh", None)
+                    .await?;
                 Ok(value["origin"].is_string())
             };
             let failed = match tokio::time::timeout(Duration::from_secs(2), ready).await {
                 Ok(Ok(true)) => return Ok::<_, anyhow::Error>(()),
-                Ok(Ok(false)) => { retry.reset(); false },
+                Ok(Ok(false)) => {
+                    retry.reset();
+                    false
+                }
                 _ => true,
             };
             tokio::select! {
@@ -379,7 +453,9 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                 _ = retry.wait(), if failed => {},
             }
         }
-    }).await.context("Station Mesh did not become ready after applying network settings; check node logs and retry the join command")??;
+    })
+    .await
+    .context("Station Mesh did not become ready; check node logs and retry the join command")??;
     match action.as_str() {
         "invite" => {
             let value = station
@@ -394,15 +470,36 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                 );
             }
         }
-        "join" => {
+        "join" | "switch" => {
             eprintln!("Joining your mesh: devices may assign tasks to each other, access task files and manage nodes.");
-            let value = station
-                .request(
-                    reqwest::Method::POST,
-                    "/v1/node/mesh/join",
-                    Some(json!({"invitation":ticket,"name":name})),
-                )
-                .await?;
+            let client = station.core_client()?;
+            let mut shown = String::new();
+            let value = zork_client_core::mesh_enrollment::join(
+                &client,
+                &zork_client_core::mesh_enrollment::JoinRequest {
+                    invitation: ticket.context("missing invitation")?,
+                    name: name.clone(),
+                    switch_from,
+                },
+                |progress| {
+                    let message = format!(
+                        "{}{}",
+                        progress.label,
+                        progress
+                            .retry_in_seconds
+                            .map(|seconds| format!(
+                                "（{seconds} 秒后，第 {} 次）",
+                                progress.attempt + 1
+                            ))
+                            .unwrap_or_default()
+                    );
+                    if message != shown {
+                        eprintln!("{message}");
+                        shown = message;
+                    }
+                },
+            )
+            .await?;
             if json_output {
                 println!("{value}");
             } else {

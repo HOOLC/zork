@@ -189,6 +189,7 @@ impl HostIdentity {
             token: None,
             local: false,
             mesh: Some(RemoteNode {
+                routes: None,
                 origin: self.origin.clone(),
                 addr: Some(self.address.clone()),
             }),
@@ -387,6 +388,7 @@ async fn adb_mesh_multiple_stations_activation_transfer_reconnect_disable_and_re
     let mut phone_config = config();
     for identity in &identities {
         phone_config.peers.push(zork_config::MeshPeer {
+            routes: None,
             origin: identity.origin.clone(),
             name: "Station fixture".into(),
             addr: Some(identity.address.clone()),

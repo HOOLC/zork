@@ -86,6 +86,12 @@ enum QadProbeError {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct NetReportConfig {
+    /// Optional QAD-only servers, independent of relay forwarding and authentication.
+    /// Empty uses the configured relays. These URLs never become home relays.
+    pub quic_discovery_servers: Vec<Arc<iroh_relay::RelayConfig>>,
+    /// DNS used only for UDP address discovery; HTTPS keeps the endpoint resolver.
+    #[cfg(not(wasm_browser))]
+    pub quic_dns_resolver: Option<DnsResolver>,
     /// Run HTTPS latency probes against relay servers.
     ///
     /// HTTPS latency probes perform an empty HTTPS GET request to each configured
@@ -114,6 +120,9 @@ impl NetReportConfig {
     /// Creates a minimal configuration that disables all optional probes and checks.
     pub fn minimal() -> Self {
         Self {
+            quic_discovery_servers: Vec::new(),
+            #[cfg(not(wasm_browser))]
+            quic_dns_resolver: None,
             https_probes: false,
             captive_portal_check: false,
         }
@@ -123,6 +132,9 @@ impl NetReportConfig {
 impl Default for NetReportConfig {
     fn default() -> Self {
         Self {
+            quic_discovery_servers: Vec::new(),
+            #[cfg(not(wasm_browser))]
+            quic_dns_resolver: None,
             https_probes: true,
             captive_portal_check: true,
         }
@@ -271,6 +283,9 @@ impl Client {
         #[cfg(not(wasm_browser))]
         let socket_state = SocketState {
             quic_client,
+            qad_dns_resolver: opts.user_config.quic_dns_resolver.clone().unwrap_or_else(|| dns_resolver.clone()),
+            qad_servers: opts.user_config.quic_discovery_servers.clone(),
+            proxy_url: opts.proxy_url,
             dns_resolver,
         };
 
@@ -287,6 +302,13 @@ impl Client {
             tls_config: opts.tls_config,
             captive_portal_check: opts.user_config.captive_portal_check,
         }
+    }
+
+    pub(crate) fn has_qad_servers(&self) -> bool {
+        #[cfg(not(wasm_browser))]
+        { !self.socket_state.qad_servers.is_empty() }
+        #[cfg(wasm_browser)]
+        { false }
     }
 
     /// Generates a [`Report`].
@@ -500,12 +522,16 @@ impl Client {
         let mut v6_buf = JoinSet::new();
         let cancel_v6 = shutdown_token.child_token();
 
-        let relays = self.relay_map.relays::<Vec<_>>();
-        for relay in relays.into_iter().take(MAX_RELAYS) {
+        let relays = if self.socket_state.qad_servers.is_empty() {
+            self.relay_map.relays::<Vec<_>>()
+        } else {
+            self.socket_state.qad_servers.clone()
+        };
+        for relay in relays.into_iter().filter(|relay| relay.quic.is_some()).take(MAX_RELAYS) {
             if if_state.have_v4 && needs_v4_probe {
                 trace!(?relay.url, "v4 QAD probe starting");
                 let relay = relay.clone();
-                let dns_resolver = self.socket_state.dns_resolver.clone();
+                let dns_resolver = self.socket_state.qad_dns_resolver.clone();
                 let quic_client = quic_client.clone();
                 let relay_url = relay.url.clone();
                 let inner_token = cancel_v4.child_token();
@@ -522,7 +548,7 @@ impl Client {
             if if_state.have_v6 && needs_v6_probe {
                 trace!(?relay.url, "v6 QAD probe starting");
                 let relay = relay.clone();
-                let dns_resolver = self.socket_state.dns_resolver.clone();
+                let dns_resolver = self.socket_state.qad_dns_resolver.clone();
                 let quic_client = quic_client.clone();
                 let relay_url = relay.url.clone();
                 let inner_token = cancel_v6.child_token();
@@ -669,7 +695,9 @@ impl Client {
         #[cfg_attr(wasm_browser, allow(unused_mut))]
         let mut num_ipv6 = 0;
         let mut num_https = 0;
-        for (typ, _, _) in report.relay_latency.iter() {
+        for (typ, url, _) in report.relay_latency.iter() {
+            // An independent QAD server says nothing about forwarding latency.
+            if self.relay_map.get(url).is_none() { continue; }
             match typ {
                 #[cfg(not(wasm_browser))]
                 Probe::QadIpv4 => {
@@ -793,6 +821,7 @@ impl Client {
         let mut old_relay_cur_latency = Duration::default();
         {
             for (_, url, duration) in r.relay_latency.iter() {
+                if self.relay_map.get(url).is_none() { continue; }
                 if Some(url) == prev_relay.as_ref() {
                     old_relay_cur_latency = duration;
                 }

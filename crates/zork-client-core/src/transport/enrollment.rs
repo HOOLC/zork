@@ -25,7 +25,7 @@ impl Enrollment {
             zork_config::services::ServicesConfig::load_for_data_root(
                 &zork_config::relay_account::resolve_root(root)?,
             )?
-            .apply_network(&mut effective)?;
+            .apply_defaults(&mut effective)?;
         }
         let config = &effective;
         let transport = Arc::new(zork_mesh::enrollment::Enrollment::bind(key_root, config).await?);
@@ -71,7 +71,7 @@ pub async fn resolve_invitation(
     let invite = if Ticket::is_short(value) {
         let ticket = Ticket::decode(value)?;
         ensure!(ticket.kind == expected, "invite_kind_mismatch");
-        let mut config = ticket.network_config();
+        let mut config = ticket.network_config()?;
         if !config.offline {
             let services = zork_config::services::ServicesConfig::load_for_data_root(
                 &zork_config::relay_account::resolve_root(root)?,
@@ -94,5 +94,9 @@ pub async fn resolve_invitation(
         Invitation::decode(value)?
     };
     ensure!(invite.kind == expected, "invite_kind_mismatch");
+    ensure!(
+        invite.channel == zork_config::channel::current()?,
+        "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+    );
     Ok(invite)
 }

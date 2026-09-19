@@ -483,8 +483,26 @@ mod android {
         _this: JObject<'a>,
         context: JObject<'a>,
     ) {
-        env.with_env(|env| rustls_platform_verifier::android::init_with_env(env, context))
-            .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let package = env
+                .call_method(
+                    &context,
+                    jni_str!("getPackageName"),
+                    jni_sig!(() -> java.lang.String),
+                    &[],
+                )?
+                .l()?;
+            let package = JString::cast_local(env, package)?.to_string();
+            let channel = if package.ends_with(".debug") {
+                zork_client_core::channel::Channel::Dev
+            } else {
+                zork_client_core::channel::Channel::Release
+            };
+            zork_client_core::channel::set_host_channel(channel)
+                .expect("consistent application channel");
+            rustls_platform_verifier::android::init_with_env(env, context)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
     }
 
     #[unsafe(no_mangle)]

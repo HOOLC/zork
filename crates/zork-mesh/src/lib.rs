@@ -1,13 +1,14 @@
 //! Zork's bounded interface to the pinned, embedded Synchronicity runtime.
 //! Product state and command idempotency belong to the Station.
-pub mod bridge;
 mod clean_start;
+pub mod control;
 pub mod enrollment;
 pub mod feed;
+mod lan_discovery;
 mod local_discovery;
 pub mod managed;
 pub mod node;
-mod relay_access;
+pub mod retry;
 pub mod route;
 
 pub const SYNCH_VERSION: &str = "0.1.8";

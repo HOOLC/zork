@@ -860,6 +860,8 @@ pub(super) struct RelayActor {
     /// These actors will exit when they have any inactivity.  Otherwise they will keep
     /// trying to maintain a connection to the relay server as needed.
     active_relays: BTreeMap<RelayUrl, ActiveRelayHandle>,
+    configured_origins: BTreeSet<String>,
+    withdrawn_origins: BTreeSet<String>,
     /// The tasks for the [`ActiveRelayActor`]s in `active_relays` above.
     active_relay_tasks: JoinSet<()>,
     cancel_token: CancellationToken,
@@ -1002,8 +1004,16 @@ impl RelayActor {
         relay_datagram_recv_queue: mpsc::Sender<RelayRecvDatagram>,
         cancel_token: CancellationToken,
     ) -> Self {
+        let configured_origins = config
+            .relay_map
+            .urls::<Vec<_>>()
+            .into_iter()
+            .map(|url| url.origin().ascii_serialization())
+            .collect();
         Self {
             config,
+            configured_origins,
+            withdrawn_origins: Default::default(),
             relay_datagram_recv_queue,
             active_relays: Default::default(),
             active_relay_tasks: JoinSet::new(),
@@ -1095,6 +1105,21 @@ impl RelayActor {
     // RelayConfig is also the native client's bearer credential source. A map
     // update must retire the old builder; reconnecting it reuses its stale token.
     fn on_config_change(&mut self) {
+        let current_origins: BTreeSet<_> = self
+            .config
+            .relay_map
+            .urls::<Vec<_>>()
+            .into_iter()
+            .map(|url| url.origin().ascii_serialization())
+            .collect();
+        self.withdrawn_origins.extend(
+            self.configured_origins
+                .difference(&current_origins)
+                .cloned(),
+        );
+        self.withdrawn_origins
+            .retain(|origin| !current_origins.contains(origin));
+        self.configured_origins = current_origins;
         let changed: Vec<_> = self
             .active_relays
             .iter()
@@ -1102,8 +1127,12 @@ impl RelayActor {
                 let current = self.config.relay_map.get(url);
                 let before = active.config.as_ref().and_then(|c| c.auth_token.as_ref());
                 let after = current.as_ref().and_then(|c| c.auth_token.as_ref());
-                (before != after || (active.config.is_some() && current.is_none()))
-                    .then_some((url.clone(), current.is_some()))
+                (before != after
+                    || (active.config.is_some() && current.is_none())
+                    || self
+                        .withdrawn_origins
+                        .contains(&url.origin().ascii_serialization()))
+                .then_some((url.clone(), current.is_some()))
             })
             .collect();
         for (url, present) in changed {
@@ -1134,6 +1163,15 @@ impl RelayActor {
         &mut self,
         item: RelaySendItem,
     ) -> Option<impl Future<Output = ()> + use<>> {
+        // A peer's stale discovery record must not recreate a logged-out
+        // configured origin as an anonymous relay and start a 401 retry loop.
+        // Unrelated peer relays retain the upstream behavior.
+        if self
+            .withdrawn_origins
+            .contains(&item.url.origin().ascii_serialization())
+        {
+            return None;
+        }
         let url = item.url.clone();
         let handle = self
             .active_relay_handle_for_endpoint(&item.url, &item.remote_endpoint)
@@ -1156,7 +1194,13 @@ impl RelayActor {
         }
     }
 
-    async fn on_network_change(&mut self, report: Report) {
+    async fn on_network_change(&mut self, mut report: Report) {
+        if report.preferred_relay.as_ref().is_some_and(|url| {
+            self.withdrawn_origins
+                .contains(&url.origin().ascii_serialization())
+        }) {
+            report.preferred_relay = None;
+        }
         let prev = self.config.my_relay.get();
         let prev_url = prev.as_ref().map(RelayStatus::url);
         if report.preferred_relay.as_ref() == prev_url {

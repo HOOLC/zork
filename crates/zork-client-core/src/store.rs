@@ -1,5 +1,6 @@
 //! Device-local state exists independently of any running Station.
 mod configuration_submissions;
+mod directory;
 mod message_delivery;
 mod messages;
 pub(crate) use configuration_submissions::ConfigurationDelivery;
@@ -29,6 +30,8 @@ pub struct SavedNode {
 pub struct RemoteNode {
     pub origin: String,
     pub addr: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routes: Option<zork_config::membership::MeshRoutes>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +147,8 @@ impl ClientStore {
     }
 
     pub fn open(root: &Path) -> Result<Self> {
+        let channel = zork_config::channel::activate_for_data(root)?;
+        zork_config::channel::claim(root, channel)?;
         std::fs::create_dir_all(root)?;
         #[cfg(unix)]
         {
@@ -237,21 +242,23 @@ impl ClientStore {
 
     /// Commit accepted peers, network and removal of the invitation together.
     pub fn accept_invitation(&self, nodes: &[SavedNode], network: &crate::Network) -> Result<()> {
-        self.commit_invitation(None, nodes, network)
+        self.commit_invitation(None, nodes, network, None)
     }
     pub(crate) fn accept_invitation_if(
         &self,
         id: &str,
         nodes: &[SavedNode],
         network: &crate::Network,
+        group: &zork_config::membership::MeshGroup,
     ) -> Result<()> {
-        self.commit_invitation(Some(id), nodes, network)
+        self.commit_invitation(Some(id), nodes, network, Some(group))
     }
     fn commit_invitation(
         &self,
         expected: Option<&str>,
         nodes: &[SavedNode],
         network: &crate::Network,
+        group: Option<&zork_config::membership::MeshGroup>,
     ) -> Result<()> {
         let mut conn = self.0.lock().expect("client database");
         let tx = conn.transaction()?;
@@ -273,6 +280,34 @@ impl ClientStore {
                 "invitation_cancelled"
             );
         }
+        if expected.is_some() {
+            let switching: Option<String> = tx.query_row("SELECT json_extract(value,'$.switch_from') FROM cache WHERE node='device' AND key='invitation'", [], |row| row.get(0)).optional()?.flatten();
+            if let Some(switching) = switching {
+                let expected: zork_config::membership::MeshVersion =
+                    serde_json::from_str(&switching)?;
+                let key = format!("mesh-membership:{}", expected.authority);
+                let previous: String = tx.query_row(
+                    "SELECT value FROM cache WHERE node='device' AND key=?1",
+                    [&key],
+                    |row| row.get(0),
+                )?;
+                let previous: zork_config::membership::MeshGroup = serde_json::from_str(&previous)?;
+                anyhow::ensure!(
+                    expected.matches(&previous),
+                    "Mesh 成员已变化，请重新确认切换"
+                );
+                anyhow::ensure!(
+                    group.is_some_and(|next| next.authority != previous.authority),
+                    "invalid_mesh_switch"
+                );
+                tx.execute("INSERT INTO cache(node,key,value) VALUES ('device',?1,?2) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",
+                    params![format!("mesh-detached:{}", previous.authority), serde_json::to_string(&previous)?])?;
+                tx.execute(
+                    "DELETE FROM nodes WHERE json_extract(value,'$.group')=?1",
+                    [&previous.authority],
+                )?;
+            }
+        }
         for node in nodes {
             tx.execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value",params![node.id,serde_json::to_string(node)?])?;
         }
@@ -281,7 +316,26 @@ impl ClientStore {
             "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
             [],
         )?;
+        if let Some(group) = group {
+            tx.execute("INSERT INTO cache(node,key,value) VALUES ('device',?1,?2) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",
+                params![format!("mesh-membership:{}", group.authority), serde_json::to_string(group)?])?;
+        }
         tx.commit()?;
+        drop(conn);
+        self.directory_changed();
+        self.notifications_changed();
+        Ok(())
+    }
+    pub(crate) fn update_invitation_input_if(
+        &self,
+        id: &str,
+        input: &impl Serialize,
+    ) -> Result<()> {
+        let changed = self.0.lock().expect("client database").execute(
+            "UPDATE cache SET value=?1 WHERE node='device' AND key='invitation_input' AND json_extract(value,'$.id')=?2",
+            params![serde_json::to_string(input)?, id],
+        )?;
+        anyhow::ensure!(changed == 1, "invitation_cancelled");
         Ok(())
     }
     pub(crate) fn resolve_invitation_if(&self, id: &str, pending: &impl Serialize) -> Result<()> {
@@ -307,6 +361,7 @@ impl ClientStore {
     pub fn save_node(&self, node: &SavedNode) -> Result<()> {
         let changed = self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(node)?])?;
         if changed > 0 {
+            self.directory_changed();
             self.notifications_changed();
         }
         Ok(())
@@ -317,11 +372,15 @@ impl ClientStore {
             .lock()
             .expect("client database")
             .execute("DELETE FROM nodes WHERE id=?1", [id])?;
+        self.directory_changed();
         self.notifications_changed();
         Ok(())
     }
     pub fn put<T: Serialize>(&self, node: &str, key: &str, value: &T) -> Result<()> {
         let changed = self.0.lock().expect("client database").execute("INSERT INTO cache(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value WHERE cache.value != excluded.value",params![node,key,serde_json::to_string(value)?])?;
+        if changed > 0 && node == "device" && key == "last-node" {
+            self.directory_changed();
+        }
         if changed > 0
             && matches!(
                 key,

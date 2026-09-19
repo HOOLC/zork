@@ -32,6 +32,11 @@ impl Runtime {
     }
 }
 pub fn own(root: &Path, config: &MeshConfig, network: managed::Runtime) -> anyhow::Result<Runtime> {
+    let mut config = config.clone();
+    zork_config::services::ServicesConfig::load_for_data_root(
+        &zork_config::relay_account::resolve_root(root)?,
+    )?
+    .apply_defaults(&mut config)?;
     let account = if config.offline {
         None
     } else {

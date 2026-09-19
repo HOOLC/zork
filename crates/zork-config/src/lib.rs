@@ -1,3 +1,4 @@
+pub mod channel;
 pub mod membership;
 pub mod relay_account;
 pub mod service;
@@ -172,6 +173,7 @@ mod skill_tests {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct MeshConfig {
+    pub channel: Option<channel::Channel>,
     pub name: String,
     pub group: Option<membership::MeshGroup>,
     pub enabled: bool,
@@ -181,7 +183,13 @@ pub struct MeshConfig {
     pub offline: bool,
     pub bind: Option<String>,
     pub relay_urls: Option<Vec<String>>,
+    /// The UDP port relays answer QUIC address discovery on, when a
+    /// deployment's relay is not on iroh's default 7842 — the case when the
+    /// local network carries UDP only to particular destination ports.
+    pub relay_quic_port: Option<u16>,
     pub discovery_url: Option<String>,
+    /// Optional UDP-only QAD servers, separate from authenticated relay forwarding.
+    pub quic_discovery_urls: Option<Vec<String>>,
     pub peers: Vec<MeshPeer>,
     pub workspaces: Vec<MeshWorkspace>,
 }
@@ -192,6 +200,8 @@ pub struct MeshPeer {
     pub origin: String,
     pub name: String,
     pub addr: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routes: Option<membership::MeshRoutes>,
     /// Local workspace IDs this peer may ask this node to execute in.
     #[serde(default)]
     pub execute: Vec<String>,
@@ -376,7 +386,7 @@ pub struct ProcessArgs {
 }
 
 pub fn default_data_root() -> PathBuf {
-    home_dir().join(".zork")
+    channel::default_root(channel::current().expect("valid installation channel"))
 }
 
 pub fn config_path(data_root: &Path) -> PathBuf {

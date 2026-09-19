@@ -1,0 +1,1 @@
+zone-key-transparency.demo.invalid. IN DNSKEY 257 3 13 +3CxA5WADkWo+YkDWd3ZhjavWHkhpj43jjDCSlVXzwcz3ePr+nNUZ8pX32zNmLX1OEWd2qEwjj88NOBaXKBPzw==
