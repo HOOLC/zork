@@ -68,20 +68,17 @@ impl Client {
             self.node()?,
             self.invitation.clone(),
         );
-        let account = self.account.clone();
         self.invitation_job = Some(zork_notify::Task(tokio::spawn(async move {
             let pending = match pending {
                 Some(pending) => pending,
                 None => {
-                    match resolve_input(&root, &store, input.unwrap(), &view, generation, &account)
-                        .await
-                    {
+                    match resolve_input(&root, &store, input.unwrap(), &view, generation).await {
                         Ok(pending) => pending,
                         Err(_) => return,
                     }
                 }
             };
-            run_invitation(root, store, node, pending, view, generation, account).await;
+            run_invitation(root, store, node, pending, view, generation).await;
         })));
         Ok(())
     }
@@ -446,13 +443,8 @@ async fn resolve_input(
     input: Input,
     view: &InvitationState,
     generation: u64,
-    account: &crate::relay_account::controller::Controller,
 ) -> Result<Pending> {
     let mut retry = zork_notify::retry::Retry::default();
-    let mut changes = account.subscribe();
-    let public_relay = !zork_mesh::enrollment::ticket::Ticket::decode(&input.ticket)?
-        .network_config()?
-        .offline;
     loop {
         match crate::transport::resolve_invitation(root, &input.ticket, InviteKind::Client).await {
             Ok(invitation) => {
@@ -506,19 +498,11 @@ async fn resolve_input(
                 if snapshot["invitation"]["id"] != input.id {
                     anyhow::bail!("invitation_cancelled");
                 }
-                let login = public_relay && !account.snapshot().authenticated;
                 snapshot["done"] = json!(terminal);
-                snapshot["invitation"]["status"] = json!(if terminal {
-                    "failed"
-                } else if login {
-                    "login_required"
-                } else {
-                    "resolving"
-                });
+                snapshot["invitation"]["status"] =
+                    json!(if terminal { "failed" } else { "resolving" });
                 snapshot["notice"] = json!(if terminal {
                     "邀请无法使用，请在电脑重新生成。"
-                } else if login {
-                    "尚未找到局域网设备。跨网络连接请先登录 Zork，登录后会继续此邀请。"
                 } else {
                     "暂时无法读取邀请，正在重试…"
                 });
@@ -526,7 +510,7 @@ async fn resolve_input(
                 if terminal {
                     return Err(error);
                 }
-                tokio::select! { _ = retry.wait() => {}, _ = changes.changed() => {} }
+                retry.wait().await;
             }
         }
     }
@@ -539,11 +523,9 @@ async fn run_invitation(
     pending: Pending,
     view: Arc<InvitationState>,
     generation: u64,
-    account: Arc<crate::relay_account::controller::Controller>,
 ) {
     let mut retry = zork_mesh::retry::DiscoveryBackoff::default();
     let mut attempt = 0u64;
-    let mut account_changes = account.subscribe();
     loop {
         attempt += 1;
         let result: Result<()> = async {
@@ -628,11 +610,6 @@ async fn run_invitation(
                     ("revoked", "连接邀请已取消或访问权限已撤销")
                 } else if terminal {
                     ("conflict", "邀请身份或来源已变化，请重新生成")
-                } else if !account.snapshot().authenticated && !pending.invitation.offline {
-                    (
-                        "login_required",
-                        "跨网络连接需要登录 Zork；登录后会自动继续此邀请。",
-                    )
                 } else {
                     ("waiting", "暂时无法连接设备，正在重试…")
                 };
@@ -645,7 +622,7 @@ async fn run_invitation(
                 } else {
                     json!(delay.as_secs())
                 };
-                if !terminal && status != "login_required" {
+                if !terminal {
                     snapshot["notice"] = json!(format!(
                         "暂时无法连接设备，{} 秒后重试（第 {} 次）",
                         delay.as_secs(),
@@ -656,7 +633,7 @@ async fn run_invitation(
                 if terminal {
                     return;
                 }
-                tokio::select! { _ = tokio::time::sleep(delay) => {}, _ = account_changes.changed() => {} }
+                tokio::time::sleep(delay).await;
             }
         }
     }

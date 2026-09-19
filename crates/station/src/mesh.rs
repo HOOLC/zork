@@ -469,7 +469,6 @@ impl MeshService {
             }),
         )
         .await?;
-        let runtime = zork_client_core::transport::own(root, &config, runtime)?;
         let node = runtime.node();
         let origin = node.identity().await?;
         ensure!(

@@ -4,6 +4,7 @@ import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
 import { authConfigured, bearerToken, denied, digest, readJson, reply, validId, validSecret, verifyToken } from "./auth";
 import { devicePage, googleStart, consumeLoginRate } from "./login";
 import type { Env } from "./env";
+export { RelayBudget } from "./relay";
 export { Account } from "./account";
 export { LoginAttempt, LoginLimiter } from "./login";
 
@@ -58,9 +59,14 @@ export default {
         google_login: authConfigured(env),
       });
     }
-    if (path.startsWith("/v1/") || path === "/relay") {
+    if (path === "/relay") {
       if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
-      if (!authConfigured(env)) return reply({ error: "login_not_configured" }, 503);
+      if (request.method !== "GET") return reply({ error: "method_not_allowed" }, 405);
+      return env.RELAY_BUDGET.getByName("primary").fetch(request);
+    }
+    if (path.startsWith("/v1/")) {
+      if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
+      if (path.startsWith("/v1/auth/") && !authConfigured(env)) return reply({ error: "login_not_configured" }, 503);
     }
     if (path === "/v1/auth/google/start" && request.method === "GET") {
       return googleStart(env, request);
@@ -139,10 +145,7 @@ export default {
         return reply({ error: "invalid_request" }, 400);
       }
     }
-    if (path === "/relay" || path === "/v1/auth/session" || path === "/v1/auth/sessions" || /^\/v1\/auth\/sessions\/[^/]+$/.test(path)) {
-      if (path === "/relay" && request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-        return reply({ error: "websocket_required" }, 426);
-      }
+    if (path === "/v1/auth/session" || path === "/v1/auth/sessions" || /^\/v1\/auth\/sessions\/[^/]+$/.test(path)) {
       const token = bearerToken(request);
       const claims = token ? await verifyToken(env, token, "access") : null;
       if (!claims) return denied();

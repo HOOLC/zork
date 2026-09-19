@@ -78,7 +78,7 @@ pub fn account<V: 'static>(
             div()
                 .text_size(px(11.))
                 .text_color(rgb(ZORK_UI.palette.muted))
-                .child("Zork 账号用于公网连接；局域网连接无需登录。"),
+                .child("云端账号为可选项；Mesh 连接无需登录。"),
         )
         .child(row(
             "账号",
@@ -94,7 +94,7 @@ pub fn account<V: 'static>(
                             .unwrap_or_default()
                     )
                 })
-                .unwrap_or("使用 Google 账号登录 Zork，启用跨网络连接。".into()),
+                .unwrap_or("使用 Google 账号登录 Zork 云端服务。".into()),
             div()
                 .flex()
                 .gap_2()

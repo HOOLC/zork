@@ -1,12 +1,10 @@
-//! Invitation transport with the same account lifecycle as the data endpoint.
-use crate::relay_account::{Access, Account, RelayAccountTask};
+//! Invitation transport uses device identity, independently of cloud accounts.
 use anyhow::{ensure, Context, Result};
 use std::{ops::Deref, path::Path, sync::Arc, time::Duration};
 use zork_config::MeshConfig;
 use zork_mesh::enrollment::{ticket::Ticket, Invitation, InviteKind};
 
 pub struct Enrollment {
-    _account: Option<RelayAccountTask>,
     transport: Arc<zork_mesh::enrollment::Enrollment>,
 }
 impl Deref for Enrollment {
@@ -29,40 +27,11 @@ impl Enrollment {
         }
         let config = &effective;
         let transport = Arc::new(zork_mesh::enrollment::Enrollment::bind(key_root, config).await?);
-        let account = if config.offline {
-            None
-        } else {
-            zork_config::relay_account::control_origin(config.relay_urls.as_deref())
-                .map(|origin| Account::new(root, &origin))
-                .transpose()?
-        };
-        let task = if let Some(account) = account {
-            let origin = account.origin().to_owned();
-            let access = account.cached_access()?;
-            transport
-                .set_relay_access(&origin, access.as_ref().map(Access::token))
-                .await?;
-            let endpoint = transport.clone();
-            Some(account.maintain(move |access| {
-                let endpoint = endpoint.clone();
-                let origin = origin.clone();
-                async move {
-                    endpoint
-                        .set_relay_access(&origin, access.as_ref().map(Access::token))
-                        .await
-                }
-            })?)
-        } else {
-            None
-        };
-        Ok(Self {
-            _account: task,
-            transport,
-        })
+        Ok(Self { transport })
     }
 }
 
-/// Account storage stays in the profile root, separate from bootstrap identity.
+/// Service configuration stays in the profile root, separate from bootstrap identity.
 pub async fn resolve_invitation(
     root: &Path,
     value: &str,

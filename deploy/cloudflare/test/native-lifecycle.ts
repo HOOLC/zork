@@ -1,5 +1,4 @@
-// Actual zork CLI + Station, production core lifecycle and official relay.
-// Only the external Google identity provider is replaced by a local RS256 fixture.
+// Actual zork CLI + Station, native enrollment and official relay without Google.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -42,9 +41,6 @@ function pass(label: string) {
   checks.push(label);
   console.log("PASS: " + label);
 }
-async function credentials() {
-  return JSON.parse(await fs.readFile(path.join(root, "node/account/relay.json"), "utf8"));
-}
 try {
   const relayPort = await port(),
     workerPort = await port();
@@ -53,6 +49,7 @@ try {
     relay: `http://127.0.0.1:${relayPort}`,
     origin: `http://127.0.0.1:${workerPort}`,
     port: workerPort,
+    noGoogle: true,
   });
   const nodeRoot = path.join(root, "node");
   await fs.mkdir(nodeRoot);
@@ -76,57 +73,10 @@ try {
       };
     }
   }
-  async function login() {
-    const child = spawn(binary, ["account", "login", "--no-browser", "--data", nodeRoot], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    processes.push(child);
-    let output = "";
-    child.stdout!.on("data", (chunk) => {
-      output += chunk.toString();
-    });
-    child.stderr!.resume();
-    await until(async () => output.includes("\n"), "CLI login listener");
-    const start = new URL(output.split("\n")[0]);
-    assert.equal(start.origin, h!.origin);
-    // A forged local callback must not complete/cancel the real login.
-    const local = new URL(start.searchParams.get("redirect_uri")!);
-    local.searchParams.set("state", "forged");
-    local.searchParams.set("code", "forged");
-    assert.equal((await fetch(local)).status, 400);
-    const response = await h!.fetch(start.pathname + start.search, { redirect: "manual" });
-    assert.equal(response.status, 302);
-    const google = new URL(response.headers.get("location")!);
-    const code = ulid();
-    h!.codes.set(code, {
-      nonce: google.searchParams.get("nonce")!,
-      challenge: google.searchParams.get("code_challenge")!,
-      sub: "native-google-user",
-    });
-    const callback = await h!.fetch(
-      "/v1/auth/google/callback?" +
-        new URLSearchParams({
-          state: google.searchParams.get("state")!,
-          code,
-        }),
-      {
-        redirect: "manual",
-        headers: { cookie: response.headers.get("set-cookie")!.split(";")[0] },
-      },
-    );
-    assert.equal(callback.status, 302);
-    const finish = await fetch(callback.headers.get("location")!, {
-      signal: AbortSignal.timeout(15000),
-    });
-    assert.equal(finish.status, 200);
-    await until(async () => child.exitCode !== null, "CLI login completion");
-    assert.equal(child.exitCode, 0);
-    return (await credentials()).current;
-  }
   await cli("status", "--json");
   const config = JSON.parse(await fs.readFile(path.join(nodeRoot, "config.json"), "utf8"));
   for (const key of ["station", "runtime", "control", "agent"]) config.bind[key] = `127.0.0.1:${await port()}`;
+  config.admin = { token: "isolated-native-enrollment" };
   config.mesh = {
     ...config.mesh,
     enabled: true,
@@ -145,83 +95,31 @@ try {
   });
   processes.push(station);
   const pid = station.pid;
-  await h.fetch("/__test/offline");
   await until(async () => {
     try {
-      const response = await fetch("http://" + config.bind.runtime + "/v1/mesh");
+      const response = await fetch("http://" + config.bind.runtime + "/v1/mesh", { headers: { authorization: "Bearer isolated-native-enrollment" } });
       return response.ok && typeof ((await response.json()) as any).origin === "string";
     } catch {
       return false;
     }
   }, "local Station readiness without Google login");
-  pass("local Station is ready with no account and an unavailable login service");
-  await h.fetch("/__test/offline");
-  let session = await login();
-  assert.equal((await fs.stat(path.join(nodeRoot, "account/relay.json"))).mode & 0o777, 0o600);
-  pass("real CLI OAuth callback/PKCE exchange and private credential storage");
-  async function connected(access: string) {
-    if (station.exitCode !== null) throw new Error("Station exited; retained fixture log");
-    const res = await h!.fetch("/v1/auth/session", {
-      headers: { authorization: "Bearer " + access },
-    });
-    return res.status === 200 && Number(((await res.json()) as any).relay_connections) >= 2;
-  }
-  await until(() => connected(session.token), "Station authenticated through Worker to official relay");
-  const accounts: any = await h.mf.getDurableObjectNamespace("ACCOUNTS");
-  const account = accounts.get(accounts.idFromName(session.subject));
-  await until(async () => Number((await account.statistics()).quota?.bytes) > 128, "native iroh challenge handshake traffic");
-  pass("real Station data and invitation endpoints reach official iroh relay through authenticated Worker");
-  const old = session;
-  const refresh = await cli("refresh", "--json");
-  assert.equal("code" in refresh, false);
-  session = (await credentials()).current;
-  assert.equal(session.refresh_token !== old.refresh_token, true);
-  assert.equal(session.expires_at >= old.expires_at, true);
-  await until(() => connected(session.token), "renewed Station relay connection");
+  pass("local Station is ready without an account or Google configuration");
+  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+  const budget = budgets.get(budgets.idFromName("primary"));
+  await until(async () => Number((await budget.statistics())?.bytes) > 128, "native iroh relay handshakes without credentials");
+  pass("Station data and invitation endpoints complete native iroh relay handshakes anonymously");
+  const enrollment = await exec("cargo", ["test", "--locked", "-p", "zork-client-core", "--test", "relay_account_enrollment", "--", "--ignored", "--nocapture"], {
+    cwd: path.resolve("../.."),
+    env: { ...env, ZORK_ENROLLMENT_URL: "http://" + config.bind.runtime, ZORK_ENROLLMENT_TOKEN: "isolated-native-enrollment", ZORK_ENROLLMENT_PUBLIC: "1" },
+    timeout: 180000,
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  await fs.writeFile(path.join(report, "enrollment.log"), enrollment.stdout + enrollment.stderr);
+  assert.match(enrollment.stdout, /PASS: real short invite, approval, Mesh read and restart recovery without Google credentials/);
   assert.equal(station.pid, pid);
-  const concurrent = await Promise.all([cli("refresh", "--json"), cli("refresh", "--json")]);
-  assert.equal(
-    concurrent.every((result) => !("code" in result)),
-    true,
-  );
-  session = (await credentials()).current;
-  assert.equal((await h.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + session.token } })).status, 200);
-  pass("refresh and concurrent CLI rotations hot-apply without restarting Station");
-
-  const beforeAutomatic = session;
-  console.log("Waiting for the real 5-minute credential's renewal deadline...");
-  await until(async () => (await credentials()).current?.refresh_token !== beforeAutomatic.refresh_token, "automatic renewal at production expiry", 260000);
-  session = (await credentials()).current;
-  await until(() => connected(session.token), "automatically renewed relay admission");
-  assert.equal(station.pid, pid);
-  pass("production-duration automatic renewal keeps the existing Station usable");
-
-  await h.fetch("/__test/offline");
-  const offlineLogout = await cli("logout", "--json");
-  assert.equal("code" in offlineLogout, true, "offline logout must report remote revocation pending");
-  await until(async () => (await credentials()).current === null, "local credentials disabled");
-  assert.equal((await credentials()).pending_revocations.length, 1);
-  await h.fetch("/__test/offline");
-  await until(async () => (await credentials()).pending_revocations.length === 0, "queued logout revocation");
-  assert.equal((await h.fetch("/v1/auth/session", { headers: { authorization: "Bearer " + session.token } })).status, 401);
-  pass("offline logout disables locally, then retries server revocation on recovery");
-  session = await login();
-  await until(() => connected(session.token), "login hot-applies to existing Station");
-  await h.fetch("/__test/lose-refresh-response");
-  const lostRefresh = await cli("refresh");
-  assert.equal("code" in lostRefresh, true, "injected lost rotation response must reach the real client");
-  const logout = await cli("logout", "--all");
-  assert.equal("code" in logout, false);
-  assert.equal(
-    (
-      await h.fetch("/relay", {
-        headers: { upgrade: "websocket", authorization: "Bearer " + session.token },
-      })
-    ).status,
-    401,
-  );
-  assert.equal(station.pid, pid);
-  pass("relogin, lost rotation response recovery and logout-all invalidate credentials without Station restart");
+  assert.equal(station.exitCode, null);
+  await assert.rejects(fs.access(path.join(nodeRoot, "account/relay.json")));
+  pass("real core invitation approval, native business read and client restart work without cloud credentials");
   await log.close();
   success = true;
 } finally {
@@ -252,7 +150,7 @@ try {
         passed: success,
         checks,
         binaries: hashes,
-        google: "local RS256 provider fixture; real Google configuration still required",
+        google: "not configured; no credentials issued",
         relay: "official iroh-relay 1.1.0 Docker image",
         fixture: success ? "removed" : root,
       },

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-# The Worker authenticates Google-issued relay JWTs. This process is not on
-# the public internet; it only accepts connections the Worker forwards.
+# The Worker bounds public relay resource use independently of cloud accounts.
+# This process only accepts internal connections from that Worker.
 cat > /tmp/relay.toml <<EOF
 enable_relay = true
 http_bind_addr = "0.0.0.0:8080"

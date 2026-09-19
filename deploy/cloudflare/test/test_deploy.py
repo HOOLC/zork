@@ -33,11 +33,23 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn("private-test-value", json.dumps(public))
             self.assertNotIn("must-not-be-copied", json.dumps(public))
             self.assertEqual(private["GOOGLE_CLIENT_SECRET"], "private-test-value")
-            self.assertEqual(len(public["durable_objects"]["bindings"]), 5)
+            self.assertIn({"name": "RELAY_BUDGET", "class_name": "RelayBudget"}, public["durable_objects"]["bindings"])
             self.assertTrue(any("Cloudflare API token" in item for item in missing))
             google.chmod(0o644)
             with self.assertRaisesRegex(ValueError, "mode 600"):
                 deployment.configuration(args)
+
+    @patch.object(deployment, "wrangler_authenticated", return_value=True)
+    def test_relay_deployment_does_not_require_google_configuration(self, _authenticated):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "wrangler.json"
+            config.write_text(json.dumps({"account_id": "test-account"}))
+            args = SimpleNamespace(config=config, google_client=root / "missing.json", token_file=root / "token")
+            public, private, missing = deployment.configuration(args)
+            self.assertEqual(missing, [])
+            self.assertNotIn("GOOGLE_CLIENT_SECRET", private)
+            self.assertEqual(public["vars"]["GOOGLE_CLIENT_ID"], "")
 
     def test_a_changed_candidate_is_rejected_before_any_deploy_operation(self):
         with tempfile.TemporaryDirectory() as directory:

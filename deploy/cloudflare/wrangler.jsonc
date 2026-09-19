@@ -24,6 +24,7 @@
   ],
   "durable_objects": {
     "bindings": [
+      { "name": "RELAY_BUDGET", "class_name": "RelayBudget" },
       {
         "name": "RELAY",
         "class_name": "Relay",
@@ -55,5 +56,6 @@
       "tag": "v2-sessions",
       "new_sqlite_classes": ["Account", "LoginAttempt", "LoginLimiter"],
     },
+    { "tag": "v3-public-relay", "new_sqlite_classes": ["RelayBudget"] },
   ],
 }

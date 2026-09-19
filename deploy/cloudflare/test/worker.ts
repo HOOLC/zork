@@ -1,6 +1,6 @@
 // Only the test bundler imports this entry. Production exports no fixture routes.
 import { DurableObject } from "cloudflare:workers";
-import worker, { Account as ProductionAccount, DiscoveryRecord, LoginAttempt, LoginLimiter } from "../src/index";
+import worker, { Account as ProductionAccount, RelayBudget as ProductionRelayBudget, DiscoveryRecord, LoginAttempt, LoginLimiter } from "../src/index";
 import { signToken, nowSeconds, reply, readJson } from "../src/auth";
 import type { Env } from "../src/env";
 export { DiscoveryRecord, LoginAttempt, LoginLimiter };
@@ -13,6 +13,20 @@ export class Account extends ProductionAccount {
     else session.expires = nowSeconds();
     this.ctx.storage.kv.put("account", account);
   }
+  statistics() {
+    return {
+      quota: this.ctx.storage.kv.get("quota"),
+      account: this.ctx.storage.kv.get<any>("account")?.sessions.map((s: any) => ({
+        id: s.id,
+        generation: s.generation,
+        expires: s.expires,
+        idle: s.idle,
+      })),
+    };
+  }
+}
+
+export class RelayBudget extends ProductionRelayBudget {
   exhaustBudget(kind: "bytes" | "frames" = "bytes") {
     const now = nowSeconds();
     this.ctx.storage.kv.put("quota", {
@@ -27,15 +41,7 @@ export class Account extends ProductionAccount {
     });
   }
   statistics() {
-    return {
-      quota: this.ctx.storage.kv.get("quota"),
-      account: this.ctx.storage.kv.get<any>("account")?.sessions.map((s: any) => ({
-        id: s.id,
-        generation: s.generation,
-        expires: s.expires,
-        idle: s.idle,
-      })),
-    };
+    return this.ctx.storage.kv.get("quota");
   }
 }
 

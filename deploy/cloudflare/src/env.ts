@@ -1,8 +1,10 @@
 import type { Relay, DiscoveryRecord } from "./index";
+import type { RelayBudget } from "./relay";
 import type { Account } from "./account";
 import type { LoginAttempt, LoginLimiter } from "./login";
 
 export interface Env {
+  RELAY_BUDGET: DurableObjectNamespace<RelayBudget>;
   RELAY: DurableObjectNamespace<Relay>;
   RECORDS: DurableObjectNamespace<DiscoveryRecord>;
   ACCOUNTS: DurableObjectNamespace<Account>;
