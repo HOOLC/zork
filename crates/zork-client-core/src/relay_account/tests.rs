@@ -247,7 +247,20 @@ async fn account_controller_cancellation_fences_a_late_device_start_and_observer
     assert!(state.login_url.is_none());
     assert!(!state.authenticated);
     assert!(storage::load(root.path()).unwrap().is_none());
-    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    // Maintenance may still hold the account lock after cancellation completes.
+    // Seed through the same serialized write boundary as another account owner.
+    {
+        let account = Account::new(root.path(), &origin).unwrap();
+        let _lock = account.lock().await.unwrap();
+        storage::write(
+            root.path(),
+            &AccountFile {
+                current: Some(saved(&origin, storage::now() + 300)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
     tokio::time::timeout(Duration::from_secs(2), async {
         while !controller.snapshot().authenticated {
             tokio::time::sleep(Duration::from_millis(10)).await;

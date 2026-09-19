@@ -53,7 +53,7 @@ permissions:
 jobs:
   runtime:
     name: ${{ inputs.prime_cache && 'Prime runtime cache (no tests)' || 'Main runtime contracts' }}
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.prime_cache)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.prime_cache && 15 || 5 }}
     env:
@@ -68,8 +68,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: target
-          key: ci-target-v5-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
+            ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}-
+            ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v5-runtime-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
@@ -100,7 +102,7 @@ jobs:
       - name: Build shared runtime and test binaries
         run: bash scripts/check-runtime.sh build
       - name: Save compiled target cache
-        if: env.KACHE_CONFIGURED != 'true' && steps.target.outputs.cache-hit != 'true'
+        if: steps.target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: target
