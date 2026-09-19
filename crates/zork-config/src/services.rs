@@ -2,7 +2,16 @@
 //! Public endpoints only; account credentials are never service configuration.
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn bundled_services(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()?
+        .ancestors()
+        .filter(|path| path.file_name().is_some_and(|name| name == "Contents"))
+        .map(|contents| contents.join("Resources/services.json"))
+        .find(|path| path.is_file())
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -48,10 +57,9 @@ impl ServicesConfig {
 
     /// Packaged defaults, then the app bundle file, then `ZORK_SERVICES_CONFIG`.
     pub fn load_from_install() -> Result<Self> {
-        let bundled = std::env::current_exe().ok().and_then(|exe| {
-            exe.parent()
-                .map(|dir| dir.join("../Resources/services.json"))
-        });
+        let bundled = std::env::current_exe()
+            .ok()
+            .and_then(|exe| bundled_services(&exe));
         let user = std::env::var_os("ZORK_SERVICES_CONFIG").map(std::path::PathBuf::from);
         Self::load(bundled.as_deref(), user.as_deref())
     }
@@ -175,6 +183,26 @@ pub fn validate_endpoint(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn embedded_helpers_inherit_the_outer_app_services() {
+        let root = tempfile::tempdir().unwrap();
+        let contents = root.path().join("Zork.app/Contents");
+        let services = contents.join("Resources/services.json");
+        std::fs::create_dir_all(services.parent().unwrap()).unwrap();
+        std::fs::write(&services, r#"{"relay_urls":["https://relay.example"]}"#).unwrap();
+        for executable in [
+            contents.join("MacOS/zork-gui"),
+            contents.join("Helpers/ZorkStation.app/Contents/MacOS/zork-station"),
+        ] {
+            let bundled = bundled_services(&executable).unwrap();
+            assert_eq!(
+                ServicesConfig::load(Some(&bundled), None)
+                    .unwrap()
+                    .relay_urls,
+                Some(vec!["https://relay.example".into()])
+            );
+        }
+    }
     #[test]
     fn packaged_defaults_are_the_zork_relay() {
         let defaults = ServicesConfig::packaged_defaults();

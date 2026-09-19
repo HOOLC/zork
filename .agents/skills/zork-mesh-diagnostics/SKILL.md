@@ -22,7 +22,7 @@ description: 排查 zork 的设备接入、Mesh 连接、远程任务投递和�
 - 接入、成员、撤权：`scripts/test-mesh-enrollment.py`。
 - 安装/复用：`scripts/test-native-installer.py`、`scripts/test-mesh-installer.py`；后者使用真实用户服务管理器。
 - 手机成员目录及恢复：`scripts/test-mobile-mesh-directory.py`、`scripts/android/test_directory.py`；Chat、远程工具、文件与恢复按 `scripts/test-chat-channels.py`、`scripts/test-mesh-enrollment.py` 和 `scripts/test-shared-services.py` 的实际覆盖选择。
-- 网络与资源：`relay-proxy-lab` 检查代理 relay、独立 QAD 与凭据热更新，`transport-lifetime` 检查真实运行时的 FD 回收；LAN 运行期故障另用注入失败的监督测试。关闭后的异步回收需有界等待，不能只测安装失败或抬高 FD 上限。
+- 网络与资源：`relay-proxy-lab` 检查代理 relay、独立 QAD 与凭据热更新，`transport-lifetime` 检查真实运行时的 FD 回收。LAN 另跑可接收 multicast 的 `live_mdns_discovers_peer_without_any_address_hint` 和运行期故障监督测试；同机地址缓存不能代替 mDNS，多网卡须检查后到的可达地址。关闭后的异步回收需有界等待，不能只测安装失败或抬高 FD 上限。
 - relay 流量：`scripts/test-local-relay.py`；原生接入/后台接管：`scripts/test-mesh-experience-ui.py`。
 
 报告故障层和证据。允许直连的测试不证明强制 relay，同机 fixture 不证明物理跨网，源码通过不证明公开 Release 资产存在。

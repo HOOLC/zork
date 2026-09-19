@@ -17,10 +17,12 @@ struct Bootstrap {
     offline: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     address: Option<std::net::SocketAddr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    additional_addresses: Vec<std::net::SocketAddr>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     discovery_url: Option<String>,
 }
-fn address_rank(ip: std::net::IpAddr, config: &MeshConfig) -> u8 {
+fn address_rank(ip: std::net::IpAddr, config: &MeshConfig, lan: &[std::net::Ipv4Addr]) -> u8 {
     if config
         .bind
         .as_ref()
@@ -30,7 +32,8 @@ fn address_rank(ip: std::net::IpAddr, config: &MeshConfig) -> u8 {
         return 0;
     }
     match ip {
-        std::net::IpAddr::V4(ip) if ip.is_private() => 1,
+        std::net::IpAddr::V4(ip) if lan.contains(&ip) => 1,
+        std::net::IpAddr::V4(ip) if ip.is_private() => 2,
         std::net::IpAddr::V6(ip) if ip.is_unique_local() => 2,
         ip if ip.is_loopback() => 5,
         std::net::IpAddr::V6(ip) if ip.is_unicast_link_local() => 6,
@@ -42,17 +45,22 @@ impl Ticket {
     pub fn new(kind: InviteKind, address: EndpointAddr, config: &MeshConfig) -> Result<Self> {
         let bytes = SecretKey::generate().to_bytes();
         let token = bytes[..16].try_into().unwrap();
-        let direct = address
+        let lan = crate::lan_discovery::interfaces();
+        let mut direct: Vec<_> = address
             .ip_addrs()
             .filter(|addr| !addr.ip().is_unspecified() && !addr.ip().is_multicast())
-            .min_by_key(|addr| address_rank(addr.ip(), config))
-            .copied();
+            .copied()
+            .collect();
+        direct.sort_by_key(|addr| (address_rank(addr.ip(), config, &lan), *addr));
+        direct.truncate(16);
+        let additional_addresses = direct.iter().skip(1).copied().collect();
+        let primary = direct.first().copied();
         ensure!(
-            !config.offline || direct.is_some(),
+            !config.offline || primary.is_some(),
             "offline_invitation_needs_address"
         );
         let mut endpoint = EndpointAddr::new(address.id);
-        if let Some(addr) = direct {
+        for addr in direct {
             endpoint = endpoint.with_ip_addr(addr);
         }
         Ok(Self {
@@ -62,7 +70,8 @@ impl Ticket {
             bootstrap: Bootstrap {
                 channel: config.channel.unwrap_or(zork_config::channel::current()?),
                 offline: config.offline,
-                address: direct,
+                address: primary,
+                additional_addresses,
                 discovery_url: config.discovery_url.clone(),
             },
         })
@@ -99,6 +108,11 @@ impl Ticket {
                     8
                 } else {
                     0
+                }
+                | if !self.bootstrap.additional_addresses.is_empty() {
+                    32
+                } else {
+                    0
                 };
             bytes.push(flags);
             if let Some(addr) = self.bootstrap.address {
@@ -112,6 +126,26 @@ impl Ticket {
                 ensure!(url.len() <= 2048, "bootstrap_url_too_long");
                 bytes.extend_from_slice(&(url.len() as u16).to_be_bytes());
                 bytes.extend_from_slice(url.as_bytes());
+            }
+            if !self.bootstrap.additional_addresses.is_empty() {
+                ensure!(
+                    self.bootstrap.additional_addresses.len() <= 15,
+                    "too_many_bootstrap_addresses"
+                );
+                bytes.push(self.bootstrap.additional_addresses.len() as u8);
+                for addr in &self.bootstrap.additional_addresses {
+                    match addr.ip() {
+                        std::net::IpAddr::V4(ip) => {
+                            bytes.push(4);
+                            bytes.extend_from_slice(&ip.octets());
+                        }
+                        std::net::IpAddr::V6(ip) => {
+                            bytes.push(6);
+                            bytes.extend_from_slice(&ip.octets());
+                        }
+                    }
+                    bytes.extend_from_slice(&addr.port().to_be_bytes());
+                }
             }
         }
         Ok(format!(
@@ -143,7 +177,7 @@ impl Ticket {
         if bytes.len() > 48 {
             let flags = bytes[48];
             ensure!(
-                flags != 0 && flags & !31 == 0 && flags & 6 != 6,
+                flags != 0 && flags & !63 == 0 && flags & 6 != 6,
                 "invalid_bootstrap_flags"
             );
             bootstrap.offline = flags & 1 != 0;
@@ -194,10 +228,46 @@ impl Ticket {
                     Some(std::str::from_utf8(&bytes[cursor..cursor + len])?.to_owned());
                 cursor += len;
             }
+            if flags & 32 != 0 {
+                let count = *bytes.get(cursor).context("invalid_bootstrap_addresses")? as usize;
+                cursor += 1;
+                ensure!(count > 0 && count <= 15, "invalid_bootstrap_addresses");
+                for _ in 0..count {
+                    let kind = *bytes.get(cursor).context("invalid_bootstrap_address")?;
+                    cursor += 1;
+                    let len = match kind {
+                        4 => 4,
+                        6 => 16,
+                        _ => anyhow::bail!("invalid_bootstrap_address"),
+                    };
+                    ensure!(bytes.len() >= cursor + len + 2, "invalid_bootstrap_address");
+                    let ip: std::net::IpAddr = if kind == 4 {
+                        std::net::Ipv4Addr::from(
+                            <[u8; 4]>::try_from(&bytes[cursor..cursor + 4]).unwrap(),
+                        )
+                        .into()
+                    } else {
+                        std::net::Ipv6Addr::from(
+                            <[u8; 16]>::try_from(&bytes[cursor..cursor + 16]).unwrap(),
+                        )
+                        .into()
+                    };
+                    cursor += len;
+                    let port = u16::from_be_bytes(bytes[cursor..cursor + 2].try_into().unwrap());
+                    cursor += 2;
+                    bootstrap
+                        .additional_addresses
+                        .push(std::net::SocketAddr::new(ip, port));
+                }
+            }
             ensure!(cursor == bytes.len(), "invalid_bootstrap_trailing_data");
         }
         let mut endpoint = EndpointAddr::new(id);
-        if let Some(addr) = bootstrap.address {
+        for addr in bootstrap
+            .address
+            .into_iter()
+            .chain(bootstrap.additional_addresses.iter().copied())
+        {
             ensure!(
                 addr.port() != 0 && !addr.ip().is_unspecified() && !addr.ip().is_multicast(),
                 "invalid_bootstrap_address"
@@ -356,5 +426,32 @@ mod tests {
             .unwrap();
         corrupted.push(1);
         assert!(Ticket::decode(&format!("zj1_{}", URL_SAFE_NO_PAD.encode(corrupted))).is_err());
+    }
+    #[test]
+    fn ticket_keeps_alternate_interfaces_and_does_not_prefer_a_private_vpn() {
+        let wifi: std::net::Ipv4Addr = "192.168.20.152".parse().unwrap();
+        let config = MeshConfig::default();
+        assert!(
+            address_rank(wifi.into(), &config, &[wifi])
+                < address_rank("172.31.237.200".parse().unwrap(), &config, &[wifi])
+        );
+        let addresses = [
+            "172.31.237.200:2222",
+            "192.168.20.152:2222",
+            "[fd00::7]:2222",
+        ]
+        .map(|value| value.parse().unwrap());
+        let endpoint = addresses.into_iter().fold(
+            EndpointAddr::new(SecretKey::generate().public()),
+            |endpoint, address| endpoint.with_ip_addr(address),
+        );
+        let ticket = Ticket::new(InviteKind::Station, endpoint, &config).unwrap();
+        let encoded = ticket.encode().unwrap();
+        let decoded = Ticket::decode(&encoded).unwrap();
+        assert_eq!(decoded.endpoint, ticket.endpoint);
+        assert_eq!(decoded.bootstrap.additional_addresses.len(), 2);
+        let mut truncated = URL_SAFE_NO_PAD.decode(&encoded[4..]).unwrap();
+        truncated.pop();
+        assert!(Ticket::decode(&format!("zj1_{}", URL_SAFE_NO_PAD.encode(truncated))).is_err());
     }
 }

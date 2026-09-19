@@ -45,7 +45,7 @@ def app_info(version, prefix='ing.zork', channel='release'):
             'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
             'NSPrincipalClass': 'NSApplication',
             'NSLocalNetworkUsageDescription': '用于发现并连接同一网络中的已配对设备，同步消息和任务。',
-            'NSBonjourServices': ['_zork-mesh-v1._udp']}
+            'NSBonjourServices': ['_zork-mesh-v1._udp', '_zork-enrollment-v1._udp']}
 
 
 def verify_app(app):

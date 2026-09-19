@@ -1,7 +1,7 @@
 //! Runtime-owned LAN discovery. Each physical IPv4 interface recovers
 //! independently, so a broken interface cannot disable working LAN paths.
 use anyhow::{Context, Result};
-use futures_util::{future, stream, StreamExt};
+use futures_util::{stream, StreamExt};
 use iroh::{
     address_lookup::{AddressLookup, EndpointData, Error, Item},
     Endpoint, EndpointAddr, EndpointId, Watcher,
@@ -78,14 +78,24 @@ impl AddressLookup for LanLookup {
         id: EndpointId,
     ) -> Option<stream::BoxStream<'static, std::result::Result<Item, Error>>> {
         let lookup = self.clone();
-        let mut changed = self.changed.subscribe();
-        Some(Box::pin(
-            stream::once(async move {
-                let deadline = tokio::time::Instant::now() + RESOLVE_WINDOW;
+        let changed = self.changed.subscribe();
+        let deadline = tokio::time::Instant::now() + RESOLVE_WINDOW;
+        Some(Box::pin(stream::unfold(
+            (lookup, changed, deadline, None),
+            move |(lookup, mut changed, deadline, mut previous)| async move {
                 loop {
+                    if tokio::time::Instant::now() >= deadline {
+                        return None;
+                    }
                     changed.borrow_and_update();
                     if let Some(address) = lookup.address(id) {
-                        return Some(Ok(Item::new(address.into(), "zork_lan", None)));
+                        if previous.as_ref() != Some(&address) {
+                            previous = Some(address.clone());
+                            return Some((
+                                Ok(Item::new(address.into(), "zork_lan", None)),
+                                (lookup, changed, deadline, previous),
+                            ));
+                        }
                     }
                     if !matches!(
                         tokio::time::timeout_at(deadline, changed.changed()).await,
@@ -94,9 +104,8 @@ impl AddressLookup for LanLookup {
                         return None;
                     }
                 }
-            })
-            .filter_map(future::ready),
-        ))
+            },
+        )))
     }
     fn publish(&self, _data: &EndpointData) {
         // The owned manager observes the endpoint and refreshes registrations.
@@ -119,30 +128,35 @@ fn announce(
     endpoint: &Endpoint,
     service: &str,
     interface: Ipv4Addr,
+    routes: &[(Ipv4Addr, u16)],
     lookup: LanLookup,
 ) -> Result<DropGuard> {
-    let port = port_on(endpoint, interface).context("mesh_endpoint_unbound_on_interface")?;
-    Ok(
-        Discoverer::new_interactive(service.to_owned(), label(endpoint.id()))
-            .with_ip_class(IpClass::V4Only)
-            .with_addrs(port, [IpAddr::V4(interface)])
-            .with_multicast_interfaces_v4(vec![interface])
-            .with_callback(move |id, peer| {
-                let mut all = lookup.peers.lock().expect("LAN peers");
-                let peers = all.entry(interface).or_default();
-                if peer.is_expiry() {
-                    peers.remove(id);
-                } else if id.len() == 52 && (peers.contains_key(id) || peers.len() < 1024) {
-                    peers.insert(
-                        id.to_owned(),
-                        peer.addrs().iter().copied().take(24).collect(),
-                    );
-                }
-                drop(all);
-                lookup.notify();
-            })
-            .spawn(&tokio::runtime::Handle::current())?,
-    )
+    port_on(endpoint, interface).context("mesh_endpoint_unbound_on_interface")?;
+    let mut discoverer = Discoverer::new_interactive(service.to_owned(), label(endpoint.id()));
+    // Every announcement for this identity must carry the same complete set.
+    // mDNS peers replace a record; publishing one NIC per record loses the
+    // other NIC whenever that interface's announcement arrives last.
+    for (address, port) in routes {
+        discoverer = discoverer.with_addrs(*port, [IpAddr::V4(*address)]);
+    }
+    Ok(discoverer
+        .with_ip_class(IpClass::V4Only)
+        .with_multicast_interfaces_v4(vec![interface])
+        .with_callback(move |id, peer| {
+            let mut all = lookup.peers.lock().expect("LAN peers");
+            let peers = all.entry(interface).or_default();
+            if peer.is_expiry() {
+                peers.remove(id);
+            } else if id.len() == 52 && (peers.contains_key(id) || peers.len() < 1024) {
+                peers.insert(
+                    id.to_owned(),
+                    peer.addrs().iter().copied().take(24).collect(),
+                );
+            }
+            drop(all);
+            lookup.notify();
+        })
+        .spawn(&tokio::runtime::Handle::current())?)
 }
 
 async fn stopped(stop: &mut watch::Receiver<bool>) {
@@ -156,6 +170,7 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
 struct InterfaceTask {
     stop: watch::Sender<bool>,
     task: zork_notify::Task<()>,
+    routes: Vec<(Ipv4Addr, u16)>,
 }
 impl InterfaceTask {
     async fn shutdown(mut self) {
@@ -219,13 +234,15 @@ fn start_interface(
     endpoint: Endpoint,
     service: String,
     interface: Ipv4Addr,
+    routes: Vec<(Ipv4Addr, u16)>,
     lookup: LanLookup,
 ) -> InterfaceTask {
     let (stop, stopping) = watch::channel(false);
+    let published = routes.clone();
     let task = tokio::spawn(async move {
         maintain_interface(
             stopping,
-            || announce(&endpoint, &service, interface, lookup.clone()),
+            || announce(&endpoint, &service, interface, &published, lookup.clone()),
             || lookup.clear(interface),
             interface,
         )
@@ -234,6 +251,7 @@ fn start_interface(
     InterfaceTask {
         stop,
         task: zork_notify::Task(task),
+        routes,
     }
 }
 
@@ -276,10 +294,14 @@ pub(crate) fn install(endpoint: &Endpoint, service: &str) -> Result<Registration
             let interfaces = tokio::task::spawn_blocking(interfaces)
                 .await
                 .unwrap_or_default();
+            let routes: Vec<_> = interfaces
+                .iter()
+                .filter_map(|ip| port_on(&endpoint, *ip).map(|port| (*ip, port)))
+                .collect();
             let removed: Vec<_> = tasks
-                .keys()
-                .filter(|ip| !interfaces.contains(ip) || port_on(&endpoint, **ip).is_none())
-                .copied()
+                .iter()
+                .filter(|(ip, task)| !interfaces.contains(ip) || task.routes != routes)
+                .map(|(ip, _)| *ip)
                 .collect();
             for ip in removed {
                 if let Some(task) = tasks.remove(&ip) {
@@ -290,7 +312,13 @@ pub(crate) fn install(endpoint: &Endpoint, service: &str) -> Result<Registration
             for ip in interfaces {
                 if port_on(&endpoint, ip).is_some() {
                     tasks.entry(ip).or_insert_with(|| {
-                        start_interface(endpoint.clone(), service.clone(), ip, lookup.clone())
+                        start_interface(
+                            endpoint.clone(),
+                            service.clone(),
+                            ip,
+                            routes.clone(),
+                            lookup.clone(),
+                        )
                     });
                 }
             }
@@ -315,6 +343,104 @@ pub(crate) fn install(endpoint: &Endpoint, service: &str) -> Result<Registration
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test(start_paused = true)]
+    async fn lookup_keeps_delivering_routes_that_arrive_after_the_first_interface() {
+        let (changed, _) = watch::channel(0);
+        let lookup = LanLookup {
+            peers: Default::default(),
+            changed,
+        };
+        let id = iroh::SecretKey::generate().public();
+        let interface = Ipv4Addr::new(192, 168, 1, 2);
+        let first: IpAddr = "192.168.100.2".parse().unwrap();
+        let second: IpAddr = "192.168.1.3".parse().unwrap();
+        let mut resolved = lookup.resolve(id).unwrap();
+        lookup
+            .peers
+            .lock()
+            .unwrap()
+            .entry(interface)
+            .or_default()
+            .insert(label(id), vec![(first, 1234)]);
+        lookup.notify();
+        assert_eq!(
+            resolved
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .to_endpoint_addr()
+                .ip_addrs()
+                .count(),
+            1
+        );
+        lookup
+            .peers
+            .lock()
+            .unwrap()
+            .get_mut(&interface)
+            .unwrap()
+            .get_mut(&label(id))
+            .unwrap()
+            .push((second, 1234));
+        lookup.notify();
+        assert_eq!(
+            resolved
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .to_endpoint_addr()
+                .ip_addrs()
+                .count(),
+            2
+        );
+        tokio::time::advance(RESOLVE_WINDOW).await;
+        assert!(resolved.next().await.is_none());
+    }
+    #[tokio::test]
+    #[ignore = "requires an interface permitting multicast; no public or same-host lookup fallback"]
+    async fn live_mdns_discovers_peer_without_any_address_hint() -> Result<()> {
+        use iroh::endpoint::presets;
+        anyhow::ensure!(!interfaces().is_empty(), "no multicast interface");
+        let server = Endpoint::builder(presets::Minimal)
+            .alpns(vec![b"zork-mdns-test".to_vec()])
+            .bind_addr("0.0.0.0:0")?
+            .bind()
+            .await?;
+        let client = Endpoint::builder(presets::Minimal)
+            .bind_addr("0.0.0.0:0")?
+            .bind()
+            .await?;
+        let server_guard = install(&server, "zork-mdns-test")?;
+        let client_guard = install(&client, "zork-mdns-test")?;
+        let result = tokio::time::timeout(Duration::from_secs(15), async {
+            let (outgoing, incoming) =
+                tokio::join!(client.connect(server.id(), b"zork-mdns-test"), async {
+                    server
+                        .accept()
+                        .await
+                        .context("listener closed")?
+                        .await
+                        .map_err(anyhow::Error::from)
+                });
+            let outgoing = outgoing?;
+            let incoming = incoming?;
+            anyhow::ensure!(
+                outgoing.remote_id() == server.id(),
+                "wrong discovered identity"
+            );
+            incoming.close(0u32.into(), b"mdns validated");
+            Ok::<_, anyhow::Error>(())
+        })
+        .await;
+        client_guard.shutdown().await;
+        server_guard.shutdown().await;
+        client.close().await;
+        server.close().await;
+        result??;
+        Ok(())
+    }
     #[test]
     fn five_attempts_per_round_without_an_unrequested_cap() {
         let mut retry = DiscoveryBackoff::default();
