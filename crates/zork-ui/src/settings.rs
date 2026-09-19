@@ -56,6 +56,7 @@ pub struct AccountData {
     pub email: Option<String>,
     pub identity: Option<String>,
     pub busy: bool,
+    pub signing_out: bool,
     pub notice: Option<String>,
 }
 pub fn account<V: 'static>(
@@ -100,7 +101,9 @@ pub fn account<V: 'static>(
                 .child(
                     ui::button(
                         "zork-account-login",
-                        if data.busy {
+                        if data.signing_out {
+                            "正在退出…"
+                        } else if data.busy {
                             "等待登录…"
                         } else if signed {
                             "重新验证"
@@ -117,7 +120,7 @@ pub fn account<V: 'static>(
                         "使用 Google 登录",
                     ),
                 )
-                .when(data.busy, |v| {
+                .when(data.busy && !data.signing_out, |v| {
                     v.child(
                         ui::button("zork-account-cancel", "取消", false, true)
                             .on_click(
@@ -557,6 +560,7 @@ impl SettingsStory {
                 email: (state == "signed-in").then(|| text("email")),
                 identity: Some(text("identity")),
                 busy: state == "loading",
+                signing_out: false,
                 notice: (state == "error").then(|| "登录未完成。请检查连接后重试。".into()),
             },
             focus: [cx.focus_handle(), cx.focus_handle()],

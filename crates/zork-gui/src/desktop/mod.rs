@@ -944,6 +944,8 @@ impl DesktopRoot {
                 email: self.account_state.email.clone(),
                 identity: None,
                 busy: self.account_state.busy(),
+                signing_out: self.account_state.phase
+                    == zork_client_core::relay_account::controller::Phase::SigningOut,
                 notice: self.account_state.error.clone().or_else(|| {
                     (self.account_state.pending_revocations > 0)
                         .then(|| "已退出本机，正在等待服务器确认撤销。".into())
