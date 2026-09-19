@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::{CUE_UI, INTERACTION},
+    design::{INTERACTION, ZORK_UI},
 };
 use gpui::{div, prelude::*, px, rgb, Context, Render, Window};
 
@@ -17,7 +17,7 @@ impl InteractionStory {
 }
 impl Render for InteractionStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         div()
             .w_full()
             .flex()

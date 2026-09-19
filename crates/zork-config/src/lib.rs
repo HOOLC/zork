@@ -1,4 +1,5 @@
 pub mod membership;
+pub mod relay_account;
 pub mod service;
 pub mod services;
 pub mod skill_bundles;
@@ -551,8 +552,18 @@ pub fn ensure_layout(data_root: &Path) -> Result<FileConfig> {
 pub fn load_config(data_root: &Path) -> Result<FileConfig> {
     let path = config_path(data_root);
     let raw = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-    let parsed: FileConfig =
+    let mut value: serde_json::Value =
         serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
+    // The first relay prototype persisted bearer credentials in MeshConfig.
+    // Discard that obsolete field; admission only reads origin-bound sessions.
+    if let Some(mesh) = value
+        .get_mut("mesh")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        mesh.remove("relay_token");
+    }
+    let parsed: FileConfig =
+        serde_json::from_value(value).with_context(|| format!("parse {}", path.display()))?;
     Ok(parsed)
 }
 

@@ -1,0 +1,4 @@
+{
+  "relay_urls": ["https://relay.zork.ing"],
+  "discovery_url": "https://relay.zork.ing/pkarr"
+}

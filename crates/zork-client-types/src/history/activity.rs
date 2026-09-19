@@ -13,7 +13,7 @@ pub enum Kind {
     Input,
     /// The assistant's own reply text, from the model lane.
     Output,
-    /// A live model call that has not produced text yet. Cue shows the same
+    /// A live model call that has not produced text yet. The history page shows the same
     /// live row before a reply exists, and only the runtime owns the reasoning
     /// summary that would name it.
     Thinking,
@@ -119,7 +119,7 @@ pub struct Block {
     pub start_at: Option<i64>,
     pub end_at: Option<i64>,
     pub running: bool,
-    /// Cue keeps the latest active operation outside the collapsed group.
+    /// Keep the latest active operation outside the collapsed group.
     pub active: Option<usize>,
 }
 impl Block {
@@ -313,7 +313,7 @@ fn field(value: &Value, name: &str) -> Option<String> {
 }
 
 /// A model reply is rendered as Markdown, so it keeps its text intact up to the
-/// same bound Cue's output disclosure uses, instead of the one-line preview.
+/// output disclosure limit instead of the one-line preview.
 pub const MODEL_TEXT_LIMIT: usize = 65_536;
 
 pub fn model_text(text: &str) -> String {

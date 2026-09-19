@@ -198,7 +198,6 @@ impl Invitation {
         zork_config::services::ServicesConfig {
             relay_urls: invite.relay_urls.clone(),
             discovery_url: invite.discovery_url.clone(),
-            cue: None,
         }
         .validate()?;
         ensure!(
@@ -215,6 +214,8 @@ impl Invitation {
 pub struct Enrollment {
     endpoint: Endpoint,
     offline: bool,
+    relay_urls: Vec<String>,
+    relay_access: crate::relay_access::RelayAccess,
 }
 
 impl Enrollment {
@@ -280,7 +281,18 @@ impl Enrollment {
         Ok(Self {
             endpoint: builder.bind().await?,
             offline: config.offline,
+            relay_urls: config.relay_urls.clone().unwrap_or_default(),
+            relay_access: Default::default(),
         })
+    }
+
+    pub async fn set_relay_access(&self, origin: &str, token: Option<&str>) -> Result<()> {
+        if self.offline {
+            return Ok(());
+        }
+        self.relay_access
+            .apply(&self.endpoint, &self.relay_urls, origin, token)
+            .await
     }
 
     pub async fn address(&self) -> EndpointAddr {

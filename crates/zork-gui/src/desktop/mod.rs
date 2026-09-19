@@ -1,5 +1,4 @@
 //! Desktop presentation of the core-owned device directory and host operations.
-pub mod account;
 mod agents;
 pub mod client_settings;
 #[cfg(feature = "headless-bench")]
@@ -29,7 +28,7 @@ pub use shared_files::SharedFilesView as HeadlessSharedFilesView;
 use crate::components::text_input::ComposerInput;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
     views::RootView,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, Entity, Window};
@@ -90,10 +89,10 @@ pub struct DesktopRoot {
     management_tab: usize,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
     active_node_name: Option<String>,
-    identity: Option<account::AccountIdentity>,
+    account_state: Arc<zork_client_core::relay_account::controller::Snapshot>,
+    account_updates: Option<gpui::Task<()>>,
     client_settings: client_settings::State,
     settings_tabs: navigation::TabGroup,
-    account_busy: bool,
     opened_account_url: Option<String>,
     managing: bool,
     add_device_open: bool,
@@ -140,14 +139,13 @@ impl DesktopRoot {
                 &crate::i18n::preferences_path(),
                 std::env::var("ZORK_GUI_LOCALE").ok().as_deref(),
             ),
-            account_available: snapshot.account_available,
             ..Default::default()
         };
         let nodes = snapshot.nodes.as_ref().clone();
         let local_enabled = snapshot.local_enabled;
         let startup_error = snapshot.error.clone();
         let local = source.local.clone();
-        let identity = snapshot.account.clone();
+        let account_state = source.account.snapshot();
         let mut field = |label| {
             let input = cx.new(|cx| ComposerInput::new(label, cx));
             cx.observe(&input, |_, _, cx| cx.notify()).detach();
@@ -211,10 +209,10 @@ impl DesktopRoot {
             management_tab: 0,
             mesh_settings: None,
             active_node_name: None,
-            identity,
+            account_state,
+            account_updates: None,
             client_settings,
             settings_tabs: navigation::TabGroup::new(cx),
-            account_busy: false,
             opened_account_url: None,
             managing: false,
             add_device_open: false,
@@ -243,6 +241,18 @@ impl DesktopRoot {
         view
     }
     fn watch_directory(&mut self, cx: &mut Context<Self>) {
+        let mut account = self.source.account.subscribe();
+        self.apply_account(account.snapshot(), cx);
+        self.account_updates = Some(cx.spawn(async move |this, cx| {
+            while let Some(snapshot) = account.changed().await {
+                if this
+                    .update(cx, |view, cx| view.apply_account(snapshot, cx))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        }));
         let mut updates = self.source.subscribe();
         self.apply_directory(updates.snapshot(), cx);
         self.directory_updates = Some(cx.spawn(async move |this, cx| {
@@ -255,6 +265,20 @@ impl DesktopRoot {
                 }
             }
         }));
+    }
+    fn apply_account(
+        &mut self,
+        snapshot: Arc<zork_client_core::relay_account::controller::Snapshot>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.opened_account_url != snapshot.login_url {
+            self.opened_account_url = snapshot.login_url.clone();
+            if let Some(url) = &snapshot.login_url {
+                cx.open_url(url);
+            }
+        }
+        self.account_state = snapshot;
+        cx.notify();
     }
     fn apply_directory(&mut self, snapshot: Arc<DirectoryData>, cx: &mut Context<Self>) {
         if !Arc::ptr_eq(&self.applications, &snapshot.applications) {
@@ -269,14 +293,6 @@ impl DesktopRoot {
         self.nodes = snapshot.nodes.as_ref().clone();
         self.local_enabled = snapshot.local_enabled;
         self.mesh_identity = snapshot.mesh_identity.clone();
-        self.identity = snapshot.account.clone();
-        self.account_busy = snapshot.account_busy;
-        if self.opened_account_url != snapshot.account_url {
-            self.opened_account_url = snapshot.account_url.clone();
-            if let Some(url) = &snapshot.account_url {
-                cx.open_url(url);
-            }
-        }
         self.device_info = snapshot.info.as_ref().clone();
         if self.client_settings.message_preview_height
             != snapshot.preferences.message_preview_height
@@ -920,17 +936,28 @@ impl DesktopRoot {
         use zork_ui::settings::{AccountAction, AccountData};
         zork_ui::settings::account(
             AccountData {
-                name: self.identity.as_ref().map(|i| i.name.clone()),
-                email: self.identity.as_ref().and_then(|i| i.email.clone()),
+                name: self
+                    .account_state
+                    .subject
+                    .as_ref()
+                    .map(|_| "Zork 账号".into()),
+                email: self.account_state.email.clone(),
                 identity: None,
-                busy: self.account_busy,
-                notice: None,
+                busy: self.account_state.busy(),
+                signing_out: self.account_state.phase
+                    == zork_client_core::relay_account::controller::Phase::SigningOut,
+                notice: self.account_state.error.clone().or_else(|| {
+                    (self.account_state.pending_revocations > 0)
+                        .then(|| "已退出本机，正在等待服务器确认撤销。".into())
+                }),
             },
             cx,
             |v, action, cx| match action {
                 AccountAction::Login => v.login_account(cx),
                 AccountAction::Cancel => {
-                    v.source.cancel_account();
+                    if let Err(error) = v.source.cancel_account() {
+                        v.error = Some(error.to_string());
+                    }
                     cx.notify();
                 }
                 AccountAction::Logout => {
@@ -978,7 +1005,7 @@ impl Render for DesktopRoot {
                 });
             }
         }
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         if !self.activation_observed {
             cx.observe_window_activation(window, |_, _, cx| cx.notify())
                 .detach();

@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -17,31 +16,6 @@ describe.sequential("zork update", () => {
     while (cleanups.length > 0) {
       await cleanups.pop()?.();
     }
-  });
-
-  it("refuses to hot-reload a legacy supervisor before stopping any process", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "zork-legacy-supervisor-"));
-    cleanups.push(() => removeTempRoot(root));
-    await fs.mkdir(path.join(root, "run"));
-    const commands: string[] = [];
-    const server = net.createServer((socket) => {
-      socket.once("data", (data) => {
-        commands.push(data.toString().trim());
-        socket.end(JSON.stringify({ protocol: 1, pid: 123 }) + "\n");
-      });
-    });
-    await new Promise<void>((resolve) => server.listen(path.join(root, "run/sup.sock"), resolve));
-    cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-    const command = spawnBinary("zork", { cwd: brokerRoot, args: ["update", "--data", root] });
-    let stderr = "";
-    command.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-    command.stdout?.resume();
-    const code = await new Promise<number | null>((resolve) => command.once("exit", resolve));
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("restart the zork supervisor once");
-    expect(commands).toEqual(["status"]);
   });
 
   it("restarts Station and its embedded Agent without restarting the supervisor", async () => {

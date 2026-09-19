@@ -41,6 +41,8 @@ pub mod pages;
 #[cfg(not(target_family = "wasm"))]
 pub mod preferences;
 #[cfg(not(target_family = "wasm"))]
+pub mod relay_account;
+#[cfg(not(target_family = "wasm"))]
 pub mod resources;
 #[cfg(not(target_family = "wasm"))]
 mod services;

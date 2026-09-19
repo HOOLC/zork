@@ -49,7 +49,7 @@ static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 thread_local! { static SCENES: RefCell<HashMap<u64, Scene>> = RefCell::new(HashMap::new()); }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_surf_zork_android_LiquidNative_create<'a>(
+pub extern "system" fn Java_ing_zork_android_LiquidNative_create<'a>(
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
 ) -> jlong {
@@ -69,7 +69,7 @@ pub extern "system" fn Java_surf_zork_android_LiquidNative_create<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_surf_zork_android_LiquidNative_destroy<'a>(
+pub extern "system" fn Java_ing_zork_android_LiquidNative_destroy<'a>(
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     handle: jlong,
@@ -86,7 +86,7 @@ pub extern "system" fn Java_surf_zork_android_LiquidNative_destroy<'a>(
 /// Return required bytes with a negative sign when the output needs to grow.
 /// inputBytes=-1 drains the retained frame without applying or advancing twice.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_surf_zork_android_LiquidNative_frame<'a>(
+pub extern "system" fn Java_ing_zork_android_LiquidNative_frame<'a>(
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     handle: jlong,
@@ -142,7 +142,7 @@ pub extern "system" fn Java_surf_zork_android_LiquidNative_frame<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_surf_zork_android_LiquidNative_palette<'a>(
+pub extern "system" fn Java_ing_zork_android_LiquidNative_palette<'a>(
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
 ) -> JIntArray<'a> {
@@ -175,7 +175,7 @@ pub extern "system" fn Java_surf_zork_android_LiquidNative_palette<'a>(
 /// Cold layout/clip path for platform Shape APIs. Callers cache by measured size
 /// and radius; animation uses the batched scene instead of this entry point.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_surf_zork_android_LiquidNative_geometry<'a>(
+pub extern "system" fn Java_ing_zork_android_LiquidNative_geometry<'a>(
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     width: jfloat,

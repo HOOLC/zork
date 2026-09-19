@@ -26,11 +26,11 @@ pub const EDITOR_TOP_INSET: f32 = 8.;
 /// Equal side and bottom spacing keeps the action concentric with the outer corner.
 pub const ACTION_INSET: f32 = 6.;
 /// Outer corner follows the circular send button plus its bottom inset.
-pub const SURFACE_RADIUS: f32 = crate::design::CUE_UI.composer.surface_radius;
+pub const SURFACE_RADIUS: f32 = crate::design::ZORK_UI.composer.surface_radius;
 pub const EDITOR_ACTION_GAP: f32 = 2.;
 pub const COMPOSER_CHROME: f32 = EDITOR_TOP_INSET
     + EDITOR_ACTION_GAP
-    + crate::design::CUE_UI.composer.action_size
+    + crate::design::ZORK_UI.composer.action_size
     + ACTION_INSET;
 pub const DEFAULT_HEIGHT: f32 = 24. + TOP_EXTENSION + COMPOSER_CHROME;
 const MEMBER_FUSION: f32 = 4.;

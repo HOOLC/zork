@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Context, FontWeight, Window};
 
@@ -24,7 +24,7 @@ pub struct DetailsTooltip {
 }
 impl DetailsTooltip {
     pub fn content(&self) -> gpui::Div {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let description: String = self.description.trim().chars().take(320).collect();
         div()
             .flex()
@@ -115,7 +115,7 @@ impl DetailsTooltip {
         crate::components::liquid::primitives::surface(
             id,
             ui::CARD_RADIUS,
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             true,
         )
         .occlude()
@@ -466,12 +466,12 @@ fn hint_surface(
     text: gpui::SharedString,
 ) -> crate::automation::element::AutomationElement<gpui::Stateful<gpui::Div>> {
     let id: gpui::SharedString = id.into();
-    crate::components::liquid::primitives::surface(id, 9., CUE_UI.palette.canvas, true)
+    crate::components::liquid::primitives::surface(id, 9., ZORK_UI.palette.canvas, true)
         .role(gpui::Role::Tooltip)
         .aria_label(text.clone())
         .px(px(8.))
         .py(px(5.))
-        .text_color(rgb(CUE_UI.palette.text))
+        .text_color(rgb(ZORK_UI.palette.text))
         .text_size(px(12.))
         .line_height(px(20.))
         .whitespace_normal()
@@ -570,7 +570,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
             .py(px(5.))
             .text_size(px(12.))
             .line_height(px(20.))
-            .text_color(rgb(CUE_UI.palette.text))
+            .text_color(rgb(ZORK_UI.palette.text))
             .whitespace_normal()
             .child(text.clone())
             .automation(AutomationRole::Status, text);

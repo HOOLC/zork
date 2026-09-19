@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 pub type State = std::rc::Rc<std::cell::RefCell<std::collections::HashSet<String>>>;
@@ -39,7 +39,7 @@ pub fn render<V: 'static>(
         }));
     }
     if let Some(label) = label {
-        row = row.child(div().text_color(rgb(CUE_UI.palette.muted)).child(format!(
+        row = row.child(div().text_color(rgb(ZORK_UI.palette.muted)).child(format!(
             "{}:",
             serde_json::to_string(&label).unwrap_or_default()
         )));
@@ -98,11 +98,11 @@ pub fn render<V: 'static>(
         tree
     } else {
         let color = match value {
-            serde_json::Value::String(_) => CUE_UI.palette.text,
+            serde_json::Value::String(_) => ZORK_UI.palette.text,
             serde_json::Value::Number(_) | serde_json::Value::Bool(_) => {
                 crate::components::history::SEND_COLOR
             }
-            _ => CUE_UI.palette.muted,
+            _ => ZORK_UI.palette.muted,
         };
         div().child(row.child(div().text_color(rgb(color)).child(value.to_string())))
     }

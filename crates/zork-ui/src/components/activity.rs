@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Div};
 
@@ -20,7 +20,7 @@ pub fn render(items: &[Presentation], animate: bool) -> Div {
     render_with_id("participant-activity".into(), items, animate)
 }
 pub fn render_with_id(id: String, items: &[Presentation], animate: bool) -> Div {
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     let label = items
         .iter()
         .map(|item| {
@@ -90,11 +90,11 @@ impl gpui::Render for ActivityTooltip {
             .p_3()
             .rounded(px(crate::controls::COMPACT_CARD_RADIUS))
             .border(gpui::px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(CUE_UI.palette.border))
-            .bg(rgb(CUE_UI.palette.canvas))
+            .border_color(rgb(ZORK_UI.palette.border))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .text_size(px(13.))
             .line_height(px(20.))
-            .text_color(rgb(CUE_UI.palette.text))
+            .text_color(rgb(ZORK_UI.palette.text))
             .child(self.0.clone())
             .automation(AutomationRole::Status, self.0.clone())
     }

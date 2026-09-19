@@ -93,7 +93,7 @@ impl Render for Fixture {
             );
         div()
             .size_full()
-            .bg(gpui::rgb(zork_ui::design::CUE_UI.palette.sidebar))
+            .bg(gpui::rgb(zork_ui::design::ZORK_UI.palette.sidebar))
             .child(self.tabs.surface(content))
     }
 }

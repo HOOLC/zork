@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { test } from "node:test";
 import dns from "dns-packet";
-import { allowedKeys, decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "../src/pkarr.ts";
+import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "../src/pkarr.ts";
 
 const alphabet = "ybndrfg8ejkmcpqxot1uwisza345h769";
 export function encodeKey(key: Uint8Array): string {
@@ -67,11 +67,9 @@ test("rejects expired or far-future signed records", async () => {
   }
 });
 
-test("rejects malformed keys and fails closed on malformed allowlists", () => {
+test("rejects malformed keys", () => {
   assert.throws(() => decodeKey("a".repeat(52)));
   assert.throws(() => decodeKey("y".repeat(51) + "b"));
-  assert.throws(() => allowedKeys("anything"));
-  assert.equal(allowedKeys("").size, 0);
 });
 
 test("bounds streaming bodies even without Content-Length", async () => {

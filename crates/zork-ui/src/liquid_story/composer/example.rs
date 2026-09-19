@@ -1,7 +1,7 @@
 //! Mock input/event adapter for the production composer scene and renderers.
 use super::*;
 use crate::{
-    attachment_viewer as preview, components::tooltip::DetailsTooltip, design::CUE_UI,
+    attachment_viewer as preview, components::tooltip::DetailsTooltip, design::ZORK_UI,
     member_activity, resources::Text,
 };
 use std::{collections::HashMap, sync::Arc};
@@ -281,7 +281,7 @@ impl Render for Example {
                     let run = TextRun {
                         len: member.label.len(),
                         font: font("Inter Variable"),
-                        color: rgb(CUE_UI.palette.text).into(),
+                        color: rgb(ZORK_UI.palette.text).into(),
                         background_color: None,
                         underline: None,
                         strikethrough: None,
@@ -343,7 +343,7 @@ impl Render for Example {
                     member_groups: self
                         .scene
                         .indices(self.snapshot.members.iter().map(|m| &m.id)),
-                    member_colors: vec![CUE_UI.palette.text; self.snapshot.members.len()],
+                    member_colors: vec![ZORK_UI.palette.text; self.snapshot.members.len()],
                     member_names: self.snapshot.members.iter().map(|m| m.id.clone()).collect(),
                     fan: None,
                     busy: self.variant == 3,

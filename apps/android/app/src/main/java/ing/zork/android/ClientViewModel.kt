@@ -56,6 +56,12 @@ internal data class DeviceTree(val leaders: List<JSONObject>, val sessions: List
 
 internal class ClientViewModel(app: Application, private val repo: ClientRepository) : AndroidViewModel(app) {
     constructor(app: Application) : this(app, ClientRepository(app))
+    var account by mutableStateOf<JSONObject?>(null)
+        private set
+    var accountError by mutableStateOf<String?>(null)
+        private set
+    private var accountWatch: Job? = null
+
     var invitation by mutableStateOf<JSONObject?>(null)
         private set
     private var invitationWatch: Job? = null
@@ -199,7 +205,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         live?.cancel()
         historyWatch?.cancel()
         invitationWatch?.cancel()
-        if (value) watchDataReset()
+        if (value) { watchDataReset(); watchAccount() }
         if (value) action {
             adbPlatform.start()
             applySnapshot(repo.command("snapshot"))
@@ -220,11 +226,29 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             notificationsWatch?.cancel()
             adbWatch?.cancel()
             dataResetWatch?.cancel()
+            accountWatch?.cancel()
             adbPlatform.stop()
             NotificationPlatform.releaseHost(repo, hostGeneration)
             connected = false
         }
     }
+
+    private fun watchAccount() {
+        accountWatch?.cancel()
+        accountWatch = viewModelScope.launch {
+            try { repo.accountEvents().collect { frame -> account = frame.value.getJSONObject("snapshot"); accountError = null } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { accountError = e.message }
+        }
+    }
+    fun accountAction(action: String) {
+        viewModelScope.launch {
+            try { accountError = null; repo.command("account", "operation" to action) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { accountError = e.message }
+        }
+    }
+    fun accountBrowserFailed() { accountError = "无法打开浏览器，请使用登录链接在浏览器中继续。" }
 
     private fun watchAdb() {
         if (!foreground) return

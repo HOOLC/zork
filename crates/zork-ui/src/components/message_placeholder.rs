@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::loading,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 pub struct Data {
@@ -22,7 +22,7 @@ pub fn render<V: 'static>(
             .items_center()
             .justify_center()
             .text_size(px(13.))
-            .text_color(rgb(CUE_UI.palette.muted))
+            .text_color(rgb(ZORK_UI.palette.muted))
             .child(loading::status("messages-loading", data.message))
             .into_any_element()
     } else {
@@ -35,7 +35,7 @@ pub fn render<V: 'static>(
             .justify_center()
             .px_6()
             .text_size(px(14.))
-            .text_color(rgb(CUE_UI.palette.subtle))
+            .text_color(rgb(ZORK_UI.palette.subtle))
             .child(data.message)
             .when_some(data.older, |view, (label, enabled)| {
                 view.child(

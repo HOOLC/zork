@@ -8,12 +8,13 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use zork_client_core::transport::Enrollment;
 use zork_config::{
     membership::{MeshDevice, MeshGroup},
     MeshConfig,
 };
 use zork_mesh::{
-    enrollment::{self, Enrollment, Invitation, InviteKind},
+    enrollment::{self, Invitation, InviteKind},
     node::MeshNode,
 };
 
@@ -535,8 +536,8 @@ impl EnrollmentService {
             .join_transaction
             .try_lock()
             .context("another_join_is_in_progress")?;
-        let invitation = enrollment::ticket::resolve(
-            &self.root.join("invite-bootstrap"),
+        let invitation = zork_client_core::transport::resolve_invitation(
+            &self.root,
             ticket,
             InviteKind::Station,
         )

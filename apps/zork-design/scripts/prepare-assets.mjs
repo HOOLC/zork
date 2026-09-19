@@ -22,7 +22,7 @@ catalog.fixture=JSON.parse(await readFile(resolve(repo,'crates/zork-ui/assets/st
 catalog.providers=JSON.parse(await readFile(resolve(repo,'crates/zork-gui/tests/fixtures/provider_catalog.json'),'utf8')).providers;
 // Read the renderer's constants so HTML reference colors and control geometry do not drift.
 const nativeDesign=await readFile(resolve(repo,'crates/zork-ui/src/design.rs'),'utf8');
-const palette=nativeDesign.slice(nativeDesign.indexOf('palette: Palette {',nativeDesign.indexOf('pub const CUE_UI:')));
+const palette=nativeDesign.slice(nativeDesign.indexOf('palette: Palette {',nativeDesign.indexOf('pub const ZORK_UI:')));
 const colors=Object.fromEntries([...palette.slice(0,palette.indexOf('},')).matchAll(/(\w+): 0x([0-9A-Fa-f]{6})/g)].map(([,name,value])=>[name,'#'+value]));
 const nativeControls=await readFile(resolve(repo,'crates/zork-ui/src/controls.rs'),'utf8');
 const liquidTokens=await readFile(resolve(repo,'crates/zork-liquid/src/tokens.rs'),'utf8');

@@ -12,7 +12,7 @@ use crate::{
     controls as ui,
 };
 
-const WHITE: u32 = crate::design::CUE_UI.palette.canvas;
+const WHITE: u32 = crate::design::ZORK_UI.palette.canvas;
 
 pub(super) const GROUPS: [(&str, &str); 10] = [
     ("基础控件", "按钮、输入、选择与开关的交互状态。"),
@@ -437,7 +437,7 @@ impl Render for BackgroundView {
                                 .navigation
                                 .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| w - 24.),
                             if library_inline {
-                                crate::design::CUE_UI.palette.sidebar
+                                crate::design::ZORK_UI.palette.sidebar
                             } else {
                                 WHITE
                             },
@@ -749,7 +749,7 @@ impl Render for Gallery {
                             .navigation
                             .map_or((width - 40.).min(ui::DIALOG_WIDTH) - 48., |w| w - 24.),
                         if library_inline {
-                            crate::design::CUE_UI.palette.sidebar
+                            crate::design::ZORK_UI.palette.sidebar
                         } else {
                             WHITE
                         },

@@ -19,7 +19,7 @@ impl Group {
             style: Style {
                 kind: Kind::Sidebar,
                 framed: false,
-                parent: CUE_UI.palette.sidebar,
+                parent: ZORK_UI.palette.sidebar,
                 activate_on_arrow: false,
                 row_radius: crate::controls::FIELD_RADIUS,
             },
@@ -55,7 +55,7 @@ impl Group {
                 .items_center()
                 .text_size(px(11.))
                 .line_height(px(16.))
-                .text_color(rgb(CUE_UI.palette.muted))
+                .text_color(rgb(ZORK_UI.palette.muted))
                 .child(title.clone())
                 .automation(AutomationRole::Status, title),
         )

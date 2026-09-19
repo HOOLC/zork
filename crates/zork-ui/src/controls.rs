@@ -3,7 +3,7 @@ pub use super::modal::{detail_modal, detail_modal_with_title_action, modal, Moda
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
-    design::{TextRole, CUE_UI, FORM, INTERACTION},
+    design::{TextRole, FORM, INTERACTION, ZORK_UI},
 };
 use gpui::{div, prelude::*, px, rgb, svg, Div, Entity, FontWeight, Stateful};
 
@@ -12,7 +12,7 @@ pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
         .path(path)
         .size(px(size))
         .flex_shrink_0()
-        .text_color(rgb(CUE_UI.palette.muted))
+        .text_color(rgb(ZORK_UI.palette.muted))
 }
 /// Shared desktop geometry, also exercised by the offscreen visual checks.
 pub const SETTINGS_COLUMN_WIDTH: f32 = 790.;
@@ -54,8 +54,8 @@ pub fn text_role(text: impl Into<gpui::SharedString>, role: TextRole) -> Div {
         .line_height(px(line_height))
         .font_weight(FontWeight(weight as f32))
         .text_color(rgb(match role {
-            TextRole::Description | TextRole::Metadata | TextRole::Label => CUE_UI.palette.muted,
-            _ => CUE_UI.palette.text,
+            TextRole::Description | TextRole::Metadata | TextRole::Label => ZORK_UI.palette.muted,
+            _ => ZORK_UI.palette.text,
         }))
         .child(text.into())
 }
@@ -74,17 +74,17 @@ pub fn action_link(
         .items_center()
         .text_size(px(12.))
         .text_color(rgb(if enabled {
-            CUE_UI.palette.muted
+            ZORK_UI.palette.muted
         } else {
-            CUE_UI.palette.subtle
+            ZORK_UI.palette.subtle
         }))
         .when(enabled, |v| {
             v.focusable()
                 .tab_stop(true)
                 .cursor_pointer()
-                .hover(|v| v.text_color(rgb(CUE_UI.palette.text)).underline())
-                .focus_visible(|v| v.text_color(rgb(CUE_UI.palette.text)).underline())
-                .active(|v| v.text_color(rgb(CUE_UI.palette.text)))
+                .hover(|v| v.text_color(rgb(ZORK_UI.palette.text)).underline())
+                .focus_visible(|v| v.text_color(rgb(ZORK_UI.palette.text)).underline())
+                .active(|v| v.text_color(rgb(ZORK_UI.palette.text)))
         })
         .when(!enabled, |v| v.cursor_default())
         .child(text.into())
@@ -98,7 +98,7 @@ pub fn page_action(id: impl Into<gpui::ElementId>, text: impl Into<gpui::SharedS
             icon_only: Some(false),
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
     .h(px(BUTTON_HEIGHT))
     .text_size(px(11.))
@@ -123,7 +123,7 @@ pub fn heading(
             div()
                 .text_size(px(13.))
                 .line_height(px(20.))
-                .text_color(rgb(CUE_UI.palette.muted))
+                .text_color(rgb(ZORK_UI.palette.muted))
                 .child(description.into()),
         )
 }
@@ -147,7 +147,7 @@ pub fn section() -> Div {
         .gap_4()
         .py_5()
         .border_t(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(CUE_UI.palette.border))
+        .border_color(rgb(ZORK_UI.palette.border))
 }
 use crate::components::liquid::controls::adaptive_action;
 /// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
@@ -168,7 +168,7 @@ pub fn button(
             disabled: !enabled,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
 }
 
@@ -190,7 +190,7 @@ pub fn busy_button(
             busy,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
 }
 /// Standard and compact actions share their outline with the feedback layer.
@@ -233,7 +233,7 @@ pub fn icon_button_sized(
             disabled: !enabled,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
     .size(px(size.extent()))
     .gap_0()
@@ -254,7 +254,7 @@ pub fn quiet_button(
             disabled: !enabled,
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
     .h(px(size.extent()))
     .w_auto()
@@ -282,7 +282,7 @@ pub fn choice(
             }),
             ..Default::default()
         },
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
     )
     .aria_toggled(if selected {
         gpui::Toggled::True
@@ -306,7 +306,7 @@ pub fn input_control(
     invalid: bool,
     _cx: &gpui::App,
 ) -> crate::components::liquid::controls::Field {
-    crate::components::liquid::controls::adaptive_input(id, input, invalid, CUE_UI.palette.canvas)
+    crate::components::liquid::controls::adaptive_input(id, input, invalid, ZORK_UI.palette.canvas)
 }
 
 pub fn field_with_error(
@@ -339,7 +339,7 @@ pub fn field_with_error(
                     .gap(px(5.))
                     .text_size(px(11.))
                     .line_height(px(17.))
-                    .text_color(rgb(CUE_UI.palette.danger))
+                    .text_color(rgb(ZORK_UI.palette.danger))
                     .child(
                         div()
                             .w(px(12.))
@@ -349,7 +349,7 @@ pub fn field_with_error(
                             .items_center()
                             .child(
                                 icon("icons/attention.svg", 12.)
-                                    .text_color(rgb(CUE_UI.palette.danger)),
+                                    .text_color(rgb(ZORK_UI.palette.danger)),
                             ),
                     )
                     .child(error.clone())
@@ -562,7 +562,7 @@ pub fn switch<V: 'static>(
         id,
         checked,
         enabled,
-        CUE_UI.palette.canvas,
+        ZORK_UI.palette.canvas,
         focus.clone(),
         cx.listener(move |view, checked: &bool, _, cx| on_change(view, *checked, cx)),
     )

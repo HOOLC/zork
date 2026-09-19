@@ -12,7 +12,7 @@ use crate::{
         text_input::{ComposerEdited, ComposerInput, ComposerSubmit},
     },
     controls as ui,
-    design::{TextRole, CUE_UI},
+    design::{TextRole, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 
@@ -170,7 +170,7 @@ impl Editor {
                     disabled: !interactive,
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
             )
@@ -199,7 +199,7 @@ impl Editor {
                 div()
                     .w(px(crate::design::BORDER_WIDTH))
                     .h(px(12.))
-                    .bg(rgb(CUE_UI.palette.border)),
+                    .bg(rgb(ZORK_UI.palette.border)),
             )
             .child(
                 action(
@@ -258,7 +258,7 @@ impl Editor {
                         disabled: !interactive,
                         ..Default::default()
                     },
-                    CUE_UI.palette.canvas,
+                    ZORK_UI.palette.canvas,
                     window,
                     cx,
                 )
@@ -277,7 +277,7 @@ impl Editor {
             format!("「{}」", request.source.quote),
             TextRole::Description,
         )
-        .text_color(rgb(CUE_UI.palette.muted))
+        .text_color(rgb(ZORK_UI.palette.muted))
         .id(id(&self.prefix, "comment-selected-quote"))
         .automation(AutomationRole::Status, request.source.quote.clone());
         let input = controls::input(
@@ -286,7 +286,7 @@ impl Editor {
             width,
             76.,
             false,
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             window,
             cx,
         )
@@ -306,7 +306,7 @@ impl Editor {
                 disabled: !enabled,
                 ..Default::default()
             },
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             window,
             cx,
         )

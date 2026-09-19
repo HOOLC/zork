@@ -1,5 +1,4 @@
 //! Native client host capabilities and configuration; independent of UI widgets.
-pub mod account;
 pub mod browser;
 pub mod browser_worker;
 pub mod data_reset;
@@ -46,16 +45,7 @@ pub fn prepare_app_environment() -> anyhow::Result<std::fs::File> {
 }
 
 pub fn load_services() -> anyhow::Result<zork_config::services::ServicesConfig> {
-    let bundled = std::env::current_exe()?
-        .parent()
-        .map(|p| p.join("../Resources/services.json"));
-    let user = std::env::var_os("ZORK_SERVICES_CONFIG")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| client_root().join("services.json"));
-    if std::env::var_os("ZORK_SERVICES_CONFIG").is_some() && !user.is_file() {
-        anyhow::bail!("ZORK_SERVICES_CONFIG 文件不存在")
-    }
-    zork_config::services::ServicesConfig::load(bundled.as_deref(), Some(&user))
+    zork_config::services::ServicesConfig::load_for_data_root(&client_root())
 }
 
 #[cfg(target_os = "macos")]

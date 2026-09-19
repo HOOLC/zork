@@ -20,6 +20,7 @@ use zork_observe::Readiness;
 #[derive(Deserialize)]
 #[serde(tag = "projection", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Key {
+    Account,
     DataReset,
     LocalScripts,
     Adb,
@@ -46,7 +47,8 @@ pub enum Key {
 impl Key {
     pub fn peer(&self) -> &str {
         match self {
-            Self::DataReset
+            Self::Account
+            | Self::DataReset
             | Self::LocalScripts
             | Self::Adb
             | Self::Invitation
@@ -91,6 +93,7 @@ impl Signals {
 }
 
 enum Projection {
+    Account(snapshot::SnapshotWire<zork_client_types::account::Snapshot>),
     DataReset(snapshot::SnapshotWire<crate::data_reset::Snapshot>),
     LocalScripts(snapshot::SnapshotWire),
     Adb(adb::AdbWire),
@@ -110,6 +113,17 @@ pub struct WireSubscription {
     applied: u64,
 }
 impl WireSubscription {
+    pub(crate) fn from_account(
+        source: &zork_observe::ValueSource<zork_client_types::account::Snapshot>,
+    ) -> Self {
+        Self {
+            projection: Projection::Account(snapshot::SnapshotWire::new(source)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
+    }
     pub(crate) fn from_data_reset(
         source: &zork_observe::ValueSource<crate::data_reset::Snapshot>,
     ) -> Self {
@@ -194,7 +208,8 @@ impl WireSubscription {
             "projection belongs to another device"
         );
         let projection = match key {
-            Key::DataReset
+            Key::Account
+            | Key::DataReset
             | Key::LocalScripts
             | Key::Adb
             | Key::Invitation
@@ -223,6 +238,7 @@ impl WireSubscription {
     }
     pub fn signals(&self) -> Signals {
         Signals(match &self.projection {
+            Projection::Account(p) => p.signals(),
             Projection::DataReset(p) => p.signals(),
             Projection::Adb(p) => p.wire.signals(),
             Projection::SharedFiles(p) => p.signals(),
@@ -243,6 +259,7 @@ impl WireSubscription {
                         .as_ref()
                         .is_none_or(|device| !device.snapshot().revoked))
         }) && match &self.projection {
+            Projection::Account(p) => p.valid(),
             Projection::DataReset(p) => p.valid(),
             Projection::Adb(p) => p.valid(),
             Projection::SharedFiles(p) => p.valid(),
@@ -264,6 +281,7 @@ impl WireSubscription {
             return Ok(Some(value.clone()));
         }
         let value = match &mut self.projection {
+            Projection::Account(p) => p.prepare()?,
             Projection::DataReset(p) => p.prepare()?,
             Projection::Adb(p) => p.prepare()?,
             Projection::SharedFiles(p) => p.prepare()?,
@@ -294,6 +312,7 @@ impl WireSubscription {
         }
         let valid = self.valid(batch);
         let accepted = match &mut self.projection {
+            Projection::Account(p) => p.finish(applied && valid),
             Projection::DataReset(p) => p.finish(applied && valid),
             Projection::Adb(p) => p.wire.finish(applied && valid),
             Projection::Notifications(p) => p.wire.finish(applied && valid),

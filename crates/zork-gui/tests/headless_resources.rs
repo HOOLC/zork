@@ -747,7 +747,7 @@ impl gpui::Render for Frame {
             .id("settings-test-scroll")
             .size_full()
             .overflow_y_scroll()
-            .bg(gpui::rgb(zork_ui::design::CUE_UI.palette.canvas))
+            .bg(gpui::rgb(zork_ui::design::ZORK_UI.palette.canvas))
             .child(zork_ui::controls::settings_content(
                 div().child(self.0.clone()),
             ))

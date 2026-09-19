@@ -11,7 +11,7 @@ use zork_gui::{
 };
 use zork_ui::{
     controls as ui,
-    design::{TextRole, CUE_UI},
+    design::{TextRole, ZORK_UI},
     navigation::TabGroup,
 };
 
@@ -26,7 +26,7 @@ impl Concept {
     fn new(cx: &mut Context<Self>) -> Self {
         Self {
             nav: TabGroup::new(cx),
-            brand: cx.new(|_| Brand::new(BrandMotion::Header, CUE_UI.palette.sidebar)),
+            brand: cx.new(|_| Brand::new(BrandMotion::Header, ZORK_UI.palette.sidebar)),
             modal: ui::ModalState::new(cx),
             selected: None,
             technical: false,
@@ -74,7 +74,7 @@ impl Concept {
             div()
                 .size(px(36.))
                 .rounded(px(12.))
-                .bg(rgb(CUE_UI.palette.sidebar))
+                .bg(rgb(ZORK_UI.palette.sidebar))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -101,7 +101,7 @@ impl Concept {
 }
 impl Render for Concept {
     fn render(&mut self, w: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         self.modal
             .sync(self.selected.map(|_| "concept-detail"), w, cx);
         let sidebar = self.nav.surface(

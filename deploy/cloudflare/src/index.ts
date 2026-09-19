@@ -1,11 +1,15 @@
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
-import { allowedKeys, decodeKey, hexKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
+import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
+import { authConfigured, bearerToken, denied, digest, readJson, reply, validId, validSecret, verifyToken } from "./auth";
+import { devicePage, googleStart, consumeLoginRate } from "./login";
+import type { Env } from "./env";
+export { Account } from "./account";
+export { LoginAttempt, LoginLimiter } from "./login";
 
 export class Relay extends Container<Env> {
   defaultPort = 8080;
   sleepAfter = "10m";
-  envVars = { ALLOWED_KEYS: [...allowedKeys(this.env.ALLOWED_KEYS)].join(",") };
 }
 
 type RecordValue = { payload: Uint8Array; timestamp: string; expires: number };
@@ -39,23 +43,110 @@ export class DiscoveryRecord extends DurableObject<Env> {
 const cors = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, PUT, OPTIONS",
-  "access-control-allow-headers": "Content-Type",
+  "access-control-allow-headers": "Content-Type, Authorization",
   "cache-control": "no-store",
 };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const path = url.pathname;
     if ((path === "/healthz" || path === "/ping") && request.method === "GET") {
-      return Response.json({ service: "zork-network", relay: "iroh-relay-1.1.0" });
+      return Response.json({
+        service: "zork-network",
+        relay: "iroh-relay-1.1.0",
+        google_login: authConfigured(env),
+      });
     }
-    if (path === "/relay" && request.method === "GET") {
-      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-        return new Response("WebSocket required", { status: 426 });
+    if (path.startsWith("/v1/") || path === "/relay") {
+      if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
+      if (!authConfigured(env)) return reply({ error: "login_not_configured" }, 503);
+    }
+    if (path === "/v1/auth/google/start" && request.method === "GET") {
+      return googleStart(env, request);
+    }
+    if (path === "/v1/auth/device/complete" && request.method === "GET") {
+      return devicePage("请返回 Zork", "<p>登录结果会在发起请求的 Zork 中显示，现在可以关闭此页。</p>");
+    }
+    const device = /^\/v1\/auth\/device\/([A-Za-z0-9_-]{43})$/.exec(path);
+    if (device && (request.method === "GET" || request.method === "POST")) {
+      return env.LOGINS.getByName(device[1]).authorizeDevice(device[1], request);
+    }
+    if ((path === "/v1/auth/device" || path === "/v1/auth/device/token" || path === "/v1/auth/device/cancel") && request.method === "POST") {
+      try {
+        const body = await readJson(request);
+        if (!validSecret(body.id)) return reply({ error: "invalid_login" }, 400);
+        if (path.endsWith("/token") || path.endsWith("/cancel")) {
+          if (!validSecret(body.code_verifier)) return reply({ error: "invalid_grant" }, 401);
+          return path.endsWith("/cancel") ? env.LOGINS.getByName(body.id).cancelDevice(body.code_verifier) : env.LOGINS.getByName(body.id).pollDevice(body.code_verifier);
+        }
+        if (!validSecret(body.code_challenge) || typeof body.name !== "string") return reply({ error: "invalid_login" }, 400);
+        if (!(await consumeLoginRate(env, request))) return reply({ error: "rate_limited" }, 429, { "retry-after": "60" });
+        return env.LOGINS.getByName(body.id).startDevice(body.id, body.code_challenge, body.name);
+      } catch {
+        return reply({ error: "invalid_request" }, 400);
       }
-      // Every connection on this relay URL must reach the same relay process.
-      // Random per-request routing would split peers into disconnected relays.
-      return env.RELAY.getByName("primary").fetch(request);
+    }
+    if (path === "/v1/auth/google/callback" && request.method === "GET") {
+      const state = url.searchParams.get("state");
+      if (!validSecret(state)) return reply({ error: "invalid_login_state" }, 400);
+      return env.LOGINS.getByName(state).callback(state, request);
+    }
+    if (path === "/v1/auth/token" && request.method === "POST") {
+      try {
+        const body = await readJson(request);
+        if (typeof body.code !== "string") return denied();
+        const [id, secret, extra] = body.code.split(".");
+        if (!validSecret(id) || !validSecret(secret) || extra !== undefined || !validSecret(body.code_verifier) || typeof body.redirect_uri !== "string") return denied();
+        return env.LOGINS.getByName(id).exchange(secret, body.code_verifier, body.redirect_uri);
+      } catch {
+        return reply({ error: "invalid_request" }, 400);
+      }
+    }
+    if ((path === "/v1/auth/refresh" || path === "/v1/auth/logout") && request.method === "POST") {
+      try {
+        const token = bearerToken(request);
+        const claims = token ? await verifyToken(env, token, "refresh") : null;
+        if (!claims || !token) return denied();
+        const body = await readJson(request);
+        const account = env.ACCOUNTS.getByName(claims.sub);
+        if (path.endsWith("/refresh")) {
+          if (!validId(body.request_id)) return reply({ error: "invalid_request" }, 400);
+          return account.refresh(token, body.request_id);
+        }
+        if (typeof body.all !== "boolean") return reply({ error: "invalid_request" }, 400);
+        return account.logout(token, body.all);
+      } catch {
+        return reply({ error: "invalid_request" }, 400);
+      }
+    }
+    const admin = /^\/v1\/admin\/accounts\/([A-Za-z0-9_-]{1,128})$/.exec(path);
+    const restartRelay = path === "/v1/admin/relay/restart";
+    if ((admin || restartRelay) && request.method === "POST") {
+      const supplied = bearerToken(request);
+      if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 43 || !supplied || (await digest(supplied)) !== (await digest(env.ADMIN_TOKEN))) return denied();
+      try {
+        if (restartRelay) {
+          // Cutovers from stateless admission must also retire the old process
+          // and its untracked sockets; a started rollout is not that guarantee.
+          await env.RELAY.getByName("primary").destroy();
+          return reply({ restarted: true });
+        }
+        const body = await readJson(request);
+        if (typeof body.blocked !== "boolean") return reply({ error: "invalid_request" }, 400);
+        return env.ACCOUNTS.getByName(admin![1]).administer(body.blocked);
+      } catch {
+        return reply({ error: "invalid_request" }, 400);
+      }
+    }
+    if (path === "/relay" || path === "/v1/auth/session" || path === "/v1/auth/sessions" || /^\/v1\/auth\/sessions\/[^/]+$/.test(path)) {
+      if (path === "/relay" && request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+        return reply({ error: "websocket_required" }, 426);
+      }
+      const token = bearerToken(request);
+      const claims = token ? await verifyToken(env, token, "access") : null;
+      if (!claims) return denied();
+      return env.ACCOUNTS.getByName(claims.sub).fetch(request);
     }
     const match = /^\/pkarr\/([a-z0-9]{52})$/.exec(path);
     if (!match) return new Response("Not found", { status: 404 });
@@ -71,9 +162,6 @@ export default {
       key = decodeKey(match[1]);
     } catch {
       return new Response("Invalid public key", { status: 400, headers: cors });
-    }
-    if (!allowedKeys(env.ALLOWED_KEYS).has(hexKey(key))) {
-      return new Response("Endpoint not allowed", { status: 403, headers: cors });
     }
     const record = env.RECORDS.getByName(match[1]);
     if (request.method === "GET") {

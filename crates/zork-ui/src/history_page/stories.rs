@@ -179,7 +179,7 @@ impl Render for Story {
             .font_family("Inter Variable")
             .text_size(px(12.))
             .line_height(px(18.))
-            .bg(rgb(CUE_UI.palette.canvas))
+            .bg(rgb(ZORK_UI.palette.canvas))
             .child(self.render_history_page(window, cx))
             .child(self.details.clone())
     }

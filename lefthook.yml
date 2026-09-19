@@ -7,7 +7,7 @@ pre-commit:
       glob:
         - "*.{json,jsonc,toml,md,yml,yaml}"
         - "**/*.{json,jsonc,toml,md,yml,yaml}"
-      run: vp fmt --check {staged_files}
+      run: vp fmt --check --no-error-on-unmatched-pattern {staged_files}
     rust-format:
       glob:
         - "**/*.rs"

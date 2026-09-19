@@ -4,7 +4,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     comments::DraftComment,
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, ClickEvent, Context, Entity, Window};
 use std::{cell::Cell, rc::Rc};
@@ -34,7 +34,7 @@ pub fn queue<V: 'static>(
 ) -> gpui::AnyElement {
     let edit = Rc::new(edit);
     let remove = Rc::new(remove);
-    let p = CUE_UI.palette;
+    let p = ZORK_UI.palette;
     div()
         .id(id(prefix, "composer-comment-queue"))
         .flex()

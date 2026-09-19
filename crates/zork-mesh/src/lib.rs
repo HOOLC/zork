@@ -7,6 +7,7 @@ pub mod feed;
 mod local_discovery;
 pub mod managed;
 pub mod node;
+mod relay_access;
 pub mod route;
 
 pub const SYNCH_VERSION: &str = "0.1.8";

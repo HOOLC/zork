@@ -6,7 +6,7 @@ use super::super::{
 use super::{disabled_node, surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 #[cfg(not(target_family = "wasm"))]
@@ -239,7 +239,7 @@ impl Menu {
                 opens_panel: true,
                 ..Default::default()
             },
-            CUE_UI.palette.canvas,
+            ZORK_UI.palette.canvas,
             window,
             cx,
         );
@@ -334,7 +334,7 @@ impl Menu {
         let element = surface(
             id,
             crate::controls::CARD_RADIUS,
-            CUE_UI.palette.prompt,
+            ZORK_UI.palette.prompt,
             false,
         )
         .w(px(width))
@@ -559,7 +559,7 @@ impl Menu {
                 super::super::navigation::Style {
                     kind: super::super::navigation::Kind::Actions,
                     framed: false,
-                    parent: CUE_UI.palette.canvas,
+                    parent: ZORK_UI.palette.canvas,
                     activate_on_arrow: false,
                     row_radius: crate::controls::MENU_RADIUS - 6.,
                 },
@@ -664,7 +664,7 @@ impl Menu {
                                 div()
                                     .h(px(crate::design::BORDER_WIDTH))
                                     .w_full()
-                                    .bg(rgb(CUE_UI.palette.border)),
+                                    .bg(rgb(ZORK_UI.palette.border)),
                             ),
                             crate::design::BORDER_WIDTH,
                         ),
@@ -680,7 +680,7 @@ impl Menu {
                                 .flex()
                                 .items_center()
                                 .text_size(px(11.))
-                                .text_color(rgb(CUE_UI.palette.muted))
+                                .text_color(rgb(ZORK_UI.palette.muted))
                                 .child(item.label),
                             14.,
                         ),
@@ -719,7 +719,7 @@ impl Menu {
                                         .truncate()
                                         .text_size(px(11.))
                                         .line_height(px(16.))
-                                        .text_color(rgb(CUE_UI.palette.muted))
+                                        .text_color(rgb(ZORK_UI.palette.muted))
                                         .child(detail),
                                 )
                             }),
@@ -757,7 +757,7 @@ impl Menu {
                         div()
                             .flex_shrink_0()
                             .text_size(px(11.))
-                            .text_color(rgb(CUE_UI.palette.muted))
+                            .text_color(rgb(ZORK_UI.palette.muted))
                             .child(if has_children {
                                 crate::controls::icon("icons/chevron-right.svg", 12.)
                                     .into_any_element()
@@ -931,7 +931,7 @@ impl Menu {
                 )
                 .automation_enabled(level_open, AutomationRole::Status, "菜单内容");
             layers = layers
-                .child(surface.background(CUE_UI.palette.canvas, None))
+                .child(surface.background(ZORK_UI.palette.canvas, None))
                 .child(panel)
                 .child(surface.background_colors(
                     None,
@@ -1058,7 +1058,7 @@ impl Menubar {
                     opens_panel: true,
                     ..Default::default()
                 },
-                CUE_UI.palette.canvas,
+                ZORK_UI.palette.canvas,
                 window,
                 cx,
             )
@@ -1201,7 +1201,7 @@ pub fn toolbar<V: 'static>(
     let mut row = surface(
         id,
         crate::controls::COMPACT_CARD_RADIUS,
-        CUE_UI.palette.prompt,
+        ZORK_UI.palette.prompt,
         false,
     )
     .p(px(4.))
@@ -1217,7 +1217,7 @@ pub fn toolbar<V: 'static>(
                     .w(px(crate::design::BORDER_WIDTH))
                     .h(px(24.))
                     .mx(px(4.))
-                    .bg(rgb(CUE_UI.palette.border)),
+                    .bg(rgb(ZORK_UI.palette.border)),
             );
             continue;
         }
@@ -1225,7 +1225,7 @@ pub fn toolbar<V: 'static>(
             row = row.child(
                 div()
                     .text_size(px(12.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(item.label),
             );
             continue;
@@ -1249,7 +1249,7 @@ pub fn toolbar<V: 'static>(
                     disabled,
                     ..Default::default()
                 },
-                CUE_UI.palette.prompt,
+                ZORK_UI.palette.prompt,
                 window,
                 cx,
             )

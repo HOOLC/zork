@@ -1,6 +1,7 @@
 //! Bounded product operations on an owned Synch engine node. No daemon, local
 //! control protocol, command interpreter or control socket is involved.
 mod folders;
+mod relay;
 mod tree;
 use crate::{MAX_ARTIFACT, MAX_FRAME};
 use anyhow::{ensure, Context, Result};
@@ -40,6 +41,7 @@ struct ActiveNode {
     node: Arc<RwLock<Option<Node>>>,
     alive: Arc<AtomicBool>,
     startup_publish: tokio::sync::mpsc::Sender<StartupPublication>,
+    relay_configs: Arc<crate::relay_access::RelayAccess>,
 }
 
 /// A direct library handle. Desktop clients can retain this handle across a
@@ -91,6 +93,7 @@ impl MeshNode {
                 node: Arc::new(RwLock::new(Some(node))),
                 alive,
                 startup_publish,
+                relay_configs: Arc::default(),
             }))),
         }
     }

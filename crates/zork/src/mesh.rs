@@ -196,8 +196,8 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     let root = choose_root(explicit).await?;
     let invitation = if action == "join" {
         Some(
-            zork_mesh::enrollment::ticket::resolve(
-                &root.join("invite-bootstrap"),
+            zork_client_core::transport::resolve_invitation(
+                &root,
                 ticket.as_deref().context("join requires an invitation")?,
                 zork_mesh::enrollment::InviteKind::Station,
             )

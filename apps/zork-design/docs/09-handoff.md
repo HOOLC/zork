@@ -54,4 +54,4 @@ Inter 字体附 OFL；7 个供应商品牌 SVG 来自 Lobe Icons 1.95.0，附 MI
 
 `asset-application.json` 记录素材源与实际网页目标。运行 `scripts/apply_web_assets.py` 同步当前字标、功能图标和场景到桌面/移动原型及旧预览入口，再运行 build 与 sync-brand-preview。历史 archive 不覆盖。
 
-原生当前使用的引用以全量清单中的“直接引用”为依据；Cue/Phosphor 原文件保留来源，不再把来源目录名当作 Zork 当前图标命名规范。
+原生当前使用的引用以全量清单中的“直接引用”为依据；Central Icons/Phosphor 原文件保留来源，不再把来源目录名当作 Zork 当前图标命名规范。

@@ -2,7 +2,7 @@
 
 use gpui::{point, px, TitlebarOptions};
 
-/// Match Cue's macOS full-size content window: AppKit owns the
+/// Use a macOS full-size content window: AppKit owns the
 /// traffic lights, while the app content extends beneath a transparent,
 /// untitled titlebar.
 pub fn native_titlebar_options() -> TitlebarOptions {

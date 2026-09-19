@@ -19,6 +19,9 @@ serde_json = "1"
 zork-observe = { path = "../zork-observe" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+base64 = "0.22"
+getrandom.workspace = true
+sha2 = "0.10.9"
 zork-agent-api = { path = "../agent-api" }
 bytes = "1"
 reqwest.workspace = true
@@ -29,7 +32,6 @@ zork-config = { path = "../zork-config" }
 zork-mesh = { path = "../zork-mesh", default-features = false }
 zork-notify = { path = "../zork-notify" }
 imbl.workspace = true
-openidconnect = { version = "=4.0.1", features = ["reqwest-blocking"], optional = true }
 zork-browser = { path = "../zork-browser", optional = true }
 rquickjs = { version = "=0.13.0", optional = true, features = ["bindgen"] }
 
@@ -45,7 +47,7 @@ libc = "0.2"
 [features]
 local-scripts = ["dep:rquickjs"]
 headless-bench = []
-desktop = ["dep:openidconnect", "dep:zork-browser"]
+desktop = ["dep:zork-browser"]
 
 [[bench]]
 name = "replica"

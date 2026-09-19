@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::liquid::overlay::SourceBinding,
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     history::Entry,
     resources::Text,
 };
@@ -114,7 +114,7 @@ impl Render for Details {
                     div()
                         .mt_3()
                         .text_size(px(12.))
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(id.clone()),
                 )
                 .when_some(role.clone(), |v, role| v.child(div().mt_2().child(role)))
@@ -133,12 +133,12 @@ impl Render for Details {
                     .text_size(px(12.))
                     .line_height(px(18.))
                     .when_some(entry.start.or(entry.end), |v, at| {
-                        // Cue's record clock: absolute, 9px, tertiary.
+                        // The record clock: absolute, 9px, tertiary.
                         v.child(
                             div()
                                 .mb(px(6.))
                                 .text_size(px(9.))
-                                .text_color(rgb(CUE_UI.palette.subtle))
+                                .text_color(rgb(ZORK_UI.palette.subtle))
                                 .child(crate::history::clock(Some(at))),
                         )
                     })
@@ -148,7 +148,7 @@ impl Render for Details {
                             .child(
                                 div()
                                     .text_size(px(11.))
-                                    .text_color(rgb(CUE_UI.palette.subtle))
+                                    .text_color(rgb(ZORK_UI.palette.subtle))
                                     .mb_3()
                                     .child(file.path.clone()),
                             )

@@ -2,7 +2,7 @@
 use crate::history::activity::Kind;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
     history::Entry,
 };
 use gpui::{div, prelude::*, px, relative, rgb, rgba, Context, Div, FontWeight};
@@ -12,7 +12,7 @@ pub const SEND_COLOR: u32 = 0x536779;
 pub const RECEIVE_COLOR: u32 = 0x5A6D62;
 pub const MODEL_COLOR: u32 = 0x92969D;
 
-/// Cue's session-activity accents are its utility ramp step 700: a received row
+/// History activity accents use utility ramp step 700: a received row
 /// is utility blue, a sent row utility purple, a wait utility warning and a
 /// failure utility error. The timeline keeps its own neutral accents.
 pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
@@ -20,19 +20,19 @@ pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
 pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
 pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
 
-/// The 12% accent tint Cue puts behind a row icon, matching its `inset: 3px -2px`
-/// chip on the 16px icon box.
+/// The 12% accent tint behind a row icon uses an inset of 3px vertically
+/// and -2px horizontally on the 16px icon box.
 fn accent_chip(color: u32) -> gpui::Rgba {
     rgba((color << 8) | 0x1F)
 }
 
-/// `font-variant-numeric: tabular-nums`, which Cue puts on its clocks, waits
+/// Tabular figures for clocks, waits
 /// and overview facts. gpui exposes the OpenType `tnum` feature instead.
 pub fn tabular_nums() -> gpui::FontFeatures {
     gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".to_owned(), 1)]))
 }
 
-/// Rows Cue marks with an observable activity kind carry the accent chip and the
+/// Rows with an observable activity kind carry the accent chip and the
 /// accented label; ordinary operation rows stay neutral.
 pub fn activity_accent(kind: Kind) -> bool {
     matches!(
@@ -49,7 +49,7 @@ pub struct ActivityHeader {
     /// and no label, so the whole line is absent.
     pub icon: Option<&'static str>,
     pub color: u32,
-    /// Cue marks rows with an observable activity kind by accenting the icon and
+    /// Observable activity rows accent the icon and
     /// label and tinting a chip behind the icon; neutral operation rows stay muted.
     pub accent: bool,
     pub action: String,
@@ -61,13 +61,13 @@ pub struct ActivityHeader {
     pub tail: bool,
     pub status: Option<String>,
     pub failed: bool,
-    /// A live row spins Cue's loading ring in place of its static icon.
+    /// A live row spins a loading ring in place of its static icon.
     pub live: bool,
-    /// Cue's wait label and record clocks use tabular figures.
+    /// The wait label and record clocks use tabular figures.
     pub tabular: bool,
-    /// A group heading is `.cue-session-group-summary`: it shrinks and ellipsises.
+    /// A group heading shrinks and ellipsises.
     pub group_summary: bool,
-    /// An expanded group heading carries Cue's 12px rotated chevron.
+    /// An expanded group heading carries a 12px rotated chevron.
     pub chevron: bool,
 }
 
@@ -111,7 +111,7 @@ pub fn activity_header_sources<V: 'static>(
     );
     let subject_id = format!("history-target-{id:?}");
     let subject_label = header.subject.clone().unwrap_or_default();
-    // Cue accents an activity label and leaves an operation label tertiary.
+    // An activity label is accented; an operation label uses the tertiary color.
     let label_color = if header.accent {
         header.color
     } else if !header.tail && !header.group_summary {
@@ -119,7 +119,7 @@ pub fn activity_header_sources<V: 'static>(
     } else {
         0x5E5E5E
     };
-    // `.cue-session-icon` is tertiary; an accent row tints it with the action
+    // The row icon is tertiary; an accent row tints it with the action
     // colour, a failed tool paints it error and a live row without an activity
     // kind reads primary.
     let icon_color = if header.failed {
@@ -153,7 +153,7 @@ pub fn activity_header_sources<V: 'static>(
         .text_size(px(12.))
         .text_color(rgb(0x4C4C4C))
         .cursor_pointer()
-        .focus_visible(|v| v.bg(rgb(CUE_UI.palette.sidebar_hover)))
+        .focus_visible(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
         .on_click(cx.listener(move |v, _, window, cx| {
             window.focus(&click_focus, cx);
             open(v, window, cx);
@@ -196,7 +196,7 @@ pub fn activity_header_sources<V: 'static>(
             )
         })
         .child(match header.group_summary {
-            // `.cue-session-group-summary` shrinks and ellipsises its counts.
+            // The group summary shrinks and ellipsises its counts.
             true => div()
                 .min_w_0()
                 .text_size(px(11.))
@@ -205,7 +205,7 @@ pub fn activity_header_sources<V: 'static>(
                 .truncate()
                 .when(header.tabular, |v| v.font_features(tabular_nums()))
                 .child(header.action),
-            // `.cue-session-label` is `flex: none` at 11px, medium when accented.
+            // The activity label is `flex: none` at 11px, medium when accented.
             false => div()
                 .min_w_0()
                 .when(header.tail, |v| v.flex_shrink_0())
@@ -223,13 +223,13 @@ pub fn activity_header_sources<V: 'static>(
         })
         .when(header.chevron, |v| {
             v.child(
-                crate::controls::icon("cue/chevron-down.svg", 12.)
+                crate::controls::icon("interface/chevron-down.svg", 12.)
                     .text_color(rgb(0x5E5E5E))
                     .flex_shrink_0(),
             )
         })
         .when_some(header.subject, |v, text| {
-            // `.cue-session-record-target` may shrink (`flex: 0 1 auto`) so a
+            // The record target may shrink (`flex: 0 1 auto`) so a
             // long target ellipsises instead of pushing the status off the line.
             let subject = div()
                 .min_w_0()
@@ -275,7 +275,7 @@ pub fn activity_header_sources<V: 'static>(
             )
         })
         .when(!header.summary.is_empty(), |v| {
-            // `.cue-session-tail` right-aligns and clips a text row's trailing
+            // The tail right-aligns and clips a text row's trailing
             // prose; an operation target keeps its own width before the status.
             if header.tail {
                 return v.child(
@@ -350,7 +350,7 @@ pub fn focus_for(id: String, window: &mut gpui::Window, cx: &mut gpui::App) -> g
 }
 pub fn color(entry: &Entry) -> u32 {
     if matches!(entry.state.as_str(), "failed" | "timed_out") {
-        CUE_UI.palette.danger
+        ZORK_UI.palette.danger
     } else {
         [SEND_COLOR, MODEL_COLOR, RECEIVE_COLOR][entry.lane.min(2)]
     }
@@ -380,7 +380,7 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
                     .gap_y(px(1.))
                     .text_size(px(10.))
                     .line_height(px(15.))
-                    .text_color(rgb(CUE_UI.palette.muted))
+                    .text_color(rgb(ZORK_UI.palette.muted))
                     .child(format!("{input_label} {input}"))
                     .child(format!("{output_label} {output}"))
                     .when_some(
@@ -399,9 +399,9 @@ pub fn activity_color(kind: Kind, state: &str) -> u32 {
         Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
         Kind::Wait => ACTIVITY_WAIT_COLOR,
         Kind::Error => ACTIVITY_ERROR_COLOR,
-        // Output, thinking and ordinary operations read neutral, as Cue's
+        // Output, thinking and ordinary operations read neutral, as the history page's
         // text-tertiary icon and secondary label do.
-        _ => CUE_UI.palette.subtle,
+        _ => ZORK_UI.palette.subtle,
     }
 }
 pub fn kind_label(kind: Kind) -> &'static str {
@@ -435,7 +435,7 @@ pub fn kind_label(kind: Kind) -> &'static str {
 pub fn kind_icon(kind: Kind) -> &'static str {
     match kind {
         Kind::Input => "history/receive.svg",
-        Kind::Output | Kind::Thinking => "cue/sparkles.svg",
+        Kind::Output | Kind::Thinking => "interface/sparkles.svg",
         Kind::SendMessage => "history/send.svg",
         Kind::SendFile => "history/attachment.svg",
         Kind::Notify => "history/notify.svg",

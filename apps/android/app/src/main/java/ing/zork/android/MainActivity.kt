@@ -69,6 +69,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ClientScreen(model: ClientViewModel) {
+    val context = LocalContext.current
+    var openedLogin by rememberSaveable { mutableStateOf<String?>(null) }
+    val loginUrl = model.account?.text("login_url")?.takeIf { it.isNotBlank() }
+    LaunchedEffect(loginUrl) {
+        if (loginUrl != null && openedLogin != loginUrl) {
+            openedLogin = loginUrl
+            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(loginUrl))) }
+            catch (_: android.content.ActivityNotFoundException) { model.accountBrowserFailed() }
+        }
+    }
     LaunchedEffect(model.ready, model.activePeer?.id, model.conversation?.id, model.settings != null, model.sharedFiles != null) { model.reportVisibleConversation() }
     var addDevice by rememberSaveable { mutableStateOf(false) }
     var hadInvitation by rememberSaveable { mutableStateOf(false) }
@@ -152,6 +162,7 @@ private fun ClientScreen(model: ClientViewModel) {
                 notificationAction = model::notificationAction, testNotification = model::testNotification,
                 notificationRefresh = model::refreshNotificationDelivery,
                 adb = model.adbSettings, adbError = model.adbError, adbAction = model::adbAction, adbRefresh = model::refreshAdb,
+                account = model.account, accountError = model.accountError, accountAction = model::accountAction,
                 dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData))
         }
     } else retained.SaveableStateProvider("workbench") { Workbench(

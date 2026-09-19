@@ -1,10 +1,10 @@
 //! Desktop conversation navigation and shared icon buttons.
-use crate::design::CUE_UI;
+use crate::design::ZORK_UI;
 use gpui::{prelude::*, px, rgb, svg};
 
-pub const PANEL_BACKGROUND: u32 = CUE_UI.palette.canvas;
-pub const ICON_COLOR: u32 = CUE_UI.palette.muted;
-pub const DISABLED_COLOR: u32 = CUE_UI.palette.subtle;
+pub const PANEL_BACKGROUND: u32 = ZORK_UI.palette.canvas;
+pub const ICON_COLOR: u32 = ZORK_UI.palette.muted;
+pub const DISABLED_COLOR: u32 = ZORK_UI.palette.subtle;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShellRoute {

@@ -11,7 +11,7 @@ use std::{
 };
 
 /// The document's actual shaped lines determine a five-line excerpt. The first
-/// layout uses the same 110px provisional bound as Cue's ResizeObserver path.
+/// layout uses the same 110px provisional bound as the history page's ResizeObserver path.
 #[derive(Clone)]
 pub struct LinePreview {
     pub height: Rc<Cell<f32>>,
@@ -49,7 +49,7 @@ pub struct MessagePreview {
     pub limit: f32,
     pub more: bool,
     pub expanded: bool,
-    /// Cue clips a session reply with `overflow: clip` and no gradient; the
+    /// A session reply clips without a gradient; the
     /// chat transcript still paints its clip fade.
     pub fade: bool,
     pub background: gpui::Hsla,

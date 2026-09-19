@@ -9,9 +9,12 @@ use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
+mod account;
 mod mcp;
 mod mesh;
 mod service;
+#[cfg(all(test, unix))]
+mod tests;
 mod upgrade;
 
 fn usage() -> &'static str {
@@ -21,6 +24,7 @@ Usage:
   zork install [--data DIR] [--name DEVICE_NAME]
   zork update [--data DIR]
   zork upgrade --version X.Y.Z [--data DIR]
+  zork account login|status|logout [--data DIR]
   zork mesh invite|join|status [--data DIR]
   zork mcp list|add FILE|get ID|probe ID|enable ID|disable ID|remove ID [--data DIR]
   zork mcp update ID FILE [--data DIR]
@@ -70,6 +74,7 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
         }
         "update" => send_reload(argv).await,
         "upgrade" => upgrade::run(argv).await,
+        "account" => account::run(argv).await,
         "mesh" => mesh::run(argv).await,
         "mcp" => mcp::run(argv).await,
         "service" => service::command(argv).await,
@@ -98,8 +103,10 @@ async fn send_reload(argv: Vec<String>) -> Result<()> {
     )
     .await??;
     let status: serde_json::Value = serde_json::from_str(&reply)?;
-    anyhow::ensure!(status["agent_mode"] == "embedded",
-        "the running supervisor uses a standalone Agent; restart the zork supervisor once to activate the embedded Agent (hot reload is not supported for this migration)");
+    anyhow::ensure!(
+        status["agent_mode"] == "embedded",
+        "the running supervisor uses a standalone Agent; restart the zork supervisor once to activate the embedded Agent (hot reload is not supported for this migration)"
+    );
     let mut stream = UnixStream::connect(&sock)
         .await
         .with_context(|| format!("zork is not running ({})", sock.display()))?;

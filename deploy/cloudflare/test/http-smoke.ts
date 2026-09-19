@@ -1,4 +1,4 @@
-// Run against wrangler dev or a deployed Worker with this probe identity allowed.
+// Run against wrangler dev or a deployed Worker. Discovery is signed; no device allowlist.
 // Usage: pnpm exec tsx test/http-smoke.ts BASE_URL PATH_TO_PROBE_SEED
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -56,7 +56,7 @@ assert.deepEqual(new Uint8Array(await response.arrayBuffer()), latest);
 const writes = Array.from({ length: 8 }, (_, i) => packet(start + BigInt(10 + i), `value=${i}`));
 await Promise.all(writes.slice().reverse().map(put));
 assert.deepEqual(new Uint8Array(await (await fetch(url)).arrayBuffer()), writes.at(-1));
-assert.equal((await fetch(`${base}/pkarr/${"y".repeat(52)}`)).status, 403);
+assert.equal((await fetch(`${base}/pkarr/${"y".repeat(52)}`)).status, 404);
 assert.equal((await fetch(`${base}/metrics`)).status, 404);
 assert.equal((await fetch(`${base}/relay`)).status, 426);
-console.log("PASS: signed PUT/GET, retries, stale/conflicting writes, concurrent ordering, forgery rejection, body bounds, closed access");
+console.log("PASS: signed PUT/GET; relay WebSocket is Google-login gated");

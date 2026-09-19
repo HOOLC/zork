@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{text_input::ComposerInput, tooltip},
     controls as ui,
-    design::CUE_UI,
+    design::ZORK_UI,
     resources::Text,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, FontWeight, Window};
@@ -105,7 +105,7 @@ impl Chrome {
 }
 const TAB_WIDTH: f32 = 156.;
 const CONTROL_SIZE: f32 = 28.;
-const TAB_ROW_HEIGHT: f32 = CUE_UI.thread.header_height;
+const TAB_ROW_HEIGHT: f32 = ZORK_UI.thread.header_height;
 const ADDRESS_ROW_HEIGHT: f32 = 40.;
 
 fn icon_button(
@@ -114,7 +114,7 @@ fn icon_button(
     enabled: bool,
 ) -> crate::controls::Action {
     ui::icon_button_sized(id, enabled, ui::IconButtonSize::Compact)
-        .child(ui::icon(path, 16.).text_color(rgb(CUE_UI.palette.subtle)))
+        .child(ui::icon(path, 16.).text_color(rgb(ZORK_UI.palette.subtle)))
 }
 fn hint(
     button: crate::controls::Action,
@@ -131,7 +131,7 @@ fn hint(
 
 impl Chrome {
     pub fn render_tabs<V: Host>(&self, cx: &mut Context<V>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let locale = self.locale.clone();
         let active = self.active_id();
         let blank_tab = active.is_none() && (self.active_native.is_none() || self.blank);
@@ -196,24 +196,28 @@ impl Chrome {
                                         .child(page.title.clone()),
                                 )
                                 .child(
-                                    icon_button(format!("page-close-{close}"), "cue/x.svg", true)
-                                        .size(px(24.))
-                                        .on_click(cx.listener(move |v, _, window, cx| {
-                                            cx.stop_propagation();
-                                            v.browser_action(
-                                                Action::CloseNative(close.clone()),
-                                                Some(window),
-                                                cx,
-                                            );
-                                        }))
-                                        .automation(
-                                            AutomationRole::Button,
-                                            format!(
-                                                "{} {}",
-                                                locale.text("browser_close_tab"),
-                                                page.title
-                                            ),
+                                    icon_button(
+                                        format!("page-close-{close}"),
+                                        "interface/x.svg",
+                                        true,
+                                    )
+                                    .size(px(24.))
+                                    .on_click(cx.listener(move |v, _, window, cx| {
+                                        cx.stop_propagation();
+                                        v.browser_action(
+                                            Action::CloseNative(close.clone()),
+                                            Some(window),
+                                            cx,
+                                        );
+                                    }))
+                                    .automation(
+                                        AutomationRole::Button,
+                                        format!(
+                                            "{} {}",
+                                            locale.text("browser_close_tab"),
+                                            page.title
                                         ),
+                                    ),
                                 )
                                 .automation(AutomationRole::Button, page.title)
                         }))
@@ -266,7 +270,7 @@ impl Chrome {
                                 .child(
                                     icon_button(
                                         format!("browser-close-{close}"),
-                                        "cue/x.svg",
+                                        "interface/x.svg",
                                         true,
                                     )
                                     .size(px(24.))
@@ -319,7 +323,7 @@ impl Chrome {
                                             .child(locale.text("browser_new_tab")),
                                     )
                                     .child(
-                                        icon_button("browser-close-blank", "cue/x.svg", true)
+                                        icon_button("browser-close-blank", "interface/x.svg", true)
                                             .size(px(24.))
                                             .on_click(cx.listener(|v, _, window, cx| {
                                                 cx.stop_propagation();
@@ -338,11 +342,11 @@ impl Chrome {
                         }),
                 )
                 .child(hint(
-                    icon_button("browser-new-tab", "cue/plus.svg", true).on_click(cx.listener(
-                        |v, _, window, cx| {
+                    icon_button("browser-new-tab", "interface/plus.svg", true).on_click(
+                        cx.listener(|v, _, window, cx| {
                             v.browser_action(Action::NewTab, Some(window), cx);
-                        },
-                    )),
+                        }),
+                    ),
                     "browser-new-tab",
                     locale.text("browser_new_tab"),
                     true,
@@ -377,7 +381,7 @@ impl Chrome {
         window: &mut gpui::Window,
         cx: &mut Context<V>,
     ) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let locale = self.locale.clone();
         let has_tab = self.active().is_some();
         let loading = self.active().is_some_and(|tab| tab.loading);
@@ -391,21 +395,27 @@ impl Chrome {
             .gap_1()
             .border_color(rgb(p.border))
             .child(hint(
-                icon_button("browser-back", "cue/arrow-left.svg", has_tab).when(has_tab, |v| {
-                    v.on_click(cx.listener(|v, _, window, cx| {
-                        v.browser_action(Action::Nav("back"), Some(window), cx)
-                    }))
-                }),
+                icon_button("browser-back", "interface/arrow-left.svg", has_tab).when(
+                    has_tab,
+                    |v| {
+                        v.on_click(cx.listener(|v, _, window, cx| {
+                            v.browser_action(Action::Nav("back"), Some(window), cx)
+                        }))
+                    },
+                ),
                 "browser-back",
                 locale.text("browser_back"),
                 has_tab,
             ))
             .child(hint(
-                icon_button("browser-forward", "cue/arrow-right.svg", has_tab).when(has_tab, |v| {
-                    v.on_click(cx.listener(|v, _, window, cx| {
-                        v.browser_action(Action::Nav("forward"), Some(window), cx)
-                    }))
-                }),
+                icon_button("browser-forward", "interface/arrow-right.svg", has_tab).when(
+                    has_tab,
+                    |v| {
+                        v.on_click(cx.listener(|v, _, window, cx| {
+                            v.browser_action(Action::Nav("forward"), Some(window), cx)
+                        }))
+                    },
+                ),
                 "browser-forward",
                 locale.text("browser_forward"),
                 has_tab,
@@ -414,9 +424,9 @@ impl Chrome {
                 icon_button(
                     "browser-reload",
                     if loading {
-                        "cue/x.svg"
+                        "interface/x.svg"
                     } else {
-                        "cue/reload.svg"
+                        "interface/reload.svg"
                     },
                     true,
                 )
@@ -556,7 +566,7 @@ impl Chrome {
     }
 
     pub fn render_empty<V: Host>(&self, cx: &mut Context<V>) -> impl IntoElement {
-        let p = CUE_UI.palette;
+        let p = ZORK_UI.palette;
         let loading = self.active().is_some() || self.busy > 0;
         if !loading && !self.applications.is_empty() {
             let applications = self.applications.clone();
@@ -681,8 +691,8 @@ impl Chrome {
                 .gap_2()
                 .text_size(px(12.))
                 .line_height(px(18.))
-                .text_color(rgb(CUE_UI.palette.danger))
-                .child(ui::icon("icons/attention.svg", 16.).text_color(rgb(CUE_UI.palette.danger)))
+                .text_color(rgb(ZORK_UI.palette.danger))
+                .child(ui::icon("icons/attention.svg", 16.).text_color(rgb(ZORK_UI.palette.danger)))
                 .child(div().flex_1().min_w_0().child(error.clone()))
                 .automation(AutomationRole::Status, error)
                 .into_any_element()

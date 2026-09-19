@@ -336,7 +336,7 @@ fn paint_morph(
         window.paint_path(
             path.clone(),
             rgb(match fill {
-                MorphFill::Ink => crate::design::CUE_UI.palette.text,
+                MorphFill::Ink => crate::design::ZORK_UI.palette.text,
                 MorphFill::Counter => background,
             }),
         );
@@ -426,7 +426,7 @@ impl Render for Brand {
             let mark = gpui::svg()
                 .path("brand/mark.svg")
                 .size(px(size))
-                .text_color(rgb(crate::design::CUE_UI.palette.text));
+                .text_color(rgb(crate::design::ZORK_UI.palette.text));
             row = row.child(if animated {
                 let duration = if matches!(mode, BrandMotion::Icon) {
                     680

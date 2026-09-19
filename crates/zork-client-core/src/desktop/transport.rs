@@ -12,7 +12,7 @@ use std::{
 
 struct Embedded {
     executor: tokio::runtime::Runtime,
-    node: zork_mesh::managed::Runtime,
+    node: crate::transport::Runtime,
     config: zork_config::MeshConfig,
     origin: String,
 }

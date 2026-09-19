@@ -131,13 +131,11 @@ def build_app(args, repo, app):
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
     if args.services_config:
         services=json.loads(args.services_config.read_text())
-        assert isinstance(services,dict) and not set(services)-{'relay_urls','discovery_url','cue'}
-        if services.get('cue') is not None:
-            assert not set(services['cue'])-{'issuer','client_id','redirect_uri'}
+        assert isinstance(services,dict) and not set(services)-{'relay_urls','discovery_url'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix), f)
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nCue OAuth redirect_uri must exactly match the registered loopback callback. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: ~/Library/Application Support/Zork/client/services.json.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.

@@ -1,7 +1,7 @@
 use super::{feedback, surface};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
 
@@ -130,7 +130,7 @@ impl RenderOnce for PortraitChoices {
                         radius: Some(8.),
                         ..Default::default()
                     },
-                    CUE_UI.palette.canvas,
+                    ZORK_UI.palette.canvas,
                 )
                 .w(px(self.item_width))
                 .h(px(self.portrait_size + 10.))
@@ -225,7 +225,7 @@ pub fn data_list(
                         .aria_label(label.clone())
                         .w(px(key_width))
                         .flex_shrink_0()
-                        .text_color(rgb(CUE_UI.palette.muted))
+                        .text_color(rgb(ZORK_UI.palette.muted))
                         .child(label),
                 )
                 .child(
@@ -276,7 +276,7 @@ pub fn table(
         .role(Role::Row)
         .aria_row_index(0)
         .flex()
-        .bg(rgb(CUE_UI.palette.prompt));
+        .bg(rgb(ZORK_UI.palette.prompt));
     for (i, column) in columns.iter().enumerate() {
         header = header.child(
             div()
@@ -301,7 +301,7 @@ pub fn table(
             .aria_row_index(index + 1)
             .flex()
             .border_b(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(CUE_UI.palette.border));
+            .border_color(rgb(ZORK_UI.palette.border));
         for (column, cell) in columns.iter().zip(row.cells).enumerate() {
             let (spec, text) = cell;
             cells = cells.child(
@@ -354,7 +354,7 @@ pub fn separator(
         .when(!vertical, |v| {
             v.h(px(crate::design::BORDER_WIDTH)).w(px(length))
         })
-        .bg(rgb(CUE_UI.palette.border))
+        .bg(rgb(ZORK_UI.palette.border))
         .into_any_element()
 }
 pub fn aspect_ratio(
@@ -444,7 +444,7 @@ impl ScrollArea {
             })
             .child(content)
             .automation(AutomationRole::Status, "滚动区域");
-        surface(id.clone(), 0., CUE_UI.palette.canvas, true)
+        surface(id.clone(), 0., ZORK_UI.palette.canvas, true)
             .w(px(width))
             .h(px(height))
             .child(viewport)
@@ -453,7 +453,11 @@ impl ScrollArea {
                     .id(format!("{id}-scrollbar"))
                     .mode(gpui_base::ScrollbarMode::Always)
                     .styles(|s| {
-                        s.thumb(|t| t.bg(rgb(CUE_UI.palette.muted)).width(px(6.)).radius(px(3.)))
+                        s.thumb(|t| {
+                            t.bg(rgb(ZORK_UI.palette.muted))
+                                .width(px(6.))
+                                .radius(px(3.))
+                        })
                     }),
             )
             .into_any_element()

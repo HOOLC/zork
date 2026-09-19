@@ -4,13 +4,13 @@ use super::{
 };
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    design::CUE_UI,
+    design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
-const TEXT: u32 = CUE_UI.palette.text;
-const DIM: u32 = CUE_UI.palette.muted;
-const BORDER: u32 = CUE_UI.palette.border;
-const BG: u32 = CUE_UI.palette.canvas;
+const TEXT: u32 = ZORK_UI.palette.text;
+const DIM: u32 = ZORK_UI.palette.muted;
+const BORDER: u32 = ZORK_UI.palette.border;
+const BG: u32 = ZORK_UI.palette.canvas;
 
 pub struct Row<'a> {
     pub index: usize,
@@ -54,13 +54,13 @@ impl Row<'_> {
         // Only user bubbles need intrinsic width. Assistant prose already fills
         // its column, so shaping its full document here duplicated every code run.
         let bubble_width = if user {
-            let max_width = (content_width - CUE_UI.thread.user_left_clearance)
-                .min(CUE_UI.thread.user_max_width)
+            let max_width = (content_width - ZORK_UI.thread.user_left_clearance)
+                .min(ZORK_UI.thread.user_max_width)
                 .max(40.);
             let measured = document.bounded_text_width(
                 gpui::font("Inter Variable"),
                 13.,
-                (max_width - 2. * CUE_UI.thread.user_padding_x - 2.).max(1.),
+                (max_width - 2. * ZORK_UI.thread.user_padding_x - 2.).max(1.),
                 window,
             );
             // Retain rounding slack so fractional glyph advances do not orphan punctuation.
@@ -71,10 +71,10 @@ impl Row<'_> {
             } else {
                 40.
             };
-            (measured.ceil() + 2. * CUE_UI.thread.user_padding_x + 2.).clamp(
+            (measured.ceil() + 2. * ZORK_UI.thread.user_padding_x + 2.).clamp(
                 footer_width,
-                (content_width - CUE_UI.thread.user_left_clearance)
-                    .min(CUE_UI.thread.user_max_width)
+                (content_width - ZORK_UI.thread.user_left_clearance)
+                    .min(ZORK_UI.thread.user_max_width)
                     .max(40.),
             )
         } else {
@@ -90,7 +90,7 @@ impl Row<'_> {
             crate::components::message::render_document(&format!("message-{index}"), document)
         };
         let width = if user {
-            bubble_width - 2. * CUE_UI.thread.user_padding_x
+            bubble_width - 2. * ZORK_UI.thread.user_padding_x
         } else {
             content_width - 34.
         };
@@ -169,7 +169,7 @@ impl Row<'_> {
             more: document.is_truncated(),
             expanded,
             fade: true,
-            background: rgb(if user { CUE_UI.thread.user_fill } else { BG }).into(),
+            background: rgb(if user { ZORK_UI.thread.user_fill } else { BG }).into(),
         };
         match user {
             true => transcript_row()
@@ -189,10 +189,10 @@ impl Row<'_> {
                                 .child(
                                     div()
                                         .w_full()
-                                        .rounded(px(CUE_UI.thread.user_radius))
-                                        .bg(rgb(CUE_UI.thread.user_fill))
-                                        .px(px(CUE_UI.thread.user_padding_x))
-                                        .py(px(CUE_UI.thread.user_padding_y))
+                                        .rounded(px(ZORK_UI.thread.user_radius))
+                                        .bg(rgb(ZORK_UI.thread.user_fill))
+                                        .px(px(ZORK_UI.thread.user_padding_x))
+                                        .py(px(ZORK_UI.thread.user_padding_y))
                                         .text_size(px(13.))
                                         .line_height(px(20.))
                                         .child(prose),
