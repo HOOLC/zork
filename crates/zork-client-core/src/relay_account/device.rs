@@ -135,8 +135,8 @@ impl DeviceLogin {
             match response {
                 Ok(value) if value["pending"] == true => {}
                 Ok(value) => {
-                    let tokens =
-                        serde_json::from_value(value).context("invalid device login response")?;
+                    let tokens = serde_json::from_value(value)
+                        .map_err(|_| anyhow::anyhow!("invalid device login response"))?;
                     self.account.complete_login(&self.attempt, tokens).await?;
                     return self.account.status(false).await;
                 }

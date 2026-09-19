@@ -153,7 +153,7 @@ impl Account {
             };
             return Err(ApiError { status, code }.into());
         }
-        serde_json::from_slice(&bytes).context("invalid relay response")
+        serde_json::from_slice(&bytes).map_err(|_| anyhow::anyhow!("invalid relay response"))
     }
     fn session_from(&self, tokens: Tokens) -> Result<RelaySession> {
         let now = storage::now();

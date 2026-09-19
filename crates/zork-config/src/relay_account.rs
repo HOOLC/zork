@@ -222,15 +222,15 @@ pub fn read(root: &Path) -> Result<AccountFile> {
     );
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).context("invalid relay account file")?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| anyhow::anyhow!("invalid relay account file"))?;
     // The old unsigned/display-only JWT file cannot establish an origin-bound
     // session. A new Google login is required; never send that credential.
     if value.get("version").is_none() {
         return Ok(AccountFile::default());
     }
     let account: AccountFile =
-        serde_json::from_value(value).context("invalid relay account file")?;
+        serde_json::from_value(value).map_err(|_| anyhow::anyhow!("invalid relay account file"))?;
     ensure!(account.version == 2, "unsupported relay account format");
     if let Some(session) = &account.current {
         validate(session)?;

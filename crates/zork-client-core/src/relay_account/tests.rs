@@ -277,3 +277,27 @@ async fn cancelling_one_owner_does_not_cancel_a_newer_process_login() {
         Some("second")
     );
 }
+
+#[tokio::test]
+async fn malformed_private_and_remote_values_never_escape_through_error_chains() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new()
+        .fallback(|| async { axum::Json(serde_json::json!({"sessions":"sensitive-test-marker"})) });
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    save(root.path(), Some(saved(&origin, storage::now() + 300)));
+    let account = Account::new(root.path(), &origin).unwrap();
+    let error = account.sessions().await.unwrap_err();
+    assert!(!format!("{error:#}").contains("sensitive-test-marker"));
+    std::fs::write(
+        storage::path(root.path()),
+        br#"{"version":"sensitive-test-marker"}"#,
+    )
+    .unwrap();
+    let error = storage::read(root.path()).unwrap_err();
+    assert!(!format!("{error:#}").contains("sensitive-test-marker"));
+    server.abort();
+}
