@@ -250,8 +250,6 @@ impl NewChat {
             Ok(())
         })?;
         let request = self.snapshot().pending.clone().unwrap();
-        device.reload_outbox();
-        device.start_delivery();
         let source = self.clone();
         let client = device.client.clone();
         device.client.clone().spawn(async move {
@@ -293,6 +291,7 @@ impl NewChat {
                 source.publish_view();
             }
             device.reload_outbox();
+            device.start_delivery();
         });
         Ok(())
     }

@@ -560,7 +560,6 @@ impl RootView {
                     &this,
                     cx,
                     |view| &mut view.frame_delivery,
-                    Self::deliver_core_updates,
                 ) {
                     return;
                 }
@@ -668,12 +667,9 @@ impl RootView {
                     }
                     continue;
                 }
-                if !zork_ui::components::frame_delivery::FrameDelivery::request(
-                    &this,
-                    cx,
-                    |view| &mut view.frame_delivery,
-                    Self::deliver_core_updates,
-                ) {
+                if !zork_ui::components::frame_delivery::FrameDelivery::request(&this, cx, |view| {
+                    &mut view.frame_delivery
+                }) {
                     return;
                 }
             }
@@ -912,7 +908,7 @@ impl RootView {
 
 impl Render for RootView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.frame_delivery.enter(window) {
+        if self.frame_delivery.enter() {
             self.deliver_core_updates(cx);
         }
         {

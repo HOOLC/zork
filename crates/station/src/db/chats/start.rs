@@ -2,14 +2,9 @@ use super::*;
 use zork_client_types::chat::StartChat;
 
 impl StationDb {
-    pub fn started_chat(
-        &self,
-        request: &StartChat,
-        author: &Author,
-        client: Option<&str>,
-    ) -> Result<Option<Channel>> {
+    pub fn started_chat(&self, request: &StartChat, author: &Author) -> Result<Option<Channel>> {
         let key = format!("start-chat:{}:{}", author.id, request.request_id);
-        let fingerprint = crate::node_access::fingerprint(&(request, author, client))?;
+        let fingerprint = crate::node_access::fingerprint(&(request, author))?;
         let conn = self.published_messages()?;
         let receipt: Option<(String, Option<String>)> = conn
             .query_row(
@@ -51,7 +46,7 @@ impl StationDb {
         );
         request.validate().map_err(anyhow::Error::msg)?;
         let key = format!("start-chat:{}:{}", author.id, request.request_id);
-        let fingerprint = crate::node_access::fingerprint(&(request, author, client_identity))?;
+        let fingerprint = crate::node_access::fingerprint(&(request, author))?;
         let receipt = self.chat_begin_with_id(&key, &fingerprint, &request.request_id)?;
         let id = &receipt.object_id;
         let path = self.workspaces_root.join("channels").join(id);
@@ -183,7 +178,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let db = database(root.path());
         let input = request("你好\n保留首条消息的换行");
-        let chat = db.start_chat(&input, &user(), Some("node/client")).unwrap();
+        let chat = db
+            .start_chat(&input, &user(), Some("local/client"))
+            .unwrap();
         assert_eq!(chat.chat_id, input.request_id);
         assert_eq!(chat.message_count, 1);
         assert!(db.node_agents().unwrap().is_empty());
@@ -203,7 +200,7 @@ mod tests {
         assert_eq!(notices.items[0].message.text, input.content);
         assert_eq!(
             notices.items[0].message.client_id.as_deref(),
-            Some("node/client")
+            Some("local/client")
         );
         assert_eq!(
             db.session_chat_destination(&chat.chat_id).unwrap(),
@@ -211,6 +208,8 @@ mod tests {
         );
         drop(db);
         let db = database(root.path());
+        // Acquiring the node Mesh identity does not change the caller
+        // request or permit reallocating its accepted first send.
         assert_eq!(
             db.start_chat(&input, &user(), Some("node/client")).unwrap(),
             chat

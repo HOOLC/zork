@@ -55,7 +55,9 @@ impl ClientStore {
         }
         tx.commit()?;
         drop(conn);
-        self.delivery_changed();
+        if previous.pending != next.pending || previous.busy != next.busy {
+            self.delivery_changed();
+        }
         Ok(())
     }
 }

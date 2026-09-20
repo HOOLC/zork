@@ -18,7 +18,7 @@ description: 设计、实现或审查 zork Rust core 到 GPUI、Android/JNI、We
 ## 高频与平台
 
 - 写侧记录变化、按 topic/key 路由，按记录共享并维护增量索引；流式正文按块处理。避免全历史扫描、前插重编号和整列表复制；`Arc<Vec<Arc<T>>>` 仍可能复制 N 个指针。
-- 合并发生在 diff/编码/呈现转换之前。GPUI 用 `FrameDelivery`；`on_next_frame` 已唤醒帧源，不额外调用依赖当前绘制视图的 `request_animation_frame`。Android 等待不持命令锁，编解码不占主线程帧回调。
+- 合并发生在 diff/编码/呈现转换之前。GPUI 用 `FrameDelivery` 合并视图失效，在实际渲染入口读取待应用批次；隐藏视图在再次呈现时收敛，不排队额外的帧回调。Android 等待不持命令锁，编解码不占主线程帧回调。
 - 执行历史由节点持有，core 按需在 RAM 归并；累计统计来自 snapshot 与后续提交，不拉全档案或建客户端历史库；History 阅读页的已加载调用统计须明确范围，不冒充累计概览。首连/重连先 snapshot，详情分页不改变概览；普通 Chat 不开启独立 History loader。
 - 大列表窗口与所选详情有界，目录快照不冒充逐行 delta。OS 通知不等显示帧，发送前 core 重验隐私/权限，接受不标记已读；资源和文件复用原控制器及失效规则。
 

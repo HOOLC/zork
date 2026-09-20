@@ -35,7 +35,7 @@ pub async fn prepare_start_chat(
             Ok(format!("{}/{id}", node_access::identity(state)))
         })
         .transpose()?;
-    if let Some(chat) = state.db.started_chat(request, author, client.as_deref())? {
+    if let Some(chat) = state.db.started_chat(request, author)? {
         return Ok((client, Some(chat)));
     }
     let profiles = crate::agent::list_profiles(&state.agent).await?;

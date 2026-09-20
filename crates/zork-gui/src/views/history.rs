@@ -248,7 +248,6 @@ impl RootView {
                         &this,
                         cx,
                         |view| &mut view.frame_delivery,
-                        Self::deliver_core_updates,
                     ) {
                         return;
                     }
@@ -279,7 +278,6 @@ impl RootView {
                         &this,
                         cx,
                         |view| &mut view.frame_delivery,
-                        Self::deliver_core_updates,
                     ) {
                         return;
                     }

@@ -173,13 +173,7 @@ impl BrowserPanel {
                 }) else {
                     break;
                 };
-                if visible
-                    && !FrameDelivery::request(
-                        &weak,
-                        cx,
-                        |panel| &mut panel.frame_delivery,
-                        |_, cx| cx.notify(),
-                    )
+                if visible && !FrameDelivery::request(&weak, cx, |panel| &mut panel.frame_delivery)
                 {
                     break;
                 }
@@ -963,7 +957,7 @@ fn modifiers(m: &gpui::Modifiers) -> u8 {
 }
 impl Render for BrowserPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.frame_delivery.enter(window) {
+        if self.frame_delivery.enter() {
             self.core_dirty = true;
         }
         if self.device_scale != window.scale_factor() {

@@ -247,10 +247,13 @@ class Desktop:
                 messages = [(status, json.loads(value)["content"]) for status, value in db.execute("SELECT status,value FROM messages WHERE session=?", (session,))]
                 return messages.count(("sent", text)) == 1 and ("sent", "Reply: " + text) in messages
         self.wait(confirmed, "first user message and Session reply confirmed in the same client cache")
-        self.screenshot("new-chat-created")
+        self.wait(lambda: any(e["visible"] and e["label"] == "Reply: " + text
+                  for e in self.elements()["elements"]), "first Agent reply painted in the created Chat")
         assert self.node_api("/v1/node/agents")["items"] == []
         assert len(self.node_api("/v1/node/chats")["items"]) == 1
         self.wait(lambda: text in model.completed and any(s["session_id"] == session and s["status"] == "wait" for s in self.node_api("/v1/im/sessions")["items"]), "first Session settles")
+        time.sleep(.4)  # Capture the reply after its ordinary entry transition.
+        self.screenshot("new-chat-created")
         return session
 
     def chat(self, session, model):
@@ -378,6 +381,9 @@ class Desktop:
 
     def __exit__(self, error_type, error, _):
         if error_type:
+            if self.process.poll() is None:
+                subprocess.run(["sample", str(self.process.pid), "1", "10", "-mayDie", "-file",
+                    str(self.output / (self.case + "-failure-sample.txt"))], capture_output=True, timeout=5)
             try:
                 client_log = self.client / "logs/client.log"
                 if client_log.exists():
@@ -419,6 +425,11 @@ class Desktop:
         except Exception as failure:
             shutdown_error = failure
             self.sample["shutdown_error"] = str(failure)
+            self.sample["exit_code"] = self.process.poll()
+            (self.output / (self.case + "-shutdown-error.json")).write_text(json.dumps(self.sample, indent=2))
+            for log in [self.client / "logs/client.log", *list((self.client / "node").glob("*.log"))]:
+                if log.exists():
+                    shutil.copy2(log, self.output / (self.case + "-shutdown-" + log.name))
         finally:
             critical.cleanup(self.process, self.app, self.root)
         self.log.close()
