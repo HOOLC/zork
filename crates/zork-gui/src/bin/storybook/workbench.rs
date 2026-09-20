@@ -290,11 +290,12 @@ impl Gallery {
             ),
         );
         if story.family == "history" && !matches!(story.state.as_str(), "empty" | "error") {
+            let mut expansion = wb::row(8.);
             for (id, label, expanded) in [
                 ("story-expand", "全部展开", true),
                 ("story-collapse", "全部收起", false),
             ] {
-                toolbar = toolbar.child(
+                expansion = expansion.child(
                     ui::button(id, label, false, true)
                         .on_click(cx.listener(move |v, _, _, cx| {
                             v.session().host.clone().update(cx, |host, cx| {
@@ -305,6 +306,7 @@ impl Gallery {
                         .automation(AutomationRole::Button, label),
                 );
             }
+            toolbar = toolbar.child(expansion);
         }
         toolbar.px_5().py_3().into_any_element()
     }
