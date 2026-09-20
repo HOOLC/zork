@@ -134,6 +134,41 @@ fn export_story(story: &Story, output: &Path) -> anyhow::Result<Value> {
 mod workbench;
 use workbench::Gallery;
 
+/// Batch exports select fixtures; interactive launches only select the initial view.
+fn launch_catalog(
+    mut catalog: Vec<Story>,
+    family: Option<&str>,
+    story: Option<&str>,
+    batch: bool,
+) -> anyhow::Result<(Vec<Story>, usize)> {
+    anyhow::ensure!(!catalog.is_empty(), "empty story catalog");
+    if let Some(family) = family {
+        anyhow::ensure!(
+            catalog.iter().any(|s| s.family == family),
+            "unknown story family {family}"
+        );
+    }
+    let selected = if let Some(story) = story {
+        catalog
+            .iter()
+            .position(|s| s.id == story && family.is_none_or(|f| s.family == f))
+            .ok_or_else(|| anyhow::anyhow!("unknown story {story} in the requested family"))?
+    } else if let Some(family) = family {
+        catalog.iter().position(|s| s.family == family).unwrap()
+    } else {
+        catalog
+            .iter()
+            .position(|s| s.family == "button")
+            .unwrap_or(0)
+    };
+    if batch {
+        catalog
+            .retain(|s| family.is_none_or(|f| s.family == f) && story.is_none_or(|id| s.id == id));
+        return Ok((catalog, 0));
+    }
+    Ok((catalog, selected))
+}
+
 fn main() -> anyhow::Result<()> {
     std::env::set_var("SEED", "0");
     std::env::set_var("TZ", "UTC");
@@ -149,15 +184,18 @@ fn main() -> anyhow::Result<()> {
             .and_then(|i| args.get(i + 1))
             .cloned()
     };
-    let mut catalog = stories::catalog();
-    if let Some(family) = value("--family") {
-        catalog.retain(|s| s.family == family);
-        anyhow::ensure!(!catalog.is_empty(), "unknown story family {family}");
-    }
-    if let Some(filter) = value("--story") {
-        catalog.retain(|s| s.id == filter);
-        anyhow::ensure!(!catalog.is_empty(), "unknown story {filter}");
-    }
+    let batch = value("--export").is_some() || args.iter().any(|a| a == "--list");
+    let focus = if batch {
+        value("--story")
+    } else {
+        value("--start-story").or_else(|| value("--story"))
+    };
+    let (mut catalog, initial) = launch_catalog(
+        stories::catalog(),
+        value("--family").as_deref(),
+        focus.as_deref(),
+        batch,
+    )?;
     for (flag, width) in [("--width", true), ("--height", false)] {
         if let Some(value) = value(flag) {
             let value: f32 = value.parse()?;
@@ -173,12 +211,18 @@ fn main() -> anyhow::Result<()> {
     }
     if let Some(path) = value("--actions") {
         let actions: Vec<Value> = serde_json::from_slice(&std::fs::read(path)?)?;
-        for story in &mut catalog {
-            story.actions.extend(actions.clone());
+        for (i, story) in catalog.iter_mut().enumerate() {
+            if batch || i == initial {
+                story.actions.extend(actions.clone());
+            }
         }
     }
     if let Some(target) = value("--hover") {
-        for story in &mut catalog {
+        for (_, story) in catalog
+            .iter_mut()
+            .enumerate()
+            .filter(|(i, _)| batch || *i == initial)
+        {
             story
                 .actions
                 .push(json!({"type":"move","target":{"element_id":target.clone()}}));
@@ -243,20 +287,6 @@ fn main() -> anyhow::Result<()> {
         )?;
         return Ok(());
     }
-    let initial = value("--start-story")
-        .map(|id| {
-            catalog
-                .iter()
-                .position(|s| s.id == id)
-                .ok_or_else(|| anyhow::anyhow!("unknown story {id}"))
-        })
-        .transpose()?
-        .unwrap_or_else(|| {
-            catalog
-                .iter()
-                .position(|s| s.family == "button")
-                .unwrap_or(0)
-        });
     let automation = args
         .iter()
         .any(|a| a == "--dev")
