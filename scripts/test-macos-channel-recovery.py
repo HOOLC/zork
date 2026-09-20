@@ -15,11 +15,13 @@ import sys
 import tarfile
 import tempfile
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
 from deployment import atomic_json, copy_tree, digest, manifest
 from deployment_macos import AppRuntime, LSREGISTER, validate_app
+from deployment_build import load_packager, source_stamp
 
 
 def load(name, path):
@@ -35,21 +37,55 @@ recovery = drill.recovery
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dev-app', type=Path, required=True)
-    parser.add_argument('--release-app', type=Path, required=True)
+    parser.add_argument('--candidate', type=Path, help='Captured app candidate; package both isolated identities from its verified Cargo inputs')
+    parser.add_argument('--dev-app', type=Path)
+    parser.add_argument('--release-app', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if bool(args.candidate) == bool(args.dev_app or args.release_app) or (not args.candidate and not (args.dev_app and args.release_app)):
+        parser.error('provide --candidate or both --dev-app and --release-app')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='zarc-', dir='/tmp')).resolve()
     runtimes = {}
     report = {'passed': False, 'host': subprocess.check_output(['hostname'], text=True).strip(), 'checks': [],
+              'scripts_source': source_stamp(ROOT),
               'scope': 'two signed fixture app identities, isolated local data and Mesh; real installer, Agent and chat tools; deterministic external model'}
     def passed(name, evidence):
         report['checks'].append({'name': name, 'evidence': evidence})
         atomic_json(output / 'result.json', report)
         print('PASS ' + name, flush=True)
     try:
+        if args.candidate:
+            record, _ = recovery.load_candidate(args.candidate)
+            if record['kind'] != 'app':
+                raise RuntimeError('A node candidate does not contain captured GUI/browser inputs')
+            raw = args.candidate.resolve() / 'bin'
+            build_record = args.candidate.resolve() / 'build.json'
+            if json.loads(build_record.read_text()) != record['source']:
+                raise RuntimeError('Candidate build record differs from its manifest')
+            for name, expected in record['source']['binaries'].items():
+                if digest(raw / name) != expected:
+                    raise RuntimeError('Captured fixture input differs: ' + name)
+            packager = load_packager(ROOT)
+            for channel in ('dev', 'release'):
+                app = root / 'prepared' / (channel + '.app')
+                options = SimpleNamespace(bin_dir=raw, browser_bin_dir=raw,
+                    id_prefix='ing.zork.recovery-fixture.' + channel, channel=channel,
+                    services_config=None, build_record=build_record)
+                with patch.dict(os.environ, {'ZORK_CODESIGN_IDENTITY': '-'}):
+                    packager.build_app(options, ROOT, app)
+                if json.loads((app / 'Contents/Resources/build.json').read_text()) != record['source']:
+                    raise RuntimeError('Packager lost captured build_record provenance')
+                setattr(args, channel + '_app', app)
+            report['input_candidate'] = record['id']
+        build_records = [json.loads((app.resolve() / 'Contents/Resources/build.json').read_text())
+                         for app in (args.dev_app, args.release_app)]
+        if build_records[0] != build_records[1]:
+            raise RuntimeError('Both fixture channels must use the same captured build')
+        report['build_record'] = build_records[0]
+        report['fixture_manifests'] = {channel: manifest(app.resolve(), build_records[0], channel, 'app')
+            for channel, app in (('dev', args.dev_app), ('release', args.release_app))}
         with ExitStack() as stack:
             config = {'repo': str(ROOT), 'channels': {}}
             for channel, source in [('release', args.release_app.resolve()), ('dev', args.dev_app.resolve())]:

@@ -149,7 +149,9 @@ HTTP fixture 模型演练构建失败、备份失败、启动失败、换包失�
 退出；独立 release Agent 通过真实 shell 工具救回 dev。可用 `--live-profile`、
 `--live-model` 和 `--live-thinking` 增加真实供应商的隔离聊天与配置重启验收。
 
-双 GUI 与安装事务使用 `scripts/test-macos-channel-recovery.py`；只接受
+双 GUI 与安装事务使用 `scripts/test-macos-channel-recovery.py --candidate /path/to/app-candidate --output /path/to/report`，
+从校验过的 Cargo 输入用当前打包器生成两份独立身份，核对内嵌 build_record 后运行正式安装器。
+也可提供同一构建的 `--dev-app` / `--release-app`；只接受
 `ing.zork.recovery-fixture.*` 的独立签名包，拒绝拿用户的正式 bundle 身份演练。
 桌面实际输入到客户端收到回复另用 `scripts/test-desktop-startup.py`。
 按[验证 skill](../../.agents/skills/zork-validation/SKILL.md)运行已批准关键门禁，
