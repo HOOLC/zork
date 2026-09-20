@@ -17,7 +17,7 @@ def specification(repo):
     return module
 
 
-def verify_runtime(repo, runtime):
+def verify_runtime(repo, runtime, expected=None):
     spec = specification(repo)
     runtime = Path(runtime).resolve()
     record = json.loads((runtime / 'cua-driver.json').read_text())
@@ -26,6 +26,8 @@ def verify_runtime(repo, runtime):
     for name in ('cua-driver', 'LICENSE.cua'):
         if spec.digest(runtime / name) != record.get('sha256', {}).get(name):
             raise RuntimeError('Native cua runtime input changed: ' + name)
+    if expected is not None and record != expected:
+        raise RuntimeError('Native cua runtime differs from the captured build')
     return runtime, record
 
 

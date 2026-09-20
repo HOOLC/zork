@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
-from cua_build import ensure_runtime
+from cua_build import ensure_runtime, verify_runtime
 def digest(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
@@ -138,6 +138,13 @@ def build_app(args, repo, app):
     signing_identity = browser_runtime.signing_identity()
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
     cua = getattr(args, 'cua_runtime', None) or ensure_runtime(repo)
+    record = getattr(args, 'build_record', None)
+    build = json.loads(record.read_text()) if record else None
+    if build is not None:
+        expected = build.get('external_runtimes', {}).get('cua')
+        if not isinstance(expected, dict):
+            raise RuntimeError('Build record has no captured desktop runtime; rebuild the app candidate')
+        verify_runtime(repo, cua, expected)
     spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
     cua_runtime = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cua_runtime)
@@ -150,9 +157,7 @@ def build_app(args, repo, app):
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix, channel), f)
     (resources/'channel').write_text(channel+'\n')
-    record = getattr(args, 'build_record', None)
-    if record:
-        build = json.loads(record.read_text())
+    if build is not None:
         for name, expected in build['binaries'].items():
             if digest(binaries/name) != expected:
                 raise RuntimeError('Binary differs from the captured Cargo build: '+name)
@@ -170,7 +175,7 @@ def main():
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
     parser.add_argument('--channel',choices=['release','dev'],default='release',help='Signed data and identity channel')
     parser.add_argument('--id-prefix',help='Override bundle prefix for isolated test identities')
-    parser.add_argument('--build-record',type=Path,help='Captured Cargo build provenance and input digests')
+    parser.add_argument('--build-record',type=Path,help='Captured Cargo and native desktop runtime provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
     parser.add_argument('--cua-runtime',type=Path,help='Verified native cua input; otherwise build/reuse the pinned runtime cache')

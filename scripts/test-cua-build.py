@@ -43,6 +43,13 @@ class RuntimeInputs(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'input changed'):
                 cua_build.ensure_runtime(ROOT, self.env)
 
+    def test_valid_runtime_cannot_replace_another_captured_input(self):
+        self.stage(self.runtime)
+        _, record = cua_build.verify_runtime(ROOT, self.runtime)
+        record['sha256']['cua-driver'] = 'another-build'
+        with self.assertRaisesRegex(RuntimeError, 'differs from the captured build'):
+            cua_build.verify_runtime(ROOT, self.runtime, record)
+
     def test_configured_source_and_target_produce_a_verified_atomic_input(self):
         def build(argv, **kwargs):
             self.assertEqual(argv[argv.index('--source') + 1], self.env['ZORK_CUA_SOURCE'])

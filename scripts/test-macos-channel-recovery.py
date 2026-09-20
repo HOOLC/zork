@@ -72,7 +72,8 @@ def main():
                 app = root / 'prepared' / (channel + '.app')
                 options = SimpleNamespace(bin_dir=raw, browser_bin_dir=raw,
                     id_prefix='ing.zork.recovery-fixture.' + channel, channel=channel,
-                    services_config=None, build_record=build_record)
+                    services_config=None, build_record=build_record,
+                    cua_runtime=args.candidate.resolve() / 'cua-runtime')
                 with patch.dict(os.environ, {'ZORK_CODESIGN_IDENTITY': '-'}):
                     packager.build_app(options, ROOT, app)
                 if json.loads((app / 'Contents/Resources/build.json').read_text()) != record['source']:
