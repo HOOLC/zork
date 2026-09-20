@@ -14,6 +14,7 @@ import uuid
 
 from build_env import build_environment, clean_git_environment
 from deployment import atomic_json, clone_file, copy_tree, digest, exclusive, manifest, verify_manifest
+from cua_build import ensure_runtime, verify_runtime
 
 NODE_PACKAGES = ['zork', 'zork-station', 'zork-agent-server', 'zork-gh']
 NODE_BINARIES = ['zork', 'zork-station', 'zork-agent', 'zork-gh']
@@ -116,9 +117,17 @@ def _build(repo, store, kind, profile, services, env):
             raise RuntimeError('Cargo did not report every required executable')
         if source_stamp(repo) != source:
             raise RuntimeError('Source changed during build; candidate rejected')
+        cua_runtime = None
+        if kind == 'app':
+            runtime, runtime_record = verify_runtime(repo, ensure_runtime(repo, env))
+            cua_runtime = stage / 'cua-runtime'
+            copy_tree(runtime, cua_runtime)
+            verify_runtime(repo, cua_runtime)
         record = {'schema': 1, 'source': source, 'profile': profile,
                   'rustc': subprocess.check_output(['rustc', '--version'], env=env, text=True).strip(),
                   'binaries': {name: digest(raw / name) for name in names}}
+        if cua_runtime:
+            record['external_runtimes'] = {'cua': runtime_record}
         record['id'] = hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
         atomic_json(stage / 'build.json', record)
         payload = stage / ('Zork.app' if kind == 'app' else 'payload')
@@ -126,7 +135,7 @@ def _build(repo, store, kind, profile, services, env):
             packager = load_packager(repo)
             args = type('Options', (), {'bin_dir': raw, 'browser_bin_dir': raw,
                 'id_prefix': 'ing.zork-dev', 'channel': 'dev', 'services_config': services,
-                'build_record': stage / 'build.json'})()
+                'build_record': stage / 'build.json', 'cua_runtime': cua_runtime})()
             # Personal builds deliberately use the same ad-hoc signing policy throughout.
             overrides = {'ZORK_CODESIGN_IDENTITY': '-'}
             if env.get('CEF_PATH'):
@@ -160,7 +169,7 @@ def _build(repo, store, kind, profile, services, env):
         return final
     except BaseException:
         # Preserve the diagnostic log, not a partially built executable set.
-        for name in ('bin', 'payload', 'Zork.app'):
+        for name in ('bin', 'payload', 'Zork.app', 'cua-runtime'):
             if (stage / name).exists():
                 shutil.rmtree(stage / name)
         raise

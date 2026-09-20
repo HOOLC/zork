@@ -12,7 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
-from deployment import atomic_json, digest, exclusive
+from deployment import atomic_json, digest, exclusive, TOOL_FILES
 from deployment_build import build, stability
 
 
@@ -110,10 +110,8 @@ def main():
                 if (candidate / 'promotion.json').exists():
                     package.add(candidate / 'promotion.json', arcname='candidate/promotion.json')
             tools_archive = scratch / 'tools.tar.gz'
-            files = ['dev/recovery.py', 'lib/install-macos-client.py', 'lib/deployment.py',
-                     'lib/deployment_build.py', 'lib/deployment_health.py', 'lib/deployment_macos.py', 'lib/build_env.py']
             with tarfile.open(tools_archive, 'w:gz') as package:
-                for name in files:
+                for name in TOOL_FILES:
                     package.add(ROOT / 'scripts' / name, arcname='tools/scripts/' + name)
             remote = subprocess.check_output(ssh + ['mkdir -p "$HOME/Zork" && mktemp -d "$HOME/Zork/.install-XXXXXXXX"'], text=True).strip()
             if not remote or '\n' in remote:

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import tarfile
@@ -383,6 +384,15 @@ class RecoveryTests(unittest.TestCase):
     def test_wrong_machine_is_rejected_before_opening_a_runtime(self):
         with self.assertRaisesRegex(RuntimeError, 'belongs to'):
             recovery.runtime_for({'host': 'not-this-device.invalid'}, self.root, 'dev', 'app')
+
+    def test_installed_management_tools_include_their_runtime_dependencies(self):
+        result = recovery.install_tools(self.root / 'management', ROOT)
+        for name in ('dev/recovery.py', 'lib/install-macos-client.py'):
+            command = [sys.executable, str(Path(result['tools']) / name), '--help']
+            child = subprocess.run(command, cwd=self.root, env=dict(os.environ, PYTHONPATH=''),
+                                   capture_output=True, text=True)
+            self.assertEqual(child.returncode, 0, child.stderr)
+            self.assertIn('usage:', child.stdout)
 
 
 if __name__ == '__main__':

@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
+from cua_build import ensure_runtime
 def digest(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
@@ -136,12 +137,11 @@ def build_app(args, repo, app):
     spec.loader.exec_module(browser_runtime)
     signing_identity = browser_runtime.signing_identity()
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
-    cua = getattr(args, 'cua_runtime', None)
-    if cua is not None:
-        spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
-        cua_runtime = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cua_runtime)
-        cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity)
+    cua = getattr(args, 'cua_runtime', None) or ensure_runtime(repo)
+    spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
+    cua_runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cua_runtime)
+    cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity)
 
     if args.services_config:
         services=json.loads(args.services_config.read_text())
@@ -157,7 +157,7 @@ def build_app(args, repo, app):
             if digest(binaries/name) != expected:
                 raise RuntimeError('Binary differs from the captured Cargo build: '+name)
         (resources/'build.json').write_text(json.dumps(build, indent=2)+'\n')
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork accounts are optional and do not control Mesh connectivity. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.
@@ -173,7 +173,7 @@ def main():
     parser.add_argument('--build-record',type=Path,help='Captured Cargo build provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
-    parser.add_argument('--cua-runtime',type=Path,help='Pinned native desktop runtime built by scripts/build-cua-driver.py')
+    parser.add_argument('--cua-runtime',type=Path,help='Verified native cua input; otherwise build/reuse the pinned runtime cache')
     parser.add_argument('--output',type=Path,help='Explicitly export an archive to this directory')
     parser.add_argument('--launch',action='store_true',help='Launch after update even if not previously running')
     parser.add_argument('--run',nargs=argparse.REMAINDER,help='Run tests against the updated {app}; retain the app afterward')

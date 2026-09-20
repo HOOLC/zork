@@ -258,9 +258,9 @@ def install_tools(root, repo):
     installed = root / 'tools' / ('recovery-' + uuid.uuid4().hex[:10])
     (installed / 'dev').mkdir(parents=True)
     (installed / 'lib').mkdir()
-    shutil.copy2(SCRIPTS / 'dev/recovery.py', installed / 'dev/recovery.py')
-    for name in ('deployment.py', 'deployment_build.py', 'deployment_health.py', 'deployment_macos.py', 'build_env.py'):
-        shutil.copy2(SCRIPTS / 'lib' / name, installed / 'lib' / name)
+    from deployment import TOOL_FILES
+    for name in TOOL_FILES:
+        shutil.copy2(SCRIPTS / name, installed / name)
     binaries = root / 'bin'
     binaries.mkdir(exist_ok=True)
     for name, prefix in {'zork-node': ['node'], 'zork-dev-build': ['build'],

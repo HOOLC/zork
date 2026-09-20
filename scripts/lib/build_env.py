@@ -9,7 +9,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 KEYS = {'ZORK_BUILD_ROOT', 'ZORK_BUILD_BUDGET_GIB', 'ZORK_BUILD_LOW_WATER_GIB',
         'ZORK_BUILD_MOUNT', 'CARGO_TARGET_DIR', 'KACHE_CACHE_EXECUTABLES',
-        'ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD'}
+        'ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD', 'ZORK_CUA_SOURCE', 'ZORK_CUA_TARGET_DIR'}
 
 # Repository context inherited from Git hooks must not redirect a dependency's
 # git init/fetch/checkout into this repository. Keep transport/authentication
@@ -65,7 +65,7 @@ def build_environment(root=ROOT, environ=None, variant=None):
     else:
         target = Path(env['CARGO_TARGET_DIR']).expanduser()
         env['CARGO_TARGET_DIR'] = str(target if target.is_absolute() else root / target)
-    for key in ('ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD'):
+    for key in ('ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD', 'ZORK_CUA_SOURCE', 'ZORK_CUA_TARGET_DIR'):
         if env.get(key):
             path = Path(env[key]).expanduser()
             env[key] = str(path if path.is_absolute() else root / path)

@@ -15,6 +15,10 @@ import tarfile
 import traceback
 import uuid
 
+TOOL_FILES = ('dev/recovery.py', 'lib/install-macos-client.py', 'lib/deployment.py',
+              'lib/deployment_build.py', 'lib/deployment_health.py', 'lib/deployment_macos.py',
+              'lib/build_env.py', 'lib/cua_build.py')
+
 
 def digest(path):
     result = hashlib.sha256()
