@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 pub use zork_config::{ContextConfig, ContextStrategy, MeshConfig};
 pub use zork_mesh::content_root;
+#[cfg(test)]
+mod file_chunk_tests;
 pub use zork_mesh::route::{ConnectionRoute, ConnectionScope};
 
 /// Roles deliberately delivered through the IM station.
@@ -436,6 +438,97 @@ fn mesh_error_status(value: &serde_json::Value) -> u16 {
             Some("mesh_not_ready" | "mesh_starting" | "node_starting") => 503,
             _ => 403,
         })
+}
+
+#[derive(Deserialize)]
+struct ArtifactChunk {
+    reference: crate::files::FileRef,
+    offset: usize,
+    next_offset: usize,
+    bytes: Vec<u8>,
+}
+
+fn invalid_artifact_chunk() -> ApiError {
+    ApiError::Api {
+        status: 502,
+        message: "文件分块与固定引用不一致".into(),
+    }
+}
+
+fn accept_artifact_chunk(
+    id: &str,
+    reference: &mut Option<crate::files::FileRef>,
+    bytes: &mut Vec<u8>,
+    chunk: ArtifactChunk,
+) -> Result<bool, ApiError> {
+    if !chunk.reference.valid()
+        || chunk.reference.id != id
+        || reference
+            .as_ref()
+            .is_some_and(|saved| saved != &chunk.reference)
+        || chunk.offset != bytes.len()
+        || chunk.bytes.len() > crate::files::CHUNK_BYTES
+        || chunk.next_offset != bytes.len() + chunk.bytes.len()
+        || chunk.next_offset > chunk.reference.byte_len
+        || (chunk.bytes.is_empty() && chunk.offset != chunk.reference.byte_len)
+    {
+        return Err(invalid_artifact_chunk());
+    }
+    bytes.extend_from_slice(&chunk.bytes);
+    let complete = bytes.len() == chunk.reference.byte_len;
+    if complete && content_root(bytes) != chunk.reference.content_root {
+        return Err(invalid_artifact_chunk());
+    }
+    *reference = Some(chunk.reference);
+    Ok(complete)
+}
+
+async fn read_mesh_artifact(
+    control: &zork_mesh::node::MeshNode,
+    origin: &str,
+    id: &str,
+) -> Result<Vec<u8>, ApiError> {
+    let mut bytes = Vec::new();
+    let mut reference = None;
+    loop {
+        let response = control
+            .exchange(
+                origin,
+                &serde_json::json!({"v":1,"request":{
+                    "kind":"client_file","artifact_id":id,"offset":bytes.len(),
+                }}),
+            )
+            .await
+            .map_err(|error| ApiError::Task(std::io::Error::other(format!("{error:#}"))))?;
+        if response["v"] != 1 || response["ok"] != true {
+            return Err(ApiError::Api {
+                status: mesh_error_status(&response),
+                message: response["error"]
+                    .as_str()
+                    .unwrap_or("Mesh file request failed")
+                    .into(),
+            });
+        }
+        let data = &response["data"];
+        let status = data["status"]
+            .as_u64()
+            .filter(|n| (100..=599).contains(n))
+            .ok_or_else(invalid_artifact_chunk)? as u16;
+        if status != 200 {
+            return Err(ApiError::Api {
+                status,
+                message: data["body"]["error"]
+                    .as_str()
+                    .unwrap_or("File unavailable")
+                    .into(),
+            });
+        }
+        let chunk =
+            serde_json::from_value(data["body"].clone()).map_err(|_| invalid_artifact_chunk())?;
+        if accept_artifact_chunk(id, &mut reference, &mut bytes, chunk)? {
+            return Ok(bytes);
+        }
+    }
 }
 
 async fn send_request(
@@ -867,7 +960,11 @@ impl StationClient {
         let base_url = self.base_url.clone();
         let token = self.token.clone();
         let path = format!("/v1/artifacts/{artifact_id}/content");
+        let artifact_id = artifact_id.to_owned();
         self.run_on(async move {
+            if let Some((control, origin)) = &http.mesh {
+                return read_mesh_artifact(control, origin, &artifact_id).await;
+            }
             let response =
                 send_request(&http, &base_url, &token, reqwest::Method::GET, &path, None).await?;
             Ok(response.bytes().await?.to_vec())
@@ -1299,7 +1396,7 @@ impl StationClient {
                 Ok(()) => {
                     return Err(ApiError::Task(std::io::Error::other(
                         "SSE task ended before response headers",
-                    )))
+                    )));
                 }
             },
         }

@@ -25,7 +25,7 @@ members = [
   "crates/zork-client-types",
   "crates/zork-android",
 ]
-exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial", "vendor/rustls-platform-verifier"]
+exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial", "vendor/rustls-platform-verifier", "vendor/noq-udp"]
 resolver = "2"
 
 [workspace.package]
@@ -151,6 +151,7 @@ opt-level = 3
 [patch.crates-io]
 iroh = { path = "vendor/iroh" }
 swarm-discovery = { path = "vendor/swarm-discovery" }
+noq-udp = { path = "vendor/noq-udp" }
 rustls-platform-verifier = { path = "vendor/rustls-platform-verifier" }
 gpui-unofficial = { path = "vendor/gpui-unofficial" }
 gpui-base-uo = { path = "vendor/gpui-base-uo" }

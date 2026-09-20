@@ -15,7 +15,7 @@ Zork Agent 的 Skill 与 `tool.help` 各自维护不同内容：
 
 Skill 是真实目录中的 `SKILL.md` 和相对资源。Agent 使用通用文件工具读取、修改、复制和物化；来源清单由运行时在模型请求前提供，不增加专用的文件操作或清单查询工具。
 
-Skill 使用独立的 Synch space，与[共享文件入口](shared-files.md#spaces)和内部控制 space 分开。用户的专用 Skill UI 与 Agent 消费同一文件权威。默认目录由运行时提供，不能从 UI 名称推导本机物理路径。
+Skill 使用独立的 Synch space，与[共享文件入口](shared-files.md#spaces)分开。用户的专用 Skill UI 与 Agent 消费同一文件权威。默认目录由运行时提供，不能从 UI 名称推导本机物理路径。
 
 公用来源可跨节点自动发现；与本机路径、硬件或工具链相关的来源限于该节点。Mesh 成员互信，显式读取文件和是否自动加入 Skill 清单是不同问题。同名候选保留各自来源、完整路径和内容哈希，不按名称覆盖。
 

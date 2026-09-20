@@ -7,6 +7,8 @@ pub mod activity;
 pub mod adb;
 #[cfg(not(target_family = "wasm"))]
 pub mod api;
+#[cfg(not(target_family = "wasm"))]
+pub mod chat_files;
 pub mod composer;
 #[cfg(not(target_family = "wasm"))]
 pub mod conversation;

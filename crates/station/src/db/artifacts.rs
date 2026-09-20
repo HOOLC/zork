@@ -90,6 +90,31 @@ impl StationDb {
             .transpose()
     }
 
+    /// Serve the Chat-owned immutable snapshot directly. A client download is
+    /// not a new Synch publication or a second permanently pinned export.
+    pub fn artifact_chunk(&self, artifact_id: &str, offset: usize) -> Result<Option<Value>> {
+        let snapshot: Option<Snapshot> = self.conn.lock().expect("db mutex").query_row(
+            "SELECT snapshot FROM task_file_snapshots WHERE artifact_id=?1 UNION ALL SELECT snapshot FROM conversation_file_snapshots WHERE artifact_id=?1",
+            [artifact_id], |row| row.get(0),
+        ).optional()?;
+        let Some(snapshot) = snapshot else {
+            return Ok(None);
+        };
+        let reference = zork_client_types::files::FileRef {
+            id: artifact_id.into(),
+            name: snapshot.name.clone(),
+            content_root: snapshot.root.clone(),
+            byte_len: snapshot.byte_len,
+        };
+        anyhow::ensure!(reference.valid(), "invalid_file_snapshot");
+        let bytes =
+            self.snapshot_range(&snapshot, offset, zork_client_types::files::CHUNK_BYTES)?;
+        Ok(Some(
+            json!({"reference":reference,"offset":offset,"next_offset":offset+bytes.len(),
+            "bytes":bytes}),
+        ))
+    }
+
     pub fn register_artifact(
         &self,
         task_id: &str,

@@ -142,7 +142,56 @@ pub(super) fn binding_generation(conn: &Connection, peer: &str) -> Result<u64> {
         .unwrap_or(0))
 }
 
+// The caller holds a transaction that fences attachment access against revocation.
+fn attachment_binding(conn: &Connection, peer: &str, generation: u64) -> Result<()> {
+    let binding: Option<(u64, bool)> = conn
+        .query_row(
+            "SELECT generation,revoked FROM replica_bindings WHERE peer=?1",
+            [peer],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    ensure!(
+        binding.unwrap_or((0, false)) == (generation, false),
+        "sync_authorization_changed"
+    );
+    Ok(())
+}
+
 impl ClientStore {
+    pub(crate) fn attachment_blob_at(
+        &self,
+        peer: &str,
+        key: &str,
+        generation: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        let mut conn = self.0.lock().expect("client database");
+        let tx = conn.transaction()?;
+        attachment_binding(&tx, peer, generation)?;
+        let bytes = tx
+            .query_row(
+                "SELECT value FROM blobs WHERE node=?1 AND key=?2",
+                params![peer, key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        tx.commit()?;
+        Ok(bytes)
+    }
+    pub(crate) fn put_attachment_blob_at(
+        &self,
+        peer: &str,
+        key: &str,
+        bytes: &[u8],
+        generation: u64,
+    ) -> Result<()> {
+        let mut conn = self.0.lock().expect("client database");
+        let tx = conn.transaction()?;
+        attachment_binding(&tx, peer, generation)?;
+        tx.execute("INSERT INTO blobs(node,key,value) VALUES (?1,?2,?3) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",params![peer,key,bytes])?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn replica_generation(&self, peer: &str) -> Result<u64> {
         binding_generation(&self.0.lock().expect("client database"), peer)
     }

@@ -154,7 +154,7 @@ impl Drop for Runtime {
 }
 
 pub async fn start(root: &Path, config: &MeshConfig) -> Result<Runtime> {
-    start_mode(root, config, false, None).await
+    start_mode(root, config, false, None, Vec::new()).await
 }
 
 /// Starts a node that also serves the native control protocol to its peers.
@@ -163,7 +163,40 @@ pub async fn start_with_control(
     config: &MeshConfig,
     control: Arc<dyn crate::control::ControlHandler>,
 ) -> Result<Runtime> {
-    start_mode(root, config, false, Some(control)).await
+    start_mode(root, config, false, Some(control), Vec::new()).await
+}
+
+/// Retract obsolete source roles before scanners and publishers can start.
+pub async fn start_with_control_retiring_sources(
+    root: &Path,
+    config: &MeshConfig,
+    control: Arc<dyn crate::control::ControlHandler>,
+    sources: &[&str],
+) -> Result<Runtime> {
+    start_mode(
+        root,
+        config,
+        false,
+        Some(control),
+        sources.iter().map(|s| (*s).to_owned()).collect(),
+    )
+    .await
+}
+
+/// Retract obsolete sources before restoring background publication.
+pub async fn start_retiring_sources(
+    root: &Path,
+    config: &MeshConfig,
+    sources: &[&str],
+) -> Result<Runtime> {
+    start_mode(
+        root,
+        config,
+        false,
+        None,
+        sources.iter().map(|s| (*s).to_owned()).collect(),
+    )
+    .await
 }
 
 /// A mobile/desktop access client owns an identity but never executes sockets
@@ -173,7 +206,7 @@ pub async fn start_client(root: &Path, config: &MeshConfig) -> Result<Runtime> {
         config.workspaces.is_empty(),
         "client cannot host workspaces"
     );
-    start_mode(root, config, true, None).await
+    start_mode(root, config, true, None, Vec::new()).await
 }
 
 async fn start_mode(
@@ -181,6 +214,7 @@ async fn start_mode(
     config: &MeshConfig,
     client_only: bool,
     control: Option<Arc<dyn crate::control::ControlHandler>>,
+    retiring: Vec<String>,
 ) -> Result<Runtime> {
     validate(config)?;
     let (root, config) = (root.to_owned(), config.clone());
@@ -189,7 +223,7 @@ async fn start_mode(
     // waiting. An undelivered Runtime is dropped here and shuts itself down;
     // cancellation cannot drop a half-open engine while releasing its lock.
     tokio::spawn(async move {
-        let result = start_owned(&root, &config, client_only, control).await;
+        let result = start_owned(&root, &config, client_only, control, &retiring).await;
         let _ = ready.send(result);
     });
     started.await.context("Mesh startup task failed")?
@@ -200,6 +234,7 @@ async fn start_owned(
     config: &MeshConfig,
     client_only: bool,
     control: Option<Arc<dyn crate::control::ControlHandler>>,
+    retiring: &[String],
 ) -> Result<Runtime> {
     validate(config)?;
     let channel = zork_config::channel::activate_for_data(root)?;
@@ -294,6 +329,9 @@ async fn start_owned(
             .await?;
         if !clean_start {
             engine.readopt_self_on_startup().await?;
+        }
+        for source in retiring {
+            handle.retire_source(source).await?;
         }
         tracing::info!(clean_start, "Mesh startup history checked");
         Ok(())
@@ -517,6 +555,76 @@ mod tests {
         assert_eq!(reopened.node().identity().await?, id);
         assert!(!data_dir(root.path()).join("control.sock").exists());
         reopened.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_retirement_preserves_files_and_excludes_them_from_later_scans() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let old = root.path().join("internal");
+        let old_zork = root.path().join("old-zork");
+        let shared = root.path().join("shared");
+        std::fs::create_dir(&old)?;
+        std::fs::create_dir(&old_zork)?;
+        std::fs::write(old_zork.join("private"), b"old internal state")?;
+        std::fs::create_dir(&shared)?;
+        std::fs::write(old.join("history"), b"original history")?;
+        std::fs::write(shared.join("keep"), b"deliberately shared")?;
+        let mut seeded = start_client(root.path(), &config()).await?;
+        let identity = seeded.node().identity().await?;
+        seeded.node().add_filesystem_source("files", &old).await?;
+        seeded
+            .node()
+            .add_filesystem_source("zork", &old_zork)
+            .await?;
+        seeded
+            .node()
+            .add_filesystem_source("shared", &shared)
+            .await?;
+        let engine = seeded.node().blocking(|node| Ok(node)).await?;
+        engine.scan_source_and_stage_async("files").await?;
+        engine.scan_source_and_stage_async("zork").await?;
+        engine.scan_source_and_stage_async("shared").await?;
+        engine.publish_staged().await?;
+        drop(engine);
+        seeded.shutdown().await?;
+        // A restored scanner must never snapshot newly appended internal data.
+        std::fs::write(old.join("history"), b"original history\nnew event")?;
+        std::fs::write(old.join("new-private-file"), b"private")?;
+        for _ in 0..2 {
+            let mut current =
+                start_retiring_sources(root.path(), &config(), &["files", "zork"]).await?;
+            assert_eq!(current.node().identity().await?, identity);
+            let engine = current.node().blocking(|node| Ok(node)).await?;
+            let (_, scans) = engine.scan_and_stage_async_with_reports().await?;
+            assert!(scans
+                .iter()
+                .all(|(space, _)| space != "files" && space != "zork"));
+            engine.publish_staged().await?;
+            current
+                .node()
+                .blocking(|node| {
+                    for source in ["files", "zork"] {
+                        assert!(node.store().source(source)?.is_none());
+                        assert!(node.store().local_files(source)?.is_empty());
+                        assert_eq!(node.store().count_entries(node.origin(), source)?, 0);
+                    }
+                    node.resolve("shared", "keep", &synch_engine::VersionPolicy::Newest)?;
+                    Ok(())
+                })
+                .await?;
+            drop(engine);
+            current.shutdown().await?;
+        }
+        assert_eq!(
+            std::fs::read(old.join("history"))?,
+            b"original history\nnew event"
+        );
+        assert_eq!(std::fs::read(old.join("new-private-file"))?, b"private");
+        assert_eq!(
+            std::fs::read(old_zork.join("private"))?,
+            b"old internal state"
+        );
         Ok(())
     }
 

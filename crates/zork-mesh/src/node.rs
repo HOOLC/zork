@@ -350,8 +350,8 @@ impl MeshNode {
         self.blocking(move |node| Ok(node.add_filesystem_source(&space, path)?))
             .await
     }
-    /// Retire a publication role without touching the source's files.
-    pub async fn retire_source(&self, space: &str) -> Result<()> {
+    /// Retire before background scans start, without touching source files.
+    pub(crate) async fn retire_source(&self, space: &str) -> Result<()> {
         let space = space.to_owned();
         self.blocking(move |node| {
             if node.store().source(&space)?.is_some() {

@@ -76,7 +76,7 @@ impl SharedFiles {
             preview.text = None;
             preview.error = None;
             preview.cached = false;
-            preview.mime = mime(&preview.name).into();
+            preview.mime = crate::file_io::preview_mime(&preview.name).into();
             preview.truncated = false;
             let should_fetch = version.can_read
                 && version.size <= 8 * 1024 * 1024
@@ -363,24 +363,5 @@ impl SharedFiles {
             .as_ref()
             .filter(|p| p.selected == root)
             .and_then(|p| p.bytes.clone())
-    }
-}
-
-fn mime(name: &str) -> &'static str {
-    match name
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "txt" | "md" | "json" | "jsonl" | "ndjson" | "toml" | "yaml" | "yml" | "rs" | "kt"
-        | "java" | "js" | "ts" | "tsx" | "jsx" | "py" | "sh" | "log" | "css" | "html" | "svg"
-        | "xml" | "csv" => "text/plain",
-        _ => "application/octet-stream",
     }
 }

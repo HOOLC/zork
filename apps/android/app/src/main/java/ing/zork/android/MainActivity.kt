@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun ClientScreen(model: ClientViewModel) {
+internal fun ClientScreen(model: ClientViewModel) {
     val context = LocalContext.current
     var openedLogin by rememberSaveable { mutableStateOf<String?>(null) }
     val loginUrl = model.account?.text("login_url")?.takeIf { it.isNotBlank() }
@@ -98,6 +98,23 @@ private fun ClientScreen(model: ClientViewModel) {
     val saveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         val file = exporting; if (uri != null && file != null) model.exportTextAttachment(uri, file)
         exporting = null
+    }
+    var chatSaveTicket by rememberSaveable { mutableStateOf<String?>(null) }
+    val chatSaveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        chatSaveTicket?.let { model.saveChatFile(uri, it) }
+        chatSaveTicket = null
+    }
+    LaunchedEffect(model.chatFile?.saveTicket) {
+        model.chatFile?.let { file ->
+            file.saveTicket?.let { ticket ->
+                if (chatSaveTicket != ticket) { chatSaveTicket = ticket; chatSaveFile.launch(file.name) }
+            }
+        }
+    }
+    model.chatFile?.let { file ->
+        ChatFilePreview(file, model.chatFileImage,
+            close = { model.chatFileAction("close", "key" to file.key) },
+            save = { model.chatFileAction("prepare_save", "key" to file.key) })
     }
     var sharedSaveTicket by rememberSaveable { mutableStateOf<String?>(null) }
     val sharedSaveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -178,7 +195,7 @@ private fun ClientScreen(model: ClientViewModel) {
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles, chatFile = model::openChatFile),
     ) }
     }
     LiquidRetained(editingComment) { comment, open, closed ->

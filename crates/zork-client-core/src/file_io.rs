@@ -26,3 +26,23 @@ pub fn save_snapshot(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()
     }
     result
 }
+
+/// Shared bounded-preview classification. Platforms only decode the selected format.
+pub fn preview_mime(name: &str) -> &'static str {
+    match name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "txt" | "md" | "json" | "jsonl" | "ndjson" | "toml" | "yaml" | "yml" | "rs" | "kt"
+        | "java" | "js" | "ts" | "tsx" | "jsx" | "py" | "sh" | "log" | "css" | "html" | "svg"
+        | "xml" | "csv" => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
