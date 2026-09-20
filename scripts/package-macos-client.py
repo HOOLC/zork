@@ -148,7 +148,8 @@ def build_app(args, repo, app):
     spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
     cua_runtime = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cua_runtime)
-    cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity)
+    cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity,
+                      minimum_system_version=app_info(version, prefix, channel)['LSMinimumSystemVersion'])
 
     if args.services_config:
         services=json.loads(args.services_config.read_text())

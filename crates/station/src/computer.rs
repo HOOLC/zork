@@ -80,7 +80,14 @@ async fn invoke(endpoint: &Endpoint, request: Value) -> anyhow::Result<Value> {
         endpoint,
         &frame(&mut stream, json!({"method":"metadata"})).await?,
     )?;
-    frame(&mut stream, request).await
+    // After this boundary the request may have executed, even if its reply is lost.
+    // Never reconnect or replay this invocation. A subsequent independent call
+    // performs fresh host discovery before sending its own action.
+    frame(&mut stream, request).await.map_err(|error| {
+        anyhow::anyhow!(
+            "computer_action_outcome_unknown: {error}; inspect state before another action"
+        )
+    })
 }
 #[cfg(not(unix))]
 async fn invoke(_: &Endpoint, _: Value) -> anyhow::Result<Value> {
@@ -91,9 +98,12 @@ async fn exchange(_: &Path, _: Value) -> anyhow::Result<Value> {
     anyhow::bail!("computer_host_unsupported_platform")
 }
 
-async fn endpoint() -> anyhow::Result<&'static Endpoint> {
-    static HOST: tokio::sync::OnceCell<Endpoint> = tokio::sync::OnceCell::const_new();
-    HOST.get_or_try_init(|| async {
+async fn endpoint() -> anyhow::Result<Endpoint> {
+    // Serialize launch/discovery only. PID is a per-invocation observation, not
+    // a Station-lifetime cache: the same signed host may exit or be restarted.
+    static DISCOVERY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _discovery = DISCOVERY.lock().await;
+    async {
         anyhow::ensure!(cfg!(target_os = "macos"), "computer_host_unsupported_platform");
         let app = if let Some(path) = std::env::var_os("ZORK_CUA_HOST_APP") {
             PathBuf::from(path).canonicalize()?
@@ -125,7 +135,7 @@ async fn endpoint() -> anyhow::Result<&'static Endpoint> {
         }
         let state: Value = serde_json::from_slice(&tokio::fs::read(&endpoint.status).await.unwrap_or_default()).unwrap_or(Value::Null);
         anyhow::bail!("computer_host_unavailable: {state}; open Zork Desktop Control with --request-permissions to authorize the host, then retry")
-    }).await
+    }.await
 }
 
 fn verify_identity(endpoint: &Endpoint, response: &Value) -> anyhow::Result<()> {
@@ -137,7 +147,7 @@ fn verify_identity(endpoint: &Endpoint, response: &Value) -> anyhow::Result<()> 
             && metadata["host_bundle_id"] == endpoint.bundle_id
             && endpoint.driver_pid != 0
             && metadata["pid"].as_u64() == Some(endpoint.driver_pid),
-        "computer_host_generation_or_version_mismatch: restart Station after replacing the host"
+        "computer_host_generation_or_version_mismatch: no action sent; retry discovery in a new call"
     );
     Ok(())
 }
@@ -234,7 +244,7 @@ pub async fn call(
     let run = async {
         let request = request(&call.tool, call.arguments, session)?;
         let endpoint = endpoint().await?;
-        normalize(&call.tool, invoke(endpoint, request).await?)
+        normalize(&call.tool, invoke(&endpoint, request).await?)
     };
     match tokio::time::timeout(TIMEOUT, run).await {
         Ok(Ok(value)) => Json(value).into_response(),

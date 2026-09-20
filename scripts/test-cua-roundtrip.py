@@ -56,6 +56,7 @@ def fixture_host(config):
         return
     endpoint = settings['endpoint']
     marker = Path(settings['marker'])
+    Path(endpoint['socket']).unlink(missing_ok=True)
     with socket.socket(socket.AF_UNIX) as server:
         server.bind(endpoint['socket'])
         os.chmod(endpoint['socket'], 0o600)
@@ -82,6 +83,9 @@ def fixture_host(config):
                             assert arguments == {'pid':1,'window_id':1,'x':20,'y':20}
                             marker.write_text('clicked')
                             response = {'ok':True,'result':{'isError':False,'content':[{'type':'text','text':'fixture clicked'}]}}
+                        elif name == 'drop_reply_fixture':
+                            with marker.with_suffix('.effects').open('a') as effects: effects.write('applied\n')
+                            os._exit(0)  # Business effect committed, transport reply lost.
                         else:
                             response = {'ok':True,'result':{'isError':True,'content':[{'type':'text','text':'fixture_denied'}]}}
                     else:
@@ -256,6 +260,32 @@ def run(args):
                 assert completed.wait(90), 'model roundtrip timed out'
                 assert not errors, errors
                 wait(lambda:request('GET',f'/sessions/{execution}',agent=True)['status']=='finished','explicit model end')
+                if not args.host_app:
+                    key = request('GET',f'/v1/tools/context?threadId={execution}')['sessionKey']
+                    def desktop(tool):
+                        return request('POST','/v1/computer/command',
+                                       {'tool':tool,'arguments':dict(target,x=20,y=20)},
+                                       headers={'x-zork-session-key':key})
+                    def host_pid(): return json.loads(Path(endpoint['status']).read_text())['host_pid']
+                    original_host = host_pid()
+                    os.kill(original_host,signal.SIGTERM)
+                    def exited():
+                        try: os.kill(original_host,0); return False
+                        except ProcessLookupError: return True
+                    wait(exited,'fixture host exit')
+                    assert desktop('click')['state']=='succeeded', 'new call did not restart exited host'
+                    restarted_host = host_pid()
+                    assert restarted_host != original_host
+                    report['checks'].append('same Station starts the same host again after exit')
+                    lost = desktop('drop_reply_fixture')
+                    assert lost['state']=='failed' and 'computer_action_outcome_unknown' in lost['error'], lost
+                    assert marker.with_suffix('.effects').read_text()=='applied\n', 'uncertain action replayed'
+                    assert host_pid()==restarted_host, 'uncertain invocation auto-restarted host'
+                    assert desktop('click')['state']=='succeeded', 'new independent call did not recover'
+                    assert host_pid()!=restarted_host
+                    assert marker.with_suffix('.effects').read_text()=='applied\n', 'old action replayed on recovery'
+                    assert process.poll() is None
+                    report['checks'].append('lost reply is not replayed; next independent call recovers without Station restart')
                 report['provider_requests'] = len(bodies)
                 if not args.host_app: report['png_sha256'] = hashlib.sha256(base64.b64decode(PNG)).hexdigest()
                 report['real_desktop_verified'] = bool(args.host_app)
