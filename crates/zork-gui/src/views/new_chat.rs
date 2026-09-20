@@ -23,6 +23,8 @@ impl RootView {
                                     .as_ref()
                                     .is_some_and(|created| created.chat_id == chat.chat_id)
                                 {
+                                    // Apply the core catalog batch before opening its Chat.
+                                    view.deliver_core_updates(cx);
                                     view.select_session(&chat.chat_id, cx);
                                 }
                             }

@@ -256,7 +256,11 @@ impl NewChat {
         let client = device.client.clone();
         device.client.clone().spawn(async move {
             let result = client.start_chat(&request).await;
-            let created = result.is_ok();
+            // Make the committed Session available to navigation/composer
+            // consumers before publishing the creation transition.
+            if result.is_ok() {
+                device.refresh(Domains::SESSIONS).await;
+            }
             if let Err(error) = &result {
                 if let Some((store, node)) = &device.cache {
                     let _ = store.fail_delivery(node, &request.request_id, &error.to_string());
@@ -289,9 +293,6 @@ impl NewChat {
                 source.publish_view();
             }
             device.reload_outbox();
-            if created {
-                device.refresh(Domains::SESSIONS).await;
-            }
         });
         Ok(())
     }

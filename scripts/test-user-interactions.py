@@ -60,8 +60,16 @@ def main():
             chat_b = channels.operation(b, caller_b, 'chat.create', {'title': 'Business tool review', 'text': 'Review business-tool input', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
             config = {'name': 'Suggested worker', 'selection': {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'},
                 'instructions': 'Original instructions', 'skill_paths': []}
-            seen = set()
+            seen, discovered = set(), set()
             def start(name, args, label):
+                if name not in discovered:
+                    # Legacy Agent management is available through explicit help,
+                    # but no longer advertised to new Chat Sessions.
+                    send_tool(b, home_b, 'tool.help', {'tool': name}, label + '-help')
+                    fixture.wait(lambda: any(item['event']['kind'] == 'tool_result'
+                        and item['event']['result'].get('data', {}).get('tool') == name
+                        for item in channels.ok(b, 'GET', f'/sessions/{caller_b}/history?limit=200', agent=True)['items']), name + ' discovered')
+                    discovered.add(name)
                 send_tool(b, home_b, name, dict(args, target=a.origin), label)
                 notice = fixture.wait(lambda: next((m for m in channels.mailbox(b, caller_b)
                     if m.get('kind') == 'user_action_required' and m['request_id'] not in seen), None), label + ' notification')
@@ -219,15 +227,17 @@ def main():
             passed('source crash recovery cancels the remote pending business operation without replay')
 
             before_count = channels.sql(a, 'SELECT count(*) FROM interaction_registrations')[0][0]
-            direct = channels.operation(a, caller_a, 'agent.create', {'config': dict(config, name='Authorized direct worker')})
-            assert direct['agent']['name'] == 'Authorized direct worker'
+            current = channels.operation(a, caller_a, 'agent.inspect', {'agent_id': created['id']})
+            direct = channels.operation(a, caller_a, 'agent.update', {'agent_id': created['id'],
+                'expected_revision': current['revision'], 'changes': {'name': 'Authorized direct update'}})
+            assert direct['agent']['name'] == 'Authorized direct update'
             assert channels.sql(a, 'SELECT count(*) FROM interaction_registrations')[0][0] == before_count
             for removed in ('interaction.create', 'interaction.request'):
                 assert channels.request(a, 'POST', '/v1/channels/tools', {'session_id': caller_a, 'invocation_id': removed,
                     'tool': removed, 'arguments': {'request': {'action': 'input', 'title': 'Removed', 'fields': []}}})[0] == 400
             assert channels.request(b, 'POST', '/v1/channels/tools', {'session_id': caller_b, 'invocation_id': 'inline-rejected',
                 'tool': 'chat.post_message', 'arguments': {'chat_id': chat_b, 'interaction': {'action': 'agent.create', 'config': config}}})[0] == 400
-            passed('authorized complete calls execute directly; standalone and inline business-form entry points are unavailable')
+            passed('authorized updates execute directly; standalone and inline business-form entry points are unavailable')
         finally:
             for node in nodes:
                 node.stop()

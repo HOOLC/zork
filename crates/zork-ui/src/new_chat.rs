@@ -10,7 +10,11 @@ use crate::{
     resources::Text,
 };
 use gpui::{prelude::*, *};
-use std::{rc::Rc, time::Instant};
+use std::rc::Rc;
+#[cfg(not(target_family = "wasm"))]
+use std::time::Instant;
+#[cfg(target_family = "wasm")]
+use web_time::Instant;
 use zork_client_types::new_chat::{Action, Snapshot};
 
 pub enum Event {
@@ -67,7 +71,11 @@ impl Page {
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
         self.text = text;
         self.input.update(cx, |input, cx| {
-            input.set_value(data.text.clone(), cx);
+            // Rendering can precede delivery of ComposerEdited. Keep a local
+            // edit until core echoes it; a frozen submission remains authoritative.
+            if input.value() == self.data.text || !data.editable {
+                input.set_value(data.text.clone(), cx);
+            }
             input.set_editable(!data.editable, false, cx);
         });
         if self.data != data || self.width != width {

@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("critical", ROOT / "scripts/smoke-critical.py")
@@ -92,7 +93,7 @@ class ModelEndpoint:
         profiles = node / "profiles"
         profiles.mkdir(exist_ok=True)
         (profiles / "startup-fixture.json").write_text(json.dumps({
-            "provider": "openai", "billing": "usage",
+            "provider": "openai-compatible", "billing": "usage",
             "base_url": f"http://127.0.0.1:{self.server.server_port}/v1",
             "auth": {"type": "api_key", "key": "isolated-startup-test"},
             "models": [{"id": "startup-model", "api": "openai-completions", "streaming": False,
@@ -231,7 +232,10 @@ class Desktop:
         assert self.node_api("/v1/node/chats")["items"] == [], "choosing a model created an empty Chat"
         text = "startup first Chat message"
         model.expected = text
-        self.ui("/v1/actions", {"type": "type_text", "text": text, "target": {"element_id": "new-chat-input"}})
+        self.wait(lambda: not self.visible("new-chat-model-0"), "model menu closed")
+        self.click("new-chat-input")
+        reply = self.ui("/v1/actions", {"type": "type_text", "text": text})
+        assert reply.get("accepted") is True
         self.wait(lambda: any(e["id"] == "new-chat-send" and e["enabled"] for e in self.elements()["elements"]), "first send enabled")
         self.screenshot("new-chat-draft")
         self.click("new-chat-send")
@@ -375,6 +379,9 @@ class Desktop:
     def __exit__(self, error_type, error, _):
         if error_type:
             try:
+                client_log = self.client / "logs/client.log"
+                if client_log.exists():
+                    shutil.copy2(client_log, self.output / (self.case + "-client.log"))
                 for log in (self.client / "node").glob("*.log"):
                     shutil.copy2(log, self.output / (self.case + "-" + log.name))
                 (self.output / (self.case + "-failed-sample.json")).write_text(json.dumps(self.sample, ensure_ascii=False, indent=2))
@@ -604,6 +611,7 @@ def main():
         report["passed"] = all(sample["passed"] for sample in report["samples"])
     except Exception as error:
         report["error"] = str(error)
+        report["traceback"] = traceback.format_exc()
     (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(("PASS" if report["passed"] else "FAIL") + " desktop startup: " + str(output / "result.json"), flush=True)
     return 0 if report["passed"] else 1
