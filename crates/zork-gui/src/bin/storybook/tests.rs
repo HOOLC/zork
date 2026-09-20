@@ -1,5 +1,14 @@
 use super::*;
 
+fn settle(app: &mut HeadlessAppContext, window: gpui::AnyWindowHandle) -> anyhow::Result<()> {
+    // Initial fixture gestures and menu focus handoff run on actual frame callbacks.
+    for _ in 0..4 {
+        app.update_window(window, |_, w, cx| w.simulate_next_frame(cx))?;
+        app.run_until_parked();
+    }
+    Ok(())
+}
+
 #[test]
 fn physical_navigation_preserves_edits_and_reset_is_local() {
     let mut app = HeadlessAppContext::with_platform(
@@ -89,6 +98,14 @@ fn physical_navigation_preserves_edits_and_reset_is_local() {
     click(&mut app, "story-family-button");
     click(&mut app, "story-scenario");
     click(&mut app, "story-scenario-button-focus");
+    let focus = root.read_with(&app, |v, cx| {
+        v.session().host.read(cx).specimen_focus(cx).unwrap()
+    });
+    assert!(
+        app.update_window(window, |_, w, _| focus.is_focused(w))
+            .unwrap(),
+        "specimen lost focus before Enter"
+    );
     act(&mut app, json!({"type":"key", "keystroke":"enter"}));
     assert_eq!(
         root.read_with(&app, |v, cx| v.session().host.read(cx).inspect(cx)

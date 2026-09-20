@@ -310,23 +310,40 @@ impl Gallery {
     }
 
     fn initial_actions(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.session().pending {
+        if !self.session().pending || self.scenario_open || self.size_open {
             return;
         }
         let selected = self.selected;
         let host = self.session().host.clone();
         let owner = cx.entity().downgrade();
         window.on_next_frame(move |window, cx| {
-            let _ = owner.update(cx, |v, cx| {
-                // A click can switch/reset the specimen before this frame arrives.
-                if v.selected != selected || v.session().host != host || !v.session().pending {
-                    return;
-                }
-                let story = &v.catalog[selected];
-                v.sessions.get_mut(&story.family).unwrap().pending = false;
-                for action in &story.actions {
-                    if let Ok(action) = serde_json::from_value(action.clone()) {
-                        let _ = v.driver.dispatch(action, window, cx);
+            let replay = owner
+                .update(cx, |v, cx| {
+                    // A click can switch/reset the specimen before this frame arrives.
+                    if v.selected != selected || v.session().host != host || !v.session().pending {
+                        return None;
+                    }
+                    // The selector owns focus through its exit. Replay only after
+                    // that transient input surface has relinquished input ownership.
+                    if v.driver.snapshot(false).elements.iter().any(|e| {
+                        e.visible
+                            && matches!(e.id.as_str(), "story-scenario-menu" | "story-size-menu")
+                    }) {
+                        cx.notify();
+                        return None;
+                    }
+                    let story = &v.catalog[selected];
+                    v.sessions.get_mut(&story.family).unwrap().pending = false;
+                    Some((story.actions.clone(), v.driver.clone()))
+                })
+                .ok()
+                .flatten();
+            // Input can bubble through Gallery's keyboard handlers. Never dispatch
+            // while holding its mutable entity borrow.
+            if let Some((actions, driver)) = replay {
+                for action in actions {
+                    if let Ok(input) = serde_json::from_value(action.clone()) {
+                        let _ = driver.dispatch(input, window, cx);
                     }
                     if action["type"] == "key" && action["keystroke"] == "tab" {
                         if let Some(focus) = host.read(cx).specimen_focus(cx) {
@@ -334,7 +351,7 @@ impl Gallery {
                         }
                     }
                 }
-            });
+            }
         });
     }
 }
