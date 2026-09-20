@@ -495,6 +495,14 @@ pub struct StoryHost {
     _directory: tempfile::TempDir,
 }
 impl StoryHost {
+    pub fn specimen_focus(&self, cx: &gpui::App) -> Option<gpui::FocusHandle> {
+        self.inner
+            .clone()
+            .downcast::<PrimitiveStory>()
+            .ok()
+            .map(|view| view.read(cx).specimen_focus())
+    }
+
     /// Presentation-only bulk expansion for the native specimen host.
     pub fn history_expanded(&self, cx: &gpui::App) -> bool {
         use zork_ui::history_page::Host;

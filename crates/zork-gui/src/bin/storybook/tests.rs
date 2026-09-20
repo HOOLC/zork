@@ -18,7 +18,7 @@ fn physical_navigation_preserves_edits_and_reset_is_local() {
         .filter(|s| {
             matches!(
                 s.id.as_str(),
-                "field-empty" | "history-collapsed" | "button-primary"
+                "field-empty" | "history-collapsed" | "button-primary" | "button-focus"
             )
         })
         .collect();
@@ -85,5 +85,16 @@ fn physical_navigation_preserves_edits_and_reset_is_local() {
     assert!(
         root.read_with(&app, |v, cx| v.session().host.read(cx).history_expanded(cx)),
         "resetting an input must not reset the history specimen"
+    );
+    click(&mut app, "story-family-button");
+    click(&mut app, "story-scenario");
+    click(&mut app, "story-scenario-button-focus");
+    act(&mut app, json!({"type":"key", "keystroke":"enter"}));
+    assert_eq!(
+        root.read_with(&app, |v, cx| v.session().host.read(cx).inspect(cx)
+            ["clicks"]
+            .clone()),
+        1,
+        "focus fixtures must focus their own control, not the host toolbar"
     );
 }

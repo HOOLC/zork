@@ -328,6 +328,11 @@ impl Gallery {
                     if let Ok(action) = serde_json::from_value(action.clone()) {
                         let _ = v.driver.dispatch(action, window, cx);
                     }
+                    if action["type"] == "key" && action["keystroke"] == "tab" {
+                        if let Some(focus) = host.read(cx).specimen_focus(cx) {
+                            window.focus(&focus, cx);
+                        }
+                    }
                 }
             });
         });
