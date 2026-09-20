@@ -25,6 +25,10 @@ def git_context_key(key):
     return key in GIT_CONTEXT or key.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_'))
 
 
+def clean_git_environment(environ):
+    return {key: value for key, value in environ.items() if not git_context_key(key)}
+
+
 def settings(root=ROOT, environ=None):
     env = dict(os.environ if environ is None else environ)
     path = root / '.env'
@@ -44,8 +48,7 @@ def settings(root=ROOT, environ=None):
 
 
 def build_environment(root=ROOT, environ=None, variant=None):
-    env = {key: value for key, value in settings(root, environ).items()
-           if not git_context_key(key)}
+    env = clean_git_environment(settings(root, environ))
     mount = env.get('ZORK_BUILD_MOUNT')
     if mount and not os.path.ismount(Path(mount).expanduser()):
         raise ValueError('Configured ZORK_BUILD_MOUNT is not mounted')

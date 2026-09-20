@@ -12,22 +12,16 @@ import sys
 import time
 import uuid
 
-from build_env import build_environment
+from build_env import build_environment, clean_git_environment
 from deployment import atomic_json, clone_file, copy_tree, digest, exclusive, manifest, verify_manifest
 
 NODE_PACKAGES = ['zork', 'zork-station', 'zork-agent-server', 'zork-gh']
 NODE_BINARIES = ['zork', 'zork-station', 'zork-agent', 'zork-gh']
 
 
-def clean_git_environment(env):
-    # Cargo build scripts may create nested repositories; never inherit a parent
-    # worktree/index/config override into those Git processes.
-    return {key: value for key, value in env.items() if not key.startswith("GIT_")}
-
-
 def source_stamp(repo):
     def git(*args):
-        return subprocess.check_output(['git', '-c', 'core.bare=false', *args], cwd=repo, env=clean_git_environment(os.environ))
+        return subprocess.check_output(['git', *args], cwd=repo, env=clean_git_environment(os.environ))
     changes = git('diff', '--binary', 'HEAD', '--')
     untracked = git('ls-files', '--others', '--exclude-standard', '-z').split(b'\0')
     inputs = hashlib.sha256(changes)
@@ -49,7 +43,7 @@ def load_packager(repo):
 
 def build(repo, store, kind='node', profile='dev', services=None):
     repo = Path(repo).resolve()
-    env = clean_git_environment(build_environment(repo))
+    env = build_environment(repo)
     if kind == 'app' and not env.get('CEF_PATH'):
         # Reuse the already downloaded SDK. cef-dll-sys validates its archive
         # version against Cargo.lock; a new capture namespace need not redownload CEF.
