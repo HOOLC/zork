@@ -16,6 +16,7 @@ build() {
 }
 
 tests() {
+  python3 scripts/test-build-env.py
   python3 scripts/test-ci-source-stamps.py
   cargo test --locked "${packages[@]}" --lib --tests --no-fail-fast
   pnpm test

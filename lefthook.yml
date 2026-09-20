@@ -43,10 +43,10 @@ pre-push:
     runtime-tests:
       glob:
         - "crates/{agent*,profile,slack,station,zork,zork-android,zork-browser,zork-client-core,zork-client-types,zork-config,zork-gh,zork-mesh,zork-notify,zork-observe}/**"
-        - "vendor/{synch*,rustls*}/**"
+        - "vendor/{synch*,rustls*,iroh,swarm-discovery,noq-udp}/**"
         - "{Cargo.toml,Cargo.lock,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts,lefthook.yml}"
         - "{packages,test}/**"
-        - "scripts/{check-runtime.sh,test-ci-source-stamps.py,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
+        - "scripts/{check-runtime.sh,test-build-env.py,test-ci-source-stamps.py,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
         - "scripts/lib/{build_env,ci_source_stamps}.py"
         - "crates/zork-gui/tests/test_station_entry.py"
         - ".github/workflows/ci.yml"
