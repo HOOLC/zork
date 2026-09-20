@@ -53,6 +53,14 @@ uv run scripts/storybook/test_web.py --backend webgl --output artifacts/storyboo
 
 The build command exports native component/window PNGs and geometry, captures the existing local design reference, builds GPUI Web and generates the comparison gallery under the monorepo `apps/zork-design/components` directory. It uses the design reference server started by `pnpm design:dev`. It does not publish the site or connect to a real node. See `scripts/storybook/build.py --help` for options.
 
+The native `zork-gui-storybook` browser groups its directory by component. Choose
+the specimen's scenario in the work area and its viewport separately. Switching
+components retains the current specimen and reading position; choosing another
+scenario or resetting the current specimen recreates only that component's fixture.
+Viewport changes preserve its input and interaction state. `--family` and
+`--start-story` select an initial browsing scope; `--export` still uses the original
+fixed-size stories, independent of the interactive browser's layout.
+
 Sidebar navigation uses `navigation::TabGroup` for both device/task rows and settings tabs.
 Each sidebar owns a group and wraps its complete content in `surface`; `tab` provides
 hover/pressed feedback and `column` provides the 2 px row gap. The active tab has an

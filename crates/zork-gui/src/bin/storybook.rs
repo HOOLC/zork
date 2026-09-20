@@ -1,7 +1,5 @@
 //! Native component gallery and offscreen story exporter; never packaged in Zork.app.
-use gpui::{
-    div, prelude::*, px, rgb, size, AppContext, Bounds, Context, Entity, HeadlessAppContext, Window,
-};
+use gpui::{prelude::*, px, size, AppContext, Bounds, Context, Entity, HeadlessAppContext, Window};
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
@@ -11,7 +9,6 @@ use std::{
 use zork_gui::{
     assets::EmbeddedAssets,
     automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
-    design::ZORK_UI,
     desktop::stories::{self, Story, StoryHost},
 };
 
@@ -133,191 +130,10 @@ fn export_story(story: &Story, output: &Path) -> anyhow::Result<Value> {
     Ok(data)
 }
 
-struct Gallery {
-    catalog: Vec<Story>,
-    selected: usize,
-    host: Entity<StoryHost>,
-    driver: HeadlessAutomation,
-    pending: bool,
-    #[cfg(feature = "native-blur-bench")]
-    benchmark_started: bool,
-}
-impl Gallery {
-    fn new(
-        catalog: Vec<Story>,
-        selected: usize,
-        driver: HeadlessAutomation,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let host = cx.new(|cx| StoryHost::new(catalog[selected].clone(), cx));
-        Self {
-            catalog,
-            selected,
-            host,
-            driver,
-            pending: true,
-            #[cfg(feature = "native-blur-bench")]
-            benchmark_started: false,
-        }
-    }
-    fn select(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.selected = index;
-        let story = self.catalog[index].clone();
-        self.host = cx.new(|cx| StoryHost::new(story, cx));
-        self.pending = true;
-        cx.notify();
-    }
-}
-impl Render for Gallery {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        #[cfg(feature = "native-blur-bench")]
-        if !self.benchmark_started {
-            if let Ok(path) = std::env::var("ZORK_MODAL_FRAME_REPORT") {
-                self.benchmark_started = true;
-                self.pending = false;
-                let actions = self.catalog[self.selected].actions.clone();
-                let driver = self.driver.clone();
-                cx.spawn_in(window,async move |_,cx| {
-                    cx.background_executor().timer(Duration::from_millis(200)).await;
-                    cx.update(|window,cx|{for action in actions {let _=driver.dispatch(serde_json::from_value(action).unwrap(),window,cx);}}).ok();
-                    let mut samples=Vec::new();
-                    let mut measured=Instant::now();
-                    for index in 0..210 {
-                        cx.background_executor().timer(Duration::from_millis(12)).await;
-                        if index==30 { measured=Instant::now(); }
-                        let start=Instant::now();
-                        cx.update(|window,cx|{window.simulate_next_frame(cx);window.refresh();window.draw(cx).clear(cx);window.present_if_needed();}).ok();
-                        if index>=30 {samples.push(start.elapsed().as_secs_f64()*1000.);}
-                    }
-                    let fps=samples.len() as f64/measured.elapsed().as_secs_f64();
-                    samples.sort_by(f64::total_cmp);
-                    let report=json!({"frames":samples.len(),"fps":fps,"mean_draw_present_ms":samples.iter().sum::<f64>()/samples.len() as f64,"p95_draw_present_ms":samples[(samples.len() as f64*0.95) as usize]});
-                    std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
-                    cx.update(|_,cx|cx.quit()).ok();
-                }).detach();
-            }
-        }
-        let story = self.catalog[self.selected].clone();
-        if self.pending {
-            self.pending = false;
-            let actions = story.actions.clone();
-            let driver = self.driver.clone();
-            window.on_next_frame(move |w, cx| {
-                for action in actions {
-                    if let Ok(action) = serde_json::from_value(action) {
-                        let _ = driver.dispatch(action, w, cx);
-                    }
-                }
-            });
-        }
-        div()
-            .size_full()
-            .font_family("Inter Variable")
-            .text_size(px(12.))
-            .text_color(rgb(ZORK_UI.palette.text))
-            .bg(rgb(ZORK_UI.palette.canvas))
-            .flex()
-            .child(
-                div()
-                    .w(px(248.))
-                    .h_full()
-                    .flex_shrink_0()
-                    .bg(rgb(ZORK_UI.palette.sidebar))
-                    .flex()
-                    .flex_col()
-                    .pt_8()
-                    .px_3()
-                    .child(
-                        div()
-                            .text_size(px(18.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .pb_4()
-                            .child("Zork / Components"),
-                    )
-                    .child(
-                        div()
-                            .id("story-navigation")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .children(self.catalog.iter().enumerate().map(|(i, s)| {
-                                div()
-                                    .id(format!("story-{}", s.id))
-                                    .px_2()
-                                    .py_2()
-                                    .rounded(px(6.))
-                                    .cursor_pointer()
-                                    .bg(rgb(if i == self.selected {
-                                        ZORK_UI.palette.selected
-                                    } else {
-                                        ZORK_UI.palette.sidebar
-                                    }))
-                                    .hover(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
-                                    .child(format!("{} · {}", s.title, s.state))
-                                    .on_click(cx.listener(move |v, _, _, cx| v.select(i, cx)))
-                            })),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .h(px(68.))
-                            .px_5()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
-                            .border_color(rgb(ZORK_UI.palette.border))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_1()
-                                    .child(format!("{} / {}", story.title, story.state))
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(rgb(ZORK_UI.palette.muted))
-                                            .child(story.source.clone()),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .id("story-reset")
-                                    .px_3()
-                                    .py_2()
-                                    .rounded(px(6.))
-                                    .bg(rgb(ZORK_UI.palette.sidebar))
-                                    .cursor_pointer()
-                                    .child("重置状态")
-                                    .on_click(cx.listener(|v, _, _, cx| v.select(v.selected, cx))),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("story-preview-scroll")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_scroll()
-                            .bg(rgb(0xEFEFED))
-                            .p_5()
-                            .child(
-                                div()
-                                    .w(px(story.width))
-                                    .h(px(story.height))
-                                    .bg(rgb(ZORK_UI.palette.canvas))
-                                    .child(self.host.clone()),
-                            ),
-                    ),
-            )
-    }
-}
+#[path = "storybook/workbench.rs"]
+mod workbench;
+use workbench::Gallery;
+
 fn main() -> anyhow::Result<()> {
     std::env::set_var("SEED", "0");
     std::env::set_var("TZ", "UTC");
@@ -435,7 +251,12 @@ fn main() -> anyhow::Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("unknown story {id}"))
         })
         .transpose()?
-        .unwrap_or(0);
+        .unwrap_or_else(|| {
+            catalog
+                .iter()
+                .position(|s| s.family == "button")
+                .unwrap_or(0)
+        });
     let automation = args
         .iter()
         .any(|a| a == "--dev")
@@ -454,6 +275,7 @@ fn main() -> anyhow::Result<()> {
             json!({"storybook_automation":automation.address().to_string(),"token":automation.token()})
         );
     }
+    let fixed_size = value("--width").is_some() || value("--height").is_some();
     gpui_platform::application()
         .with_assets(EmbeddedAssets)
         .run(move |cx| {
@@ -482,7 +304,8 @@ fn main() -> anyhow::Result<()> {
                             cx.quit();
                             true
                         });
-                        let gallery = cx.new(|cx| Gallery::new(catalog, initial, driver, cx));
+                        let gallery =
+                            cx.new(|cx| Gallery::new(catalog, initial, driver, fixed_size, cx));
                         cx.new(|_| AutomationRoot::new(gallery))
                     },
                 )

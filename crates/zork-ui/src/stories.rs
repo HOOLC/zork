@@ -326,6 +326,11 @@ impl PrimitiveStory {
         }
         json!({"id":self.story.id,"state":self.story.state,"brand_progress":self.brand.read(cx).morph_progress(),"selected":self.selected,"open":self.open,"clicks":self.clicks,"checked":self.selected==1,"quote":self.quote,"text":if self.story.state=="secret" { "[redacted]" } else {self.input.read(cx).value()}})
     }
+    /// Hosts with their own keyboard controls focus the specimen after replaying
+    /// the keyboard gesture that enables focus-visible styling.
+    pub fn specimen_focus(&self) -> gpui::FocusHandle {
+        self.focus.clone()
+    }
 
     pub fn new(story: Story, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| ComposerInput::new("连接名称", cx));
@@ -465,7 +470,7 @@ impl Render for PrimitiveStory {
                         v.bg(rgb(ui::BUTTON_FOCUS_BACKGROUND))
                             .border_color(rgb(ui::BUTTON_FOCUS_BACKGROUND))
                     })
-                    .when(self.grouped && state == "focus", |v| {
+                    .when(state == "focus", |v| {
                         v.track_focus(&self.focus)
                     })
                     .on_click(cx.listener(|v, _, _, cx| {
@@ -933,6 +938,7 @@ impl Render for PrimitiveStory {
                 tabs.surface(
                     tabs.column().w(px(240.)).child(
                         tabs.tab(self.id("story-nav"), state.starts_with("selected"))
+                            .when(state.ends_with("focus"), |v| v.track_focus(&self.focus))
                             .when(
                                 self.grouped && matches!(state, "hover" | "selected-hover"),
                                 |v| v.bg(rgb(crate::design::INTERACTION.neutral_hover)),
