@@ -212,34 +212,6 @@ impl Device {
         draft.comments.retain(|comment| comment.id != id);
         self.save_draft_state(session, draft)
     }
-    pub fn clear_comments(&self, session: &str) -> anyhow::Result<()> {
-        let _serial = self.draft_gate.lock().unwrap();
-        crate::valid_session(session)?;
-        let mut draft = self.draft(session).as_ref().clone();
-        draft.comments.clear();
-        self.save_draft_state(session, draft)
-    }
-    pub fn restore_submission(&self, session: &str, submitted: Draft) -> anyhow::Result<()> {
-        let _serial = self.draft_gate.lock().unwrap();
-        crate::valid_session(session)?;
-        let mut draft = self.draft(session).as_ref().clone();
-        draft.text = match (submitted.text.is_empty(), draft.text.is_empty()) {
-            (true, _) => draft.text,
-            (_, true) => submitted.text,
-            _ => format!("{}\n\n{}", submitted.text, draft.text),
-        };
-        for file in submitted.files {
-            if !draft.files.iter().any(|f| f.id == file.id) {
-                draft.files.push(file);
-            }
-        }
-        for comment in submitted.comments {
-            if !draft.comments.iter().any(|c| c.id == comment.id) {
-                draft.comments.push(comment);
-            }
-        }
-        self.save_draft_state(session, draft)
-    }
     pub fn clear_draft(&self, session: &str) -> anyhow::Result<()> {
         let _serial = self.draft_gate.lock().unwrap();
         self.save_draft_state(session, Draft::default())

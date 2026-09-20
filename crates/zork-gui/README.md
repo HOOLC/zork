@@ -208,15 +208,9 @@ two recent completed executions, and available model/context information. Histor
 is loaded for that member’s session only after the hover delay; leaving the card
 releases its subscriptions. The excerpt is bounded to the latest 100 loaded
 entries and omits successful tool output and internal model text.
-The composer and transparent portraits share a GPUI liquid silhouette: idle
-portraits perch on the light upper edge; moving bubbles stretch a connecting
-neck before separating into light capsules. A smooth distance field produces continuous
-connections between nearby shapes. CPU rendering visits only contour-adjacent cells, with optimized Lyon tessellation.
-Settled meshes are cached. An opt-in Metal experiment (`ZORK_LIQUID_GPU=1`)
-evaluates the field into a texture; its synchronous readback is not the default. The approved geometry uses 16 px bubble radii,
-22 px idle spacing and edge inset, 0 px active edge inset, 8 px immersion,
-35 px active row spacing,
-a 3 px gap above the composer, and separate 4 px member/dock fusion.
+The composer and members use the shared liquid component and renderer.
+Presence transitions update the retained material geometry; settled presentation
+reuses the shared renderer cache.
 The single-line composer is 84 px tall with 24 px corners and 8 px icon insets.
 It grows to three visual lines (60 px editor height), then scrolls internally
 with the wheel/trackpad and follows the cursor while editing.

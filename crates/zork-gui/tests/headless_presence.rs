@@ -286,14 +286,7 @@ fn main() -> anyhow::Result<()> {
     // reaches rest; the following display ticks must perform no more work.
     pump(&mut cx, 1)?;
     let stable = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
-    #[cfg(target_os = "macos")]
-    let stable_gpu = zork_ui::components::liquid_composer::gpu_stats().0;
     pump(&mut cx, 12)?;
-    #[cfg(target_os = "macos")]
-    anyhow::ensure!(
-        stable_gpu == zork_ui::components::liquid_composer::gpu_stats().0,
-        "stationary liquid field dispatches GPU work"
-    );
     let after = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     anyhow::ensure!(
         stable == after,
@@ -694,16 +687,6 @@ fn main() -> anyhow::Result<()> {
         }
         member_counts.push(json!({"core": count, "rendered": rendered}));
     }
-    #[cfg(target_os = "macos")]
-    let (gpu_dispatches, gpu_max_ms) = zork_ui::components::liquid_composer::gpu_stats();
-    #[cfg(not(target_os = "macos"))]
-    let (gpu_dispatches, gpu_max_ms) = (0_u64, 0_f64);
-    #[cfg(target_os = "macos")]
-    if std::env::var_os("ZORK_LIQUID_GPU").is_some()
-        && std::env::var_os("ZORK_LIQUID_CPU").is_none()
-    {
-        anyhow::ensure!(gpu_dispatches > 10, "Metal field path was not exercised");
-    }
     let coverage = view.read_with(&cx, |v, _| v.benchmark_message_coverage());
     anyhow::ensure!(
         max_rows.get() > 0 && max_rows.get() <= 50,
@@ -713,7 +696,7 @@ fn main() -> anyhow::Result<()> {
     std::fs::write(
         output.join("checks.json"),
         serde_json::to_vec_pretty(
-            &json!({"message_count":message_count,"initial_anchor":initial_anchor,"active_anchor":active_anchor,"max_rendered_rows":max_rows.get(),"coverage":coverage,"right_padding_px":right_padding,"gpu_dispatches":gpu_dispatches,"gpu_max_ms":gpu_max_ms,"display_tick_hz":120,"moving_frame_changes":distinct_frames,"animation_p95_draw_ms":p95,"animation_p99_draw_ms":p99,"idle":idle,"intermediate":middle,"active":active,"composer":composer,"stable_regions":stable,"after_stable":after,"settling_frames":settling_frames,"dynamic_members":member_counts,"checks":["animated travel","fixed composer","idle grace","idle return","parallel agents","persistent waiting and failure","avatar opens history directly","member hover with history excerpt","hoverable card and dismissal","compact hover bounds","compact layout","reduced motion","no continuous redraw"]}),
+            &json!({"message_count":message_count,"initial_anchor":initial_anchor,"active_anchor":active_anchor,"max_rendered_rows":max_rows.get(),"coverage":coverage,"right_padding_px":right_padding,"display_tick_hz":120,"moving_frame_changes":distinct_frames,"animation_p95_draw_ms":p95,"animation_p99_draw_ms":p99,"idle":idle,"intermediate":middle,"active":active,"composer":composer,"stable_regions":stable,"after_stable":after,"settling_frames":settling_frames,"dynamic_members":member_counts,"checks":["animated travel","fixed composer","idle grace","idle return","parallel agents","persistent waiting and failure","avatar opens history directly","member hover with history excerpt","hoverable card and dismissal","compact hover bounds","compact layout","reduced motion","no continuous redraw"]}),
         )?,
     )?;
     anyhow::ensure!(

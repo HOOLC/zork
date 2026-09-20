@@ -373,10 +373,6 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
     },
 };
 
-pub fn zork_ui_spec() -> ZorkUiSpec {
-    ZORK_UI
-}
-
 /// Muted identity accents shared by Leader avatars across settings and conversations.
 pub const LEADER_AVATAR_COLORS: [(u32, u32); 6] = [
     (0xEBE6F4, 0x635078),

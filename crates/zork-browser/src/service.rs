@@ -421,19 +421,6 @@ impl Browser {
         cdp.call("Target.activateTarget", json!({"targetId":id}), None)?;
         Ok(())
     }
-    pub fn refresh_title(&self, host: &str, id: &str) -> Result<()> {
-        let (cdp, state) = self.live()?;
-        let (_, session) = Self::target(&state, host, id)?;
-        let page = evaluate(&cdp, &session, "({url:location.href,title:document.title})")?;
-        if let Some(tab) = state.lock().unwrap().tabs.get_mut(id) {
-            if page["url"].as_str() == Some(tab.info.url.as_str()) {
-                if let Some(title) = page["title"].as_str().filter(|title| !title.is_empty()) {
-                    tab.info.title = title.chars().take(512).collect();
-                }
-            }
-        }
-        Ok(())
-    }
     /// Human-only action: reveal downloaded files in the system file manager.
     pub fn open_downloads(&self) -> Result<()> {
         let directory = self.profile.join("downloads");

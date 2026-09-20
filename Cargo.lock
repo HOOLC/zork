@@ -13877,7 +13877,6 @@ dependencies = [
  "lyon",
  "markdown",
  "qrcode",
- "raw-window-handle",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",

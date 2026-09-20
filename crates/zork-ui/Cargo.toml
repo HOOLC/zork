@@ -35,9 +35,6 @@ frame-profiler = ["gpui/profiler"]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-raw-window-handle = "0.6"
-
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 zork-client-core = { path = "../zork-client-core" }
 gpui-platform = { package = "gpui-platform-gpui-unofficial", version = "=1.17.0-pre", features = ["font-kit", "test-support", "wayland", "x11"] }

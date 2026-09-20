@@ -18,12 +18,6 @@ impl Locale {
             Self::En => "en",
         }
     }
-    pub fn native_name(self) -> &'static str {
-        match self {
-            Self::ZhCn => "简体中文",
-            Self::En => "English",
-        }
-    }
     pub fn parse(value: &str) -> Option<Self> {
         match value.replace('_', "-").to_ascii_lowercase().as_str() {
             "zh" | "zh-cn" | "zh-hans" => Some(Self::ZhCn),

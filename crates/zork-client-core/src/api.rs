@@ -155,15 +155,6 @@ pub struct Artifact {
     pub version: i64,
     pub created_at: String,
 }
-impl Artifact {
-    pub fn collection_id(&self) -> &str {
-        self.session_id
-            .as_deref()
-            .or(self.task_id.as_deref())
-            .unwrap_or(&self.artifact_id)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskAction {

@@ -988,15 +988,6 @@ fn merge_selection_highlight(
     output
 }
 
-pub fn render_code_block(language: Option<&str>, code: &str) -> AnyElement {
-    render_code(
-        "standalone-code",
-        language,
-        &code::prepare(language, code),
-        None,
-    )
-}
-
 fn render_code(
     id: &str,
     language: Option<&str>,

@@ -191,7 +191,7 @@ impl Render for Gallery {
                     }
                     let fps=samples.len() as f64/measured.elapsed().as_secs_f64();
                     samples.sort_by(f64::total_cmp);
-                    let report=json!({"frames":samples.len(),"fps":fps,"mean_draw_present_ms":samples.iter().sum::<f64>()/samples.len() as f64,"p95_draw_present_ms":samples[(samples.len() as f64*0.95) as usize],"blur_disabled":std::env::var_os("ZORK_DISABLE_NATIVE_BLUR").is_some()});
+                    let report=json!({"frames":samples.len(),"fps":fps,"mean_draw_present_ms":samples.iter().sum::<f64>()/samples.len() as f64,"p95_draw_present_ms":samples[(samples.len() as f64*0.95) as usize]});
                     std::fs::write(path,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
                     cx.update(|_,cx|cx.quit()).ok();
                 }).detach();

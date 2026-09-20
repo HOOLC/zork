@@ -295,20 +295,6 @@ impl Agent {
         Ok(())
     }
 
-    pub async fn cancel_session_run(
-        &self,
-        session_id: String,
-        run_id: String,
-    ) -> Result<(), AgentError> {
-        if run_id.is_empty() || run_id.len() > 256 {
-            return Err(AgentError::invalid("invalid run_id"));
-        }
-        self.service
-            .cancel_observed_turn(&session_id, run_id)
-            .await
-            .map_err(AgentError::from)
-    }
-
     pub async fn set_selection(
         &self,
         session_id: String,

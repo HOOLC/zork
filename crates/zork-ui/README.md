@@ -60,23 +60,14 @@ independently sliding 2 × 14 px leading marker in `BRAND_ACCENT` orange, with n
 font weight. Both surfaces are painted across the whole group, so section gaps do
 not clip their motion; settled surfaces respect their target's scroll viewport.
 
-`components::tooltip::sliding_popup` provides a keyed floating surface for custom
-read-only content. Timeline nodes reuse one key, move the anchor to the hovered
-node and retain the last painted position and size through reversals. It shares
-the navigation details overlay's distance-adaptive, critically damped motion, clamps to the viewport,
-snaps with reduced motion and stops scheduling frames once settled. Content
-height is measured once per content key and width.
-
 All sliding surfaces retain their painted position and velocity when retargeted.
 They accelerate and brake continuously when the target changes; motion and
 settling constraints belong to the shared interface contract.
 
 The gallery has one tab per primitive family and one tab per application page. Primitive tabs render every state in a single GPUI canvas using `FamilyStories`, with separate entities and namespaced control IDs. Only page examples retain the live HTML comparison; scene and viewport selection stay inside their page tab. Web embeds explicit 400/500/600/700 font instances because fontdb otherwise indexes the CJK variable font at its Thin default.
 
-Modal backdrops follow the complete component's visual recipe, leaving the foreground card clear. On macOS,
-the compositor layer covers the window frame above the native titlebar, and converts
-card coordinates from the GPUI view into that frame. `scripts/storybook/test_native_scrim.m`
-checks regular/full-size windows, resizing, rapid reopening and layer cleanup.
+Modal backdrops are rendered by the shared liquid overlay with the foreground
+content, using the same material geometry on native and Web.
 
 `components::liquid::composer` uses one retained `Scene` and complete renderer
 for the application and business examples. Material parcels keep their identity

@@ -145,17 +145,6 @@ impl Surface {
             paint_at(window, path, bounds.origin, color);
         }
     }
-    pub fn accepts_click(&self, event: &ClickEvent) -> bool {
-        if matches!(event, ClickEvent::Keyboard(_)) {
-            return true;
-        }
-        let origin = self.paint.0.borrow().bounds.origin;
-        let position = event.position();
-        self.model.contour().contains([
-            (position.x - origin.x).as_f32() as f64,
-            (position.y - origin.y).as_f32() as f64,
-        ])
-    }
     pub fn layer(
         &self,
         id: impl Into<ElementId>,
@@ -258,70 +247,6 @@ impl Surface {
                     ),
             )
             .child(div().size_full().opacity(alpha).child(content))
-    }
-    /// Reveal the material using the same spring as HoverFill. Content remains
-    /// visible while the source is quiet, and always clips to the current contour.
-    pub fn layer_revealed(
-        &self,
-        id: impl Into<ElementId>,
-        width: f32,
-        height: f32,
-        colors: SurfaceColors,
-        content: impl IntoElement,
-        revealed: bool,
-    ) -> Stateful<Div> {
-        let id = id.into();
-        let key: ElementId = format!("{id:?}-reveal").into();
-        let path = self.model.contour();
-        let paint = self.paint.clone();
-        div()
-            .id(id)
-            .relative()
-            .w(px(width))
-            .h(px(height))
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .size_full()
-                    .child(self.background(colors.fill, colors.border))
-                    .with_spring(
-                        key,
-                        crate::components::motion::spring(if revealed { 1. } else { 0. }),
-                        |v, opacity| v.opacity(opacity),
-                    ),
-            )
-            .child(content)
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let mut cache = paint.0.borrow_mut();
-                        cache.prepare(&path, bounds);
-                        cache.prepare_exterior(&path, bounds);
-                        if !cache.visible {
-                            return;
-                        }
-                        if let Some(exterior) = &cache.exterior {
-                            paint_at(window, exterior, bounds.origin, colors.parent);
-                        }
-                        if colors.focused && window.last_input_was_keyboard() {
-                            cache.prepare_focus(&path);
-                            if let Some(focus) = &cache.focus {
-                                paint_at(
-                                    window,
-                                    focus,
-                                    bounds.origin,
-                                    crate::design::INTERACTION.focus_border,
-                                );
-                            }
-                        }
-                    },
-                )
-                .absolute()
-                .inset_0()
-                .size_full(),
-            )
     }
 }
 

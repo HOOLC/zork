@@ -35,11 +35,6 @@ pub struct BundleSelection {
 pub fn skills_root(data_root: &Path) -> PathBuf {
     data_root.join("skills")
 }
-pub fn metadata_root(data_root: &Path, directory: &str) -> PathBuf {
-    skills_root(data_root)
-        .join(directory)
-        .join(METADATA_DIRECTORY)
-}
 pub fn valid_component(value: &str) -> bool {
     !value.is_empty()
         && !value.contains(['/', '\\'])

@@ -95,12 +95,6 @@ impl Fill {
         self.current_color = true;
         self
     }
-    pub fn hover_outline(mut self, group: SharedString, color: u32) -> Self {
-        self.inner = self
-            .inner
-            .group_hover(group, move |v| v.border_color(gpui::rgb(color)));
-        self
-    }
 }
 impl Styled for Fill {
     fn style(&mut self) -> &mut gpui::StyleRefinement {
