@@ -47,7 +47,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 anyhow = "1"
 libc = "0.2"
 gpui = { package = "gpui-unofficial", version = "1.17.0-pre" }
-gpui-platform = { package = "gpui-platform-gpui-unofficial", version = "1.17.0-pre", features = ["font-kit", "test-support", "wayland", "x11"] }
+gpui-platform = { package = "gpui-platform-gpui-unofficial", version = "1.17.0-pre", features = [
+  "font-kit",
+  "test-support",
+  "wayland",
+  "x11",
+] }
 futures-util.workspace = true
 futures-channel = "0.3.31"
 tokio.workspace = true
@@ -62,7 +67,14 @@ tempfile = { version = "3", optional = true }
 [features]
 native-blur-bench = ["headless-bench", "gpui/bench"]
 frame-profiler = ["gpui/profiler", "zork-ui/frame-profiler"]
-headless-bench = ["gpui/profiler", "gpui/test-support", "dep:tempfile", "zork-ui/headless-bench", "zork-ui/stories", "zork-client-core/headless-bench"]
+headless-bench = [
+  "gpui/profiler",
+  "gpui/test-support",
+  "dep:tempfile",
+  "zork-ui/headless-bench",
+  "zork-ui/stories",
+  "zork-client-core/headless-bench",
+]
 
 [dev-dependencies]
 rusqlite.workspace = true
@@ -157,30 +169,30 @@ version = "0.6"
 [target.'cfg(target_os = "macos")'.dependencies.objc2-foundation]
 version = "=0.3.2"
 features = [
-    "NSArray",
-    "NSAttributedString",
-    "NSBundle",
-    "NSCoder",
-    "NSData",
-    "NSDate",
-    "NSDictionary",
-    "NSEnumerator",
-    "NSError",
-    "NSGeometry",
-    "NSNotification",
-    "NSNull",
-    "NSObjCRuntime",
-    "NSObject",
-    "NSProcessInfo",
-    "NSRange",
-    "NSRunLoop",
-    "NSSet",
-    "NSString",
-    "NSURL",
-    "NSUndoManager",
-    "NSValue",
-    "objc2-core-foundation",
-    "std",
+  "NSArray",
+  "NSAttributedString",
+  "NSBundle",
+  "NSCoder",
+  "NSData",
+  "NSDate",
+  "NSDictionary",
+  "NSEnumerator",
+  "NSError",
+  "NSGeometry",
+  "NSNotification",
+  "NSNull",
+  "NSObjCRuntime",
+  "NSObject",
+  "NSProcessInfo",
+  "NSRange",
+  "NSRunLoop",
+  "NSSet",
+  "NSString",
+  "NSURL",
+  "NSUndoManager",
+  "NSValue",
+  "objc2-core-foundation",
+  "std",
 ]
 default-features = false
 
@@ -225,5 +237,11 @@ harness = true
 [[test]]
 name = "headless_relay_account"
 path = "tests/headless_relay_account.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
+name = "headless_new_chat"
+path = "tests/headless_new_chat.rs"
 harness = false
 required-features = ["headless-bench"]

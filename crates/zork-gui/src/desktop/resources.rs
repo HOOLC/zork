@@ -27,6 +27,7 @@ impl ResourcesView {
     ) -> Self {
         Self::create(core, locale, Mode::Services(node), cx)
     }
+    #[cfg(feature = "headless-bench")]
     pub fn skills(
         core: Arc<Resources>,
         node: String,

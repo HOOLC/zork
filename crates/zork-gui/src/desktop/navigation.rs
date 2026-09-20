@@ -1,4 +1,4 @@
-//! Device → Leader → Task navigation, shared by every retained device view.
+//! Device → Chat navigation, shared by every retained device view.
 use super::store::{ClientStore, SavedNode};
 use crate::{i18n::Locale, shell::ShellRoute};
 use gpui::{prelude::*, Context, Window};
@@ -451,10 +451,10 @@ impl Render for DeviceNavigation {
                 Action::Navigate { node, destination } => {
                     let destination = match destination {
                         Intent::SharedFiles => Destination::SharedFiles,
-                        Intent::Leader(id) => Destination::Leader(id.clone()),
-                        Intent::Conversation { session, leader } => Destination::Conversation {
+                        Intent::NewChat => Destination::Home,
+                        Intent::Conversation { session } => Destination::Conversation {
                             session: session.clone(),
-                            leader: leader.clone(),
+                            leader: None,
                         },
                         Intent::Manage(page) => Destination::Manage(*page),
                     };
@@ -492,9 +492,7 @@ impl Render for DeviceNavigation {
                 online: device.data.online,
                 direct: device.data.route.direct,
                 public: device.data.route.scope == crate::api::ConnectionScope::Public,
-                agents: device.data.agents.clone(),
-                tasks: device.data.tasks.clone(),
-                others: device.data.others.clone(),
+                chats: device.data.chats.clone(),
                 selected_session: device.selection.selected_session.clone(),
                 chatting: matches!(device.selection.route, Some(ShellRoute::Task(_))),
             })

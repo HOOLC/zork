@@ -267,7 +267,7 @@ impl Render for MeshSettings {
                             } else if peer.client {
                                 "客户端 · 可管理此设备"
                             } else {
-                                "设备 · 按队员授权协作"
+                                "设备 · 协作节点"
                             }
                             .into(),
                         })

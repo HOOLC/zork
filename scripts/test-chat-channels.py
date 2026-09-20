@@ -134,8 +134,9 @@ def main():
             assert len(user_messages) == 2 and user_messages[0]['id'] != resend['id']
             assert not sql(a, "SELECT 1 FROM chat_receipts WHERE object_id GLOB 'client-*'")
             passed('native sends have distinct source records and no separate ordinary-send receipts')
-            channel = operation(a, caller_a, 'chat.create', {'title': 'Shared channel'})['chat_id']
-            assert operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants'] == []
+            channel = operation(a, caller_a, 'chat.create', {'title': 'Shared channel', 'text': 'Start a shared Chat', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
+            assert len(operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants']) == 1
+            operation(a, caller_a, 'chat.update_preferences', {'chat_id': channel, 'changes': {'subscribed': False}})
             assert not sql(a, 'SELECT 1 FROM product_tasks t JOIN chat_channels c ON c.session_key=t.session_key WHERE c.chat_id=?', (channel,))
             first = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'Post without subscription'})
             assert operation(a, caller_a, 'chat.preferences', {'chat_id': channel})['subscribed'] is False
@@ -183,7 +184,7 @@ def main():
             assert Path(copied['path']).read_bytes() == original
             passed('explicit source_target copies a published attachment across nodes')
 
-            script_chat = operation(a, caller_a, 'chat.create', {'title': 'Android script cards'})['chat_id']
+            script_chat = operation(a, caller_a, 'chat.create', {'title': 'Android script cards', 'text': 'Start script-card Chat', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
             script = {'title': 'Open developer options', 'description': 'Run on this Android device',
                 'source': 'console.log("本机操作");\nawait android.startActivity({action: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS"});'}
             expected_card = dict(script, kind='local_script', version=1, platform='android')
@@ -212,7 +213,7 @@ def main():
             for node in nodes:
                 assert not sql(node, 'SELECT 1 FROM interaction_registrations')
             script_messages = operation(a, caller_a, 'chat.history', {'chat_id': script_chat})['items']
-            assert {m['message_id'] for m in script_messages} == {
+            assert {m['message_id'] for m in script_messages if m.get('interaction')} == {
                 local_script['message_id'], remote_script['message_id'], resent_script['message_id']}
             assert operation(b, caller_b, 'chat.read', {'target': a.origin, 'chat_id': script_chat,
                 'message_id': remote_script['message_id']})['interaction'] == expected_card
@@ -251,7 +252,7 @@ def main():
                 'changes': {'subscribed': False}})
             unsubscribed = operation(a, caller_a, 'chat.post_message', {'chat_id': channel, 'text': 'After unsubscribe',
                 'mentions': [b.origin + '/caller-b']})
-            assert not sql(a, 'SELECT 1 FROM chat_notices WHERE message_id=?', (unsubscribed['message_id'],))
+            assert not sql(a, 'SELECT 1 FROM chat_notices WHERE message_id=? AND agent_ref=?', (unsubscribed['message_id'], b.origin + '/caller-b'))
             participants = operation(a, caller_a, 'chat.inspect', {'chat_id': channel})['participants']
             assert next(p for p in participants if p['author']['id'] == b.origin + '/caller-b')['subscribed'] is False
             passed('unsubscription retains authored participation and mentions cannot bypass it')

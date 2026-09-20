@@ -1792,23 +1792,9 @@ async fn open_agent(
 }
 fn calling_leader(state: &NodeState, headers: &HeaderMap) -> Option<NodeAgent> {
     let key = headers.get("x-zork-session-key")?.to_str().ok()?;
-    state
-        .app
-        .db
-        .agent_for_session(key)
-        .ok()
-        .flatten()
-        .filter(|a| a.role == AgentRole::Leader)
+    state.app.db.agent_for_session(key).ok().flatten()
 }
 
-fn personal_mesh(state: &NodeState) -> bool {
-    state.app.mesh.get().is_some_and(|service| {
-        zork_config::load_config(&state.app.config.data_root)
-            .ok()
-            .and_then(|c| c.mesh.group)
-            .is_some_and(|group| group.contains(service.origin()))
-    })
-}
 async fn workers(State(state): State<NodeState>, headers: HeaderMap) -> Response {
     let Some(leader) = calling_leader(&state, &headers) else {
         return error(
@@ -1820,10 +1806,6 @@ async fn workers(State(state): State<NodeState>, headers: HeaderMap) -> Response
         Ok(agents) => {
             let mut items = agents
                 .into_iter()
-                .filter(|a| {
-                    a.role == AgentRole::Worker
-                        && (personal_mesh(&state) || a.allowed_leaders.contains(&leader.id))
-                })
                 .map(|a| json!({"id":a.id,"name":a.name,"node":"local"}))
                 .collect::<Vec<_>>();
             if let Some(mesh) = state.app.mesh.get() {
@@ -2044,15 +2026,11 @@ async fn rework_task(
             )?;
             return Ok(json!({"task":state.app.db.product_task(&task_id)?,"queued":true}));
         }
-        let worker = state
+        let _worker = state
             .app
             .db
             .node_agent(&worker_id)?
             .ok_or_else(|| anyhow::anyhow!("Worker missing"))?;
-        anyhow::ensure!(
-            personal_mesh(&state) || worker.allowed_leaders.contains(&leader.id),
-            "Worker permission was revoked"
-        );
         let session = state
             .app
             .db

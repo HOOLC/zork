@@ -39,6 +39,7 @@ pub mod member_activity;
 
 pub mod history_page;
 
+pub mod new_chat;
 pub mod welcome;
 
 pub mod node_directory;

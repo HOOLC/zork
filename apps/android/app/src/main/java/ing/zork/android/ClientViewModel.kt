@@ -93,6 +93,10 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     var settings by mutableStateOf<MobileSettingsState?>(null)
         private set
+    var newChat by mutableStateOf<NewChatUi?>(null)
+        private set
+    private var newChatWatch: Job? = null
+    private var newChatGeneration = 0L
     var messagePreviewHeight by mutableIntStateOf(0)
         private set
     var running by mutableStateOf(false)
@@ -228,12 +232,14 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             reportVisibleConversation()
             pendingNotification?.let { openNotification(it) }
             settings?.device?.id?.let { watchSettings(it) }
+            newChat?.let { watchNewChat(it.peer, newChatGeneration) }
             settings?.resource?.let { watchResources(it); refreshResources(it) }
             if (sharedFiles != null) watchSharedFiles()
             if (chatFile != null) watchChatFiles()
             if (foreground) { if (invitation != null) watchInvitation() else startLive(); startHistory() }
         } else {
             settingsWatch?.cancel()
+            newChatWatch?.cancel()
             resourcesWatch?.cancel()
             sharedFilesWatch?.cancel()
             chatFilesWatch?.cancel()
@@ -545,6 +551,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun selectPeer(peer: Peer) {
+        closeNewChat()
         closeHistory()
         rememberConversation()
         pendingConversationLoad = null
@@ -558,6 +565,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun back() {
+        if (newChat != null) { closeNewChat(); action { startLive() }; return }
         closeHistory()
         rememberConversation()
         pendingConversationLoad = null
@@ -600,6 +608,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
 
     private fun openConversation(value: Conversation, preparedDraft: String? = null, prepareLeader: String? = null) {
         if (value.id.isBlank()) return
+        closeNewChat()
         closeHistory()
         rememberConversation()
         val cached = cachedConversation?.takeIf { it.peer == activePeer?.id && it.id == value.id }
@@ -674,6 +683,58 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     private var settingsWatch: Job? = null
+    fun openNewChat(peer: Peer) {
+        closeNewChat()
+        closeHistory()
+        rememberConversation()
+        live?.cancel()
+        settings = null
+        conversation = null
+        activePeer = peer
+        newChat = NewChatUi(peer)
+        val generation = newChatGeneration
+        action {
+            repo.command("select_peer", "peer" to peer.id)
+            repo.command("new_chat", "peer" to peer.id, "operation" to JSONObject().put("action", "begin"))
+            if (generation == newChatGeneration && newChat?.peer?.id == peer.id) watchNewChat(peer, generation)
+        }
+    }
+    private fun closeNewChat() {
+        newChatGeneration += 1
+        newChatWatch?.cancel(); newChatWatch = null
+        newChat = null
+    }
+    private fun watchNewChat(peer: Peer, generation: Long) {
+        newChatWatch?.cancel()
+        newChatWatch = viewModelScope.launch {
+            try {
+                repo.newChatEvents(peer.id).takeWhile { foreground && generation == newChatGeneration && newChat?.peer?.id == peer.id }.collect { frame ->
+                    val snapshot = frame.value.optJSONObject("snapshot") ?: return@collect
+                    if (generation != newChatGeneration) return@collect
+                    newChat = NewChatUi(peer, snapshot)
+                    val chat = snapshot.optJSONObject("created")
+                    if (chat != null && settings == null) openSession(JSONObject(chat.toString()).put("_peer", peer.id))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == newChatGeneration) newChat = newChat?.let { it.copy(snapshot = JSONObject(it.snapshot.toString()).put("error", error.message)) }
+            }
+        }
+    }
+    fun newChatAction(action: String, value: String?) {
+        val current = newChat ?: return
+        val generation = newChatGeneration
+        val operation = JSONObject().put("action", action)
+        if (value != null) operation.put(if (action == "edit" || action == "submit") "text" else "value", value)
+        viewModelScope.launch {
+            try { repo.command("new_chat", "peer" to current.peer.id, "operation" to operation) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (generation == newChatGeneration) newChat = newChat?.let { it.copy(snapshot = JSONObject(it.snapshot.toString()).put("error", error.message)) }
+            }
+        }
+    }
+    fun newChatModels() { newChat?.let { showDevice(it.peer); settingsPage("models") } }
     private fun watchSettings(peer: String) {
         settingsWatch?.cancel()
         settingsWatch = viewModelScope.launch {
@@ -1025,7 +1086,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (state.has("error")) notice = state.text("error").ifBlank { null }
         state.optJSONObject("navigation")?.let { navigation ->
             leaders = navigation.optJSONArray("agents").objects()
-            sessions = navigation.optJSONArray("others").objects()
+            sessions = navigation.optJSONArray("chats").objects()
             val groups = navigation.optJSONObject("tasks")
             tasksByLeader = groups?.keys()?.asSequence()?.associateWith { groups.optJSONArray(it).objects() } ?: emptyMap()
         }

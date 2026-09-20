@@ -109,6 +109,23 @@ pub fn preview_models(input: &str, models: &str) -> Result<Value> {
     Ok(json!({"models":input.apply(models)?}))
 }
 
+#[cfg(debug_assertions)]
+fn preview_new_chat(request: &str) -> Result<Value> {
+    anyhow::ensure!(request.len() <= 64 * 1024, "fixture input too large");
+    #[derive(serde::Deserialize)]
+    struct Input {
+        scenario: String,
+        actions: Vec<zork_client_core::new_chat::Action>,
+    }
+    let input: Input = serde_json::from_str(request)?;
+    anyhow::ensure!(input.actions.len() <= 128, "too many fixture actions");
+    let mut fixture = zork_client_core::new_chat::Fixture::new(&input.scenario);
+    for action in input.actions {
+        fixture.apply(action);
+    }
+    Ok(serde_json::to_value(fixture.snapshot())?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,6 +423,21 @@ mod android {
                 &model.to_string(),
                 &thinking.to_string(),
             );
+            JString::from_str(env, value.to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    #[cfg(debug_assertions)]
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NewChatFixtureBridge_render<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = super::preview_new_chat(&request.to_string())
+                .unwrap_or_else(|error| serde_json::json!({"error":error.to_string()}));
             JString::from_str(env, value.to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()

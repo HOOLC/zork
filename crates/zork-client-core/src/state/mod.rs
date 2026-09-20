@@ -7,7 +7,7 @@ mod device;
 #[cfg(not(target_family = "wasm"))]
 mod navigation;
 #[cfg(not(target_family = "wasm"))]
-pub use navigation::{NavigationAgent, NavigationChat, NavigationData};
+pub use navigation::{NavigationChat, NavigationData};
 #[cfg(not(target_family = "wasm"))]
 mod upgrade;
 #[cfg(not(target_family = "wasm"))]
@@ -18,7 +18,11 @@ mod agents;
 #[cfg(not(target_family = "wasm"))]
 mod drafts;
 #[cfg(not(target_family = "wasm"))]
+mod new_chat;
+#[cfg(not(target_family = "wasm"))]
 mod outbox;
+#[cfg(not(target_family = "wasm"))]
+pub use new_chat::{NewChat, NewChatData};
 #[cfg(not(target_family = "wasm"))]
 mod replication;
 pub use agent_catalog::{AgentData, AgentSubscription, AgentUpdate, Agents};
@@ -40,9 +44,7 @@ pub use conversation::{
     ConversationUpdate, DeliveryState, MessageDeliveries, MessageSplice, TranscriptLookup,
 };
 #[cfg(not(target_family = "wasm"))]
-pub use device::{
-    AgentAvailability, Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains,
-};
+pub use device::{Device, DeviceData, DeviceSubscription, DeviceUpdate, Domains};
 #[cfg(not(target_family = "wasm"))]
 pub use drafts::{Draft, DraftAction, TEXT_ATTACHMENT_LIMIT};
 #[cfg(not(target_family = "wasm"))]

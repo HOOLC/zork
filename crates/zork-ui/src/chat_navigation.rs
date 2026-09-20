@@ -1,4 +1,4 @@
-//! Complete device, agent and Chat sidebar using readonly core projections.
+//! Complete device and Chat sidebar using readonly core projections.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
@@ -6,19 +6,13 @@ use crate::{
     resources::Text,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight, Window};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-use zork_client_types::navigation::{NavigationAgent, NavigationChat};
+use std::{collections::HashSet, sync::Arc};
+use zork_client_types::navigation::NavigationChat;
 #[derive(Clone)]
 pub enum Destination {
     SharedFiles,
-    Leader(String),
-    Conversation {
-        session: String,
-        leader: Option<String>,
-    },
+    NewChat,
+    Conversation { session: String },
     Manage(usize),
 }
 pub enum Action {
@@ -36,9 +30,7 @@ pub struct Device {
     pub online: Option<bool>,
     pub direct: bool,
     pub public: bool,
-    pub agents: Arc<Vec<NavigationAgent>>,
-    pub tasks: Arc<HashMap<String, Vec<NavigationChat>>>,
-    pub others: Arc<Vec<NavigationChat>>,
+    pub chats: Arc<Vec<NavigationChat>>,
     pub selected_session: Option<String>,
     pub chatting: bool,
 }
@@ -51,9 +43,7 @@ impl Device {
             && self.public == other.public
             && self.selected_session == other.selected_session
             && self.chatting == other.chatting
-            && Arc::ptr_eq(&self.agents, &other.agents)
-            && Arc::ptr_eq(&self.tasks, &other.tasks)
-            && Arc::ptr_eq(&self.others, &other.others)
+            && Arc::ptr_eq(&self.chats, &other.chats)
     }
 }
 pub struct Navigation {
@@ -137,7 +127,7 @@ impl Navigation {
         crate::components::region::invalidate(cx, &["footer"]);
     }
     #[cfg(feature = "headless-bench")]
-    pub fn counters(&self, cx: &gpui::App) -> HashMap<String, [usize; 4]> {
+    pub fn counters(&self, cx: &gpui::App) -> std::collections::HashMap<String, [usize; 4]> {
         self.regions.counters(cx)
     }
     fn width(&self, available: f32) -> f32 {
@@ -195,7 +185,6 @@ impl Navigation {
             Some(false) => "device_offline",
             None => "device_not_connected",
         });
-        let leaders = &device.agents;
         self.tabs
             .column()
             .gap_0()
@@ -241,15 +230,24 @@ impl Navigation {
                 let content = fold.mounted(cx).then(|| {
                     self.tabs
                         .column()
-                        .when(!leaders.is_empty(), |v| {
-                            v.pt(px(crate::navigation::TAB_GAP))
+                        .child({
+                            let node = device.id.clone();
+                            self.tabs
+                                .tab(
+                                    format!("new-chat-{}", device.id),
+                                    self.active.as_deref() == Some(&device.id)
+                                        && device.selected_session.is_none()
+                                        && !self.shared_files,
+                                )
+                                .tab_stop(interactive)
+                                .pl(px(36.))
+                                .child(self.locale.text("new_chat"))
+                                .on_click(cx.listener(move |v, _, _, cx| {
+                                    v.go(Some(node.clone()), Destination::NewChat, cx)
+                                }))
+                                .automation(AutomationRole::Button, self.locale.text("new_chat"))
                         })
-                        .children(
-                            leaders
-                                .iter()
-                                .map(|a| self.leader(device, a, interactive, cx)),
-                        )
-                        .child(self.chat_group(device, None, &device.others, interactive, cx))
+                        .child(self.chat_group(device, &device.chats, interactive, cx))
                         .into_any_element()
                 });
                 let owner = cx.entity().downgrade();
@@ -265,100 +263,14 @@ impl Navigation {
                 )
             })
     }
-    fn leader(
-        &self,
-        device: &Device,
-        agent: &NavigationAgent,
-        interactive: bool,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let id = &agent.id;
-        let name = &agent.name;
-        let key = format!("{}/{id}", device.id);
-        let active = !self.shared_files && self.active.as_deref() == Some(&device.id);
-        let chatting = active
-            && agent.session_id.is_some()
-            && agent.session_id == device.selected_session
-            && device.chatting;
-        let tasks = device.tasks.get(id).map(Vec::as_slice).unwrap_or_default();
-        let leader_id = id.clone();
-        let node_id = device.id.clone();
-        let can_open = agent.can_open;
-        let details = crate::components::tooltip::DetailsTooltip {
-            key: format!("leader-{key}"),
-            title: name.clone(),
-            kind: self
-                .locale
-                .text(if can_open {
-                    "navigation_partner"
-                } else {
-                    "navigation_creator"
-                })
-                .into(),
-            avatar: agent.avatar.clone(),
-            description: agent.instructions.clone(),
-            rows: vec![
-                (
-                    self.locale.text("navigation_device").into(),
-                    device.name.clone(),
-                ),
-                (
-                    self.locale.text("navigation_connection").into(),
-                    agent.profile_id.clone(),
-                ),
-                (self.locale.text("model").into(), agent.model.clone()),
-            ],
-        };
-        self.tabs
-            .column()
-            .child(
-                self.tabs
-                    .tab(format!("leader-{}-{id}", device.id), chatting)
-                    .tab_stop(interactive && can_open)
-                    .child(ui::agent_avatar(agent.avatar.as_deref(), 20.))
-                    .child(div().flex_1().min_w_0().text_ellipsis().child(name.clone()))
-                    .when(agent.unread, |v| {
-                        v.child(
-                            div()
-                                .size(px(6.))
-                                .rounded_full()
-                                .bg(rgb(ZORK_UI.palette.text)),
-                        )
-                    })
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        if can_open {
-                            v.go(
-                                Some(node_id.clone()),
-                                Destination::Leader(leader_id.clone()),
-                                cx,
-                            )
-                        }
-                    }))
-                    .automation_enabled(can_open, AutomationRole::Button, name.clone())
-                    .map(|row| {
-                        crate::components::tooltip::trigger(
-                            row,
-                            details,
-                            self.details_overlay.as_ref().unwrap().clone(),
-                        )
-                    }),
-            )
-            .child(self.chat_group(device, Some(agent), tasks, interactive, cx))
-    }
-
     fn chat_group(
         &self,
         device: &Device,
-        creator: Option<&NavigationAgent>,
         chats: &[NavigationChat],
         interactive: bool,
         cx: &mut Context<Self>,
     ) -> Div {
-        let key = format!(
-            "{}/{}",
-            device.id,
-            creator.map(|a| a.id.as_str()).unwrap_or("unattributed")
-        );
+        let key = device.id.clone();
         let all = self.show_all.contains(&key);
         let visible: Vec<_> = chats
             .iter()
@@ -371,12 +283,12 @@ impl Navigation {
             .children(
                 visible
                     .iter()
-                    .map(|chat| self.chat_row(device, creator, chat, interactive, cx)),
+                    .map(|chat| self.chat_row(device, chat, interactive, cx)),
             )
             .when(chats.len() > visible.len() || all, |panel| {
                 panel.child(
                     self.tabs
-                        .tab(format!("leader-more-{key}"), false)
+                        .tab(format!("chats-more-{key}"), false)
                         .tab_stop(interactive)
                         .pl(px(36.))
                         .text_color(rgb(ZORK_UI.palette.muted))
@@ -398,7 +310,6 @@ impl Navigation {
     fn chat_row(
         &self,
         device: &Device,
-        creator: Option<&NavigationAgent>,
         chat: &NavigationChat,
         interactive: bool,
         cx: &mut Context<Self>,
@@ -413,18 +324,8 @@ impl Navigation {
             chat.title.clone()
         };
         let node = device.id.clone();
-        let leader = creator.map(|a| a.id.clone());
         let session = chat.chat_id.clone();
         let mut rows = vec![(self.locale.text("workspace").into(), chat.workspace.clone())];
-        if let Some(creator) = creator {
-            rows.insert(
-                0,
-                (
-                    self.locale.text("navigation_creator").into(),
-                    creator.name.clone(),
-                ),
-            );
-        }
         if let Some(executor) = &chat.executor {
             rows.push((self.locale.text("device_executor").into(), executor.clone()));
         }
@@ -437,10 +338,7 @@ impl Navigation {
             rows,
         };
         self.tabs
-            .tab(
-                format!("leader-task-{}-{}", device.id, chat.chat_id),
-                selected,
-            )
+            .tab(format!("chat-{}-{}", device.id, chat.chat_id), selected)
             .pl(px(36.))
             .tab_stop(interactive)
             .child(
@@ -462,7 +360,6 @@ impl Navigation {
                 v.go(
                     Some(node.clone()),
                     Destination::Conversation {
-                        leader: leader.clone(),
                         session: session.clone(),
                     },
                     cx,

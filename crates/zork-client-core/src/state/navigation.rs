@@ -1,5 +1,4 @@
-//! One conversation directory for native clients. Agent inventory, creation
-//! provenance and execution membership have separate presentation contracts.
+//! Flat device → Chat navigation, including historical Agent homes.
 use super::DeviceData;
 use serde::Serialize;
 use serde_json::Value;
@@ -9,16 +8,14 @@ use std::{
 };
 use zork_client_types::chat::{Author, AuthorKind, Channel};
 
-pub use zork_client_types::navigation::{NavigationAgent, NavigationChat};
+pub use zork_client_types::navigation::NavigationChat;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct NavigationData {
     pub online: Option<bool>,
     #[serde(skip)]
     pub route: crate::api::ConnectionRoute,
-    pub agents: Arc<Vec<NavigationAgent>>,
-    pub tasks: Arc<HashMap<String, Vec<NavigationChat>>>,
-    pub others: Arc<Vec<NavigationChat>>,
+    pub chats: Arc<Vec<NavigationChat>>,
     pub unread: Arc<HashSet<String>>,
 }
 
@@ -41,12 +38,6 @@ impl NavigationData {
             .sessions
             .iter()
             .map(|session| (session.session_id.as_str(), session))
-            .collect();
-        // Even an existing empty Worker home is not a task or a daily entry.
-        let homes: HashSet<_> = data
-            .agents
-            .iter()
-            .filter_map(|agent| agent["session_id"].as_str())
             .collect();
         let legacy: HashMap<_, _> = data
             .tasks
@@ -105,45 +96,11 @@ impl NavigationData {
             fallback = by_id.into_values().collect::<Vec<_>>();
             &fallback
         };
-        let agent = |id: &str, creator_name: Option<&str>| {
-            let definition = definitions.get(id).copied().unwrap_or(&Value::Null);
-            let can_open = definition["role"] == "leader";
-            NavigationAgent {
-                id: id.into(),
-                name: definition["name"]
-                    .as_str()
-                    .filter(|n| !n.is_empty())
-                    .or(creator_name)
-                    .unwrap_or(id)
-                    .into(),
-                avatar: definition["avatar"].as_str().map(str::to_owned),
-                instructions: string(definition, "instructions"),
-                profile_id: string(definition, "profile_id"),
-                model: string(definition, "model"),
-                session_id: can_open
-                    .then(|| definition["session_id"].as_str().map(str::to_owned))
-                    .flatten(),
-                can_open,
-                unread: false,
-            }
-        };
-        let mut agents = data
-            .agents
-            .iter()
-            .filter(|a| a["role"] == "leader")
-            .filter_map(|a| a["id"].as_str())
-            .map(|id| agent(id, None))
-            .collect::<Vec<_>>();
-        let mut creators = agents.iter().map(|a| a.id.clone()).collect::<HashSet<_>>();
-        let mut tasks: HashMap<String, Vec<NavigationChat>> = HashMap::new();
         let mut others = Vec::new();
-        // Resource snapshot ordering must not affect creator group ordering.
+        // Keep ordering deterministic when the source catalog arrives in another order.
         let mut ordered = channels.iter().collect::<Vec<_>>();
         ordered.sort_by(|a, b| a.chat_id.cmp(&b.chat_id));
         for channel in ordered {
-            if homes.contains(channel.chat_id.as_str()) {
-                continue;
-            }
             if sessions
                 .get(channel.chat_id.as_str())
                 .and_then(|s| s.task.as_ref())
@@ -187,18 +144,7 @@ impl NavigationData {
                 executor,
                 in_preview: false,
             };
-            if let Some(creator) = channel
-                .creator
-                .as_ref()
-                .filter(|a| a.kind == AuthorKind::Agent)
-            {
-                if creators.insert(creator.id.clone()) {
-                    agents.push(agent(&creator.id, creator.name.as_deref()));
-                }
-                tasks.entry(creator.id.clone()).or_default().push(chat);
-            } else {
-                others.push(chat);
-            }
+            others.push(chat);
         }
         let sort = |items: &mut Vec<NavigationChat>| {
             items.sort_by(|a, b| {
@@ -211,26 +157,11 @@ impl NavigationData {
                 chat.in_preview = index < 10 || chat.unread;
             }
         };
-        for chats in tasks.values_mut() {
-            sort(chats);
-        }
         sort(&mut others);
-        for agent in &mut agents {
-            agent.unread = agent
-                .session_id
-                .as_ref()
-                .is_some_and(|id| unread.contains(id))
-                || tasks
-                    .get(&agent.id)
-                    .is_some_and(|items| items.iter().any(|chat| chat.unread));
-        }
-        agents.sort_by_key(|agent| !agent.unread);
         Self {
             online: data.online,
             route: data.route,
-            agents: Arc::new(agents),
-            tasks: Arc::new(tasks),
-            others: Arc::new(others),
+            chats: Arc::new(others),
             unread: Arc::new(unread),
         }
     }
@@ -266,7 +197,7 @@ mod tests {
         state
     }
     #[test]
-    fn homes_inventory_and_task_creation_are_distinct() {
+    fn existing_homes_and_all_creators_share_one_chat_list() {
         let state = data(vec![
             chat("home-a", None),
             chat("empty-home", None),
@@ -275,21 +206,18 @@ mod tests {
         ]);
         let nav = NavigationData::project(&state, HashSet::new());
         assert_eq!(
-            nav.agents.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
-            ["a", "b"]
-        );
-        assert_eq!(nav.tasks["a"][0].chat_id, "task");
-        assert_eq!(
-            nav.others
+            nav.chats
                 .iter()
                 .map(|c| c.chat_id.as_str())
                 .collect::<Vec<_>>(),
-            ["independent"]
+            ["task", "independent", "home-a", "empty-home"]
         );
-        assert!(!nav.tasks.contains_key("worker"));
+        let json = serde_json::to_value(&nav).unwrap();
+        assert!(json.get("agents").is_none());
+        assert!(json.get("tasks").is_none());
     }
     #[test]
-    fn real_worker_and_removed_creators_keep_groups_without_new_homes() {
+    fn removed_and_remote_creators_do_not_hide_their_chats() {
         let nav = NavigationData::project(
             &data(vec![
                 chat("task", Some("worker")),
@@ -297,24 +225,25 @@ mod tests {
             ]),
             HashSet::new(),
         );
-        for id in ["worker", "peer/removed"] {
-            let agent = nav.agents.iter().find(|a| a.id == id).unwrap();
-            assert!(!agent.can_open);
-            assert!(agent.session_id.is_none());
-            assert_eq!(nav.tasks[id].len(), 1);
-        }
+        assert_eq!(
+            nav.chats
+                .iter()
+                .map(|c| c.chat_id.as_str())
+                .collect::<Vec<_>>(),
+            ["task", "other"]
+        );
     }
     #[test]
-    fn unread_promotes_its_creator_without_changing_task_ownership() {
+    fn unread_promotes_the_chat_independently_of_creator() {
         let nav = NavigationData::project(
             &data(vec![chat("old", Some("b")), chat("new", Some("a"))]),
             HashSet::from(["old".into()]),
         );
-        assert_eq!(nav.agents[0].id, "b");
-        assert!(nav.tasks["b"][0].unread);
-        assert_eq!(nav.tasks["a"][0].chat_id, "new");
+        assert_eq!(nav.chats[0].chat_id, "old");
+        assert!(nav.chats[0].unread);
+        assert_eq!(nav.chats[1].chat_id, "new");
         assert_eq!(
-            serde_json::to_value(&nav).unwrap()["tasks"]["b"][0]["chat_id"],
+            serde_json::to_value(&nav).unwrap()["chats"][0]["chat_id"],
             "old"
         );
     }
@@ -331,20 +260,17 @@ mod tests {
         .unwrap();
         state.tasks = Arc::new(HashMap::from([("a".into(), vec![legacy])]));
         let nav = NavigationData::project(&state, HashSet::new());
-        assert_eq!(nav.tasks["a"][0].chat_id, "legacy-chat");
-        assert_eq!(nav.tasks["a"][0].title, "Archived work");
+        assert_eq!(nav.chats[0].chat_id, "legacy-chat");
+        assert_eq!(nav.chats[0].title, "Archived work");
         let modern = data(
             (0..1000)
                 .map(|index| chat(&format!("chat-{index:04}"), Some("a")))
                 .collect(),
         );
         let nav = NavigationData::project(&modern, HashSet::from(["chat-0000".into()]));
-        assert_eq!(nav.tasks["a"].len(), 1000);
-        assert_eq!(nav.tasks["a"][0].chat_id, "chat-0000");
-        assert_eq!(
-            nav.tasks["a"].iter().filter(|chat| chat.in_preview).count(),
-            10
-        );
-        assert!(nav.tasks["a"][0].in_preview);
+        assert_eq!(nav.chats.len(), 1000);
+        assert_eq!(nav.chats[0].chat_id, "chat-0000");
+        assert_eq!(nav.chats.iter().filter(|chat| chat.in_preview).count(), 10);
+        assert!(nav.chats[0].in_preview);
     }
 }

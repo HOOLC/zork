@@ -176,7 +176,39 @@ pub(crate) async fn ensure_chat_runtime(
 pub(crate) async fn ensure_runtime(state: &AppState, id: &str) -> Result<String> {
     if let Some(key) = id.strip_prefix("session:") {
         let binding = state.db.get_binding(key)?.context("agent_not_found")?;
-        return crate::agent::ensure_binding_session(&state.agent, &state.db, &binding).await;
+        let runtime =
+            match crate::agent::ensure_binding_session(&state.agent, &state.db, &binding).await {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    if let crate::db::SessionBindingRow::Normal(row) = &binding {
+                        state
+                            .entries
+                            .set_status(
+                                &row.connection_id,
+                                &row.key,
+                                &row.channel_id,
+                                &row.root_thread_ts,
+                                json!({"state":"failed","reason":error.to_string()}),
+                                "Session 启动失败",
+                            )
+                            .await;
+                    }
+                    return Err(error);
+                }
+            };
+        if let crate::db::SessionBindingRow::Normal(row) = &binding {
+            state
+                .status_projection
+                .ensure(
+                    &row.key,
+                    &runtime,
+                    &row.connection_id,
+                    &row.channel_id,
+                    &row.root_thread_ts,
+                )
+                .await;
+        }
+        return Ok(runtime);
     }
     let _guard = state.entries.lock_local_task(&format!("agent:{id}")).await;
     let agent = state.db.allocate_channel_agent(id)?;

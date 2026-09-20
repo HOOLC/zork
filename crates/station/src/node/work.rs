@@ -11,10 +11,6 @@ pub(crate) async fn assign_chat(
     goal: &str,
 ) -> Result<Value> {
     ensure!(
-        creator.role == AgentRole::Leader,
-        "work_requires_long_term_agent"
-    );
-    ensure!(
         valid_id(request) && !goal.trim().is_empty() && goal.len() <= 32768,
         "invalid_work_request"
     );
@@ -34,17 +30,6 @@ pub(crate) async fn assign_chat(
             .db
             .node_agent(worker_id)?
             .context("worker_not_found")?;
-        let personal = state.mesh.get().is_some_and(|mesh| {
-            zork_config::load_config(&state.config.data_root)
-                .ok()
-                .and_then(|c| c.mesh.group)
-                .is_some_and(|group| group.contains(mesh.origin()))
-        });
-        ensure!(
-            worker.role == AgentRole::Worker
-                && (personal || worker.allowed_leaders.contains(&creator.id)),
-            "worker_not_granted"
-        );
         let (key, runtime, status) =
             state
                 .db

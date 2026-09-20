@@ -164,6 +164,26 @@ pub async fn ensure_binding_session(
     binding: &SessionBindingRow,
 ) -> Result<String> {
     if let Some(session_id) = binding.id() {
+        if let SessionBindingRow::Normal(session) = binding {
+            if session.channel_type.as_deref() == Some("chat")
+                && !agent.service.contains(session_id)
+            {
+                let selection = SessionSelection {
+                    profile_id: session.profile_id.clone().unwrap_or_else(|| "auto".into()),
+                    model: session.model.clone().context("chat_model_missing")?,
+                    thinking: session.thinking.clone().context("chat_thinking_missing")?,
+                };
+                ensure_allocated_session(
+                    agent,
+                    db,
+                    binding,
+                    session_id,
+                    &selection,
+                    system_prompt_for_binding(binding),
+                )
+                .await?;
+            }
+        }
         return Ok(session_id.to_owned());
     }
     let profiles = list_profiles(agent).await?;

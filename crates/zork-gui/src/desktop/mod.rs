@@ -1,4 +1,5 @@
 //! Desktop presentation of the core-owned device directory and host operations.
+#[cfg(feature = "headless-bench")]
 mod agents;
 pub mod client_settings;
 #[cfg(feature = "headless-bench")]
@@ -79,13 +80,11 @@ pub struct DesktopRoot {
         String,
         (
             u64,
-            Entity<agents::AgentsView>,
             Entity<profiles::ProfilesView>,
             Entity<mesh_settings::MeshSettings>,
         ),
     >,
     device_info: std::collections::HashMap<String, serde_json::Value>,
-    agents: Option<Entity<agents::AgentsView>>,
     management_tab: usize,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
     active_node_name: Option<String>,
@@ -205,7 +204,6 @@ impl DesktopRoot {
             applications: snapshot.applications.clone(),
             management_views: Default::default(),
             device_info: Default::default(),
-            agents: None,
             management_tab: 0,
             mesh_settings: None,
             active_node_name: None,
@@ -391,7 +389,7 @@ impl DesktopRoot {
         }
         if let navigation::Destination::Manage(tab) = destination {
             self.managing = true;
-            self.management_tab = tab;
+            self.management_tab = if tab == 1 { 0 } else { tab };
             if tab == 5 {
                 let locale = self.client_settings.locale;
                 if let Some(resources) = &self.resources {
@@ -403,11 +401,6 @@ impl DesktopRoot {
                     let core = self.source.resources();
                     self.resources =
                         Some(cx.new(|cx| resources::ResourcesView::new(core, locale, cx)));
-                }
-            }
-            if tab == 1 {
-                if let Some(agents) = &self.agents {
-                    agents.update(cx, |v, cx| v.refresh(cx));
                 }
             }
         } else if let Some(active) = &self.active {
@@ -492,7 +485,7 @@ impl DesktopRoot {
                     sidebar.update(cx, |nav, cx| {
                         nav.set_selection(&id, change.selection.clone(), change.locale, cx)
                     });
-                    if let Some((_, _, profiles, _)) = desktop.management_views.get(&id) {
+                    if let Some((_, profiles, _)) = desktop.management_views.get(&id) {
                         profiles.update(cx, |view, cx| view.set_locale(change.locale, cx));
                     }
                 },
@@ -527,28 +520,14 @@ impl DesktopRoot {
         };
         zork_client_core::desktop::trace_startup("gui.node_view_ready");
         let profile_source = retained.read(cx).core_device().profiles();
-        if let Some((_, agents, profiles, mesh)) = self
+        if let Some((_, profiles, mesh)) = self
             .management_views
             .get(&node.id)
-            .filter(|(version, _, _, _)| *version == binding)
+            .filter(|(version, _, _)| *version == binding)
         {
-            self.agents = Some(agents.clone());
             self.profiles = Some(profiles.clone());
             self.mesh_settings = Some(mesh.clone());
         } else {
-            let agents = cx.new(|cx| {
-                let mut view = agents::AgentsView::new_with_source(
-                    retained.read(cx).core_device().agents(),
-                    cx,
-                );
-                view.set_device_name(node.name.clone());
-                view.set_resources(
-                    self.source.resources(),
-                    node.id.clone(),
-                    self.client_settings.locale,
-                );
-                view
-            });
             let profiles = cx.new(|cx| {
                 let mut view = profiles::ProfilesView::new_with_source(profile_source.clone(), cx);
                 view.set_device_name(node.name.clone());
@@ -557,34 +536,8 @@ impl DesktopRoot {
             let mesh = cx.new(|cx| {
                 mesh_settings::MeshSettings::new(retained.read(cx).core_device().mesh_admin(), cx)
             });
-            let helper_node = node.id.clone();
-            cx.subscribe(&agents, move |view, _, event: &ui::OpenAgent, cx| {
-                view.navigate_device(
-                    navigation::Navigate {
-                        node: Some(helper_node.clone()),
-                        destination: navigation::Destination::Leader(event.id.clone()),
-                    },
-                    cx,
-                );
-            })
-            .detach();
-            let helper_node = node.id.clone();
-            cx.subscribe(&profiles, move |view, _, event: &ui::OpenAgent, cx| {
-                view.navigate_device(
-                    navigation::Navigate {
-                        node: Some(helper_node.clone()),
-                        destination: navigation::Destination::Leader(event.id.clone()),
-                    },
-                    cx,
-                );
-            })
-            .detach();
-
-            self.management_views.insert(
-                node.id.clone(),
-                (binding, agents.clone(), profiles.clone(), mesh.clone()),
-            );
-            self.agents = Some(agents);
+            self.management_views
+                .insert(node.id.clone(), (binding, profiles.clone(), mesh.clone()));
             self.profiles = Some(profiles);
             self.mesh_settings = Some(mesh);
         }
@@ -692,7 +645,6 @@ impl DesktopRoot {
         }
         self.active = None;
         self.profiles = None;
-        self.agents = None;
         self.mesh_settings = None;
         self.active_node_name = None;
         self.active_node_id = None;
@@ -732,11 +684,7 @@ impl DesktopRoot {
                 cx.notify();
             });
         }
-        if let Some((_, agents, profiles, _)) = self.management_views.get(id) {
-            agents.update(cx, |v, cx| {
-                v.set_device_name(name.into());
-                cx.notify();
-            });
+        if let Some((_, profiles, _)) = self.management_views.get(id) {
             profiles.update(cx, |v, cx| {
                 v.set_device_name(name.into());
                 cx.notify();
@@ -1049,7 +997,7 @@ impl Render for DesktopRoot {
                 });
             }
         }
-        for (id, (_, _, profiles, _)) in &self.management_views {
+        for (id, (_, profiles, _)) in &self.management_views {
             let visible = self.managing
                 && self.management_tab == 0
                 && self.active.is_some()
@@ -1236,12 +1184,10 @@ impl Render for DesktopRoot {
                                                                 format!("{} 设备设置", node.name),
                                                             ),
                                                     )
-                                                    .children(
-                                                        [(1, "队员"), (0, "大模型")]
-                                                            .into_iter()
-                                                            .map(|(index, label)| {
-                                                                let open = node.clone();
-                                                                self.settings_tabs.tab(
+                                                    .children([(0, "大模型")].into_iter().map(
+                                                        |(index, label)| {
+                                                            let open = node.clone();
+                                                            self.settings_tabs.tab(
                                                     format!("settings-{}-{index}", node.id),
                                                     selected && tab == index,
                                                 )
@@ -1256,13 +1202,7 @@ impl Render for DesktopRoot {
                                                         }
                                                         v.managing = true;
                                                         v.management_tab = index;
-                                                        if index == 1 {
-                                                            if let Some(agents) = &v.agents {
-                                                                agents.update(cx, |a, cx| {
-                                                                    a.refresh(cx)
-                                                                });
-                                                            }
-                                                        } else if index == 0 {
+                                                        if index == 0 {
                                                             if let Some(profiles) = &v.profiles {
                                                                 profiles.update(cx, |p, cx| {
                                                                     p.refresh(cx)
@@ -1276,8 +1216,8 @@ impl Render for DesktopRoot {
                                                     AutomationRole::Button,
                                                     format!("{} {label}", node.name),
                                                 )
-                                                            }),
-                                                    )
+                                                        },
+                                                    ))
                                             }))
                                             .child(
                                                 self.settings_tabs
@@ -1352,9 +1292,6 @@ impl Render for DesktopRoot {
                                     })
                                     .when(tab == 0, |v| {
                                         v.when_some(self.profiles.clone(), |v, e| v.child(e))
-                                    })
-                                    .when(tab == 1, |v| {
-                                        v.when_some(self.agents.clone(), |v, e| v.child(e))
                                     })
                                     .when(tab == 2, |v| {
                                         v.when_some(self.mesh_settings.clone(), |v, e| v.child(e))

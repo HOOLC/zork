@@ -4,6 +4,7 @@ mod adb;
 mod chat_files;
 mod conversation;
 mod history;
+mod new_chat;
 mod notifications;
 mod resources;
 mod settings;
@@ -46,6 +47,9 @@ pub enum Key {
     Settings {
         peer: String,
     },
+    NewChat {
+        peer: String,
+    },
 }
 impl Key {
     pub fn peer(&self) -> &str {
@@ -63,6 +67,7 @@ impl Key {
             Self::Conversation { peer, .. }
             | Self::History { peer, .. }
             | Self::Settings { peer } => peer,
+            Self::NewChat { peer } => peer,
         }
     }
 }
@@ -111,6 +116,7 @@ enum Projection {
     Conversation(conversation::ConversationWire),
     History(history::HistoryWire),
     Settings(settings::SettingsWire),
+    NewChat(new_chat::NewChatWire),
 }
 pub struct WireSubscription {
     projection: Projection,
@@ -254,6 +260,7 @@ impl WireSubscription {
             Key::Settings { peer } => {
                 Projection::Settings(settings::SettingsWire::new(peer, device.clone(), store)?)
             }
+            Key::NewChat { .. } => Projection::NewChat(new_chat::NewChatWire::new(device.clone())),
         };
         Ok(Self {
             projection,
@@ -278,6 +285,7 @@ impl WireSubscription {
             Projection::Conversation(p) => p.signals(),
             Projection::History(p) => p.signals(),
             Projection::Settings(p) => p.signals(),
+            Projection::NewChat(p) => p.signals(),
         })
     }
     pub fn valid(&self, batch: u64) -> bool {
@@ -302,6 +310,7 @@ impl WireSubscription {
             Projection::Conversation(p) => p.valid(),
             Projection::History(p) => p.valid(),
             Projection::Settings(p) => p.valid(),
+            Projection::NewChat(p) => p.valid(),
         }
     }
     pub fn prepare(&mut self) -> Result<Option<Arc<Value>>> {
@@ -327,6 +336,7 @@ impl WireSubscription {
             Projection::Conversation(p) => p.prepare()?,
             Projection::History(p) => p.prepare()?,
             Projection::Settings(p) => p.prepare()?,
+            Projection::NewChat(p) => p.prepare()?,
         };
         let Some((mut value, reset, revoked)) = value else {
             return Ok(None);
@@ -361,6 +371,7 @@ impl WireSubscription {
             Projection::Conversation(p) => p.finish(applied && valid),
             Projection::History(p) => p.finish(applied && valid),
             Projection::Settings(p) => p.finish(applied && valid),
+            Projection::NewChat(p) => p.finish(applied && valid),
         };
         if applied && valid && accepted {
             self.applied = batch;

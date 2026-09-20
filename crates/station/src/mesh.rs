@@ -574,10 +574,6 @@ impl MeshService {
             .db
             .node_agent(&target.worker_id)?
             .context("mesh_worker_not_found")?;
-        ensure!(
-            worker.role == crate::db::agents::AgentRole::Worker,
-            "mesh_worker_not_granted"
-        );
         Ok(worker)
     }
     pub async fn remote_workers(&self, leader_id: &str) -> Vec<Value> {
@@ -1331,7 +1327,6 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
                 .db
                 .node_agents()?
                 .into_iter()
-                .filter(|a| a.role == crate::db::agents::AgentRole::Worker)
                 .map(|a| json!({"id":a.id,"name":a.name}))
                 .collect::<Vec<_>>();
             Ok(json!({"items":items}))
@@ -1419,7 +1414,8 @@ fn client_route(method: &str, path: &str) -> bool {
         ) => true,
         (
             "POST",
-            ["v1", "im", "sessions", _, "messages"]
+            ["v1", "im", "chats"]
+            | ["v1", "im", "sessions", _, "messages"]
             | ["v1", "im", "sessions", _, "files"]
             | ["v1", "client", "browser", "receipts"]
             | ["v1", "im", "sessions", _, "cancel"]

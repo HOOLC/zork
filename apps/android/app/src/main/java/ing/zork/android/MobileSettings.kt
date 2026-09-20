@@ -101,7 +101,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     val upgrading = state.operation?.optBoolean("running") == true
     val info = state.info
     val supported = info?.optJSONObject("update")?.optBoolean("supported") == true
-    val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "agents" -> "队员"; "models" -> "大模型"; else -> "连接详情" }
+    val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "models" -> "大模型"; else -> "连接详情" }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             LiquidIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
@@ -150,8 +150,6 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 }
                 SectionTitle("管理")
                 SettingsListGroup {
-                    SettingsListRow("队员", avatar = "cat", value = state.agents.size.toString(), subtext = "领队与队员的分工、头像和模型", action = { actions.page("agents") })
-                    SettingsListDivider()
                     SettingsListRow("大模型", R.drawable.ic_mesh, value = if(state.profilesReady) state.profiles.size.toString() else "—", subtext = "连接账号，管理可用模型", action = { actions.page("models") })
                     SettingsListDivider()
                     SettingsListRow("服务", R.drawable.ic_node, subtext = "运行状态、共享信息与日志", action = { actions.page("services") })
@@ -178,29 +176,13 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                     if (message.isNotBlank()) Text(message, fontSize = 13.sp,
                         color = if (operation.text("error").isNotBlank()) ZorkColors.Danger else ZorkColors.Muted)
                 }
-            } else if (state.page == "agents") {
-                PageHeading("队员", "${state.device?.name.orEmpty()} · ${state.agents.size} 位小伙伴", "添加", !state.loading && state.online) { editingJson=null;editor="agent" }
-                listOf("leader" to "领队", "worker" to "队员").forEach { (role,label) ->
-                    val members=state.agents.filter { it.text("role")==role }
-                    if(members.isNotEmpty()) {
-                        SectionTitle(label,members.size.toString())
-                        Text(if(role=="leader") "与你沟通，安排任务与队员" else "接受领队安排，专注完成任务",fontSize=12.sp,color=ZorkColors.Muted)
-                        SettingsListGroup {
-                            members.forEachIndexed { index, agent ->
-                                if (index > 0) SettingsListDivider()
-                                SettingsListRow(agent.text("name"), avatar = agent.text("avatar"), subtext = "${agent.text("model","未配置模型")} · ${agent.text("profile_id","未配置连接").let { if(it=="auto" || it.isBlank()) "自动分配" else it }}", action = {editingJson=agent.toString();editor="agent"})
-                            }
-                        }
-                    }
-                }
-                if(state.agents.isEmpty()) EmptySettings("让第一位领队加入", "添加领队，开始对话并安排任务。")
             }
             state.message?.takeIf{it.isNotBlank()}?.let { Text(it,fontSize=13.sp,color=ZorkColors.Danger) }
         }
     }
     LiquidRetained(editor?.let { it to editing }) { (type, source), open, closed -> key(type, source?.text("id")) {
         SettingsEditor(type,source,state,actions,latest,{editor=null},{editor=null;actions.refresh()},
-            manageGrants={editingJson=it.toString();editor="grants"}, open=open, onClosed=closed)
+            open=open, onClosed=closed)
     } }
 }
 @Composable
@@ -223,7 +205,7 @@ internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
 
 @Composable private fun PageHeading(title:String, detail:String, action:String, enabled:Boolean, click:()->Unit) {
     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)){if(title !in listOf("队员","大模型")) Text(title,fontSize=24.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(detail,fontSize=12.sp,color=ZorkColors.Muted)}
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)){if(title != "大模型") Text(title,fontSize=24.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(detail,fontSize=12.sp,color=ZorkColors.Muted)}
         if(enabled) SettingsButton(action,click=click)
     }
 }

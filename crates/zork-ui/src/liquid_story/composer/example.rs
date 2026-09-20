@@ -339,6 +339,7 @@ impl Render for Example {
                 presentation: Some(view::Presentation {
                     editor_id: "liquid-composer-editor".into(),
                     attach_id: "liquid-composer-attach".into(),
+                    show_attach: true,
                     primary_id: "liquid-composer-send".into(),
                     member_groups: self
                         .scene

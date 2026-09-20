@@ -57,7 +57,7 @@ def main():
                 channels.start(node)
             caller_a, _ = channels.make_caller(a, 'caller-a')
             caller_b, home_b = channels.make_caller(b, 'caller-b')
-            chat_b = channels.operation(b, caller_b, 'chat.create', {'title': 'Business tool review'})['chat_id']
+            chat_b = channels.operation(b, caller_b, 'chat.create', {'title': 'Business tool review', 'text': 'Review business-tool input', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
             config = {'name': 'Suggested worker', 'selection': {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'},
                 'instructions': 'Original instructions', 'skill_paths': []}
             seen = set()
@@ -68,7 +68,7 @@ def main():
                 seen.add(notice['request_id'])
                 return notice
             def oauth(profile_id, label):
-                login_chat = channels.operation(a, caller_a, 'chat.create', {'title': 'Connect account'})['chat_id']
+                login_chat = channels.operation(a, caller_a, 'chat.create', {'title': 'Connect account', 'text': 'Connect account', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
                 before = {row[0] for row in channels.sql(a, 'SELECT request_id FROM provider_login_cards')}
                 send_tool(b, home_b, 'chat.post_message', {'target': a.origin, 'chat_id': login_chat, 'oauth': {
                     'kind': 'profile', 'profile_id': profile_id, 'provider': 'anthropic', 'billing': 'subscription'}}, label)

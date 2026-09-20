@@ -1,32 +1,44 @@
 #!/usr/bin/env python3
-"""Creator navigation and explicit task contexts on isolated real Mesh nodes."""
+"""First-send Chat creation and independent Sessions on real isolated Mesh nodes."""
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
 import shutil
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('channels', ROOT / 'scripts/test-chat-channels.py')
 c = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c)
 f = c.fixture
-REPORT = Path(os.environ.get('ZORK_TEST_ARTIFACT_DIR', ROOT / 'artifacts/chat-navigation-implementation/process'))
+REPORT = Path(os.environ.get('ZORK_TEST_ARTIFACT_DIR', ROOT / 'artifacts/chat-first/process'))
 
 
-def received(node, session, message):
-    status, value = c.request(node, 'GET', f'/sessions/{session}/messages?limit=200', agent=True)
-    if status in (404, 503): return 0
-    assert status == 200, (status, value)
-    items = [json.loads(item['content']) for item in value['items']
-        if item['role'] == 'mailbox' and item['content'].startswith('{')]
-    return sum(item.get('source') == 'chat' and item.get('message', {}).get('message_id') == message for item in items)
+def identifier():
+    alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+    number = uuid.uuid4().int
+    result = ''
+    for _ in range(26):
+        result = alphabet[number & 31] + result
+        number >>= 5
+    return result
 
 
-def settled(node, session):
-    status, value = c.request(node, 'GET', f'/sessions/{session}', agent=True)
-    return status == 200 and value['status'] in ('idle', 'finished', 'cancelled')
+def first_message(reply):
+    return json.dumps({'fake_tool': {'name': 'chat.post_message', 'input': {'text': reply}}}, ensure_ascii=False)
+
+
+def create(node, text, **selection):
+    body = dict(request_id=identifier(), content=text, model='fixture-model', thinking='high', **selection)
+    return c.ok(node, 'POST', '/v1/im/chats', body), body
+
+
+def reply(node, chat, text):
+    return next((m for m in c.ok(node, 'GET', f'/v1/im/sessions/{chat}/messages')['items']
+                 if m['role'] == 'assistant' and m['content'] == text), None)
 
 
 def main():
@@ -37,136 +49,113 @@ def main():
         checks.append(label)
         print('PASS: ' + label, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='zork-navigation-') as directory:
+    with tempfile.TemporaryDirectory(prefix='zork-chat-first-') as directory:
         root = Path(directory)
         os.environ['ZORK_REGISTRY_DIR'] = str(root / 'registry')
         try:
-            a, b = f.Node(root / 'owner'), f.Node(root / 'executor')
+            a, b = f.Node(root / 'a'), f.Node(root / 'b')
             nodes = [a, b]
             for node, other in ((a, b), (b, a)):
+                path = node.root / 'profiles/fixture.json'
+                profile = json.loads(path.read_text())
+                profile['models'][0]['thinking'] = ['off', 'high']
+                path.write_text(json.dumps(profile))
+                alternate = json.loads(json.dumps(profile))
+                alternate['models'][0]['id'] = 'fixture-fast'
+                (node.root / 'profiles/alternate.json').write_text(json.dumps(alternate))
                 node.pair(other)
                 node.config['admin'] = {'token': c.TOKEN}
                 node.config['mesh']['peers'][0].update(client=True, collaborate=True)
                 (node.root / 'config.json').write_text(json.dumps(node.config))
                 c.start(node)
-            leader, home = c.make_caller(a, 'creator')
-            observer, remote_home = c.make_caller(b, 'remote-observer')
-            home_members = c.ok(a, 'GET', f'/v1/im/sessions/{home}/status')['items']
-            partner = next(member for member in home_members if member['id'] == 'creator')
-            assert partner['home'] and partner['session_id'] == leader
-            assert c.operation(a, leader, 'chat.inspect', {'chat_id': home})['participants'][0]['author']['kind'] == 'user'
 
-            created = c.operation(a, leader, 'chat.create', {'title': 'Created without participation'})
-            assert created['creator']['id'] == 'creator'
-            assert c.operation(a, leader, 'chat.inspect', {'chat_id': created['chat_id']})['participants'] == []
-            remote_created = c.operation(b, observer, 'chat.create', {'target': a.origin, 'title': 'Remote creator'})
-            assert remote_created['creator']['id'] == b.origin + '/remote-observer'
-            posted = c.operation(b, observer, 'chat.post_message', {'target': a.origin, 'chat_id': created['chat_id'], 'text': 'Different first author'})
-            summary = next(chat for chat in c.ok(a, 'GET', '/v1/node/chats')['items'] if chat['chat_id'] == created['chat_id'])
-            assert summary['creator'] == created['creator'] and summary['last_message_at'] == posted['created_at']
-            passed('authenticated local/remote creation survives different first authors and no subscription')
+            assert c.ok(a, 'GET', '/v1/node/agents')['items'] == []
+            assert c.ok(a, 'GET', '/v1/node/chats')['items'] == []
+            c.ok(a, 'GET', '/v1/im/profiles')
+            assert c.ok(a, 'GET', '/v1/node/chats')['items'] == []
+            invalid = dict(request_id=identifier(), content='work', model='missing', thinking='high')
+            assert c.request(a, 'POST', '/v1/im/chats', invalid)[0] == 400
+            invalid['model'] = 'fixture-model'; invalid['content'] = ' '
+            assert c.request(a, 'POST', '/v1/im/chats', invalid)[0] == 400
+            assert c.ok(a, 'GET', '/v1/node/chats')['items'] == []
+            passed('reading creation choices and rejecting invalid first sends allocate no Chat or Session')
 
-            default = c.operation(a, leader, 'agent.create', {'config': {'name': 'Definition only',
-                'selection': {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'}}})['agent']
-            assert default['role'] == 'worker' and default['allowed_leaders'] == ['creator']
-            assert default['session_id'] is None
+            chat, request = create(a, first_message('首条回复'), client_id=identifier())
+            chat_id = chat['chat_id']
+            assert chat_id == request['request_id']
+            f.wait(lambda: reply(a, chat_id, '首条回复'), 'first message executes and replies to its own Chat')
+            f.wait(lambda: c.settled(a, chat_id), 'first Session settles')
+            session = c.ok(a, 'GET', f'/sessions/{chat_id}', agent=True)
+            assert session['model'] == 'fixture-model' and session['thinking'] == 'high', session
+            assert session['profile_id'] == 'auto', session
+            members = c.ok(a, 'GET', f'/v1/im/sessions/{chat_id}/status')['items']
+            own = next(m for m in members if m['session_id'] == chat_id)
+            assert own['assigned'] and own['name'] == 'Session', own
+            assert c.ok(a, 'GET', '/v1/node/agents')['items'] == []
+            messages = c.ok(a, 'GET', f'/v1/im/sessions/{chat_id}/messages')['items']
+            first = next(m for m in messages if m['role'] == 'user')
+            assert first['id'] == f'client-{chat_id}-{request["request_id"]}'
+            assert first['content'] == request['content']
+            assert first['client_id'].endswith('/' + request['client_id']), first
+            passed('first send binds one Session with selected model/depth and optional automatic Profile; reply returns through production tools')
 
-            config = {'name': 'Builder', 'avatar': 'chick', 'selection': {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'}, 'instructions': 'Complete the assigned work'}
-            c.ok(a, 'POST', f'/v1/im/sessions/{home}/messages', {'request_id': 'review-worker',
-                'content': json.dumps({'fake_tool': {'name': 'agent.create', 'input': {'config': config, 'review': True}}})})
-            notice = f.wait(lambda: next((item for item in c.mailbox(a, leader)
-                if item.get('kind') == 'user_action_required'), None), 'original create invocation requests review')
-            proposal = c.operation(a, leader, 'chat.post_message', {'chat_id': home, 'text': 'Prepare a worker for the original work',
-                'interaction': {'request_id': notice['request_id']}})
-            c.ok(a, 'POST', f'/v1/node/chats/{home}/messages/{proposal["message_id"]}/agent-configuration',
-                {'response_id': 'confirm-worker', 'accept': True, 'values': {}})
-            completion = f.wait(lambda: next((item['event']['result']['data'] for item in
-                c.ok(a, 'GET', f'/sessions/{leader}/history?limit=200', agent=True)['items']
-                if item['event']['kind'] == 'tool_result' and item['event']['result']['invocation_id'] == notice['invocation_id']), None),
-                'same create invocation resumes with the accepted configuration')
-            worker = completion['agent']
-            assert worker['role'] == 'worker' and worker['session_id'] is None
-            assert not c.sql(a, 'SELECT 1 FROM chat_agent_home WHERE agent_id=?', (worker['id'],))
-            passed('confirmed card creates only a worker definition and resumes the original long-term context')
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                retries = list(pool.map(lambda _: c.ok(a, 'POST', '/v1/im/chats', request), range(4)))
+            assert all(value == chat for value in retries)
+            user_messages = [m for m in c.ok(a, 'GET', f'/v1/im/sessions/{chat_id}/messages')['items'] if m['role'] == 'user']
+            assert len(user_messages) == 1
+            assert c.received(a, chat_id, first['id']) == 1
+            changed = dict(request, thinking='off')
+            assert c.request(a, 'POST', '/v1/im/chats', changed)[0] == 409
+            passed('concurrent retries return the original creation and never duplicate its first message or execution')
 
-            tasks = []
-            for index in (1, 2):
-                invocation = f'assign-{index}'
-                args = {'worker_id': worker['id'], 'goal': f'Independent work {index}'}
-                work = c.operation(a, leader, 'agent.assign', args, invocation)
-                assert c.operation(a, leader, 'agent.assign', args, invocation) == work
-                assert work['state'] == 'queued' and work['chat']['creator']['id'] == 'creator'
-                chat = work['chat']['chat_id']
-                runtime = f.wait(lambda: next((row[0] for row in c.sql(a, 'SELECT w.session_id FROM worker_tasks w JOIN chat_channels c ON c.session_key=w.session_key WHERE c.chat_id=?', (chat,))), None), 'task allocation')
-                f.wait(lambda: settled(a, runtime), 'initial work settles')
-                inputs = [item for item in c.mailbox(a, runtime) if item.get('source') == 'assignment']
-                assert len(inputs) == 1 and inputs[0]['chat_id'] == chat, inputs
-                members = c.ok(a, 'GET', f'/v1/im/sessions/{chat}/status')['items']
-                executor = next(member for member in members if member['id'] == worker['id'])
-                assert executor['assigned'] and executor['session_id'] == runtime
-                authors = c.operation(a, leader, 'chat.inspect', {'chat_id': chat})['participants']
-                assert all(p['author']['id'] != worker['id'] for p in authors)
-                tasks.append((chat, runtime))
-            assert tasks[0][1] != tasks[1][1]
-            assert c.runtime(a, worker['id']) is None
-            passed('two tasks reuse one worker definition with separate histories; initial goals are not duplicated')
+            second_request = dict(request_id=identifier(), content=first_message('另一条回复'), model='fixture-fast', thinking='off', profile_id='alternate')
+            second = c.ok(a, 'POST', '/v1/im/chats', second_request)
+            f.wait(lambda: reply(a, second['chat_id'], '另一条回复'), 'independent second Chat')
+            second_session = c.ok(a, 'GET', f'/sessions/{second["chat_id"]}', agent=True)
+            assert (second_session['model'], second_session['thinking'], second_session['profile_id']) == ('fixture-fast', 'off', 'alternate')
+            original = c.ok(a, 'GET', f'/sessions/{chat_id}', agent=True)
+            assert (original['model'], original['thinking']) == ('fixture-model', 'high')
+            assert second['chat_id'] != chat_id
+            passed('separate Chats keep independent Session histories and explicit Profile/model/depth selections')
 
-            chat, runtime = tasks[0]
-            c.sql(a, "UPDATE product_tasks SET state='completed' WHERE session_key=(SELECT session_key FROM chat_channels WHERE chat_id=?)", (chat,))
-            sent = c.operation(a, leader, 'chat.post_message', {'chat_id': chat, 'text': 'Continue after the old completion flag'})
-            f.wait(lambda: received(a, runtime, sent['message_id']) == 1, 'follow-up uses first task context')
-            assert received(a, tasks[1][1], sent['message_id']) == 0
-            reply = c.operation(a, runtime, 'chat.post_message', {'chat_id': chat, 'text': 'Task result'})
-            f.wait(lambda: received(a, leader, reply['message_id']) == 1, 'task result keeps leader continuity')
-            assert received(a, runtime, reply['message_id']) == 0
-            assert c.runtime(a, 'creator') == leader
-            passed('follow-ups retain their task context after legacy completion; leader continuity and no self echo hold')
+            options = c.operation(a, chat_id, 'chat.options', {'target': b.origin})['items']
+            assert any(o['model'] == 'fixture-model' and 'high' in o['thinking'] for o in options)
+            args = {'target': b.origin, 'title': 'Remote work', 'text': first_message('remote-ready'), 'model': 'fixture-model', 'thinking': 'high'}
+            child = c.operation(a, chat_id, 'chat.create', args, 'create-independent-remote-chat')
+            assert child['session_id'] == child['chat_id']
+            assert child['chat_id'] != chat_id
+            assert c.operation(a, chat_id, 'chat.create', args, 'create-independent-remote-chat') == child
+            answer = f.wait(lambda: reply(b, child['chat_id'], 'remote-ready'), 'remote Chat reply')
+            f.wait(lambda: c.received(a, chat_id, answer['id']) == 1, 'creator Session receives remote child reply')
+            assert c.ok(b, 'GET', '/v1/node/agents')['items'] == []
+            assert child['creator']['id'].startswith(a.origin + '/session:')
+            passed('collaboration creates another Chat on the selected device without Leader/Worker definitions or per-Agent grants')
 
-            remote_worker = c.ok(b, 'POST', '/v1/node/agents', dict(config['selection'], id='remote-builder', name='Remote builder', role='worker', allowed_leaders=[a.origin + '/creator']))
-            remote = c.operation(a, leader, 'agent.assign', {'worker_id': b.origin + '/remote-builder', 'goal': 'Remote independent work'})
-            remote_chat = remote['chat']['chat_id']
-            assignment = 'worker-' + remote_chat
-            remote_runtime = f.wait(lambda: next((row[0] for row in c.sql(b, 'SELECT runtime_id FROM mesh_runtime_sessions WHERE assignment_id=?', (assignment,))), None), 'remote allocation')
-            f.wait(lambda: settled(b, remote_runtime), 'remote initial work settles')
-            members = c.ok(a, 'GET', f'/v1/im/sessions/{remote_chat}/status')['items']
-            assert next(member for member in members if member['id'] == b.origin + '/remote-builder')['session_id'] == remote_chat
-            sent = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': 'Continue remotely in the same context'})
-            f.wait(lambda: received(b, remote_runtime, sent['message_id']) == 1, 'remote follow-up')
-            assert c.runtime(b, 'remote-builder') is None
-            assert len([item for item in c.mailbox(b, remote_runtime) if item.get('source') == 'assignment']) == 1
-            history = c.ok(a, 'GET', f'/v1/im/sessions/{remote_chat}/history?limit=20')
-            assert history['items'], history
-            remote_before = c.sql(b, 'SELECT COUNT(*) FROM sessions')[0][0]
-            for index in range(6):
-                bulk = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': f'History segment {index}: ' + 'x' * 24000})
-                f.wait(lambda: received(b, remote_runtime, bulk['message_id']) == 1, 'large remote history input')
-            large_history = c.ok(a, 'GET', f'/v1/im/sessions/{remote_chat}/history?limit=200')
-            assert len(json.dumps(large_history).encode()) > 128 * 1024
-            assert c.sql(b, 'SELECT COUNT(*) FROM sessions')[0][0] == remote_before
-            passed('Mesh follow-ups and owner-side history resolve the exact remote execution without a worker home')
+            a.stop(); b.stop()
+            for node in nodes: c.start(node)
+            assert c.ok(a, 'POST', '/v1/im/chats', request) == chat
+            assert c.received(a, chat_id, first['id']) == 1
+            session = c.ok(a, 'GET', f'/sessions/{chat_id}', agent=True)
+            assert (session['model'], session['thinking'], session['profile_id']) == ('fixture-model', 'high', 'auto')
+            c.ok(a, 'POST', f'/v1/im/sessions/{chat_id}/messages', {'content': first_message('重启后的回复'), 'request_id': 'after-restart'})
+            f.wait(lambda: reply(a, chat_id, '重启后的回复'), 'continuation uses the same Session after restart')
+            assert c.received(a, chat_id, first['id']) == 1
+            f.wait(lambda: not c.sql(a, 'SELECT 1 FROM chat_mailbox WHERE delivered=0'), 'all accepted notices settle')
+            passed('restart preserves identity, configuration and source watermarks; subsequent messages continue the original Session')
 
-            b.stop()
-            backlog = c.operation(a, leader, 'chat.post_message', {'chat_id': remote_chat, 'text': 'Queued while executor is offline'})
-            c.start(b)
-            f.wait(lambda: received(b, remote_runtime, backlog['message_id']) == 1, 'offline execution continuation')
-            assert received(b, remote_runtime, sent['message_id']) == 1
-            assert c.runtime(b, 'remote-builder') is None
-            a.stop()
-            c.start(a)
-            assert next(chat for chat in c.ok(a, 'GET', '/v1/node/chats')['items'] if chat['chat_id'] == created['chat_id'])['creator'] == created['creator']
-            replay = c.operation(a, leader, 'agent.assign', {'worker_id': worker['id'], 'goal': 'Independent work 1'}, 'assign-1')
-            assert replay['chat']['chat_id'] == tasks[0][0]
-            assert any(chat['chat_id'] == tasks[0][0] for chat in c.ok(a, 'GET', '/v1/node/chats')['items'])
-            passed('restart retains provenance, assignment receipts and exactly-once context delivery')
+            legacy, home = c.make_caller(a, 'legacy-partner')
+            old_messages = c.ok(a, 'GET', f'/v1/im/sessions/{home}/messages')['items']
+            assert old_messages
+            assert any(item['chat_id'] == home for item in c.ok(a, 'GET', '/v1/node/chats')['items'])
+            assert legacy != home
+            passed('historical Agent homes remain readable as Chat records while new work requires no Agent catalog')
         finally:
             for node in nodes:
                 node.stop()
-                for name in ('bootstrap.log', 'supervisor.log'):
-                    path = node.root / name
-                    if path.exists(): shutil.copyfile(path, REPORT / (node.root.name + '-' + name))
-            (REPORT / 'result.json').write_text(json.dumps({'checks': checks, 'data_removed': True,
-                'fixture': 'two real local Mesh nodes, fake models, real channel and confirmation APIs'}, indent=2))
-    print('PASS: creator navigation and task contexts; isolated data and nodes cleaned', flush=True)
+                for path in node.root.glob('*.log'):
+                    shutil.copyfile(path, REPORT / f'{node.root.name}-{path.name}')
+            (REPORT / 'report.json').write_text(json.dumps({'checks': checks}, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

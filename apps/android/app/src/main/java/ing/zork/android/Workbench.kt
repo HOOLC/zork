@@ -105,6 +105,7 @@ internal class WorkbenchActions(
     val history: (String, String) -> Unit = { _, _ -> },
     val sharedFiles: () -> Unit = {},
     val chatFile: (String, String) -> Unit = { _, _ -> },
+    val newChat: (Peer) -> Unit = {},
 )
 
 private class ConversationPresentation {
@@ -126,8 +127,8 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
     else if (presentation.state?.activePeer?.id !in state.peers.map { it.id }) presentation.state = null
     // Prepare the likely next chat after its navigation entry is available. Keeping
     // this shell mounted avoids constructing the input controls on the click path.
-    val preview = state.leaders.firstOrNull { it.text("session_id").isNotBlank() }?.let { leader ->
-        state.copy(conversation = Conversation(leader.text("session_id"), leader.text("name"), leader.text("id"), avatar = leader.text("avatar")),
+    val preview = state.sessions.firstOrNull()?.let { chat ->
+        state.copy(conversation = Conversation(chat.text("chat_id"), chat.text("title")),
             messages = emptyList(), pending = emptyList(), draft = "", comments = emptyList(), attachments = emptyList(), historyLoading = true)
     }
     val chat = presentation.state ?: preview
@@ -196,7 +197,7 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
         val expanded = remember { mutableStateMapOf<String, Boolean>() }
         LazyColumn(state = rememberLazyListState(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 10.dp)) {
             if (state.peers.isEmpty()) item {
-                Text(if (state.ready) "连接已有设备，与领队继续工作。" else "正在准备连接…",
+                Text(if (state.ready) "连接已有设备，开始新的 Chat。" else "正在准备连接…",
                     fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted,
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 20.dp))
             }
@@ -220,37 +221,15 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                     }
                 }
                 if (tree != null && collapsed[peer.id] != true) {
-                    tree.leaders.forEach { leader ->
-                        item(key = "leader:${peer.id}:${leader.text("id")}") {
-                            val interactions = remember { MutableInteractionSource() }
-                            NavRow(interactions = interactions, onLongClick = { details=leader.text("name") to listOf("职责" to leader.text("instructions"),"设备" to peer.name,"连接" to leader.text("profile_id"),"模型" to leader.text("model")) }, onClick = { if (leader.optBoolean("can_open", true)) actions.leader(JSONObject(leader.toString()).put("_peer", peer.id)) }) {
-                                Avatar(leader.text("avatar"), 28.dp)
-                                Text(leader.text("name"), fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (leader.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
-                            }
-                        }
-                        val tasks = tree.tasksByLeader[leader.text("id")].orEmpty()
-                        val groupKey = "${peer.id}/${leader.text("id")}"
-                        val visible = tasks.filter { expanded[groupKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
-                        visible.forEach { task ->
-                            item(key = "task:${peer.id}:${task.text("chat_id")}") {
-                                NavRow(indent = 54.dp, onLongClick = { details=task.text("title") to listOf("说明" to task.text("description"),"创建者" to leader.text("name"),"设备" to peer.name,"工作目录" to task.text("workspace")) },
-                                    onClick = { actions.session(JSONObject(task.toString()).put("_peer", peer.id)) }) {
-                                    Text(task.text("title", "对话"), fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (task.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
-                                }
-                            }
-                        }
-                        if (visible.size < tasks.size || expanded[groupKey] == true) item(key = "more:$groupKey") {
-                            NavRow(indent = 54.dp, onClick = { expanded[groupKey] = expanded[groupKey] != true }) {
-                                Text(if (expanded[groupKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
-                            }
+                    item(key = "new-chat:${peer.id}") {
+                        NavRow(indent = 54.dp, onClick = { actions.newChat(peer) }) {
+                            Glyph(R.drawable.ic_plus, 20.dp)
+                            Text("新建 Chat", fontSize = 15.sp)
                         }
                     }
-                    if (tree.leaders.isEmpty() && tree.sessions.isEmpty()) item {
-                        Text(if (tree.online) "这台设备还没有长期伙伴" else "等待设备连接…", fontSize = 12.sp,
-                            color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp))
+                    if (tree.sessions.isEmpty()) item {
+                        Text(if (tree.online) "还没有 Chat" else "等待设备连接…", fontSize = 12.sp,
+                            color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 54.dp, vertical = 10.dp))
                     }
                     val othersKey = "${peer.id}/unattributed"
                     val others = tree.sessions.filter { expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
@@ -713,14 +692,21 @@ private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence:
         WorkbenchActions(draft = { latest.value.draft(it) }, attach = { latest.value.attach() },
             removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() })
     }
-    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f).liquidComposer(presence), actions.history) {
-        ComposerControls(draft, attachments, canSend, stop, enabled, heightLimit, controls)
+    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history)
+}
+
+@Composable
+internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
+    stop: Boolean, enabled: Boolean, presence: ComposerMotion, modifier: Modifier, heightLimit: Dp,
+    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true) {
+    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f).liquidComposer(presence), history) {
+        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach)
     }
 }
 
 @Composable
 private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>, canSend: Boolean,
-    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions) {
+    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true) {
     val sendInteractions = remember { MutableInteractionSource() }
     val sendPressed by sendInteractions.collectIsPressedAsState()
         Column(Modifier.graphicsLayer().heightIn(max = heightLimit).padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
@@ -746,7 +732,7 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
             }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconAction(R.drawable.ic_paperclip, "添加文本附件",enabled=canSend,glyphSize=16.dp,onClick = actions.attach)
+                if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文本附件",enabled=canSend,glyphSize=16.dp,onClick = actions.attach)
                 Spacer(Modifier.weight(1f))
                 Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,onClick=if(stop)actions.stop else actions.send)
                     .semantics { contentDescription=if(stop) "停止" else "发送" },contentAlignment=Alignment.Center) {

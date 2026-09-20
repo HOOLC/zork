@@ -75,6 +75,25 @@ impl StationDb {
         &self,
         session: &str,
     ) -> Result<Option<zork_agent::session::runner::Configuration>> {
+        if let Some(binding) = self.get_binding_by_id(session)? {
+            if let crate::db::SessionBindingRow::Normal(row) = &binding {
+                if row.channel_type.as_deref() == Some("chat") {
+                    let selection = zork_agent::session::wire::SessionSelection {
+                        profile_id: row.profile_id.clone().unwrap_or_else(|| "auto".into()),
+                        model: row.model.clone().context("chat_model_missing")?,
+                        thinking: row.thinking.clone().context("chat_thinking_missing")?,
+                    };
+                    return Ok(Some(zork_agent::session::runner::Configuration {
+                        revision: crate::node_access::fingerprint(&selection)?,
+                        selection,
+                        system_prompt: Some(
+                            crate::agent::system_prompt_for_binding(&binding).into(),
+                        ),
+                        end_turn_confirmation: Some(crate::agent::END_TURN_CONFIRMATION.into()),
+                    }));
+                }
+            }
+        }
         let Some(id) = self.agent_id_for_session(session)? else {
             return Ok(None);
         };

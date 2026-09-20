@@ -1057,6 +1057,27 @@ impl StationClient {
         .await
     }
 
+    pub async fn start_chat(
+        &self,
+        request: &zork_client_types::chat::StartChat,
+    ) -> Result<zork_client_types::chat::Channel, ApiError> {
+        let value = self
+            .node_request(
+                reqwest::Method::POST,
+                "/v1/im/chats".into(),
+                Some(serde_json::to_value(request).expect("chat request")),
+            )
+            .await?;
+        let chat: zork_client_types::chat::Channel = serde_json::from_value(value)
+            .map_err(|error| ApiError::Task(std::io::Error::other(error)))?;
+        if chat.chat_id != request.request_id {
+            return Err(ApiError::Task(std::io::Error::other(
+                "creation response does not match the submitted Chat identity",
+            )));
+        }
+        Ok(chat)
+    }
+
     pub async fn update_selection(
         &self,
         session_id: &str,

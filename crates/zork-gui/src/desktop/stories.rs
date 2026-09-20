@@ -1,5 +1,5 @@
 //! Development-only component stories. Every sample calls production renderers.
-use super::{agents::AgentsView, profiles::ProfilesView, ui};
+use super::{profiles::ProfilesView, ui};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
@@ -8,6 +8,35 @@ use gpui::{div, prelude::*, px, rgb, AnyView, Context, Window};
 use serde_json::{json, Value};
 
 pub use zork_ui::stories::{PrimitiveStory, Story};
+
+fn new_chat_story(
+    state: &str,
+    width: f32,
+    cx: &mut gpui::App,
+) -> gpui::Entity<zork_ui::new_chat::Page> {
+    let fixture = std::rc::Rc::new(std::cell::RefCell::new(
+        zork_client_core::new_chat::Fixture::new(state),
+    ));
+    let text = zork_ui::resources::Text(std::rc::Rc::new(|key| {
+        crate::i18n::Locale::ZhCn.text(key).into()
+    }));
+    let form_width = (width - 48.).clamp(220., 680.);
+    let view = cx.new(|cx| {
+        let mut view = zork_ui::new_chat::Page::new(text.clone(), cx);
+        view.configure(fixture.borrow().snapshot(), form_width, text.clone(), cx);
+        view
+    });
+    cx.subscribe(&view, move |view, event: &zork_ui::new_chat::Event, cx| {
+        if let zork_ui::new_chat::Event::Intent(action) = event {
+            fixture.borrow_mut().apply(action.clone());
+            view.update(cx, |v, cx| {
+                v.configure(fixture.borrow().snapshot(), form_width, text.clone(), cx)
+            });
+        }
+    })
+    .detach();
+    view
+}
 fn click(id: &str) -> Value {
     json!({"type":"click","target":{"element_id":id}})
 }
@@ -42,10 +71,10 @@ pub fn catalog() -> Vec<Story> {
     let mut items = zork_ui::stories::catalog();
     for (family, title, states, source) in [
         (
-            "welcome",
-            "会话欢迎页",
-            &["first-agent", "choose-agent"][..],
-            "crates/zork-ui/src/welcome.rs",
+            "new-chat",
+            "新建 Chat",
+            &["draft", "no-models", "creating", "retry", "error"][..],
+            "crates/zork-ui/src/new_chat.rs",
         ),
         (
             "node-directory",
@@ -282,41 +311,6 @@ pub fn catalog() -> Vec<Story> {
             "model-protocol",
         ),
         (
-            "agent",
-            "队员",
-            "list",
-            "desktop-settings-column",
-            vec![],
-            "agent-list",
-        ),
-        (
-            "agent",
-            "队员",
-            "create",
-            "agent-create-dialog",
-            vec![click("agent-add")],
-            "agent-create",
-        ),
-        (
-            "agent",
-            "队员",
-            "edit",
-            "agent-editor-dialog",
-            vec![click("agent-settings-leader")],
-            "agent-edit",
-        ),
-        (
-            "agent",
-            "队员",
-            "dropdown",
-            "agent-editor-dialog",
-            vec![
-                click("agent-settings-leader"),
-                click("agent-edit-profile-select"),
-            ],
-            "agent-dropdown",
-        ),
-        (
             "conversation",
             "会话",
             "messages",
@@ -491,6 +485,9 @@ pub struct StoryHost {
 }
 impl StoryHost {
     pub fn inspect(&self, cx: &gpui::App) -> Value {
+        if let Ok(view) = self.inner.clone().downcast::<zork_ui::new_chat::Page>() {
+            return view.read(cx).inspect();
+        }
         if let Ok(view) = self
             .inner
             .clone()
@@ -527,17 +524,10 @@ impl StoryHost {
         let directory = tempfile::tempdir().expect("isolated story directory");
         let settings = matches!(
             story.family.as_str(),
-            "connection" | "model" | "agent" | "client" | "device" | "mesh" | "enrollment"
+            "connection" | "model" | "client" | "device" | "mesh" | "enrollment"
         );
         let inner = match story.family.as_str() {
-            "welcome" => zork_ui::welcome::story(
-                &story.state,
-                zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                    crate::i18n::Locale::ZhCn.text(key).into()
-                })),
-                cx,
-            )
-            .into(),
+            "new-chat" => new_chat_story(&story.state, story.width, cx).into(),
             "node-directory" => cx
                 .new(|cx| zork_ui::node_directory::Story::new(&story.state, cx))
                 .into(),
@@ -723,7 +713,6 @@ impl StoryHost {
                 .new(|cx| ProfilesView::headless_fixture(false, cx))
                 .into(),
             "model" => cx.new(|cx| ProfilesView::headless_fixture(true, cx)).into(),
-            "agent" => cx.new(AgentsView::headless_fixture).into(),
             "conversation" => cx
                 .new(|cx| {
                     zork_ui::components::message_row::stories::Story::new(

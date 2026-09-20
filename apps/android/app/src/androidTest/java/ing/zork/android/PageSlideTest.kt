@@ -33,7 +33,7 @@ class PageSlideTest {
     @Test fun routesUseNavigationDepthNotLoadingState() {
         val device = MobileSettingsState("device", Peer("a", "a", ""))
         assertEquals(settingsRouteKey(device), settingsRouteKey(device.copy(loading=true)))
-        assertTrue(settingsRouteDepth(device.copy(page="agents")) > settingsRouteDepth(device))
+        assertTrue(settingsRouteDepth(device.copy(page="models")) > settingsRouteDepth(device))
         assertTrue(settingsRouteDepth(device.copy(page="profile")) > settingsRouteDepth(device.copy(page="models")))
         assertEquals(1, settingsRouteDepth(device.copy(fromChat=true)))
         assertNotEquals(settingsRouteKey(device), settingsRouteKey(device.copy(device=Peer("b","b",""))))
@@ -76,7 +76,7 @@ class PageSlideTest {
         for (animated in listOf(false,true)) {
             ActivityScenario.launch<PageSlideActivity>(Intent(instrumentation.targetContext, PageSlideActivity::class.java).putExtra("animated",animated)).use { scenario ->
                 settle(); scenario.onActivity { synchronized(it.frameTimes) { it.frameTimes.clear() } }
-                for (route in listOf("device","agents","device","models","profile","models","device","home","diagnostics","home","about","home")) {
+                for (route in listOf("device","models","device","models","profile","models","device","home","diagnostics","home","about","home")) {
                     scenario.onActivity { it.go(route) };settle()
                 }
                 scenario.onActivity {

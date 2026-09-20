@@ -16,7 +16,13 @@ import org.json.JSONObject
 
 /** Visual test harness only. It renders production composables and never connects
  * a client, edits the normal database, or appears in the launcher. */
+internal object NewChatFixtureBridge {
+    init { System.loadLibrary("zork_android") }
+    external fun render(request: String): String
+}
+
 class Nav7PreviewActivity : ComponentActivity() {
+    var newChatSnapshot: JSONObject? = null
     var contentBounds = Rect()
     var lastAction = ""
     var lastBody: JSONObject? = null
@@ -35,7 +41,19 @@ class Nav7PreviewActivity : ComponentActivity() {
                         Box((if(width>0) Modifier.requiredSize(width.dp, 844.dp) else Modifier.fillMaxSize().safeDrawingPadding()).onGloballyPositioned {
                             val b = it.boundsInWindow(); contentBounds = Rect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt())
                         }) {
-                            if (route in listOf("home","appearance","device","agents","models","profile","connections","services","skills","notifications")) {
+                            if (route == "new-chat") {
+                                val actions = remember { org.json.JSONArray() }
+                                fun project() = JSONObject(NewChatFixtureBridge.render(JSONObject().put("scenario", "draft").put("actions", actions).toString()))
+                                var snapshot by remember { mutableStateOf(project()) }
+                                newChatSnapshot = snapshot
+                                NewChatPage(NewChatUi(fixturePeers()[0], snapshot), {}, { action, value ->
+                                    lastAction=action
+                                    val intent=JSONObject().put("action",action)
+                                    if(value != null) intent.put(if(action=="edit" || action=="submit") "text" else "value",value)
+                                    actions.put(intent);lastBody=intent;snapshot=project()
+                                }, {})
+                            }
+                            else if (route in listOf("home","appearance","device","models","profile","connections","services","skills","notifications")) {
                                 var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
@@ -73,7 +91,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     else -> JSONObject()
                                 }}))
                             }
-                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, leader = { lastAction = "leader:${it.text("id")}" }, session = { lastAction = "session:${it.text("chat_id")}" }))
+                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.text("chat_id")}" }))
                         }
                     }
                 }
@@ -102,8 +120,8 @@ private fun fixture(route: String): WorkbenchState {
         conversation=Conversation("delivery-error","版本不兼容",canSend=true),
         pending=listOf(ChatMessage("incompatible","你","原消息正文",true,pending=true,attempted=true,deliveryStatus="failed",
             deliveryError="目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。")))
-    return WorkbenchState(peers=peers, activePeer=peers[0], leaders=listOf(product,engineering), tasksByLeader=tasks, connected=true,
-        deviceTrees=mapOf("mini1" to DeviceTree(listOf(product,engineering),emptyList(),tasks,true), "mini2" to DeviceTree(listOf(research),emptyList(),mapOf("research" to listOf(task("mobile","移动端交互调研"))),true)),
+    return WorkbenchState(peers=peers, activePeer=peers[0], sessions=tasks.values.flatten(), connected=true,
+        deviceTrees=mapOf("mini1" to DeviceTree(emptyList(),tasks.values.flatten(),emptyMap(),true), "mini2" to DeviceTree(emptyList(),listOf(task("mobile","移动端交互调研")),emptyMap(),true)),
         conversation=if(route=="navigation") null else Conversation("brand","品牌资源接入",avatar="fox"), participants=members,
         messages=listOf(
             ChatMessage("own","","移动端也沿用这套品牌，\n阅读和回复要轻一点。",true,createdAt="2026-09-07T10:24:00+08:00"),
