@@ -1,6 +1,6 @@
 //! Interactive native host. Export fixtures retain their original catalog and dimensions.
 use super::*;
-use gpui::{AnyElement, ScrollHandle};
+use gpui::{AnyElement, ScrollAnchor, ScrollHandle};
 use std::collections::HashMap;
 use zork_ui::{
     automation::{AutomationElementExt, AutomationRole},
@@ -44,6 +44,9 @@ pub(super) struct Gallery {
     sessions: HashMap<String, Session>,
     driver: HeadlessAutomation,
     navigation: TabGroup,
+    directory_scroll: ScrollHandle,
+    directory_anchor: ScrollAnchor,
+    reveal_initial: bool,
     scenario_open: bool,
     size_open: bool,
     show_source: bool,
@@ -65,6 +68,7 @@ impl Gallery {
                 families.push(i);
             }
         }
+        let directory_scroll = ScrollHandle::new();
         let mut result = Self {
             catalog,
             families,
@@ -72,6 +76,9 @@ impl Gallery {
             sessions: HashMap::new(),
             driver,
             navigation: TabGroup::new(cx),
+            directory_anchor: ScrollAnchor::for_handle(directory_scroll.clone()),
+            directory_scroll,
+            reveal_initial: true,
             scenario_open: false,
             size_open: false,
             show_source: false,
@@ -211,6 +218,9 @@ impl Gallery {
                             story.family == self.catalog[self.selected].family,
                         )
                         .aria_label(story.title.clone())
+                        .when(story.family == self.catalog[self.selected].family, |v| {
+                            v.anchor_scroll(Some(self.directory_anchor.clone()))
+                        })
                         .child(story.title.clone())
                         .on_click(cx.listener(move |v, _, _, cx| v.select_family(i, cx)))
                         .automation(AutomationRole::Button, story.title.clone()),
@@ -360,6 +370,26 @@ impl Gallery {
 
 impl Render for Gallery {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if std::mem::take(&mut self.reveal_initial) {
+            let owner = cx.entity().downgrade();
+            let anchor = self.directory_anchor.clone();
+            let id = format!("story-family-{}", self.catalog[self.selected].family);
+            window.on_next_frame(move |window, cx| {
+                let visible = owner
+                    .read_with(cx, |v, _| {
+                        v.driver.snapshot(false).elements.iter().any(|e| {
+                            e.id == id && e.visible && e.visible_bounds.height >= e.bounds.height
+                        })
+                    })
+                    .unwrap_or(true);
+                if !visible {
+                    anchor.scroll_to(window, cx);
+                    window.on_next_frame(move |_, cx| {
+                        let _ = owner.update(cx, |_, cx| cx.notify());
+                    });
+                }
+            });
+        }
         #[cfg(feature = "native-blur-bench")]
         if !self.benchmark_started {
             if let Ok(path) = std::env::var("ZORK_MODAL_FRAME_REPORT") {
@@ -461,6 +491,7 @@ impl Render for Gallery {
                             .child(ui::page_title("Zork / Components"))
                             .child(directory),
                     )
+                    .track_scroll(&self.directory_scroll)
                     .automation(AutomationRole::ScrollArea, "组件目录"),
                 )
                 .child(content),

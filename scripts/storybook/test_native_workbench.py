@@ -17,6 +17,7 @@ from native_gui_fixture import Native, wait
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--launch-selector", choices=("family", "story", "start-story"), default="family")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/storybook/native-workbench")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -72,7 +73,8 @@ def main():
     try:
         native.process = subprocess.Popen(
             [str(args.binary.resolve()), "--dev", "--dev-port", native.url.rsplit(":", 1)[1],
-             "--dev-token", "mesh-native-fixture", "--start-story", "history-collapsed"],
+             "--dev-token", "mesh-native-fixture", "--" + args.launch_selector,
+             "history" if args.launch_selector == "family" else "history-collapsed"],
             cwd=ROOT, env=os.environ.copy(), stdout=native.log, stderr=native.log,
         )
         wait(lambda: native.element("story-canvas"), "native workbench ready", timeout=30)

@@ -57,9 +57,10 @@ The native `zork-gui-storybook` browser groups its directory by component. Choos
 the specimen's scenario in the work area and its viewport separately. Switching
 components retains the current specimen and reading position; choosing another
 scenario or resetting the current specimen recreates only that component's fixture.
-Viewport changes preserve its input and interaction state. `--family` and
-`--start-story` select an initial browsing scope; `--export` still uses the original
-fixed-size stories, independent of the interactive browser's layout.
+Viewport changes preserve its input and interaction state. Interactive launch
+selectors (`--family`, `--story`, `--start-story`) focus the requested component
+without removing other components from the directory. Batch `--export` and
+`--list` retain their fixture filters and original fixed-size stories.
 
 Sidebar navigation uses `navigation::TabGroup` for both device/task rows and settings tabs.
 Each sidebar owns a group and wraps its complete content in `surface`; `tab` provides
