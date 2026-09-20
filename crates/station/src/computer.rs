@@ -187,9 +187,6 @@ fn normalize(tool: &str, mut response: Value) -> anyhow::Result<Value> {
     use base64::Engine as _;
     let failed = response["ok"] != true || response["result"]["isError"] == true;
     let mut captures = Vec::new();
-    let directory = tempfile::Builder::new()
-        .prefix("zork-computer-")
-        .tempdir()?;
     if let Some(content) = response["result"]["content"].as_array_mut() {
         for item in content.iter_mut() {
             if item["type"] != "image" {
@@ -207,9 +204,7 @@ fn normalize(tool: &str, mut response: Value) -> anyhow::Result<Value> {
             anyhow::ensure!(data.len() <= 12 * 1024 * 1024, "computer_capture_too_large");
             let bytes = base64::engine::general_purpose::STANDARD.decode(data)?;
             anyhow::ensure!(bytes.len() <= 8 * 1024 * 1024, "computer_capture_too_large");
-            let path = directory.path().join(format!("capture-{}", captures.len()));
-            std::fs::write(&path, bytes)?;
-            captures.push(json!({"path":path, "mime_type":mime}));
+            captures.push(json!({"base64":data, "mime_type":mime}));
             *item = json!({"type":"image", "transferred":true});
         }
     }
@@ -217,9 +212,6 @@ fn normalize(tool: &str, mut response: Value) -> anyhow::Result<Value> {
     let mut end = text.len().min(MAX_OUTPUT);
     while !text.is_char_boundary(end) {
         end -= 1;
-    }
-    if !captures.is_empty() {
-        let _ = directory.keep();
     }
     Ok(
         json!({"state":if failed {"failed"} else {"succeeded"}, "tool":tool,
@@ -281,6 +273,24 @@ mod tests {
     fn tool_error_is_not_transport_success() {
         let result = normalize("click", json!({"ok":true,"result":{"isError":true,"content":[{"type":"text","text":"denied"}]}})).unwrap();
         assert_eq!(result["state"], "failed");
+    }
+    #[test]
+    fn capture_payload_is_memory_only_and_kept_out_of_text() {
+        let encoded = "iVBORw0KGgo=";
+        let response = json!({"ok":true,"result":{"isError":true,"content":[
+            {"type":"image","mimeType":"image/png","data":encoded}]}});
+        let result = normalize("get_window_state", response.clone()).unwrap();
+        assert_eq!(result["state"], "failed");
+        assert_eq!(
+            result["images"],
+            json!([{"mime_type":"image/png","base64":encoded}])
+        );
+        assert!(!result["output"].as_str().unwrap().contains(encoded));
+        assert!(!result.to_string().contains("path"));
+        let mut too_many = response;
+        let entry = too_many["result"]["content"][0].clone();
+        too_many["result"]["content"] = json!(vec![entry; 5]);
+        assert!(normalize("get_window_state", too_many).is_err());
     }
     #[test]
     fn generation_and_version_are_checked() {

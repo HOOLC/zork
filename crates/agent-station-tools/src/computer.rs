@@ -1,76 +1,59 @@
-//! Transfer only Station-owned capture files into model image parts.
+//! Transfer bounded in-memory desktop captures into model image parts.
+use base64::Engine as _;
 use serde_json::{json, Value};
-use std::{
-    io::Read,
-    path::{Path, PathBuf},
-};
 use zork_agent::session::{events::ToolOutcome, tools::ToolExecution, wire::ToolImage};
 
-fn owned_capture(path: &Path) -> bool {
-    let Some(parent) = path.parent() else {
-        return false;
+// Four 8 MiB images after base64 expansion, plus the bounded textual result.
+// Keep the same wire budget as Station's native desktop IPC response.
+pub(super) const MAX_RESPONSE_BYTES: usize = 48 * 1024 * 1024;
+const IMAGE_LIMIT: usize = 8 * 1024 * 1024;
+
+fn image(mut entry: Value) -> Option<ToolImage> {
+    let mime = entry["mime_type"].as_str()?.to_owned();
+    if !matches!(mime.as_str(), "image/png" | "image/jpeg") {
+        return None;
+    }
+    let Value::String(encoded) = entry["base64"].take() else {
+        return None;
     };
-    let valid_name = parent
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("zork-computer-"));
-    let valid_file = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| matches!(name, "capture-0" | "capture-1" | "capture-2" | "capture-3"));
-    valid_name
-        && valid_file
-        && parent.parent().and_then(|p| p.canonicalize().ok())
-            == std::env::temp_dir().canonicalize().ok()
-        && std::fs::symlink_metadata(parent)
-            .is_ok_and(|meta| meta.is_dir() && !meta.file_type().is_symlink())
-        && std::fs::symlink_metadata(path)
-            .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink())
+    if encoded.len() > 12 * 1024 * 1024 {
+        return None;
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&encoded)
+        .ok()?;
+    let magic = (mime == "image/png" && bytes.starts_with(b"\x89PNG\r\n\x1a\n"))
+        || (mime == "image/jpeg" && bytes.starts_with(b"\xff\xd8\xff"));
+    if bytes.len() > IMAGE_LIMIT || !magic {
+        return None;
+    }
+    Some(ToolImage {
+        media_type: mime,
+        base64: encoded.into(),
+    })
 }
 
 pub(super) fn attach_captures(result: &mut ToolExecution) {
-    use base64::Engine as _;
-    const LIMIT: u64 = 8 * 1024 * 1024;
-    let entries = result
+    // Remove payloads even on rejection; they must never leak into model text.
+    let Some(entries) = result
         .data
-        .get_mut("images")
-        .map(Value::take)
-        .unwrap_or(Value::Null);
-    let Some(entries) = entries.as_array() else {
+        .as_object_mut()
+        .and_then(|data| data.remove("images"))
+    else {
         return;
     };
-    let mut failed = entries.len() > 4;
-    let mut attached = 0;
-    for entry in entries {
-        let path = PathBuf::from(entry["path"].as_str().unwrap_or(""));
-        if !owned_capture(&path) {
-            failed = true;
-            continue;
+    let mut failed = false;
+    match entries {
+        Value::Array(entries) if entries.len() <= 4 => {
+            for entry in entries {
+                match image(entry) {
+                    Some(image) => result.images.push(image),
+                    None => failed = true,
+                }
+            }
         }
-        let mime = entry["mime_type"].as_str().unwrap_or("");
-        let mut bytes = Vec::new();
-        let read = std::fs::File::open(&path)
-            .and_then(|file| file.take(LIMIT + 1).read_to_end(&mut bytes));
-        // Even a rejected/oversized image must not leave a desktop capture on disk.
-        let removed = std::fs::remove_file(&path).is_ok();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
-        let magic = (mime == "image/png" && bytes.starts_with(b"\x89PNG\r\n\x1a\n"))
-            || (mime == "image/jpeg" && bytes.starts_with(b"\xff\xd8\xff"));
-        if read.is_err() || !removed || bytes.len() as u64 > LIMIT || !magic || attached >= 4 {
-            failed = true;
-            continue;
-        }
-        result.images.push(ToolImage {
-            media_type: mime.into(),
-            base64: base64::engine::general_purpose::STANDARD
-                .encode(bytes)
-                .into(),
-        });
-        attached += 1;
+        _ => failed = true,
     }
-    result.data["images"] = json!({"count":attached});
     if failed {
         result.outcome = ToolOutcome::Failed;
         result.data["state"] = json!("failed");
@@ -81,49 +64,53 @@ pub(super) fn attach_captures(result: &mut ToolExecution) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn capture(bytes: &[u8]) -> (PathBuf, Value) {
-        let dir = std::env::temp_dir().join(format!("zork-computer-{}", ulid::Ulid::new()));
-        std::fs::create_dir(&dir).unwrap();
-        let path = dir.join("capture-0");
-        std::fs::write(&path, bytes).unwrap();
-        (path.clone(), json!({"path":path, "mime_type":"image/png"}))
+    fn capture(bytes: &[u8]) -> Value {
+        json!({"mime_type":"image/png", "base64":base64::engine::general_purpose::STANDARD.encode(bytes)})
     }
     #[test]
-    fn image_attached_and_file_removed() {
-        let (path, image) = capture(b"\x89PNG\r\n\x1a\nfixture");
-        let mut result = ToolExecution::success(json!({"images":[image]}));
+    fn images_are_removed_from_text_without_resetting_tool_failure() {
+        let entry = capture(b"\x89PNG\r\n\x1a\nfixture");
+        let mut result = ToolExecution::success(json!({"state":"failed","images":[entry.clone()]}));
+        result.outcome = ToolOutcome::Failed;
         attach_captures(&mut result);
         assert_eq!(result.images.len(), 1);
-        assert_eq!(result.data["images"]["count"], 1);
-        assert!(!path.exists());
-        assert!(!path.parent().unwrap().exists());
-        assert!(!result.data.to_string().contains("zork-computer-"));
+        assert_eq!(
+            result.images[0].base64.as_ref(),
+            entry["base64"].as_str().unwrap()
+        );
+        assert_eq!(result.outcome, ToolOutcome::Failed);
+        assert!(result.data.get("images").is_none());
+        assert!(!result.data.to_string().contains("base64"));
     }
     #[test]
-    fn oversized_image_fails_and_is_cleaned() {
-        let (path, image) = capture(b"\x89PNG\r\n\x1a\n");
-        std::fs::OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_len(8 * 1024 * 1024 + 1)
-            .unwrap();
-        let mut result = ToolExecution::success(json!({"images":[image]}));
-        attach_captures(&mut result);
-        assert_eq!(result.outcome, ToolOutcome::Failed);
-        assert!(result.images.is_empty());
-        assert!(!path.exists());
+    fn size_boundary_and_count_are_enforced() {
+        let mut bytes = vec![0; IMAGE_LIMIT];
+        bytes[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        assert!(image(capture(&bytes)).is_some());
+        bytes.push(0);
+        assert!(image(capture(&bytes)).is_none());
+        let entry = capture(b"\x89PNG\r\n\x1a\nfixture");
+        for count in [4, 5] {
+            let mut result = ToolExecution::success(json!({"images":vec![entry.clone();count]}));
+            attach_captures(&mut result);
+            assert_eq!(result.images.len(), if count == 4 { 4 } else { 0 });
+            assert_eq!(result.outcome == ToolOutcome::Failed, count == 5);
+            assert!(result.data.get("images").is_none());
+        }
     }
     #[test]
-    fn arbitrary_files_are_never_read_or_deleted() {
-        let path = std::env::temp_dir().join(format!("unrelated-{}", ulid::Ulid::new()));
-        std::fs::write(&path, b"private").unwrap();
-        let mut result =
-            ToolExecution::success(json!({"images":[{"path":path,"mime_type":"image/png"}]}));
-        attach_captures(&mut result);
-        assert!(result.images.is_empty());
-        assert_eq!(result.outcome, ToolOutcome::Failed);
-        assert_eq!(std::fs::read(&path).unwrap(), b"private");
-        std::fs::remove_file(path).unwrap();
+    fn malformed_images_fail_without_retaining_payloads_or_using_paths() {
+        for entry in [
+            json!({"path":"/private/unused","mime_type":"image/png"}),
+            json!({"base64":"invalid!","mime_type":"image/png"}),
+            json!({"base64":"eA==","mime_type":"text/plain"}),
+            capture(b"not a PNG"),
+        ] {
+            let mut result = ToolExecution::success(json!({"images":[entry]}));
+            attach_captures(&mut result);
+            assert_eq!(result.outcome, ToolOutcome::Failed);
+            assert!(result.images.is_empty());
+            assert!(result.data.get("images").is_none());
+        }
     }
 }

@@ -15,6 +15,8 @@ from pathlib import Path
 import plistlib
 import shutil
 import signal
+import struct
+import zlib
 import socket
 import subprocess
 import sys
@@ -25,7 +27,19 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
+def fixture_png():
+    # A valid >1 MiB screenshot fixture exercises the internal image transport,
+    # rather than passing accidentally through the ordinary tool's 1 MiB cap.
+    width, height = 768, 512
+    pixels = hashlib.shake_256(b'zork-cua-fixture').digest(width*height*3)
+    rows = b''.join(b'\0'+pixels[row*width*3:(row+1)*width*3] for row in range(height))
+    def chunk(kind, data):
+        return struct.pack('!I',len(data))+kind+data+struct.pack('!I',zlib.crc32(kind+data))
+    png = b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',width,height,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(rows))+chunk(b'IEND',b'')
+    assert len(png)>1024*1024
+    return base64.b64encode(png).decode()
+
+PNG = fixture_png()
 VERSION = '0.28.2'
 
 
@@ -245,7 +259,8 @@ def run(args):
         process = None
         try:
             with (args.output/'station.log').open('wb') as log:
-                env = dict(os.environ, ZORK_CUA_HOST_APP=str(app))
+                capture_tmp = root/'station-tmp'; capture_tmp.mkdir()
+                env = dict(os.environ, ZORK_CUA_HOST_APP=str(app), TMPDIR=str(capture_tmp))
                 process = subprocess.Popen([str(args.bin_dir/'zork-station'),'--data',str(node)],
                                            env=env, stdout=log, stderr=log, start_new_session=True)
                 wait(lambda: request('GET','/readyz'), 'Station ready')
@@ -286,6 +301,18 @@ def run(args):
                     assert marker.with_suffix('.effects').read_text()=='applied\n', 'old action replayed on recovery'
                     assert process.poll() is None
                     report['checks'].append('lost reply is not replayed; next independent call recovers without Station restart')
+                    # Cancel the HTTP consumer after Station produced response
+                    # headers, so normalization/capture has already completed.
+                    body=json.dumps({'tool':'get_window_state','arguments':target}).encode()
+                    with socket.create_connection(('127.0.0.1',int(bindings['runtime'].split(':')[1])),timeout=15) as abandoned:
+                        abandoned.sendall((f'POST /v1/computer/command HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nx-zork-session-key: {key}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n').encode()+body)
+                        assert abandoned.recv(1), 'capture response did not begin'
+                        abandoned.setsockopt(socket.SOL_SOCKET,socket.SO_LINGER,struct.pack('ii',1,0))
+                    assert desktop('click')['state']=='succeeded'
+                    leftovers=list(capture_tmp.glob('zork-computer-*'))
+                    report['capture_files_after_disconnect']=[str(path) for path in leftovers]
+                    assert not leftovers, 'HTTP disconnect orphaned a desktop capture'
+                    report['checks'].append('cancelled HTTP consumer leaves no desktop capture files')
                 report['provider_requests'] = len(bodies)
                 if not args.host_app: report['png_sha256'] = hashlib.sha256(base64.b64decode(PNG)).hexdigest()
                 report['real_desktop_verified'] = bool(args.host_app)

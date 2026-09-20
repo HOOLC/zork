@@ -335,11 +335,16 @@ impl StationTool {
         let response = request.send().await?;
         let status = response.status();
         let mut response = response;
+        let response_limit = if matches!(self.kind, Kind::Computer) {
+            computer::MAX_RESPONSE_BYTES
+        } else {
+            1024 * 1024
+        };
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await? {
             anyhow::ensure!(
-                bytes.len() + chunk.len() <= 1024 * 1024,
-                "Station result exceeds 1 MiB"
+                bytes.len() + chunk.len() <= response_limit,
+                "Station result exceeds {response_limit} bytes"
             );
             bytes.extend_from_slice(&chunk);
         }
