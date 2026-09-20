@@ -29,6 +29,8 @@ internal object NativeBridge {
     external fun clearData(root: String, confirmed: Boolean, context: Context): String
     external fun call(root: String, request: String): String
     external fun observe(root: String, request: String): String
+    external fun chatFileBytes(root: String, key: String): ByteArray
+    external fun saveChatFile(root: String, ticket: String, descriptor: Int): String
     external fun sharedFileBytes(root: String, content: String): ByteArray
     external fun saveSharedFile(root: String, ticket: String, descriptor: Int): String
     external fun watch(root: String, handle: Long, generation: Long, observer: NativeObserver): String
@@ -96,6 +98,14 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     }
     fun localScriptEvents() = observations.localScripts()
     fun resourceEvents(selection: ResourceSelection) = observations.resources(selection)
+    fun chatFileEvents() = observations.chatFiles()
+    suspend fun chatPreviewBytes(key: String): ByteArray = withContext(Dispatchers.IO) { NativeBridge.chatFileBytes(root, key) }
+    suspend fun saveChatFile(uri: android.net.Uri, ticket: String) = withContext(Dispatchers.IO) {
+        requireNotNull(resolver.openFileDescriptor(uri, "w")).use { destination ->
+            val result = JSONObject(NativeBridge.saveChatFile(root, ticket, destination.fd))
+            check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
+        }
+    }
     fun sharedFileEvents() = observations.sharedFiles()
     suspend fun sharedPreviewBytes(content: String): ByteArray = withContext(Dispatchers.IO) { NativeBridge.sharedFileBytes(root, content) }
     suspend fun saveSharedFile(uri: android.net.Uri, ticket: String) = withContext(Dispatchers.IO) {

@@ -33,6 +33,13 @@ Cellar 版本，也不修改全局 LLVM 链接。
 
 ## 可选的本机存储配置
 
+macOS App 打包默认包含原生 cua 宿主。首次打包按仓库固定的上游修订和锁文件构建驱动，
+后续复用经过摘要校验的运行产物；纯节点构建不需要桌面驱动。已有 cua checkout 和独立
+Cargo 缓存可在本机 `.env` 中配置 `ZORK_CUA_SOURCE`、`ZORK_CUA_TARGET_DIR`，避免重复下载和编译。
+源码必须保持固定修订且无本地修改；固定修订由 `scripts/lib/cua-runtime.py` 维护。
+也可用打包入口的 `--cua-runtime` 指向经过验证的运行产物。自救候选同时记录此输入、原始许可证
+及整包摘要，不能只记录 Station/GUI 的 Cargo 可执行文件。
+
 真实机器路径放在被 Git 忽略的 `.env`，不写进共享脚本或 skill：
 
 ```dotenv

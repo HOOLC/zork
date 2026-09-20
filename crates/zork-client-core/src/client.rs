@@ -38,6 +38,9 @@ pub enum Command {
         running: bool,
         instance: String,
     },
+    ChatFiles {
+        operation: chat_files::Action,
+    },
     SharedFiles {
         operation: shared_files::Action,
     },
@@ -209,6 +212,7 @@ impl Command {
                 | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
                 | Self::SharedFiles { .. }
+                | Self::ChatFiles { .. }
                 | Self::TestNotification
                 | Self::NotificationReceipt { .. }
                 | Self::OpenNotification { .. }
@@ -249,6 +253,7 @@ pub struct LocalClient {
     local_scripts: Arc<local_scripts::Controller>,
     adb: Arc<adb::Controller>,
     shared_files: Arc<shared_files::SharedFiles>,
+    chat_files: Arc<chat_files::Controller>,
     resources: Arc<resources::Resources>,
     invitation: Arc<enrollment::InvitationState>,
     services: Arc<services::Views>,
@@ -257,6 +262,9 @@ pub struct LocalClient {
 impl LocalClient {
     pub fn data_reset(&self) -> Arc<data_reset::Controller> {
         self.data_reset.clone()
+    }
+    pub fn chat_files(&self) -> Arc<chat_files::Controller> {
+        self.chat_files.clone()
     }
     pub fn shared_files(&self) -> Arc<shared_files::SharedFiles> {
         self.shared_files.clone()
@@ -281,6 +289,9 @@ impl LocalClient {
         }
         if matches!(key, subscriptions::Key::Adb) {
             return Ok(subscriptions::WireSubscription::from_adb(self.adb.clone()));
+        }
+        if matches!(key, subscriptions::Key::ChatFiles) {
+            return Ok(subscriptions::WireSubscription::from_chat_files(self.chat_files.clone()));
         }
         if matches!(key, subscriptions::Key::SharedFiles) {
             return Ok(subscriptions::WireSubscription::from_shared_files(
@@ -361,6 +372,15 @@ impl LocalClient {
                 self.account.submit(operation)?;
                 Ok(json!({}))
             }
+            Command::ChatFiles { operation } => {
+                let device = if let chat_files::Action::Open { peer, session, .. } = &operation {
+                    self.peer(peer)?;
+                    valid_session(session)?;
+                    self.device_state(peer)
+                } else { None };
+                self.chat_files.apply(operation, device)?;
+                Ok(json!({}))
+            }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
             Command::Adb { operation } => self.adb.execute(operation),
             Command::SharedFiles { operation } => {
@@ -388,6 +408,7 @@ impl LocalClient {
                 if let Some(session) = &session {
                     valid_session(session)?;
                 }
+                self.chat_files.leave_conversation(peer.as_deref(), session.as_deref());
                 let devices = self
                     .store
                     .1
@@ -709,6 +730,7 @@ pub struct Client {
     adb: Arc<adb::Controller>,
     adb_background_service: Option<String>,
     shared_files: Arc<shared_files::SharedFiles>,
+    chat_files: Arc<chat_files::Controller>,
     foreground: bool,
     host_generation: u64,
     background_service: Option<String>,
@@ -737,6 +759,7 @@ impl Client {
             local_scripts: self.local_scripts.clone(),
             adb: self.adb.clone(),
             shared_files: self.shared_files.clone(),
+            chat_files: self.chat_files.clone(),
             resources: self.resources.clone(),
             invitation: self.invitation.clone(),
             services: self.services.clone(),
@@ -752,10 +775,12 @@ impl Client {
         let adb = adb::Controller::new(store.clone())?;
         let shared_files = shared_files::SharedFiles::new(store.clone());
         let resources = resources::Resources::new(vec![]);
+        let chat_files = chat_files::Controller::new(store.clone());
         let directory = client_directory::Directory::new(
             store.clone(),
             resources.clone(),
             shared_files.clone(),
+            chat_files.clone(),
             adb.clone(),
         )?;
         Ok(Self {
@@ -765,6 +790,7 @@ impl Client {
             adb,
             adb_background_service: None,
             shared_files,
+            chat_files: chat_files.clone(),
             foreground: false,
             host_generation: 0,
             background_service: None,
@@ -859,6 +885,7 @@ impl Client {
     pub async fn pause(&mut self) -> Result<()> {
         self.adb.pause();
         self.directory.stop().await;
+        self.chat_files.pause();
         self.invitation_job.take();
         self.invitation
             .replace(enrollment::public_snapshot(&self.store, false)?);
@@ -940,6 +967,7 @@ impl Client {
                 self.account.submit(operation)?;
                 Ok(json!({}))
             }
+            command @ Command::ChatFiles { .. } => self.local().execute(command),
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
             Command::Adb { operation } => self.adb.execute(operation),
             Command::AdbBackgroundService { running, instance } => {
@@ -1126,6 +1154,7 @@ impl Client {
                 self.snapshot()
             }
             Command::RemovePeer { peer } => {
+                self.chat_files.revoke(&peer);
                 let removed = self.peer(&peer)?;
                 if let Some(remote) = removed.mesh {
                     self.services.remove_peer(&remote.origin);

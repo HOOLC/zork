@@ -27,6 +27,7 @@ pub(crate) struct Directory {
     pub(crate) source: Arc<zork_observe::ValueSource<Value>>,
     resources: Arc<crate::resources::Resources>,
     shared_files: Arc<crate::shared_files::SharedFiles>,
+    chat_files: Arc<crate::chat_files::Controller>,
     adb: Arc<crate::adb::Controller>,
     node: Mutex<Option<MeshNode>>,
     connections: Mutex<HashMap<String, Connection>>,
@@ -47,6 +48,7 @@ impl Directory {
         store: Arc<ClientStore>,
         resources: Arc<crate::resources::Resources>,
         shared_files: Arc<crate::shared_files::SharedFiles>,
+        chat_files: Arc<crate::chat_files::Controller>,
         adb: Arc<crate::adb::Controller>,
     ) -> Result<Arc<Self>> {
         let nodes: Vec<_> = store.nodes()?.iter().map(directory_node).collect();
@@ -59,6 +61,7 @@ impl Directory {
             store,
             resources,
             shared_files,
+            chat_files,
             adb,
             source: Arc::new(zork_observe::ValueSource::new(value)),
             node: Default::default(),
@@ -208,6 +211,7 @@ impl Directory {
                 connection.device.stop_sync();
                 connection.device.revoke_replica_access()?;
                 node.untrust(&id).await?;
+                self.chat_files.revoke(&id);
                 self.adb.peer_revoked(&id);
                 self.resources.revoke(&id);
             }
@@ -284,6 +288,7 @@ impl Directory {
                             .shared_files
                             .update_device(&id, &watched_client, &state);
                         if state.revoked {
+                            directory.chat_files.revoke(&id);
                             directory.adb.peer_revoked(&id);
                             directory.resources.revoke(&id);
                         }

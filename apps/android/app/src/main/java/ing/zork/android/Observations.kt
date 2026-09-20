@@ -57,6 +57,7 @@ internal class Observations(private val root: String) {
     fun adb() = frames("adb", "", null, JSONObject().put("projection", "adb"), frameAligned = false)
     fun account() = frames("account", "", null, JSONObject().put("projection", "account"), frameAligned = false)
     fun dataReset() = frames("data_reset", "", null, JSONObject().put("projection", "data_reset"), frameAligned = false)
+    fun chatFiles() = frames("chat_files", "", null, JSONObject().put("projection", "chat_files"))
     fun sharedFiles() = frames("shared_files", "", null, JSONObject().put("projection", "shared_files"))
     fun resources(selection: ResourceSelection) = frames("resources", selection.peer.orEmpty(), null,
         JSONObject().put("projection", "resources").put("peer", selection.peer ?: JSONObject.NULL)

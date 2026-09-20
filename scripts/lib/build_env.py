@@ -9,7 +9,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 KEYS = {'ZORK_BUILD_ROOT', 'ZORK_BUILD_BUDGET_GIB', 'ZORK_BUILD_LOW_WATER_GIB',
         'ZORK_BUILD_MOUNT', 'CARGO_TARGET_DIR', 'KACHE_CACHE_EXECUTABLES',
-        'ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD'}
+        'ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD', 'ZORK_CUA_SOURCE', 'ZORK_CUA_TARGET_DIR'}
 
 # Repository context inherited from Git hooks must not redirect a dependency's
 # git init/fetch/checkout into this repository. Keep transport/authentication
@@ -23,6 +23,10 @@ GIT_CONTEXT = frozenset('''GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG
 
 def git_context_key(key):
     return key in GIT_CONTEXT or key.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_'))
+
+
+def clean_git_environment(environ):
+    return {key: value for key, value in environ.items() if not git_context_key(key)}
 
 
 def settings(root=ROOT, environ=None):
@@ -44,8 +48,7 @@ def settings(root=ROOT, environ=None):
 
 
 def build_environment(root=ROOT, environ=None, variant=None):
-    env = {key: value for key, value in settings(root, environ).items()
-           if not git_context_key(key)}
+    env = clean_git_environment(settings(root, environ))
     mount = env.get('ZORK_BUILD_MOUNT')
     if mount and not os.path.ismount(Path(mount).expanduser()):
         raise ValueError('Configured ZORK_BUILD_MOUNT is not mounted')
@@ -62,7 +65,7 @@ def build_environment(root=ROOT, environ=None, variant=None):
     else:
         target = Path(env['CARGO_TARGET_DIR']).expanduser()
         env['CARGO_TARGET_DIR'] = str(target if target.is_absolute() else root / target)
-    for key in ('ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD'):
+    for key in ('ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD', 'ZORK_CUA_SOURCE', 'ZORK_CUA_TARGET_DIR'):
         if env.get(key):
             path = Path(env[key]).expanduser()
             env[key] = str(path if path.is_absolute() else root / path)

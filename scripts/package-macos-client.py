@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
+from cua_build import ensure_runtime, verify_runtime
 def digest(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
@@ -136,6 +137,20 @@ def build_app(args, repo, app):
     spec.loader.exec_module(browser_runtime)
     signing_identity = browser_runtime.signing_identity()
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
+    cua = getattr(args, 'cua_runtime', None) or ensure_runtime(repo)
+    record = getattr(args, 'build_record', None)
+    build = json.loads(record.read_text()) if record else None
+    if build is not None:
+        expected = build.get('external_runtimes', {}).get('cua')
+        if not isinstance(expected, dict):
+            raise RuntimeError('Build record has no captured desktop runtime; rebuild the app candidate')
+        verify_runtime(repo, cua, expected)
+    spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
+    cua_runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cua_runtime)
+    cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity,
+                      minimum_system_version=app_info(version, prefix, channel)['LSMinimumSystemVersion'])
+
     if args.services_config:
         services=json.loads(args.services_config.read_text())
         assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls'}
@@ -143,14 +158,12 @@ def build_app(args, repo, app):
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix, channel), f)
     (resources/'channel').write_text(channel+'\n')
-    record = getattr(args, 'build_record', None)
-    if record:
-        build = json.loads(record.read_text())
+    if build is not None:
         for name, expected in build['binaries'].items():
             if digest(binaries/name) != expected:
                 raise RuntimeError('Binary differs from the captured Cargo build: '+name)
         (resources/'build.json').write_text(json.dumps(build, indent=2)+'\n')
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork account login authorizes the configured public relay. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork accounts are optional and do not control Mesh connectivity. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.
@@ -163,9 +176,10 @@ def main():
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
     parser.add_argument('--channel',choices=['release','dev'],default='release',help='Signed data and identity channel')
     parser.add_argument('--id-prefix',help='Override bundle prefix for isolated test identities')
-    parser.add_argument('--build-record',type=Path,help='Captured Cargo build provenance and input digests')
+    parser.add_argument('--build-record',type=Path,help='Captured Cargo and native desktop runtime provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
+    parser.add_argument('--cua-runtime',type=Path,help='Verified native cua input; otherwise build/reuse the pinned runtime cache')
     parser.add_argument('--output',type=Path,help='Explicitly export an archive to this directory')
     parser.add_argument('--launch',action='store_true',help='Launch after update even if not previously running')
     parser.add_argument('--run',nargs=argparse.REMAINDER,help='Run tests against the updated {app}; retain the app afterward')

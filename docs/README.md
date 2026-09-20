@@ -24,7 +24,9 @@
 
 - [Android 本机操作](guides/android-local-operations.md)：脚本使用方式、原生入口与权限条件。
 - [Rust 构建与缓存](guides/rust-builds.md)
+- [共享文件 CAS 审计与回收](guides/file-cas-recovery.md)：原数据保护、只读预览与引擎回收前提。
 - [原生节点安装、接入、发布与升级](guides/native-releases.md)
+- [release/dev 开发、自救与提升](guides/release-dev-recovery.md)
 
 组件展台的运行与诊断在 [组件包指南](../crates/zork-ui/README.md#playground)，平台开发说明位于各应用 README。视觉资产与交互参考见 [设计工作区](../apps/zork-design/README.md)，移动端几何见 [Android 设计](../apps/android/design.md)。
 

@@ -24,6 +24,8 @@ description: 开发、审查或排查 zork 的 Synch 共享文件树、附件文
 
 ## 验证
 
-遵循 [客户端边界](../zork-client-boundary/SKILL.md)、[订阅](../zork-client-subscriptions/SKILL.md) 和 [验证规则](../zork-validation/SKILL.md)。`shared_files_mesh` 用 `ZORK_TEST_STATION_BIN` 固定新产物，覆盖多来源/版本、固定保存、Skill 执行、暂停/重连和撤权。
+遵循 [客户端边界](../zork-client-boundary/SKILL.md)、[订阅](../zork-client-subscriptions/SKILL.md) 和 [验证规则](../zork-validation/SKILL.md)。`shared_files_mesh` 用 `ZORK_TEST_STATION_BIN` 固定新产物，覆盖旧业务源退役、多来源/版本、固定保存、Skill 执行、重连和撤权；附件下载须保持固定字节，不能为读取再创建永久发布副本。
+
+Android 文件交付用 `scripts/android/test_file_delivery.py`，先重建 Station 和 APK，指定独立模拟器；核对 JNI、目录元数据收敛、实际图片呈现和完整导出字节。历史 CAS 占用先按[回收指南](../../../docs/guides/file-cas-recovery.md)做只读审计，不能把停止发布等同于原文件或全部 CAS 可删除。
 
 大目录用 `directory_with_100000` 独立测量，平台检查选择 `headless_shared_files` / `SharedFilesTest`。元数据、UI、同机多节点和物理跨网的证据分开。

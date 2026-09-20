@@ -63,6 +63,28 @@ pre-push:
         CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0}
         CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
         python3 scripts/lib/build_env.py -- cargo test --locked -p zork-gui -p zork-ui --lib --tests
+    shared-files:
+      glob:
+        - "crates/{zork-client-core,zork-mesh}/**"
+        - "crates/station/src/{mesh.rs,db/artifacts.rs,channels/attachments.rs}"
+        - "vendor/{synch*,iroh,noq-udp}/**"
+        - "{Cargo.toml,Cargo.lock,lefthook.yml}"
+        - "scripts/check-runtime.sh"
+      run: bash scripts/check-runtime.sh shared-files
+    file-cas-audit:
+      glob:
+        - "scripts/{audit-file-cas.py,test-file-cas-audit.py}"
+        - "lefthook.yml"
+      run: python3 scripts/test-file-cas-audit.py
+    cua-packaging:
+      glob:
+        - "scripts/{build-cua-driver.py,package-macos-client.py,test-cua-build.py,test-cua-packaging.py}"
+        - "scripts/build/macos-cua-host.m"
+        - "scripts/lib/{cua-runtime.py,cua_build.py}"
+        - "lefthook.yml"
+      skip:
+        - run: test "$(uname -s)" != Darwin
+      run: python3 scripts/test-cua-build.py && python3 scripts/test-cua-packaging.py
     benchmark-adapters:
       glob:
         - "benchmarks/deep-swe/**"
@@ -75,7 +97,10 @@ pre-push:
         - "crates/station/src/{node.rs,enrollment.rs}"
         - "{Cargo.toml,Cargo.lock,package.json,lefthook.yml}"
         - ".github/workflows/release.yml"
-      run: python3 -m py_compile scripts/build/native-release.py scripts/test-native-installer.py && python3 scripts/test-native-installer.py
+        - "scripts/lib/{deployment*,install-macos-client.py,build_env.py,cua_build.py}"
+        - "scripts/dev/recovery.py"
+        - "scripts/{update-macos-client.py,package-macos-client.py,test-deployment-recovery.py,test-release-dev-recovery.py,test-macos-channel-recovery.py}"
+      run: python3 -m py_compile scripts/build/native-release.py scripts/test-native-installer.py && python3 scripts/test-native-installer.py && python3 scripts/test-deployment-recovery.py
     cloudflare:
       glob:
         - "deploy/cloudflare/**"

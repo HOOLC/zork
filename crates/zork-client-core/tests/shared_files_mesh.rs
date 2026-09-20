@@ -4,6 +4,7 @@ use anyhow::{ensure, Context, Result};
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Arc,
@@ -53,6 +54,7 @@ fn config() -> zork_config::MeshConfig {
     zork_config::MeshConfig {
         enabled: true,
         offline: true,
+        bind: Some("127.0.0.1:0".into()),
         ..Default::default()
     }
 }
@@ -85,6 +87,7 @@ async fn start(
     origin: String,
     client: &str,
     stations: &[String],
+    routes: &BTreeMap<String, String>,
 ) -> Result<Station> {
     let mut listeners = vec![];
     let mut bind = serde_json::Map::new();
@@ -102,9 +105,9 @@ async fn start(
                 .map(String::as_str)
                 .filter(|other| *other != origin),
         )
-        .map(|peer| json!({"origin":peer,"name":"Fixture peer","client":true,"execute":[]}))
+        .map(|peer| json!({"origin":peer,"addr":routes[peer],"name":"Fixture peer","client":true,"execute":[]}))
         .collect::<Vec<_>>();
-    let settings = json!({"bind":bind,"admin":{"token":TOKEN},"mesh":{"enabled":true,"offline":true,"name":root.file_name().unwrap().to_string_lossy(),"peers":peers}});
+    let settings = json!({"bind":bind,"admin":{"token":TOKEN},"mesh":{"enabled":true,"offline":true,"bind":routes[&origin],"name":root.file_name().unwrap().to_string_lossy(),"peers":peers}});
     std::fs::write(root.join("config.json"), serde_json::to_vec(&settings)?)?;
     std::fs::create_dir_all(root.join("profiles"))?;
     std::fs::write(
@@ -120,6 +123,7 @@ async fn start(
         .open(root.join("station.log"))?;
     let process = Command::new(binary)
         .args(["--data", root.to_str().unwrap(), "--fake-agent"])
+        .env("ZORK_REGISTRY_DIR", root.parent().unwrap().join("registry"))
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log))
         .spawn()?;
@@ -250,16 +254,44 @@ fn write(root: &Path, path: &str, bytes: &[u8]) -> Result<()> {
 async fn published(node: &MeshNode, reference: &Reference) -> Result<zork_mesh::node::ObjectRef> {
     let until = tokio::time::Instant::now() + Duration::from_secs(45);
     loop {
-        if let Ok(object) = node.tree_object(reference).await {
-            return Ok(object);
-        }
+        let error = match node.tree_object(reference).await {
+            Ok(object) => return Ok(object),
+            Err(error) => error,
+        };
         ensure!(
             tokio::time::Instant::now() < until,
-            "file never published: {}",
-            reference.uri()
+            "file never published: {}: {error:#}",
+            reference.uri(),
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+async fn skill_catalog(station: &Station) -> Result<Value> {
+    Ok(request(
+        &station.url,
+        Method::GET,
+        "/v1/node/agents/reader/skills",
+        None,
+    )
+    .await?["catalog"]
+        .clone())
+}
+
+fn business_source_retired(root: &Path) -> Result<()> {
+    let database = rusqlite::Connection::open_with_flags(
+        zork_mesh::managed::data_dir(root).join("synchronicity.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    for table in ["sources", "entries", "local_files"] {
+        let count: i64 = database.query_row(
+            &format!("SELECT count(*) FROM {table} WHERE space IN ('files','zork')"),
+            [],
+            |row| row.get(0),
+        )?;
+        ensure!(count == 0, "retired business source remains in {table}");
+    }
+    Ok(())
 }
 fn reference(path: &str, origin: &str) -> Reference {
     Reference {
@@ -277,9 +309,7 @@ fn reference(path: &str, origin: &str) -> Reference {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires ZORK_TEST_STATION_BIN pointing to a freshly built Station; currently fails on \
-            the publish wait for both space kinds (checked against the revision before the business \
-            tree stopped being published), so a red run is not yet a signal about either space"]
+#[ignore = "requires ZORK_TEST_STATION_BIN pointing to a freshly built Station"]
 async fn three_stations_publish_generic_tree_and_execute_remote_skills_without_installation(
 ) -> Result<()> {
     let binary =
@@ -341,7 +371,33 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         space: STATION_FILES_SPACE.into(),
         ..reference("workspaces/keep.txt", &third_id)
     };
-    let old_object = published(&legacy.node(), &legacy_reference).await?;
+    published(&legacy.node(), &legacy_reference).await?;
+    legacy
+        .node()
+        .trust(
+            &accessor,
+            "accessor before upgrade",
+            node.address()?
+                .ip_addrs()
+                .next()
+                .map(ToString::to_string)
+                .as_deref(),
+        )
+        .await?;
+    node.trust(
+        &third_id,
+        "source before upgrade",
+        legacy
+            .node()
+            .address()?
+            .ip_addrs()
+            .next()
+            .map(ToString::to_string)
+            .as_deref(),
+    )
+    .await?;
+    let old_object = published(&node, &legacy_reference).await?;
+    ensure!(node.tree_read(&old_object).await? == b"existing workspace bytes");
     legacy.shutdown().await?;
     write(
         &root.join("third"),
@@ -349,6 +405,22 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         b"{",
     )?;
     let ids = vec![first_id.clone(), second_id.clone(), third_id.clone()];
+    // This contract exercises publication and consumption, not multicast
+    // discovery (covered by Mesh tests). Give each isolated peer a direct route.
+    let mut routes = BTreeMap::from([(
+        accessor.clone(),
+        node.address()?
+            .ip_addrs()
+            .next()
+            .context("accessor route")?
+            .to_string(),
+    )]);
+    let mut reserved = BTreeMap::new();
+    for origin in &ids {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+        routes.insert(origin.clone(), socket.local_addr()?.to_string());
+        reserved.insert(origin.clone(), socket);
+    }
     for (name, body) in [
         ("first", b"first version".as_slice()),
         ("second", b"second version".as_slice()),
@@ -413,16 +485,36 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
             root.join(format!("first/skills/{managed}/linked-resource")),
         )?;
     }
+    reserved.remove(&first_id);
     let mut first = start(
         binary,
         root.join("first"),
         first_id.clone(),
         &accessor,
         &ids,
+        &routes,
     )
     .await?;
-    let second = start(binary, root.join("second"), second_id, &accessor, &ids).await?;
-    let third = start(binary, root.join("third"), third_id, &accessor, &ids).await?;
+    reserved.remove(&second_id);
+    let second = start(
+        binary,
+        root.join("second"),
+        second_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
+    reserved.remove(&third_id);
+    let third = start(
+        binary,
+        root.join("third"),
+        third_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
     let empty = request(
         &third.url,
         Method::POST,
@@ -445,6 +537,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
             .is_none()
     );
     ensure!(std::fs::read(&legacy_file)? == b"existing workspace bytes");
+    business_source_retired(&third.root)?;
     let rejected = reqwest::Client::builder()
         .no_proxy()
         .build()?
@@ -456,7 +549,8 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     ensure!(rejected.status() == reqwest::StatusCode::BAD_REQUEST);
     println!("Three Stations ready; the existing node's user share is empty and its system files remain intact");
     for origin in &ids {
-        node.trust(origin, "unified tree fixture", None).await?;
+        node.trust(origin, "unified tree fixture", Some(&routes[origin]))
+            .await?;
     }
     // A single saved Station binding suffices: the tree comes from the one
     // embedded Synch node, not from an HTTP catalog fanout to saved Stations.
@@ -501,8 +595,20 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         .contains(&e.path.as_str())),
         "business spaces mixed in shared files"
     );
-    published(&node, &legacy_reference).await?;
-    ensure!(node.tree_read(&old_object).await? == b"existing workspace bytes");
+    let until = tokio::time::Instant::now() + Duration::from_secs(45);
+    while !node
+        .tree_space(STATION_FILES_SPACE)
+        .await?
+        .spaces
+        .is_empty()
+    {
+        ensure!(
+            tokio::time::Instant::now() < until,
+            "peer retained the retired business tree"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    ensure!(node.tree_object(&legacy_reference).await.is_err());
     write(
         &third.root,
         "jobs/user.txt",
@@ -514,7 +620,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         s.entries.iter().any(|entry| entry.path == "jobs")
     })
     .await?;
-    println!("The shared-file view excludes system sources, allows user-created names, and preserves old fixed references");
+    println!("Retirement reaches an existing peer, preserves local business files and allows arbitrary user directory names");
     source
         .dispatch(Action::OpenEntry {
             id: "project".into(),
@@ -620,7 +726,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         .as_str()
         .unwrap()
         .contains("REMOTE_GUIDE_V1"));
-    let listed = tool(&third, session, execution, "skill.list", json!({})).await?;
+    let listed = skill_catalog(&third).await?;
     ensure!(
         !listed["skills"]
             .as_array()
@@ -736,7 +842,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     )?;
     let until = tokio::time::Instant::now() + Duration::from_secs(45);
     loop {
-        let catalog = tool(&third, session, execution, "skill.list", json!({})).await?;
+        let catalog = skill_catalog(&third).await?;
         if catalog["skills"]
             .as_array()
             .unwrap()
@@ -758,7 +864,7 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         session,
         execution,
         "file.materialize",
-        json!({"path":tool(&third, session, execution, "skill.list", json!({})).await?["skills"].as_array().unwrap().iter().find(|s|s["name"]=="remote-guide").unwrap()["source"]}),
+        json!({"path":skill_catalog(&third).await?["skills"].as_array().unwrap().iter().find(|s|s["name"]=="remote-guide").unwrap()["source"]}),
     )
     .await?;
     let newer = PathBuf::from(newer["path"].as_str().unwrap());
@@ -769,46 +875,34 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         "Remote Skill catalog, ordinary file.read, resource details and real shell execution verified without installation"
     );
 
-    let share = tool(
-        &third,
-        session,
-        execution,
-        "skill.share",
-        json!({"target":first.origin,"skill_id":managed}),
-    )
-    .await?;
-    let binding = share["source"]
-        .as_str()
-        .context("skill.share did not return a source reference")?;
-    ensure!(binding.starts_with("synch://skills/"));
-    ensure!(
-        share["resource_count"]
-            .as_u64()
-            .is_some_and(|count| count >= 36),
-        "reference sharing lost large or numerous resources"
-    );
-    ensure!(share.get("package").is_none() && !third.root.join("skills").join(&managed).exists());
-    let operation = tool(
-        &third,
-        session,
-        execution,
-        "skill.bind",
-        json!({"target":"local","source":binding,"agent_id":"reader"}),
-    )
-    .await?;
-    ensure!(
-        operation["state"] == "succeeded",
-        "source binding failed: {operation}"
-    );
-    let listed = tool(&third, session, execution, "skill.list", json!({})).await?;
-    ensure!(listed["skills"]
+    let catalog = skill_catalog(&third).await?;
+    let binding = catalog["skills"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|skill| skill["name"] == "bound-guide"));
+        .find(|skill| skill["name"] == "bound-guide")
+        .context("large remote Skill not discovered")?["source"]
+        .clone();
+    let materialized = tool(
+        &third,
+        session,
+        execution,
+        "file.materialize",
+        json!({"path":binding}),
+    )
+    .await?;
+    let directory = PathBuf::from(materialized["path"].as_str().context("materialized path")?);
+    ensure!(std::fs::read(directory.join("large-resource.bin"))? == vec![b'x'; 100 * 1024]);
+    for i in 0..35 {
+        ensure!(std::fs::read(directory.join(format!("resource-{i}.txt")))? == b"resource");
+    }
+    #[cfg(unix)]
+    ensure!(
+        std::fs::read_link(directory.join("linked-resource"))? == Path::new("large-resource.bin")
+    );
     ensure!(!third.root.join("skills").join(&managed).exists());
     println!(
-        "skill.share returns a reference and skill.bind uses it without creating a destination package"
+        "Ordinary file.materialize preserves large/numerous Skill resources without installation"
     );
 
     let empty = zork_config::shared_files_root(&first.root).join("snapshot-empty");
@@ -939,19 +1033,45 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         "Damaged management metadata is isolated; empty snapshots and root-level Skill inspection verified"
     );
 
-    let attachment = b"immutable attachment in the file tree";
-    let content_root = zork_mesh::content_root(attachment);
-    request(&third.url,Method::POST,&format!("/v1/im/sessions/{session}/files"),Some(json!({"file":{"id":"file-fixture","name":"attachment.txt","byte_len":attachment.len(),"content_root":content_root},"offset":0,"bytes":attachment.as_slice()}))).await?;
+    let attachment = (0..75_000).map(|i| (i % 251) as u8).collect::<Vec<_>>();
+    let content_root = zork_mesh::content_root(&attachment);
+    for (index, bytes) in attachment
+        .chunks(zork_client_core::files::CHUNK_BYTES)
+        .enumerate()
+    {
+        request(&third.url,Method::POST,&format!("/v1/im/sessions/{session}/files"),Some(json!({"file":{"id":"file-fixture","name":"attachment.txt","byte_len":attachment.len(),"content_root":content_root},"offset":index*zork_client_core::files::CHUNK_BYTES,"bytes":bytes}))).await?;
+    }
     let attachment_path = format!("attachments/{content_root}/attachment.txt");
-    let object = published(
-        &node,
-        &Reference {
-            space: STATION_FILES_SPACE.into(),
-            ..reference(&attachment_path, &third.origin)
-        },
-    )
-    .await?;
-    ensure!(node.tree_read(&object).await? == attachment);
+    ensure!(
+        std::fs::read(zork_config::files_root(&third.root).join(&attachment_path))? == attachment
+    );
+    let bytes = reqwest::Client::builder()
+        .no_proxy()
+        .build()?
+        .get(format!("{}/v1/artifacts/file-fixture/content", third.url))
+        .bearer_auth(TOKEN)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    ensure!(bytes.as_ref() == attachment.as_slice());
+    let remote = StationClient::new_mesh(node.clone(), third.origin.clone());
+    ensure!(remote.artifact_content("file-fixture").await? == attachment);
+    let mesh_database = rusqlite::Connection::open_with_flags(
+        zork_mesh::managed::data_dir(&third.root).join("synchronicity.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    ensure!(
+        mesh_database.query_row(
+            "SELECT count(*) FROM sources WHERE space='zork-client'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )? == 0,
+        "client attachment download created a permanent response publication"
+    );
+    drop(mesh_database);
+    business_source_retired(&third.root)?;
     let database = rusqlite::Connection::open_with_flags(
         third.root.join("state/station.sqlite"),
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -983,8 +1103,14 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     )
     .await?;
     ensure!(node.tree_read(&arbitrary).await? == b"automatic");
+    ensure!(node
+        .tree_space(STATION_FILES_SPACE)
+        .await?
+        .spaces
+        .is_empty());
+    ensure!(std::fs::read(&legacy_file)? == b"existing workspace bytes");
     println!(
-        "Fresh Session storage, attachment file authority and an unclassified new directory verified"
+        "Session history and Chat attachments stay local; deliberate new directories still publish"
     );
 
     source
@@ -1015,7 +1141,15 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     ensure!(!subscription.valid(stale.id));
     ensure!(source.write_copy(&revoked_ticket, &mut vec![]).is_err());
     ensure!(node.tree_read(&arbitrary).await.is_err());
-    first = start(binary, root.join("first"), first_id, &accessor, &ids).await?;
+    first = start(
+        binary,
+        root.join("first"),
+        first_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
     node.trust(&first.origin, "restored fixture trust", None)
         .await?;
     wait(&source, |s| s.devices.iter().any(|d| d.id == first.origin)).await?;

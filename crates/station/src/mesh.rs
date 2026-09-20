@@ -115,6 +115,10 @@ enum RpcRequest {
         path: String,
         body: Option<Value>,
     },
+    ClientFile {
+        artifact_id: String,
+        offset: usize,
+    },
     Workers {
         leader_id: String,
     },
@@ -461,12 +465,17 @@ impl MeshService {
         .apply_defaults(&mut config)?;
         managed::validate(&config)?;
         let control_state = Arc::new(std::sync::OnceLock::new());
-        let runtime = managed::start_with_control(
+        let runtime = managed::start_with_control_retiring_sources(
             root,
             &config,
             Arc::new(ControlIngress {
                 state: control_state.clone(),
             }),
+            &[
+                "zork",
+                zork_config::tree::STATION_FILES_SPACE,
+                "zork-control",
+            ],
         )
         .await?;
         let node = runtime.node();
@@ -478,14 +487,6 @@ impl MeshService {
         managed::configure(root, &config, &node).await?;
         let files = zork_config::files_root(root);
         std::fs::create_dir_all(&files)?;
-        node.retire_source("zork").await?;
-        // The station business tree holds workspaces, repositories, jobs, session
-        // records and frozen attachments. Those are internal state, not user
-        // sharing: only the shared folder and the skill sources are published.
-        // A node that already published this space gives the role up here, so the
-        // removal is published instead of leaving a stale view in the mesh.
-        node.retire_source(zork_config::tree::STATION_FILES_SPACE)
-            .await?;
         let shared = zork_config::shared_files_root(root);
         std::fs::create_dir_all(&shared)?;
         node.add_filesystem_source(zork_config::tree::SHARED_FILES_SPACE, &shared)
@@ -494,7 +495,6 @@ impl MeshService {
         std::fs::create_dir_all(&skills)?;
         node.add_filesystem_source(zork_config::tree::SKILLS_SPACE, &skills)
             .await?;
-        node.retire_source("zork-control").await?;
         node.schedule_source_scan(zork_config::tree::SHARED_FILES_SPACE)
             .await?;
         node.schedule_source_scan(zork_config::tree::SKILLS_SPACE)
@@ -1181,6 +1181,22 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         | RpcRequest::WatchAssignment { .. } => anyhow::bail!("subscription_requires_stream"),
         RpcRequest::Client { method, path, body } => {
             client_request(state, &method, &path, body).await
+        }
+        RpcRequest::ClientFile {
+            artifact_id,
+            offset,
+        } => {
+            ensure!(artifact_id.len() <= 200, "invalid_artifact_id");
+            let db = state.db.clone();
+            Ok(
+                match tokio::task::spawn_blocking(move || db.artifact_chunk(&artifact_id, offset))
+                    .await?
+                {
+                    Ok(Some(chunk)) => json!({"status":200,"body":chunk}),
+                    Ok(None) => json!({"status":404,"body":{"error":"artifact_not_found"}}),
+                    Err(error) => json!({"status":400,"body":{"error":error.to_string()}}),
+                },
+            )
         }
         RpcRequest::ClientBrowser {
             session_id,

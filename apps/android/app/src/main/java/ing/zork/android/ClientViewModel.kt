@@ -18,7 +18,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-import androidx.compose.ui.graphics.asImageBitmap
 
 internal fun JSONArray?.objects(): List<JSONObject> =
     if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
@@ -30,13 +29,14 @@ internal data class Conversation(val id: String, val title: String, val leaderId
     val canSend: Boolean = true, val avatar: String? = null, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
     val user: Boolean, val pending: Boolean = false, val attempted: Boolean = false,
-    val avatar: String? = null, val createdAt: String = "", val device: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null)
+    val avatar: String? = null, val createdAt: String = "", val device: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
 
 internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.text("author_name", if (it.text("role") == "user") "用户" else "小伙伴"),
     it.text("display_content", it.text("content")), it.text("role") == "user", pending = it.optBoolean("pending"), attempted = it.optBoolean("attempted"),
     avatar = it.text("author_avatar"), createdAt = it.text("created_at"), device = it.text("device"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),
-    deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard))
+    deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard),
+    deliveredFiles = it.optJSONArray("files").objects().map { file -> ChatFileUi(file.getString("id"), file.getString("name"), file.getLong("byte_len")) })
 
 internal data class TextAttachmentUi(val id: String, val name: String, val content: String, val caption: String = "文本附件") {
     fun json(): JSONObject = JSONObject().put("id", id).put("name", name).put("content", content)
@@ -155,6 +155,13 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     var sharedFileImage by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
         private set
+    var chatFile by mutableStateOf<ChatFilePreviewUi?>(null)
+        private set
+    var chatFileImage by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+        private set
+    private var chatFilesWatch: Job? = null
+    private var chatImageJob: Job? = null
+    private var chatImageKey: String? = null
     private var sharedFilesWatch: Job? = null
     private var sharedImageJob: Job? = null
     private var sharedImageRoot: String? = null
@@ -223,11 +230,13 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             settings?.device?.id?.let { watchSettings(it) }
             settings?.resource?.let { watchResources(it); refreshResources(it) }
             if (sharedFiles != null) watchSharedFiles()
+            if (chatFile != null) watchChatFiles()
             if (foreground) { if (invitation != null) watchInvitation() else startLive(); startHistory() }
         } else {
             settingsWatch?.cancel()
             resourcesWatch?.cancel()
             sharedFilesWatch?.cancel()
+            chatFilesWatch?.cancel()
             notificationsWatch?.cancel()
             adbWatch?.cancel()
             dataResetWatch?.cancel()
@@ -396,6 +405,50 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    fun openChatFile(message: String, file: String) {
+        val peer = activePeer?.id ?: return
+        val session = conversation?.id ?: return
+        watchChatFiles()
+        chatFileAction("open", "peer" to peer, "session" to session, "message" to message, "file" to file)
+    }
+    fun chatFileAction(action: String, vararg fields: Pair<String, Any?>) {
+        val operation = JSONObject().put("action", action)
+        fields.forEach { (key, value) -> operation.put(key, value ?: JSONObject.NULL) }
+        viewModelScope.launch {
+            runCatching { repo.command("chat_files", "operation" to operation) }
+                .onFailure { if (it !is CancellationException) notice = it.message }
+        }
+    }
+    private fun watchChatFiles() {
+        chatFilesWatch?.cancel()
+        chatFilesWatch = viewModelScope.launch {
+            try {
+                repo.chatFileEvents().collect { frame ->
+                    val next = frame.value.getJSONObject("snapshot").optJSONObject("preview")?.let(::parseChatFilePreview)
+                    chatFile = next
+                    val key = next?.key?.takeIf { next.mime.startsWith("image/") && next.contentReady }
+                    if (chatImageKey != key) {
+                        chatImageKey = key
+                        chatImageJob?.cancel(); chatFileImage = null
+                        if (key != null) chatImageJob = viewModelScope.launch {
+                            val bitmap = decodeFileImage(repo.chatPreviewBytes(key))
+                            if (chatImageKey == key) chatFileImage = bitmap
+                        }
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { notice = e.message }
+        }
+    }
+    fun saveChatFile(uri: android.net.Uri?, ticket: String) {
+        if (uri == null) { chatFileAction("cancel_save", "ticket" to ticket); return }
+        viewModelScope.launch {
+            try { repo.saveChatFile(uri, ticket) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { notice = e.message; chatFileAction("cancel_save", "ticket" to ticket) }
+        }
+    }
+
     fun openSharedFiles() {
         watchSharedFiles()
         sharedFileAction("activate", "active" to true)
@@ -431,18 +484,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (root == null) return
         sharedImageJob = viewModelScope.launch {
             val bytes = repo.sharedPreviewBytes(root)
-            val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                if (bytes.isEmpty()) null else {
-                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 8192 || bounds.outHeight > 8192 || bounds.outWidth.toLong() * bounds.outHeight > 16_777_216) null
-                    else {
-                        val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 1 }
-                        while (bounds.outWidth / options.inSampleSize > 2048 || bounds.outHeight / options.inSampleSize > 2048) options.inSampleSize *= 2
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-                    }
-                }
-            }
+            val bitmap = decodeFileImage(bytes)
             if (sharedImageRoot == root) sharedFileImage = bitmap
         }
     }

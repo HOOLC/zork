@@ -1,149 +1,83 @@
 #!/usr/bin/env python3
-"""Install a prepared macOS client on a destination host through SSH stdin."""
-import hashlib
+"""Install a verified channel candidate with a complete, recoverable data transaction."""
+import argparse
+import importlib.util
 import json
-import os
-import signal
-from contextlib import closing
 from pathlib import Path
 import shutil
-import sqlite3
-import subprocess
-import sys
-import time
-from urllib.request import urlopen
+
+from deployment import atomic_json, digest, exclusive, extract_candidate
+from deployment_macos import validate_app
 
 
-def run(argv):
-    subprocess.run(argv, check=True)
-
-
-def register_app(app):
-    # Refresh nested Launch Services records explicitly after replacement,
-    # before the GUI can launch its browser through the final installed paths.
-    tool = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-    bundles = [app, *sorted(app.rglob('*.app'))]
-    run([tool, '-f', *(str(bundle.resolve()) for bundle in bundles)])
-
-
-def processes(app):
-    prefix = str(app / 'Contents') + '/'
-    return [line for line in subprocess.check_output(['ps', '-axo', 'command='], text=True).splitlines()
-            if line.startswith(prefix)]
-
-
-def wait_for(check, description, seconds=30):
-    end = time.monotonic() + seconds
-    while time.monotonic() < end:
-        if check():
-            return
-        time.sleep(0.25)
-    raise RuntimeError(description)
-
-
-def quit_app(app):
-    if processes(app):
-        run(['osascript', '-e', 'tell application id "ing.zork.desktop" to quit'])
-        try:
-            wait_for(lambda: not processes(app), 'Zork 未完成退出；未替换应用', seconds=5)
-        except RuntimeError:
-            # Some GUI builds keep running after the Apple event. Terminate
-            # only this installed GUI; its supervisor then shuts down normally.
-            gui = str(app / 'Contents/MacOS/zork-gui')
-            for line in subprocess.check_output(['ps', '-axo', 'pid=,command='], text=True).splitlines():
-                fields = line.strip().split(None, 1)
-                if len(fields) == 2 and (fields[1] == gui or fields[1].startswith(gui + ' ')):
-                    try:
-                        os.kill(int(fields[0]), signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-            wait_for(lambda: not processes(app), 'Zork 未完成退出；未替换应用')
-
-
-def verify(app, expect_node):
-    gui = str(app / 'Contents/MacOS/zork-gui')
-    wait_for(lambda: any(line == gui or line.startswith(gui + ' ') for line in processes(app)), '新版界面未启动')
-    time.sleep(1)
-    if not any(line == gui or line.startswith(gui + ' ') for line in processes(app)):
-        raise RuntimeError('新版界面启动后退出')
-    if expect_node:
-        def healthy():
-            try:
-                config = json.loads((Path.home() / 'Library/Application Support/Zork/client/node/config.json').read_text())
-                bind = config['bind']['runtime']
-                host, port = bind.rsplit(':', 1)
-                if host in ('0.0.0.0', '[::]'):
-                    bind = '127.0.0.1:' + port
-                with urlopen('http://' + bind + '/readyz', timeout=1) as response:
-                    return response.status == 200
-            except (OSError, ValueError, KeyError):
-                return False
-        wait_for(healthy, '本机节点未恢复就绪', seconds=90)
-
-
-def local_node_enabled(database, fallback):
-    if not database.exists():
-        return fallback
-    # A running client may be closing/reopening its WAL sidecars. Retry the
-    # read-only preflight, and release the connection before quitting the app.
-    for attempt in range(3):
-        try:
-            with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
-                row = db.execute("SELECT value FROM cache WHERE node='device' AND key='local-node-enabled'").fetchone()
-                return json.loads(row[0]) if row else any(
-                    json.loads(value).get('local') for (value,) in db.execute('SELECT value FROM nodes'))
-        except sqlite3.OperationalError:
-            if attempt == 2:
-                raise
-            time.sleep(0.25)
+def recovery_module():
+    path = Path(__file__).resolve().parents[1] / 'dev/recovery.py'
+    spec = importlib.util.spec_from_file_location('recovery', path)
+    recovery = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(recovery)
+    return recovery
 
 
 def main():
-    stage = Path(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('stage', type=Path)
+    parser.add_argument('sha256')
+    parser.add_argument('--channel', choices=('dev', 'release'), required=True)
+    parser.add_argument('--root', type=Path, default=Path.home() / 'Zork')
+    parser.add_argument('--profile', required=True)
+    parser.add_argument('--model', required=True)
+    parser.add_argument('--thinking', default='off')
+    args = parser.parse_args()
+    stage, root = args.stage.resolve(), args.root.expanduser().resolve()
     archive = stage / 'app.tar.gz'
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != sys.argv[2]:
-        raise RuntimeError('安装包校验失败；未修改应用')
-    run(['tar', '-xzf', str(archive), '-C', str(stage)])
-    incoming = stage / 'Zork.app'
-    run(['codesign', '--verify', '--deep', '--strict', str(incoming)])
-    app = Path.home() / 'Applications/Zork.app'
-    app.parent.mkdir(parents=True, exist_ok=True)
-    running = processes(app)
-    expect_node = any(
-        executable in line
-        for line in running
-        for executable in ('/zork-station ', '/zork-station ')
-    )
-    database = Path.home() / 'Library/Application Support/Zork/client/client.db'
-    expect_node = local_node_enabled(database, expect_node)
-    quit_app(app)
-    previous_app = stage / 'previous.app'
-    if previous_app.exists():
-        raise RuntimeError('安装暂存目录已有旧应用；未替换应用')
-    previous = app.exists()
-    if previous:
-        app.rename(previous_app)
-    try:
-        shutil.move(str(incoming), str(app))
-        run(['codesign', '--verify', '--deep', '--strict', str(app)])
-        register_app(app)
-        run(['open', str(app)])
-        verify(app, expect_node)
-    except Exception:
-        # Restore the bundle only; client data and configuration are never copied or reset.
-        quit_app(app)
-        if app.exists():
-            shutil.move(str(app), str(stage / 'failed.app'))
-        if previous:
-            previous_app.rename(app)
-            register_app(app)
-            if running:
-                run(['open', str(app)])
-        raise
-    if previous:
-        shutil.rmtree(previous_app)
-    print('MBA 已更新并启动' + ('，本机节点就绪。' if expect_node else '。'), flush=True)
-    print('旧版应用已清理，未保留历史备份。', flush=True)
+    if digest(archive) != args.sha256:
+        raise RuntimeError('Installation archive digest differs; app untouched')
+    unpacked = stage / 'unpacked'
+    unpacked.mkdir()
+    extract_candidate(archive, unpacked)
+    incoming = unpacked / 'candidate'
+    recovery = recovery_module()
+    record, app = recovery.load_candidate(incoming)
+    if record['kind'] != 'app' or record['channel'] != args.channel:
+        raise RuntimeError('Installation candidate has the wrong channel or product kind')
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with exclusive(root / 'deployment.lock'):
+        settings_path = root / 'deployment-config.json'
+        if settings_path.exists():
+            settings = json.loads(settings_path.read_text())
+        else:
+            settings = {'repo': '', 'channels': {name: {} for name in ('release', 'dev')}}
+        for channel in ('release', 'dev'):
+            data = (Path.home() / 'Zork/client-dev' if channel == 'dev' else
+                    Path.home() / 'Library/Application Support/Zork/client')
+            settings['channels'][channel].setdefault('app', {
+                'data': str(data),
+                'preferences': str((data if channel == 'dev' else data.parent) / 'preferences.json'),
+                'ancillary': [] if channel == 'dev' else [str(data.parent / 'preferences.json'), str(data.parent / 'logs/client.log')],
+                'payload': str(Path.home() / 'Applications' / ('Zork Dev.app' if channel == 'dev' else 'Zork.app'))})
+        selected = settings['channels'][args.channel]['app']
+        selected.setdefault('health', {}).update(profile=args.profile, model=args.model, thinking=args.thinking)
+        validate_app(app, args.channel, selected.get('id_prefix'))
+        atomic_json(settings_path, settings)
+        recovery.channel_config(root, args.channel, 'app')
+        recovery.require_no_pending(root, args.channel, 'app')
+        candidate = root / 'candidates' / record['id']
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        if candidate.exists():
+            recovery.load_candidate(candidate)
+        else:
+            shutil.move(incoming, candidate)
+        # Install the independent recovery entry before any live mutation, including
+        # a failed first deployment; recovery never depends on the failed GUI.
+        tools = root / 'tools' / ('installer-' + record['id'][:16])
+        if not tools.exists():
+            shutil.copytree(Path(__file__).resolve().parents[1], tools)
+        recovery.install_tools(root, Path(settings['repo'] or '.'))
+        result = recovery.apply_candidate(root, args.channel, candidate)
+        result['recovery_argv'] = ['python3', str(tools / 'dev/recovery.py'), '--root', str(root),
+                                   'recover', result['transaction']]
+        atomic_json(stage / 'result.json', result)
+    print(json.dumps({key: result[key] for key in ('candidate', 'transaction', 'health', 'recovery_argv')}, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

@@ -104,6 +104,7 @@ internal class WorkbenchActions(
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
     val history: (String, String) -> Unit = { _, _ -> },
     val sharedFiles: () -> Unit = {},
+    val chatFile: (String, String) -> Unit = { _, _ -> },
 )
 
 private class ConversationPresentation {
@@ -451,6 +452,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
     }
     val messageActions = remember {
         WorkbenchActions(resend = { latestActions.value.resend(it) }, deleteFailed = { latestActions.value.deleteFailed(it) },
+            chatFile = { message, file -> latestActions.value.chatFile(message, file) },
             file = { latestActions.value.file(it) }, message = { latestActions.value.message(it) }, older = { latestActions.value.older() },
             comment = { row, quote -> latestActions.value.comment(row, quote) }, newer = { latestActions.value.newer() },
             interaction = { id, choice, values -> latestActions.value.interaction(id, choice, values) })
@@ -546,7 +548,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Spacer(Modifier.height(22.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
                             Column {
-                            MessageRow(row, messageActions.resend, messageActions.deleteFailed, messageActions.file, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
+                            MessageRow(row, messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -627,14 +629,15 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerMot
 }
 
 @Composable
-private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
+private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
-            if (row.content.isNotBlank() || row.files.isNotEmpty()) {
+            if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
                 LiquidCard(color = ZorkColors.Bubble, radius = 20.dp) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                         if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
+            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
                     }
                 }
             }
@@ -671,6 +674,7 @@ private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed:
             }
             if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
             row.files.forEach { FileCard(it) { file(it) } }
+            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
         }
     }
 }
