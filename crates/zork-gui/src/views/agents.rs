@@ -19,21 +19,6 @@ impl RootView {
         }
         view
     }
-    pub(crate) fn prepare_device_request(&mut self, cx: &mut Context<Self>) {
-        let existing = self.composer_input.read(cx).value().to_owned();
-        let request = "请帮我连接一台设备，先与我确认设备信息和接入方式。";
-        self.composer_input.update(cx, |input, cx| {
-            input.set_value(
-                if existing.trim().is_empty() {
-                    request.into()
-                } else {
-                    format!("{existing}\n{request}")
-                },
-                cx,
-            )
-        });
-        self.save_draft(cx);
-    }
     pub(crate) fn attach_navigation(
         &mut self,
         navigation: Entity<crate::desktop::navigation::DeviceNavigation>,
@@ -84,23 +69,15 @@ impl RootView {
                     page.update(cx, |v, cx| v.focus(cx));
                 }
             }
-            Destination::Leader(id) | Destination::PrepareDevice(id) => {
+            Destination::Leader(id) => {
                 // The sidebar can deliver input before this view's next frame
                 // applies its catalog batch. Resolve the ID from core's current
                 // read-only snapshot instead of the previous painted catalog.
                 let state = self.core_device.snapshot();
                 if let Some(agent) = state.agents.iter().find(|a| a["id"] == *id).cloned() {
                     self.open_leader(agent, cx);
-                    if matches!(destination, Destination::PrepareDevice(_)) {
-                        self.prepare_device_request(cx);
-                    }
                 }
             }
-            Destination::Task { leader, session } => {
-                self.active_leader = Some(leader.clone());
-                self.select_session(session, cx);
-            }
-            Destination::Page(route) => self.navigate_shell(route.clone(), cx),
             Destination::Manage(_) | Destination::SharedFiles => {}
         }
         self.notify_navigation(cx);

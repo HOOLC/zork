@@ -91,26 +91,6 @@ pub struct DeviceCode {
     pub extra: Value,
 }
 
-impl DeviceCode {
-    pub fn public_id(&self) -> String {
-        format!("{}:{}", self.provider, self.device_code)
-    }
-
-    pub fn to_start_json(&self) -> Value {
-        json!({
-            "deviceCode": {
-                "deviceAuthId": self.public_id(),
-                "userCode": self.user_code,
-                "verificationUrl": self.verification_url,
-                "intervalSeconds": self.interval_seconds,
-                "expiresAt": self.expires_at,
-                "provider": self.provider,
-                "billing": self.billing,
-            }
-        })
-    }
-}
-
 impl Default for DeviceCode {
     fn default() -> Self {
         Self {
@@ -213,13 +193,6 @@ pub fn catalog() -> Value {
             })
             .collect::<Vec<_>>(),
     })
-}
-
-pub fn parse_device_auth_id(value: &str) -> Result<(&str, &str)> {
-    value
-        .split_once(':')
-        .filter(|(provider, code)| !provider.is_empty() && !code.is_empty())
-        .context("deviceAuthId must be provider:device_code")
 }
 
 pub(crate) fn nonempty(value: Option<&Value>) -> Option<String> {

@@ -9,7 +9,7 @@ def main():
  # Benchmark-only fixtures do not participate in the rendered gallery. Keeping
  # them out also avoids treating measurement-harness fixes as production changes.
  data['production_source_hashes']={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for directory in ['crates/zork-gui/src','crates/zork-ui/src'] for path in (ROOT/directory).rglob('*.rs') if path.name not in ['stories.rs','storybook.rs','benchmark.rs','render-bench.rs'] and not any(part in ['benchmark','render-bench'] for part in path.relative_to(ROOT).parts)}
- data['native_compositor_sources']={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [ROOT/'crates/zork-ui/native/modal-blur.m',ROOT/'crates/zork-ui/build.rs']}
+ data.pop('native_compositor_sources', None)
  data['fixture']=json.loads((ROOT/'crates/zork-ui/assets/stories/page-fixture.json').read_text())
  for story in data['stories']:
   if story['family'] not in ['connection','model','agent','conversation','client','device','mesh','enrollment']:story['design']={'status':'not_applicable'}

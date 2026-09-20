@@ -1281,21 +1281,6 @@ pub enum MenuSurface {
     },
 }
 
-pub fn menu_item(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    width: f32,
-    checked: Option<bool>,
-    enabled: bool,
-    surface: MenuSurface,
-    window: &mut Window,
-    cx: &mut App,
-) -> Stateful<Div> {
-    menu_item_with_icon(
-        id, label, width, checked, enabled, None, surface, window, cx,
-    )
-}
-
 pub fn menu_item_with_icon(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,

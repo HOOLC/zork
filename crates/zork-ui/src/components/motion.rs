@@ -74,20 +74,6 @@ impl HoverFill {
     }
 }
 
-pub fn enter_instrumented<E: gpui::Element + gpui::Styled + 'static>(
-    element: crate::automation::element::AutomationElement<E>,
-    id: impl Into<ElementId>,
-    distance: f32,
-) -> impl IntoElement {
-    element.with_animation(
-        id,
-        Animation::new(Duration::from_millis(180))
-            .with_easing(|t| 1. - (1. - t).powi(3))
-            .with_max_fps(60.),
-        move |v, t| v.map_inner(|v| v.relative().top(px(distance * (1. - t))).opacity(t)),
-    )
-}
-
 pub fn mix_rgb(from: u32, to: u32, progress: f32) -> gpui::Rgba {
     let t = progress.clamp(0., 1.);
     let value = [16, 8, 0].into_iter().fold(0, |value, shift| {

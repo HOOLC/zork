@@ -224,13 +224,6 @@ impl DeliveryPump {
     pub fn reports(&self) -> tokio::sync::watch::Receiver<DeliveryReport> {
         self.reports.clone()
     }
-    pub fn take_report(&mut self) -> Option<DeliveryReport> {
-        self.reports
-            .has_changed()
-            .ok()
-            .filter(|changed| *changed)
-            .map(|_| self.reports.borrow_and_update().clone())
-    }
 }
 
 struct AttemptGuard<'a> {

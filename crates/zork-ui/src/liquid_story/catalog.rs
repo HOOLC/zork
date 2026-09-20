@@ -194,7 +194,7 @@ impl Kind {
             Self::Navigation => "TabGroup · hover / active marker · horizontal / vertical",
             Self::Rows => "InteractiveRow · settings row · selectable card",
             Self::Popover => "Dropdown · SelectorMenu · action menu · member multi-select",
-            Self::Details => "Hint · DetailsTooltip · SlidingPopup",
+            Self::Details => "Hint · DetailsTooltip",
             Self::Disclosure => "Collapse · ActivityHeader · history details · sidebar fold",
             Self::Composer => {
                 "真实 ComposerInput · 三行增高 · core 发送／停止能力 · 成员活动与附件"

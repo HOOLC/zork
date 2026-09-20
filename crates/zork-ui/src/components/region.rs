@@ -182,24 +182,6 @@ impl<T: 'static> Regions<T> {
         }
         .into_any_element()
     }
-    /// Reuse a rendered texture on capable platforms while preserving the
-    /// ordinary retained view's layout and input invalidation.
-    pub fn gpu_element(
-        &mut self,
-        name: &str,
-        style: StyleRefinement,
-        cx: &mut Context<T>,
-        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
-    ) -> gpui::AnyElement {
-        let view = self.ensure(name, cx, render);
-        RegionElement {
-            rasterized: true,
-            measured: Some(view.read(cx).layout.clone()),
-            view,
-            style: Some(style),
-        }
-        .into_any_element()
-    }
     /// Preserve intrinsic height on the frame that changes content/width, then
     /// reuse that measured height on subsequent unrelated frames. No guessed
     /// text heights or fixed-height clipping are introduced by caching.
@@ -211,15 +193,6 @@ impl<T: 'static> Regions<T> {
         render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
     ) -> gpui::AnyElement {
         self.auto_height_inner(name, width_key, cx, render, false)
-    }
-    pub fn gpu_auto_height(
-        &mut self,
-        name: &str,
-        width_key: f32,
-        cx: &mut Context<T>,
-        render: impl Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement + 'static,
-    ) -> gpui::AnyElement {
-        self.auto_height_inner(name, width_key, cx, render, true)
     }
     fn auto_height_inner(
         &mut self,

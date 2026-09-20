@@ -85,11 +85,6 @@ pub fn prepare_process_identity() -> Result<ProcessIdentity> {
     })
 }
 
-/// Call on the main thread before starting a packaged background runtime.
-pub fn register_process_identity() -> Result<()> {
-    prepare_process_identity()?.register()
-}
-
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ServiceSettings {
