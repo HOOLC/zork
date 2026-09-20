@@ -313,19 +313,11 @@ async fn start_owned(
                 _ = stop_push.recv() => break,
                 request = pending_publish.recv() => {
                     let Some(request) = request else { break; };
-                    tokio::select! {
-                        _ = stop_push.recv() => break,
-                        result = async {
-                            // Queue initial source scans without coupling local
-                            // readiness to a peer's network availability.
-                            pushing.scan_source_and_stage_async(&request.space).await?;
-                            Ok::<_, synch_engine::EngineError>(())
-                        } => {
-                            let result = result.map_err(anyhow::Error::from);
-                            if let Err(error) = &result {
-                                tracing::warn!(%error, "startup Mesh publication failed");
-                            }
-                        }
+                    // This local scan owns a non-cancellable blocking task.
+                    // Drain it before releasing the database or recording a
+                    // clean close; dropping its future would detach the write.
+                    if let Err(error) = pushing.scan_source_and_stage_async(&request.space).await {
+                        tracing::warn!(%error, "startup Mesh publication failed");
                     }
                 }
             }
@@ -405,10 +397,14 @@ async fn start_owned(
             elapsed_ms = draining_started.elapsed().as_millis() as u64,
             "Synch transport and loops drained"
         );
+        // A scanner may stage its final batch after the publisher loop has
+        // flushed on stop. Commit it locally after every producer has drained.
+        let final_publication = engine.publish_staged().await;
         drop(local_registration);
         closing.release_engine();
         drop(engine);
         let clean_close = shutdown?;
+        final_publication?;
         if let Some(error) = failure {
             anyhow::bail!(error);
         }

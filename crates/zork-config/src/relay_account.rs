@@ -192,7 +192,17 @@ fn options() -> OpenOptions {
 }
 
 /// The owner keeps this lock through read, network rotation, and atomic replace.
-pub fn try_lock(root: &Path) -> Result<Option<File>> {
+pub struct AccountLock(File);
+
+impl Drop for AccountLock {
+    fn drop(&mut self) {
+        // Closing alone can leave the lock held by a concurrently forked
+        // child until it execs. The account owner ends the critical section.
+        let _ = FileExt::unlock(&self.0);
+    }
+}
+
+pub fn try_lock(root: &Path) -> Result<Option<AccountLock>> {
     let dir = private_dir(root)?;
     let lock = options()
         .read(true)
@@ -201,7 +211,7 @@ pub fn try_lock(root: &Path) -> Result<Option<File>> {
         .truncate(false)
         .open(dir.join("relay.lock"))?;
     match lock.try_lock_exclusive() {
-        Ok(()) => Ok(Some(lock)),
+        Ok(()) => Ok(Some(AccountLock(lock))),
         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
         Err(error) => Err(error.into()),
     }
@@ -343,6 +353,18 @@ mod tests {
         }
         drop(lock);
         assert!(try_lock(dir.path()).unwrap().is_some());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn dropping_owner_unlocks_even_with_an_inherited_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = try_lock(dir.path()).unwrap().unwrap();
+        // A concurrently forked child can retain the same open-file
+        // description until exec, even when CLOEXEC is set.
+        let inherited = owner.0.try_clone().unwrap();
+        drop(owner);
+        assert!(try_lock(dir.path()).unwrap().is_some());
+        drop(inherited);
     }
     #[test]
     fn legacy_credentials_and_insecure_or_credential_origins_are_rejected() {

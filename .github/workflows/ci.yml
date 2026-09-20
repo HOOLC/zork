@@ -20,6 +20,9 @@ on:
       - "crates/zork-observe/**"
       - "vendor/synch*/**"
       - "vendor/rustls*/**"
+      - "vendor/iroh/**"
+      - "vendor/swarm-discovery/**"
+      - "vendor/noq-udp/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "packages/**"
@@ -30,6 +33,9 @@ on:
       - "vite.config.ts"
       - "scripts/check-runtime.sh"
       - "scripts/lib/build_env.py"
+      - "scripts/lib/ci_source_stamps.py"
+      - "scripts/test-ci-source-stamps.py"
+      - "scripts/test-build-env.py"
       - "scripts/test-mesh.py"
       - "scripts/test-skills.py"
       - "scripts/test-slack-forwarding.py"
@@ -53,7 +59,7 @@ permissions:
 jobs:
   runtime:
     name: ${{ inputs.prime_cache && 'Prime runtime cache (no tests)' || 'Main runtime contracts' }}
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.prime_cache)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.prime_cache && 15 || 5 }}
     env:
@@ -68,8 +74,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: target
-          key: ci-target-v5-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          key: ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
+            ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}-
+            ci-target-v6-runtime-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v5-runtime-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v4-station-${{ runner.os }}-${{ runner.arch }}-
             ci-target-v2-frontend-${{ runner.os }}-${{ runner.arch }}-
@@ -97,10 +105,14 @@ jobs:
           node-version: 22.15
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Restore timestamps of unchanged build inputs
+        run: python3 scripts/lib/ci_source_stamps.py restore
       - name: Build shared runtime and test binaries
         run: bash scripts/check-runtime.sh build
+      - name: Capture build input timestamps with content hashes
+        run: python3 scripts/lib/ci_source_stamps.py capture
       - name: Save compiled target cache
-        if: env.KACHE_CONFIGURED != 'true' && steps.target.outputs.cache-hit != 'true'
+        if: steps.target.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: target

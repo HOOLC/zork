@@ -32,11 +32,17 @@ async fn continuous_file_changes_are_published_without_waiting_for_quiescence() 
             Some(synch_core::record::encode(&entry)?),
         )]);
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if !node
-            .tree_directory(query("files"))
+        // Observe the committed first entry. A directory page can correctly
+        // reject its snapshot when this test's publisher commits mid-query.
+        if node
+            .blocking(move |node| {
+                Ok(node
+                    .versions("files", "entry-0")?
+                    .entries
+                    .iter()
+                    .any(|entry| entry.content == Some(content)))
+            })
             .await?
-            .entries
-            .is_empty()
         {
             published = true;
             break;
