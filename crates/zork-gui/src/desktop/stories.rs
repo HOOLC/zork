@@ -40,6 +40,11 @@ pub fn install(cx: &mut gpui::App) {
 
 pub fn catalog() -> Vec<Story> {
     let mut items = zork_ui::stories::catalog();
+    for story in &mut items {
+        if story.family == "history" {
+            story.source = "crates/zork-ui/src/history_page/mod.rs".into();
+        }
+    }
     for (family, title, states, source) in [
         (
             "welcome",
@@ -490,6 +495,54 @@ pub struct StoryHost {
     _directory: tempfile::TempDir,
 }
 impl StoryHost {
+    /// Presentation-only bulk expansion for the native specimen host.
+    pub fn history_expanded(&self, cx: &gpui::App) -> bool {
+        use zork_ui::history_page::Host;
+        self.inner
+            .clone()
+            .downcast::<zork_ui::history_page::stories::Story>()
+            .is_ok_and(|view| {
+                let state = view.read(cx).history();
+                !state.expanded.is_empty() || !state.output_expanded.is_empty()
+            })
+    }
+
+    pub fn set_history_expanded(&mut self, expanded: bool, cx: &mut Context<Self>) {
+        use zork_ui::history_page::Host;
+        if let Ok(view) = self
+            .inner
+            .clone()
+            .downcast::<zork_ui::history_page::stories::Story>()
+        {
+            view.update(cx, |v, cx| {
+                let state = v.history_mut();
+                state.hold_disclosure(0);
+                state.expanded.clear();
+                state.output_expanded.clear();
+                state.records_expanded.clear();
+                if expanded {
+                    for block in &state.projection.blocks {
+                        if block.is_group() {
+                            let entry = state.projection.activities[block.start].entry;
+                            state.expanded.insert(state.entries[entry].id.clone());
+                        }
+                    }
+                    for activity in &state.projection.activities {
+                        if activity.kind == zork_ui::history::activity::Kind::Output {
+                            state
+                                .output_expanded
+                                .insert(state.entries[activity.entry].id.clone());
+                        }
+                    }
+                }
+                state.rebuild_rows();
+                zork_ui::components::region::invalidate_all(cx);
+                cx.emit(zork_ui::history_page::HistoryChanged::clock());
+                cx.notify();
+            });
+            cx.notify();
+        }
+    }
     pub fn inspect(&self, cx: &gpui::App) -> Value {
         if let Ok(view) = self
             .inner

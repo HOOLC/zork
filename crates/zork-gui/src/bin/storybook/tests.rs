@@ -1,0 +1,89 @@
+use super::*;
+
+#[test]
+fn physical_navigation_preserves_edits_and_reset_is_local() {
+    let mut app = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = app.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let catalog: Vec<_> = stories::catalog()
+        .into_iter()
+        .filter(|s| {
+            matches!(
+                s.id.as_str(),
+                "field-empty" | "history-collapsed" | "button-primary"
+            )
+        })
+        .collect();
+    let initial = catalog.iter().position(|s| s.id == "field-empty").unwrap();
+    let mut root = None;
+    let window = app
+        .open_window(size(px(1320.), px(860.)), |_, cx| {
+            let gallery = cx.new(|cx| Gallery::new(catalog, initial, driver.clone(), false, cx));
+            root = Some(gallery.clone());
+            cx.new(|_| AutomationRoot::new(gallery))
+        })
+        .unwrap();
+    let root = root.unwrap();
+    let window = window.into();
+    let act = |app: &mut HeadlessAppContext, action: Value| {
+        app.update_window(window, |_, w, cx| {
+            driver.dispatch(serde_json::from_value(action).unwrap(), w, cx)
+        })
+        .unwrap()
+        .unwrap();
+        settle(app, window).unwrap();
+    };
+    let click = |app: &mut HeadlessAppContext, id: &str| {
+        act(app, json!({"type":"click","target":{"element_id":id}}));
+    };
+    let text = |app: &HeadlessAppContext| {
+        root.read_with(app, |v, cx| {
+            v.session().host.read(cx).inspect(cx)["text"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+    };
+    settle(&mut app, window).unwrap();
+    click(&mut app, "story-field");
+    act(
+        &mut app,
+        json!({"type":"type_text","text":"保留 Native 123"}),
+    );
+    assert_eq!(text(&app), "保留 Native 123");
+    click(&mut app, "story-family-field");
+    assert_eq!(text(&app), "保留 Native 123", "reselecting must not reset");
+    click(&mut app, "story-family-history");
+    click(&mut app, "story-expand");
+    click(&mut app, "story-family-field");
+    assert_eq!(text(&app), "保留 Native 123");
+    click(&mut app, "story-size");
+    click(&mut app, "story-size-2");
+    assert_eq!(
+        text(&app),
+        "保留 Native 123",
+        "resize must not recreate the editor"
+    );
+    let canvas = driver
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|e| e.id == "story-canvas")
+        .unwrap();
+    assert_eq!(canvas.bounds.width, 320.);
+    click(&mut app, "story-reset");
+    assert_eq!(text(&app), "");
+    click(&mut app, "story-family-history");
+    assert!(
+        root.read_with(&app, |v, cx| v.session().host.read(cx).history_expanded(cx)),
+        "resetting an input must not reset the history specimen"
+    );
+}
