@@ -4,6 +4,7 @@ use anyhow::{ensure, Context, Result};
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Arc,
@@ -53,6 +54,7 @@ fn config() -> zork_config::MeshConfig {
     zork_config::MeshConfig {
         enabled: true,
         offline: true,
+        bind: Some("127.0.0.1:0".into()),
         ..Default::default()
     }
 }
@@ -85,6 +87,7 @@ async fn start(
     origin: String,
     client: &str,
     stations: &[String],
+    routes: &BTreeMap<String, String>,
 ) -> Result<Station> {
     let mut listeners = vec![];
     let mut bind = serde_json::Map::new();
@@ -102,9 +105,9 @@ async fn start(
                 .map(String::as_str)
                 .filter(|other| *other != origin),
         )
-        .map(|peer| json!({"origin":peer,"name":"Fixture peer","client":true,"execute":[]}))
+        .map(|peer| json!({"origin":peer,"addr":routes[peer],"name":"Fixture peer","client":true,"execute":[]}))
         .collect::<Vec<_>>();
-    let settings = json!({"bind":bind,"admin":{"token":TOKEN},"mesh":{"enabled":true,"offline":true,"name":root.file_name().unwrap().to_string_lossy(),"peers":peers}});
+    let settings = json!({"bind":bind,"admin":{"token":TOKEN},"mesh":{"enabled":true,"offline":true,"bind":routes[&origin],"name":root.file_name().unwrap().to_string_lossy(),"peers":peers}});
     std::fs::write(root.join("config.json"), serde_json::to_vec(&settings)?)?;
     std::fs::create_dir_all(root.join("profiles"))?;
     std::fs::write(
@@ -371,9 +374,28 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     published(&legacy.node(), &legacy_reference).await?;
     legacy
         .node()
-        .trust(&accessor, "accessor before upgrade", None)
+        .trust(
+            &accessor,
+            "accessor before upgrade",
+            node.address()?
+                .ip_addrs()
+                .next()
+                .map(ToString::to_string)
+                .as_deref(),
+        )
         .await?;
-    node.trust(&third_id, "source before upgrade", None).await?;
+    node.trust(
+        &third_id,
+        "source before upgrade",
+        legacy
+            .node()
+            .address()?
+            .ip_addrs()
+            .next()
+            .map(ToString::to_string)
+            .as_deref(),
+    )
+    .await?;
     let old_object = published(&node, &legacy_reference).await?;
     ensure!(node.tree_read(&old_object).await? == b"existing workspace bytes");
     legacy.shutdown().await?;
@@ -383,6 +405,22 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
         b"{",
     )?;
     let ids = vec![first_id.clone(), second_id.clone(), third_id.clone()];
+    // This contract exercises publication and consumption, not multicast
+    // discovery (covered by Mesh tests). Give each isolated peer a direct route.
+    let mut routes = BTreeMap::from([(
+        accessor.clone(),
+        node.address()?
+            .ip_addrs()
+            .next()
+            .context("accessor route")?
+            .to_string(),
+    )]);
+    let mut reserved = BTreeMap::new();
+    for origin in &ids {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+        routes.insert(origin.clone(), socket.local_addr()?.to_string());
+        reserved.insert(origin.clone(), socket);
+    }
     for (name, body) in [
         ("first", b"first version".as_slice()),
         ("second", b"second version".as_slice()),
@@ -447,16 +485,36 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
             root.join(format!("first/skills/{managed}/linked-resource")),
         )?;
     }
+    reserved.remove(&first_id);
     let mut first = start(
         binary,
         root.join("first"),
         first_id.clone(),
         &accessor,
         &ids,
+        &routes,
     )
     .await?;
-    let second = start(binary, root.join("second"), second_id, &accessor, &ids).await?;
-    let third = start(binary, root.join("third"), third_id, &accessor, &ids).await?;
+    reserved.remove(&second_id);
+    let second = start(
+        binary,
+        root.join("second"),
+        second_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
+    reserved.remove(&third_id);
+    let third = start(
+        binary,
+        root.join("third"),
+        third_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
     let empty = request(
         &third.url,
         Method::POST,
@@ -491,7 +549,8 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     ensure!(rejected.status() == reqwest::StatusCode::BAD_REQUEST);
     println!("Three Stations ready; the existing node's user share is empty and its system files remain intact");
     for origin in &ids {
-        node.trust(origin, "unified tree fixture", None).await?;
+        node.trust(origin, "unified tree fixture", Some(&routes[origin]))
+            .await?;
     }
     // A single saved Station binding suffices: the tree comes from the one
     // embedded Synch node, not from an HTTP catalog fanout to saved Stations.
@@ -1082,7 +1141,15 @@ async fn run(binary: &Path, root: &Path) -> Result<()> {
     ensure!(!subscription.valid(stale.id));
     ensure!(source.write_copy(&revoked_ticket, &mut vec![]).is_err());
     ensure!(node.tree_read(&arbitrary).await.is_err());
-    first = start(binary, root.join("first"), first_id, &accessor, &ids).await?;
+    first = start(
+        binary,
+        root.join("first"),
+        first_id,
+        &accessor,
+        &ids,
+        &routes,
+    )
+    .await?;
     node.trust(&first.origin, "restored fixture trust", None)
         .await?;
     wait(&source, |s| s.devices.iter().any(|d| d.id == first.origin)).await?;
