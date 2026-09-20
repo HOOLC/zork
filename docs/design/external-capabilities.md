@@ -40,6 +40,16 @@ Agent 先发现目标并检查可用能力，再准备依赖、安装和验证�
 
 协议版本、配置示例和默认上限查 [runtime](../../crates/station/src/mcp/runtime.rs) 与 `zork mcp --help`；未协商支持的版本/扩展明确拒绝。
 
+<a id="desktop"></a>
+
+## 桌面控制
+
+桌面能力由设备上已登录图形会话的宿主进程提供。macOS 把屏幕录制与辅助功能授权绑定到宿主 app 的身份，因此驱动必须位于签名包内并由该宿主启动；授权仅由用户显式启动宿主的权限申请入口；模型调用不弹权限提示。授权缺失时明确失败，不静默降级为只读。Station 只连接它的本机 socket，不持有桌面授权，因此无图形会话的节点仍可运行，只是该设备此时没有桌面能力。
+
+同一设备上只认当前那一代宿主。宿主退出、socket 消失或驱动版本不匹配时，调用以明确错误结束；不回落到其它设备、另一个 daemon 代次或本机已失效的授权。Station 使用带版本与进程代次检查的本机 IPC，不安装或调用 MCP。截图只暂存到 Station 私有临时目录，不进入 Station 的 HTTP 正文，再由既有工具图片通路交给模型并清理；转交失败必须作为工具失败返回。工具与参数清单由运行时契约维护，本文不重复。
+
+macOS 打包可通过 `scripts/build-cua-driver.py` 从固定源码修订与锁文件生成运行产物，再交给 `scripts/package-macos-client.py --cua-runtime`。签名的 `ZorkDesktopControl.app` 与桌面主应用、Station 使用独立 bundle 身份；dev/release 前缀分开。用户在需要时运行 `open -a /path/to/ZorkDesktopControl.app --args --request-permissions` 并在系统设置中授权该宿主；不授权 Terminal 或 Station 来代替。无宿主的 headless 安装仍可运行，桌面工具明确报告不可用。
+
 <a id="services"></a>
 
 ## 服务与共享链接

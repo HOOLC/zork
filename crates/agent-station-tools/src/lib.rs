@@ -2,6 +2,7 @@
 //! resolved from ToolContext; model arguments cannot impersonate another task.
 pub mod agent_configuration;
 pub mod channels;
+mod computer;
 mod history;
 mod mcp;
 mod namespaced;
@@ -23,6 +24,7 @@ use zork_agent::session::{
 #[derive(Clone, Copy)]
 enum Kind {
     Browser,
+    Computer,
     ServiceOp(&'static str),
     History,
     Workers,
@@ -130,6 +132,7 @@ impl Kind {
                 // Typed text, selectors and opaque tab IDs are not display targets.
                 ToolActivity::field(zh, en, args, "/action/url")
             }
+            Self::Computer => ToolActivity::field("操作桌面", "Using desktop", args, "/tool"),
             Self::History => ToolActivity::new("查看聊天记录", "Reading chat history", ""),
             Self::Workers => ToolActivity::new("查看伙伴", "Checking companions", ""),
             Self::Assign => ToolActivity::new("分配任务", "Assigning task", "").target(
@@ -163,6 +166,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
         (Kind::Notify,"chat.notify","Compatibility alias for notify: send an asynchronous notification to the calling Agent Session mailbox. Prefer notify. This is not a Chat message.",json!({"text":string()}),vec!["text"]),
         (Kind::Job,"job.register","Register background shell work owned by this Session. Returns job id and status. Completion/failure is durably delivered back to this Session; decide whether to publish a result to Chat. restart_on_boot=true permits restarting registered/running jobs after Station restart. Set it to false for commands that must not replay; interruption then reports unknown effects. Restartable jobs with kind=service have no batch-job time limit.",json!({"kind":string(),"script":string(),"cwd":{"type":"string"},"restart_on_boot":{"type":"boolean"}}),vec!["kind","script"]),
     ];
+    definitions.push((Kind::Computer,"computer.control","Observe and drive this Station device through its signed Zork Desktop Control host. Use tool=list_tools to discover operations, tool=describe with arguments.name for a schema, then call the named tool. Missing Screen Recording or Accessibility grants require the user to authorize that host. Do not request permissions through model tools.",json!({"tool":string(),"arguments":{"type":"object"}}),vec!["tool"]));
     definitions.extend(service::definitions());
     for (kind, name, description, properties, required) in definitions {
         let compatibility: Arc<dyn ToolCompatibility> = Arc::new(history::Results);
@@ -186,10 +190,14 @@ impl ToolImplementation for StationTool {
                     let failed = matches!(
                         value["status"].as_str(),
                         Some("rejected" | "delivery_unknown")
-                    );
+                    ) || (matches!(self.kind, Kind::Computer)
+                        && value["state"] == "failed");
                     let mut result = ToolExecution::success(value);
                     if failed {
                         result.outcome = ToolOutcome::Failed;
+                    }
+                    if matches!(self.kind, Kind::Computer) {
+                        computer::attach_captures(&mut result);
                     }
                     result
                 }
@@ -208,6 +216,7 @@ impl ToolImplementation for StationTool {
         })
     }
 }
+
 impl StationTool {
     async fn run(&self, context: &ToolContext, args: &Value) -> anyhow::Result<Value> {
         let response = self
@@ -239,6 +248,11 @@ impl StationTool {
             Kind::Browser => self.http.post(format!("{}/v1/browser/command", self.base)).json(&json!({
                 "session_id":context.session_id,"client_id":args["client_id"],"command":{"request_id":context.invocation_id,"action":args["action"]}
             })),
+            Kind::Computer => self
+                .http
+                .post(format!("{}/v1/computer/command", self.base))
+                .header("x-zork-session-key", key)
+                .json(&json!({"tool":args["tool"],"arguments":args["arguments"].clone()})),
             Kind::Workers | Kind::Tasks => self
                 .http
                 .get(format!(

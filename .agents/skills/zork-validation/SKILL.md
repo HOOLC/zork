@@ -24,6 +24,7 @@ Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow
 - 液态/文本：[UI parity](../zork-ui-parity/SKILL.md)，CPU/GPU 报告用 `scripts/storybook/test_liquid_frame_budget.py` 匹配同产物。
 - macOS 身份：`scripts/test-macos-notification-identity.py`、`scripts/test-macos-process-identities.py`。主入口与实际 GUI 必须同签名身份，deep 签名通过不保证 OS 接受；横幅/声音/冷启动点击另测，不改正式应用权限。局域网验收沿正常 App 入口启动；固定 bundle ID 和安装路径，可靠继承网络授权仍需有效 Apple 签名。注销 Launch Services 不等于删除本地网络权限记录，不能据此报告重复权限已清理。
 - release/dev 切换和恢复按[自救指南](../../../docs/guides/release-dev-recovery.md)运行隔离故障演练；核对整包构建摘要与运行映像、完整数据恢复和聊天往返。恢复旧快照须更新消息源与投影 epoch；不能以换回二进制或仅节点 ready 作为成功。
+- cua 桌面能力：`scripts/test-cua-packaging.py` 验证宿主身份与固定运行产物，`scripts/test-cua-roundtrip.py` 验证隔离 Station 的模型工具链。fixture 不能代替真实权限、截图和点击；真实测试只针对独立空白窗口，权限缺失明确报告，不修改 TCC 或借用其它应用身份。
 - DeepSWE：`benchmarks/deep-swe/README.md` 与 `pnpm benchmark:deep-swe:test`；适配器测试不证明模型评测通过。
 
 选定脚本前读其当前参数与 fixture 范围。

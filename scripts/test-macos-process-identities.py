@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real bundle identities, CEF roles and service-watch lifetime; rebuild affected binaries first."""
 from pathlib import Path
-import importlib.util, json, os, signal, socket, subprocess, sys, tempfile, time, threading
+import importlib.util, json, os, plistlib, signal, socket, subprocess, sys, tempfile, time, threading
 from urllib.request import build_opener, ProxyHandler
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import argparse
@@ -13,6 +13,7 @@ args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
 OUT = args.output.resolve()
 APP = args.app.resolve()
+APP_ID = plistlib.loads((APP / 'Contents/Info.plist').read_bytes())['CFBundleIdentifier']
 OUT.mkdir(parents=True, exist_ok=True)
 if sys.platform != 'darwin':
     raise SystemExit('Requires macOS')
@@ -97,7 +98,7 @@ for value in CommandLine.arguments.dropFirst() {
             raise AssertionError('Station did not become ready')
         report['node_processes'] = identities([supervisor.pid, ready['pid']])
         assert {item['name'] for item in report['node_processes']} == {'Zork-Supervisor', 'Zork-Station'}, report
-        assert {item['bundle'] for item in report['node_processes']} == {'ing.zork.desktop.supervisor', 'ing.zork.desktop.station'}, report
+        assert {item['bundle'] for item in report['node_processes']} == {APP_ID + '.supervisor', APP_ID + '.station'}, report
         assert all(item['icon'] and item['activation_policy'] == 2 for item in report['node_processes']), report
         supervisor.stdin.close()
         assert supervisor.wait(timeout=10) == 0

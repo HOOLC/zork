@@ -136,6 +136,13 @@ def build_app(args, repo, app):
     spec.loader.exec_module(browser_runtime)
     signing_identity = browser_runtime.signing_identity()
     browser_runtime.stage_runtime((args.browser_bin_dir or binaries).resolve(), app / 'Contents/Helpers', prefix)
+    cua = getattr(args, 'cua_runtime', None)
+    if cua is not None:
+        spec = importlib.util.spec_from_file_location('cua_runtime', repo / 'scripts/lib/cua-runtime.py')
+        cua_runtime = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cua_runtime)
+        cua_runtime.stage(repo, cua, app, prefix, browser_runtime.sign, signing_identity)
+
     if args.services_config:
         services=json.loads(args.services_config.read_text())
         assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls'}
@@ -166,6 +173,7 @@ def main():
     parser.add_argument('--build-record',type=Path,help='Captured Cargo build provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
     parser.add_argument('--browser-bin-dir',type=Path)
+    parser.add_argument('--cua-runtime',type=Path,help='Pinned native desktop runtime built by scripts/build-cua-driver.py')
     parser.add_argument('--output',type=Path,help='Explicitly export an archive to this directory')
     parser.add_argument('--launch',action='store_true',help='Launch after update even if not previously running')
     parser.add_argument('--run',nargs=argparse.REMAINDER,help='Run tests against the updated {app}; retain the app afterward')
