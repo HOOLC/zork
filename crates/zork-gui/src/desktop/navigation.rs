@@ -6,7 +6,6 @@ use std::{collections::HashSet, sync::Arc};
 use zork_client_core::preferences::{read_view_state, save_view_state, ViewState};
 
 #[derive(Clone)]
-#[allow(dead_code)] // Compatibility routes remain available to non-desktop clients.
 pub enum Destination {
     SharedFiles,
     Home,
@@ -15,12 +14,6 @@ pub enum Destination {
         leader: Option<String>,
     },
     Leader(String),
-    PrepareDevice(String),
-    Task {
-        leader: String,
-        session: String,
-    },
-    Page(ShellRoute),
     Manage(usize),
 }
 #[derive(Clone)]

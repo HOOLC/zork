@@ -635,21 +635,6 @@ pub fn station_base(config: &FileConfig) -> String {
     loopback_base_url(&config.bind.station)
 }
 
-pub fn runtime_base_url(config: &FileConfig) -> String {
-    if !config.urls.runtime.trim().is_empty() {
-        return config.urls.runtime.trim_end_matches('/').to_string();
-    }
-    loopback_base_url(&config.bind.runtime)
-}
-
-pub fn admin_base_url(config: &FileConfig) -> String {
-    let value = config.urls.admin.trim();
-    if !value.is_empty() {
-        return value.trim_end_matches('/').to_string();
-    }
-    loopback_base_url(&config.bind.control)
-}
-
 pub fn parse_bind(bind: &str) -> Result<std::net::SocketAddr> {
     bind.parse()
         .with_context(|| format!("invalid bind address {bind}"))
