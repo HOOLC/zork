@@ -54,11 +54,17 @@ def main():
         started, previous, repeats = time.monotonic(), None, 0
         def settled():
             nonlocal previous, repeats
-            pixels = native.ui("/v1/screenshot")
-            repeats = repeats + 1 if pixels == previous else 0
-            previous = pixels
-            if repeats >= 2 and time.monotonic() - started > .4:
-                (args.output / f"{name}.png").write_bytes(pixels)
+            elements = snapshot()["elements"]
+            if any(e["visible"] and e["id"] in ("story-size-menu", "story-scenario-menu") for e in elements):
+                return False
+            bounds = [(e["id"], e["bounds"]) for e in elements
+                      if e["id"] in ("story-canvas", "story-size", "story-scenario")]
+            repeats = repeats + 1 if bounds == previous else 0
+            previous = bounds
+            # The history fixture intentionally includes a live activity spinner;
+            # wait for layout and transient menus, not identical animation pixels.
+            if repeats >= 2 and time.monotonic() - started > 1:
+                (args.output / f"{name}.png").write_bytes(native.ui("/v1/screenshot"))
                 return True
             return False
         wait(settled, f"settled {name} screenshot", timeout=10)
