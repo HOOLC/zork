@@ -8,10 +8,12 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import socket
 import subprocess
 import sys
 import tempfile
 import tarfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -21,7 +23,7 @@ import deployment
 from deployment import Transaction, atomic_json, inventory, manifest, replace_directory, verify_manifest
 from deployment_build import stability, source_stamp, prepare_target
 from deployment_macos import AppRuntime
-from deployment_health import NodeRuntime, renew_restored_epochs
+from deployment_health import NodeRuntime, renew_restored_epochs, control
 
 spec = importlib.util.spec_from_file_location('recovery', ROOT / 'scripts/dev/recovery.py')
 recovery = importlib.util.module_from_spec(spec)
@@ -269,6 +271,32 @@ class RecoveryTests(unittest.TestCase):
         with patch.dict(os.environ, {'GIT_DIR': str(self.root / 'not-a-repo'), 'GIT_WORK_TREE': str(self.root)}):
             stamp = source_stamp(ROOT)
         self.assertEqual(len(stamp['commit']), 40)
+
+    def test_control_distinguishes_shutdown_from_explicit_rejection(self):
+        # Keep the Unix socket path below the platform limit.
+        with tempfile.TemporaryDirectory(dir='/tmp', prefix='zstop-') as directory:
+            root = Path(directory)
+            (root / 'run').mkdir()
+            for reply, error in ((b'', ConnectionAbortedError),
+                                 (b'error: cancelled\n', ConnectionAbortedError),
+                                 (b'error: unknown command\n', RuntimeError)):
+                endpoint = root / 'run/sup.sock'
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(endpoint))
+                    server.listen()
+                    def answer():
+                        stream, _ = server.accept()
+                        with stream:
+                            stream.recv(64)
+                            stream.sendall(reply)
+                    worker = threading.Thread(target=answer)
+                    worker.start()
+                    try:
+                        with self.assertRaises(error):
+                            control(root, 'stop')
+                    finally:
+                        worker.join(timeout=3)
+                endpoint.unlink()
 
     def test_shared_capture_target_rebuilds_older_checkout(self):
         target = self.root / 'cargo-target'

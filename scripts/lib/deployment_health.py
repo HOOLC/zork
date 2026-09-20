@@ -37,6 +37,8 @@ def control(data, command='status'):
         stream.sendall((command + '\n').encode())
         with stream.makefile('r') as reader:
             value = reader.readline()
+    if not value or value.strip() == 'error: cancelled':
+        raise ConnectionAbortedError('Supervisor closed before acknowledging ' + command)
     if command == 'status':
         return json.loads(value)
     if value.strip() != 'ok':
