@@ -42,6 +42,25 @@ def load_packager(repo):
     return module
 
 
+def prepare_target(repo, target, env):
+    # Cargo dep-info uses relative source paths. A different checkout can have
+    # older mtimes and different bytes, yet appear fresh in this shared target.
+    owner = target / 'deployment-source.json'
+    expected = {'repo': str(repo.resolve())}
+    if owner.is_file() and json.loads(owner.read_text()) == expected:
+        return
+    metadata = json.loads(subprocess.check_output(
+        ['cargo', 'metadata', '--locked', '--format-version=1'], cwd=repo, env=env))
+    local = sorted({package['name'] for package in metadata['packages']
+                    if package['source'] is None})
+    command = ['cargo', 'clean']
+    for package in local:
+        command += ['-p', package]
+    if local:
+        subprocess.run(command, cwd=repo, env=env, check=True)
+    atomic_json(owner, expected)
+
+
 def build(repo, store, kind='node', profile='dev', services=None):
     repo = Path(repo).resolve()
     env = build_environment(repo)
@@ -66,6 +85,7 @@ def build(repo, store, kind='node', profile='dev', services=None):
     target = base / 'isolated/deployment'
     env['CARGO_TARGET_DIR'] = str(target.resolve())
     with exclusive(target.parent / 'deployment-capture.lock'):
+        prepare_target(repo, target, env)
         return _build(repo, store, kind, profile, services, env)
 
 

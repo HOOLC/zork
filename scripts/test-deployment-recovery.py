@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
 import deployment
 from deployment import Transaction, atomic_json, inventory, manifest, replace_directory, verify_manifest
-from deployment_build import stability, source_stamp
+from deployment_build import stability, source_stamp, prepare_target
 from deployment_macos import AppRuntime
 from deployment_health import NodeRuntime, renew_restored_epochs
 
@@ -269,6 +269,24 @@ class RecoveryTests(unittest.TestCase):
         with patch.dict(os.environ, {'GIT_DIR': str(self.root / 'not-a-repo'), 'GIT_WORK_TREE': str(self.root)}):
             stamp = source_stamp(ROOT)
         self.assertEqual(len(stamp['commit']), 40)
+
+    def test_shared_capture_target_rebuilds_older_checkout(self):
+        target = self.root / 'cargo-target'
+        env = dict(os.environ, CARGO_TARGET_DIR=str(target), RUSTC_WRAPPER='')
+        repos = [self.root / 'first', self.root / 'second']
+        for index, repo in enumerate(repos):
+            (repo / 'src').mkdir(parents=True)
+            (repo / 'Cargo.toml').write_text(
+                '[package]\nname="capture-fixture"\nversion="0.1.0"\nedition="2021"\n')
+            source = repo / 'src/main.rs'
+            source.write_text('fn main() { println!("' + str(index) + '"); }')
+            subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=repo, env=env, check=True)
+            os.utime(source, (1, 1))
+        for index, repo in enumerate(repos + repos[:1]):
+            prepare_target(repo, target, env)
+            subprocess.run(['cargo', 'build', '--locked', '--offline'], cwd=repo, env=env, check=True)
+            self.assertEqual(subprocess.check_output([str(target / 'debug/capture-fixture')], text=True).strip(),
+                             str(index % 2))
 
     def test_restored_epochs_invalidate_cursors_without_changing_identity_or_messages(self):
         chat = self.data / 'chats/chat-id'
