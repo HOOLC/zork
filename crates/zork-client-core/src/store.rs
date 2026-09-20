@@ -240,10 +240,6 @@ impl ClientStore {
         }).collect()
     }
 
-    /// Commit accepted peers, network and removal of the invitation together.
-    pub fn accept_invitation(&self, nodes: &[SavedNode], network: &crate::Network) -> Result<()> {
-        self.commit_invitation(None, nodes, network, None)
-    }
     pub(crate) fn accept_invitation_if(
         &self,
         id: &str,

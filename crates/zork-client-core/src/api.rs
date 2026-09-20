@@ -140,24 +140,6 @@ pub struct MeshPeer {
     pub execute_workspaces: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct TaskRun {
-    pub run_id: String,
-    pub agent_session_id: String,
-    pub turn_id: String,
-    pub status: String,
-    pub started_at_ms: i64,
-    pub finished_at_ms: Option<i64>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct TaskDetail {
-    pub task: ProductTask,
-    pub runs: Vec<TaskRun>,
-    #[serde(default)]
-    pub artifacts: Vec<Artifact>,
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Artifact {
     pub artifact_id: String,
@@ -173,15 +155,6 @@ pub struct Artifact {
     pub version: i64,
     pub created_at: String,
 }
-impl Artifact {
-    pub fn collection_id(&self) -> &str {
-        self.session_id
-            .as_deref()
-            .or(self.task_id.as_deref())
-            .unwrap_or(&self.artifact_id)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskAction {
@@ -837,19 +810,6 @@ impl StationClient {
         .await
     }
 
-    pub async fn task_detail(&self, task_id: &str) -> Result<TaskDetail, ApiError> {
-        let http = self.http.clone();
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        let path = format!("/v1/tasks/{task_id}");
-        self.run_on(async move {
-            let response =
-                send_request(&http, &base_url, &token, reqwest::Method::GET, &path, None).await?;
-            response.json().await.map_err(ApiError::from)
-        })
-        .await
-    }
-
     pub async fn inbox_tasks(&self) -> Result<Vec<ProductTask>, ApiError> {
         #[derive(Deserialize)]
         struct Inbox {
@@ -892,33 +852,6 @@ impl StationClient {
         })
         .await
     }
-    pub async fn delegate_task(
-        &self,
-        task: &ProductTask,
-        origin: &str,
-        workspace: &str,
-        goal: &str,
-    ) -> Result<(), ApiError> {
-        let http = self.http.clone();
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        let path = format!("/v1/tasks/{}/delegate", task.task_id);
-        let body = serde_json::json!({"command_id":format!("delegate-{}",task.task_id),"expected_revision":task.revision,"executor_origin":origin,"workspace_id":workspace,"goal":goal});
-        self.run_on(async move {
-            send_request(
-                &http,
-                &base_url,
-                &token,
-                reqwest::Method::POST,
-                &path,
-                Some(body),
-            )
-            .await?;
-            Ok(())
-        })
-        .await
-    }
-
     pub async fn page_catalog(&self) -> Result<Option<crate::pages::PageCatalog>, ApiError> {
         match self
             .node_request(reqwest::Method::GET, "/v1/node/pages".into(), None)

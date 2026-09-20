@@ -106,23 +106,6 @@ impl Group {
             over: None,
         }
     }
-    pub fn bind_row<E: controls::ControlElement>(
-        &self,
-        row: E,
-        id: impl Into<ElementId>,
-        selected: bool,
-        enabled: bool,
-    ) -> E {
-        row.control_overlay(
-            RowAnchor {
-                id: id.into(),
-                selected,
-                enabled,
-                group: self.clone(),
-            }
-            .into_any_element(),
-        )
-    }
     pub fn hovered(&self) -> Option<ElementId> {
         self.state.borrow().hot.clone()
     }

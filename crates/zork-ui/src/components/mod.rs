@@ -13,14 +13,11 @@ pub mod selector_menu;
 pub mod text_input;
 pub fn init(cx: &mut gpui::App) {
     text_input::init(cx);
-    liquid_composer::prepare_gpu();
 }
 
 pub mod tooltip;
 
 pub mod motion;
-
-pub mod modal_backdrop;
 
 pub mod region;
 

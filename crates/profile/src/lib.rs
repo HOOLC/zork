@@ -23,20 +23,7 @@ pub use storage::{DataRootPaths, MemoryStore, ProfilePaths, ProfileStore};
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
-use tracing::{error, info};
-
-pub async fn refresh_all(
-    paths: &impl ProfilePaths,
-    statuses: &impl ProfileStore,
-    http: &Client,
-) -> Result<()> {
-    let profiles = list_profiles(paths)?;
-    for profile in &profiles {
-        refresh_profile(paths, statuses, http, &profile.profile_id).await?;
-    }
-    info!(count = profiles.len(), "profile quota probe finished");
-    Ok(())
-}
+use tracing::error;
 
 pub async fn refresh_profile(
     paths: &impl ProfilePaths,

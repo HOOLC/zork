@@ -211,6 +211,10 @@ impl Layout {
 /// Keep this lease for the client lifetime. Multiple handles in this process
 /// share it; a second process cannot race a live store or an unfinished reset.
 pub fn acquire(client: &Path) -> Result<Arc<Lease>> {
+    acquire_inner(client, false)
+}
+
+fn acquire_inner(client: &Path, handoff: bool) -> Result<Arc<Lease>> {
     let layout = Layout::for_client(client)?;
     let mut leases = LEASES.get_or_init(Default::default).lock().unwrap();
     leases.retain(|_, lease| lease.strong_count() > 0);
@@ -231,8 +235,20 @@ pub fn acquire(client: &Path) -> Result<Arc<Lease>> {
         options.mode(0o600);
     }
     let file = options.open(&layout.lock)?;
-    file.try_lock()
-        .context("此数据目录正在被另一个 Zork 客户端使用")?;
+    // EOF and lease release can be observed in either order during OS teardown.
+    // Ordinary launches still reject an occupied directory immediately.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match file.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock)
+                if handoff && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(error) => return Err(error).context("此数据目录正在被另一个 Zork 客户端使用"),
+        }
+    }
     let lease = Arc::new(Lease {
         layout,
         _file: file,
@@ -254,7 +270,7 @@ pub fn initialize() -> Result<Arc<Lease>> {
             "清空数据的进程交接无效"
         );
     }
-    let lease = acquire(&super::client_root())?;
+    let lease = acquire_inner(&super::client_root(), ticket.is_some())?;
     if let Some(request) = lease.layout.read_request()? {
         ensure!(
             ticket.as_ref().is_none_or(|id| id == &request.id),
@@ -417,6 +433,35 @@ mod tests {
             fs::read_to_string(station.join("state.db")).unwrap(),
             "independent data"
         );
+    }
+
+    #[test]
+    fn reset_handoff_waits_for_lease_release_but_normal_launch_rejects_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let client = temp.path().join("client");
+        let lease = acquire(&client).unwrap();
+        let previous = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lease.layout.lock)
+            .unwrap();
+        drop(lease);
+        previous.lock().unwrap();
+        assert!(acquire(&client).is_err());
+        let (send, receive) = std::sync::mpsc::channel();
+        let successor = std::thread::spawn(move || {
+            send.send(acquire_inner(&client, true)).unwrap();
+        });
+        assert!(matches!(
+            receive.recv_timeout(std::time::Duration::from_millis(50)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        drop(previous);
+        assert!(receive
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap()
+            .is_ok());
+        successor.join().unwrap();
     }
 
     #[test]

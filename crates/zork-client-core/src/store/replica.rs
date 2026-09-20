@@ -307,9 +307,6 @@ impl ClientStore {
         })
     }
 
-    pub fn discard_replica_staging(&self, peer: &str, scope: &Scope) -> Result<()> {
-        self.discard_replica_staging_at(peer, scope, self.replica_generation(peer)?)
-    }
     pub fn discard_replica_staging_at(
         &self,
         peer: &str,

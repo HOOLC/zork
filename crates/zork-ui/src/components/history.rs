@@ -71,17 +71,6 @@ pub struct ActivityHeader {
     pub chevron: bool,
 }
 
-pub fn activity_header<V: 'static>(
-    id: impl Into<gpui::ElementId>,
-    header: ActivityHeader,
-    window: &mut gpui::Window,
-    cx: &mut Context<V>,
-    open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
-    navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
-) -> impl IntoElement {
-    activity_header_sources(id, header, (None, None), window, cx, open, navigate)
-}
-
 pub fn activity_header_sources<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,

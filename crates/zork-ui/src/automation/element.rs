@@ -231,31 +231,6 @@ impl AutomationRegistry {
     }
 }
 
-/// Canvas controls report the same real, clipped geometry as ordinary elements.
-/// This observes controls only; it adds no alternate action path.
-pub fn record_canvas_control(
-    cx: &App,
-    window: &Window,
-    id: String,
-    label: String,
-    bounds: Bounds<Pixels>,
-) {
-    if let Some(global) = cx.try_global::<AutomationRegistryGlobal>() {
-        global.0.record(
-            &ElementMetadata {
-                id,
-                role: AutomationRole::Button,
-                label,
-                enabled: true,
-                register: true,
-            },
-            bounds,
-            bounds.intersect(&window.content_mask().bounds),
-            window.interaction_gates(),
-        );
-    }
-}
-
 pub fn is_enabled(cx: &App) -> bool {
     cx.try_global::<AutomationRegistryGlobal>().is_some()
 }

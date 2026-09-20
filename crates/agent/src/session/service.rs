@@ -220,15 +220,6 @@ impl SessionService {
         self.query.after(session_id, cursor, limit)
     }
 
-    pub fn scan_history_after(
-        &self,
-        session_id: &str,
-        cursor: Option<&str>,
-        visit: &mut dyn FnMut(EventEnvelope) -> bool,
-    ) -> Result<(), QueryError> {
-        self.query.scan_after(session_id, cursor, visit)
-    }
-
     pub fn history_before(
         &self,
         session_id: &str,
