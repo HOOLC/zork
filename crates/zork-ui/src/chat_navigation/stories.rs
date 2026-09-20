@@ -1,16 +1,5 @@
 use super::*;
 pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navigation> {
-    let agent = NavigationAgent {
-        id: "leader".into(),
-        name: "产品领队".into(),
-        avatar: Some("fox".into()),
-        instructions: "讨论产品设计，整理需求与研究资料。".into(),
-        profile_id: "团队连接".into(),
-        model: "演示模型".into(),
-        session_id: Some("home".into()),
-        can_open: state != "creator",
-        unread: state == "unread",
-    };
     let chats = (0..8)
         .map(|i| NavigationChat {
             chat_id: format!("chat-{i}"),
@@ -28,10 +17,8 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
         online: Some(state != "offline"),
         direct: true,
         public: false,
-        agents: Arc::new(vec![agent]),
-        tasks: Arc::new(HashMap::from([("leader".into(), chats)])),
-        others: Arc::new(vec![]),
-        selected_session: Some("home".into()),
+        chats: Arc::new(chats),
+        selected_session: Some("chat-0".into()),
         chatting: true,
     };
     let mut collapsed = HashSet::new();
@@ -63,7 +50,7 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
                     .find(|device| Some(&device.id) == node.as_ref())
                 {
                     match destination {
-                        Destination::Leader(_) => device.selected_session = Some("home".into()),
+                        Destination::NewChat => device.selected_session = None,
                         Destination::Conversation { session, .. } => {
                             device.selected_session = Some(session.clone())
                         }

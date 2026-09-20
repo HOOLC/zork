@@ -82,13 +82,6 @@ pub struct DeviceUpdate {
     pub reset: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentAvailability {
-    Loading,
-    Unavailable,
-    Empty,
-    Available,
-}
 pub struct DeviceSubscription {
     source: Subscription<DeviceData>,
 }
@@ -166,6 +159,7 @@ pub struct Device {
     pub(super) replication: super::replication::Replication,
     pub(super) client: Arc<StationClient>,
     profiles: std::sync::OnceLock<Arc<super::Profiles>>,
+    pub(super) new_chat: std::sync::OnceLock<Arc<super::NewChat>>,
     mesh_admin: std::sync::OnceLock<Arc<super::MeshAdmin>>,
     profile_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub(super) cache: Option<(Arc<ClientStore>, String)>,
@@ -313,6 +307,7 @@ impl Device {
             self_weak: Default::default(),
             client,
             profiles: std::sync::OnceLock::new(),
+            new_chat: Default::default(),
             mesh_admin: std::sync::OnceLock::new(),
             profile_task: Mutex::new(None),
             cache,
@@ -390,31 +385,6 @@ impl Device {
             source: self
                 .data
                 .subscribe_topics(zork_observe::Topics::new(domains.0 as u64)),
-        }
-    }
-    pub fn has_long_term_agents(&self) -> bool {
-        self.navigation
-            .read()
-            .agents
-            .iter()
-            .any(|agent| agent.can_open)
-    }
-    pub fn agent_availability(&self) -> AgentAvailability {
-        let state = self.snapshot();
-        if state.revoked {
-            return AgentAvailability::Unavailable;
-        }
-        if !state.agents_loaded && state.agents.is_empty() {
-            return if state.connection_error.is_some() || state.online == Some(false) {
-                AgentAvailability::Unavailable
-            } else {
-                AgentAvailability::Loading
-            };
-        }
-        if self.has_long_term_agents() {
-            AgentAvailability::Available
-        } else {
-            AgentAvailability::Empty
         }
     }
     pub fn navigation(&self) -> Subscription<NavigationData> {
@@ -1058,7 +1028,7 @@ mod tests {
     use futures_util::FutureExt;
 
     #[test]
-    fn navigation_wakeup_can_resolve_the_advertised_agent_from_device_state() {
+    fn navigation_wakeup_can_resolve_the_advertised_chat_from_device_state() {
         use std::{
             sync::atomic::{AtomicBool, Ordering},
             task::{Context, Wake, Waker},
@@ -1072,7 +1042,10 @@ mod tests {
                 let state = self.device.snapshot();
                 self.ready.store(
                     state.online == Some(true)
-                        && state.agents.iter().any(|a| a["id"] == "new-partner"),
+                        && state
+                            .chats
+                            .as_ref()
+                            .is_some_and(|chats| chats.iter().any(|c| c.chat_id == "new-chat")),
                     Ordering::SeqCst,
                 );
             }
@@ -1091,13 +1064,11 @@ mod tests {
             .is_pending());
         device.commit(|state| {
             state.online = Some(true);
-            state.agents = Arc::new(vec![
-                serde_json::json!({"id":"new-partner", "role":"leader"}),
-            ]);
+            state.chats = Some(Arc::new(vec![serde_json::from_value(serde_json::json!({"chat_id":"new-chat","title":"New Chat","created_at":"now","message_count":1})).unwrap()]));
         });
         assert!(
             observed.ready.load(Ordering::SeqCst),
-            "navigation advertised an agent before its authoritative device snapshot"
+            "navigation advertised a chat before its authoritative device snapshot"
         );
     }
 
@@ -1214,11 +1185,11 @@ mod tests {
     }
 
     #[test]
-    fn startup_distinguishes_unknown_agent_content_from_a_cached_empty_catalog() {
+    fn legacy_catalog_distinguishes_unknown_content_from_a_cached_empty_catalog() {
         let (_root, store, initial) = device();
-        assert_eq!(initial.agent_availability(), AgentAvailability::Loading);
+        assert!(!initial.snapshot().agents_loaded);
         initial.commit(|s| s.connection_error = Some("not connected".into()));
-        assert_eq!(initial.agent_availability(), AgentAvailability::Unavailable);
+        assert!(!initial.snapshot().agents_loaded);
         drop(initial);
         let open = || {
             Device::open(
@@ -1229,14 +1200,14 @@ mod tests {
         };
         store.put("node", "agents", &serde_json::json!([])).unwrap();
         let cached = open();
-        assert_eq!(cached.agent_availability(), AgentAvailability::Empty);
+        assert!(cached.snapshot().agents_loaded);
         cached.commit(|s| s.connection_error = Some("offline".into()));
-        assert_eq!(cached.agent_availability(), AgentAvailability::Empty);
+        assert!(cached.snapshot().agents_loaded);
         drop(cached);
         store
             .put("node", "agents", &serde_json::json!({"invalid":"catalog"}))
             .unwrap();
-        assert_eq!(open().agent_availability(), AgentAvailability::Loading);
+        assert!(!open().snapshot().agents_loaded);
     }
     #[tokio::test]
     async fn route_changes_update_navigation_without_business_refresh() {
@@ -1304,7 +1275,10 @@ mod tests {
         assert!(update.domains.contains(Domains::PROFILES));
         assert!(update.domains.contains(Domains::AGENTS));
         assert!(!update.domains.contains(Domains::SESSIONS));
-        assert_eq!(navigation.changed().await.unwrap().agents.len(), 1);
+        assert!(
+            navigation.changed().now_or_never().is_none(),
+            "legacy definitions must not create navigation entries"
+        );
         device.commit(|s| s.agents = Arc::new(vec![serde_json::json!({"id":"a","role":"leader"})]));
         assert!(
             all.changed().now_or_never().is_none(),
@@ -1327,7 +1301,7 @@ mod tests {
         .unwrap();
         let initial = wire.prepare().unwrap().unwrap();
         assert_eq!(
-            initial["state"]["navigation"]["agents"],
+            initial["state"]["navigation"]["chats"],
             serde_json::json!([])
         );
         assert!(wire.finish(initial["batch"].as_u64().unwrap(), true));
@@ -1348,17 +1322,11 @@ mod tests {
             }]);
         });
         let unread = wire.prepare().unwrap().unwrap();
-        assert_eq!(
-            unread["state"]["navigation"]["tasks"]["a"][0]["unread"],
-            true
-        );
+        assert_eq!(unread["state"]["navigation"]["chats"][0]["unread"], true);
         assert!(wire.finish(unread["batch"].as_u64().unwrap(), true));
         device.report_view(Some("chat".into()), true, true);
         let read = wire.prepare().unwrap().unwrap();
-        assert_eq!(
-            read["state"]["navigation"]["tasks"]["a"][0]["unread"],
-            false
-        );
+        assert_eq!(read["state"]["navigation"]["chats"][0]["unread"], false);
         assert!(wire.finish(read["batch"].as_u64().unwrap(), false));
         let retry = wire.prepare().unwrap().unwrap();
         assert_eq!(retry["state"]["navigation"], read["state"]["navigation"]);
@@ -1367,11 +1335,7 @@ mod tests {
         device.commit(|s| s.revoked = true);
         let revoked = wire.prepare().unwrap().unwrap();
         assert_eq!(
-            revoked["state"]["navigation"]["tasks"],
-            serde_json::json!({})
-        );
-        assert_eq!(
-            revoked["state"]["navigation"]["agents"],
+            revoked["state"]["navigation"]["chats"],
             serde_json::json!([])
         );
     }

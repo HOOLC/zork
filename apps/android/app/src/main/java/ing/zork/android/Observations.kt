@@ -49,6 +49,7 @@ internal class Observations(private val root: String) {
 
     fun conversation(peer: String, session: String?) = frames("conversation", peer, session)
     fun settings(peer: String) = frames("settings", peer, null)
+    fun newChat(peer: String) = frames("new_chat", peer, null)
     fun history(peer: String, session: String) = frames("history", peer, session)
     fun invitation() = frames("invitation", "", null)
     fun directory() = frames("directory", "", null)

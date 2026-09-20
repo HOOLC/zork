@@ -56,7 +56,7 @@ impl SharedFilesView {
                     if view.update(cx, |v, cx| v.deliver(cx)).is_err() {
                         return;
                     }
-                } else if !FrameDelivery::request(&view, cx, |v| &mut v.frame, Self::deliver) {
+                } else if !FrameDelivery::request(&view, cx, |v| &mut v.frame) {
                     return;
                 }
             }
@@ -196,8 +196,8 @@ impl SharedFilesView {
     }
 }
 impl Render for SharedFilesView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.frame.enter(window) {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.frame.enter() {
             self.deliver(cx);
         }
         self.pick_save(cx);

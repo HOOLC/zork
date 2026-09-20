@@ -173,13 +173,7 @@ impl BrowserPanel {
                 }) else {
                     break;
                 };
-                if visible
-                    && !FrameDelivery::request(
-                        &weak,
-                        cx,
-                        |panel| &mut panel.frame_delivery,
-                        |_, cx| cx.notify(),
-                    )
+                if visible && !FrameDelivery::request(&weak, cx, |panel| &mut panel.frame_delivery)
                 {
                     break;
                 }
@@ -963,7 +957,7 @@ fn modifiers(m: &gpui::Modifiers) -> u8 {
 }
 impl Render for BrowserPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.frame_delivery.enter(window) {
+        if self.frame_delivery.enter() {
             self.core_dirty = true;
         }
         if self.device_scale != window.scale_factor() {
@@ -992,6 +986,7 @@ impl Render for BrowserPanel {
         let layout_changed = self.wake.clone();
         let input = cx.entity();
         let focus = self.focus.clone();
+        let needs_viewport = self.active_id().is_some();
         div()
             .relative()
             .w(px(width))
@@ -1095,8 +1090,10 @@ impl Render for BrowserPanel {
                     .child(
                         gpui::canvas(
                             move |b, _, _| {
-                                if bounds.get() != b {
-                                    bounds.set(b);
+                                let previous = bounds.replace(b);
+                                // Translation updates hit testing and IME locally.
+                                // Only a web surface resize needs core viewport work.
+                                if needs_viewport && previous.size != b.size {
                                     layout_changed.notify_one();
                                 }
                             },

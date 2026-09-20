@@ -539,6 +539,7 @@ impl RootView {
                 presentation: Some(component::Presentation {
                     editor_id: "composer-input".into(),
                     attach_id: "composer-options".into(),
+                    show_attach: true,
                     primary_id: "send-button".into(),
                     member_groups: indices,
                     member_colors,

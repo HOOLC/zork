@@ -93,13 +93,21 @@ class SettingsParityTest {
         return await(label)
     }
     private fun click(label: String) {
-        var node: AccessibilityNodeInfo? = reveal(label)
-        while (node != null) {
-            val target = descendants(node).firstOrNull { it.isClickable && it.isEnabled }
-            if (target != null) {
-                assertTrue("Cannot click $label", target.performAction(AccessibilityNodeInfo.ACTION_CLICK)); settle(); return
+        reveal(label)
+        val deadline = SystemClock.uptimeMillis() + 5000
+        while (SystemClock.uptimeMillis() < deadline) {
+            var node = find(label)
+            while (node != null) {
+                if (node.isClickable) {
+                    if (node.isEnabled) {
+                        assertTrue("Cannot click $label", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                        settle(); return
+                    }
+                    break
+                }
+                node = node.parent
             }
-            node = node.parent
+            settle()
         }
         error("Cannot click $label")
     }
@@ -202,16 +210,27 @@ class SettingsParityTest {
         }
     }
 
-    @Test fun workerGrantsKeepRemoteReferencesAndCarryConflictGuard() {
-        launch("agents").use { scenario ->
-            settle(); await("设计队员"); click("设计队员"); click("管理授权")
-            await("管理领队授权"); click("产品领队"); capture("worker-grants"); click("保存授权")
+    @Test fun deviceSettingsDoNotExposeRoleOrGrantConfiguration() {
+        launch("device").use {
+            settle(); await("大模型")
+            assertNull(find("队员")); assertNull(find("领队")); assertNull(find("管理授权"))
+        }
+    }
+    @Test fun newChatUsesCoreChoicesAndSubmitsOnlyAfterSending() {
+        launch("new-chat").use { scenario ->
+            settle(); await("新建 Chat"); await("Demo model")
+            scenario.onActivity { assertFalse(it.newChatSnapshot!!.optBoolean("busy"));assertFalse(it.newChatSnapshot!!.optBoolean("can_submit")) }
+            click("Demo model"); click("Demo fast"); capture("new-chat-after-model")
+            scenario.onActivity { assertEquals(it.newChatSnapshot.toString(),"off",it.newChatSnapshot!!.getJSONObject("thinking").getString("value")) }
+            reveal("off")
+            val input=nodes().first { it.isEditable }
+            assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"新建一个 Chat 🦊")}))
+            settle(); capture("new-chat-input");click("发送")
             scenario.onActivity {
-                assertEquals("agent_grants", it.lastAction)
-                val allowed = it.lastBody!!.getJSONArray("allowed")
-                assertEquals(setOf("product", "other/leader"), (0 until allowed.length()).map { index -> allowed.getString(index) }.toSet())
-                val expected = it.lastBody!!.getJSONArray("expected")
-                assertEquals(1, expected.length()); assertEquals("other/leader", expected.getString(0))
+                assertEquals("submit",it.lastAction)
+                assertTrue(it.newChatSnapshot!!.optBoolean("busy"))
+                assertFalse(it.newChatSnapshot!!.optBoolean("can_submit"))
+                assertEquals("Demo fast",it.newChatSnapshot!!.getJSONObject("model").getString("value"))
             }
         }
     }

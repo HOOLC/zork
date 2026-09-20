@@ -127,6 +127,8 @@ def main():
                         slack_path = next(s["path"] for s in request(node.url, "GET", endpoint)["catalog"]["skills"] if s["name"] == "slack")
                         assert tool("file.read", {"path": slack_path})["content"] == Path(slack_path).read_text()
                         tool("shell.run", {"command": "test \"$SKILLS_ROOT\" = " + shlex.quote(str(node.root / "skills"))})
+                        tool("tool.help", {"tool": "agent.inspect"})
+                        tool("tool.help", {"tool": "agent.update"})
                         inspected = tool("agent.inspect", {"agent_id": "leader"})
                         tool("agent.update", {"agent_id": "leader", "expected_revision": inspected["revision"],
                                               "changes": {"skill_paths": ["agent-skills"]}})

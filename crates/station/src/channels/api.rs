@@ -247,7 +247,7 @@ async fn api(state: &AppState, input: ToolRequest) -> Result<Value> {
         rpc
     };
     rpc.interrupt = input.interrupt;
-    if rpc.tool == "chat.update_preferences" {
+    if matches!(rpc.tool.as_str(), "chat.update_preferences" | "chat.create") {
         state.db.record_chat_source(
             &rpc.subject.agent,
             if local(state, &target) {
@@ -413,11 +413,18 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             .map(|c| encode_cursor("chats", &c.chat_id));
         return Ok(json!({"items":rows,"next_cursor":next}));
     }
+    if rpc.tool == "chat.options" {
+        let mut options = rpc.clone();
+        options.tool = "agent.options".into();
+        return agents::execute(state, &options, &command, &object, is_local).await;
+    }
     if rpc.tool == "chat.create" {
         let creator = Author {
             id: actor(&rpc.subject),
             kind: AuthorKind::Agent,
-            name: if is_local {
+            name: if rpc.subject.agent.starts_with("session:") {
+                Some("Session".into())
+            } else if is_local {
                 state
                     .db
                     .node_agent(&rpc.subject.agent)?
@@ -426,12 +433,23 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
                 None
             },
         };
-        return Ok(serde_json::to_value(state.db.create_chat_as(
-            &command,
-            &object,
-            field(args, "title")?,
-            Some(&creator),
-        )?)?);
+        let request = zork_client_types::chat::StartChat {
+            request_id: object.clone(),
+            content: field(args, "text")?.into(),
+            model: field(args, "model")?.into(),
+            thinking: field(args, "thinking")?.into(),
+            profile_id: args["profile_id"].as_str().unwrap_or("auto").into(),
+            title: args["title"].as_str().map(str::to_owned),
+            client_id: None,
+        };
+        let (client, _) = super::prepare_start_chat(state, &request, &creator).await?;
+        let chat =
+            state
+                .db
+                .start_chat_command(&request, &creator, client.as_deref(), Some(&command))?;
+        let mut result = serde_json::to_value(&chat)?;
+        result["session_id"] = json!(chat.chat_id);
+        return Ok(result);
     }
     let channel = state.db.chat(field(args, "chat_id")?)?;
     let chat = &channel.channel.chat_id;
@@ -479,7 +497,9 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             let author = Author {
                 id: actor(&rpc.subject),
                 kind: AuthorKind::Agent,
-                name: if is_local {
+                name: if rpc.subject.agent.starts_with("session:") {
+                    Some("Session".into())
+                } else if is_local {
                     state.db.node_agent(&rpc.subject.agent)?.map(|a| a.name)
                 } else {
                     None

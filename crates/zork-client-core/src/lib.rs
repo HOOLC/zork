@@ -42,6 +42,7 @@ pub mod locale;
 #[cfg(not(target_family = "wasm"))]
 pub mod mesh_enrollment;
 pub mod model_edit;
+pub mod new_chat;
 #[cfg(not(target_family = "wasm"))]
 pub mod notifications;
 #[cfg(not(target_family = "wasm"))]

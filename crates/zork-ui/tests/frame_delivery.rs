@@ -49,3 +49,50 @@ fn next_frame_callbacks_survive_a_busy_app(cx: &mut TestAppContext) {
     });
     assert_eq!(delivered.get(), 1, "the retained callback runs only once");
 }
+
+struct SubscriberView {
+    delivery: zork_ui::components::frame_delivery::FrameDelivery,
+    source: Rc<Cell<usize>>,
+    shown: Rc<Cell<usize>>,
+}
+impl Render for SubscriberView {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
+        if self.delivery.enter() {
+            self.shown.set(self.source.get());
+        }
+        gpui::Empty
+    }
+}
+
+#[gpui::test]
+fn subscription_updates_reach_a_render_without_a_platform_frame_callback(cx: &mut TestAppContext) {
+    use gpui::AppContext;
+    use zork_ui::components::frame_delivery::FrameDelivery;
+    let source = Rc::new(Cell::new(0));
+    let shown = Rc::new(Cell::new(0));
+    let window = cx.add_window(|_, _| SubscriberView {
+        delivery: Default::default(),
+        source: source.clone(),
+        shown: shown.clone(),
+    });
+    let view = window.entity(cx).unwrap().downgrade();
+    for value in [42, 99] {
+        source.set(value);
+        assert!(FrameDelivery::request(&view, &mut cx.to_async(), |view| {
+            &mut view.delivery
+        }));
+        // A normal retained-view render must consume the batch even when no
+        // native on_request_frame callback is supplied by the test platform.
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        assert_eq!(shown.get(), value);
+        source.set(value + 1);
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        assert_eq!(
+            shown.get(),
+            value,
+            "an idle render must not poll the source"
+        );
+    }
+}

@@ -30,6 +30,8 @@ impl Device {
         self.reload_outbox();
         let mut changes = store.delivery_events();
         let pump = DeliveryPump::start(self.client.clone(), store.clone(), node.clone());
+        let store = store.clone();
+        let node = node.clone();
         let weak = Arc::downgrade(self);
         *task = Some(self.client.spawn(async move {
             let _pump = pump;
@@ -43,9 +45,18 @@ impl Device {
                 };
                 device.reload_outbox();
                 let pending = device.outbox();
+                // NewChat owns the first send until its creation receipt is
+                // resolved. Starting a normal feed earlier observes a Chat
+                // that does not exist yet and exposes a spurious 404.
+                let creating = store
+                    .get::<super::NewChatData>(&node, "new-chat")
+                    .ok()
+                    .flatten()
+                    .and_then(|draft| draft.pending.map(|request| request.request_id));
                 let sessions: std::collections::HashSet<_> = pending
                     .items
                     .iter()
+                    .filter(|message| creating.as_deref() != Some(&message.session_id))
                     .map(|message| message.session_id.clone())
                     .collect();
                 receiving.retain(|session, _| sessions.contains(session));

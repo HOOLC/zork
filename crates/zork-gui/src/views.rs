@@ -22,7 +22,7 @@ use crate::components::text_input::{
 };
 use crate::design::ZORK_UI;
 use crate::i18n::{self, Locale};
-use crate::shell::{self, ShellRoute, ShellState};
+use crate::shell::{ShellRoute, ShellState};
 use crate::transcript::should_render_live_activity;
 pub use crate::transcript::{Transcript, TranscriptLine};
 use zork_ui::components::loading;
@@ -38,6 +38,7 @@ mod files;
 mod history;
 mod interactions;
 mod message_presentation;
+mod new_chat;
 mod panel_layout;
 mod presence;
 
@@ -81,9 +82,8 @@ pub struct RootView {
     benchmark_artifact_cards: Rc<std::cell::Cell<usize>>,
     #[cfg(feature = "headless-bench")]
     benchmark_artifact_indices: std::cell::RefCell<std::collections::HashSet<usize>>,
-    home_brand: Entity<crate::components::brand::Brand>,
-    onboarding_brand: Entity<crate::components::brand::Brand>,
-    welcome: Option<Entity<zork_ui::welcome::Welcome>>,
+    new_chat_page: Option<Entity<zork_ui::new_chat::Page>>,
+    new_chat_updates: Option<Task<()>>,
     local_cache: Option<(Arc<crate::desktop::store::ClientStore>, String)>,
     delivery_task: Option<Task<()>>,
     queued_count: usize,
@@ -421,19 +421,8 @@ impl RootView {
             benchmark_artifact_cards: Default::default(),
             #[cfg(feature = "headless-bench")]
             benchmark_artifact_indices: Default::default(),
-            welcome: None,
-            home_brand: cx.new(|_| {
-                crate::components::brand::Brand::new(
-                    crate::components::brand::BrandMotion::Icon,
-                    BG,
-                )
-            }),
-            onboarding_brand: cx.new(|_| {
-                crate::components::brand::Brand::new(
-                    crate::components::brand::BrandMotion::Morph,
-                    shell::PANEL_BACKGROUND,
-                )
-            }),
+            new_chat_page: None,
+            new_chat_updates: None,
             comment_input,
             draft_state: Arc::new(Default::default()),
             draft_task: None,
@@ -571,7 +560,6 @@ impl RootView {
                     &this,
                     cx,
                     |view| &mut view.frame_delivery,
-                    Self::deliver_core_updates,
                 ) {
                     return;
                 }
@@ -679,12 +667,9 @@ impl RootView {
                     }
                     continue;
                 }
-                if !zork_ui::components::frame_delivery::FrameDelivery::request(
-                    &this,
-                    cx,
-                    |view| &mut view.frame_delivery,
-                    Self::deliver_core_updates,
-                ) {
+                if !zork_ui::components::frame_delivery::FrameDelivery::request(&this, cx, |view| {
+                    &mut view.frame_delivery
+                }) {
                     return;
                 }
             }
@@ -923,7 +908,7 @@ impl RootView {
 
 impl Render for RootView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.frame_delivery.enter(window) {
+        if self.frame_delivery.enter() {
             self.deliver_core_updates(cx);
         }
         {
@@ -1256,7 +1241,7 @@ impl RootView {
         (56. - self.browser.read(cx).panel_width()).max(12.)
     }
 
-    fn render_shell_content(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn render_shell_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         if self.browser.read(cx).is_expanded() && self.comment_popover.is_none() {
             return div().w_0().h_full();
         }
@@ -1265,17 +1250,21 @@ impl RootView {
                 .flex_1()
                 .min_h_0()
                 .min_w_0()
-                .child(self.render_leader_home(cx));
+                .child(self.render_new_chat(window, cx));
         }
         div()
             .flex_1()
             .min_w_0()
             .min_h_0()
             .flex()
-            .child(self.render_center_pane(cx))
+            .child(self.render_center_pane(window, cx))
     }
 
-    fn render_center_pane(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_center_pane(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         self.sync_conversation_files(cx);
         match self.selected_session.clone() {
             Some(_) => div()
@@ -1304,7 +1293,11 @@ impl RootView {
                         ),
                     ))
                 }),
-            None => self.render_leader_home(cx),
+            None => div()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .child(self.render_new_chat(window, cx)),
         }
     }
 

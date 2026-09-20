@@ -148,6 +148,7 @@ pub struct Presentation {
     pub busy: bool,
     pub editor_label: SharedString,
     pub attach_label: SharedString,
+    pub show_attach: bool,
     pub primary_label: SharedString,
 }
 
@@ -204,7 +205,13 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         v.child(input.clone())
             .on_click(move |_, w, cx| w.focus(&input.read(cx).focus_handle(), cx))
     })
-    .when(!c.editable, |v| v.child("此会话不可发送消息"));
+    .when(!c.editable, |v| {
+        v.child(if snapshot.text.is_empty() {
+            "此会话不可发送消息".to_owned()
+        } else {
+            snapshot.text.clone()
+        })
+    });
     let focus_editor = handler.clone();
     let plate = positioned(p.left(), p.top(), p.w, p.h)
         .id(format!("{id}-surface"))
@@ -234,6 +241,9 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         ("attach", true, p.left() + 6.),
         ("send", false, p.left() + p.w - 30.),
     ] {
+        if attach && presentation.as_ref().is_some_and(|p| !p.show_attach) {
+            continue;
+        }
         content = content.child(
             positioned(x, p.top() + p.h - 30., 24., 24.).child(
                 surface

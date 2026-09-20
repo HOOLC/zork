@@ -4,6 +4,7 @@ mod directory;
 mod message_delivery;
 mod messages;
 pub(crate) use configuration_submissions::ConfigurationDelivery;
+mod new_chat;
 mod operations;
 mod outgoing;
 mod replica;

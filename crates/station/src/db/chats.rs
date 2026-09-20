@@ -10,6 +10,7 @@ pub(crate) mod cards;
 pub(super) mod interactions;
 mod messages;
 mod navigation;
+mod start;
 mod transfers;
 pub use agents::configuration_revision;
 #[cfg(test)]

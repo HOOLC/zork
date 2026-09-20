@@ -5,6 +5,48 @@ use serde::{Deserialize, Serialize};
 /// Maximum UTF-8 bytes in Chat text, excluding the file-reference envelope.
 pub const MAX_MESSAGE_TEXT_BYTES: usize = 32 * 1024;
 
+/// One explicit first send. request_id identifies the entire creation operation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartChat {
+    pub request_id: String,
+    pub content: String,
+    pub model: String,
+    pub thinking: String,
+    #[serde(default)]
+    pub profile_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+}
+
+impl StartChat {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.request_id.len() != 26
+            || !self.request_id.bytes().all(|b| b.is_ascii_alphanumeric())
+        {
+            return Err("invalid_request_id");
+        }
+        if self.content.trim().is_empty() {
+            return Err("empty_message");
+        }
+        if self.content.len() > MAX_MESSAGE_TEXT_BYTES {
+            return Err("message_too_large_submit_as_file");
+        }
+        if self.model.trim().is_empty() || self.thinking.trim().is_empty() {
+            return Err("selection_required");
+        }
+        if self.model.len() > 512 || self.thinking.len() > 64 || self.profile_id.len() > 512 {
+            return Err("invalid_selection");
+        }
+        if self.title.as_ref().is_some_and(|s| s.len() > 512) {
+            return Err("invalid_chat_title");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageFilter {

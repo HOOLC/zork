@@ -90,6 +90,7 @@ pub enum Command {
         session: String,
         text: String,
     },
+    NewChat { peer: String, operation: zork_client_types::new_chat::Action },
     RespondToInteraction {
         peer: String,
         session: String,
@@ -221,6 +222,7 @@ impl Command {
                 | Self::RestoreNavigation { .. }
                 | Self::DraftAction { .. }
                 | Self::SubmitDraft { .. }
+                | Self::NewChat { .. }
                 | Self::RespondToInteraction { .. }
                 | Self::CachedMessages { .. }
                 | Self::CloseService { .. }
@@ -492,6 +494,12 @@ impl LocalClient {
                 Ok(serde_json::to_value(
                     self.store.submit_current_draft(&peer, &session, text)?,
                 )?)
+            }
+            Command::NewChat {peer,operation} => {
+                self.peer(&peer)?;
+                let device=self.device_state(&peer).context("客户端连接已暂停，请重新连接")?;
+                device.new_chat().apply(operation)?;
+                Ok(json!({}))
             }
             Command::CachedMessages { peer, session } => {
                 self.peer(&peer)?;
@@ -1283,6 +1291,7 @@ impl Client {
             | Command::RestoreNavigation { .. }
             | Command::DraftAction { .. }
             | Command::SubmitDraft { .. }
+            | Command::NewChat { .. }
             | Command::RespondToInteraction { .. }
             | Command::CachedMessages { .. }
             | Command::Preferences { .. }

@@ -32,7 +32,7 @@ class SettingsRefreshTest {
             while(node!=null && !node.isClickable)node=node.parent
             assertTrue(label,node!!.performAction(AccessibilityNodeInfo.ACTION_CLICK));instrumentation.waitForIdleSync();Thread.sleep(250)
         }
-        for(width in if(InstrumentationRegistry.getArguments().getString("native_only")=="true") listOf(0) else listOf(320,375,414,768,0))for(screen in listOf("device","agents","models","profile")) {
+        for(width in if(InstrumentationRegistry.getArguments().getString("native_only")=="true") listOf(0) else listOf(320,375,414,768,0))for(screen in listOf("device","new-chat","models","profile")) {
             ActivityScenario.launch<Nav7PreviewActivity>(Intent(context,Nav7PreviewActivity::class.java).putExtra("screen",screen).putExtra("width",width)).use { scenario ->
                 instrumentation.waitForIdleSync();Thread.sleep(450)
                 fun capture(name:String) {
@@ -57,7 +57,6 @@ class SettingsRefreshTest {
                     click("修改设备名称");capture("rename")
                     click("保存");scenario.onActivity{assertEquals("rename_device",it.lastAction)}
                 }
-                if(width==0 && screen=="agents") {click("产品领队");capture("agent-editor");click("保存修改");capture("agent-saved")}
                 if(width==0 && screen=="models") {click("添加");capture("connection-editor")}
                 if(width==0 && screen=="profile") {click("手动添加");capture("model-editor")}
             }

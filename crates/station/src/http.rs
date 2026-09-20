@@ -155,6 +155,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/healthz", get(readyz))
         .route("/v1/im/profiles", get(local_im_profiles))
+        .route("/v1/im/chats", post(start_local_chat))
         .route("/v1/tasks", get(list_product_tasks))
         .route("/v1/mesh", get(crate::mesh::status))
         .route("/v1/tasks/{task_id}/delegate", post(crate::mesh::delegate))
@@ -497,6 +498,44 @@ struct CreateLocalImSession {
     #[serde(alias = "effort")]
     thinking: String,
     workspace: String,
+}
+
+async fn start_local_chat(
+    State(state): State<AppState>,
+    Json(request): Json<zork_client_types::chat::StartChat>,
+) -> Response {
+    let author = zork_client_types::chat::Author {
+        id: "local-user".into(),
+        kind: zork_client_types::chat::AuthorKind::User,
+        name: None,
+    };
+    let (client, existing) =
+        match crate::channels::prepare_start_chat(&state, &request, &author).await {
+            Ok(value) => value,
+            Err(error) => {
+                let message = error.to_string();
+                let status = match message.as_str() {
+                    "invalid_request_id"
+                    | "invalid_client_id"
+                    | "empty_message"
+                    | "message_too_large_submit_as_file"
+                    | "selection_required"
+                    | "invalid_selection"
+                    | "invalid_chat_title"
+                    | "chat_selection_unavailable" => StatusCode::BAD_REQUEST,
+                    "idempotency_conflict" => StatusCode::CONFLICT,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                };
+                return fail(status, &message);
+            }
+        };
+    if let Some(chat) = existing {
+        return (StatusCode::CREATED, Json(chat)).into_response();
+    }
+    match state.db.start_chat(&request, &author, client.as_deref()) {
+        Ok(chat) => (StatusCode::CREATED, Json(chat)).into_response(),
+        Err(error) => fail(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
+    }
 }
 
 async fn create_local_im_session(

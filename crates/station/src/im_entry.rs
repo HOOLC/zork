@@ -365,7 +365,10 @@ impl ImEntryStation {
     pub fn local_members(&self, session: &SessionRow) -> Result<Vec<Value>> {
         use zork_client_types::chat::{Author, AuthorKind};
         let chat = self.db.chat(&session.key)?.channel;
-        let executor = self.db.chat_executor(&chat.chat_id)?;
+        let executor = self.db.chat_executor(&chat.chat_id)?.or_else(|| {
+            (session.channel_type.as_deref() == Some("chat"))
+                .then(|| format!("session:{}", session.key))
+        });
         let home = self.db.chat_home_agent(&chat.chat_id)?;
         let mut authors = self.db.chat_participants(&chat.chat_id)?;
         for id in executor.iter().chain(home.iter()) {
@@ -392,7 +395,9 @@ impl ImEntryStation {
             let author = participant.author;
             let agent = self.db.node_agent(&author.id)?;
             let assigned = executor.as_deref() == Some(&author.id);
-            let binding = if assigned {
+            let binding = if author.id == format!("session:{}", session.key) {
+                Some(session.clone())
+            } else if assigned {
                 self.db.chat_execution(&author.id, "local", &chat.chat_id)?
             } else if let Some(agent) = agent.as_ref().filter(|a| {
                 a.role == crate::db::agents::AgentRole::Leader
@@ -421,7 +426,13 @@ impl ImEntryStation {
                         .and_then(|a| a["actor_name"].as_str())
                         .map(str::to_owned)
                 })
-                .unwrap_or_else(|| author.id.clone());
+                .unwrap_or_else(|| {
+                    if author.id.starts_with("session:") {
+                        "Session".into()
+                    } else {
+                        author.id.clone()
+                    }
+                });
             let avatar = agent.as_ref().and_then(|a| a.avatar.clone()).or_else(|| {
                 activity
                     .as_ref()

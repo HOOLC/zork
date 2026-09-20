@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("critical", ROOT / "scripts/smoke-critical.py")
@@ -56,12 +57,18 @@ class ModelEndpoint:
                     else:
                         model.replied.add(model.expected)
                         call = {"tool": "chat.post_message", "action": "Reply in the startup conversation",
-                                "arguments": {"chat_id": model.session, "text": "Reply: " + model.expected}}
+                                "arguments": {"text": "Reply: " + model.expected}}
                         call_id = "reply-" + str(len(model.replied))
                     message = {"role": "assistant", "content": None, "tool_calls": [{
                         "id": call_id, "type": "function",
                         "function": {"name": "call", "arguments": json.dumps(call)}}]}
                     finish = "tool_calls"
+                elif model.expected and model.expected in body.decode() and model.expected in model.replied:
+                    message = {"role": "assistant", "content": None, "tool_calls": [{
+                        "id": "end-" + str(len(model.replied)), "type": "function",
+                        "function": {"name": "call", "arguments": json.dumps({"tool": "end", "action": "Finish the replied turn", "arguments": {}})}}]}
+                    finish = "tool_calls"
+                    model.completed.add(model.expected)
                 reply = json.dumps({"id": "startup-response", "object": "chat.completion",
                     "model": "startup-model", "choices": [{"index": 0,
                     "message": message, "finish_reason": finish}],
@@ -86,7 +93,7 @@ class ModelEndpoint:
         profiles = node / "profiles"
         profiles.mkdir(exist_ok=True)
         (profiles / "startup-fixture.json").write_text(json.dumps({
-            "provider": "openai", "billing": "usage",
+            "provider": "openai-compatible", "billing": "usage",
             "base_url": f"http://127.0.0.1:{self.server.server_port}/v1",
             "auth": {"type": "api_key", "key": "isolated-startup-test"},
             "models": [{"id": "startup-model", "api": "openai-completions", "streaming": False,
@@ -210,13 +217,53 @@ class Desktop:
         self.mark("local_node")
         return True
 
+    def create_chat(self, model):
+        entry = self.wait(lambda: next((e["id"] for e in self.elements()["elements"]
+                          if e["id"].startswith("new-chat-") and e["role"] == "button"
+                          and e["label"] == "新建 Chat" and e["visible"] and e["enabled"]), None), "new Chat entry")
+        self.click(entry)
+        self.wait(lambda: self.visible("new-chat-input"), "new Chat editor")
+        assert self.node_api("/v1/node/chats")["items"] == []
+        self.wait(lambda: any(e["id"] == "new-chat-model" and e["enabled"] for e in self.elements()["elements"]), "model choices ready")
+        self.click("new-chat-model")
+        self.wait(lambda: self.visible("new-chat-model-0"), "model menu")
+        self.click("new-chat-model-0")
+        self.screenshot("new-chat-empty")
+        assert self.node_api("/v1/node/chats")["items"] == [], "choosing a model created an empty Chat"
+        text = "startup first Chat message"
+        model.expected = text
+        self.wait(lambda: not self.visible("new-chat-model-0"), "model menu closed")
+        self.click("new-chat-input")
+        reply = self.ui("/v1/actions", {"type": "type_text", "text": text})
+        assert reply.get("accepted") is True
+        self.wait(lambda: any(e["id"] == "new-chat-send" and e["enabled"] for e in self.elements()["elements"]), "first send enabled")
+        self.screenshot("new-chat-draft")
+        self.click("new-chat-send")
+        chat = self.wait(lambda: next(iter(self.node_api("/v1/node/chats")["items"]), None), "first Chat committed")
+        session = chat["chat_id"]
+        self.wait(lambda: self.visible("composer-input"), "created Chat opened")
+        def confirmed():
+            with closing(sqlite3.connect((self.client / "client.db").as_uri() + "?mode=ro", uri=True, timeout=.05)) as db:
+                messages = [(status, json.loads(value)["content"]) for status, value in db.execute("SELECT status,value FROM messages WHERE session=?", (session,))]
+                return messages.count(("sent", text)) == 1 and ("sent", "Reply: " + text) in messages
+        self.wait(confirmed, "first user message and Session reply confirmed in the same client cache")
+        self.wait(lambda: any(e["visible"] and e["label"] == "Reply: " + text
+                  for e in self.elements()["elements"]), "first Agent reply painted in the created Chat")
+        assert self.node_api("/v1/node/agents")["items"] == []
+        assert len(self.node_api("/v1/node/chats")["items"]) == 1
+        self.wait(lambda: text in model.completed and any(s["session_id"] == session and s["status"] == "wait" for s in self.node_api("/v1/im/sessions")["items"]), "first Session settles")
+        time.sleep(.4)  # Capture the reply after its ordinary entry transition.
+        self.screenshot("new-chat-created")
+        return session
+
     def chat(self, session, model):
-        def leader():
+        self.selected_chat = session
+        def chat_entry():
             self.navigation_at_click = self.elements()
             return next((e["id"] for e in self.navigation_at_click.get("elements", [])
-                         if e["id"].startswith("leader-") and e["id"].endswith("-startup-partner")
+                         if e["id"].startswith("chat-") and e["id"].endswith("-" + session)
                          and e["visible"] and e["enabled"]), None)
-        self.click(self.wait(leader, "restored conversation partner"))
+        self.click(self.wait(chat_entry, "restored Chat"))
         self.wait(lambda: self.visible("composer-input"), "editable conversation")
         self.mark("composer_editable")
         text = "startup conversation input " + self.case
@@ -334,7 +381,13 @@ class Desktop:
 
     def __exit__(self, error_type, error, _):
         if error_type:
+            if self.process.poll() is None:
+                subprocess.run(["sample", str(self.process.pid), "1", "10", "-mayDie", "-file",
+                    str(self.output / (self.case + "-failure-sample.txt"))], capture_output=True, timeout=5)
             try:
+                client_log = self.client / "logs/client.log"
+                if client_log.exists():
+                    shutil.copy2(client_log, self.output / (self.case + "-client.log"))
                 for log in (self.client / "node").glob("*.log"):
                     shutil.copy2(log, self.output / (self.case + "-" + log.name))
                 (self.output / (self.case + "-failed-sample.json")).write_text(json.dumps(self.sample, ensure_ascii=False, indent=2))
@@ -343,9 +396,9 @@ class Desktop:
                     (self.output / (self.case + "-clicked-ui.json")).write_text(json.dumps(self.navigation_at_click, ensure_ascii=False, indent=2))
                 self.screenshot(self.case + "-failed")
                 if str(error).startswith("editable conversation"):
-                    leader = next(e["id"] for e in self.elements()["elements"]
-                                  if e["id"].startswith("leader-") and e["id"].endswith("-startup-partner"))
-                    self.click(leader)
+                    entry = next(e["id"] for e in self.elements()["elements"]
+                                 if e["id"].startswith("chat-") and e["id"].endswith("-" + self.selected_chat))
+                    self.click(entry)
                     recovered = False
                     try:
                         self.wait(lambda: self.visible("composer-input"), "diagnostic second click", timeout=2)
@@ -372,6 +425,11 @@ class Desktop:
         except Exception as failure:
             shutdown_error = failure
             self.sample["shutdown_error"] = str(failure)
+            self.sample["exit_code"] = self.process.poll()
+            (self.output / (self.case + "-shutdown-error.json")).write_text(json.dumps(self.sample, indent=2))
+            for log in [self.client / "logs/client.log", *list((self.client / "node").glob("*.log"))]:
+                if log.exists():
+                    shutil.copy2(log, self.output / (self.case + "-shutdown-" + log.name))
         finally:
             critical.cleanup(self.process, self.app, self.root)
         self.log.close()
@@ -485,9 +543,9 @@ def run(app, output, trace, reports, restarts=3):
         with Desktop(app, root, output, "station-identity", trace) as desktop:
             desktop.roundtrip()
             origin = desktop.wait(desktop.origin, "authenticated local Mesh identity")
-            desktop.node_api("/v1/node/agents", {"id": "startup-partner", "name": "Startup partner",
-                "role": "leader", "profile_id": "startup-fixture", "model": "startup-model", "thinking": "off"})
-            session = desktop.node_api("/v1/node/agents/startup-partner/open", {})["session_id"]
+            session = desktop.create_chat(model)
+            desktop.sample["passed"] = True
+            reports.append(desktop.sample)
         # The same persisted fact is recorded after real enrollment. No user DB,
         # fixed identity, offline mode or pre-running service is used by this fixture.
         with sqlite3.connect(client / "client.db") as db:
@@ -534,7 +592,7 @@ def run(app, output, trace, reports, restarts=3):
         with Desktop(app, root, output, "offline-cached-workspace", trace) as desktop:
             desktop.sample["kind"] = "cached-navigation-performance"
             desktop.roundtrip()
-            desktop.wait(lambda: desktop.visible("device-home-loading") or desktop.visible("device-home-unavailable"),
+            desktop.wait(lambda: desktop.visible("new-chat-loading") or desktop.visible("new-chat-error"),
                          "unknown device content is not presented as an empty catalog")
             desktop.screenshot("cached-workspace-preparing")
             desktop.sample["passed"] = desktop.sample["milestones_ms"]["ui_interactive"] < 1000
@@ -564,6 +622,7 @@ def main():
         report["passed"] = all(sample["passed"] for sample in report["samples"])
     except Exception as error:
         report["error"] = str(error)
+        report["traceback"] = traceback.format_exc()
     (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(("PASS" if report["passed"] else "FAIL") + " desktop startup: " + str(output / "result.json"), flush=True)
     return 0 if report["passed"] else 1
