@@ -8,3 +8,7 @@ Remove liquid deformation from product UI while keeping hover/selection travel a
 - Hover slide still uses Travel + pose springs
 
 - `Material::morphs()` is false for ordinary: no source→target pair morph; dialogs/panels settle and fade via Reveal; hover travel kept.
+
+## Plain dialogs
+
+Product and storybook window dialogs use `modal::PlainDialog` (backdrop + `smooth::surface` + opacity fade). They no longer run liquid pair morph / source ink transfer.

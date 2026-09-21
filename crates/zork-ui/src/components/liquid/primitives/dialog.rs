@@ -1,12 +1,11 @@
-use super::{
-    super::{
-        controls::{self, ActionStyle, ControlElement},
-        overlay::{Dialog, MeasuredAnchor, Placement},
-        panel::{Content, ContentPanel, Source},
-        Material, Pose, SurfaceColors,
-    },
-    surface,
+use super::super::{
+    controls::{self, ActionStyle, ControlElement},
+    overlay::{MeasuredAnchor, Placement},
+    panel::{Content, ContentPanel, Source},
+    Material, Pose, SurfaceColors,
 };
+use crate::modal::PlainDialog;
+use super::surface;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
@@ -18,13 +17,13 @@ use std::{
 };
 
 pub struct AlertDialog {
-    dialog: Dialog,
+    dialog: PlainDialog,
     cancel_label: Option<SharedString>,
 }
 impl AlertDialog {
     pub fn new(cx: &mut App) -> Self {
         Self {
-            dialog: Dialog::new(cx).alert(),
+            dialog: PlainDialog::new(cx).alert(),
             cancel_label: None,
         }
     }

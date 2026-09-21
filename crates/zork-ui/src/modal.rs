@@ -10,7 +10,9 @@ use std::{
     rc::{Rc, Weak},
 };
 
+mod plain;
 mod state;
+pub use plain::PlainDialog;
 pub use state::ModalState;
 
 pub(crate) struct FocusScope {

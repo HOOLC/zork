@@ -3,7 +3,7 @@
 pub mod composer;
 pub mod controls;
 pub mod departure;
-mod motion;
+pub mod motion;
 pub mod navigation;
 pub mod overlay;
 pub mod panel;
