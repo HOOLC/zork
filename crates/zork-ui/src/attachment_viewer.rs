@@ -1,9 +1,10 @@
 //! Complete read-only attachment viewer. Data and business actions come from the host.
+use crate::modal::PlainDialog;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{
         liquid::{
-            overlay::{Dialog, DialogOptions, Placement, SourceBinding},
+            overlay::{DialogOptions, Placement, SourceBinding},
             Material,
         },
         loading,
@@ -66,7 +67,7 @@ pub struct Viewer {
     focused: bool,
     image_focus: FocusHandle,
     input_image: Option<usize>,
-    dialog: Dialog,
+    dialog: PlainDialog,
     retired: Option<Info>,
 }
 impl EventEmitter<Action> for Viewer {}
@@ -148,7 +149,7 @@ impl Viewer {
             focused: false,
             image_focus: cx.focus_handle(),
             input_image: None,
-            dialog: Dialog::new(cx),
+            dialog: PlainDialog::new(cx),
             retired: None,
         }
     }
@@ -404,7 +405,7 @@ impl Viewer {
                     Some(footer.into_any_element()),
                     self.data.info.as_ref().is_some_and(|info| !info.image_view),
                     Placement::Window { width },
-                    Material::default(),
+                    Material::ordinary(),
                     DialogOptions {
                         title_action: Some(title_actions.into_any_element()),
                         notice: self.data.notice.map(|key| self.locale.text(key).to_owned()),

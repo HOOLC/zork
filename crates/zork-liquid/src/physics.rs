@@ -49,6 +49,37 @@ impl Default for Material {
     }
 }
 impl Material {
+    /// Non-liquid motion for product UI: smooth corners stay, flow/fusion do not.
+    pub fn ordinary() -> Self {
+        Self {
+            budget: 12,
+            flow: 0.,
+            damping: 1.,
+            recovery: 1.5,
+            size_rate: 1.,
+            adhesion: 0.,
+            smoothing: crate::tokens::SMOOTHING,
+            tension: 1.,
+            response: 1.15,
+            position_damping: 0.78,
+            size_damping: 0.82,
+            rebound_limit: Some(2.),
+            layout_response: 1.,
+            motion_rounding: 0.,
+            surface_detail: 0.,
+            fusion_gain: 0.,
+        }
+    }
+
+    /// Product UI materials do not morph between source and target poses.
+    pub fn morphs(self) -> bool {
+        self.fusion_gain > 0.
+            || self.flow > 0.
+            || self.surface_detail > 0.
+            || self.adhesion > 0.
+            || self.motion_rounding > 0.
+    }
+
     pub fn valid(self) -> bool {
         (6..=64).contains(&self.budget)
             && [

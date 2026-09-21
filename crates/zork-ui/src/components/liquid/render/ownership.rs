@@ -406,11 +406,11 @@ mod crossing_tests {
         let source = Pose::rect(24., 244., 672., 48., 16.);
         let body = Pose::rect(90., 68., 540., 364., 32.);
         let mut simulation =
-            Simulation::pair(source, body, Material::default(), Options::default());
+            Simulation::pair(source, body, Material::ordinary(), Options::default());
         simulation.set_open(true);
         simulation.finish();
         let surface = Surface::new(simulation).unwrap();
-        let binding = SourceMaterial::default();
+        let binding = SourceMaterial::ordinary();
         let foreground = binding.bind(&surface, source, None);
         let foreground_region = foreground.paint.0.borrow().partition.unwrap();
         let page_region = binding

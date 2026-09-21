@@ -22,18 +22,14 @@ pub fn toggle_pose(checked: bool) -> Pose {
     Pose::rect(7. + if checked { 17. } else { 0. }, 7., 18., 18., 9.)
 }
 
-pub fn pressed_pose(rest: Pose, point: [f64; 2]) -> Pose {
-    let squeeze = (rest.h * 0.14).clamp(2., 4.5);
-    let width = (rest.w - (rest.h * 0.2).min(rest.w * 0.08)).max(2.);
-    let height = (rest.h - squeeze).max(2.);
-    let mut target = Pose::rect(0., 0., width, height, rest.r * height / rest.h);
-    target.cx = rest.cx + (point[0].clamp(0., 1.) - 0.5) * 1.4;
-    target.cy = rest.cy + 0.65;
-    target
+pub fn pressed_pose(rest: Pose, _point: [f64; 2]) -> Pose {
+    // Ordinary press: keep the rest geometry. Liquid squash is retired.
+    rest
 }
 
-pub fn press_depth(rest: Pose) -> f64 {
-    (rest.h * 0.075).clamp(1.5, 2.5).min((rest.h - 2.).max(0.))
+pub fn press_depth(_rest: Pose) -> f64 {
+    // No squash travel to wait out on release.
+    0.
 }
 pub fn reveal(progress: f64) -> f32 {
     ((progress - 0.45) / 0.4).clamp(0., 1.) as f32

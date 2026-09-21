@@ -149,7 +149,7 @@ impl Specimen {
                     Some(row().justify_end().child(done).into_any_element()),
                     self.open,
                     liquid::overlay::Placement::Window { width: 420. },
-                    Material::default(),
+                    Material::ordinary(),
                     window,
                     cx,
                     |v, _, cx| {
@@ -181,7 +181,7 @@ impl Specimen {
                     "确认清空",
                     self.open,
                     false,
-                    Material::default(),
+                    Material::ordinary(),
                     window,
                     cx,
                     |v, _, cx| {

@@ -169,7 +169,7 @@ mod tests {
     fn ink_partition_matches_live_contour_without_overlap_or_gaps() {
         let mut simulation = Simulation::new(
             Pose::rect(4., 4., 94., 24., 12.),
-            Material::default(),
+            Material::ordinary(),
             Options::default(),
         );
         simulation.finish();

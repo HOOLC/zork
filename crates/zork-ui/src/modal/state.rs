@@ -1,14 +1,11 @@
 //! A host retains only the presentation payload needed for a dialog's exit.
 //! Business completion/cancellation still happens immediately in the host.
 use super::*;
-use crate::components::liquid::{
-    overlay::{Dialog, DialogOptions, Placement, SourceBinding},
-    Material,
-};
+use crate::components::liquid::overlay::{DialogOptions, Placement, SourceBinding};
 use std::{any::Any, cell::RefCell, collections::HashMap};
 
 struct Slot {
-    dialog: Dialog,
+    dialog: PlainDialog,
     open: bool,
     controlled: bool,
     payload: Option<Box<dyn Any>>,
@@ -49,7 +46,7 @@ impl ModalState {
             .get_mut()
             .entry(id.clone())
             .or_insert_with(|| Slot {
-                dialog: Dialog::new(cx),
+                dialog: PlainDialog::new(cx),
                 open: false,
                 controlled: true,
                 payload: None,
@@ -90,7 +87,7 @@ impl ModalState {
             .get_mut()
             .entry(id.into())
             .or_insert_with(|| Slot {
-                dialog: Dialog::new(cx),
+                dialog: PlainDialog::new(cx),
                 open: false,
                 controlled: true,
                 payload: None,
@@ -137,7 +134,7 @@ impl ModalState {
     ) -> gpui::AnyElement {
         let mut slots = self.slots.borrow_mut();
         let slot = slots.entry(id.clone()).or_insert_with(|| Slot {
-            dialog: Dialog::new(cx),
+            dialog: PlainDialog::new(cx),
             open: true,
             controlled: false,
             payload: None,
@@ -158,7 +155,7 @@ impl ModalState {
                 Placement::Window {
                     width: ui::DIALOG_WIDTH,
                 },
-                Material::default(),
+                crate::components::liquid::Material::ordinary(),
                 DialogOptions {
                     title_editor,
                     title_action,

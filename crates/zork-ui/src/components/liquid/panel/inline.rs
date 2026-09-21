@@ -136,7 +136,7 @@ impl Element for InlinePanel {
                 target,
                 false,
                 true,
-                Material::default(),
+                Material::ordinary(),
                 visible,
                 window,
                 cx,

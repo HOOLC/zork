@@ -563,7 +563,7 @@ impl Menu {
                     activate_on_arrow: false,
                     row_radius: crate::controls::MENU_RADIUS - 6.,
                 },
-                Material::default(),
+                Material::ordinary(),
             );
             let width = (items
                 .iter()
@@ -618,7 +618,7 @@ impl Menu {
                 target,
                 false,
                 level_open,
-                Material::default(),
+                Material::ordinary(),
                 self.anchor.visible.get(),
                 window,
                 cx,

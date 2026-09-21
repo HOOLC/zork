@@ -161,6 +161,8 @@ impl Transition {
         material: Material,
         anchor: [f64; 2],
     ) -> Simulation {
+        // Ordinary still uses pair topology when the host asks (source+body).
+        // Morph animation is disabled in target() via finish().
         let options = Options {
             capacity: (from.w * from.h).max(to.w * to.h),
             anchor,
@@ -208,6 +210,10 @@ impl Transition {
             if pair {
                 simulation.layout_pair(from, to);
                 simulation.set_open(open);
+                // Keep pair groups for hosts that read group 1; snap ordinary morph.
+                if !material.morphs() {
+                    simulation.finish();
+                }
             } else {
                 let target = if open { to } else { from };
                 if self.travel
@@ -217,6 +223,9 @@ impl Transition {
                     simulation.set_travel_target(target);
                 } else {
                     simulation.set_target(target);
+                    if !material.morphs() {
+                        simulation.finish();
+                    }
                 }
             }
             if dormant && !open {
@@ -459,5 +468,24 @@ mod lifecycle_tests {
         let settled = simulation.pose();
         assert!((settled.cx - first.cx).abs() < 1e-6 && (settled.cy - first.cy).abs() < 1e-6);
         assert!((settled.w - first.w).abs() < 1e-6 && (settled.h - first.h).abs() < 1e-6);
+    }
+}
+
+#[cfg(test)]
+mod ordinary_product_tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_pair_keeps_body_group_without_morph() {
+        let source = Pose::rect(10., 10., 40., 24., 12.);
+        let panel = Pose::rect(100., 80., 320., 200., 12.);
+        let material = Material::ordinary();
+        let mut simulation = Transition::simulation(source, panel, true, material, [0.5, 0.5]);
+        let mut transition = Transition::default();
+        transition.target(&mut simulation, source, panel, true, true, material, true);
+        let _ = simulation.group_snapshot(1);
+        assert!(!material.morphs());
+        assert!((simulation.pose().w - panel.w).abs() < 1.);
+        assert!(!simulation.moving());
     }
 }

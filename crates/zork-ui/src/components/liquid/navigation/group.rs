@@ -23,7 +23,7 @@ impl Group {
                 activate_on_arrow: false,
                 row_radius: crate::controls::FIELD_RADIUS,
             },
-            material: Material::default(),
+            material: Material::ordinary(),
         }
     }
     pub fn keyed(id: impl Into<ElementId>, window: &mut Window, cx: &mut App) -> Self {

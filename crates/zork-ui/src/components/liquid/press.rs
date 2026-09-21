@@ -58,7 +58,7 @@ impl Pressure {
         let rest = self.rest;
         let material = Material {
             smoothing: self.smoothing,
-            ..Material::default()
+            ..Material::ordinary()
         };
         let surface = self.surface.get_or_insert_with(|| {
             let mut simulation = Simulation::new(rest, material, Options::default());

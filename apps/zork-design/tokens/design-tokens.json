@@ -41,7 +41,7 @@
     },
     "navigation": {
       "rowHeight": 32,
-      "radius": 12,
+      "radius": 10,
       "fontSize": 12,
       "selectedChangesWeight": false
     },
@@ -59,7 +59,7 @@
       "minHeight": 32,
       "maxHeight": 160,
       "manualResize": false,
-      "surfaceRadius": 32,
+      "surfaceRadius": 12,
       "paddingX": 16,
       "padding": 16
     }
@@ -74,10 +74,10 @@
   ],
   "radii": [
     8,
+    10,
     12,
+    16,
     20,
-    24,
-    32,
     999
   ],
   "icons": {
