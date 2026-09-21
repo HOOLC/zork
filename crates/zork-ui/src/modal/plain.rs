@@ -257,8 +257,11 @@ impl PlainDialog {
 
         let dismissible = options.dismissible && !self.alert;
         let close_outside = close.clone();
+        let dismiss_outside = dismissible && open;
         // deferred + high priority puts the dialog above page chrome for hit-testing.
         // occlude + stop_propagation block hover/click from reaching content underneath.
+        // Dismiss must live on the backdrop hit target — GPUI delivers mouse_down to the
+        // occluded child, not the parent layer listener.
         let layer = deferred(
             div()
                 .id(format!("{id}-layer"))
@@ -268,16 +271,6 @@ impl PlainDialog {
                 .flex()
                 .items_center()
                 .justify_center()
-                .on_mouse_down(MouseButton::Left, {
-                    let close = close_outside.clone();
-                    let dismiss = dismissible && open;
-                    move |_, window, cx| {
-                        if dismiss {
-                            close(window, cx);
-                        }
-                        cx.stop_propagation();
-                    }
-                })
                 .on_mouse_move(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()
@@ -285,7 +278,16 @@ impl PlainDialog {
                         .absolute()
                         .inset_0()
                         .occlude()
-                        .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha)),
+                        .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha))
+                        .on_mouse_down(MouseButton::Left, {
+                            let close = close_outside.clone();
+                            move |_, window, cx| {
+                                if dismiss_outside {
+                                    close(window, cx);
+                                }
+                                cx.stop_propagation();
+                            }
+                        }),
                 )
                 .child(
                     div()
