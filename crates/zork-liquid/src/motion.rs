@@ -161,6 +161,7 @@ impl Transition {
         material: Material,
         anchor: [f64; 2],
     ) -> Simulation {
+        let pair = pair && material.morphs();
         let options = Options {
             capacity: (from.w * from.h).max(to.w * to.h),
             anchor,
@@ -184,6 +185,7 @@ impl Transition {
         material: Material,
         _visible: bool,
     ) {
+        let pair = pair && material.morphs();
         self.progress.get_or_insert_with(|| Spring::new(0.));
         if self.material != Some(material) {
             simulation.configure(material);
@@ -217,6 +219,10 @@ impl Transition {
                     simulation.set_travel_target(target);
                 } else {
                     simulation.set_target(target);
+                    // Ordinary product surfaces settle immediately; Reveal owns fade.
+                    if !material.morphs() {
+                        simulation.finish();
+                    }
                 }
             }
             if dormant && !open {

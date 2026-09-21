@@ -6,3 +6,5 @@ Remove liquid deformation from product UI while keeping hover/selection travel a
 - `Material::ordinary()`: no flow/fusion/surface detail; smoothing kept
 - `pressed_pose` is identity (no squash)
 - Hover slide still uses Travel + pose springs
+
+- `Material::morphs()` is false for ordinary: no source→target pair morph; dialogs/panels settle and fade via Reveal; hover travel kept.

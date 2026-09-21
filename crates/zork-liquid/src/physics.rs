@@ -71,6 +71,15 @@ impl Material {
         }
     }
 
+    /// Product UI materials do not morph between source and target poses.
+    pub fn morphs(self) -> bool {
+        self.fusion_gain > 0.
+            || self.flow > 0.
+            || self.surface_detail > 0.
+            || self.adhesion > 0.
+            || self.motion_rounding > 0.
+    }
+
     pub fn valid(self) -> bool {
         (6..=64).contains(&self.budget)
             && [

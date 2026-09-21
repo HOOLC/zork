@@ -1275,9 +1275,12 @@ impl Dialog {
         }
         if floating && self.layer_open != open {
             let fallback = Bounds::new(point(px(0.), px(0.)), viewport);
-            self.presentation
-                .transfer(source_drawing.as_ref(), fallback, window);
-            if cx.reduce_motion() {
+            // Ordinary materials must not ink-morph out of the trigger.
+            if material.morphs() {
+                self.presentation
+                    .transfer(source_drawing.as_ref(), fallback, window);
+            }
+            if cx.reduce_motion() || !material.morphs() {
                 self.presentation.initial.borrow_mut().take();
             }
             if open {
