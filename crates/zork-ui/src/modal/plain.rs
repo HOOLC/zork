@@ -11,7 +11,8 @@ use crate::{
     design::ZORK_UI,
 };
 use gpui::{
-    div, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle, MouseButton, SharedString, Window,
+    deferred, div, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle, MouseButton,
+    SharedString, Window,
 };
 use std::{
     cell::Cell,
@@ -256,39 +257,55 @@ impl PlainDialog {
 
         let dismissible = options.dismissible && !self.alert;
         let close_outside = close.clone();
-        let layer = div()
-            .id(format!("{id}-layer"))
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                div()
-                    .id(format!("{id}-backdrop"))
-                    .absolute()
-                    .inset_0()
-                    .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha))
-                    .when(dismissible && open, |el| {
-                        el.on_mouse_down(MouseButton::Left, {
-                            let close = close_outside.clone();
-                            move |_, window, cx| close(window, cx)
-                        })
-                    }),
-            )
-            .child(panel)
-            .when(open, |el| {
-                el.capture_key_down({
-                    let close = close.clone();
-                    let dismissible = dismissible;
-                    move |e: &gpui::KeyDownEvent, window, cx| {
-                        if dismissible && e.keystroke.key == "escape" {
+        // deferred + high priority puts the dialog above page chrome for hit-testing.
+        // occlude + stop_propagation block hover/click from reaching content underneath.
+        let layer = deferred(
+            div()
+                .id(format!("{id}-layer"))
+                .absolute()
+                .inset_0()
+                .occlude()
+                .flex()
+                .items_center()
+                .justify_center()
+                .on_mouse_down(MouseButton::Left, {
+                    let close = close_outside.clone();
+                    let dismiss = dismissible && open;
+                    move |_, window, cx| {
+                        if dismiss {
                             close(window, cx);
-                            cx.stop_propagation();
                         }
+                        cx.stop_propagation();
                     }
                 })
-            });
+                .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                .child(
+                    div()
+                        .id(format!("{id}-backdrop"))
+                        .absolute()
+                        .inset_0()
+                        .occlude()
+                        .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha)),
+                )
+                .child(
+                    div()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(panel),
+                )
+                .when(open, |el| {
+                    el.capture_key_down({
+                        let close = close.clone();
+                        let dismissible = dismissible;
+                        move |e: &gpui::KeyDownEvent, window, cx| {
+                            if dismissible && e.keystroke.key == "escape" {
+                                close(window, cx);
+                                cx.stop_propagation();
+                            }
+                        }
+                    })
+                }),
+        )
+        .with_priority(300);
 
         Some(layer.into_any_element())
     }
