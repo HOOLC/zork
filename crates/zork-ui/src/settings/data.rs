@@ -83,7 +83,7 @@ impl Render for DataSettings {
             }),
             self.open,
             self.data.busy,
-            Material::default(),
+            Material::ordinary(),
             window,
             cx,
             |view, _, cx| view.cancel(cx),

@@ -491,7 +491,7 @@ pub fn dropdown_with_icons<V: 'static>(
         Placement::Window {
             width: width.max(32.),
         },
-        Material::default(),
+        Material::ordinary(),
         leading,
         option_icons,
         window,

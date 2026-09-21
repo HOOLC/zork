@@ -87,7 +87,7 @@ fn a_tap_received_between_display_frames_is_visible_then_settles() {
             break;
         }
     }
-    assert!(lowest < 38.5, "short tap retains visible pressure");
+    assert!(lowest >= 38.5, "ordinary press keeps rest height (no liquid squash)");
     assert!(stopped);
     assert_eq!(scene.frame(&[], 1., false).unwrap().len(), 16);
 }

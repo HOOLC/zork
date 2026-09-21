@@ -404,7 +404,7 @@ impl Viewer {
                     Some(footer.into_any_element()),
                     self.data.info.as_ref().is_some_and(|info| !info.image_view),
                     Placement::Window { width },
-                    Material::default(),
+                    Material::ordinary(),
                     DialogOptions {
                         title_action: Some(title_actions.into_any_element()),
                         notice: self.data.notice.map(|key| self.locale.text(key).to_owned()),

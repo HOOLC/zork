@@ -158,7 +158,7 @@ impl ModalState {
                 Placement::Window {
                     width: ui::DIALOG_WIDTH,
                 },
-                Material::default(),
+                Material::ordinary(),
                 DialogOptions {
                     title_editor,
                     title_action,

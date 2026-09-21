@@ -36,7 +36,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            material: Material::default(),
+            material: Material::ordinary(),
             slow: false,
             cycle: false,
             seed: 7321,

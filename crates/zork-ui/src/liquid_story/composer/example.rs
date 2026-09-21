@@ -386,7 +386,7 @@ impl Render for Example {
                 self.variants_open,
                 true,
                 Placement::Window { width },
-                Material::default(),
+                Material::ordinary(),
                 window,
                 cx,
                 |v, open, _, cx| {

@@ -632,7 +632,7 @@ impl Flyout {
             },
             Some(origin),
             SurfaceColors::outlined(crate::design::LIQUID_OUTLINE, ZORK_UI.palette.canvas),
-            Material::default(),
+            Material::ordinary(),
             window,
             cx,
         );

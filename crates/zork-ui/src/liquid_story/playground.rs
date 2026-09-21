@@ -196,7 +196,7 @@ impl Gallery {
                     return;
                 }
                 let mut config = v.config.borrow_mut();
-                config.material = Material::default();
+                config.material = Material::ordinary();
                 config.slow = false;
                 config.epoch += 1;
                 drop(config);

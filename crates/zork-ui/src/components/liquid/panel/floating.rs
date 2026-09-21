@@ -138,7 +138,7 @@ impl FloatingPanel {
                 crate::design::LIQUID_OUTLINE,
                 crate::design::ZORK_UI.palette.canvas,
             ),
-            Material::default(),
+            Material::ordinary(),
             Some(open && self.visible),
             window,
             cx,

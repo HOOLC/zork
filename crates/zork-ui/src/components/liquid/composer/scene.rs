@@ -76,7 +76,7 @@ impl Scene {
             self.surface = Surface::new(Simulation::compound(
                 &poses,
                 4.,
-                Material::default(),
+                Material::ordinary(),
                 Options {
                     anchor: [0., 1.],
                     ..Default::default()

@@ -205,7 +205,7 @@ pub fn stepper<V: 'static>(
         100.,
         32.,
         ui::FIELD_RADIUS,
-        super::liquid::Material::default().smoothing,
+        super::liquid::Material::ordinary().smoothing,
         super::liquid::SurfaceColors::outlined(LIQUID_OUTLINE, ZORK_UI.palette.canvas),
         content,
         window,

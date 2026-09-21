@@ -11,10 +11,10 @@ pub const LIQUID_OUTLINE: u32 = 0xB6BABD;
 pub const BORDER_WIDTH: f32 = 0.5;
 pub const SMOOTHING: f64 = 0.6;
 pub const BUTTON_RADIUS: f32 = 999.;
-pub const FIELD_RADIUS: f32 = 12.;
-pub const CARD_RADIUS: f32 = 32.;
-pub const COMPACT_CARD_RADIUS: f32 = 20.;
-pub const ICON_BUTTON_RADIUS: f32 = 12.;
+pub const FIELD_RADIUS: f32 = 10.;
+pub const CARD_RADIUS: f32 = 12.;
+pub const COMPACT_CARD_RADIUS: f32 = 12.;
+pub const ICON_BUTTON_RADIUS: f32 = 10.;
 
 /// Shared action feedback, independent of the page containing the control.
 pub struct InteractionPalette {

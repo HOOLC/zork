@@ -80,7 +80,7 @@ pub(super) fn with_control_surface(
     let state = window.use_keyed_state(format!("{id}-motion"), cx, |_, _| {
         let mut simulation = super::Simulation::new(
             target,
-            super::Material::default(),
+            super::Material::ordinary(),
             super::Options::default(),
         );
         simulation.finish();
