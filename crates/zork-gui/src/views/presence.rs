@@ -536,6 +536,8 @@ impl RootView {
                 fan_pinned: self.file_ui.draft.pinned,
                 bubbles: &bubbles,
                 handler,
+                accessory_band: 0.,
+                accessories: vec![],
                 presentation: Some(component::Presentation {
                     editor_id: "composer-input".into(),
                     attach_id: "composer-options".into(),

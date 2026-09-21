@@ -54,6 +54,7 @@ impl NewChat {
             profiles.refresh().await;
             loop {
                 if let Some(source) = weak.upgrade() {
+                    source.ensure_default_model();
                     source.publish_view();
                 } else {
                     break;
@@ -111,6 +112,30 @@ impl NewChat {
             s.created = None;
             Ok(())
         })
+    }
+    fn ensure_default_model(&self) {
+        let state = self.snapshot();
+        if !state.model.is_empty() || state.busy || state.pending.is_some() {
+            return;
+        }
+        let Some(device) = self.device.upgrade() else {
+            return;
+        };
+        let profiles = device.profiles().snapshot();
+        if !profiles.loaded {
+            return;
+        }
+        let selectable = crate::new_chat::selectable(&profiles.profiles);
+        let choices = crate::agent_edit::choices(&selectable, "auto", "", "");
+        let Some(model) = choices["models"]
+            .as_array()
+            .and_then(|models| models.first())
+            .and_then(|model| model["id"].as_str())
+            .map(str::to_owned)
+        else {
+            return;
+        };
+        let _ = self.choose(model, String::new(), "auto".into());
     }
     pub fn choose(&self, model: String, thinking: String, profile: String) -> anyhow::Result<()> {
         let device = self

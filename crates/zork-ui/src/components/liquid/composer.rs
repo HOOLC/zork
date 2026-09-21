@@ -164,6 +164,9 @@ pub struct Props<'a> {
     pub bubbles: &'a [super::departure::Bubble<'a>],
     pub handler: Handler,
     pub presentation: Option<Presentation>,
+    /// Extra space kept above the action row so accessories do not cover the editor.
+    pub accessory_band: f32,
+    pub accessories: Vec<AnyElement>,
 }
 /// Content positions follow the current material pose, including reversals.
 /// The ordinary GPUI editor retains selection, IME, scrolling and key bindings.
@@ -180,12 +183,15 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         bubbles,
         handler,
         mut presentation,
+        accessory_band,
+        accessories,
     } = props;
     surface.set_border_width(spec::BORDER_WIDTH);
     let p = surface.simulation.pose();
     let c = snapshot.capabilities;
     let editor_height =
-        (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME).clamp(0., EDITOR_MAX);
+        (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME - accessory_band.max(0.))
+            .clamp(0., EDITOR_MAX);
     let input = editor.clone();
     let editor_id = presentation
         .as_ref()
@@ -289,6 +295,29 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                         ),
                     ),
             ),
+        );
+    }
+    if !accessories.is_empty() {
+        let action = 24.;
+        let inset = spec::ACTION_INSET as f64;
+        let show_attach = presentation.as_ref().is_none_or(|item| item.show_attach);
+        let left = if show_attach {
+            inset + action + inset
+        } else {
+            TEXT_INSET as f64
+        };
+        let right = inset + action + inset;
+        content = content.child(
+            positioned(
+                p.left() + left,
+                p.top() + p.h - action - inset,
+                (p.w - left - right).max(2.),
+                action,
+            )
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .children(accessories),
         );
     }
     for (i, member) in snapshot.members.iter().enumerate() {

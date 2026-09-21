@@ -20,7 +20,7 @@ fn new_chat_story(
     let text = zork_ui::resources::Text(std::rc::Rc::new(|key| {
         crate::i18n::Locale::ZhCn.text(key).into()
     }));
-    let form_width = (width - 48.).clamp(220., 680.);
+    let form_width = (width - 48.).clamp(220., 744.);
     let view = cx.new(|cx| {
         let mut view = zork_ui::new_chat::Page::new(text.clone(), cx);
         view.configure(fixture.borrow().snapshot(), form_width, text.clone(), cx);

@@ -457,6 +457,62 @@ pub fn dropdown_with_icons<V: 'static>(
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
+    menu_dropdown(
+        id,
+        label,
+        options,
+        open,
+        enabled,
+        false,
+        leading,
+        option_icons,
+        window,
+        cx,
+        set_open,
+        choose,
+    )
+}
+/// Text and chevron sized to the label, for a row that already has the composer's insets.
+pub fn quiet_dropdown<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    label: String,
+    options: Vec<(String, String, bool)>,
+    open: bool,
+    enabled: bool,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<V>,
+    set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
+    choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
+) -> gpui::AnyElement {
+    menu_dropdown(
+        id,
+        label,
+        options,
+        open,
+        enabled,
+        true,
+        None,
+        vec![],
+        window,
+        cx,
+        set_open,
+        choose,
+    )
+}
+fn menu_dropdown<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    label: String,
+    options: Vec<(String, String, bool)>,
+    open: bool,
+    enabled: bool,
+    quiet: bool,
+    leading: Option<&'static str>,
+    option_icons: Vec<Option<&'static str>>,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<V>,
+    set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
+    choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
+) -> gpui::AnyElement {
     use crate::components::liquid::{
         overlay::{Choice, Placement, Popover, Selection, Trigger},
         Material,
@@ -480,16 +536,27 @@ pub fn dropdown_with_icons<V: 'static>(
             disabled: !enabled,
         })
         .collect();
+    let trigger = if quiet {
+        Trigger::Quiet
+    } else {
+        Trigger::Field
+    };
+    let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
+    let control_width = if quiet {
+        state.borrow_mut().trigger_width(&label, trigger, window)
+    } else {
+        width.max(32.)
+    };
     let popover = state.borrow_mut().render_with_icons(
         id,
         label,
         choices,
         Selection::Single,
-        Trigger::Field,
+        trigger,
         open,
         enabled,
         Placement::Window {
-            width: width.max(32.),
+            width: control_width.max(2.),
         },
         Material::default(),
         leading,
@@ -501,8 +568,10 @@ pub fn dropdown_with_icons<V: 'static>(
     );
     div()
         .relative()
-        .w_full()
-        .h(px(DROPDOWN_HEIGHT))
+        .w(px(if quiet { control_width } else { width.max(32.) }))
+        .when(!quiet, |v| v.w_full())
+        .flex_shrink_0()
+        .h(px(control_height))
         .child(
             gpui::canvas(
                 move |bounds, _, cx| {
