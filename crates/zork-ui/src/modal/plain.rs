@@ -14,10 +14,7 @@ use gpui::{
     deferred, div, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle, MouseButton,
     SharedString, Window,
 };
-use std::{
-    cell::Cell,
-    rc::Rc,
-};
+use std::{cell::Cell, rc::Rc};
 use zork_liquid::motion::Reveal;
 
 pub struct PlainDialog {
@@ -101,7 +98,6 @@ impl PlainDialog {
 
     pub fn reset_samples(&mut self) {}
 
-
     pub fn render<V: 'static>(
         &mut self,
         id: impl Into<SharedString>,
@@ -144,17 +140,8 @@ impl PlainDialog {
     ) -> gpui::Stateful<gpui::Div> {
         let id = id.into();
         let label = label.into();
-        crate::components::liquid::controls::action(
-            id,
-            label,
-            width,
-            32.,
-            style,
-            fill,
-            window,
-            cx,
-        )
-        .on_click(cx.listener(move |v, _, w, cx| open(v, w, cx)))
+        crate::components::liquid::controls::action(id, label, width, 32., style, fill, window, cx)
+            .on_click(cx.listener(move |v, _, w, cx| open(v, w, cx)))
     }
 
     pub fn render_with_options<V: 'static>(
@@ -178,7 +165,9 @@ impl PlainDialog {
 
         if open && !self.seen_open {
             self.focus_pending = true;
-            let source = window.focused(cx).unwrap_or_else(|| self.focus.focus.clone());
+            let source = window
+                .focused(cx)
+                .unwrap_or_else(|| self.focus.focus.clone());
             self.focus.activate("dialog", &source, window, cx);
         }
         if !open {
