@@ -11,6 +11,9 @@ pub struct NavigationChat {
     pub can_send: bool,
     pub can_stop: bool,
     pub executor: Option<String>,
+    /// Session model shown under the Chat. Empty when the node has not reported one.
+    #[serde(default)]
+    pub model: String,
     /// Recent or unread; platforms may expand the group and retain selection.
     pub in_preview: bool,
 }
