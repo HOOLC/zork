@@ -35,14 +35,63 @@ impl RootView {
     }
     pub(crate) fn navigation_selection(&self) -> (crate::desktop::navigation::Selection, Locale) {
         (
-            crate::desktop::navigation::Selection {
-                selected_leader: self.active_leader.clone(),
-                selected_session: self.selected_session.clone(),
-                route: Some(self.shell.route().clone()),
-                reading_tail: self.transcript_list.is_following_tail(),
-            },
+            self.preview_original.clone().unwrap_or_else(|| {
+                crate::desktop::navigation::Selection {
+                    selected_leader: self.active_leader.clone(),
+                    selected_session: self.selected_session.clone(),
+                    route: Some(self.shell.route().clone()),
+                    reading_tail: self.transcript_list.is_following_tail(),
+                }
+            }),
             self.locale,
         )
+    }
+    pub(crate) fn preview_session(
+        &mut self,
+        id: &str,
+        overlay: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.preview_original.is_none() {
+            if !overlay
+                && self.selected_session.as_deref() == Some(id)
+                && matches!(self.shell.route(), ShellRoute::Task(_))
+            {
+                return false;
+            }
+            self.save_draft(cx);
+            self.save_reading_position();
+            self.save_chat_history();
+            self.preview_original = Some(self.navigation_selection().0);
+        }
+        if self.selected_session.as_deref() != Some(id) {
+            self.select_session(id, cx);
+        }
+        self.preview_overlay = overlay;
+        true
+    }
+    pub(crate) fn restore_preview(&mut self, cx: &mut Context<Self>) {
+        let Some(original) = self.preview_original.clone() else {
+            return;
+        };
+        self.active_leader = original.selected_leader;
+        self.navigate_shell(original.route.unwrap_or(ShellRoute::Home), cx);
+        self.preview_original = None;
+        self.preview_overlay = false;
+        self.notify_navigation(cx);
+        zork_ui::components::region::invalidate_all(cx);
+    }
+    pub(crate) fn commit_preview(&mut self, cx: &mut Context<Self>) {
+        if self.preview_original.take().is_some() {
+            self.preview_overlay = false;
+            if let Some(id) = &self.selected_session {
+                self.persist_cache(zork_client_core::preferences::ViewState::LastSession, id);
+            }
+            self.restore_draft(cx);
+            self.refresh_agents(cx);
+            self.notify_navigation(cx);
+            zork_ui::components::region::invalidate_all(cx);
+        }
     }
     pub(super) fn notify_navigation(&self, cx: &mut Context<Self>) {
         let (selection, locale) = self.navigation_selection();
@@ -84,6 +133,10 @@ impl RootView {
         zork_ui::components::region::invalidate_all(cx);
     }
     pub fn refresh_agents(&mut self, cx: &mut Context<Self>) {
+        #[cfg(test)]
+        if self.benchmark_offline {
+            return;
+        }
         let core = self.core_device.clone();
         cx.spawn(async move |_, _| {
             core.refresh(
@@ -115,6 +168,45 @@ impl RootView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn hover_preview_restores_the_original_chat_until_clicked(cx: &mut gpui::TestAppContext) {
+        let view = cx.new(|cx| {
+            let mut view = RootView::new(
+                Arc::new(StationClient::new("http://127.0.0.1:9", None)),
+                None,
+                cx,
+            );
+            view.benchmark_offline = true;
+            view
+        });
+        view.update(cx, |view, cx| {
+            view.selected_session = Some("original".into());
+            view.shell.navigate(ShellRoute::Task("original".into()));
+            assert!(view.preview_session("hovered", false, cx));
+            assert_eq!(view.selected_session.as_deref(), Some("hovered"));
+            assert_eq!(
+                view.navigation_selection().0.selected_session.as_deref(),
+                Some("original")
+            );
+            view.restore_preview(cx);
+            assert_eq!(view.selected_session.as_deref(), Some("original"));
+            assert_eq!(view.shell.route(), &ShellRoute::Task("original".into()));
+
+            assert!(view.preview_session("original", true, cx));
+            assert!(view.preview_overlay);
+            view.restore_preview(cx);
+            assert!(!view.preview_overlay);
+
+            assert!(view.preview_session("hovered", false, cx));
+            view.commit_preview(cx);
+            assert_eq!(view.selected_session.as_deref(), Some("hovered"));
+            assert_eq!(
+                view.navigation_selection().0.selected_session.as_deref(),
+                Some("hovered")
+            );
+        });
+    }
 
     #[gpui::test]
     fn legacy_home_navigation_never_allocates_an_empty_chat(cx: &mut gpui::TestAppContext) {

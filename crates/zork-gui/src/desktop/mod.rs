@@ -70,6 +70,7 @@ pub struct DesktopRoot {
     remote_addr: Entity<ComposerInput>,
     nodes: Vec<SavedNode>,
     active: Option<Entity<RootView>>,
+    preview: Option<(String, String, Entity<RootView>)>,
     active_node_id: Option<String>,
     node_views: std::collections::HashMap<String, (u64, Entity<RootView>)>,
     navigation: Entity<navigation::DeviceNavigation>,
@@ -163,6 +164,10 @@ impl DesktopRoot {
             v.navigate_device(action.clone(), cx);
         })
         .detach();
+        cx.subscribe(&navigation, |v, _, event: &navigation::Preview, cx| {
+            v.preview_chat(event, cx);
+        })
+        .detach();
         let notification_root = cx.weak_entity();
         cx.on_system_notification_response(move |response, cx| {
             let _ = notification_root.update(cx, |view, cx| {
@@ -194,6 +199,7 @@ impl DesktopRoot {
             remote_addr,
             nodes,
             active: None,
+            preview: None,
             active_node_id: None,
             node_views: std::collections::HashMap::new(),
             navigation,
@@ -318,6 +324,7 @@ impl DesktopRoot {
             self.sync_model_settings(cx);
         }
         if nodes_changed {
+            self.end_preview(cx);
             self.navigation
                 .update(cx, |nav, cx| nav.update_nodes(&self.nodes, cx));
             for node in self.nodes.clone() {
@@ -356,6 +363,20 @@ impl DesktopRoot {
         if self.busy {
             return;
         }
+        let commits_preview = self.preview.as_ref().is_some_and(|(node, session, _)| {
+            action.node.as_ref() == Some(node)
+                && matches!(
+                    &action.destination,
+                    navigation::Destination::Conversation { session: target, .. } if target == session
+                )
+        });
+        if commits_preview {
+            if let Some((_, _, view)) = self.preview.take() {
+                view.update(cx, |view, cx| view.commit_preview(cx));
+            }
+        } else {
+            self.end_preview(cx);
+        }
         if action.node.is_none()
             && matches!(action.destination, navigation::Destination::Manage(3))
             && self.active.is_some()
@@ -380,7 +401,55 @@ impl DesktopRoot {
         }
         self.apply_navigation(action.destination, cx);
     }
+    fn preview_chat(&mut self, event: &navigation::Preview, cx: &mut Context<Self>) {
+        if !event.hovered {
+            if self
+                .preview
+                .as_ref()
+                .is_some_and(|(node, session, _)| node == &event.node && session == &event.session)
+            {
+                self.end_preview(cx);
+            }
+            return;
+        }
+        if self.busy || self.managing || self.showing_shared_files || self.add_device_open {
+            return;
+        }
+        if self
+            .preview
+            .as_ref()
+            .is_some_and(|(node, session, _)| node == &event.node && session == &event.session)
+        {
+            return;
+        }
+        self.end_preview(cx);
+        let Some(node) = self
+            .nodes
+            .iter()
+            .find(|node| node.id == event.node)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(view) = self.ensure_node_view(&node, cx) else {
+            return;
+        };
+        let overlay = self.active.as_ref() != Some(&view);
+        if view.update(cx, |view, cx| {
+            view.preview_session(&event.session, overlay, cx)
+        }) {
+            self.preview = Some((event.node.clone(), event.session.clone(), view));
+            cx.notify();
+        }
+    }
+    fn end_preview(&mut self, cx: &mut Context<Self>) {
+        if let Some((_, _, view)) = self.preview.take() {
+            view.update(cx, |view, cx| view.restore_preview(cx));
+            cx.notify();
+        }
+    }
     fn apply_navigation(&mut self, destination: navigation::Destination, cx: &mut Context<Self>) {
+        self.end_preview(cx);
         let shared = matches!(destination, navigation::Destination::SharedFiles);
         if shared {
             self.managing = false;
@@ -1021,6 +1090,7 @@ impl Render for DesktopRoot {
             nav.set_viewing(
                 !self.managing
                     && !self.showing_shared_files
+                    && self.preview.is_none()
                     && !self.add_device_open
                     && window.is_window_active(),
                 cx,
@@ -1119,11 +1189,30 @@ impl Render for DesktopRoot {
                 )
         } else if !self.managing {
             if let Some(active) = self.active.clone() {
+                let preview = self
+                    .preview
+                    .as_ref()
+                    .filter(|(_, _, view)| view != &active)
+                    .map(|(_, _, view)| view.clone());
                 div()
                     .size_full()
+                    .relative()
                     .flex()
                     .flex_col()
                     .child(div().flex_1().min_h_0().child(active))
+                    .when_some(preview, |panel, view| {
+                        panel.child(
+                            div()
+                                .id("chat-hover-preview")
+                                .absolute()
+                                .left(px(width))
+                                .right_0()
+                                .top_0()
+                                .bottom_0()
+                                .occlude()
+                                .child(view),
+                        )
+                    })
                     .when_some(self.startup_notice(cx), |v, notice| v.child(notice))
             } else {
                 self.render_startup(cx)

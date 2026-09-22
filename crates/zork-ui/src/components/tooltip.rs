@@ -367,6 +367,7 @@ pub struct TooltipTrigger<E: ControlElement> {
     row: crate::automation::element::AutomationElement<E>,
     details: DetailsTooltip,
     overlay: gpui::Entity<DetailsOverlay>,
+    hover: Option<std::rc::Rc<dyn Fn(bool, &mut gpui::App)>>,
 }
 pub fn trigger<E: ControlElement>(
     row: crate::automation::element::AutomationElement<E>,
@@ -377,6 +378,20 @@ pub fn trigger<E: ControlElement>(
         row,
         details,
         overlay,
+        hover: None,
+    }
+}
+pub fn trigger_with_hover<E: ControlElement>(
+    row: crate::automation::element::AutomationElement<E>,
+    details: DetailsTooltip,
+    overlay: gpui::Entity<DetailsOverlay>,
+    hover: impl Fn(bool, &mut gpui::App) + 'static,
+) -> TooltipTrigger<E> {
+    TooltipTrigger {
+        row,
+        details,
+        overlay,
+        hover: Some(std::rc::Rc::new(hover)),
     }
 }
 impl<E: ControlElement> gpui::RenderOnce for TooltipTrigger<E> {
@@ -387,8 +402,12 @@ impl<E: ControlElement> gpui::RenderOnce for TooltipTrigger<E> {
             |_, _| gpui::Bounds::default(),
         );
         let anchor = bounds.clone();
+        let hover = self.hover;
         self.row.map_inner(|row| {
             row.on_hover(move |hovered, _, cx| {
+                if let Some(callback) = &hover {
+                    callback(*hovered, cx);
+                }
                 let rect = *bounds.read(cx);
                 self.overlay.update(cx, |v, cx| {
                     if *hovered {
