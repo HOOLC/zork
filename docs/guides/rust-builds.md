@@ -97,7 +97,8 @@ python3 scripts/build/cache_budget.py --auto            # 供本机维护任务�
 `--auto` 只回收已释放的隔离 Cargo target，不清理共用的 `target`、
 Android 产物或源码；适合在个人开发机定期运行。通过 `build_env.py` 使用
 `isolated/<worktree 名>`（或其 `target` 子目录）时会登记来源 worktree；
-显式设置 `CARGO_TARGET_DIR` 要先于调用 `build_env.py`。只有
+入口新建目标目录时也会写入有效的 Cargo 缓存标记，已有无标记目录不会被
+自动补标。显式设置 `CARGO_TARGET_DIR` 要先于调用 `build_env.py`。只有
 该 worktree 已移除、目标超过保留期且没有打开文件，才允许自动回收。这避免
 定期任务与仍在进行的构建之间仅凭一次占用检查作决定。固定用途的隔离目录与
 未登记的旧目录仍由其任务所有者管理。自动任务串行化回收实例，并在每个目标
