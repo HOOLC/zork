@@ -50,6 +50,7 @@ pub struct DesktopRoot {
     directory_updates: Option<gpui::Task<()>>,
     startup_updates: Option<gpui::Task<()>>,
     startup_state: Arc<zork_client_core::desktop::startup::State>,
+    onboarding_models_open: bool,
     store: Arc<ClientStore>,
     local: Arc<LocalNode>,
     local_enabled: bool,
@@ -175,7 +176,11 @@ impl DesktopRoot {
             source,
             directory_updates: None,
             startup_updates: None,
-            startup_state: Arc::new(Default::default()),
+            startup_state: Arc::new(zork_client_core::desktop::startup::State {
+                onboarding: startup_state.onboarding,
+                ..Default::default()
+            }),
+            onboarding_models_open: false,
             store,
             local,
             local_enabled,
@@ -326,6 +331,7 @@ impl DesktopRoot {
         cx.notify();
     }
     fn login_account(&mut self, cx: &mut Context<Self>) {
+        self.error = None;
         if let Err(error) = self.source.login_account() {
             self.error = Some(error.to_string());
         }
@@ -520,6 +526,13 @@ impl DesktopRoot {
         };
         zork_client_core::desktop::trace_startup("gui.node_view_ready");
         let profile_source = retained.read(cx).core_device().profiles();
+        if let Err(error) = cx
+            .global::<DesktopRuntime>()
+            .startup
+            .observe_onboarding_models(&node.id, profile_source.clone())
+        {
+            self.error = Some(error.to_string());
+        }
         if let Some((_, profiles, mesh)) = self
             .management_views
             .get(&node.id)
@@ -998,8 +1011,8 @@ impl Render for DesktopRoot {
             }
         }
         for (id, (_, profiles, _)) in &self.management_views {
-            let visible = self.managing
-                && self.management_tab == 0
+            let visible = ((self.managing && self.management_tab == 0)
+                || (self.startup_state.onboarding.is_some() && self.onboarding_models_open))
                 && self.active.is_some()
                 && self.active_node_id.as_ref() == Some(id);
             profiles.update(cx, |view, cx| view.set_visible(visible, cx));
@@ -1036,7 +1049,9 @@ impl Render for DesktopRoot {
                     v.navigation.update(cx, |n, cx| n.finish_resize(cx));
                 }),
             );
-        let content = if self.showing_shared_files {
+        let content = if self.startup_state.onboarding.is_some() {
+            self.render_onboarding(cx)
+        } else if self.showing_shared_files {
             div()
                 .size_full()
                 .flex()

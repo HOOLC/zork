@@ -67,6 +67,14 @@ pub struct ProfilesView {
     attempt: Option<Value>,
 }
 impl ProfilesView {
+    pub(super) fn open_create(&mut self, cx: &mut Context<Self>) {
+        self.form_open = true;
+        self.id.update(cx, |i, cx| i.clear(cx));
+        self.key.update(cx, |i, cx| i.clear(cx));
+        self.base_url.update(cx, |i, cx| i.clear(cx));
+        self.message = None;
+        zork_ui::components::region::invalidate_all(cx);
+    }
     pub fn set_device_name(&mut self, name: String) {
         self.device_name = name;
     }
@@ -1913,12 +1921,7 @@ impl ProfilesView {
                 header.child(
                     ui::page_action("profile-add", "添加连接")
                         .on_click(cx.listener(|v, _, _, cx| {
-                            v.form_open = true;
-                            v.id.update(cx, |i, cx| i.clear(cx));
-                            v.key.update(cx, |i, cx| i.clear(cx));
-                            v.base_url.update(cx, |i, cx| i.clear(cx));
-                            v.message = None;
-                            zork_ui::components::region::invalidate_all(cx);
+                            v.open_create(cx);
                         }))
                         .map(|button| {
                             self.modal.source("profile-create-dialog").bind(

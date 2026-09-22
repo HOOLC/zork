@@ -245,3 +245,9 @@ name = "headless_new_chat"
 path = "tests/headless_new_chat.rs"
 harness = false
 required-features = ["headless-bench"]
+
+[[test]]
+name = "headless_onboarding"
+path = "tests/headless_onboarding.rs"
+harness = false
+required-features = ["headless-bench"]
