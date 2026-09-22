@@ -262,8 +262,14 @@ pub fn catalog() -> Vec<Story> {
         (
             "activity",
             "执行状态",
-            &["running", "failed", "done"][..],
-            "crates/zork-ui/src/components/activity.rs::render",
+            &[
+                "running",
+                "failed",
+                "done",
+                "session-compact",
+                "session-compact-expanded",
+            ][..],
+            "crates/zork-ui/src/components/activity.rs",
             "missing",
         ),
         (
@@ -310,6 +316,9 @@ pub fn catalog() -> Vec<Story> {
                 story.height = if *state == "hover-5h" { 220. } else { 160. };
                 story.target = "profile-detail-story-card".into();
             }
+            if family == "activity" && state.starts_with("session-compact") {
+                story.height = 200.;
+            }
             match (family, *state) {
                 ("button", "hover") => story
                     .actions
@@ -326,6 +335,9 @@ pub fn catalog() -> Vec<Story> {
                 ("profile-card", "hover-5h") => story.actions.push(json!({
                     "type":"move","target":{"element_id":"profile-quota-window-story-card-0"}
                 })),
+                ("activity", "session-compact-expanded") => {
+                    story.actions.push(click("session-activity-expand"))
+                }
                 _ => {}
             }
             items.push(story);
@@ -1140,6 +1152,60 @@ impl Render for PrimitiveStory {
                     }
                 },
             ),
+            "activity" if state.starts_with("session-compact") => {
+                let root = cx.entity().downgrade();
+                let open = root.clone();
+                activity::render_session(
+                    "产品 Leader",
+                    Some("fox"),
+                    false,
+                    false,
+                    false,
+                    self.selected == 1,
+                    &[
+                        activity::SessionRow {
+                            id: "read-1".into(),
+                            icon: "history/file-read.svg",
+                            label: "读取文件".into(),
+                            summary: "src/chat.rs".into(),
+                            failed: false,
+                            running: false,
+                        },
+                        activity::SessionRow {
+                            id: "write-1".into(),
+                            icon: "history/file-write.svg",
+                            label: "写入文件".into(),
+                            summary: "src/activity.rs".into(),
+                            failed: false,
+                            running: false,
+                        },
+                        activity::SessionRow {
+                            id: "thinking-1".into(),
+                            icon: "interface/sparkles.svg",
+                            label: "正在思考".into(),
+                            summary: String::new(),
+                            failed: false,
+                            running: true,
+                        },
+                    ],
+                    "更多",
+                    "收起",
+                    "执行中",
+                    std::rc::Rc::new(move |cx| {
+                        let _ = root.update(cx, |view, cx| {
+                            view.selected = 1 - view.selected;
+                            cx.notify();
+                        });
+                    }),
+                    std::rc::Rc::new(move |_, cx| {
+                        let _ = open.update(cx, |view, cx| {
+                            view.clicks += 1;
+                            cx.notify();
+                        });
+                    }),
+                )
+                .into_any_element()
+            }
             "activity" => activity::render_with_id(
                 self.id("participant-activity"),
                 &[activity::Presentation {

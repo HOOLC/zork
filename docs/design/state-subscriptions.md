@@ -96,8 +96,10 @@ and its append-only suffix; missing coverage stays unknown instead of triggering
 an all-archive fallback. Context changes preserve cumulative totals.
 
 Overview and explicit detail reading remain independent: opening statistics or a
-hover preview does not load history, detail pages do not change cumulative totals,
-and ordinary chat observation does not start a history loader. The History reading
+hover preview does not load history, and detail pages do not change cumulative totals.
+Ordinary Chat observation does not start a history loader. A visible Chat may share
+the core History source while a member is working to show a bounded recent activity
+window; stopping or leaving releases that observation. The History reading
 page labels its separate loaded-call statistics; pagination may change that window. Apply the initial overview without
 waiting for delivered-message catch-up. Revocation fences both sources.
 

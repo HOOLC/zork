@@ -140,6 +140,9 @@ change the task status label/footer but never add chat rows. Successful
 Agent commentary, final transcript text, streaming deltas, tool results, and waits are internal.
 A visible assistant reply exists only after the Agent explicitly invokes
 `chat.post_message`.
+While a member works, the transcript can show a bounded, read-only preview of
+that member's Session activity. Its rows open Session history and never become
+Chat messages.
 
 ## Native component layer
 

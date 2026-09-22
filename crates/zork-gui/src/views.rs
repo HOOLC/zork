@@ -41,6 +41,7 @@ mod message_presentation;
 mod new_chat;
 mod panel_layout;
 mod presence;
+mod session_activity;
 
 pub(crate) fn shared_file_image(
     bytes: &[u8],
@@ -99,6 +100,7 @@ pub struct RootView {
     active_leader: Option<String>,
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
+    session_activity_preview: Option<session_activity::SessionActivityPreview>,
     client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
@@ -406,6 +408,7 @@ impl RootView {
             active_leader: None,
             history: history::HistoryState::default(),
             chat_histories: HashMap::new(),
+            session_activity_preview: None,
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
                 let device =
@@ -658,6 +661,7 @@ impl RootView {
             self.conversation_updates = Some(updates);
         }
         self.deliver_history_updates(cx);
+        self.deliver_session_activity_updates(cx);
     }
     fn apply_conversation_update(
         &mut self,
@@ -711,6 +715,7 @@ impl RootView {
             self.stop_pending = state.stop_pending;
             self.canceling = state.canceling;
             self.activity_revision = self.activity_revision.wrapping_add(1);
+            self.sync_session_activity(cx);
             self.transcript_list
                 .remeasure_items(self.lines.len()..self.lines.len() + 1);
             regions.extend(["transcript", "header", "composer"]);
@@ -780,6 +785,7 @@ impl RootView {
         self.loading_older = false;
         self.activity = None;
         self.participants.clear();
+        self.session_activity_preview = None;
         self.presence = presence::Presence::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
@@ -836,6 +842,7 @@ impl RootView {
         self.loading_older = false;
         self.activity = None;
         self.participants.clear();
+        self.session_activity_preview = None;
         self.presence = presence::Presence::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
@@ -1339,9 +1346,24 @@ impl RootView {
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
         let activity = self.activity_presentations();
-        let animate_activity = !self.scroll_active;
-        let activity_in_transcript = !self.can_send_selected();
-        let has_activity = !activity.is_empty();
+        let animate_activity = !self.scroll_active && !cx.reduce_motion();
+        let session_activity = self.session_activity_preview.as_ref().and_then(|preview| {
+            (!preview.rows.is_empty() && !activity.iter().any(|item| item.failed)).then(|| {
+                (
+                    preview.session.clone(),
+                    preview.name.clone(),
+                    preview.avatar.clone(),
+                    preview.stopped,
+                    preview.leaving,
+                    preview.expanded,
+                    preview.rows.clone(),
+                )
+            })
+        });
+        let activity_in_transcript = !self.can_send_selected() || session_activity.is_some();
+        let has_activity =
+            !activity.is_empty() || (activity_in_transcript && session_activity.is_some());
+        let activity_root = cx.entity().downgrade();
 
         self.transcript_selection.borrow_mut().begin_frame();
         let selection_state = self.transcript_selection.clone();
@@ -1598,13 +1620,56 @@ impl RootView {
                         }
                     })
             } else if activity_in_transcript {
+                let compact = session_activity.as_ref().map(
+                    |(session, name, avatar, stopped, leaving, expanded, rows)| {
+                        let expand_root = activity_root.clone();
+                        let open_root = activity_root.clone();
+                        let session = session.clone();
+                        zork_ui::components::activity::render_session(
+                            name,
+                            avatar.as_deref(),
+                            *stopped,
+                            *leaving,
+                            animate_activity,
+                            *expanded,
+                            rows,
+                            locale.text("session_activity_more"),
+                            locale.text("session_activity_less"),
+                            locale.text(if *stopped {
+                                "session_activity_stopped"
+                            } else {
+                                "history_running"
+                            }),
+                            Rc::new(move |cx| {
+                                let _ = expand_root.update(cx, |view, cx| {
+                                    if let Some(preview) = view.session_activity_preview.as_mut() {
+                                        preview.expanded = !preview.expanded;
+                                        view.transcript_list.remeasure_items(
+                                            view.lines.len()..view.lines.len() + 1,
+                                        );
+                                        zork_ui::components::region::invalidate(
+                                            cx,
+                                            &["transcript"],
+                                        );
+                                    }
+                                });
+                            }),
+                            Rc::new(move |id, cx| {
+                                let _ = open_root.update(cx, |view, cx| {
+                                    view.open_history_entry(&session, id, cx);
+                                });
+                            }),
+                        )
+                    },
+                );
                 div()
                     .w(px(content_width))
                     .mx_auto()
-                    .child(crate::components::activity::render(
-                        &activity,
-                        animate_activity,
-                    ))
+                    .child(match compact {
+                        Some(compact) => compact.into_any_element(),
+                        None => crate::components::activity::render(&activity, animate_activity)
+                            .into_any_element(),
+                    })
                     .into_any()
             } else {
                 div().h_0().into_any()
