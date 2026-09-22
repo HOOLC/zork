@@ -48,9 +48,13 @@ impl PreviewWindow {
     fn select(&mut self, entries: &[Entry]) -> Vec<Entry> {
         let end = Self::latest_end(entries);
         if !self.initialized {
+            let first_visible = end
+                .as_ref()
+                .and_then(|id| entries.iter().position(|entry| &entry.id == id))
+                .map_or(entries.len().saturating_sub(1), |index| index + 1);
             self.excluded = entries
                 .iter()
-                .take(entries.len().saturating_sub(1))
+                .take(first_visible)
                 .map(|entry| entry.id.clone())
                 .collect();
             self.last_end = end.clone();
@@ -421,6 +425,22 @@ mod tests {
                 .map(|e| e.id.as_str())
                 .collect::<Vec<_>>(),
             ["newer"]
+        );
+    }
+
+    #[test]
+    fn preview_does_not_replay_last_completed_turn() {
+        let mut window = PreviewWindow::default();
+        let mut entries = vec![entry("old", "read"), entry("end", "end")];
+        assert!(window.select(&entries).is_empty());
+        entries.push(entry("current", "read"));
+        assert_eq!(
+            window
+                .select(&entries)
+                .iter()
+                .map(|entry| entry.id.as_str())
+                .collect::<Vec<_>>(),
+            ["current"]
         );
     }
 }
