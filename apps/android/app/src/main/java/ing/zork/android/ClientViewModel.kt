@@ -601,6 +601,11 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    fun archiveChat(peer: String, chat: String, archived: Boolean, expectedMessageCount: Long) {
+        if (activePeer?.id != peer) peers.find { it.id == peer }?.let(::selectPeer)
+        action { repo.command("archive_chat", "peer" to peer, "chat" to chat, "archived" to archived, "expected_message_count" to expectedMessageCount) }
+    }
+
     fun openSession(session: JSONObject) {
         rememberConversation()
         peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) { live?.cancel(); activePeer = peer; conversation = null; connected = false } }

@@ -9,6 +9,10 @@ impl AssetSource for EmbeddedAssets {
             "icons/more-horizontal.svg" => {
                 Some(include_bytes!("../assets/icons/more-horizontal.svg"))
             }
+            "icons/archive.svg" => Some(include_bytes!("../assets/icons/archive.svg")),
+            "icons/archive-restore.svg" => {
+                Some(include_bytes!("../assets/icons/archive-restore.svg"))
+            }
             "icons/copy.svg" => Some(include_bytes!("../assets/icons/copy.svg")),
             "icons/message-square.svg" => {
                 Some(include_bytes!("../assets/icons/message-square.svg"))

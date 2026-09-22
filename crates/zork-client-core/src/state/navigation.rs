@@ -67,6 +67,7 @@ impl NavigationData {
                 by_id.insert(
                     session.session_id.clone(),
                     Channel {
+                        archived: false,
                         chat_id: session.session_id.clone(),
                         title: title.into(),
                         created_at: task.map(|(_, t)| t.created_at.clone()).unwrap_or_default(),
@@ -82,6 +83,7 @@ impl NavigationData {
             }
             for (id, (creator, task)) in &legacy {
                 by_id.entry((*id).to_owned()).or_insert_with(|| Channel {
+                    archived: false,
                     chat_id: (*id).into(),
                     title: task.title.clone(),
                     created_at: task.created_at.clone(),
@@ -119,6 +121,10 @@ impl NavigationData {
                     .map(|peer| peer.name.clone())
             });
             let chat = NavigationChat {
+                archived: channel.archived,
+                message_count: channel.message_count,
+                archive_pending: false,
+                archive_error: None,
                 chat_id: channel.chat_id.clone(),
                 title: channel.title.clone(),
                 description: old.map(|t| t.goal.clone()).unwrap_or_default(),
@@ -153,13 +159,14 @@ impl NavigationData {
         }
         let sort = |items: &mut Vec<NavigationChat>| {
             items.sort_by(|a, b| {
-                b.unread
-                    .cmp(&a.unread)
+                a.archived
+                    .cmp(&b.archived)
+                    .then_with(|| b.unread.cmp(&a.unread))
                     .then_with(|| b.updated_at.cmp(&a.updated_at))
                     .then_with(|| a.chat_id.cmp(&b.chat_id))
             });
             for (index, chat) in items.iter_mut().enumerate() {
-                chat.in_preview = index < 10 || chat.unread;
+                chat.in_preview = !chat.archived && (index < 10 || chat.unread);
             }
         };
         sort(&mut others);
@@ -180,6 +187,7 @@ mod tests {
 
     fn chat(id: &str, creator: Option<&str>) -> Channel {
         Channel {
+            archived: false,
             chat_id: id.into(),
             title: id.into(),
             created_at: id.into(),
@@ -278,5 +286,47 @@ mod tests {
         assert_eq!(nav.chats[0].chat_id, "chat-0000");
         assert_eq!(nav.chats.iter().filter(|chat| chat.in_preview).count(), 10);
         assert!(nav.chats[0].in_preview);
+    }
+}
+
+#[cfg(test)]
+mod archive_tests {
+    use super::*;
+    #[test]
+    fn archive_projection_preserves_history_without_consuming_active_preview() {
+        let mut data = DeviceData::default();
+        data.chats = Some(Arc::new(
+            (0..12)
+                .map(|index| Channel {
+                    chat_id: format!("chat-{index:02}"),
+                    title: "Retained".into(),
+                    archived: index >= 10,
+                    created_at: format!("{index:02}"),
+                    last_message_at: None,
+                    message_count: 1,
+                    creator: None,
+                })
+                .collect(),
+        ));
+        let nav = NavigationData::project(&data, HashSet::from(["chat-11".into()]));
+        assert_eq!(nav.chats.len(), 12);
+        assert_eq!(nav.chats.iter().filter(|c| c.in_preview).count(), 10);
+        assert!(nav
+            .chats
+            .iter()
+            .filter(|c| c.archived)
+            .all(|c| !c.in_preview));
+        let wire = serde_json::to_value(&nav).unwrap();
+        assert_eq!(wire["chats"][10]["archived"], true);
+        let channels = Arc::make_mut(data.chats.as_mut().unwrap());
+        channels[11].archived = false;
+        channels[11].message_count += 1;
+        let restored = NavigationData::project(&data, HashSet::from(["chat-11".into()]));
+        assert_eq!(restored.chats[0].chat_id, "chat-11");
+        assert!(!restored.chats[0].archived);
+        data.revoked = true;
+        assert!(NavigationData::project(&data, HashSet::new())
+            .chats
+            .is_empty());
     }
 }

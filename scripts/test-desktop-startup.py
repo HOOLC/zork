@@ -148,7 +148,17 @@ class Desktop:
         self.sample["milestones_ms"].setdefault(name, (time.perf_counter() - self.started) * 1000)
 
     def ui(self, path, body=None):
-        return critical.request(self.port, path, self.token, body)
+        # Automation can queue behind a frame under concurrent host builds;
+        # the measured milestones below still enforce the startup budget.
+        import http.client
+        with closing(http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)) as conn:
+            conn.request("GET" if body is None else "POST", path,
+                         None if body is None else json.dumps(body),
+                         {"Content-Type": "application/json", "Authorization": "Bearer " + self.token})
+            response = conn.getresponse()
+            value = json.loads(response.read())
+        assert response.status == 200, (path, response.status, value)
+        return value
 
     def node_api(self, path, body=None):
         import http.client
@@ -262,6 +272,75 @@ class Desktop:
         time.sleep(.4)  # Capture the reply after its ordinary entry transition.
         self.screenshot("new-chat-created")
         return session
+
+    def archive_chat(self, session, model):
+        def channel():
+            return next(item for item in self.node_api("/v1/node/chats")["items"] if item["chat_id"] == session)
+        row = self.wait(lambda: next((e["id"] for e in self.elements()["elements"]
+            if e["id"].startswith("chat-") and e["id"].endswith("-" + session) and e["visible"]), None), "archive target")
+        action = "archive-" + row
+        def click_archive():
+            self.ui("/v1/actions", {"type": "move", "target": {"element_id": row}})
+            self.wait(lambda: any(e["id"] == action and e["visible"] and e["enabled"]
+                for e in self.elements()["elements"]), "enabled archive icon on row hover")
+            self.click(action)
+        self.click("new-chat-entry")
+        self.wait(lambda: self.visible("new-chat-input"), "new Chat remains selected while archiving another Chat")
+        self.ui("/v1/actions", {"type": "move", "target": {"element_id": "new-chat-input"}})
+        self.screenshot("chat-archive-resting")
+        self.ui("/v1/actions", {"type": "move", "target": {"element_id": row}})
+        self.wait(lambda: self.visible(action), "archive icon on row hover")
+        self.ui("/v1/actions", {"type": "move", "target": {"element_id": action}})
+        self.wait(lambda: any(e["visible"] and e["label"] == "归档聊天" and e["role"] == "status"
+            for e in self.elements()["elements"]), "archive hint above the icon")
+        time.sleep(.7)  # Let the hint and dismissed row detail finish their normal transitions.
+        self.screenshot("chat-archive-hover")
+        archive_bounds = next(e["bounds"] for e in self.elements()["elements"] if e["id"] == action)
+        # Probe the left edge of the 16px icon, away from the unread dot at the right.
+        probe = '''import AppKit
+let image = NSBitmapImageRep(data: try! Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))!
+let left = Int(CommandLine.arguments[2])!, top = Int(CommandLine.arguments[3])!
+var ink = 0
+for y in (top + 4)..<(top + 16) {
+    for x in (left + 3)..<(left + 9) {
+        let color = image.colorAt(x: x, y: y)!.usingColorSpace(NSColorSpace.deviceRGB)!
+        if max(color.redComponent, color.greenComponent, color.blueComponent) < 0.75 { ink += 1 }
+    }
+}
+print(ink)
+'''
+        def ink(name):
+            png = self.output / (name + ".png")
+            return int(subprocess.check_output(["swift", "-e", probe, str(png),
+                str(int(archive_bounds["x"])), str(int(archive_bounds["y"]))], text=True).strip())
+        resting_ink, hovered_ink = ink("chat-archive-resting"), ink("chat-archive-hover")
+        assert hovered_ink > resting_ink + 3, ("archive icon did not become visible", resting_ink, hovered_ink)
+        self.sample["archive_icon_ink"] = {"resting": resting_ink, "hovered": hovered_ink}
+        click_archive()
+        self.wait(lambda: channel()["archived"] and not self.visible(row), "archived Chat leaves the daily list")
+        assert self.visible("new-chat-input"), "archive click propagated into opening the Chat"
+        self.click("chat-archive-filter")
+        self.wait(lambda: self.visible(row), "archived Chat remains browsable")
+        self.screenshot("chat-archived-list")
+        self.click(row)
+        self.wait(lambda: self.visible("composer-input"), "archived history opens")
+        self.wait(lambda: any(e["visible"] and e["label"] == "Reply: startup first Chat message"
+            for e in self.elements()["elements"]), "archive retained the original messages")
+        click_archive()
+        self.wait(lambda: not channel()["archived"] and not self.visible(row), "manual restore leaves the archive list")
+        self.click("chat-archive-filter")
+        self.wait(lambda: self.visible(row), "manually restored Chat returns to the daily list")
+        click_archive()
+        self.wait(lambda: channel()["archived"] and not self.visible(row), "archive before an incoming message")
+        text = "new message restores an archived Chat"
+        model.expected, model.session = text, session
+        self.node_api(f"/v1/im/sessions/{session}/messages", {"content": text, "request_id": "archive-arrival"})
+        self.wait(lambda: not channel()["archived"] and self.visible(row), "new message automatically restores the Chat")
+        self.wait(lambda: text in model.completed, "restored Chat continues the same Session")
+        self.wait(lambda: any(e["visible"] and e["label"] == "Reply: " + text
+            for e in self.elements()["elements"]), "new Agent reply reaches the restored Chat")
+        self.screenshot("chat-automatically-restored")
+        self.sample["archive"] = {"manual_restore": True, "incoming_message_restore": True, "history_retained": True}
 
     def chat(self, session, model):
         self.selected_chat = session
@@ -389,8 +468,11 @@ class Desktop:
     def __exit__(self, error_type, error, _):
         if error_type:
             if self.process.poll() is None:
-                subprocess.run(["sample", str(self.process.pid), "1", "10", "-mayDie", "-file",
-                    str(self.output / (self.case + "-failure-sample.txt"))], capture_output=True, timeout=5)
+                try:
+                    subprocess.run(["sample", str(self.process.pid), "1", "10", "-mayDie", "-file",
+                        str(self.output / (self.case + "-failure-sample.txt"))], capture_output=True, timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.sample["diagnostic_sample"] = "timed out; continuing fixture cleanup"
             try:
                 client_log = self.client / "logs/client.log"
                 if client_log.exists():
@@ -551,6 +633,7 @@ def run(app, output, trace, reports, restarts=3):
             desktop.roundtrip()
             origin = desktop.wait(desktop.origin, "authenticated local Mesh identity")
             session = desktop.create_chat(model)
+            desktop.archive_chat(session, model)
             desktop.sample["passed"] = True
             reports.append(desktop.sample)
         # The same persisted fact is recorded after real enrollment. No user DB,

@@ -463,6 +463,25 @@ impl Render for DeviceNavigation {
                         destination,
                     });
                 }
+                Action::Archive {
+                    node,
+                    chat,
+                    archived,
+                    expected_message_count,
+                } => {
+                    if let Some(core) = v
+                        .devices
+                        .iter()
+                        .find(|d| &d.node.id == node)
+                        .and_then(|d| d.core.as_ref())
+                    {
+                        if let Err(error) =
+                            core.set_chat_archived(chat, *archived, *expected_message_count)
+                        {
+                            eprintln!("Chat archive: {error}");
+                        }
+                    }
+                }
                 Action::BeginResize => {
                     v.resizing = true;
                 }

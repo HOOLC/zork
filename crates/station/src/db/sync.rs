@@ -135,8 +135,12 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
         install_projection(conn,table,"artifact_id","artifact",catalog,"1",&format!("json_object('artifact_id',NEW.artifact_id,'task_id',{task},'session_id',(SELECT id FROM sessions WHERE key={session}),'task_title','Conversation','name',NEW.name,'source_path',NEW.source_path,'workspace',NEW.workspace,'media_type',NEW.media_type,'caption',NEW.caption,'byte_len',json_extract(NEW.snapshot,'$.byte_len'),'version',NEW.version,'created_at',NEW.created_at)"))?;
     }
     install_markers(conn)?;
+    let chat_trigger: Option<String> = conn.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='sync_chat_channels_insert'", [], |row| row.get(0)).optional()?;
+    if chat_trigger.is_some_and(|sql| !sql.contains("NEW.archived")) {
+        conn.execute_batch("DROP TRIGGER IF EXISTS sync_chat_channels_insert; DROP TRIGGER IF EXISTS sync_chat_channels_update; DROP TRIGGER IF EXISTS sync_chat_channels_delete;")?;
+    }
     install_projection(conn, "chat_channels", "chat_id", "resource", catalog, "1",
-        "json_object('resource_type','chat_summary','schema_version',1,'chat_id',NEW.chat_id,'title',NEW.title,'creator',json(NEW.creator),'created_at',NEW.created_at,'last_message_at',NEW.last_message_at,'message_count',NEW.message_count)")?;
+        "json_object('resource_type','chat_summary','schema_version',1,'chat_id',NEW.chat_id,'title',NEW.title,'creator',json(NEW.creator),'created_at',NEW.created_at,'last_message_at',NEW.last_message_at,'message_count',NEW.message_count,'archived',json(CASE WHEN NEW.archived THEN 'true' ELSE 'false' END))")?;
     // A complete empty directory is distinct from an older node without this
     // projection. Unknown Resource variants are ignored by existing clients.
     conn.execute_batch(

@@ -103,6 +103,7 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/mesh/clients", post(register_mesh_client))
         .route("/v1/node/agents", get(agents).post(create_agent))
         .route("/v1/node/chats", get(node_chats))
+        .route("/v1/node/chats/{chat}/archive", post(node_archive_chat))
         .route("/v1/node/agents/{id}/open", post(open_agent))
         .route(
             "/v1/node/agents/{id}/skills",
@@ -2094,5 +2095,40 @@ mod tests {
             distinct.len() > 1,
             "every Agent would receive the same portrait"
         );
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArchiveChat {
+    archived: bool,
+    expected_message_count: u64,
+}
+async fn node_archive_chat(
+    State(state): State<NodeState>,
+    headers: HeaderMap,
+    Path(chat): Path<String>,
+    Json(request): Json<ArchiveChat>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    match state
+        .app
+        .db
+        .set_chat_archived(&chat, request.archived, request.expected_message_count)
+    {
+        Ok(true) => Json(json!({})).into_response(),
+        Ok(false) => error(
+            StatusCode::CONFLICT,
+            "Chat changed; refresh before archiving",
+        ),
+        Err(_) => error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not update Chat archive",
+        ),
     }
 }

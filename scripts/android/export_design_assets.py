@@ -66,7 +66,7 @@ def main():
     export(MOBILE/'mark.svg','ic_zork')
 
     # Shared current settings assets.
-    for name in ["edit", "reload", "attention", "arrow-right"]:
+    for name in ["edit", "reload", "attention", "arrow-right", "archive", "archive-restore"]:
         export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-","_"))
     for source in (ROOT/"crates/zork-ui/assets/providers").glob("*.svg"):
         export(source,"provider_"+source.stem)

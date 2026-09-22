@@ -853,3 +853,104 @@ fn creator_migration_preserves_unknown_sources_and_remains_quiet_on_reopen() {
             .unwrap()
     );
 }
+
+#[test]
+fn archive_survives_restart_and_new_messages_restore_chat() {
+    let (root, db) = database();
+    let chat = channel(&db, "archive");
+    assert!(db.set_chat_archived(&chat.chat_id, true, 0).unwrap());
+    assert!(db.chat_navigation().unwrap()[0].archived);
+    let cursor = db
+        .sync_cursor("owner", zork_client_types::sync::Scope::Catalog {})
+        .unwrap();
+    assert!(db.set_chat_archived(&chat.chat_id, true, 0).unwrap());
+    assert_eq!(
+        db.sync_cursor("owner", zork_client_types::sync::Scope::Catalog {})
+            .unwrap(),
+        cursor
+    );
+    let value: String = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM sync_entities WHERE kind='resource' AND id=?1",
+            [&chat.chat_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&value).unwrap()["archived"],
+        true
+    );
+    drop(db);
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert!(db.chat(&chat.chat_id).unwrap().channel.archived);
+    let incoming = post(&db, "arrival", &chat.chat_id, "writer", None, &[]);
+    assert!(!db.chat(&chat.chat_id).unwrap().channel.archived);
+    // The old archive request cannot hide the newly committed message.
+    assert!(!db.set_chat_archived(&chat.chat_id, true, 0).unwrap());
+    assert!(db.set_chat_archived(&chat.chat_id, true, 1).unwrap());
+    // Receiving the same source record again does not count as a new message.
+    let key = db.chat(&chat.chat_id).unwrap().session_key;
+    db.record_visible_message(
+        &incoming.message_id,
+        &key,
+        "local_gui",
+        &chat.chat_id,
+        "",
+        "assistant",
+        "arrival",
+        None,
+    )
+    .unwrap();
+    assert!(db.chat(&chat.chat_id).unwrap().channel.archived);
+    // Rebuilding a missing derived fact from the source log is history replay.
+    db.conn
+        .lock()
+        .unwrap()
+        .execute(
+            "DELETE FROM chat_message_facts WHERE message_id=?1",
+            [&incoming.message_id],
+        )
+        .unwrap();
+    drop(db);
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert!(db.chat(&chat.chat_id).unwrap().channel.archived);
+    assert_eq!(db.chat(&chat.chat_id).unwrap().channel.message_count, 1);
+    assert!(db.set_chat_archived(&chat.chat_id, false, 0).unwrap());
+    assert!(!db.chat_navigation().unwrap()[0].archived);
+    assert!(!db.set_chat_archived("missing", true, 0).unwrap());
+}
+
+#[test]
+fn archive_migrates_existing_catalog_without_requiring_new_messages() {
+    let (root, db) = database();
+    let chat = channel(&db, "legacy-archive");
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute_batch("DROP TRIGGER sync_chat_channels_insert;
+            DROP TRIGGER sync_chat_channels_update; DROP TRIGGER sync_chat_channels_delete;
+            ALTER TABLE chat_channels DROP COLUMN archived;
+            CREATE TRIGGER sync_chat_channels_insert AFTER INSERT ON chat_channels BEGIN SELECT 1; END;
+            UPDATE sync_entities SET value=json_remove(value,'$.archived') WHERE kind='resource' AND json_extract(value,'$.resource_type')='chat_summary';").unwrap();
+    }
+    drop(db);
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert!(!db.chat(&chat.chat_id).unwrap().channel.archived);
+    assert!(db.set_chat_archived(&chat.chat_id, true, 0).unwrap());
+    let value: String = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM sync_entities WHERE kind='resource' AND id=?1",
+            [&chat.chat_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&value).unwrap()["archived"],
+        true
+    );
+}

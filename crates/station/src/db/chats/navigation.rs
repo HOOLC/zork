@@ -6,7 +6,11 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
         .prepare("PRAGMA table_info(chat_channels)")?
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (name, definition) in [("creator", "TEXT"), ("last_message_at", "TEXT")] {
+    for (name, definition) in [
+        ("creator", "TEXT"),
+        ("last_message_at", "TEXT"),
+        ("archived", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
         if !columns.iter().any(|column| column == name) {
             conn.execute_batch(&format!(
                 "ALTER TABLE chat_channels ADD COLUMN {name} {definition};"
@@ -83,5 +87,41 @@ impl StationDb {
             .map(|row| row.map(|row| row.channel))
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
+    }
+
+    /// Compare the observed message count in the same transaction as the write:
+    /// a message arriving before an archive must remain visible.
+    pub fn set_chat_archived(
+        &self,
+        chat: &str,
+        archived: bool,
+        expected_count: u64,
+    ) -> Result<bool> {
+        let mut conn = self.conn.lock().expect("db mutex");
+        let tx = conn.transaction()?;
+        let current = tx
+            .query_row(
+                "SELECT archived,message_count FROM chat_channels WHERE chat_id=?1",
+                [chat],
+                |row| Ok((row.get::<_, bool>(0)?, row.get::<_, u64>(1)?)),
+            )
+            .optional()?;
+        let Some((previous, count)) = current else {
+            return Ok(false);
+        };
+        if archived && count != expected_count {
+            return Ok(false);
+        }
+        if previous == archived {
+            return Ok(true);
+        }
+        tx.execute(
+            "UPDATE chat_channels SET archived=?2 WHERE chat_id=?1",
+            params![chat, archived],
+        )?;
+        tx.commit()?;
+        drop(conn);
+        self.chat_topics.publish([Topic::Catalog]);
+        Ok(true)
     }
 }

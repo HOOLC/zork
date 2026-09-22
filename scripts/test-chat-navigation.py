@@ -132,14 +132,32 @@ def main():
             assert child['creator']['id'].startswith(a.origin + '/session:')
             passed('collaboration creates another Chat on the selected device without Leader/Worker definitions or per-Agent grants')
 
+            f.wait(lambda: c.settled(a, chat_id), 'creator settles before archiving')
+            archive_path = f'/v1/node/chats/{chat_id}/archive'
+            def archived_chat():
+                return next(item for item in c.ok(a, 'GET', '/v1/node/chats')['items'] if item['chat_id'] == chat_id)
+            archive_count = archived_chat()['message_count']
+            c.ok(a, 'POST', archive_path, {'archived': True, 'expected_message_count': archive_count})
+            assert archived_chat()['archived'] is True
+            c.ok(a, 'POST', archive_path, {'archived': False, 'expected_message_count': archive_count})
+            assert archived_chat()['archived'] is False
+            c.ok(a, 'POST', archive_path, {'archived': True, 'expected_message_count': archive_count})
+            assert c.ok(a, 'GET', f'/v1/im/sessions/{chat_id}/messages')['items']
+            passed('archive and restore use the authenticated node endpoint and retain readable history')
+
             a.stop(); b.stop()
             for node in nodes: c.start(node)
+            assert archived_chat()['archived'] is True
             assert c.ok(a, 'POST', '/v1/im/chats', request) == chat
             assert c.received(a, chat_id, first['id']) == 1
             session = c.ok(a, 'GET', f'/sessions/{chat_id}', agent=True)
             assert (session['model'], session['thinking'], session['profile_id']) == ('fixture-model', 'high', 'auto')
             c.ok(a, 'POST', f'/v1/im/sessions/{chat_id}/messages', {'content': first_message('重启后的回复'), 'request_id': 'after-restart'})
             f.wait(lambda: reply(a, chat_id, '重启后的回复'), 'continuation uses the same Session after restart')
+            assert archived_chat()['archived'] is False
+            assert c.request(a, 'POST', archive_path, {'archived': True, 'expected_message_count': archive_count})[0] == 409
+            assert archived_chat()['archived'] is False
+            passed('archive survives restart; new messages restore the Chat and stale archive requests cannot hide them')
             assert c.received(a, chat_id, first['id']) == 1
             f.wait(lambda: not c.sql(a, 'SELECT 1 FROM chat_mailbox WHERE delivered=0'), 'all accepted notices settle')
             passed('restart preserves identity, configuration and source watermarks; subsequent messages continue the original Session')

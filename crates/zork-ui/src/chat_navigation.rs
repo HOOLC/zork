@@ -6,7 +6,11 @@ use crate::{
     resources::Text,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight, Window};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use zork_client_types::navigation::NavigationChat;
 #[derive(Clone)]
 pub enum Destination {
@@ -16,6 +20,12 @@ pub enum Destination {
     Manage(usize),
 }
 pub enum Action {
+    Archive {
+        node: String,
+        chat: String,
+        archived: bool,
+        expected_message_count: u64,
+    },
     Navigate {
         node: Option<String>,
         destination: Destination,
@@ -59,6 +69,10 @@ pub struct Navigation {
     active: Option<String>,
     collapsed: HashSet<String>,
     show_all: HashSet<String>,
+    show_archived: bool,
+    hovered_row: Option<String>,
+    hovered_action: Option<String>,
+    focus_subscriptions: RefCell<HashMap<String, Vec<gpui::Subscription>>>,
     scroll: gpui::ScrollHandle,
     locale: Text,
     width: f32,
@@ -77,6 +91,10 @@ impl Navigation {
             active: None,
             collapsed,
             show_all: Default::default(),
+            show_archived: false,
+            hovered_row: None,
+            hovered_action: None,
+            focus_subscriptions: Default::default(),
             scroll: Default::default(),
             locale,
             width: 240.,
@@ -109,6 +127,30 @@ impl Navigation {
         let all = self.active != active || self.shared_files != shared_files || self.width != width;
         let removed = self.devices.len() != devices.len();
         self.devices = devices;
+        if !self.focus_subscriptions.get_mut().is_empty() || self.hovered_row.is_some() {
+            let show_archived = self.show_archived;
+            let visible = self
+                .devices
+                .iter()
+                .flat_map(|device| {
+                    device.chats.iter().filter_map(move |chat| {
+                        (chat.archived == show_archived)
+                            .then(|| format!("chat-{}-{}", device.id, chat.chat_id))
+                    })
+                })
+                .collect::<HashSet<_>>();
+            self.focus_subscriptions
+                .get_mut()
+                .retain(|id, _| visible.contains(id));
+            if self
+                .hovered_row
+                .as_ref()
+                .is_some_and(|id| !visible.contains(id))
+            {
+                self.hovered_row = None;
+                self.hovered_action = None;
+            }
+        }
         self.active = active;
         self.shared_files = shared_files;
         self.width = width;
@@ -236,7 +278,7 @@ impl Navigation {
                                 }))
                                 .automation(AutomationRole::Button, self.locale.text("new_chat"))
                         })
-                        .child(self.chat_group(device, &device.chats, interactive, cx))
+                        .child(self.chat_group(device, &device.chats, interactive, window, cx))
                         .into_any_element()
                 });
                 let owner = cx.entity().downgrade();
@@ -271,11 +313,12 @@ impl Navigation {
                     && device.selected_session.is_none()
             })
     }
-    fn chat_list(&self, cx: &mut Context<Self>) -> Div {
+    fn chat_list(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let mut chats: Vec<_> = self
             .devices
             .iter()
             .flat_map(|device| device.chats.iter().map(move |chat| (device, chat)))
+            .filter(|(_, chat)| chat.archived == self.show_archived)
             .collect();
         chats.sort_by(|a, b| {
             b.1.updated_at
@@ -295,6 +338,38 @@ impl Navigation {
                 )
                 .automation(AutomationRole::Button, self.locale.text("new_chat"))
         });
+        list = list.child(
+            self.tabs
+                .tab("chat-archive-filter".into(), self.show_archived)
+                .child(self.locale.text(if self.show_archived {
+                    "chat_show_active"
+                } else {
+                    "chat_show_archived"
+                }))
+                .on_click(cx.listener(|v, _, _, cx| {
+                    v.show_archived = !v.show_archived;
+                    v.hovered_row = None;
+                    v.hovered_action = None;
+                    v.focus_subscriptions.borrow_mut().clear();
+                    crate::components::region::invalidate(cx, &["chats"]);
+                }))
+                .automation(
+                    AutomationRole::Button,
+                    self.locale.text(if self.show_archived {
+                        "chat_show_active"
+                    } else {
+                        "chat_show_archived"
+                    }),
+                ),
+        );
+        if chats.is_empty() && self.show_archived {
+            list = list.child(
+                div()
+                    .px_2()
+                    .py_2()
+                    .child(self.locale.text("chat_archive_empty")),
+            );
+        }
         let mut previous = String::new();
         for (device, chat) in chats {
             let label = self.day_label(&chat.updated_at);
@@ -302,7 +377,7 @@ impl Navigation {
                 previous = label.clone();
                 list = list.child(self.day_header(label));
             }
-            list = list.child(self.chat_row(device, chat, cx));
+            list = list.child(self.chat_row(device, chat, window, cx));
         }
         list
     }
@@ -339,6 +414,7 @@ impl Navigation {
         device: &Device,
         chats: &[NavigationChat],
         interactive: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
         let key = device.id.clone();
@@ -351,7 +427,11 @@ impl Navigation {
             .collect();
         self.tabs
             .column()
-            .children(visible.iter().map(|chat| self.chat_row(device, chat, cx)))
+            .children(
+                visible
+                    .iter()
+                    .map(|chat| self.chat_row(device, chat, window, cx)),
+            )
             .when(chats.len() > visible.len() || all, |panel| {
                 panel.child(
                     self.tabs
@@ -378,6 +458,7 @@ impl Navigation {
         &self,
         device: &Device,
         chat: &NavigationChat,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected = !self.shared_files
@@ -410,10 +491,108 @@ impl Navigation {
             description: chat.description.clone(),
             rows,
         };
+        let archive_node = device.id.clone();
+        let archive_chat = chat.chat_id.clone();
+        let archived = !chat.archived;
+        let expected_message_count = chat.message_count;
         let label = format!("{title}, {meta}");
         let radius = crate::controls::FIELD_RADIUS;
-        div()
-            .id(format!("chat-{}-{}", device.id, chat.chat_id))
+        let row_id = format!("chat-{}-{}", device.id, chat.chat_id);
+        let action_id = format!("archive-{row_id}");
+        let row_focus =
+            crate::components::liquid::controls::action_focus(row_id.clone(), window, cx);
+        let action_focus =
+            crate::components::liquid::controls::action_focus(action_id.clone(), window, cx);
+        {
+            let mut subscriptions = self.focus_subscriptions.borrow_mut();
+            subscriptions.entry(row_id.clone()).or_insert_with(|| {
+                vec![
+                    cx.on_focus(&row_focus, window, |_, _, cx| {
+                        crate::components::region::invalidate(cx, &["chats"])
+                    }),
+                    cx.on_blur(&row_focus, window, |_, _, cx| {
+                        crate::components::region::invalidate(cx, &["chats"])
+                    }),
+                    cx.on_focus(&action_focus, window, |_, _, cx| {
+                        crate::components::region::invalidate(cx, &["chats"])
+                    }),
+                    cx.on_blur(&action_focus, window, |_, _, cx| {
+                        crate::components::region::invalidate(cx, &["chats"])
+                    }),
+                ]
+            });
+        }
+        let keyboard_focus = window.last_input_was_keyboard()
+            && (row_focus.is_focused(window) || action_focus.is_focused(window));
+        let row_hovered = self.hovered_row.as_deref() == Some(row_id.as_str());
+        let action_hovered = self.hovered_action.as_deref() == Some(action_id.as_str());
+        let show_icon = row_hovered || keyboard_focus || chat.archive_pending;
+        let action_label = self.locale.text(if chat.archived {
+            "chat_unarchive"
+        } else {
+            "chat_archive"
+        });
+        let icon_path = if chat.archived {
+            "icons/archive-restore.svg"
+        } else {
+            "icons/archive.svg"
+        };
+        let archive_icon =
+            ui::icon(icon_path, 16.).text_color(if action_hovered || keyboard_focus {
+                rgb(ZORK_UI.palette.text)
+            } else {
+                gpui::rgba((ZORK_UI.palette.text << 8) | 0x80)
+            });
+        let archive_action = ui::action_link(action_id.clone(), "", !chat.archive_pending)
+            .track_focus(&action_focus)
+            .size(px(20.))
+            .min_h(px(20.))
+            .justify_center()
+            .text_color(if action_hovered || keyboard_focus {
+                rgb(ZORK_UI.palette.text)
+            } else {
+                gpui::rgba((ZORK_UI.palette.text << 8) | 0x80)
+            })
+            .child(archive_icon.opacity(if show_icon { 1. } else { 0. }))
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |_, _, _, cx| {
+                cx.stop_propagation();
+                cx.emit(Action::Archive {
+                    node: archive_node.clone(),
+                    chat: archive_chat.clone(),
+                    archived,
+                    expected_message_count,
+                });
+            }))
+            .automation_enabled(
+                !chat.archive_pending,
+                AutomationRole::Button,
+                action_label.clone(),
+            );
+        let action_hover_id = action_id.clone();
+        let archive_action = div()
+            .id(format!("hover-shell-{action_id}"))
+            .absolute()
+            .right(px(6.))
+            .top(px(5.))
+            .size(px(20.))
+            .on_hover(cx.listener(move |v, hovered: &bool, _, cx| {
+                let next = (*hovered).then(|| action_hover_id.clone());
+                if v.hovered_action != next {
+                    v.hovered_action = next;
+                    crate::components::region::invalidate(cx, &["chats"]);
+                }
+            }))
+            .child(
+                crate::components::tooltip::hint(archive_action, action_id, action_label)
+                    .above()
+                    .min_width(80.)
+                    .focus_handle(&action_focus),
+            );
+        let row = div()
+            .id(row_id.clone())
+            .track_focus(&row_focus)
+            .tab_stop(true)
             .relative()
             .w_full()
             .px(px(8.))
@@ -450,6 +629,7 @@ impl Navigation {
                     .text_size(px(13.))
                     .line_height(px(18.))
                     .text_ellipsis()
+                    .pr(px(24.))
                     .child(title.clone()),
             )
             .child(
@@ -469,9 +649,15 @@ impl Navigation {
                         Some(&self.locale),
                     )),
             )
+            .child(archive_action)
+            .when_some(chat.archive_error.clone(), |row, error| {
+                row.child(div().pr(px(24.)).text_size(px(11.)).child(error))
+            })
             .when(chat.unread, |row| {
                 row.child(
                     div()
+                        .id(format!("chat-unread-{}-{}", device.id, chat.chat_id))
+                        .opacity(if show_icon { 0. } else { 1. })
                         .absolute()
                         .right(px(8.))
                         .top(px(10.))
@@ -505,7 +691,22 @@ impl Navigation {
                         });
                     },
                 )
-            })
+            });
+        let row_hover_id = row_id.clone();
+        div()
+            .id(format!("hover-shell-{row_id}"))
+            .w_full()
+            .on_hover(cx.listener(move |v, hovered: &bool, _, cx| {
+                let next = (*hovered).then(|| row_hover_id.clone());
+                if v.hovered_row != next {
+                    v.hovered_row = next;
+                    if !*hovered {
+                        v.hovered_action = None;
+                    }
+                    crate::components::region::invalidate(cx, &["chats"]);
+                }
+            }))
+            .child(row)
     }
 }
 fn calendar_day(value: &str) -> Option<(i32, u32, u32)> {
@@ -602,9 +803,11 @@ impl Render for Navigation {
         names.insert("chats".into());
         names.insert("footer".into());
         self.regions.retain(|key| names.contains(key));
-        let rows = vec![self.regions.auto_height("chats", width, cx, |v, _, cx| {
-            v.chat_list(cx).into_any_element()
-        })];
+        let rows = vec![self
+            .regions
+            .auto_height("chats", width, cx, |v, window, cx| {
+                v.chat_list(window, cx).into_any_element()
+            })];
         let footer = self.regions.auto_height("footer", width, cx, |v, _, cx| {
             v.render_footer(cx).into_any_element()
         });
