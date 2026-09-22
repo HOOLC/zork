@@ -29,6 +29,11 @@ fn sample(start: usize, name: &str, model: &str, state: &str) -> Device {
         id: format!("device-{start}"),
         name: name.into(),
         online: Some(state != "offline"),
+        status: if state == "offline" {
+            crate::device_name::DeviceStatus::Offline
+        } else {
+            crate::device_name::DeviceStatus::Direct
+        },
         direct: true,
         public: false,
         chats: Arc::new(chats),

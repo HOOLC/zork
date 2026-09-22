@@ -9,6 +9,7 @@ pub fn create(
     cx: &mut gpui::App,
 ) -> Entity<SharedFilesView> {
     let source = Source {
+        status: zork_client_types::device::DeviceStatus::Direct,
         id: "demo-device".into(),
         name: "工作设备".into(),
         online: Some(true),

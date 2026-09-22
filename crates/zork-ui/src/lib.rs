@@ -42,6 +42,7 @@ pub mod history_page;
 pub mod new_chat;
 pub mod welcome;
 
+pub mod device_name;
 pub mod node_directory;
 
 pub mod conversation_toolbar;

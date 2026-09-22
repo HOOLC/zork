@@ -55,6 +55,7 @@ pub struct DeliveredPage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApplicationEntry {
+    pub device_status: crate::device::DeviceStatus,
     pub page: PageLink,
     pub device_id: String,
     pub device_name: String,

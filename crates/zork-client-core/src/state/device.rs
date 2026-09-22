@@ -50,6 +50,8 @@ pub struct DeviceData {
     pub info: Arc<Value>,
     pub metadata_loaded: bool,
     pub online: Option<bool>,
+    pub status: zork_client_types::device::DeviceStatus,
+    pub mesh_readiness: Option<zork_client_types::device::MeshReadiness>,
     pub route: crate::api::ConnectionRoute,
     pub revoked: bool,
     pub connection_error: Option<String>,
@@ -72,6 +74,21 @@ pub struct DeviceData {
     pub mesh: Arc<MeshStatus>,
     pub read_markers: Arc<Vec<ConversationReadMarker>>,
     revisions: [u64; 8],
+}
+
+impl DeviceData {
+    pub fn peer_status(&self, origin: &str) -> zork_client_types::device::DeviceStatus {
+        crate::device_status::project(
+            self.mesh_readiness.as_ref(),
+            self.mesh
+                .peers
+                .iter()
+                .find(|peer| peer.origin == origin)
+                .map(|peer| peer.online),
+            &Default::default(),
+            false,
+        )
+    }
 }
 
 pub struct DeviceUpdate {
@@ -200,6 +217,9 @@ impl Drop for Device {
     }
 }
 impl Device {
+    pub(crate) fn set_mesh_readiness(&self, readiness: zork_client_types::device::MeshReadiness) {
+        self.commit(|data| data.mesh_readiness = Some(readiness));
+    }
     pub fn open(
         client: Arc<StationClient>,
         cache: Option<(Arc<ClientStore>, String)>,
@@ -594,6 +614,12 @@ impl Device {
         let before = owned.data.clone();
         change(&mut owned.data);
         let after = &mut owned.data;
+        after.status = crate::device_status::project(
+            after.mesh_readiness.as_ref(),
+            after.online,
+            &after.route,
+            after.revoked,
+        );
         let pages_changed = before.pages != after.pages;
         if !pages_changed {
             after.pages = before.pages.clone();
@@ -609,7 +635,9 @@ impl Device {
                 after.revoked,
                 &after.connection_error,
                 after.confirmed_at_ms,
-            ) || before.route != after.route
+            ) || before.status != after.status
+                || before.mesh_readiness != after.mesh_readiness
+                || before.route != after.route
                 || before.info != after.info
                 || before.metadata_loaded != after.metadata_loaded,
             before.sessions != after.sessions || before.sessions_loaded != after.sessions_loaded,
@@ -1182,6 +1210,31 @@ mod tests {
         let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let device = Device::open(client, Some((store.clone(), "node".into())), true);
         (directory, store, device)
+    }
+
+    #[test]
+    fn mesh_only_changes_reach_device_and_navigation_observers() {
+        use crate::device_status::{DeviceStatus, MeshReadiness};
+        let (_root, _store, device) = device();
+        device.commit(|data| data.online = Some(true));
+        let mut changes = device.subscribe_domains(Domains::CONNECTION);
+        changes.snapshot();
+        device.set_mesh_readiness(MeshReadiness::Preparing);
+        let update = changes
+            .prepare()
+            .expect("Mesh readiness must wake connection observers");
+        assert_eq!(update.state.status, DeviceStatus::MeshPreparing);
+        assert_eq!(device.navigation.read().status, DeviceStatus::MeshPreparing);
+        changes.acknowledge(update.batch.unwrap());
+        device.set_mesh_readiness(MeshReadiness::Preparing);
+        assert!(
+            changes.prepare().is_none(),
+            "identical readiness must remain idle"
+        );
+        device.set_mesh_readiness(MeshReadiness::Ready);
+        assert_eq!(device.snapshot().status, DeviceStatus::Connected);
+        device.commit(|data| data.online = Some(false));
+        assert_eq!(device.navigation.read().status, DeviceStatus::Offline);
     }
 
     #[test]

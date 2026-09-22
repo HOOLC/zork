@@ -13,6 +13,7 @@ pub use zork_client_types::navigation::NavigationChat;
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct NavigationData {
     pub online: Option<bool>,
+    pub status: zork_client_types::device::DeviceStatus,
     #[serde(skip)]
     pub route: crate::api::ConnectionRoute,
     pub chats: Arc<Vec<NavigationChat>>,
@@ -164,6 +165,7 @@ impl NavigationData {
         sort(&mut others);
         Self {
             online: data.online,
+            status: data.status.clone(),
             route: data.route,
             chats: Arc::new(others),
             unread: Arc::new(unread),

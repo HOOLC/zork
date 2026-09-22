@@ -16,3 +16,34 @@ pub struct PeerInput {
     pub origin: String,
     pub address: Option<String>,
 }
+
+/// Client transport readiness is independent of an individual device's reachability.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", content = "error", rename_all = "snake_case")]
+pub enum MeshReadiness {
+    #[default]
+    NotStarted,
+    Preparing,
+    Ready,
+    Stopping,
+    Stopped,
+    Failed(String),
+}
+
+/// Core-owned presentation state shared by device names on every surface.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", content = "error", rename_all = "snake_case")]
+pub enum DeviceStatus {
+    MeshNotStarted,
+    MeshPreparing,
+    MeshStopping,
+    MeshStopped,
+    MeshFailed(String),
+    #[default]
+    Connecting,
+    Direct,
+    Relay,
+    Connected,
+    Offline,
+    Revoked,
+}

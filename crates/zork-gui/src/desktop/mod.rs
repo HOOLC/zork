@@ -54,6 +54,7 @@ pub struct DesktopRoot {
     local: Arc<LocalNode>,
     local_enabled: bool,
     mesh_identity: Option<String>,
+    device_statuses: Arc<std::collections::HashMap<String, zork_ui::device_name::DeviceStatus>>,
     pairing: bool,
     rename_input: Entity<ComposerInput>,
     rename_node_id: Option<String>,
@@ -180,6 +181,7 @@ impl DesktopRoot {
             local,
             local_enabled,
             mesh_identity: None,
+            device_statuses: Default::default(),
             pairing: false,
             rename_input,
             rename_node_id: None,
@@ -292,6 +294,14 @@ impl DesktopRoot {
         self.local_enabled = snapshot.local_enabled;
         self.mesh_identity = snapshot.mesh_identity.clone();
         self.device_info = snapshot.info.as_ref().clone();
+        if !Arc::ptr_eq(&self.device_statuses, &snapshot.device_statuses) {
+            self.device_statuses = snapshot.device_statuses.clone();
+            for (id, (_, profiles, mesh)) in &self.management_views {
+                let status = self.source.device_status(id);
+                profiles.update(cx, |view, cx| view.set_device_status(status, cx));
+                mesh.update(cx, |_, cx| cx.notify());
+            }
+        }
         if self.client_settings.message_preview_height
             != snapshot.preferences.message_preview_height
         {
@@ -531,6 +541,7 @@ impl DesktopRoot {
             let profiles = cx.new(|cx| {
                 let mut view = profiles::ProfilesView::new_with_source(profile_source.clone(), cx);
                 view.set_device_name(node.name.clone());
+                view.set_device_status(self.source.device_status(&node.id), cx);
                 view
             });
             let mesh = cx.new(|cx| {
@@ -801,6 +812,7 @@ impl DesktopRoot {
         let info = self.device_info.get(&node.id);
         let data = DeviceData {
             name: node.name.clone(),
+            status: self.source.device_status(&node.id),
             version: info
                 .and_then(|i| {
                     i["station"]["release_version"]
@@ -1162,9 +1174,19 @@ impl Render for DesktopRoot {
                                                             )
                                                             .child(ui::icon("icons/node.svg", 20.))
                                                             .child(
-                                                                div()
-                                                                    .flex_1()
-                                                                    .child(node.name.clone()),
+                                                                div().flex_1().child(
+                                                                    zork_ui::device_name::label(
+                                                                        format!(
+                                                                            "settings-name-{}",
+                                                                            node.id
+                                                                        ),
+                                                                        node.name.clone(),
+                                                                        &self.source.device_status(
+                                                                            &node.id,
+                                                                        ),
+                                                                        None,
+                                                                    ),
+                                                                ),
                                                             )
                                                             .on_click(cx.listener(
                                                                 move |v, _, _, cx| {
@@ -1359,6 +1381,7 @@ impl zork_ui::node_directory::Host for DesktopRoot {
                 .map(|n| zork_ui::node_directory::Node {
                     id: n.id.clone(),
                     name: n.name.clone(),
+                    status: self.source.device_status(&n.id),
                     remote: n.mesh.is_some(),
                 })
                 .collect(),

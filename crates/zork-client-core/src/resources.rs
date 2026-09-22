@@ -94,6 +94,25 @@ impl Resources {
             self.changes.publish(state.clone());
         }
     }
+    pub(crate) fn set_device_statuses(
+        &self,
+        statuses: &std::collections::HashMap<String, zork_client_types::device::DeviceStatus>,
+    ) {
+        let mut state = self.state.lock().unwrap();
+        let mut changed = false;
+        for device in &mut state.devices {
+            if let Some(status) = statuses
+                .get(&device.id)
+                .filter(|status| **status != device.status)
+            {
+                device.status = status.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.changes.publish(state.clone());
+        }
+    }
     pub async fn refresh(&self) {
         self.refresh_scope(None).await;
     }

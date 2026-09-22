@@ -725,5 +725,15 @@
   "history_usage_unreported": "Usage not reported",
   "history_action_tool": "Run tool",
   "history_role_leader": "Leader",
-  "history_role_worker": "Worker"
+  "history_role_worker": "Worker",
+  "device_mesh_not_started": "Mesh not started",
+  "device_mesh_preparing": "Mesh starting",
+  "device_mesh_stopping": "Mesh stopping",
+  "device_mesh_stopped": "Mesh stopped",
+  "device_mesh_failed": "Mesh failed",
+  "device_connecting": "Connecting",
+  "device_direct": "Direct",
+  "device_relay": "Relay",
+  "device_connected": "Connected",
+  "device_revoked": "Access revoked"
 }

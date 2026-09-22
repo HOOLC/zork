@@ -725,5 +725,15 @@
   "history_usage_unreported": "用量未报告",
   "history_action_tool": "执行工具",
   "history_role_leader": "领队",
-  "history_role_worker": "队员"
+  "history_role_worker": "队员",
+  "device_mesh_not_started": "Mesh 未启动",
+  "device_mesh_preparing": "Mesh 准备中",
+  "device_mesh_stopping": "Mesh 停止中",
+  "device_mesh_stopped": "Mesh 已停止",
+  "device_mesh_failed": "Mesh 启动失败",
+  "device_connecting": "连接中",
+  "device_direct": "直连",
+  "device_relay": "中继",
+  "device_connected": "已连接",
+  "device_revoked": "访问已撤销"
 }

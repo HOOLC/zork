@@ -20,6 +20,7 @@ pub struct ProfilesView {
     source_updates: Option<Task<()>>,
     regions: zork_ui::components::region::Regions<Self>,
     device_name: String,
+    device_status: zork_ui::device_name::DeviceStatus,
     modal: ui::ModalState,
     catalog: Vec<Value>,
     profiles: Vec<ProfileInfo>,
@@ -67,6 +68,16 @@ pub struct ProfilesView {
     attempt: Option<Value>,
 }
 impl ProfilesView {
+    pub fn set_device_status(
+        &mut self,
+        status: zork_ui::device_name::DeviceStatus,
+        cx: &mut Context<Self>,
+    ) {
+        if self.device_status != status {
+            self.device_status = status;
+            zork_ui::components::region::invalidate_all(cx);
+        }
+    }
     pub fn set_device_name(&mut self, name: String) {
         self.device_name = name;
     }
@@ -123,6 +134,7 @@ impl ProfilesView {
             source_updates: None,
             regions: Default::default(),
             device_name: String::new(),
+            device_status: Default::default(),
             catalog: vec![],
             profiles: vec![],
             locale: Locale::default(),
@@ -201,6 +213,7 @@ impl ProfilesView {
             .unwrap();
         let fixture = zork_ui::stories::page_fixture();
         view.device_name = fixture["device"]["name"].as_str().unwrap().into();
+        view.device_status = zork_ui::device_name::DeviceStatus::Direct;
         view.profiles = vec![serde_json::from_value(fixture["profile"].clone()).unwrap()];
         view.helpers = fixture["agents"].as_array().unwrap().clone();
         if detail {
@@ -1241,7 +1254,14 @@ impl Render for ProfilesView {
                                 .text_size(px(11.))
                                 .text_color(rgb(p.muted))
                                 .child(ui::icon("icons/node.svg", 14.))
-                                .child(format!("{} · 连接保存在此设备", self.device_name)),
+                                .child(format!(
+                                    "{} · 连接保存在此设备",
+                                    zork_ui::device_name::summary(
+                                        &self.device_name,
+                                        &self.device_status,
+                                        None
+                                    )
+                                )),
                         )
                         .child(ui::form_field(
                             "接入方式",
@@ -1904,7 +1924,11 @@ impl ProfilesView {
                             .text_color(rgb(p.muted))
                             .child(format!(
                                 "{} · {} 个连接",
-                                self.device_name,
+                                zork_ui::device_name::summary(
+                                    &self.device_name,
+                                    &self.device_status,
+                                    None
+                                ),
                                 self.profiles.len()
                             )),
                     ),

@@ -609,7 +609,7 @@ impl RootView {
             regions.push("home");
         }
         if changed.contains(Domains::CONNECTION | Domains::SESSIONS) {
-            regions.extend(["header", "composer", "history"]);
+            regions.extend(["header", "composer", "history", "transcript"]);
         }
         if changed.contains(Domains::AGENTS | Domains::MESH) {
             regions.extend(["header", "transcript", "history"]);
@@ -1381,7 +1381,11 @@ impl RootView {
                 zork_ui::components::region::invalidate(cx, &["transcript"])
             });
         });
-        let local_name = self.device_name.clone();
+        let device = self.core_device.snapshot();
+        let local_name = self
+            .device_name
+            .as_ref()
+            .map(|name| zork_ui::device_name::summary(name, &device.status, None));
         let local_agents = self
             .node_agents
             .iter()
@@ -1391,7 +1395,12 @@ impl RootView {
             .mesh_status
             .peers
             .iter()
-            .map(|p| (p.origin.clone(), p.name.clone()))
+            .map(|p| {
+                (
+                    p.origin.clone(),
+                    zork_ui::device_name::summary(&p.name, &device.peer_status(&p.origin), None),
+                )
+            })
             .collect::<HashMap<_, _>>();
         #[cfg(feature = "headless-bench")]
         let benchmark_rows = self.benchmark_rows.clone();

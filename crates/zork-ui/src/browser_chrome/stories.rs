@@ -44,6 +44,11 @@ impl Story {
         }
         if state == "applications" {
             data.applications = Arc::new(vec![zork_client_types::pages::ApplicationEntry {
+                device_status: if state == "offline" {
+                    crate::device_name::DeviceStatus::Offline
+                } else {
+                    crate::device_name::DeviceStatus::Direct
+                },
                 page: zork_client_types::pages::PageLink {
                     id: "demo-app".into(),
                     title: "项目资料".into(),

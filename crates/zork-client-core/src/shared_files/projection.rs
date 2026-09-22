@@ -22,10 +22,18 @@ impl SharedFiles {
                 .filter_map(|b| b.online)
                 .max()
         };
+        let status = |id: &str| {
+            s.bindings
+                .iter()
+                .find(|b| b.origin.as_deref() == Some(id))
+                .map(|b| b.status.clone())
+                .unwrap_or_default()
+        };
         let source = |id: &str, cached: bool| Source {
             id: id.into(),
             name: s.names.get(id).cloned().unwrap_or_else(|| id.into()),
             online: online(id),
+            status: status(id),
             cached,
         };
         s.data.devices = visible
@@ -34,6 +42,7 @@ impl SharedFiles {
                 id: id.clone(),
                 name: s.names.get(id).cloned().unwrap_or_else(|| id.clone()),
                 online: online(id),
+                status: status(id),
                 ..Default::default()
             })
             .collect();

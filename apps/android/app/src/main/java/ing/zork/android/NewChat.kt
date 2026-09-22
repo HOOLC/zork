@@ -31,7 +31,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = back)
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text("新建 Chat", fontSize = 17.sp, fontWeight = FontWeight.Medium)
-                Text(state.peer.name, fontSize = 12.sp, color = ZorkColors.Muted)
+                DeviceName(state.peer.name, state.peer.status)
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

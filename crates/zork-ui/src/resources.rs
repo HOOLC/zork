@@ -302,11 +302,22 @@ impl ResourcesView {
             .filter(|d| scope.is_none_or(|id| d.id == id))
         {
             if let Some(error) = &device.error {
-                body = body.child(self.notice(format!("{} · {error}", device.name)));
+                body = body.child(self.notice(format!(
+                    "{} · {error}",
+                    crate::device_name::summary(&device.name, &device.status, Some(&self.locale))
+                )));
             }
             if let Some(catalog) = &device.catalog {
                 for issue in catalog.issues.iter().filter(|issue| issue.kind == kind) {
-                    body = body.child(self.notice(format!("{} · {}", device.name, issue.error)));
+                    body = body.child(self.notice(format!(
+                        "{} · {}",
+                        crate::device_name::summary(
+                            &device.name,
+                            &device.status,
+                            Some(&self.locale)
+                        ),
+                        issue.error
+                    )));
                 }
             }
         }
@@ -361,12 +372,24 @@ impl ResourcesView {
                                 }
                             };
                             let meta = if item.description.is_empty() {
-                                format!("{} · {}", device.name, status(&locale, &item.status))
+                                format!(
+                                    "{} · {}",
+                                    crate::device_name::summary(
+                                        &device.name,
+                                        &device.status,
+                                        Some(&locale)
+                                    ),
+                                    status(&locale, &item.status)
+                                )
                             } else {
                                 format!(
                                     "{} · {} · {}",
                                     item.description,
-                                    device.name,
+                                    crate::device_name::summary(
+                                        &device.name,
+                                        &device.status,
+                                        Some(&locale)
+                                    ),
                                     status(&locale, &item.status)
                                 )
                             };
@@ -469,7 +492,12 @@ impl ResourcesView {
             return body;
         };
         if let Some(device) = shown.data.devices.iter().find(|d| &d.id == node) {
-            body = body.child(ui::text_role(device.name.clone(), TextRole::Metadata));
+            body = body.child(crate::device_name::label(
+                "resource-device-name",
+                device.name.clone(),
+                &device.status,
+                Some(&self.locale),
+            ));
         }
         if !details.description.is_empty() {
             body = body.child(ui::text_role(
