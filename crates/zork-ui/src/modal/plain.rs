@@ -11,8 +11,8 @@ use crate::{
     design::ZORK_UI,
 };
 use gpui::{
-    deferred, div, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle, MouseButton,
-    SharedString, Window,
+    anchored, deferred, div, point, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle,
+    MouseButton, SharedString, Window,
 };
 use std::{cell::Cell, rc::Rc};
 use zork_liquid::motion::Reveal;
@@ -71,7 +71,9 @@ impl PlainDialog {
     }
 
     pub fn alive(&self) -> bool {
-        self.reveal.opacity() > 0.001 || self.backdrop.opacity() > 0.001 || self.open
+        // Retain the host until Reveal snaps both springs to zero. Dropping at
+        // the paint threshold would leave a nonzero tail that can never settle.
+        self.reveal.opacity() > 0. || self.backdrop.opacity() > 0. || self.open
     }
 
     pub fn inspect(&self) -> serde_json::Value {
@@ -180,10 +182,13 @@ impl PlainDialog {
 
         let reduced = cx.reduce_motion();
         let dt = if reduced { 1. } else { 1. / 60. };
+        let was_alive = self.alive();
         let content_moving = self.reveal.advance(open, dt, reduced);
         let backdrop_moving = self.backdrop.advance(open, dt, reduced);
         let moving = content_moving || backdrop_moving;
-        if moving && !self.scheduled.replace(true) {
+        // Retained modal payloads are released by their owner on its next
+        // render. Schedule one final frame after both reveals snap to zero.
+        if (moving || (was_alive && !self.alive())) && !self.scheduled.replace(true) {
             let scheduled = self.scheduled.clone();
             let owner = owner.clone();
             window.on_next_frame(move |_, cx| {
@@ -231,7 +236,7 @@ impl PlainDialog {
             close.clone(),
         );
 
-        let panel = smooth::surface(format!("{id}-panel"), ui::MODAL_RADIUS)
+        let panel = smooth::surface(id.clone(), ui::MODAL_RADIUS)
             .occlude()
             .w(px(width))
             .max_h(px(max_height))
@@ -247,54 +252,58 @@ impl PlainDialog {
         let dismissible = options.dismissible && !self.alert;
         let close_outside = close.clone();
         let dismiss_outside = dismissible && open;
-        // deferred + high priority puts the dialog above page chrome for hit-testing.
+        // Anchor to the window: a short/scrolling settings column must not size or
+        // position the backdrop. Deferred drawing also escapes the host clip.
         // occlude + stop_propagation block hover/click from reaching content underneath.
         // Dismiss must live on the backdrop hit target — GPUI delivers mouse_down to the
         // occluded child, not the parent layer listener.
         let layer = deferred(
-            div()
-                .id(format!("{id}-layer"))
-                .absolute()
-                .inset_0()
-                .occlude()
-                .flex()
-                .items_center()
-                .justify_center()
-                .on_mouse_move(|_, _, cx| cx.stop_propagation())
-                .child(
-                    div()
-                        .id(format!("{id}-backdrop"))
-                        .absolute()
-                        .inset_0()
-                        .occlude()
-                        .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha))
-                        .on_mouse_down(MouseButton::Left, {
-                            let close = close_outside.clone();
-                            move |_, window, cx| {
-                                if dismiss_outside {
-                                    close(window, cx);
+            anchored().position(point(px(0.), px(0.))).child(
+                div()
+                    .id(format!("{id}-layer"))
+                    .relative()
+                    .w(viewport.width)
+                    .h(viewport.height)
+                    .occlude()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .id(format!("{id}-backdrop"))
+                            .absolute()
+                            .inset_0()
+                            .occlude()
+                            .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha))
+                            .on_mouse_down(MouseButton::Left, {
+                                let close = close_outside.clone();
+                                move |_, window, cx| {
+                                    if dismiss_outside {
+                                        close(window, cx);
+                                    }
+                                    cx.stop_propagation();
                                 }
-                                cx.stop_propagation();
+                            }),
+                    )
+                    .child(
+                        div()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(panel),
+                    )
+                    .when(open, |el| {
+                        el.capture_key_down({
+                            let close = close.clone();
+                            let dismissible = dismissible;
+                            move |e: &gpui::KeyDownEvent, window, cx| {
+                                if dismissible && e.keystroke.key == "escape" {
+                                    close(window, cx);
+                                    cx.stop_propagation();
+                                }
                             }
-                        }),
-                )
-                .child(
-                    div()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(panel),
-                )
-                .when(open, |el| {
-                    el.capture_key_down({
-                        let close = close.clone();
-                        let dismissible = dismissible;
-                        move |e: &gpui::KeyDownEvent, window, cx| {
-                            if dismissible && e.keystroke.key == "escape" {
-                                close(window, cx);
-                                cx.stop_propagation();
-                            }
-                        }
-                    })
-                }),
+                        })
+                    }),
+            ),
         )
         .with_priority(300);
 

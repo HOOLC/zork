@@ -100,6 +100,40 @@ fn main() -> anyhow::Result<()> {
         "Expected models from both devices: {:?}",
         rows().iter().map(|e| &e.label).collect::<Vec<_>>()
     );
+    view.update(&mut cx, |v, cx| {
+        anyhow::ensure!(v.begin_onboarding("desktop", cx), "Local editor missing");
+        Ok::<_, anyhow::Error>(())
+    })?;
+    draw(&mut cx)?;
+    anyhow::ensure!(rows().len() == 1, "Onboarding showed another device");
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-close-form" && e.visible),
+        "Onboarding did not open the real connection editor"
+    );
+    anyhow::ensure!(
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id.starts_with("model-add-device-")),
+        "Onboarding offered a device chooser"
+    );
+    click("profile-close-form", &mut cx)?;
+    anyhow::ensure!(
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-close-form" && e.visible),
+        "Connection editor remained visible after cancel"
+    );
+    view.update(&mut cx, |v, cx| v.set_onboarding_local(None, cx));
+    draw(&mut cx)?;
+    anyhow::ensure!(rows().len() == 2, "Normal settings lost a device");
     cx.capture_screenshot(window.into())?
         .save(output.join("by-provider.png"))?;
     for label in [

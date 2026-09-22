@@ -53,6 +53,7 @@ pub struct DesktopRoot {
     directory_updates: Option<gpui::Task<()>>,
     startup_updates: Option<gpui::Task<()>>,
     startup_state: Arc<zork_client_core::desktop::startup::State>,
+    onboarding_models_open: bool,
     store: Arc<ClientStore>,
     local: Arc<LocalNode>,
     local_enabled: bool,
@@ -171,7 +172,11 @@ impl DesktopRoot {
             source,
             directory_updates: None,
             startup_updates: None,
-            startup_state: Arc::new(Default::default()),
+            startup_state: Arc::new(zork_client_core::desktop::startup::State {
+                onboarding: startup_state.onboarding,
+                ..Default::default()
+            }),
+            onboarding_models_open: false,
             store,
             local,
             local_enabled,
@@ -325,6 +330,7 @@ impl DesktopRoot {
         cx.notify();
     }
     fn login_account(&mut self, cx: &mut Context<Self>) {
+        self.error = None;
         if let Err(error) = self.source.login_account() {
             self.error = Some(error.to_string());
         }
@@ -413,7 +419,10 @@ impl DesktopRoot {
     }
     fn sync_model_settings(&mut self, cx: &mut Context<Self>) {
         let sources = self
+            .source
+            .snapshot()
             .nodes
+            .as_ref()
             .clone()
             .into_iter()
             .filter_map(|node| {
@@ -532,6 +541,14 @@ impl DesktopRoot {
             return;
         };
         zork_client_core::desktop::trace_startup("gui.node_view_ready");
+        let profile_source = retained.read(cx).core_device().profiles();
+        if let Err(error) = cx
+            .global::<DesktopRuntime>()
+            .startup
+            .observe_onboarding_models(&node.id, profile_source)
+        {
+            self.error = Some(error.to_string());
+        }
         if let Some((_, mesh)) = self
             .mesh_views
             .get(&node.id)
@@ -561,6 +578,9 @@ impl DesktopRoot {
         }
         let source = self.source.clone();
         let info_node = node.clone();
+        if self.startup_state.onboarding.is_some() {
+            self.sync_model_settings(cx);
+        }
         zork_client_core::desktop::trace_startup("gui.node_management_ready");
         cx.spawn(async move |_, _| {
             let _ = source.refresh_info(&info_node).await;
@@ -993,8 +1013,17 @@ impl Render for DesktopRoot {
             }
         }
         if let Some(view) = &self.model_settings {
-            let visible = self.managing && self.management_tab == 0;
+            let onboarding = matches!(
+                self.startup_state.onboarding,
+                Some(
+                    zork_client_core::desktop::startup::Onboarding::Models
+                        | zork_client_core::desktop::startup::Onboarding::Ready
+                )
+            ) && self.onboarding_models_open;
+            let active = onboarding.then(|| self.active_node_id.clone()).flatten();
+            let visible = (self.managing && self.management_tab == 0) || onboarding;
             view.update(cx, |v, cx| {
+                v.set_onboarding_local(active, cx);
                 v.set_visible(visible, cx);
                 v.set_locale(self.client_settings.locale, cx);
             });
@@ -1031,7 +1060,9 @@ impl Render for DesktopRoot {
                     v.navigation.update(cx, |n, cx| n.finish_resize(cx));
                 }),
             );
-        let content = if self.showing_shared_files {
+        let content = if self.startup_state.onboarding.is_some() {
+            self.render_onboarding(cx)
+        } else if self.showing_shared_files {
             div()
                 .size_full()
                 .flex()

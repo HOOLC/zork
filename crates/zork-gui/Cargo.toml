@@ -247,6 +247,12 @@ harness = false
 required-features = ["headless-bench"]
 
 [[test]]
+name = "headless_onboarding"
+path = "tests/headless_onboarding.rs"
+harness = false
+required-features = ["headless-bench"]
+
+[[test]]
 name = "headless_model_settings"
 path = "tests/headless_model_settings.rs"
 harness = false
