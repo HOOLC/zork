@@ -94,10 +94,29 @@ class BuildSettingsTest(unittest.TestCase):
                                       'CARGO_TARGET_DIR': str(target)}, worktree)
             self.assertEqual(json.loads((target / '.zork-cache-owner.json').read_text()),
                              {'worktree': str(worktree)})
+            self.assertTrue(cache.cargo_tag(target))
             unrelated = cache_root / 'isolated/other'
             register_isolated_target({'ZORK_BUILD_ROOT': str(cache_root),
                                       'CARGO_TARGET_DIR': str(unrelated)}, worktree)
             self.assertFalse(unrelated.exists())
+            (worktree / 'src').mkdir()
+            (worktree / 'src/main.rs').write_text('fn main() {}\n')
+            (worktree / 'Cargo.toml').write_text('[package]\nname="cache-probe"\nversion="0.1.0"\nedition="2021"\n')
+            subprocess.run(['cargo', 'clean', '--target-dir', str(target)], cwd=worktree,
+                           check=True, capture_output=True)
+            self.assertFalse(target.exists())
+
+    def test_existing_untagged_target_is_not_marked_as_cargo_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d).resolve()
+            worktree = base / 'task'; worktree.mkdir()
+            cache_root = base / 'cache'
+            target = cache_root / 'isolated/task'; target.mkdir(parents=True)
+            (target / 'unknown-input').write_text('preserve')
+            register_isolated_target({'ZORK_BUILD_ROOT': str(cache_root),
+                                      'CARGO_TARGET_DIR': str(target)}, worktree)
+            self.assertFalse((target / 'CACHEDIR.TAG').exists())
+            self.assertEqual((target / 'unknown-input').read_text(), 'preserve')
 
     def test_candidate_scope(self):
         with tempfile.TemporaryDirectory() as d:

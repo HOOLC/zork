@@ -8,6 +8,7 @@ import shlex
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
+CACHEDIR_SIGNATURE = 'Signature: 8a477f597d28d172789f06886806bc55'
 KEYS = {'ZORK_BUILD_ROOT', 'ZORK_BUILD_BUDGET_GIB', 'ZORK_BUILD_LOW_WATER_GIB',
         'ZORK_BUILD_MOUNT', 'CARGO_TARGET_DIR', 'KACHE_CACHE_EXECUTABLES',
         'ZORK_ANDROID_DEBUG_KEYSTORE', 'ZORK_WASM_LD', 'ZORK_CUA_SOURCE', 'ZORK_CUA_TARGET_DIR'}
@@ -97,7 +98,13 @@ def register_isolated_target(env, root=ROOT):
     cache_root.mkdir(parents=True, exist_ok=True)
     with (cache_root / '.zork-cache-gc.lock').open('a+') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        target.mkdir(parents=True, exist_ok=True)
+        try:
+            target.mkdir(parents=True)
+        except FileExistsError:
+            pass
+        else:
+            (target / 'CACHEDIR.TAG').write_text(
+                CACHEDIR_SIGNATURE + '\n# Isolated Cargo target created by Zork build_env.py.\n')
         marker = target / '.zork-cache-owner.json'
         owner = {'worktree': str(worktree)}
         if marker.exists():

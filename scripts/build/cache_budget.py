@@ -13,9 +13,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
-from build_env import build_environment
-
-CACHEDIR_SIGNATURE = 'Signature: 8a477f597d28d172789f06886806bc55'
+from build_env import build_environment, CACHEDIR_SIGNATURE
 
 
 def budget(env):
