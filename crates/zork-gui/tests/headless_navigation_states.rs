@@ -5,6 +5,8 @@ use gpui::{
 };
 use serde_json::json;
 use std::{
+    cell::RefCell,
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -37,6 +39,9 @@ fn main() -> anyhow::Result<()> {
     }
     if std::env::args().any(|arg| arg == "--collapse") {
         return collapse::run(&output);
+    }
+    if std::env::args().any(|arg| arg == "--chat-hover") {
+        return chat_hover_checks();
     }
     let mut reports = Vec::new();
     for width in [400., 800.] {
@@ -264,7 +269,126 @@ fn main() -> anyhow::Result<()> {
     sliding_hover_checks(&output)?;
     gap_surface_checks(&output)?;
     settings_sidebar_process(&output)?;
+    chat_hover_checks()?;
     println!("PASS navigation input, sliding hover, geometry and CPU draw budget");
+    Ok(())
+}
+
+fn chat_hover_checks() -> anyhow::Result<()> {
+    let chat = |id: &str| zork_client_core::state::NavigationChat {
+        chat_id: id.into(),
+        title: id.into(),
+        updated_at: "2026-09-23T12:00:00Z".into(),
+        in_preview: true,
+        ..Default::default()
+    };
+    let device = zork_ui::chat_navigation::Device {
+        id: "device-0".into(),
+        name: "测试设备".into(),
+        online: Some(true),
+        status: zork_ui::device_name::DeviceStatus::Direct,
+        direct: true,
+        public: false,
+        chats: Arc::new(vec![chat("chat-0"), chat("chat-1")]),
+        selected_session: Some("chat-0".into()),
+        chatting: true,
+    };
+    let mut cx = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = cx.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let initial = device.clone();
+    let mut navigation_entity = None;
+    let window = cx.open_window(gpui::size(px(800.), px(600.)), |_, cx| {
+        let navigation = cx.new(|cx| {
+            let mut view = zork_ui::chat_navigation::Navigation::new(
+                Default::default(),
+                zork_ui::resources::Text(Rc::new(|key| {
+                    zork_gui::i18n::Locale::ZhCn.text(key).into()
+                })),
+                cx,
+            );
+            view.set_data(vec![initial], Some("device-0".into()), false, 280., cx);
+            view
+        });
+        navigation_entity = Some(navigation.clone());
+        cx.subscribe(
+            &navigation,
+            move |_, event: &zork_ui::chat_navigation::Action, _| {
+                if let zork_ui::chat_navigation::Action::Preview {
+                    node,
+                    session,
+                    hovered,
+                } = event
+                {
+                    observed
+                        .borrow_mut()
+                        .push((node.clone(), session.clone(), *hovered));
+                }
+            },
+        )
+        .detach();
+        cx.new(|_| AutomationRoot::new(navigation))
+    })?;
+    let pump = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        for _ in 0..4 {
+            cx.advance_clock(Duration::from_millis(16));
+            cx.run_until_parked();
+            cx.update_window(window.into(), |_, window, cx| {
+                window.simulate_next_frame(cx)
+            })?;
+        }
+        Ok(())
+    };
+    pump(&mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "chat-device-0-chat-1"),
+        "Chat hover target was not rendered"
+    );
+    let move_to = |cx: &mut HeadlessAppContext, target| -> anyhow::Result<()> {
+        cx.update_window(window.into(), |_, window, cx| {
+            driver.dispatch(
+                serde_json::from_value(json!({"type":"move","target":target})).unwrap(),
+                window,
+                cx,
+            )
+        })??;
+        pump(cx)?;
+        Ok(())
+    };
+    move_to(&mut cx, json!({"element_id":"chat-device-0-chat-1"}))?;
+    let mut refreshed = device;
+    refreshed.chats = Arc::new(refreshed.chats.as_ref().clone());
+    navigation_entity
+        .unwrap()
+        .update(&mut cx, |navigation, cx| {
+            navigation.set_data(vec![refreshed], Some("device-0".into()), false, 280., cx)
+        });
+    pump(&mut cx)?;
+    move_to(&mut cx, json!({"x":700,"y":100}))?;
+    anyhow::ensure!(
+        events.borrow().as_slice()
+            == &[
+                ("device-0".into(), "chat-1".into(), true),
+                ("device-0".into(), "chat-1".into(), false)
+            ],
+        "Chat hover did not enter and leave exactly once: {:?}",
+        events.borrow()
+    );
+    println!("PASS Chat sidebar hover enters and leaves the preview target");
     Ok(())
 }
 
