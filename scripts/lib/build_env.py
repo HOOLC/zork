@@ -1,5 +1,6 @@
 """Optional machine-local build settings. No shell evaluation of .env values."""
 import argparse
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -58,7 +59,12 @@ def build_environment(root=ROOT, environ=None, variant=None):
         if not base.is_absolute():
             base = root / base
         if configured:
-            base /= variant or 'target'
+            if variant:
+                base /= variant
+            elif (root / '.git').is_file():
+                base /= f'isolated/{root.name}'
+            else:
+                base /= 'target'
         elif variant:
             base /= variant
         env['CARGO_TARGET_DIR'] = str(base)
@@ -72,6 +78,42 @@ def build_environment(root=ROOT, environ=None, variant=None):
     return env
 
 
+def register_isolated_target(env, root=ROOT):
+    """Bind a worktree-named isolated target to its source worktree."""
+    configured = env.get('ZORK_BUILD_ROOT')
+    if not configured:
+        return
+    cache_root = Path(configured).expanduser()
+    cache_root = (cache_root if cache_root.is_absolute() else root / cache_root).resolve()
+    target = Path(env['CARGO_TARGET_DIR']).resolve()
+    worktree = root.resolve()
+    isolated = cache_root / 'isolated'
+    try:
+        relative = target.relative_to(isolated)
+    except ValueError:
+        return
+    if relative.parts not in ((worktree.name,), (worktree.name, 'target')):
+        return
+    cache_root.mkdir(parents=True, exist_ok=True)
+    with (cache_root / '.zork-cache-gc.lock').open('a+') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        target.mkdir(parents=True, exist_ok=True)
+        marker = target / '.zork-cache-owner.json'
+        owner = {'worktree': str(worktree)}
+        if marker.exists():
+            previous = json.loads(marker.read_text())
+            if previous == owner:
+                return
+            if Path(previous['worktree']).exists():
+                raise ValueError(f'Isolated target belongs to another worktree: {target}')
+        pending = marker.with_name(marker.name + f'.{os.getpid()}.tmp')
+        try:
+            pending.write_text(json.dumps(owner) + '\n')
+            pending.replace(marker)
+        finally:
+            pending.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--shell', action='store_true', help='Print quoted exports for eval')
@@ -79,6 +121,8 @@ def main():
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     env = build_environment()
+    if args.shell or args.command:
+        register_isolated_target(env)
     public = {k: env[k] for k in sorted(KEYS) if k in env}
     if args.shell:
         for key in sorted(os.environ):
