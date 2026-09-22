@@ -410,7 +410,7 @@ mod crossing_tests {
         simulation.set_open(true);
         simulation.finish();
         let surface = Surface::new(simulation).unwrap();
-        let binding = SourceMaterial::ordinary();
+        let binding = SourceMaterial::default();
         let foreground = binding.bind(&surface, source, None);
         let foreground_region = foreground.paint.0.borrow().partition.unwrap();
         let page_region = binding

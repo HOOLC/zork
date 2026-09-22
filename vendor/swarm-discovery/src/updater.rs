@@ -12,15 +12,6 @@ pub enum Input {
     SizeSubscription(ActoRef<usize>),
 }
 
-fn gc(me: ActoRef<Input>, interval: Duration) {
-    tokio::spawn(async move {
-        sleep(interval).await;
-        if !me.send(Input::GC) {
-            gc(me, Duration::from_millis(10));
-        }
-    });
-}
-
 pub async fn updater(
     mut ctx: ActoCell<Input, AcTokioRuntime>,
     tau: Duration,
@@ -28,12 +19,21 @@ pub async fn updater(
     mut callback: Callback,
 ) {
     let gc_interval = tau * 12345 / 9999;
-    gc(ctx.me(), gc_interval);
+    // Own the timer in this actor so shutdown also cancels pending GC.
+    let gc_timer = sleep(gc_interval);
+    tokio::pin!(gc_timer);
 
     let mut peers = BTreeMap::new();
     #[allow(clippy::mutable_key_type)]
     let mut subscribers = BTreeSet::<ActoRef<usize>>::new();
-    while let ActoInput::Message(msg) = ctx.recv().await {
+    loop {
+        let msg = tokio::select! {
+            _ = &mut gc_timer => Input::GC,
+            input = ctx.recv() => match input {
+                ActoInput::Message(msg) => msg,
+                _ => break,
+            },
+        };
         match msg {
             Input::Peers(msg) => {
                 for (id, peer) in msg {
@@ -46,7 +46,9 @@ pub async fn updater(
                 }
             }
             Input::GC => {
-                gc(ctx.me(), gc_interval);
+                gc_timer
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + gc_interval);
                 if peers.is_empty() {
                     continue;
                 }

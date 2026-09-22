@@ -4,8 +4,8 @@ use super::super::{
     panel::{Content, ContentPanel, Source},
     Material, Pose, SurfaceColors,
 };
-use crate::modal::PlainDialog;
 use super::surface;
+use crate::modal::PlainDialog;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,

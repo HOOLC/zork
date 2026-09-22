@@ -6,8 +6,12 @@ fn departing_bubbles_preserve_existing_material_and_retire() {
     let body = Pose::rect(18., 168., 320., 76., 18.);
     let member = Pose::rect(34., 160., 32., 32., 16.);
     for origin in [Origin::Button, Origin::Composer] {
-        let mut sim =
-            Simulation::compound(&[body, member], 4., Material::ordinary(), Options::default());
+        let mut sim = Simulation::compound(
+            &[body, member],
+            4.,
+            Material::ordinary(),
+            Options::default(),
+        );
         sim.finish();
         let original = trace(&sim).unwrap().svg_path();
         let mass = sim.mass();
@@ -57,8 +61,12 @@ fn departing_burst_and_color_failure_do_not_abort_or_replace_existing_groups() {
     let body = Pose::rect(18., 168., 320., 76., 18.);
     let member = Pose::rect(34., 160., 32., 32., 16.);
     for origin in [Origin::Button, Origin::Composer] {
-        let mut sim =
-            Simulation::compound(&[body, member], 4., Material::ordinary(), Options::default());
+        let mut sim = Simulation::compound(
+            &[body, member],
+            4.,
+            Material::ordinary(),
+            Options::default(),
+        );
         let identity = sim.particles().map(|p| (p.id, p.mass)).collect::<Vec<_>>();
         let mut departures = Departures::default();
         let mut peak = 0;
@@ -89,8 +97,12 @@ fn departing_burst_and_color_failure_do_not_abort_or_replace_existing_groups() {
     }
     // Fault injection: the optional color layer hits the contour bounds guard.
     // Rendering must survive and recover when the material returns to bounds.
-    let mut sim =
-        Simulation::compound(&[body, member], 4., Material::ordinary(), Options::default());
+    let mut sim = Simulation::compound(
+        &[body, member],
+        4.,
+        Material::ordinary(),
+        Options::default(),
+    );
     let mut departures = Departures::default();
     departures.emit(Origin::Button, "颜色层恢复", body, &mut sim);
     sim.set_compound_targets(&[body, member, Pose::rect(0., 0., 1e6, 1e6, 18.)]);

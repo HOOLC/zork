@@ -399,6 +399,32 @@ mod tests {
         assert!(resolved.next().await.is_none());
     }
     #[tokio::test]
+    async fn repeated_discovery_shutdown_reclaims_gc_tasks() {
+        let handle = tokio::runtime::Handle::current();
+        let baseline = handle.metrics().num_alive_tasks();
+        for generation in 0..16 {
+            let guard = Discoverer::new("gc-lifecycle".into(), format!("peer-{generation}"))
+                .with_ip_class(IpClass::V4Only)
+                .with_multicast_interfaces_v4(vec![Ipv4Addr::LOCALHOST])
+                .with_cadence(Duration::from_millis(5))
+                .spawn(&handle)
+                .unwrap();
+            // Exercise a running timer before shutting down, as on discovery failure.
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            guard.shutdown().await;
+        }
+        // Child cancellation is asynchronous; keep the runtime alive and allow
+        // bounded cleanup. Orphan GC retry chains never return to this baseline.
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while handle.metrics().num_alive_tasks() != baseline {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("discovery shutdown leaked background tasks");
+    }
+
+    #[tokio::test]
     #[ignore = "requires an interface permitting multicast; no public or same-host lookup fallback"]
     async fn live_mdns_discovers_peer_without_any_address_hint() -> Result<()> {
         use iroh::endpoint::presets;
