@@ -8,13 +8,13 @@ pub struct Fixture {
 }
 impl Fixture {
     pub fn new(fixture: Value, providers: Value) -> Self {
-        let id = fixture["profile"]["profile_id"]
+        let profiles = fixture["profile"]["profile_id"]
             .as_str()
-            .expect("fixture profile ID")
-            .to_owned();
+            .map(|id| json!({id: fixture["profile"]}))
+            .unwrap_or_else(|| json!({}));
         Self {
             data: Mutex::new(
-                json!({"profiles":{id:fixture["profile"]},"agents":fixture["agents"],"authorizations":{}}),
+                json!({"profiles":profiles,"agents":fixture["agents"],"authorizations":{}}),
             ),
             providers,
         }
@@ -38,7 +38,7 @@ impl Fixture {
         let body = body.unwrap_or(Value::Null);
         match path.as_str() {
             "/v1/node/providers" => return Ok(self.providers.clone()),
-            "/v1/node/mesh" => return Ok(json!({"origin":"storybook","enabled":false})),
+            "/v1/node/mesh" => return Ok(json!({"origin":"zork-design-pc","enabled":false})),
             "/v1/node/agents" => {
                 if method == http::Method::POST {
                     d["agents"].as_array_mut().unwrap().push(body.clone());

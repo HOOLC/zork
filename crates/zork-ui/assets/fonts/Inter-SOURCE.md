@@ -6,8 +6,8 @@ Source variable fonts already vendored in this repository:
 - `InterVariable-Italic.ttf`: SHA-256 `87abc103451574f8bd8657f4a9a13c1b958b2deb25dc8ac51397b871204561bf`
 
 The `static/Inter-*.ttf` assets are generated from those sources with fonttools
-4.62.1 by `uv run scripts/storybook/prepare_fonts.py`: optical size 14, weights
+4.62.1 by `uv run scripts/design-pc/prepare_fonts.py`: optical size 14, weights
 400/500/600/700, regular and italic. The static outlines preserve the existing
 font design and avoid repeated CoreText variable-font setup on multiline text.
-Native and WASM clients register the same faces. Keep these generated assets
+The native client and design app register the same faces. Keep these generated assets
 in source control so an ordinary Cargo build needs no Python font toolchain.

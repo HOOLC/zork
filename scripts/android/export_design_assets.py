@@ -57,7 +57,7 @@ def main():
                 parser.error("icon names must use lowercase letters, digits and hyphens")
             export(ROOT / f"crates/zork-ui/assets/icons/{name}.svg", "ic_" + name.replace("-", "_"))
         return
-    MOBILE = ROOT / 'apps/zork-design/mobile/prototype/assets'
+    MOBILE = ROOT / 'apps/zork-design-pc/archive/mobile-prototype/assets'
     for source in (MOBILE/'avatars').glob('*.svg'): export(source,'avatar_'+source.stem)
     for name in ['node','arrow-left','arrow-up','plus','settings','paperclip','chevron-down','mesh','x','result','download']:
         export(MOBILE/f'icons/{name}.svg','ic_'+name.replace('-','_'))

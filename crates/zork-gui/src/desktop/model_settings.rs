@@ -1,5 +1,7 @@
 //! Cross-device presentation of the shared, core-owned profile catalogs.
 use super::{profiles::ProfilesView, ui};
+#[cfg(feature = "headless-bench")]
+use crate::api::StationClient;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
@@ -99,6 +101,36 @@ impl ModelSettings {
             selected: None,
             onboarding_local: None,
         }
+    }
+    #[cfg(feature = "headless-bench")]
+    pub fn onboarding_fixture(cx: &mut Context<Self>) -> Self {
+        let mut fixture = zork_ui::stories::page_fixture();
+        fixture["profile"] = serde_json::Value::Null;
+        #[cfg(not(target_family = "wasm"))]
+        let client = Arc::new(StationClient::fixture(
+            fixture,
+            serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
+                .expect("provider fixture"),
+        ));
+        #[cfg(target_family = "wasm")]
+        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
+        let mut view = Self::new(cx);
+        view.set_sources(
+            vec![(
+                "mini1".into(),
+                "mini1".into(),
+                crate::api::Profiles::new(client),
+                zork_ui::device_name::DeviceStatus::Direct,
+            )],
+            cx,
+        );
+        for device in &view.devices {
+            device.editor.update(cx, |editor, cx| {
+                editor.freeze_onboarding_catalog();
+                cx.notify();
+            });
+        }
+        view
     }
     pub fn has_device(&self, id: &str) -> bool {
         self.devices.iter().any(|device| device.id == id)

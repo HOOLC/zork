@@ -5,7 +5,7 @@ description: 设计、修改或审查 zork 功能 SVG 图标及跨端资源接�
 
 # 功能 SVG 图标
 
-先查 [图标规范](../../../apps/zork-design/docs/12-icons-and-scenes.md)、[共享资产](../../../crates/zork-ui/assets/) 和调用点。同义符号优先复用，旧资源仍注册不等于产品当前默认。
+先查 [图标规范](../../../apps/zork-design-pc/docs/12-icons-and-scenes.md)、[共享资产](../../../crates/zork-ui/assets/) 和调用点。同义符号优先复用，旧资源仍注册不等于产品当前默认。
 
 ## 造型
 
@@ -16,8 +16,8 @@ description: 设计、修改或审查 zork 功能 SVG 图标及跨端资源接�
 
 ## 接入与验证
 
-原生/Web 共用资产注册与 `controls::icon`，不在页面复制 SVG；Android 通过 [导出脚本](../../../scripts/android/export_design_assets.py) 消费共享路径，核对实际输入与支持的元素/变换，不手工重画。触屏热区按 [移动端设计](../../../apps/android/design.md)。
+原生客户端与 `zork-design-pc` 共用资产注册与 `controls::icon`，不在页面复制 SVG；Android 通过 [导出脚本](../../../scripts/android/export_design_assets.py) 消费共享路径，核对实际输入与支持的元素/变换，不手工重画。触屏热区按 [移动端设计](../../../apps/android/design.md)。
 
-维护来源/manifest/许可。[refine_icons.py](../../../apps/zork-design/scripts/refine_icons.py) 会重写整套资源，单图标修改不能把它当只读检查运行。
+维护来源、manifest 和许可；原生设计应用的嵌入资源由 `scripts/design-pc/generate_assets.py` 更新。单图标修改不能靠生成脚本的成功代替实际绘制检查。
 
 检查 XML、viewBox、填充/描边、变换与注册；再按 [UI parity](../zork-ui-parity/SKILL.md) 看实际使用尺寸、DPR、邻近图标和状态，确认无裁边且视觉重量一致。文件存在、注册成功或放大母版不代表实际显示通过。纯 skill 修改按 [验证规则](../zork-validation/SKILL.md) 检查文案与链接。

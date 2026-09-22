@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/icons/result.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/icons/result.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
   <path android:pathData="M13.9 2.4H6.4a2.25 2.25 0 0 0-2.25 2.25v14.7A2.25 2.25 0 0 0 6.4 21.6h11.2a2.25 2.25 0 0 0 2.25-2.25V8.3L13.9 2.4Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />
   <path android:pathData="M13.6 2.7v3.7a2.2 2.2 0 0 0 2.2 2.2h3.75M8 12.6h8m-8 3.75h5.5" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" />

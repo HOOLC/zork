@@ -20,7 +20,7 @@ Compose 负责原生输入、呈现和系统生命周期，协议、业务规则
 
 ## 设计真值
 
-本应用按 `apps/zork-design/mobile/design-spec.md` 与
+本应用按 `apps/zork-design-pc/mobile/design-spec.md` 与
 `mobile/prototype/index.html` 的 **nav7** 导航结构，并应用 [当前界面基线](design.md) 中的设置与控件修订；早期参考截图在
 `artifacts/android/nav7/reference`，原生对照在 `artifacts/android/nav7/comparison`。
 桌面 `gui.html` 和最初的三屏概念图均不替代当前移动端规范。
@@ -192,6 +192,6 @@ FrameMetrics，`require120=true` 要求真实 120 Hz 呈现及对应 CPU 预算�
 设备。此版采用应用沙箱存储；卸载后需要重新授权新身份。APK 是开发签名的
 内部测试包，发布签名与应用商店分发需另行配置。
 
-设置与视觉更新记录见 [design-qa.md](design-qa.md)，新增的真实 JNI 设置回归为 `MeshIntegrationTest.settingsManageDevice`，多宽度原生截图为 `SettingsRefreshTest`。物理手机运行 `test_mesh.py` 时使用 `--host-ip` 指定开发主机现场读取的局域网地址。
+设置与视觉更新记录见 [design-qa.md](../zork-design-pc/archive/mobile-prototype/design-qa.md)，新增的真实 JNI 设置回归为 `MeshIntegrationTest.settingsManageDevice`，多宽度原生截图为 `SettingsRefreshTest`。物理手机运行 `test_mesh.py` 时使用 `--host-ip` 指定开发主机现场读取的局域网地址。
 
 共享服务链接可从消息中打开应用内 WebView，关闭页面或离开前台即释放本地入口。协议、Agent 用法与边界见 [Mesh 服务共享](../../docs/design/external-capabilities.md#services)。

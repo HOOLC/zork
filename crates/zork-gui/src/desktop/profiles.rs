@@ -200,35 +200,22 @@ impl ProfilesView {
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(detail: bool, cx: &mut Context<Self>) -> Self {
+        Self::fixture(detail, cx)
+    }
+
+    #[cfg(feature = "headless-bench")]
+    fn fixture(detail: bool, cx: &mut Context<Self>) -> Self {
+        let fixture = zork_ui::stories::page_fixture();
         #[cfg(not(target_family = "wasm"))]
         let client = Arc::new(StationClient::fixture(
-            zork_ui::stories::page_fixture(),
+            fixture.clone(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
                 .expect("provider fixture"),
         ));
         #[cfg(target_family = "wasm")]
         let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
-        view.catalog = serde_json::from_str::<Value>(include_str!(
-            "../../tests/fixtures/provider_catalog.json"
-        ))
-        .expect("provider catalog fixture")["providers"]
-            .as_array()
-            .unwrap()
-            .clone();
-        view.select_access(true);
-        view.provider = view
-            .catalog
-            .iter()
-            .position(|p| p["id"] == "openai")
-            .unwrap();
-        view.billing = view.catalog[view.provider]["billing"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .position(|b| b["id"] == "subscription")
-            .unwrap();
-        let fixture = zork_ui::stories::page_fixture();
+        view.seed_fixture_catalog();
         view.device_name = fixture["device"]["name"].as_str().unwrap().into();
         view.device_status = zork_ui::device_name::DeviceStatus::Direct;
         view.profiles = vec![serde_json::from_value(fixture["profile"].clone()).unwrap()];
@@ -238,6 +225,35 @@ impl ProfilesView {
         }
         view.accept_profiles(view.profiles.clone());
         view
+    }
+    #[cfg(feature = "headless-bench")]
+    pub(super) fn seed_fixture_catalog(&mut self) {
+        self.catalog = serde_json::from_str::<Value>(include_str!(
+            "../../tests/fixtures/provider_catalog.json"
+        ))
+        .expect("provider catalog fixture")["providers"]
+            .as_array()
+            .unwrap()
+            .clone();
+        self.select_access(true);
+        self.provider = self
+            .catalog
+            .iter()
+            .position(|p| p["id"] == "openai")
+            .unwrap();
+        self.billing = self.catalog[self.provider]["billing"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|b| b["id"] == "subscription")
+            .unwrap();
+    }
+    #[cfg(feature = "headless-bench")]
+    pub(super) fn freeze_onboarding_catalog(&mut self) {
+        // The design story has no remote catalog refresh; a queued empty
+        // offline snapshot must not replace its fixed provider choices.
+        self.source_updates = None;
+        self.seed_fixture_catalog();
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_state(&self, cx: &gpui::App) -> Value {

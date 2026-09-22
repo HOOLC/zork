@@ -4018,6 +4018,8 @@ dependencies = [
 [[package]]
 name = "gpui-web-gpui-unofficial"
 version = "1.17.0-pre"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "821fd07eac50ae921f254921640111e4744b32b84281b2deb7a0f98e92f3dc2c"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -13705,31 +13707,6 @@ dependencies = [
  "zork-client-core",
  "zork-config",
  "zork-mesh",
- "zork-ui",
-]
-
-[[package]]
-name = "zork-gui-web"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "console_error_panic_hook",
- "getrandom 0.3.4",
- "gpui-unofficial",
- "gpui-web-gpui-unofficial",
- "image",
- "log",
- "markdown",
- "serde",
- "serde_json",
- "tokio",
- "ulid",
- "unicode-segmentation",
- "wasm-bindgen",
- "web-sys",
- "web-time",
- "zork-client-core",
  "zork-ui",
 ]
 

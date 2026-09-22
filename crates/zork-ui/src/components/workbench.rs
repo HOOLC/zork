@@ -56,14 +56,7 @@ impl Layout {
     }
 }
 pub fn font() -> Font {
-    let mut result = gpui::font("Inter Variable");
-    if cfg!(target_family = "wasm") {
-        static CJK: std::sync::LazyLock<gpui::FontFallbacks> = std::sync::LazyLock::new(|| {
-            gpui::FontFallbacks::from_fonts(vec!["Noto Sans SC".into()])
-        });
-        result.fallbacks = Some(CJK.clone());
-    }
-    result
+    gpui::font("Inter Variable")
 }
 
 pub fn specimen(

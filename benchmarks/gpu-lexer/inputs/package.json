@@ -1,0 +1,68 @@
+{
+  "name": "zork",
+  "version": "0.1.30",
+  "private": true,
+  "description": "IM gateway that routes deliberate chat delivery into durable agent workspaces.",
+  "homepage": "https://github.com/HOOLC/open-worker#readme",
+  "bugs": {
+    "url": "https://github.com/HOOLC/open-worker/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HOOLC/open-worker.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/zork-design"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "vp run build:rust",
+    "build:rust": "python3 scripts/lib/build_env.py -- cargo build --locked -p zork -p zork-gateway -p zork-agent-server -p zork-gh",
+    "benchmark:deep-swe": "uv run --project benchmarks/deep-swe zork-deep-swe",
+    "benchmark:deep-swe:test": "uv run --frozen --project benchmarks/deep-swe python -m unittest discover -s benchmarks/deep-swe/tests -p 'test_*.py'",
+    "dev": "python3 scripts/lib/build_env.py -- cargo run -p zork",
+    "dev:gateway": "python3 scripts/lib/build_env.py -- cargo run -p zork-gateway",
+    "dev:binaries:linux": "bash scripts/dev/update-binaries.sh",
+    "check": "vp check",
+    "format": "vp fmt --write",
+    "format:check": "vp fmt --check",
+    "hooks:install": "lefthook install",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "release:stage": "python3 scripts/build/native-release.py stage",
+    "release:pack": "python3 scripts/lib/build_env.py -- sh -c \"cargo build --locked --release -p zork -p zork-gateway -p zork-agent-server -p zork-gh && python3 scripts/build/native-release.py stage\"",
+    "start": "python3 scripts/lib/build_env.py -- cargo run -p zork --release",
+    "start:gateway": "python3 scripts/lib/build_env.py -- cargo run -p zork-gateway --release",
+    "test": "vp test --run",
+    "test:rust": "python3 scripts/lib/build_env.py -- cargo test --locked --workspace --exclude zork-gui --exclude zork-browser-runtime",
+    "test:desktop": "python3 scripts/lib/build_env.py -- cargo test --locked -p zork-gui",
+    "test:mesh-enrollment": "python3 scripts/test-mesh-enrollment.py",
+    "test:mesh-experience": "python3 scripts/test-mesh-experience-ui.py",
+    "test:installer": "python3 scripts/test-native-installer.py",
+    "cache:status": "python3 scripts/build/cache_budget.py",
+    "cache:prune": "python3 scripts/build/cache_budget.py --apply",
+    "design:dev": "pnpm --filter zork-design dev",
+    "design:build": "pnpm --filter zork-design build",
+    "design:check": "pnpm --filter zork-design check",
+    "design:test": "pnpm --filter zork-design test",
+    "design:components": "python3 scripts/storybook/build.py",
+    "design:components:web": "python3 scripts/storybook/build_web.py"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "lefthook": "^2.1.9",
+    "oxfmt": "^0.52.0",
+    "oxlint": "^1.67.0",
+    "oxlint-tsgolint": "^0.22.1",
+    "tsx": "^4.20.5",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

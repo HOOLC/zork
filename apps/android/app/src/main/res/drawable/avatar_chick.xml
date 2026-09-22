@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/chick.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/chick.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#FFF5D8" />
   <path android:pathData="M29 17Q26 11 30 10Q34 10 34 17Q39 11 42 14Q44 17 37 21Z" android:fillColor="#DBAE45" />

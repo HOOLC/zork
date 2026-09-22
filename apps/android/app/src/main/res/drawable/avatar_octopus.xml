@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/octopus.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/octopus.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#F5ECF3" />
   <path android:pathData="M15 34C15 21 21 14 32 14S49 21 49 34V41C49 45 54 44 54 48C54 53 48 55 44 51C40 56 35 56 32 52C29 56 24 56 20 51C16 55 10 53 10 48C10 44 15 45 15 41Z" android:fillColor="#AA80A4" />
