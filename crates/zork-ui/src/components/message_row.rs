@@ -22,10 +22,9 @@ pub struct Row<'a> {
     pub expanded: bool,
     pub text: crate::resources::Text,
     pub reader_source: SourceBinding,
-    pub author_is_agent: bool,
-    pub avatar: Option<&'a str>,
     pub author_name: Option<String>,
     pub device: Option<String>,
+    pub model: Option<String>,
     pub time: Option<String>,
 }
 impl Row<'_> {
@@ -45,10 +44,9 @@ impl Row<'_> {
             expanded,
             text,
             reader_source,
-            author_is_agent,
-            avatar,
             author_name,
             device,
+            model,
             time,
         } = self;
         // Only user bubbles need intrinsic width. Assistant prose already fills
@@ -92,7 +90,7 @@ impl Row<'_> {
         let width = if user {
             bubble_width - 2. * ZORK_UI.thread.user_padding_x
         } else {
-            content_width - 34.
+            content_width
         };
         let expand_label = text.text(if expanded {
             "message_collapse"
@@ -207,62 +205,54 @@ impl Row<'_> {
                 .into_any(),
             false => transcript_row()
                 .child(
-                    div()
-                        .w(px(content_width))
-                        .max_w_full()
-                        .flex()
-                        .items_start()
-                        .gap_2()
-                        .child(if author_is_agent || avatar.is_some() {
-                            crate::controls::agent_avatar(avatar, 26.)
-                        } else {
-                            div().size(px(26.)).flex_shrink_0().child(
-                                svg()
-                                    .path("brand/mark.svg")
-                                    .size(px(22.))
-                                    .text_color(rgb(TEXT)),
-                            )
-                        })
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .gap_1()
-                                .text_size(px(13.))
-                                .line_height(px(20.))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .when_some(author_name, |v, name| {
-                                            v.child(
-                                                div().font_weight(FontWeight::MEDIUM).child(name),
-                                            )
-                                        })
-                                        .when_some(device, |v, device| {
+                    div().w(px(content_width)).max_w_full().flex().child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .text_size(px(13.))
+                            .line_height(px(20.))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .when_some(device.or(author_name), |v, device| {
+                                        v.child(
+                                            div()
+                                                .max_w(px(140.))
+                                                .truncate()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .child(device),
+                                        )
+                                    })
+                                    .when_some(
+                                        model.filter(|model| !model.is_empty()),
+                                        |v, model| {
                                             v.child(
                                                 div()
-                                                    .max_w(px(140.))
+                                                    .min_w_0()
                                                     .truncate()
                                                     .text_size(px(11.))
                                                     .text_color(rgb(DIM))
-                                                    .child(device),
+                                                    .child(model),
                                             )
-                                        })
-                                        .when_some(time, |v, time| {
-                                            v.child(
-                                                div()
-                                                    .text_size(px(10.))
-                                                    .text_color(rgb(DIM))
-                                                    .child(time),
-                                            )
-                                        }),
-                                )
-                                .child(prose),
-                        ),
+                                        },
+                                    )
+                                    .when_some(time, |v, time| {
+                                        v.child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_size(px(10.))
+                                                .text_color(rgb(DIM))
+                                                .child(time),
+                                        )
+                                    }),
+                            )
+                            .child(prose),
+                    ),
                 )
                 .into_any(),
         }

@@ -109,10 +109,9 @@ impl Render for Story {
                     expanded: self.expanded[index],
                     text: self.text.clone(),
                     reader_source: self.reader.read(cx).source(),
-                    author_is_agent: index != 0,
-                    avatar: (index != 0).then_some("fox"),
                     author_name: (index != 0).then(|| "产品领队".into()),
                     device: Some("演示设备".into()),
+                    model: (index != 0).then(|| "gpt-6".into()),
                     time: Some("10:24".into()),
                 }
                 .render(

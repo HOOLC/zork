@@ -265,12 +265,20 @@ impl ImEntryStation {
                 if fact.author.kind == zork_client_types::chat::AuthorKind::Agent {
                     value["author_agent_id"] = json!(fact.author.id);
                     value["author_name"] = json!(fact.author.name);
-                    if let Ok(Some(agent)) = self.db.node_agent(&fact.author.id) {
+                    if let Some(key) = fact.author.id.strip_prefix("session:") {
+                        if let Ok(Some(session)) = self.db.get_session(key) {
+                            value["model"] = json!(session.model);
+                            value["device"] = json!(zork_config::device_name());
+                        }
+                    } else if let Ok(Some(agent)) = self.db.node_agent(&fact.author.id) {
                         value["author_name"] = json!(agent.name);
                         value["author_avatar"] = json!(agent.avatar);
+                        value["model"] = json!(agent.model);
                     }
-                    if let Some((origin, _)) = fact.author.id.split_once('/') {
-                        value["device"] = json!(origin);
+                    if !fact.author.id.starts_with("session:") {
+                        if let Some((origin, _)) = fact.author.id.split_once('/') {
+                            value["device"] = json!(origin);
+                        }
                     }
                 }
             }
@@ -581,6 +589,7 @@ fn validate_destination(
 mod tests {
     use super::*;
     use crate::db::EnsureSession;
+    use zork_client_types::chat::{Author, AuthorKind, StartChat};
 
     #[test]
     fn idle_slack_snapshot_cannot_render_as_working() {
@@ -592,6 +601,94 @@ mod tests {
             slack_rendered_status(&json!({"state": "thinking"}), "Working..."),
             "Working..."
         );
+    }
+
+    #[tokio::test]
+    async fn chat_message_projection_reports_the_authors_configured_model() {
+        let dir = tempfile::tempdir().unwrap();
+        zork_config::ensure_layout(dir.path()).unwrap();
+        let db = Arc::new(
+            StationDb::open(&dir.path().join("state"), &dir.path().join("workspaces")).unwrap(),
+        );
+        let connections = Arc::new(
+            ConnectionManager::load(
+                dir.path().to_path_buf(),
+                reqwest::Client::builder().no_proxy().build().unwrap(),
+            )
+            .await
+            .unwrap(),
+        );
+        let entries = ImEntryStation::new(db.clone(), connections);
+        let request = StartChat {
+            request_id: ulid::Ulid::new().to_string(),
+            content: "first".into(),
+            model: "session-model".into(),
+            thinking: "off".into(),
+            profile_id: String::new(),
+            title: None,
+            client_id: None,
+        };
+        let creator = Author {
+            id: "creator".into(),
+            kind: AuthorKind::User,
+            name: None,
+        };
+        let chat = db.start_chat(&request, &creator, None).unwrap();
+        let author = Author {
+            id: format!("session:{}", db.chat(&chat.chat_id).unwrap().session_key),
+            kind: AuthorKind::Agent,
+            name: None,
+        };
+        let message = db
+            .post_chat_content(
+                None,
+                "session-reply",
+                &chat.chat_id,
+                &author,
+                "reply",
+                &[],
+                None,
+                &[],
+                &[],
+                None,
+            )
+            .unwrap();
+        let row = db.chat_visible_message(&message.message_id).unwrap();
+        let projected = entries.message_json(&row);
+        assert_eq!(projected["model"], "session-model");
+        assert_eq!(projected["device"], zork_config::device_name());
+        assert!(projected.get("author_avatar").is_none());
+
+        db.insert_node_agent(
+            &serde_json::from_value(json!({
+                "id": "legacy-agent", "name": "Legacy", "avatar": "fox", "role": "worker",
+                "profile_id": "fixture", "model": "agent-model", "thinking": "off",
+                "instructions": "", "allowed_leaders": []
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let legacy = db
+            .post_chat_content(
+                None,
+                "legacy-reply",
+                &chat.chat_id,
+                &Author {
+                    id: "legacy-agent".into(),
+                    kind: AuthorKind::Agent,
+                    name: None,
+                },
+                "legacy",
+                &[],
+                None,
+                &[],
+                &[],
+                None,
+            )
+            .unwrap();
+        let projected = entries.message_json(&db.chat_visible_message(&legacy.message_id).unwrap());
+        assert_eq!(projected["model"], "agent-model");
+        assert_eq!(projected["author_avatar"], "fox");
     }
 
     #[tokio::test]

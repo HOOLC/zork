@@ -435,6 +435,9 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
         ConversationMessageState(state.conversation?.id, state.messages.firstOrNull()?.createdAt.orEmpty(),
             state.messages.isEmpty(), state.connected, state.historyLoading, state.older, state.busy, state.newer)
     }
+    val deviceNames = remember(state.peers, state.activePeer) {
+        (state.peers + listOfNotNull(state.activePeer)).associate { it.id to it.name }
+    }
     // Measure the floating controls before the list in this same layout pass.
     // No onSizeChanged round trip can leave a frame with obsolete bottom space.
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -522,7 +525,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Spacer(Modifier.height(22.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
                             Column {
-                            MessageRow(row, messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
+                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -603,7 +606,7 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerMot
 }
 
 @Composable
-private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
+private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
             if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
@@ -641,10 +644,9 @@ private fun MessageRow(row: ChatMessage, resend: (String) -> Unit, deleteFailed:
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Avatar(row.avatar, 24.dp)
-                Text(row.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val detail = listOf(row.device, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
-                if (detail.isNotEmpty()) Text(detail, fontSize = 11.sp, color = ZorkColors.Muted)
+                Text(device.ifBlank { row.author }, modifier = Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val detail = listOf(row.model, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
+                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
             row.files.forEach { FileCard(it) { file(it) } }
