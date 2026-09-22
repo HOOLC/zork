@@ -3,7 +3,6 @@ use super::*;
 
 pub(in crate::components::liquid) struct PopupPlacement {
     pub bounds: Bounds<Pixels>,
-    pub available_height: f32,
     pub maximum_height: f32,
     above: bool,
 }
@@ -43,7 +42,6 @@ fn fit_popup(
     };
     PopupPlacement {
         bounds: Bounds::new(point(px(x), px(y)), size(px(width), px(height))),
-        available_height,
         maximum_height: above.max(below),
         above: on_top,
     }

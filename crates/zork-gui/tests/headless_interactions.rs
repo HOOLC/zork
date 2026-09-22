@@ -127,6 +127,14 @@ fn main() -> anyhow::Result<()> {
             click(&mut cx, "interaction-preview-settings")?;
             click(&mut cx, "interaction-preview-/allowed_leaders")?;
             click(&mut cx, "interaction-preview-/allowed_leaders-0")?;
+            anyhow::ensure!(
+                driver
+                    .snapshot(false)
+                    .elements
+                    .iter()
+                    .any(|e| { e.id == "interaction-preview-/allowed_leaders-menu" && e.visible }),
+                "Multi-choice menu closed after changing one option"
+            );
             click(&mut cx, "interaction-preview-/name")?;
             click(&mut cx, "interaction-preview-settings")?;
             click(&mut cx, "interaction-preview-settings")?;

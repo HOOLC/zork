@@ -1,6 +1,10 @@
 package ing.zork.android
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -160,58 +165,69 @@ private fun Modifier.liquidOverlayPanel(paint: LiquidOverlayPaint, radius: Dp): 
     }
 }
 
-private object LiquidWindowPosition : PopupPositionProvider {
+private object MenuWindowPosition : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset.Zero
+}
+internal object PlainMenuStyle {
+    val Radius = 16.dp
+    val RowRadius = Radius - 6.dp
 }
 
 @Composable
-internal fun LiquidMenu(expanded: Boolean, dismiss: () -> Unit, width: Dp, content: @Composable ColumnScope.() -> Unit) {
+internal fun PlainMenu(label: String, expanded: Boolean, dismiss: () -> Unit, width: Dp,
+    anchor: androidx.compose.ui.geometry.Rect? = null, content: @Composable ColumnScope.() -> Unit) {
     val node = rememberLiquidNode()
     val binding = rememberOrigin(expanded, node)
     val origin = binding.source
-    val paint = rememberLiquidPaint(node, false)
     val bounds = origin?.visibleBounds
     val sourceVisible = origin == null || origin.node.attached && bounds != null && bounds.width > 0f && bounds.height > 0f
-    SideEffect {
-        paint.update(expanded, origin)
-        node.target?.let { node.update(it.copy(active = expanded, visible = sourceVisible)) }
-        if (!expanded && !node.alive) origin?.relocated = false
-    }
-    LaunchedEffect(expanded, node.alive) { if (!expanded && !node.alive) origin?.restoreFocus(binding.closingEpoch) }
-    if ((!expanded && !node.alive) || !sourceVisible) return
-    Popup(popupPositionProvider = LiquidWindowPosition, onDismissRequest = { if (expanded) dismiss() },
-        properties = PopupProperties(focusable = expanded, dismissOnBackPress = expanded, dismissOnClickOutside = expanded,
+    LaunchedEffect(expanded) { if (!expanded) origin?.restoreFocus(binding.closingEpoch) }
+    if (!expanded || !sourceVisible) return
+    Popup(popupPositionProvider = MenuWindowPosition, onDismissRequest = dismiss,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true,
             clippingEnabled = false, usePlatformDefaultWidth = false)) {
-        val view = LocalView.current
-        SideEffect { view.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.INVISIBLE }
-        CompositionLocalProvider(LocalLiquidInteractive provides (expanded && node.inputReady)) {
-        LiquidPaintHost {
-            Box(Modifier.fillMaxSize().liquidOverlayWindow(paint)) {
+        val opacity = remember { Animatable(0f) }
+        LaunchedEffect(Unit) { opacity.animateTo(1f, tween(120)) }
+        CompositionLocalProvider(LocalLiquidInteractive provides true) {
+            Box(Modifier.fillMaxSize()) {
                 Box(Modifier.matchParentSize().clickable(indication = null,
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, onClick = dismiss))
                 val density = LocalDensity.current.density
-                val sourcePosition = origin?.node?.windowOrigin
-                var layoutOrigin by remember { mutableStateOf(paint.windowOrigin) }
+                val sourcePosition = origin?.node?.windowOrigin ?: anchor?.topLeft
+                var layoutOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                val shape = RoundedCornerShape(PlainMenuStyle.Radius)
                 Layout(content = {
                     Column(Modifier.width(width.coerceAtLeast(160.dp)).heightIn(max = 320.dp)
+                        .semantics { paneTitle = label }
                         .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() } } }
-                        .liquidOverlayPanel(paint, LiquidTokens.FieldRadius).padding(6.dp), content = content)
+                        .shadow(8.dp, shape)
+                        .background(ZorkColors.Canvas, shape)
+                        .border(0.5.dp, ZorkColors.FieldBorder, shape)
+                        .graphicsLayer { alpha = opacity.value }
+                        .padding(6.dp), content = content)
                 }, modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime))
                     .onGloballyPositioned { layoutOrigin = it.positionOnScreen() }) { children, constraints ->
-                    val panel = children.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
                     val source = origin?.node
                     val offset = (sourcePosition ?: layoutOrigin) - layoutOrigin
-                    val right = offset.x + (source?.target?.from?.width ?: 0f) * density
-                    val bottom = offset.y + (source?.target?.from?.height ?: 0f) * density
+                    val right = offset.x + (source?.target?.from?.width?.times(density) ?: anchor?.width ?: 0f)
+                    val bottom = offset.y + (source?.target?.from?.height?.times(density) ?: anchor?.height ?: 0f)
+                    val margin = (12f * density).toInt()
+                    val gap = (8f * density).toInt()
+                    val below = (constraints.maxHeight - bottom.toInt() - margin - gap).coerceAtLeast(0)
+                    val above = (offset.y.toInt() - margin - gap).coerceAtLeast(0)
+                    val placeAbove = below < (320f * density).toInt() && above > below
+                    val available = if (placeAbove) above else below
+                    val panel = children.single().measure(constraints.copy(
+                        minWidth = 0, minHeight = 0,
+                        maxHeight = available.coerceAtMost((320f * density).toInt()).coerceAtLeast(1)))
                     val x = if (layoutDirection == LayoutDirection.Ltr) offset.x else right - panel.width
-                    val y = if (bottom + panel.height <= constraints.maxHeight) bottom else offset.y - panel.height
+                    val y = if (placeAbove) offset.y - panel.height - gap else bottom + gap
                     layout(constraints.maxWidth, constraints.maxHeight) {
                         panel.place(x.toInt().coerceIn(0, (constraints.maxWidth - panel.width).coerceAtLeast(0)),
                             y.toInt().coerceIn(0, (constraints.maxHeight - panel.height).coerceAtLeast(0)))
                     }
                 }
             }
-        }
         }
     }
 }

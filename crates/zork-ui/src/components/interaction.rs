@@ -337,7 +337,7 @@ impl Render for InteractionCard {
                 let open_id = field.id.clone();
                 let choose_id = field.id.clone();
                 let options = field.options.clone();
-                controls::dropdown(
+                controls::dropdown_with_selection(
                     id.clone(),
                     label,
                     field
@@ -354,6 +354,11 @@ impl Render for InteractionCard {
                         .collect(),
                     self.open_choice.as_ref() == Some(&field.id),
                     !field.options.is_empty(),
+                    if multiple {
+                        crate::components::liquid::overlay::Selection::Multiple
+                    } else {
+                        crate::components::liquid::overlay::Selection::Single
+                    },
                     window,
                     cx,
                     move |view, open, cx| {

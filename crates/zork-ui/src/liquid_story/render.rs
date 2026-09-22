@@ -666,8 +666,8 @@ impl Card {
                 },
             })
             .collect();
-        let (source, target) = self.poses();
-        self.popover.render(
+        let (source, _) = self.poses();
+        let menu = self.popover.render(
             self.sid("trigger"),
             self.popover_label(),
             choices,
@@ -679,13 +679,10 @@ impl Card {
             },
             self.open,
             true,
-            Placement::Inline {
-                width: self.width,
-                height: self.stage_height(),
-                source,
-                target,
+            Placement::Window {
+                width: source.w as f32,
             },
-            self.config.borrow().material,
+            Material::ordinary(),
             window,
             cx,
             |v, open, w, cx| v.set_open(open, w, cx),
@@ -698,7 +695,19 @@ impl Card {
                 v.status = format!("已选择第 {} 项", i + 1);
                 cx.notify();
             },
-        )
+        );
+        div()
+            .relative()
+            .w(px(self.width))
+            .h(px(self.stage_height()))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(source.left() as f32))
+                    .top(px(source.top() as f32))
+                    .child(menu),
+            )
+            .into_any_element()
     }
     fn render_details(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let anchor_width = 88_f32.min((self.width - 52.) / 3.);

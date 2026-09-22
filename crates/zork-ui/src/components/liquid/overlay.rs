@@ -1,5 +1,6 @@
-//! Complete liquid popovers and dialogs, shared by examples and application chrome.
-//! The component owns the live material, exit lifetime, input and focus handling.
+//! Anchored menus and dialogs shared by examples and application chrome.
+//! Window menus paint an independent plain panel; inline material examples retain
+//! their live surface. Both own exit lifetime, input and focus handling.
 use super::presentation::{FramePaint, Presentation, Recipe, Target};
 use super::{controls, Material, Pose, Surface};
 use crate::{
@@ -84,7 +85,6 @@ pub enum Trigger {
 
 pub struct Popover {
     motion: Motion,
-    source_material: super::render::SourceMaterial,
     option_hover: Motion,
     hot_option: Rc<Cell<Option<usize>>>,
     last_option: Option<usize>,
@@ -92,6 +92,8 @@ pub struct Popover {
     hover: Rc<Cell<bool>>,
     held: Rc<Cell<bool>>,
     focus: FocusHandle,
+    had_focus: bool,
+    focus_close_scheduled: Rc<Cell<bool>>,
     trigger_measure: Option<(SharedString, Font, Trigger, f32)>,
     menu_measure: Option<(Vec<SharedString>, Font, bool, f32)>,
     typeahead: Rc<RefCell<(String, Option<Instant>)>>,
@@ -105,7 +107,6 @@ impl Popover {
         };
         Self {
             motion,
-            source_material: Default::default(),
             option_hover,
             hot_option: Default::default(),
             last_option: None,
@@ -113,6 +114,8 @@ impl Popover {
             hover: Default::default(),
             held: Default::default(),
             focus: cx.focus_handle().tab_stop(true),
+            had_focus: false,
+            focus_close_scheduled: Default::default(),
             trigger_measure: None,
             menu_measure: None,
             typeahead: Default::default(),
@@ -203,6 +206,7 @@ impl Popover {
     fn window_slot<V: 'static>(
         &self,
         width: f32,
+        height: f32,
         children: Vec<AnyElement>,
         cx: &mut Context<V>,
     ) -> AnyElement {
@@ -210,7 +214,7 @@ impl Popover {
         div()
             .relative()
             .w(px(width))
-            .h(px(32.))
+            .h(px(height))
             .child(anchor.measure(self.motion.alive(), cx))
             .children(children)
             .into_any_element()
@@ -271,6 +275,11 @@ impl Popover {
         let id = id.into();
         let label = label.into();
         let floating = matches!(placement, Placement::Window { .. });
+        let trigger_height = if matches!(trigger_style, Trigger::Quiet | Trigger::Icon) {
+            24.
+        } else {
+            32.
+        };
         let menu_width = self.menu_width(&choices, window)
             + if option_icons.iter().any(Option::is_some) {
                 22.
@@ -278,6 +287,9 @@ impl Popover {
                 0.
             };
         let count = choices.len();
+        // A stale controlled-open value must never expose a menu whose choices
+        // disappeared or whose trigger is no longer interactive.
+        let open = open && enabled && count > 0;
         let inset = controls::MENU_INSET as f64;
         let row_height = controls::MENU_ROW_HEIGHT as f64;
         let row_gap = controls::MENU_ROW_GAP as f64;
@@ -293,7 +305,7 @@ impl Popover {
                 || viewport.width <= px(24.)
                 || viewport.height <= px(88.)
             {
-                return self.window_slot(*width, vec![], cx);
+                return self.window_slot(*width, trigger_height, vec![], cx);
             }
         }
         let offset = if floating {
@@ -391,7 +403,11 @@ impl Popover {
             self.last_option = Some(index);
         }
         let row_radius = controls::menu_row_radius(
-            self.motion.surface.as_ref().unwrap().simulation.pose().r,
+            if floating {
+                crate::controls::PLAIN_POPOVER_RADIUS as f64
+            } else {
+                self.motion.surface.as_ref().unwrap().simulation.pose().r
+            },
             (target.w - 2. * inset).max(2.),
         );
         let hover_target = Pose::rect(
@@ -416,12 +432,6 @@ impl Popover {
             cx,
         );
         let surface = self.motion.surface.as_ref().unwrap();
-        let body_part = if floating && (open || self.motion.alive()) {
-            Some(self.source_material.bind(surface, trigger_pose, None))
-        } else {
-            self.source_material.clear();
-            None
-        };
         let content_clip = surface.content_clip();
         let current = surface.simulation.pose();
         let carrier = surface.simulation.source_pose();
@@ -444,6 +454,28 @@ impl Popover {
         }
         let set_open = Rc::new(set_open);
         let choose = Rc::new(choose);
+        if floating {
+            if !open {
+                self.had_focus = false;
+            } else if focus.is_focused(window)
+                || option_focus.iter().any(|handle| handle.is_focused(window))
+            {
+                self.had_focus = true;
+            } else if self.had_focus && !self.focus_close_scheduled.replace(true) {
+                let owner = cx.entity().downgrade();
+                let close = set_open.clone();
+                let scheduled = self.focus_close_scheduled.clone();
+                let allowed = std::iter::once(focus.clone())
+                    .chain(option_focus.iter().cloned())
+                    .collect::<Vec<_>>();
+                window.on_next_frame(move |window, cx| {
+                    scheduled.set(false);
+                    if allowed.iter().all(|handle| !handle.is_focused(window)) {
+                        let _ = owner.update(cx, |view, cx| close(view, false, window, cx));
+                    }
+                });
+            }
+        }
         let trigger_toggle = set_open.clone();
         let trigger_focus = focus.clone();
         let key_open = set_open.clone();
@@ -516,7 +548,7 @@ impl Popover {
                 true,
                 move |clip, _, _, _| clip.unwrap().content(face, 22.).into_any_element(),
                 enabled,
-                Some(self.source_material.clone()),
+                None,
                 false,
                 window,
                 cx,
@@ -566,7 +598,9 @@ impl Popover {
             }
         }))
         .on_key_down(cx.listener(move |v, e: &KeyDownEvent, w, cx| {
-            if enabled
+            if open && e.keystroke.key == "tab" {
+                key_open(v, false, w, cx);
+            } else if enabled
                 && !key_active.is_empty()
                 && matches!(e.keystroke.key.as_str(), "down" | "up")
             {
@@ -609,38 +643,26 @@ impl Popover {
         let background = div()
             .absolute()
             .inset_0()
-            .child(if let Some(part) = &body_part {
-                part.background(
-                    Some(p.canvas),
-                    Some(LIQUID_OUTLINE),
-                    point(px(0.), px(0.)),
-                    false,
-                )
-            } else {
-                surface
-                    .background_colors(
-                        if trigger_style == Trigger::Quiet {
-                            (self.hover.get() || open || focused || separated)
-                                .then_some(p.sidebar_hover)
-                        } else {
-                            (floating || open || separated).then_some(p.canvas)
-                        },
-                        if trigger_style == Trigger::Quiet {
-                            focused.then_some(crate::design::INTERACTION.focus_border)
-                        } else {
-                            Some(if focused {
-                                crate::design::INTERACTION.focus_border
-                            } else if self.hover.get() {
-                                crate::controls::FIELD_HOVER_BORDER
-                            } else {
-                                LIQUID_OUTLINE
-                            })
-                        },
-                        point(px(0.), px(0.)),
-                        false,
-                    )
-                    .into_any_element()
-            })
+            .child(surface.background_colors(
+                if trigger_style == Trigger::Quiet {
+                    (self.hover.get() || open || focused || separated).then_some(p.sidebar_hover)
+                } else {
+                    (floating || open || separated).then_some(p.canvas)
+                },
+                if trigger_style == Trigger::Quiet {
+                    focused.then_some(crate::design::INTERACTION.focus_border)
+                } else {
+                    Some(if focused {
+                        crate::design::INTERACTION.focus_border
+                    } else if self.hover.get() {
+                        crate::controls::FIELD_HOVER_BORDER
+                    } else {
+                        LIQUID_OUTLINE
+                    })
+                },
+                point(px(0.), px(0.)),
+                false,
+            ))
             .child(surface.background_colors(None, None, point(px(0.), px(0.)), false))
             .with_spring(
                 format!("{id}-reveal"),
@@ -656,6 +678,8 @@ impl Popover {
                         surface.guard(trigger)
                     }
                 })
+                .when(selection != Selection::Actions, |v| v.role(Role::ComboBox))
+                .aria_expanded(open)
                 .automation_enabled(enabled, AutomationRole::Button, label.to_string())
                 .into_any_element(),
         );
@@ -690,7 +714,9 @@ impl Popover {
                 .relative()
                 .gap(px(row_gap as f32))
                 .w(px((target.w - 2. * inset) as f32))
-                .max_h(px((current.h - 2. * inset).max(2.) as f32))
+                .max_h(px(
+                    (if floating { target.h } else { current.h } - 2. * inset).max(2.) as f32,
+                ))
                 .overflow_y_scroll();
             rows = rows.child(
                 placed(
@@ -701,14 +727,25 @@ impl Popover {
                         .simulation
                         .pose(),
                 )
-                .child(content_clip.fill(
-                    format!("{id}-sliding-hover"),
-                    row_radius,
-                    Some(crate::design::INTERACTION.neutral_hover),
-                    None,
-                    window,
-                    cx,
-                ))
+                .child(if floating {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(px(row_radius as f32))
+                        .bg(rgb(crate::design::INTERACTION.neutral_hover))
+                        .into_any_element()
+                } else {
+                    content_clip
+                        .fill(
+                            format!("{id}-sliding-hover"),
+                            row_radius,
+                            Some(crate::design::INTERACTION.neutral_hover),
+                            None,
+                            window,
+                            cx,
+                        )
+                        .into_any_element()
+                })
                 .with_spring(
                     format!("{id}-hover-visible"),
                     crate::components::motion::spring(if self.hot_option.get().is_some() {
@@ -726,170 +763,178 @@ impl Popover {
                 let hot = self.hot_option.clone();
                 let item_enabled = enabled && open && !item.disabled;
                 rows = rows.child(
-                    surface
-                        .guard(controls::menu_item_with_icon(
-                            item.id,
-                            item.label.clone(),
-                            (target.w - 2. * inset) as f32,
-                            item.checked,
-                            item_enabled,
-                            option_icons.get(i).copied().flatten(),
+                    controls::menu_item_with_icon(
+                        item.id,
+                        item.label.clone(),
+                        (target.w - 2. * inset) as f32,
+                        item.checked,
+                        item_enabled,
+                        option_icons.get(i).copied().flatten(),
+                        if floating {
+                            controls::MenuSurface::StaticGroup { radius: row_radius }
+                        } else {
                             controls::MenuSurface::Grouped {
                                 clip: content_clip.clone(),
                                 radius: row_radius,
-                            },
-                            window,
-                            cx,
-                        ))
-                        .track_focus(&handles[i].clone().tab_stop(false))
-                        .tab_stop(false)
-                        .role(if selection == Selection::Actions {
-                            Role::MenuItem
+                            }
+                        },
+                        window,
+                        cx,
+                    )
+                    .map(|row| if floating { row } else { surface.guard(row) })
+                    .track_focus(&handles[i].clone().tab_stop(false))
+                    .tab_stop(false)
+                    .role(if selection == Selection::Actions {
+                        Role::MenuItem
+                    } else {
+                        Role::ListBoxOption
+                    })
+                    .when_some(item.checked, |v, checked| v.aria_selected(checked))
+                    .on_hover(cx.listener(move |_, inside, _, cx| {
+                        if item_enabled && *inside {
+                            hot.set(Some(i));
+                            cx.notify();
+                        } else if hot.get() == Some(i) {
+                            hot.set(None);
+                            cx.notify();
+                        }
+                    }))
+                    .on_click(cx.listener(move |v, _, w, cx| {
+                        if item_enabled {
+                            choose(v, i, w, cx);
+                            if selection != Selection::Multiple {
+                                close(v, false, w, cx);
+                                w.focus(&focus, cx);
+                            }
+                        }
+                    }))
+                    .automation_enabled(
+                        item_enabled,
+                        if selection == Selection::Actions {
+                            AutomationRole::Button
                         } else {
-                            Role::ListBoxOption
-                        })
-                        .when_some(item.checked, |v, checked| v.aria_selected(checked))
-                        .on_hover(cx.listener(move |_, inside, _, cx| {
-                            if item_enabled && *inside {
-                                hot.set(Some(i));
-                                cx.notify();
-                            } else if hot.get() == Some(i) {
-                                hot.set(None);
-                                cx.notify();
-                            }
-                        }))
-                        .on_click(cx.listener(move |v, _, w, cx| {
-                            if item_enabled {
-                                choose(v, i, w, cx);
-                                if selection != Selection::Multiple {
-                                    close(v, false, w, cx);
-                                    w.focus(&focus, cx);
-                                }
-                            }
-                        }))
-                        .automation_enabled(
-                            item_enabled,
-                            if selection == Selection::Actions {
-                                AutomationRole::Button
-                            } else {
-                                AutomationRole::Option
-                            },
-                            item.label.to_string(),
-                        ),
+                            AutomationRole::Option
+                        },
+                        item.label.to_string(),
+                    ),
                 );
             }
             let origin = self.anchor.bounds.clone();
             let outside_close = set_open.clone();
             let outside_focus = focus.clone();
-            let panel = placed(Pose::rect(
-                current.left(),
-                current.top(),
-                current.w,
-                current.h,
-                current.r,
-            ))
-            .id(format!("{id}-menu"))
-            .role(if selection == Selection::Actions {
-                Role::Menu
-            } else {
-                Role::ListBox
-            })
-            .aria_label(label.clone())
-            .when(open && self.motion.progress() > 0.45, |v| v.occlude())
-            .opacity(reveal(self.motion.progress()))
-            .child(
-                div()
-                    .absolute()
-                    .left(px(inset as f32))
-                    .top(px(inset as f32))
-                    .w(px((target.w - 2. * inset) as f32))
-                    .child(rows),
-            )
-            .on_mouse_down_out(cx.listener(move |v, e: &MouseDownEvent, w, cx| {
-                let origin = origin.get().origin;
-                let point = e.position - origin;
-                let in_source = point.x.as_f32() as f64 >= source.left()
-                    && (point.x.as_f32() as f64) <= source.left() + source.w
-                    && point.y.as_f32() as f64 >= source.top()
-                    && (point.y.as_f32() as f64) <= source.top() + source.h;
-                if open && !in_source {
-                    outside_close(v, false, w, cx);
-                    w.focus(&outside_focus, cx);
-                }
-            }))
-            .on_key_down(cx.listener(move |v, e: &KeyDownEvent, w, cx| {
-                if e.keystroke.key == "escape" {
-                    key_close(v, false, w, cx);
-                    w.focus(&return_focus, cx);
-                    cx.stop_propagation();
-                    return;
-                }
-                if e.keystroke.key == "tab" {
-                    key_close(v, false, w, cx);
-                    w.focus(&return_focus, cx);
-                    if e.keystroke.modifiers.shift {
-                        w.focus_prev(cx);
-                    } else {
-                        w.focus_next(cx);
+            let panel_pose = if floating { target } else { current };
+            let panel = placed(panel_pose)
+                .id(format!("{id}-menu"))
+                .role(if selection == Selection::Actions {
+                    Role::Menu
+                } else {
+                    Role::ListBox
+                })
+                .aria_label(label.clone())
+                .when(open && (floating || self.motion.progress() > 0.45), |v| {
+                    v.occlude()
+                })
+                .opacity(reveal(self.motion.progress()))
+                .when(floating, |v| {
+                    v.rounded(px(crate::controls::PLAIN_POPOVER_RADIUS))
+                        .shadow_sm()
+                        .bg(rgb(p.canvas))
+                        .border(px(crate::design::BORDER_WIDTH))
+                        .border_color(rgb(LIQUID_OUTLINE))
+                })
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(inset as f32))
+                        .top(px(inset as f32))
+                        .w(px((target.w - 2. * inset) as f32))
+                        .child(rows),
+                )
+                .on_mouse_down_out(cx.listener(move |v, e: &MouseDownEvent, w, cx| {
+                    let origin = origin.get().origin;
+                    let point = e.position - origin;
+                    let in_source = point.x.as_f32() as f64 >= source.left()
+                        && (point.x.as_f32() as f64) <= source.left() + source.w
+                        && point.y.as_f32() as f64 >= source.top()
+                        && (point.y.as_f32() as f64) <= source.top() + source.h;
+                    if open && !in_source {
+                        outside_close(v, false, w, cx);
+                        w.focus(&outside_focus, cx);
                     }
-                    w.prevent_default();
-                    cx.stop_propagation();
-                    return;
-                }
-                if active.is_empty() {
-                    return;
-                }
-                let current = active
-                    .iter()
-                    .position(|i| handles[*i].is_focused(w))
-                    .unwrap_or(0);
-                let next = match e.keystroke.key.as_str() {
-                    "down" => Some((current + 1) % active.len()),
-                    "up" => Some((current + active.len() - 1) % active.len()),
-                    "home" => Some(0),
-                    "end" => Some(active.len() - 1),
-                    _ => None,
-                };
-                if let Some(next) = next {
-                    w.focus(&handles[active[next]], cx);
-                    w.prevent_default();
-                    cx.stop_propagation();
-                } else if let Some(text) = e.keystroke.key_char.as_deref().filter(|s| {
-                    !s.is_empty()
-                        && !e.keystroke.modifiers.control
-                        && !e.keystroke.modifiers.platform
-                        && *s != " "
-                }) {
-                    let mut state = typeahead.borrow_mut();
-                    if state.1.is_none_or(|at| at.elapsed().as_millis() > 700) {
-                        state.0.clear();
+                }))
+                .on_key_down(cx.listener(move |v, e: &KeyDownEvent, w, cx| {
+                    if e.keystroke.key == "escape" {
+                        key_close(v, false, w, cx);
+                        w.focus(&return_focus, cx);
+                        cx.stop_propagation();
+                        return;
                     }
-                    state.1 = Some(Instant::now());
-                    state.0.push_str(&text.to_lowercase());
-                    let repeated = state.0.chars().all(|c| Some(c) == state.0.chars().next());
-                    let query = if repeated {
-                        text.to_lowercase()
-                    } else {
-                        state.0.clone()
+                    if e.keystroke.key == "tab" {
+                        key_close(v, false, w, cx);
+                        w.focus(&return_focus, cx);
+                        if e.keystroke.modifiers.shift {
+                            w.focus_prev(cx);
+                        } else {
+                            w.focus_next(cx);
+                        }
+                        w.prevent_default();
+                        cx.stop_propagation();
+                        return;
+                    }
+                    if active.is_empty() {
+                        return;
+                    }
+                    let current = active
+                        .iter()
+                        .position(|i| handles[*i].is_focused(w))
+                        .unwrap_or(0);
+                    let next = match e.keystroke.key.as_str() {
+                        "down" => Some((current + 1) % active.len()),
+                        "up" => Some((current + active.len() - 1) % active.len()),
+                        "home" => Some(0),
+                        "end" => Some(active.len() - 1),
+                        _ => None,
                     };
-                    if let Some(index) = (1..=active.len())
-                        .map(|step| active[(current + step) % active.len()])
-                        .find(|i| option_labels[*i].starts_with(&query))
-                    {
-                        w.focus(&handles[index], cx);
+                    if let Some(next) = next {
+                        w.focus(&handles[active[next]], cx);
+                        w.prevent_default();
+                        cx.stop_propagation();
+                    } else if let Some(text) = e.keystroke.key_char.as_deref().filter(|s| {
+                        !s.is_empty()
+                            && !e.keystroke.modifiers.control
+                            && !e.keystroke.modifiers.platform
+                            && *s != " "
+                    }) {
+                        let mut state = typeahead.borrow_mut();
+                        if state.1.is_none_or(|at| at.elapsed().as_millis() > 700) {
+                            state.0.clear();
+                        }
+                        state.1 = Some(Instant::now());
+                        state.0.push_str(&text.to_lowercase());
+                        let repeated = state.0.chars().all(|c| Some(c) == state.0.chars().next());
+                        let query = if repeated {
+                            text.to_lowercase()
+                        } else {
+                            state.0.clone()
+                        };
+                        if let Some(index) = (1..=active.len())
+                            .map(|step| active[(current + step) % active.len()])
+                            .find(|i| option_labels[*i].starts_with(&query))
+                        {
+                            w.focus(&handles[index], cx);
+                        }
+                        w.prevent_default();
+                        cx.stop_propagation();
                     }
-                    w.prevent_default();
-                    cx.stop_propagation();
-                }
-            }))
-            .automation_enabled(open && enabled, AutomationRole::Status, "下拉菜单");
+                }))
+                .automation_enabled(open && enabled, AutomationRole::Status, "下拉菜单");
             stage = stage.child(panel);
         }
         let stage = div()
             .relative()
             .w(px(width))
             .h(px(height))
-            .child(background)
+            .when(!floating, |v| v.child(background))
             .child(
                 div()
                     .absolute()
@@ -906,9 +951,9 @@ impl Popover {
             let anchor = self.anchor.clone();
             let mut children = vec![trigger.take().unwrap()];
             if open || self.motion.alive() {
-                children.push(anchor.layer(stage, 200));
+                children.push(anchor.layer(stage, 400));
             }
-            self.window_slot(trigger_pose.w as f32, children, cx)
+            self.window_slot(trigger_pose.w as f32, trigger_height, children, cx)
         } else {
             stage
                 .child(
