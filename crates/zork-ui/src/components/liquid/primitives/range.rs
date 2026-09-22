@@ -390,14 +390,17 @@ fn render_slider<V: 'static>(
                 surface(
                     format!("{id}-tick-{index}"),
                     2.,
-                    ZORK_UI.palette.muted,
+                    if x <= high {
+                        ZORK_UI.palette.canvas
+                    } else {
+                        ZORK_UI.palette.muted
+                    },
                     false,
                 )
                 .absolute()
                 .left(px(x - 2.))
                 .top(px(height / 2. - 2.))
-                .size(px(4.))
-                .opacity(0.45),
+                .size(px(4.)),
             );
         }
     }
