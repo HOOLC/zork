@@ -278,7 +278,69 @@ def main():
             shot('scrollarea-drag')
             return {'tooltipKeyboardEscape':True,'toolbarRovingDisabled':True,'tabNavigationLinks':True,'progressClampsAndIndeterminate':True,'scrollKeyboardWheelThumb':True}
 
-        tests={'selection':selection,'slider':slider,'inputs':inputs_case,'disclosure':disclosure,'dialogs':dialogs,'menus':menus,'toasts':toasts,'layout':layout,'review':review,'content':content_contracts}
+        def hint_interactions():
+            select('tooltip')
+            trigger=inputs.locate('liquid-tooltip-trigger')
+            page.mouse.move(trigger['center']['x'],trigger['center']['y'])
+            page.wait_for_timeout(100)
+            hint=inputs.element('control-hint-liquid-tooltip-trigger')
+            check(hint and hint['visible'],'Hover hint did not appear promptly')
+            check(hint['bounds']['width']<120,'Short hint is too wide')
+            check(abs(hint['center']['x']-trigger['center']['x'])<1,'Hint is not centered on its trigger')
+            check(hint['bounds']['y']>=trigger['bounds']['y']+trigger['bounds']['height']+4,'Hint overlaps its trigger')
+            page.mouse.move(hint['center']['x'],hint['center']['y'])
+            page.wait_for_timeout(180)
+            check(inputs.element('control-hint-liquid-tooltip-trigger') is not None,'Crossing into hint closed it')
+            page.mouse.move(10,60)
+            page.wait_for_function("!JSON.parse(zorkStory.snapshot()).elements.some(e => e.id === 'control-hint-liquid-tooltip-trigger')",timeout=2000)
+            inputs.click('liquid-tooltip-trigger')
+            page.mouse.move(10,60)
+            page.wait_for_timeout(180)
+            check(inputs.element('control-hint-liquid-tooltip-trigger') is not None,'Focused hint closed on pointer leave')
+            key('Escape')
+            page.wait_for_function("!JSON.parse(zorkStory.snapshot()).elements.some(e => e.id === 'control-hint-liquid-tooltip-trigger')",timeout=2000)
+            page.mouse.move(trigger['center']['x'],trigger['center']['y'])
+            page.wait_for_timeout(100)
+            check(inputs.element('control-hint-liquid-tooltip-trigger') is not None,'Pointer re-entry did not reopen hint')
+            shot('tooltip-hover')
+            context.set_offline(False)
+            page.goto(args.url+'?story=browser-tabs&backend='+args.backend)
+            page.wait_for_function('document.documentElement.dataset.ready==="true"',timeout=120000)
+            context.set_offline(True)
+            def visible_hints(): return [e for e in snapshot()['elements'] if e['id'].startswith('control-hint-') and e['visible']]
+            for control in ('browser-back','browser-forward','browser-reload'):
+                anchor=inputs.element(control)
+                page.mouse.move(anchor['center']['x'],anchor['center']['y'])
+                page.wait_for_timeout(100)
+                visible=visible_hints()
+                check(len(visible)==1 and visible[0]['id']=='control-hint-'+control,('Overlapping browser hints',visible))
+            inputs.click('browser-back')
+            anchor=inputs.element('browser-forward')
+            page.mouse.move(anchor['center']['x'],anchor['center']['y'])
+            page.wait_for_timeout(250)
+            visible=visible_hints()
+            check(len(visible)==1 and visible[0]['id']=='control-hint-browser-forward',('Focused hint resurfaced under pointer hint',visible))
+            for control in ('browser-back','browser-downloads'):
+                anchor=inputs.element(control)
+                page.mouse.move(anchor['center']['x'],anchor['center']['y'])
+                page.wait_for_timeout(100)
+                visible=visible_hints()
+                check(len(visible)==1 and visible[0]['id']=='control-hint-'+control,('Edge hint overlap',visible))
+                bounds=visible[0]['bounds']
+                check(bounds['x']>=12 and bounds['x']+bounds['width']<=page.viewport_size['width']-12,('Edge hint overflow',bounds))
+            shot('tooltip-browser-switch')
+            page.set_viewport_size({'width':640,'height':100})
+            page.mouse.move(320,8)
+            anchor=inputs.element('browser-back')
+            page.mouse.move(anchor['center']['x'],anchor['center']['y'])
+            page.wait_for_timeout(100)
+            visible=visible_hints()
+            check(len(visible)==1,('Short viewport hint',visible))
+            bounds=visible[0]['bounds']
+            check(bounds['y']>=12 and bounds['y']+bounds['height']<=100-12,('Hint did not flip above the trigger',bounds))
+            return {'promptHover':True,'compactPlacement':True,'panelCrossing':True,'focusRetention':True,'escapeAndReentry':True,'singleBrowserHint':True,'focusedSwitch':True,'edgePlacement':True}
+
+        tests={'selection':selection,'slider':slider,'inputs':inputs_case,'disclosure':disclosure,'dialogs':dialogs,'menus':menus,'toasts':toasts,'layout':layout,'review':review,'content':content_contracts,'hint':hint_interactions}
         try:
             page.goto(args.url+'?story=liquid-gallery&backend='+args.backend)
             page.wait_for_function('document.documentElement.dataset.ready==="true"',timeout=120000)

@@ -1,5 +1,6 @@
 //! Platform-independent model selection and new-Chat presentation.
 use crate::api::ProfileInfo;
+use zork_client_types::device::DeviceStatus;
 pub use zork_client_types::new_chat::{Action, Choice};
 use zork_client_types::new_chat::{OptionItem, Snapshot};
 
@@ -164,9 +165,9 @@ impl Fixture {
                     value: value.into(),
                     label: label.into(),
                     status: Some(if value == "local" {
-                        crate::device_status::DeviceStatus::Direct
+                        DeviceStatus::Direct
                     } else {
-                        crate::device_status::DeviceStatus::MeshPreparing
+                        DeviceStatus::MeshPreparing
                     }),
                 })
                 .collect(),

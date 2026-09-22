@@ -141,46 +141,54 @@ impl gpui::Render for DetailsTooltip {
 #[derive(Default)]
 struct HoverState {
     panel: FloatingPanel,
+    window_state: Option<gpui::Entity<HintWindowState>>,
     bounds: gpui::Bounds<gpui::Pixels>,
     open: bool,
     trigger_hover: bool,
     panel_hover: bool,
     focused: bool,
+    suppress_focus_until_blur: bool,
     dismissed: bool,
     focus: Option<gpui::FocusHandle>,
     subscriptions: Vec<gpui::Subscription>,
     timer: Option<gpui::Task<()>>,
 }
 impl HoverState {
+    fn close_for_switch(&mut self, cx: &mut Context<Self>) {
+        self.timer.take();
+        self.panel = FloatingPanel::default();
+        self.open = false;
+        self.trigger_hover = false;
+        self.panel_hover = false;
+        self.focused = false;
+        self.suppress_focus_until_blur = true;
+        self.dismissed = true;
+        cx.notify();
+    }
     fn hover(&mut self, hovered: bool, panel: bool, cx: &mut Context<Self>) {
         if panel {
             self.panel_hover = hovered;
         } else {
             if hovered && !self.trigger_hover {
                 self.dismissed = false;
+                self.suppress_focus_until_blur = false;
             }
             self.trigger_hover = hovered;
         }
         let hovered = self.trigger_hover || self.panel_hover || self.focused;
         self.timer.take();
         if hovered {
-            if self.dismissed {
-                return;
-            }
-            if self.focused || self.open {
+            if !self.dismissed && !self.open {
                 self.open = true;
+                if let Some(window_state) = &self.window_state {
+                    let current = cx.entity().downgrade();
+                    window_state.update(cx, |state, cx| state.activate(current, cx));
+                }
                 cx.notify();
-            } else {
-                self.timer = Some(cx.spawn(async move |state, cx| {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_millis(250))
-                        .await;
-                    let _ = state.update(cx, |state, cx| {
-                        state.open = !state.dismissed;
-                        cx.notify();
-                    });
-                }));
             }
+            return;
+        }
+        if !self.open {
             return;
         }
         // Allow the pointer to cross the gap into the card.
@@ -193,6 +201,22 @@ impl HoverState {
                 cx.notify();
             });
         }));
+    }
+}
+
+#[derive(Default)]
+struct HintWindowState {
+    current: Option<gpui::WeakEntity<HoverState>>,
+}
+impl HintWindowState {
+    fn activate(&mut self, current: gpui::WeakEntity<HoverState>, cx: &mut Context<Self>) {
+        if self.current.as_ref() == Some(&current) {
+            return;
+        }
+        if let Some(previous) = self.current.take() {
+            let _ = previous.update(cx, |previous, cx| previous.close_for_switch(cx));
+        }
+        self.current = Some(current);
     }
 }
 
@@ -423,8 +447,15 @@ impl Hint {
 }
 impl gpui::Render for Hint {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        hint_surface(self.id.clone(), self.text.clone())
-            .map_inner(|card| card.max_w((window.viewport_size().width - px(24.)).min(px(480.))))
+        hint_surface(self.id.clone(), self.text.clone()).map_inner(|card| {
+            card.max_w(
+                (window.viewport_size().width - px(24.))
+                    .max(px(2.))
+                    .min(px(480.)),
+            )
+            .max_h((window.viewport_size().height - px(24.)).max(px(2.)))
+            .overflow_y_scroll()
+        })
     }
 }
 
@@ -458,6 +489,8 @@ pub fn hint<E: ControlElement>(
 }
 impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
     fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+        let window_state =
+            window.use_keyed_state("hint-window-state", cx, |_, _| HintWindowState::default());
         let state = window.use_keyed_state(format!("hint-state-{}", self.key), cx, |_, _| {
             HoverState::default()
         });
@@ -465,6 +498,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
             gpui::Element::id(&self.row)
                 .map(|id| crate::components::liquid::controls::action_focus(id, window, cx))
         });
+        state.update(cx, |v, _| v.window_state = Some(window_state.clone()));
         if let Some(focus) = focus.clone() {
             state.update(cx, |v, cx| {
                 if v.focus.as_ref() != Some(&focus) {
@@ -478,63 +512,85 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
                         }));
                     v.subscriptions.push(cx.on_blur(&focus, window, |v, _, cx| {
                         v.focused = false;
+                        v.suppress_focus_until_blur = false;
                         v.hover(v.trigger_hover, false, cx);
                     }));
                 }
             });
         }
+        let actually_focused = focus.as_ref().is_some_and(|focus| focus.is_focused(window));
+        state.update(cx, |v, cx| {
+            if !actually_focused {
+                v.suppress_focus_until_blur = false;
+            }
+            let focused = actually_focused && !v.suppress_focus_until_blur;
+            if v.focused != focused {
+                v.focused = focused;
+                if focused {
+                    v.dismissed = false;
+                }
+                v.hover(v.trigger_hover, false, cx);
+            }
+        });
         let bounds = state.read(cx).bounds;
         let open = state.read(cx).open;
         let anchor_state = state.clone();
         let hover_state = state.clone();
         let panel_state = state.clone();
         let escape_state = state.clone();
-        // Round shaped text outwards before adding padding. Fractional glyph
-        // widths must not make a short hint wrap its final character.
-        let natural_width =
-            crate::components::liquid::overlay::measure_label(&self.text, 12., window).ceil() + 18.;
-        let available_width = (window.viewport_size().width.as_f32() - 24.)
-            .max(2.)
-            .min(360.);
-        let width = natural_width.min(available_width);
-        let single_line = natural_width <= available_width;
-        let text = self.text.clone();
-        let content = div()
-            .id(format!("control-hint-{}", self.key))
-            .px(px(8.))
-            .py(px(5.))
-            .text_size(px(12.))
-            .line_height(px(20.))
-            .text_color(rgb(ZORK_UI.palette.text))
-            .when(single_line, |v| v.whitespace_nowrap())
-            .when(!single_line, |v| v.whitespace_normal())
-            .child(text.clone())
-            .automation(AutomationRole::Status, text);
-        let hover = std::rc::Rc::new(move |inside: &bool, _: &mut Window, cx: &mut gpui::App| {
-            panel_state.update(cx, |value, cx| value.hover(*inside, true, cx));
-        });
-        let panel = state.update(cx, |value, cx| {
-            value.panel.render(
-                format!("hint-panel-{}", self.key),
-                bounds,
-                open,
-                FloatingStyle {
-                    width,
-                    side: Side::Below,
-                    radius: 9.,
-                    priority: 110,
-                    role: gpui::Role::Tooltip,
-                },
-                Content {
-                    sections: vec![content.into_any_element()],
-                    padding: 0.,
-                    gap: 0.,
-                },
-                Some(hover),
-                window,
-                cx,
-            )
-        });
+        let panel = if open || state.read(cx).panel.alive() {
+            // Avoid measuring and building every hidden hint in long control lists.
+            // Round glyph widths outwards so short labels do not wrap at the edge.
+            let natural_width =
+                crate::components::liquid::overlay::measure_label(&self.text, 12., window).ceil()
+                    + 18.;
+            let available_width = (window.viewport_size().width.as_f32() - 24.)
+                .max(2.)
+                .min(360.);
+            let width = natural_width.min(available_width);
+            let single_line = natural_width <= available_width;
+            let text = self.text.clone();
+            let content = div()
+                .id(format!("control-hint-{}", self.key))
+                .px(px(8.))
+                .py(px(5.))
+                .text_size(px(12.))
+                .line_height(px(20.))
+                .text_color(rgb(ZORK_UI.palette.text))
+                .when(single_line, |v| v.whitespace_nowrap())
+                .when(!single_line, |v| v.whitespace_normal())
+                .child(text.clone())
+                .automation(AutomationRole::Status, text);
+            let hover =
+                std::rc::Rc::new(move |inside: &bool, _: &mut Window, cx: &mut gpui::App| {
+                    panel_state.update(cx, |value, cx| value.hover(*inside, true, cx));
+                });
+            state.update(cx, |value, cx| {
+                value.panel.render(
+                    format!("hint-panel-{}", self.key),
+                    bounds,
+                    open,
+                    FloatingStyle {
+                        width,
+                        side: Side::Below,
+                        radius: 9.,
+                        priority: 110,
+                        role: gpui::Role::Tooltip,
+                        placement_min_height: 30.,
+                    },
+                    Content {
+                        sections: vec![content.into_any_element()],
+                        padding: 0.,
+                        gap: 0.,
+                    },
+                    Some(hover),
+                    window,
+                    cx,
+                )
+            })
+        } else {
+            None
+        };
         self.row.map_inner(|row| {
             row.when_some(focus, |row, focus| row.control_focus(&focus))
                 .aria_description(self.text.clone())
@@ -554,7 +610,16 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
                 })
                 .control_overlay(
                     gpui::canvas(
-                        move |bounds, _, cx| anchor_state.update(cx, |v, _| v.bounds = bounds),
+                        move |bounds, _, cx| {
+                            anchor_state.update(cx, |v, cx| {
+                                if v.bounds != bounds {
+                                    v.bounds = bounds;
+                                    if v.open || v.panel.alive() {
+                                        cx.notify();
+                                    }
+                                }
+                            });
+                        },
                         |_, _, _, _| {},
                     )
                     .absolute()

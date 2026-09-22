@@ -123,6 +123,7 @@ impl PopoverPanel {
                 radius: controls::CARD_RADIUS,
                 priority: 230,
                 role: Role::Dialog,
+                placement_min_height: 2.,
             },
             Content {
                 sections: vec![body.into_any_element()],
