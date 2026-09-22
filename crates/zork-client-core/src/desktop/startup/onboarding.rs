@@ -250,49 +250,12 @@ mod tests {
         }
     }
 
-    fn signed_in(directory: &Directory, root: &std::path::Path, authenticated: bool) {
-        use zork_config::relay_account::{self as storage, AccountFile, RelaySession};
-        let now = storage::now();
-        let current = authenticated.then(|| RelaySession {
-            origin: directory.account.snapshot().origin.clone(),
-            token: "test-access".into(),
-            refresh_token: "test-refresh".into(),
-            subject: "test-user".into(),
-            email: None,
-            session_id: ulid::Ulid::new().to_string(),
-            expires_at: now + 3600,
-            session_expires_at: now + 3600,
-            refresh_expires_at: now + 3600,
-            pending_refresh: None,
+    fn signed_in(directory: &Directory, authenticated: bool) {
+        directory.account.source.publish(Account {
+            authenticated,
+            subject: authenticated.then(|| "test-user".into()),
+            ..Default::default()
         });
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        let _lock = loop {
-            if let Some(lock) = storage::try_lock(root).unwrap() {
-                break lock;
-            }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "account fixture lock was busy"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        };
-        storage::write(
-            root,
-            &AccountFile {
-                current,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        drop(_lock);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while directory.account.snapshot().authenticated != authenticated {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "account fixture did not converge"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
     }
 
     #[test]
@@ -358,7 +321,7 @@ mod tests {
         let root = dir.path().join("client");
         let source = with_node(&root);
         source.store.put("client", KEY, &false).unwrap();
-        signed_in(&source, &root, true);
+        signed_in(&source, true);
         let binding = source.connection("local").unwrap().0;
         let recovery = Recovery::new(
             source.clone(),
@@ -403,10 +366,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        signed_in(&source, &root, false);
+        signed_in(&source, false);
         recovery.models_changed("local", binding, &models(true, true));
         assert!(required(&source).unwrap());
-        signed_in(&source, &root, true);
+        signed_in(&source, true);
         recovery.models_changed("local", binding, &models(true, true));
         assert!(recovery.updates.read().onboarding.is_none());
         assert!(!required(&source).unwrap());
@@ -420,7 +383,7 @@ mod tests {
         let root = dir.path().join("client");
         let source = with_node(&root);
         source.store.put("client", KEY, &false).unwrap();
-        signed_in(&source, &root, true);
+        signed_in(&source, true);
         let (binding, client) = source.connection("local").unwrap();
         let profiles = Profiles::new(client.clone());
         let recovery = Recovery::new(
@@ -443,9 +406,9 @@ mod tests {
         assert!(startup.finish_onboarding().is_err());
         assert!(required(&source).unwrap());
         profiles.seed(models(true, true));
-        signed_in(&source, &root, false);
+        signed_in(&source, false);
         assert!(startup.finish_onboarding().is_err());
-        signed_in(&source, &root, true);
+        signed_in(&source, true);
         startup.finish_onboarding().unwrap();
         assert!(!required(&source).unwrap());
         assert!(startup.subscribe().snapshot().onboarding.is_none());
