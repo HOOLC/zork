@@ -148,7 +148,11 @@ impl Page {
                 )
                 .child(div().w(px(28.)));
             let mut rows = div()
-                .id("new-chat-picker-list")
+                .id(if models {
+                    "new-chat-model-list"
+                } else {
+                    "new-chat-profile-list"
+                })
                 .max_h(px(280.))
                 .min_h_0()
                 .overflow_y_scroll()
