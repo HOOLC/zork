@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct OptionItem {
     pub value: String,
     pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::device::DeviceStatus>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Choice {

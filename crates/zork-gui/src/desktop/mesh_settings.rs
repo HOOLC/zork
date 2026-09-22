@@ -249,19 +249,7 @@ impl Render for MeshSettings {
                         .map(|peer| zork_ui::network::Peer {
                             id: peer.origin.clone(),
                             name: peer.name.clone(),
-                            status: self
-                                .peers
-                                .iter()
-                                .find(|p| p.origin == peer.origin)
-                                .map(|p| {
-                                    if p.online {
-                                        "已连接"
-                                    } else {
-                                        "暂时无法连接"
-                                    }
-                                })
-                                .unwrap_or("等待连接")
-                                .into(),
+                            status: self.source.peer_status(&peer.origin),
                             permission: if peer.collaborate {
                                 "同一 mesh · 任务协作已开启"
                             } else if peer.client {

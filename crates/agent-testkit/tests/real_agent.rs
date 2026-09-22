@@ -17,17 +17,19 @@ fn body_contains(request: &PendingHttpRequest, needle: &str) -> bool {
         .contains(needle)
 }
 
-async fn wait_for_file(path: &Path) -> String {
+async fn wait_for_pid_file(path: &Path) -> String {
     tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(content) = std::fs::read_to_string(path) {
-                return content;
+                if content.trim().parse::<u32>().is_ok() {
+                    return content;
+                }
             }
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
     })
     .await
-    .expect("file appeared before the test deadline")
+    .expect("PID was written before the test deadline")
 }
 
 async fn wait_for_shell_exit(pid: &str) {
@@ -378,11 +380,9 @@ async fn real_agent_uses_real_files_shell_store_and_recovers_after_restart() {
             )],
         )
         .unwrap();
-    let background_pid =
-        wait_for_file(&agent.workspace(&session_id).unwrap().join("background.pid")).await;
-    assert!(background_pid.trim().parse::<u32>().is_ok());
-    let shell_pid = wait_for_file(&agent.workspace(&session_id).unwrap().join("shell.pid")).await;
-    assert!(shell_pid.trim().parse::<u32>().is_ok());
+    wait_for_pid_file(&agent.workspace(&session_id).unwrap().join("background.pid")).await;
+    let shell_pid =
+        wait_for_pid_file(&agent.workspace(&session_id).unwrap().join("shell.pid")).await;
     wait_for_shell_exit(&shell_pid).await;
     agent.cancel(&session_id).await.unwrap();
     agent

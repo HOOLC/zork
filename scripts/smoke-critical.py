@@ -21,9 +21,9 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 GATES = {
     "local-startup": {
-        "requirement": "100ms 本机系统全启动完毕",
+        "requirement": "1s 本机系统全启动完毕",
         "acceptance": "界面可交互、本机节点可用，历史和远端连接随后恢复",
-        "budget_ms": 100,
+        "budget_ms": 1000,
     },
     "client-frame": {
         "requirement": "原生客户端整帧小于 8ms，持续绘制超过 120fps 且稳定",

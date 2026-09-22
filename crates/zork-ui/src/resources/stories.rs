@@ -22,6 +22,7 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Resou
     ];
     if state != "empty" {
         data.devices.push(ResourceDevice {
+            status: crate::device_name::DeviceStatus::Direct,
             id: "demo-device".into(),
             name: "工作设备".into(),
             catalog: (!matches!(state, "loading" | "error")).then_some(ResourceCatalog {

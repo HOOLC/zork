@@ -212,12 +212,7 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                         if (!active) { collapsed[peer.id] = false; actions.peer(peer) }
                     }) {
                         Glyph(R.drawable.ic_node, 26.dp)
-                        Text(peer.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (tree != null) {
-                            Box(Modifier.size(6.dp).background(if (tree.online) ZorkColors.Online else ZorkColors.Muted, CircleShape))
-                            Text(if (tree.online) "在线" else "离线", color = ZorkColors.Muted, fontSize = 12.sp)
-                        }
+                        DeviceName(peer.name, peer.status, Modifier.weight(1f))
                     }
                 }
                 if (tree != null && collapsed[peer.id] != true) {

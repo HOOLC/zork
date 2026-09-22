@@ -594,11 +594,19 @@ impl Chrome {
                                     let meta = if app.offline {
                                         format!(
                                             "{} · {}",
-                                            app.device_name,
+                                            crate::device_name::summary(
+                                                &app.device_name,
+                                                &app.device_status,
+                                                Some(&locale)
+                                            ),
                                             locale.text("application_offline")
                                         )
                                     } else if app.page.description.is_empty() {
-                                        app.device_name.clone()
+                                        crate::device_name::summary(
+                                            &app.device_name,
+                                            &app.device_status,
+                                            Some(&locale),
+                                        )
                                     } else {
                                         app.page.description.clone()
                                     };

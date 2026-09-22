@@ -263,6 +263,7 @@ pub fn content_indices(files: &[Artifact], pages: &PageCatalog) -> ContentCatalo
 
 #[derive(Clone, Default)]
 pub(crate) struct ApplicationSource {
+    pub status: zork_client_types::device::DeviceStatus,
     pub applications: Arc<Vec<Application>>,
     pub online: Option<bool>,
     pub origin: Option<String>,
@@ -294,6 +295,10 @@ pub(crate) fn applications(
                 .unwrap_or_else(|| (device.clone(), name.clone()));
             let entry = ApplicationEntry {
                 page: app.page.clone(),
+                device_status: sources
+                    .get(&runtime_id)
+                    .map(|s| s.status.clone())
+                    .unwrap_or_default(),
                 device_id: runtime_id,
                 device_name: runtime_name,
                 offline,
@@ -421,6 +426,7 @@ mod tests {
     #[test]
     fn application_publication_is_global_but_removed_devices_are_excluded() {
         let source = ApplicationSource {
+            status: zork_client_types::device::DeviceStatus::Offline,
             applications: Arc::new(vec![Application {
                 page: page("report"),
                 owner_session_id: "task".into(),

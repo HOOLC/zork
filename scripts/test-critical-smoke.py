@@ -20,26 +20,27 @@ spec.loader.exec_module(native_budget)
 
 
 class GateTests(unittest.TestCase):
-    def sample(self, ui=75, node=100):
+    def sample(self, ui=750, node=1000):
         return {"gui_alive": True, "ui_interactive": {"ms": ui}, "local_node": {"ms": node}}
 
     def test_both_milestones_must_meet_the_inclusive_deadline(self):
-        self.assertTrue(smoke.gate_passes(self.sample(), 100))
-        self.assertFalse(smoke.gate_passes(self.sample(node=100.001), 100))
-        self.assertFalse(smoke.gate_passes(self.sample(ui=101, node=20), 100))
+        self.assertEqual(smoke.GATES["local-startup"]["budget_ms"], 1000)
+        self.assertTrue(smoke.gate_passes(self.sample(), 1000))
+        self.assertFalse(smoke.gate_passes(self.sample(node=1000.001), 1000))
+        self.assertFalse(smoke.gate_passes(self.sample(ui=1001, node=20), 1000))
 
     def test_missing_readiness_or_process_exit_cannot_pass(self):
         for key in ("ui_interactive", "local_node", "gui_alive"):
             sample = self.sample()
             sample.pop(key)
-            self.assertFalse(smoke.gate_passes(sample, 100))
+            self.assertFalse(smoke.gate_passes(sample, 1000))
         sample = self.sample()
         sample["local_node"]["error"] = "process exited"
-        self.assertFalse(smoke.gate_passes(sample, 100))
+        self.assertFalse(smoke.gate_passes(sample, 1000))
 
     def test_invalid_measurements_cannot_pass(self):
         for value in (-1, float("nan"), float("inf"), "1", True, False):
-            self.assertFalse(smoke.gate_passes(self.sample(node=value), 100))
+            self.assertFalse(smoke.gate_passes(self.sample(node=value), 1000))
 
     def test_readiness_belongs_to_the_same_embedded_node_and_fixture(self):
         root = Path("/fixture/node")

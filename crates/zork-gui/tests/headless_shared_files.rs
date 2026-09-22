@@ -17,12 +17,14 @@ use zork_gui::{
 fn fixture(preview: bool, grid: bool) -> SharedFilesData {
     let sources = vec![
         Source {
+            status: zork_ui::device_name::DeviceStatus::Direct,
             id: "studio".into(),
             name: "工作室".into(),
             online: Some(true),
             cached: false,
         },
         Source {
+            status: zork_ui::device_name::DeviceStatus::Direct,
             id: "laptop".into(),
             name: "笔记本".into(),
             online: Some(true),
@@ -57,6 +59,7 @@ fn fixture(preview: bool, grid: bool) -> SharedFilesData {
                 id: s.id.clone(),
                 name: s.name.clone(),
                 online: Some(true),
+                status: s.status.clone(),
                 ..Default::default()
             })
             .collect(),

@@ -12,6 +12,8 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
+    #[serde(default)]
+    pub status: crate::device::DeviceStatus,
     pub id: String,
     pub name: String,
     pub online: Option<bool>,
@@ -44,6 +46,8 @@ pub struct Entry {
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Device {
+    #[serde(default)]
+    pub status: crate::device::DeviceStatus,
     pub id: String,
     pub name: String,
     pub local: bool,

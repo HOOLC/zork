@@ -128,7 +128,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 if (peers.isNotEmpty()) SettingsListGroup {
                     peers.forEachIndexed { index, peer ->
                         if (index > 0) SettingsListDivider()
-                        SettingsListRow(peer.name, R.drawable.ic_node, action = { actions.device(peer) })
+                        SettingsListRow(deviceNameSummary(peer.name, peer.status), R.drawable.ic_node, action = { actions.device(peer) })
                     }
                 }
                 SettingsButton("连接设备", click = actions.addDevice)
@@ -138,7 +138,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 Column(Modifier.fillMaxWidth().background(ZorkColors.Paper, SettingsStyle.Card).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(44.dp).background(ZorkColors.Canvas, SettingsStyle.Field), contentAlignment = Alignment.Center) { Glyph(R.drawable.ic_node, 25.dp, ZorkColors.Muted) }
-                        Text(state.device?.name.orEmpty(), modifier = Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        DeviceName(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi(), Modifier.weight(1f))
                         if (state.online) LiquidIconButton("修改设备名称", opensPanel = true, onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

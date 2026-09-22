@@ -63,6 +63,26 @@ pub fn catalog() -> Vec<Story> {
     items.push(liquid);
     for (family, title, states, source, reference) in [
         (
+            "device-name",
+            "设备名称与连接状态",
+            &[
+                "not-started",
+                "preparing",
+                "direct",
+                "relay",
+                "connected",
+                "connecting",
+                "offline",
+                "failed",
+                "stopping",
+                "stopped",
+                "revoked",
+                "long",
+            ][..],
+            "crates/zork-ui/src/device_name.rs",
+            "status",
+        ),
+        (
             "interaction",
             "交互反馈",
             &["overview", "form"][..],
@@ -437,6 +457,27 @@ impl Render for PrimitiveStory {
         let state = self.story.state.as_str();
         let p = ZORK_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
+            "device-name" => {
+                use crate::device_name::{label, DeviceStatus};
+                let status = match state {
+                    "not-started" => DeviceStatus::MeshNotStarted,
+                    "preparing" => DeviceStatus::MeshPreparing,
+                    "stopping" => DeviceStatus::MeshStopping,
+                    "connected" => DeviceStatus::Connected,
+                    "revoked" => DeviceStatus::Revoked,
+                    "direct" | "long" => DeviceStatus::Direct,
+                    "relay" => DeviceStatus::Relay,
+                    "connecting" => DeviceStatus::Connecting,
+                    "offline" => DeviceStatus::Offline,
+                    "failed" => DeviceStatus::MeshFailed("无法恢复 Mesh 连接，请重试".into()),
+                    _ => DeviceStatus::MeshStopped,
+                };
+                div().w(px(260.)).child(label(
+                        "device-name-example",
+                    if state == "long" { "设计工作室的 MacBook Air 与远程构建设备" } else { "MacBook Air" },
+                    &status, None,
+                )).into_any_element()
+            }
             "interaction" => div().child(self.extra.clone().unwrap()).into_any_element(),
             "loading" => {
                 if state == "button" {

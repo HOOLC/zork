@@ -37,6 +37,7 @@ pub struct AgentsView {
     source_updates: Option<gpui::Task<()>>,
     regions: zork_ui::components::region::Regions<Self>,
     device_name: String,
+    device_status: zork_ui::device_name::DeviceStatus,
     modal: ui::ModalState,
     agents: Vec<Value>,
     profiles: Vec<ProfileInfo>,
@@ -107,6 +108,16 @@ impl AgentsView {
         }
     }
 
+    pub fn set_device_status(
+        &mut self,
+        status: zork_ui::device_name::DeviceStatus,
+        cx: &mut Context<Self>,
+    ) {
+        if self.device_status != status {
+            self.device_status = status;
+            zork_ui::components::region::invalidate_all(cx);
+        }
+    }
     pub fn set_device_name(&mut self, name: String) {
         self.device_name = name;
     }
@@ -197,6 +208,7 @@ impl AgentsView {
             source_updates: None,
             regions: Default::default(),
             device_name: String::new(),
+            device_status: Default::default(),
             agents: vec![],
             profiles: vec![],
             profile: 0,
@@ -234,6 +246,7 @@ impl AgentsView {
         let mut view = Self::new_inner(source, cx);
         let fixture = zork_ui::stories::page_fixture();
         view.device_name = fixture["device"]["name"].as_str().unwrap().into();
+        view.device_status = zork_ui::device_name::DeviceStatus::Direct;
         view.agents = fixture["agents"].as_array().unwrap().clone();
         view.profiles = vec![serde_json::from_value(fixture["profile"].clone()).unwrap()];
         view.source.seed(crate::api::AgentData {
@@ -665,7 +678,11 @@ impl AgentsView {
                             .text_color(rgb(p.muted))
                             .child(format!(
                                 "{} · {} 位小伙伴",
-                                self.device_name,
+                                zork_ui::device_name::summary(
+                                    &self.device_name,
+                                    &self.device_status,
+                                    None
+                                ),
                                 self.agents.len()
                             )),
                     ),

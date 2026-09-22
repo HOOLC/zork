@@ -18,6 +18,7 @@ pub struct DirectoryData {
     pub nodes: Arc<Vec<SavedNode>>,
     pub local_enabled: bool,
     pub mesh_identity: Option<String>,
+    pub device_statuses: Arc<HashMap<String, zork_client_types::device::DeviceStatus>>,
     pub info: Arc<HashMap<String, Value>>,
     pub updating: HashSet<String>,
     pub error: Option<String>,
@@ -37,6 +38,7 @@ pub struct Directory {
     owned: Mutex<DirectoryData>,
     state: Observable<DirectoryData>,
     revisions: Mutex<HashMap<String, u64>>,
+    status_publication: Mutex<()>,
     sync_gate: tokio::sync::Mutex<()>,
     devices: Mutex<HashMap<String, (Arc<Device>, tokio::task::JoinHandle<()>)>>,
     connections: Mutex<HashMap<String, Connection>>,
@@ -89,6 +91,7 @@ impl Directory {
             owned: Mutex::new(state.clone()),
             state: Observable::new(state),
             revisions: Mutex::new(HashMap::new()),
+            status_publication: Default::default(),
             sync_gate: tokio::sync::Mutex::new(()),
             devices: Mutex::new(HashMap::new()),
             host_watch: Default::default(),
@@ -101,6 +104,23 @@ impl Directory {
             resources: Default::default(),
             shared_files: Default::default(),
         });
+        let weak = Arc::downgrade(&directory);
+        directory.transport.observe(move |readiness| {
+            if let Some(directory) = weak.upgrade() {
+                let devices = directory
+                    .devices
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .map(|(device, _)| device.clone())
+                    .collect::<Vec<_>>();
+                for device in devices {
+                    device.set_mesh_readiness(readiness.clone());
+                }
+                directory.publish_device_statuses();
+            }
+        });
+        directory.publish_device_statuses();
         let node_root = directory.local.root().to_owned();
         let socket = zork_config::zork_sock_path(&node_root);
         let mut roots = vec![(node_root.clone(), false), (node_root.join("run"), false)];
@@ -212,14 +232,43 @@ impl Directory {
         change(&mut state);
         self.state.publish(state.clone());
     }
+    fn publish_device_statuses(&self) {
+        let _publication = self.status_publication.lock().unwrap();
+        let snapshot = self.snapshot();
+        let readiness = self.transport.readiness();
+        let devices = self.devices.lock().unwrap();
+        let statuses = snapshot
+            .nodes
+            .iter()
+            .map(|node| {
+                let data = devices.get(&node.id).map(|(device, _)| device.snapshot());
+                let status = crate::device_status::project(
+                    Some(&readiness),
+                    data.as_ref().and_then(|data| data.online),
+                    &data.as_ref().map(|data| data.route).unwrap_or_default(),
+                    data.as_ref().is_some_and(|data| data.revoked),
+                );
+                (node.id.clone(), status)
+            })
+            .collect::<HashMap<_, _>>();
+        drop(devices);
+        if *snapshot.device_statuses != statuses {
+            if let Some(resources) = self.resources.get() {
+                resources.set_device_statuses(&statuses);
+            }
+            self.commit(|s| s.device_statuses = Arc::new(statuses));
+        }
+    }
     fn publish_nodes(&self) -> Result<()> {
         let nodes = self.store.nodes()?;
         let changed = self.snapshot().nodes.as_ref() != &nodes;
         self.commit(|s| s.nodes = Arc::new(nodes));
         if changed {
+            self.publish_device_statuses();
             self.publish_applications();
             if let Some(resources) = self.resources.get() {
                 resources.replace_devices(self.resource_clients());
+                resources.set_device_statuses(&self.snapshot().device_statuses);
             }
             if let Some(source) = self.shared_files.get() {
                 self.refresh_shared_files(source);
@@ -308,7 +357,11 @@ impl Directory {
     }
     pub fn resources(&self) -> Arc<crate::resources::Resources> {
         self.resources
-            .get_or_init(|| crate::resources::Resources::new(self.resource_clients()))
+            .get_or_init(|| {
+                let source = crate::resources::Resources::new(self.resource_clients());
+                source.set_device_statuses(&self.snapshot().device_statuses);
+                source
+            })
             .clone()
     }
     fn accept_applications(&self, id: &str, data: &crate::state::DeviceData) {
@@ -325,6 +378,7 @@ impl Directory {
             if sources.get(id).is_some_and(|s| {
                 s.applications.as_ref() == &data.pages.applications
                     && s.online == data.online
+                    && s.status == data.status
                     && s.origin == origin
             }) {
                 return;
@@ -334,6 +388,7 @@ impl Directory {
                 crate::pages::ApplicationSource {
                     applications: Arc::new(data.pages.applications.clone()),
                     online: data.online,
+                    status: data.status.clone(),
                     origin,
                 },
             );
@@ -353,6 +408,13 @@ impl Directory {
         let applications = crate::pages::applications(&nodes, &sources);
         drop(sources);
         self.commit(|s| s.applications = Arc::new(applications));
+    }
+    pub fn device_status(&self, id: &str) -> zork_client_types::device::DeviceStatus {
+        self.snapshot()
+            .device_statuses
+            .get(id)
+            .cloned()
+            .unwrap_or_default()
     }
     pub fn node(&self, id: &str) -> Option<SavedNode> {
         self.snapshot()
@@ -406,10 +468,12 @@ impl Directory {
         if let Some((_, task)) = devices.remove(&id) {
             task.abort();
         }
+        device.set_mesh_readiness(self.transport.readiness());
         let mut updates = device.subscribe();
         let weak = Arc::downgrade(self);
         let anchor = id.clone();
         let observation_client = client.clone();
+        let observed_device = device.clone();
         let task = client.spawn(async move {
             let mut retry = zork_notify::retry::Retry::default();
             let mut previous_online = None;
@@ -418,6 +482,10 @@ impl Directory {
                 let update = updates.snapshot();
                 if let Some(directory) = weak.upgrade() {
                     if binding.is_some_and(|binding|directory.ensure_connection(&anchor,binding).is_err()){return;}
+                    if update.domains.contains(crate::state::Domains::CONNECTION) {
+                        observed_device.set_mesh_readiness(directory.transport.readiness());
+                        directory.publish_device_statuses();
+                    }
                     directory.accept_applications(&anchor,&update.state);
                     if let Some(source) = directory.shared_files.get() {
                         source.update_device(&anchor, &observation_client, &update.state);
@@ -509,15 +577,22 @@ impl Directory {
         self.store.put("device", "last-node", &id)
     }
     pub fn new_chat_devices(&self, current: &str) -> zork_client_types::new_chat::Choice {
+        let snapshot = self.snapshot();
         zork_client_types::new_chat::Choice {
             value: current.into(),
-            options: self
-                .snapshot()
+            options: snapshot
                 .nodes
                 .iter()
                 .map(|node| zork_client_types::new_chat::OptionItem {
                     value: node.id.clone(),
                     label: node.name.clone(),
+                    status: Some(
+                        snapshot
+                            .device_statuses
+                            .get(&node.id)
+                            .cloned()
+                            .unwrap_or_default(),
+                    ),
                 })
                 .collect(),
         }

@@ -1,6 +1,6 @@
 ---
 name: zork-ui-parity
-description: 修改 zork 共享组件，维护 GPUI 原生/Web 与 Android 组件对照，或验证已有设计的视觉及交互一致性。
+description: 新增或修改 zork UI 控件、共享组件及组件库展示，或维护 GPUI 原生/Web 与 Android 的视觉和交互一致性。
 ---
 
 # 共享组件与跨端对照
@@ -18,7 +18,7 @@ description: 修改 zork 共享组件，维护 GPUI 原生/Web 与 Android 组�
 
 ## 对照与性能
 
-- 目录区分基础组件与业务组件。按 [展台约束](../../../docs/design/interface.md#component-gallery) 核对项目实际使用的全部业务组件类型：项目和 Playground 调用同一完整入口，只替换真实/mock 参数与事件适配，不保留两套组件实现。参考库用于核对职责和行为合同；覆盖与验证结果随任务保存，不维护常驻组件状态表。
+- 新增或修改任何 UI 控件时，按 [展台约束](../../../docs/design/interface.md#component-gallery) 检查其共享实现及组件库展示，基础控件、状态指示和业务组合均适用。缺少示例就在同一任务补齐，覆盖实际使用的状态与交互；项目和 Playground 调用同一完整入口，只替换真实/mock 参数与事件适配。目录按基础组件与业务组件组织，参考库用于核对职责和行为合同；覆盖与验证结果随任务保存，不维护常驻组件状态表。
 - 完整图库用 `scripts/storybook/build.py`，Web 用 `build_web.py`；读取当前选项和锁定工具链。导出失败保留上一套完整原生产物，全部成功后才更新图库与 manifest，避免部分新图混入旧图。平台问题局部配置，不改全局链接。
 - 按影响选择 `test_package.py`、`test_web.py`、`test_playground.py` 或具体交互脚本。通过真实入口展开、滚动、选择，覆盖宽/窄窗口、中文、键盘/IME、焦点与裁切，不直接改 fixture 跳过操作。布局验收分别量取内层内容和外层卡片的末项、底边与侧边，覆盖换行和内容增删；只检查内层面板不能证明外层留白正确。
 - 原生 `zork-gui-storybook` 外壳与其中的 Playground 示例是不同入口；先确认目标窗口。外壳改动用 `scripts/storybook/test_native_workbench.py --binary <本次重建的二进制>` 验证组件往返、场景、画布与显式重置，保留固定尺寸导出合同。

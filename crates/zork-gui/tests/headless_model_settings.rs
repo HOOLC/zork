@@ -54,7 +54,12 @@ fn main() -> anyhow::Result<()> {
             fixture,
             serde_json::from_str(include_str!("fixtures/provider_catalog.json"))?,
         ));
-        sources.push((id.into(), id.into(), Profiles::new(client)));
+        sources.push((
+            id.into(),
+            id.into(),
+            Profiles::new(client),
+            zork_ui::device_name::DeviceStatus::Connected,
+        ));
     }
     let mut view = None;
     let window = cx.open_window(size(px(900.), px(760.)), |_, cx| {

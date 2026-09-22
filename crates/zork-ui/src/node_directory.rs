@@ -10,6 +10,7 @@ use gpui::{prelude::*, *};
 pub struct Node {
     pub id: String,
     pub name: String,
+    pub status: crate::device_name::DeviceStatus,
     pub remote: bool,
 }
 #[derive(Clone)]
@@ -185,7 +186,8 @@ pub trait Host: Sized + 'static {
                                             .flex_1()
                                             .min_w_0()
                                             .text_ellipsis()
-                                            .child(node.name.clone()),
+                                            .child(crate::device_name::label(format!("directory-name-{}", node.id),
+node.name.clone(), &node.status, None)),
                                     )
                                     .child(
                                         ui::button(
@@ -291,7 +293,7 @@ pub trait Host: Sized + 'static {
                     data.nodes.clone().into_iter().map(|node| {
                         ui::button(
                             format!("browse-node-{}", node.id),
-                            format!("浏览 {}", node.name),
+                            format!("浏览 {}", crate::device_name::summary(&node.name, &node.status, None)),
                             false,
                             true,
                         )
@@ -316,6 +318,7 @@ impl Story {
                     vec![]
                 } else {
                     vec![Node {
+                        status: crate::device_name::DeviceStatus::Direct,
                         id: "demo".into(),
                         name: "演示设备".into(),
                         remote: true,

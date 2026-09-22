@@ -35,6 +35,7 @@ class LiquidGalleryActivity : ComponentActivity() {
             var sheet by remember { mutableStateOf(false) }
             var disclosure by remember { mutableStateOf(false) }
             var menu by remember { mutableStateOf("local") }
+            var meshStatus by remember { mutableStateOf("mesh_preparing") }
             LiquidDialog(dialog, "编辑名称", { dialog = false }) {
                 Text("编辑名称", fontSize = 20.sp)
                 SettingsField("弹窗名称", value, { value = it })
@@ -86,6 +87,12 @@ class LiquidGalleryActivity : ComponentActivity() {
                     }
                 }
                 }
+                Text("设备名称与连接状态", fontSize = 20.sp)
+                val meshStates = listOf("mesh_not_started", "mesh_preparing", "direct", "relay", "connected", "connecting", "offline", "mesh_failed", "mesh_stopping", "mesh_stopped", "revoked")
+                SettingsSelect("设备连接状态", meshStatus, meshStates.map { it to deviceStatusText(DeviceStatusUi(it)) }) { meshStatus = it }
+                val status = DeviceStatusUi(meshStatus, if (meshStatus == "mesh_failed") "无法恢复 Mesh 连接" else null)
+                DeviceName("MacBook Air", status)
+                DeviceName("设计工作室的 MacBook Air 与远程构建设备", status, Modifier.width(260.dp))
             }
         } }
     }

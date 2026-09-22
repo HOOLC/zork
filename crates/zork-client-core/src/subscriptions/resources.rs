@@ -161,7 +161,7 @@ impl ResourcesWire {
                 value
             });
         let value = json!({"devices": devices.iter().map(|d| json!({
-            "id":d.id,"name":d.name,"loading":d.loading,"error":d.error,
+            "id":d.id,"name":d.name,"status":d.status,"loading":d.loading,"error":d.error,
             "items":d.catalog.as_ref().map(|c|c.items.iter().filter(|r|r.kind==self.kind).collect::<Vec<_>>()).unwrap_or_default(),
             "issues":d.catalog.as_ref().map(|c|c.issues.iter().filter(|r|r.kind==self.kind).collect::<Vec<_>>()).unwrap_or_default(),
         })).collect::<Vec<_>>(), "inspection":inspection});

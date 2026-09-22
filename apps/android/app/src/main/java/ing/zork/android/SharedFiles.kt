@@ -37,7 +37,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-internal data class SharedSourceUi(val id: String, val name: String, val online: Boolean?, val cached: Boolean)
+internal data class SharedSourceUi(val id: String, val name: String, val online: Boolean?, val cached: Boolean, val status: DeviceStatusUi = DeviceStatusUi())
 internal data class SharedVersionUi(val root: String, val size: Long, val modified: Long, val sources: List<SharedSourceUi>, val canRead: Boolean)
 internal data class SharedEntryUi(val id: String, val path: String, val name: String, val directory: Boolean, val sources: List<SharedSourceUi>, val versions: List<SharedVersionUi>)
 internal data class SharedSpaceUi(val id: String, val name: String, val sources: List<SharedSourceUi>)
@@ -50,14 +50,14 @@ internal data class SharedFilesUi(val active: Boolean, val devices: List<SharedS
     val locationName: String = "", val empty: String? = null)
 
 private fun JSONObject.sourceOnline(): Boolean? = if (isNull("online")) null else getBoolean("online")
-private fun JSONObject.sources() = optJSONArray("sources").objects().map { SharedSourceUi(it.text("id"), it.text("name"), it.sourceOnline(), it.optBoolean("cached")) }
+private fun JSONObject.sources() = optJSONArray("sources").objects().map { SharedSourceUi(it.text("id"), it.text("name"), it.sourceOnline(), it.optBoolean("cached"), it.deviceStatus()) }
 private fun JSONObject.versions() = optJSONArray("versions").objects().map { SharedVersionUi(it.text("root"), it.optLong("size"), it.optLong("modified_ns"), it.sources(), it.optBoolean("can_read")) }
 internal fun parseSharedFiles(value: JSONObject): SharedFilesUi {
     val location = value.optJSONObject("location")
     val preview = value.optJSONObject("preview")?.let { SharedPreviewUi(it.text("path"), it.text("name"), it.text("selected"), it.versions(), it.optBoolean("loading"),
         it.text("error").ifEmpty { null }, it.text("text").takeIf { _ -> !it.isNull("text") }, it.optBoolean("truncated"), it.text("mime"), it.optBoolean("cached"), it.optBoolean("can_save")) }
     val save = value.optJSONObject("save") ?: JSONObject()
-    return SharedFilesUi(value.optBoolean("active"), value.optJSONArray("devices").objects().map { SharedSourceUi(it.text("id"), it.text("name"), it.sourceOnline(), false) },
+    return SharedFilesUi(value.optBoolean("active"), value.optJSONArray("devices").objects().map { SharedSourceUi(it.text("id"), it.text("name"), it.sourceOnline(), false, it.deviceStatus()) },
         value.optJSONArray("spaces").objects().map { SharedSpaceUi(it.text("id"), it.text("name"), it.sources()) },
         value.optJSONArray("entries").objects().map { SharedEntryUi(it.text("id"), it.text("path"), it.text("name"), it.text("kind") == "directory", it.sources(), it.versions()) },
         location?.text("space"), location?.text("path").orEmpty(), value.text("source").ifEmpty { null }, value.text("search"), value.text("layout", "list"), value.text("sort", "name"),
@@ -101,7 +101,7 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 LiquidButton(selected?.let { sharedSize(it.size) }.orEmpty(), quiet = true, onClick = { sheet = "versions" })
                 LiquidButton("详细信息", quiet = true, onClick = { detailsOpen = !detailsOpen })
-                if (detailsOpen) Text(selected?.sources?.joinToString(" · ") { it.name }.orEmpty(), fontSize = 12.sp, color = ZorkColors.Muted)
+                if (detailsOpen) Text(selected?.sources?.joinToString(" · ") { deviceNameSummary(it.name, it.status) }.orEmpty(), fontSize = 12.sp, color = ZorkColors.Muted)
                 if (preview.loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 preview.error?.let { Text(it, color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp) }
                 if (preview.cached) Text("正在查看已缓存的副本", color = ZorkColors.Muted, fontSize = 12.sp)
@@ -144,12 +144,12 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
     LiquidRetained(sheet) { shown, open, closed -> when (shown) {
         "sources", "settings" -> SettingsSheet(if (shown == "sources") "文件来源" else "共享来源", dismiss = { sheet = null }, open = open, onClosed = closed) {
             SharedChoice("所有设备", data.source == null) { actions.source(null); sheet = null }
-            data.devices.forEach { source -> SharedChoice(source.name + if (source.online == false) " · 离线" else "", data.source == source.id) { actions.source(source.id); sheet = null } }
+            data.devices.forEach { source -> SharedChoice(deviceNameSummary(source.name, source.status), data.source == source.id) { actions.source(source.id); sheet = null } }
         }
         "versions" -> SettingsSheet("文件版本", dismiss = { sheet = null }, open = open, onClosed = closed) {
             preview?.versions?.forEach { version ->
                 val modified = remember(version.modified) { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochSecond(version.modified / 1_000_000_000)) }
-                SharedChoice("${version.sources.joinToString(" · ") { it.name }} · ${sharedSize(version.size)}\n$modified${if (!version.canRead) " · 暂不可读取" else ""}", preview.selected == version.root) { actions.version(version.root); sheet = null }
+                SharedChoice("${version.sources.joinToString(" · ") { deviceNameSummary(it.name, it.status) }} · ${sharedSize(version.size)}\n$modified${if (!version.canRead) " · 暂不可读取" else ""}", preview.selected == version.root) { actions.version(version.root); sheet = null }
             }
         }
         "more" -> SettingsSheet("更多", dismiss = { sheet = null }, open = open, onClosed = closed) {

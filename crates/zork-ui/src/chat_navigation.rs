@@ -28,6 +28,7 @@ pub struct Device {
     pub id: String,
     pub name: String,
     pub online: Option<bool>,
+    pub status: crate::device_name::DeviceStatus,
     pub direct: bool,
     pub public: bool,
     pub chats: Arc<Vec<NavigationChat>>,
@@ -38,6 +39,7 @@ impl Device {
     fn same(&self, other: &Self) -> bool {
         self.id == other.id
             && self.name == other.name
+            && self.status == other.status
             && self.online == other.online
             && self.direct == other.direct
             && self.public == other.public
@@ -183,11 +185,7 @@ impl Navigation {
         let header_focus = fold.header_focus(cx);
         let interactive = fold.interactive(cx);
         let key = node.id.clone();
-        let state = self.locale.text(match device.online {
-            Some(true) => "device_online",
-            Some(false) => "device_offline",
-            None => "device_not_connected",
-        });
+        let state = crate::device_name::status_text(&device.status, Some(&self.locale));
         self.tabs
             .column()
             .gap_0()
@@ -201,30 +199,13 @@ impl Navigation {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_ellipsis()
                             .font_weight(FontWeight::MEDIUM)
-                            .child(node.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .size(px(5.))
-                            .rounded_full()
-                            .bg(rgb(match device.online {
-                                Some(true) if device.direct => ZORK_UI.palette.success,
-                                Some(true) => 0xD9A023,
-                                _ => ZORK_UI.palette.subtle,
-                            })),
-                    )
-                    .when(
-                        device.online == Some(true) && device.public == true,
-                        |row| {
-                            row.child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(ZORK_UI.palette.muted))
-                                    .child(self.locale.text("device_public_network")),
-                            )
-                        },
+                            .child(crate::device_name::label(
+                                "device-header-name",
+                                node.name.clone(),
+                                &device.status,
+                                Some(&self.locale),
+                            )),
                     )
                     .on_click(cx.listener(move |v, _, _, cx| v.toggle(key.clone(), cx)))
                     .automation(AutomationRole::Button, format!("{} · {state}", node.name)),
@@ -402,7 +383,7 @@ impl Navigation {
         } else {
             chat.title.clone()
         };
-        let meta = device.name.clone();
+        let meta = crate::device_name::summary(&device.name, &device.status, Some(&self.locale));
         let node = device.id.clone();
         let session = chat.chat_id.clone();
         let mut rows = vec![(self.locale.text("workspace").into(), chat.workspace.clone())];
@@ -469,7 +450,12 @@ impl Navigation {
                     .line_height(px(16.))
                     .text_color(rgb(ZORK_UI.palette.muted))
                     .child(ui::icon("icons/node.svg", 12.))
-                    .child(div().min_w_0().text_ellipsis().child(meta)),
+                    .child(crate::device_name::label(
+                        "chat-device-name",
+                        device.name.clone(),
+                        &device.status,
+                        Some(&self.locale),
+                    )),
             )
             .when(chat.unread, |row| {
                 row.child(

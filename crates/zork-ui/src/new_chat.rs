@@ -113,7 +113,12 @@ impl Page {
             .options
             .iter()
             .find(|o| o.value == choice.value)
-            .map(|o| o.label.clone())
+            .map(|o| {
+                o.status.as_ref().map_or_else(
+                    || o.label.clone(),
+                    |status| crate::device_name::summary(&o.label, status, Some(&self.text)),
+                )
+            })
             .unwrap_or_else(|| self.text.text("new_chat_device"));
         let options = choice
             .options
@@ -122,7 +127,10 @@ impl Page {
             .map(|(i, o)| {
                 (
                     format!("new-chat-device-{i}"),
-                    o.label.clone(),
+                    o.status.as_ref().map_or_else(
+                        || o.label.clone(),
+                        |status| crate::device_name::summary(&o.label, status, Some(&self.text)),
+                    ),
                     o.value == choice.value,
                 )
             })
