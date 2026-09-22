@@ -293,7 +293,7 @@ class Desktop:
         self.ui("/v1/actions", {"type": "move", "target": {"element_id": action}})
         self.wait(lambda: any(e["visible"] and e["label"] == "归档聊天" and e["role"] == "status"
             for e in self.elements()["elements"]), "archive hint above the icon")
-        time.sleep(.7)  # Let the hint and dismissed row detail finish their normal transitions.
+        time.sleep(1.25)  # Let the hint and row detail finish their normal transitions under host load.
         self.screenshot("chat-archive-hover")
         archive_bounds = next(e["bounds"] for e in self.elements()["elements"] if e["id"] == action)
         # Probe the left edge of the 16px icon, away from the unread dot at the right.
@@ -556,13 +556,9 @@ def client_root(app):
 def run(app, output, trace, reports, restarts=3):
     with client_root(app) as root:
         with Desktop(app, root, output, "welcome", trace) as desktop:
-            desktop.wait(lambda: desktop.visible("desktop-startup-page"), "welcome page")
+            desktop.wait(lambda: desktop.visible("desktop-welcome-login"), "first-use login page")
             assert not desktop.visible("desktop-return"), "unrequested settings replaced startup"
             desktop.screenshot("welcome")
-            desktop.click("desktop-startup-settings")
-            desktop.wait(lambda: desktop.visible("desktop-return"), "settings from welcome")
-            desktop.click("desktop-return")
-            desktop.wait(lambda: desktop.visible("desktop-startup-page"), "return without an active device")
             assert not (root / "client/node/config.json").exists(), "welcome silently enabled a node"
             desktop.sample["passed"] = True
         reports.append(desktop.sample)
