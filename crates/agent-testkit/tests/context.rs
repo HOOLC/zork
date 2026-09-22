@@ -460,14 +460,29 @@ async fn output_limit_exhaustion_is_document_failure_but_network_failure_is_not(
 
         let mut world = TestWorld::with_options(options(strategy));
         let (session, attempt) = begin(&mut world).await;
+        let turn_id = world
+            .events(&session)
+            .into_iter()
+            .find_map(|event| match event.event {
+                SessionEvent::StepStarted {
+                    step_id, turn_id, ..
+                } if step_id == attempt.step_id => Some(turn_id),
+                _ => None,
+            })
+            .expect("the context request has a durable owning turn");
         attempt
             .fail_provider("transport", true, "connection reset")
             .unwrap();
-        let state = world
-            .wait_for_state(&session, |state| {
-                state.last_turn_outcome == Some(TurnOutcome::Failed)
-            })
-            .await;
+        // Queued input can start another turn and replace last_turn_outcome.
+        // Observe that request before checking the failed turn's durable event.
+        let _resumed = request(&mut world).await;
+        assert!(world.events(&session).iter().any(|event| matches!(
+            &event.event,
+            SessionEvent::TurnFinished { turn_id: finished, outcome: TurnOutcome::Failed, .. }
+                if finished == &turn_id
+        )));
+        let state = world.state(&session).await.unwrap();
+        assert_ne!(state.active_turn.as_ref().unwrap().turn_id, turn_id);
         assert_eq!(state.generation.number, 1);
         assert!(!world
             .events(&session)
