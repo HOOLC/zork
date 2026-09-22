@@ -229,3 +229,283 @@ impl DesktopRoot {
             )
     }
 }
+
+impl DesktopRoot {
+    fn finish_onboarding(&mut self, cx: &mut Context<Self>) {
+        if let Err(error) = cx.global::<DesktopRuntime>().startup.finish_onboarding() {
+            self.error = Some(error.to_string());
+        }
+        cx.notify();
+    }
+
+    pub(super) fn render_onboarding(&mut self, cx: &mut Context<Self>) -> Div {
+        use zork_client_core::desktop::startup::Onboarding;
+        let phase = self.startup_state.onboarding.expect("onboarding visible");
+        let locale = self.client_settings.locale;
+        let description = |text| ui::text_role(text, TextRole::Description);
+        let frame = div().size_full().flex().flex_col().child(
+            div()
+                .h(px(48.))
+                .flex_shrink_0()
+                .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
+                    window.start_window_move()
+                }),
+        );
+        if self.onboarding_models_open && matches!(phase, Onboarding::Models | Onboarding::Ready) {
+            return frame.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .px_8()
+                    .pb_8()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                ui::button(
+                                    "onboarding-models-back",
+                                    locale.text("onboarding_back"),
+                                    false,
+                                    true,
+                                )
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.onboarding_models_open = false;
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, locale.text("onboarding_back")),
+                            )
+                            .when(phase == Onboarding::Ready, |v| {
+                                v.child(
+                                    ui::button(
+                                        "onboarding-finish",
+                                        locale.text("onboarding_start"),
+                                        true,
+                                        true,
+                                    )
+                                    .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
+                                    .automation(
+                                        AutomationRole::Button,
+                                        locale.text("onboarding_start"),
+                                    ),
+                                )
+                            }),
+                    )
+                    .when_some(self.error.clone(), |v, error| v.child(ui::feedback(error)))
+                    .child(
+                        div()
+                            .id("onboarding-model-settings")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .when_some(self.model_settings.clone(), |v, settings| {
+                                v.child(ui::settings_content(settings))
+                            }),
+                    ),
+            );
+        }
+        let mut body = div()
+            .w_full()
+            .max_w(px(408.))
+            .px_6()
+            .flex()
+            .flex_col()
+            .items_center()
+            .text_center()
+            .child(gpui::img("brand/mark-orange.svg").size(px(72.)).mb(px(28.)));
+        match phase {
+            Onboarding::Login => {
+                let busy = self.account_state.busy();
+                body = body
+                    .child(ui::page_title(if busy {
+                        locale.text("onboarding_browser_title")
+                    } else {
+                        locale.text("onboarding_welcome")
+                    }))
+                    .child(div().mt_3().child(description(if busy {
+                        locale.text("onboarding_browser_description")
+                    } else {
+                        locale.text("onboarding_welcome_description")
+                    })))
+                    .child(
+                        div()
+                            .mt(px(30.))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                ui::button(
+                                    "desktop-welcome-login",
+                                    if busy {
+                                        locale.text("onboarding_login_waiting")
+                                    } else {
+                                        locale.text("onboarding_login")
+                                    },
+                                    true,
+                                    !busy,
+                                )
+                                .on_click(cx.listener(|v, _, _, cx| v.login_account(cx)))
+                                .automation_enabled(
+                                    !busy,
+                                    AutomationRole::Button,
+                                    locale.text("onboarding_login"),
+                                ),
+                            )
+                            .when_some(self.account_state.login_url.clone(), |v, url| {
+                                v.child(
+                                    ui::button(
+                                        "onboarding-reopen-login",
+                                        locale.text("onboarding_reopen"),
+                                        false,
+                                        true,
+                                    )
+                                    .on_click(move |_, _, cx| cx.open_url(&url))
+                                    .automation(
+                                        AutomationRole::Button,
+                                        locale.text("onboarding_reopen"),
+                                    ),
+                                )
+                            })
+                            .when(busy, |v| {
+                                v.child(
+                                    ui::button(
+                                        "onboarding-cancel-login",
+                                        locale.text("onboarding_cancel"),
+                                        false,
+                                        true,
+                                    )
+                                    .on_click(cx.listener(|v, _, _, cx| {
+                                        if let Err(error) = v.source.cancel_account() {
+                                            v.error = Some(error.to_string());
+                                        }
+                                        cx.notify();
+                                    }))
+                                    .automation(
+                                        AutomationRole::Button,
+                                        locale.text("onboarding_cancel_login"),
+                                    ),
+                                )
+                            }),
+                    )
+                    .when(!busy, |v| {
+                        v.child(div().mt_4().child(ui::text_role(
+                            locale.text("onboarding_browser_hint"),
+                            TextRole::Metadata,
+                        )))
+                    })
+                    .when_some(self.account_state.error.clone(), |v, error| {
+                        v.child(ui::feedback(error))
+                    });
+            }
+            Onboarding::Preparing => {
+                let failure = match &self.startup_state.local {
+                    Phase::Failed(error) => Some(error.clone()),
+                    _ => None,
+                };
+                body = body
+                    .child(ui::page_title(locale.text("onboarding_preparing_title")))
+                    .child(
+                        div()
+                            .mt_3()
+                            .child(description(locale.text("onboarding_preparing_description"))),
+                    )
+                    .when(failure.is_none(), |v| {
+                        v.child(div().mt_6().child(loading::status(
+                            "onboarding-preparing",
+                            locale.text("onboarding_preparing"),
+                        )))
+                    })
+                    .when_some(failure, |v, error| {
+                        v.child(ui::feedback(error)).child(
+                            ui::button(
+                                "desktop-startup-retry",
+                                locale.text("onboarding_retry"),
+                                true,
+                                true,
+                            )
+                            .on_click(cx.listener(|v, _, _, cx| v.retry_startup(cx)))
+                            .automation(AutomationRole::Button, locale.text("onboarding_retry")),
+                        )
+                    });
+            }
+            Onboarding::Models | Onboarding::Ready => {
+                let ready = phase == Onboarding::Ready;
+                body = body
+                    .child(ui::page_title(if ready {
+                        locale.text("onboarding_ready")
+                    } else {
+                        locale.text("onboarding_models")
+                    }))
+                    .child(div().mt_3().child(description(if ready {
+                        locale.text("onboarding_ready_description")
+                    } else {
+                        locale.text("onboarding_models_description")
+                    })))
+                    .child(div().mt(px(30.)).child(if ready {
+                        ui::button(
+                            "onboarding-finish",
+                            locale.text("onboarding_start"),
+                            true,
+                            true,
+                        )
+                        .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
+                        .automation(AutomationRole::Button, locale.text("onboarding_start"))
+                    } else {
+                        ui::button(
+                            "onboarding-add-model",
+                            locale.text("onboarding_add_model"),
+                            true,
+                            self.model_settings
+                                .as_ref()
+                                .zip(self.active_node_id.as_ref())
+                                .is_some_and(|(view, id)| view.read(cx).has_device(id)),
+                        )
+                        .on_click(cx.listener(|v, _, _, cx| {
+                            if let (Some(settings), Some(id)) =
+                                (v.model_settings.clone(), v.active_node_id.clone())
+                            {
+                                if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
+                                    v.onboarding_models_open = true;
+                                }
+                            }
+                            cx.notify();
+                        }))
+                        .automation(AutomationRole::Button, locale.text("onboarding_add_model"))
+                    }));
+            }
+        }
+        body = body
+            .when(
+                phase == Onboarding::Models && self.startup_state.onboarding_error.is_some(),
+                |v| {
+                    v.child(
+                        ui::button(
+                            "onboarding-retry-models",
+                            locale.text("onboarding_retry"),
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(|v, _, _, cx| v.retry_startup(cx)))
+                        .automation(AutomationRole::Button, locale.text("onboarding_retry")),
+                    )
+                },
+            )
+            .when_some(self.startup_state.onboarding_error.clone(), |v, error| {
+                v.child(ui::feedback(error))
+            })
+            .when_some(self.error.clone(), |v, error| v.child(ui::feedback(error)));
+        frame.child(
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .pb(px(48.))
+                .child(body),
+        )
+    }
+}

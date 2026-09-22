@@ -88,6 +88,7 @@ pub struct ModelSettings {
     grouping: Grouping,
     adding: bool,
     selected: Option<String>,
+    onboarding_local: Option<String>,
 }
 impl ModelSettings {
     pub fn new(_: &mut Context<Self>) -> Self {
@@ -96,7 +97,42 @@ impl ModelSettings {
             grouping: Grouping::default(),
             adding: false,
             selected: None,
+            onboarding_local: None,
         }
+    }
+    pub fn has_device(&self, id: &str) -> bool {
+        self.devices.iter().any(|device| device.id == id)
+    }
+    pub fn set_onboarding_local(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        if self.onboarding_local == id {
+            return;
+        }
+        if let Some(id) = &id {
+            self.selected = Some(id.clone());
+            self.adding = false;
+        }
+        self.onboarding_local = id;
+        cx.notify();
+    }
+    pub fn begin_onboarding(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
+        if !self.has_device(id) {
+            return false;
+        }
+        self.set_onboarding_local(Some(id.into()), cx);
+        self.add_local_connection(cx);
+        true
+    }
+    fn add_local_connection(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = &self.onboarding_local else {
+            return;
+        };
+        self.selected = Some(id.clone());
+        if let Some(device) = self.devices.iter().find(|device| &device.id == id) {
+            device
+                .editor
+                .update(cx, |editor, cx| editor.add_connection(cx));
+        }
+        cx.notify();
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_selection(&self, cx: &gpui::App) -> serde_json::Value {
@@ -113,6 +149,11 @@ impl ModelSettings {
     }
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         for device in &self.devices {
+            let visible = visible
+                && self
+                    .onboarding_local
+                    .as_ref()
+                    .is_none_or(|id| id == &device.id);
             device
                 .editor
                 .update(cx, |view, cx| view.set_visible(visible, cx));
@@ -176,7 +217,11 @@ impl Render for ModelSettings {
         // This is a read-only rendering projection, never another editable catalog.
         let mut groups = Groups::new();
         let mut notices = Vec::new();
-        for device in &self.devices {
+        for device in self.devices.iter().filter(|device| {
+            self.onboarding_local
+                .as_ref()
+                .is_none_or(|id| id == &device.id)
+        }) {
             let state = device.source.snapshot();
             let name = zork_ui::device_name::summary(&device.name, &device.status, None);
             if state.loading {
@@ -202,7 +247,11 @@ impl Render for ModelSettings {
                     .child(
                         ui::page_action("models-add", "添加连接")
                             .on_click(cx.listener(|v, _, _, cx| {
-                                v.adding = !v.adding;
+                                if v.onboarding_local.is_some() {
+                                    v.add_local_connection(cx);
+                                } else {
+                                    v.adding = !v.adding;
+                                }
                                 cx.notify();
                             }))
                             .automation(AutomationRole::Button, "添加连接"),
@@ -214,28 +263,32 @@ impl Render for ModelSettings {
                     .items_center()
                     .justify_between()
                     .gap_4()
-                    .child(
-                        div()
-                            .text_color(rgb(palette.muted))
-                            .child("所有设备的模型与连接"),
-                    )
-                    .child(zork_ui::components::tooltip::hint(
-                        ui::icon_button("model-grouping-toggle", true)
-                            .child(ui::icon("icons/grouping.svg", 16.))
-                            .aria_label(grouping_hint)
-                            .on_click(cx.listener(|v, _, _, cx| {
-                                v.grouping = match v.grouping {
-                                    Grouping::Provider => Grouping::Model,
-                                    Grouping::Model => Grouping::Provider,
-                                };
-                                cx.notify();
-                            }))
-                            .automation(AutomationRole::Button, grouping_hint),
-                        "model-grouping-toggle",
-                        grouping_hint,
-                    )),
+                    .child(div().text_color(rgb(palette.muted)).child(
+                        if self.onboarding_local.is_some() {
+                            "本机的模型与连接"
+                        } else {
+                            "所有设备的模型与连接"
+                        },
+                    ))
+                    .when(self.onboarding_local.is_none(), |v| {
+                        v.child(zork_ui::components::tooltip::hint(
+                            ui::icon_button("model-grouping-toggle", true)
+                                .child(ui::icon("icons/grouping.svg", 16.))
+                                .aria_label(grouping_hint)
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.grouping = match v.grouping {
+                                        Grouping::Provider => Grouping::Model,
+                                        Grouping::Model => Grouping::Provider,
+                                    };
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, grouping_hint),
+                            "model-grouping-toggle",
+                            grouping_hint,
+                        ))
+                    }),
             )
-            .when(self.adding, |v| {
+            .when(self.adding && self.onboarding_local.is_none(), |v| {
                 v.child(
                     ui::section()
                         .child(ui::label("选择保存连接的设备"))

@@ -138,6 +138,26 @@ impl<V: Render + 'static> Fixture<V> {
             "modal was clipped by settings scroll container"
         );
         anyhow::ensure!(
+            (card.bounds.x + card.bounds.width / 2. - width / 2.).abs() < 1.
+                && (card.bounds.y + card.bounds.height / 2. - height / 2.).abs() < 1.,
+            "dialog centered in its host instead of the window: {:?}",
+            card.bounds
+        );
+        let pixels = self.cx.capture_screenshot(self.window.into())?;
+        for (x, y) in [
+            (2, 2),
+            (pixels.width() - 3, 2),
+            (2, pixels.height() - 3),
+            (pixels.width() - 3, pixels.height() - 3),
+        ] {
+            anyhow::ensure!(
+                pixels.get_pixel(x, y).0[..3]
+                    .iter()
+                    .all(|channel| *channel < 180),
+                "modal backdrop did not cover window corner ({x}, {y})"
+            );
+        }
+        anyhow::ensure!(
             (card.bounds.width - 540.).abs() < 1.,
             "modal width drifted from the shared desktop design"
         );
@@ -712,8 +732,11 @@ fn settle_enrollment(
             );
         }
         let alpha = if open { 1. } else { 0. };
-        if state["moving"] == false
-            && state["open"] == open
+        anyhow::ensure!(
+            state["engine"] == "plain",
+            "unexpected dialog renderer: {state}"
+        );
+        if state["open"] == open
             && state["contentAlpha"] == alpha
             && state["backdropAlpha"] == alpha
         {
@@ -770,10 +793,7 @@ fn enrollment_checks() -> anyhow::Result<()> {
             }
         })?;
         f.cx.update(|cx| cx.set_reduce_motion(false));
-        let source = f
-            .element("device-add")
-            .context("sidebar source missing")?
-            .bounds;
+        f.element("device-add").context("sidebar source missing")?;
         f.click("device-add")?;
         let state = settle_enrollment(&mut f, true)?;
         let pixels = f.cx.capture_screenshot(f.window.into())?;
@@ -787,23 +807,14 @@ fn enrollment_checks() -> anyhow::Result<()> {
         let card = f
             .element("add-device-dialog")
             .context("enrollment dialog missing")?;
+        // Plain dialogs are centered on the window; they no longer expose a
+        // liquid source anchor or a simulated material pose.
         anyhow::ensure!(
-            (state["anchor"]["cx"].as_f64().unwrap() - (source.x + source.width / 2.) as f64).abs()
-                < 1.
-                && (state["anchor"]["cy"].as_f64().unwrap()
-                    - (source.y + source.height / 2.) as f64)
-                    .abs()
-                    < 1.,
-            "dialog did not bind its real sidebar source: {}",
-            state["anchor"]
-        );
-        anyhow::ensure!(
-            (state["pose"]["w"].as_f64().unwrap() - card.bounds.width as f64).abs() < 1.,
-            "enrollment material and content width differ: {state}"
-        );
-        anyhow::ensure!(
-            (state["pose"]["h"].as_f64().unwrap() - card.bounds.height as f64).abs() < 1.,
-            "enrollment material and content height differ: {state}"
+            (card.bounds.x + card.bounds.width / 2. - width / 2.).abs() < 1.
+                && (card.bounds.y + card.bounds.height / 2. - height / 2.).abs() < 1.
+                && card.bounds == card.visible_bounds,
+            "enrollment dialog is not centered and fully visible: {:?}",
+            card.bounds
         );
         for id in [
             "add-device-dialog-close",

@@ -1,11 +1,13 @@
 //! App-owned recovery. Cached workspaces, local readiness and Mesh recovery are
 //! independent: a peer cannot be a prerequisite for starting our own Station.
+mod onboarding;
 use super::directory::Directory;
 use crate::{
     state::{Observable, Subscription},
     store::SavedNode,
 };
 use anyhow::{Context, Result};
+pub use onboarding::Onboarding;
 use std::{
     future::Future,
     sync::{
@@ -33,6 +35,8 @@ pub struct State {
     pub selection_generation: u64,
     pub local: Phase,
     pub mesh: Phase,
+    pub onboarding: Option<Onboarding>,
+    pub onboarding_error: Option<String>,
 }
 
 impl State {
@@ -74,6 +78,15 @@ struct Recovery {
     state: Mutex<State>,
     updates: Observable<State>,
     stopping: AtomicBool,
+    onboarding_stop: Arc<tokio::sync::Notify>,
+    onboarding_models: Mutex<
+        Option<(
+            String,
+            u64,
+            Arc<crate::state::Profiles>,
+            crate::api::ClientTask,
+        )>,
+    >,
 }
 
 impl Recovery {
@@ -83,6 +96,8 @@ impl Recovery {
             updates: Observable::new(state.clone()),
             state: Mutex::new(state),
             stopping: AtomicBool::new(false),
+            onboarding_stop: Default::default(),
+            onboarding_models: Default::default(),
         })
     }
 
@@ -198,6 +213,7 @@ impl Startup {
 
     fn from_directory(directory: Arc<Directory>) -> Result<Self> {
         let snapshot = directory.snapshot();
+        let onboarding = onboarding::initial(&directory)?;
         let available = |node: &&SavedNode| !node.local || snapshot.local_enabled;
         let selected = directory
             .selected()
@@ -227,16 +243,20 @@ impl Startup {
             State {
                 selected: selected.map(|node| node.id.clone()),
                 selection_generation: 1,
+                onboarding,
                 ..State::default()
             },
         );
         // Launch independently. Mesh readoption can contact this same Station,
         // or wait for an unavailable remote peer, without delaying local use.
-        if snapshot.local_enabled {
+        if snapshot.local_enabled && onboarding.is_none() {
             recovery.launch(Step::Local);
         }
-        if needs_mesh {
+        if needs_mesh && onboarding.is_none() {
             recovery.launch(Step::Mesh);
+        }
+        if onboarding.is_some() {
+            recovery.observe_account()?;
         }
         super::trace_startup("client.cached_workspace_ready");
         Ok(Self {
@@ -321,10 +341,26 @@ impl Startup {
         if matches!(state.mesh, Phase::Failed(_)) {
             self.recovery.launch(Step::Mesh);
         }
+        if state.onboarding == Some(Onboarding::Models) && state.onboarding_error.is_some() {
+            if let Some((id, _, profiles, _)) =
+                self.recovery.onboarding_models.lock().unwrap().as_ref()
+            {
+                if let Ok((_, client)) = self.directory.connection(id) {
+                    let profiles = profiles.clone();
+                    client.spawn(async move {
+                        profiles.refresh().await;
+                    });
+                }
+            }
+        }
     }
 
     pub fn shutdown(&self) -> impl Future<Output = ()> + Send + 'static {
         self.recovery.stopping.store(true, Ordering::Release);
+        self.recovery.onboarding_stop.notify_one();
+        if let Some((_, _, _, task)) = self.recovery.onboarding_models.lock().unwrap().take() {
+            task.abort();
+        }
         let _ = self.directory.cancel_account();
         let local = self.directory.local.shutdown();
         let transport = self.directory.transport.shutdown();

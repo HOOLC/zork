@@ -21,6 +21,13 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     };
     std::fs::create_dir_all(&output)?;
+    // This harness covers account settings in an existing installation.
+    // First-use login and cancellation are exercised by headless_onboarding.
+    zork_client_core::store::ClientStore::open(&zork_client_core::desktop::client_root())?.put(
+        "client",
+        "onboarding-complete",
+        &true,
+    )?;
     let startup = zork_client_core::desktop::startup::Startup::open()?;
     let source = startup.directory.clone();
     let mut cx = HeadlessAppContext::with_platform(
