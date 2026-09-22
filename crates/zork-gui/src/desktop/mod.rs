@@ -311,6 +311,10 @@ impl DesktopRoot {
                 self.apply_device_name(&node.id, &node.name, cx);
                 self.ensure_node_view(&node, cx);
             }
+            for (id, (_, root)) in &self.node_views {
+                let choice = self.source.new_chat_devices(id);
+                root.update(cx, |root, cx| root.set_new_chat_devices(choice, cx));
+            }
             if let Some(id) = self.active_node_id.clone() {
                 if self.node_views.get(&id).is_some_and(|(_, current)| {
                     self.active.as_ref().is_some_and(|active| active != current)
@@ -431,13 +435,34 @@ impl DesktopRoot {
                 zork_client_core::desktop::trace_startup("gui.workspace_view_created");
                 view.attach_navigation(self.navigation.clone(), node.name.clone());
                 view.set_applications(self.applications.clone(), cx);
+                view.set_new_chat_devices(self.source.new_chat_devices(&node.id), cx);
                 view
             });
-            cx.subscribe(&active, |v, _, _: &crate::views::DesktopAction, cx| {
-                v.managing = true;
-                v.management_tab = 0;
-                cx.notify();
-            })
+            let source_node = node.id.clone();
+            cx.subscribe(
+                &active,
+                move |v, _, action: &crate::views::DesktopAction, cx| {
+                    match action {
+                        crate::views::DesktopAction::ManageNode => {
+                            v.managing = true;
+                            v.management_tab = 0;
+                        }
+                        crate::views::DesktopAction::SelectChatDevice(id) => {
+                            match v.source.new_chat_destination(&source_node, id) {
+                                Ok(node) => v.navigate_device(
+                                    navigation::Navigate {
+                                        node: Some(node.id),
+                                        destination: navigation::Destination::Home,
+                                    },
+                                    cx,
+                                ),
+                                Err(error) => v.error = Some(error.to_string()),
+                            }
+                        }
+                    }
+                    cx.notify();
+                },
+            )
             .detach();
             let resource_node = node.id.clone();
             cx.subscribe(

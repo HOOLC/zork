@@ -20,12 +20,13 @@ use zork_client_types::new_chat::{Action, Snapshot};
 pub enum Event {
     Intent(Action),
     ConfigureModels,
+    SelectDevice(String),
 }
 pub struct Page {
     data: Snapshot,
     text: Text,
     input: Entity<ComposerInput>,
-    menus: [bool; 3],
+    menus: [bool; 4],
     width: f32,
     scene: composer::Scene,
     previous: Option<Instant>,
@@ -60,7 +61,7 @@ impl Page {
             data: Default::default(),
             text,
             input,
-            menus: [false; 3],
+            menus: [false; 4],
             width: 480.,
             scene: Default::default(),
             previous: None,
@@ -96,11 +97,12 @@ impl Page {
                 "new_chat_thinking",
                 &self.data.thinking,
             ),
-            _ => (
+            2 => (
                 "new-chat-profile",
                 "new_chat_profile_auto",
                 &self.data.profile,
             ),
+            _ => ("new-chat-device", "new_chat_device", &self.data.device),
         };
         let label = |value: &str, label: &str| {
             if field == 2 && value == "auto" {
@@ -147,19 +149,23 @@ impl Page {
             window,
             cx,
             move |v, open, cx| {
-                v.menus = [false; 3];
+                v.menus = [false; 4];
                 v.menus[field] = open;
                 cx.notify();
             },
             move |v, index, cx| {
                 if let Some(value) = values.get(index).cloned() {
-                    cx.emit(Event::Intent(match field {
-                        0 => Action::Model { value },
-                        1 => Action::Thinking { value },
-                        _ => Action::Profile { value },
-                    }));
+                    if field == 3 {
+                        cx.emit(Event::SelectDevice(value));
+                    } else {
+                        cx.emit(Event::Intent(match field {
+                            0 => Action::Model { value },
+                            1 => Action::Thinking { value },
+                            _ => Action::Profile { value },
+                        }));
+                    }
                 }
-                v.menus = [false; 3];
+                v.menus = [false; 4];
                 cx.notify();
             },
         )
@@ -263,6 +269,10 @@ impl Render for Page {
             window,
             cx,
         );
+        let options = [3, 0, 1, 2]
+            .into_iter()
+            .map(|field| self.selector(field, window, cx))
+            .collect::<Vec<_>>();
         let note = if self.data.busy {
             Some(self.text.text("new_chat_creating"))
         } else if self.data.uncertain {
@@ -327,6 +337,15 @@ impl Render for Page {
                 )
             })
             .child(div().w(px(self.width)).h(px(height)).child(composer))
+            .child(
+                div()
+                    .w(px(self.width))
+                    .mt_2()
+                    .flex()
+                    .flex_wrap()
+                    .gap_3()
+                    .children(options),
+            )
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }
 }

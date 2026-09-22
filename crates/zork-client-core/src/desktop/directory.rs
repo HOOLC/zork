@@ -508,6 +508,32 @@ impl Directory {
     pub fn select(&self, id: &str) -> Result<()> {
         self.store.put("device", "last-node", &id)
     }
+    pub fn new_chat_devices(&self, current: &str) -> zork_client_types::new_chat::Choice {
+        zork_client_types::new_chat::Choice {
+            value: current.into(),
+            options: self
+                .snapshot()
+                .nodes
+                .iter()
+                .map(|node| zork_client_types::new_chat::OptionItem {
+                    value: node.id.clone(),
+                    label: node.name.clone(),
+                })
+                .collect(),
+        }
+    }
+    /// Resolve a creation destination without replacing either device's persistent draft.
+    pub fn new_chat_destination(&self, current: &str, target: &str) -> Result<SavedNode> {
+        let devices = self.devices.lock().unwrap();
+        let source = devices.get(current).context("当前设备不可用")?;
+        let draft = source.0.new_chat().snapshot();
+        anyhow::ensure!(
+            !draft.busy && draft.pending.is_none(),
+            "请先处理未确认的创建操作"
+        );
+        anyhow::ensure!(!source.0.snapshot().revoked, "设备访问权限已撤销");
+        self.node(target).context("所选设备已移除")
+    }
     pub fn selected(&self) -> Option<String> {
         self.store.get("device", "last-node").ok().flatten()
     }

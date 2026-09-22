@@ -27,12 +27,14 @@ fn new_chat_story(
         view
     });
     cx.subscribe(&view, move |view, event: &zork_ui::new_chat::Event, cx| {
-        if let zork_ui::new_chat::Event::Intent(action) = event {
-            fixture.borrow_mut().apply(action.clone());
-            view.update(cx, |v, cx| {
-                v.configure(fixture.borrow().snapshot(), form_width, text.clone(), cx)
-            });
+        match event {
+            zork_ui::new_chat::Event::Intent(action) => fixture.borrow_mut().apply(action.clone()),
+            zork_ui::new_chat::Event::SelectDevice(id) => fixture.borrow_mut().select_device(id),
+            zork_ui::new_chat::Event::ConfigureModels => return,
         }
+        view.update(cx, |v, cx| {
+            v.configure(fixture.borrow().snapshot(), form_width, text.clone(), cx)
+        });
     })
     .detach();
     view

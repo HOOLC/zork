@@ -14,6 +14,8 @@ pub struct Choice {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
     pub text: String,
+    #[serde(default)]
+    pub device: Choice,
     pub model: Choice,
     pub thinking: Choice,
     pub profile: Choice,

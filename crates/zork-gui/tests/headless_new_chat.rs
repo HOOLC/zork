@@ -46,6 +46,7 @@ fn main() -> anyhow::Result<()> {
         let snapshot = driver.snapshot(false);
         for id in [
             "new-chat-input",
+            "new-chat-device",
             "new-chat-model",
             "new-chat-thinking",
             "new-chat-profile",
@@ -79,6 +80,8 @@ fn main() -> anyhow::Result<()> {
             draw(cx)
         };
         for id in [
+            "new-chat-device",
+            "new-chat-device-1",
             "new-chat-model",
             "new-chat-model-1",
             "new-chat-thinking",
@@ -90,7 +93,8 @@ fn main() -> anyhow::Result<()> {
         }
         let state = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
-            state["model"]["value"] == "Demo fast"
+            state["device"]["value"] == "remote"
+                && state["model"]["value"] == "Demo fast"
                 && state["thinking"]["value"] == "low"
                 && state["profile"]["value"] == "personal",
             "selection did not reach core fixture: {state}"
