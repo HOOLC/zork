@@ -58,6 +58,7 @@ pub struct DesktopRoot {
     local: Arc<LocalNode>,
     local_enabled: bool,
     mesh_identity: Option<String>,
+    device_statuses: Arc<std::collections::HashMap<String, zork_ui::device_name::DeviceStatus>>,
     pairing: bool,
     rename_input: Entity<ComposerInput>,
     rename_node_id: Option<String>,
@@ -181,6 +182,7 @@ impl DesktopRoot {
             local,
             local_enabled,
             mesh_identity: None,
+            device_statuses: Default::default(),
             pairing: false,
             rename_input,
             rename_node_id: None,
@@ -293,6 +295,13 @@ impl DesktopRoot {
         self.local_enabled = snapshot.local_enabled;
         self.mesh_identity = snapshot.mesh_identity.clone();
         self.device_info = snapshot.info.as_ref().clone();
+        let statuses_changed = !Arc::ptr_eq(&self.device_statuses, &snapshot.device_statuses);
+        if statuses_changed {
+            self.device_statuses = snapshot.device_statuses.clone();
+            for (_, mesh) in self.mesh_views.values() {
+                mesh.update(cx, |_, cx| cx.notify());
+            }
+        }
         if self.client_settings.message_preview_height
             != snapshot.preferences.message_preview_height
         {
@@ -305,7 +314,7 @@ impl DesktopRoot {
         if let Some(error) = &snapshot.error {
             self.error = Some(error.clone());
         }
-        if nodes_changed && self.model_settings.is_some() {
+        if (nodes_changed || statuses_changed) && self.model_settings.is_some() {
             self.sync_model_settings(cx);
         }
         if nodes_changed {
@@ -314,10 +323,6 @@ impl DesktopRoot {
             for node in self.nodes.clone() {
                 self.apply_device_name(&node.id, &node.name, cx);
                 self.ensure_node_view(&node, cx);
-            }
-            for (id, (_, root)) in &self.node_views {
-                let choice = self.source.new_chat_devices(id);
-                root.update(cx, |root, cx| root.set_new_chat_devices(choice, cx));
             }
             if let Some(id) = self.active_node_id.clone() {
                 if self.node_views.get(&id).is_some_and(|(_, current)| {
@@ -329,6 +334,12 @@ impl DesktopRoot {
                         self.managing = managing;
                     }
                 }
+            }
+        }
+        if nodes_changed || statuses_changed {
+            for (id, (_, root)) in &self.node_views {
+                let choice = self.source.new_chat_devices(id);
+                root.update(cx, |root, cx| root.set_new_chat_devices(choice, cx));
             }
         }
         cx.notify();
@@ -431,7 +442,12 @@ impl DesktopRoot {
             .into_iter()
             .filter_map(|node| {
                 let view = self.ensure_node_view(&node, cx)?;
-                Some((node.id, node.name, view.read(cx).core_device().profiles()))
+                Some((
+                    node.id.clone(),
+                    node.name,
+                    view.read(cx).core_device().profiles(),
+                    self.source.device_status(&node.id),
+                ))
             })
             .collect();
         let view = self
@@ -842,6 +858,7 @@ impl DesktopRoot {
         let info = self.device_info.get(&node.id);
         let data = DeviceData {
             name: node.name.clone(),
+            status: self.source.device_status(&node.id),
             version: info
                 .and_then(|i| {
                     i["station"]["release_version"]
@@ -1222,7 +1239,19 @@ impl Render for DesktopRoot {
                                                         )
                                                         .child(ui::icon("icons/node.svg", 20.))
                                                         .child(
-                                                            div().flex_1().child(node.name.clone()),
+                                                            div().flex_1().min_w_0().child(
+                                                                zork_ui::device_name::label(
+                                                                    format!(
+                                                                        "settings-name-{}",
+                                                                        node.id
+                                                                    ),
+                                                                    node.name.clone(),
+                                                                    &self
+                                                                        .source
+                                                                        .device_status(&node.id),
+                                                                    None,
+                                                                ),
+                                                            ),
                                                         )
                                                         .on_click(cx.listener(
                                                             move |v, _, _, cx| {
@@ -1380,6 +1409,7 @@ impl zork_ui::node_directory::Host for DesktopRoot {
                 .map(|n| zork_ui::node_directory::Node {
                     id: n.id.clone(),
                     name: n.name.clone(),
+                    status: self.source.device_status(&n.id),
                     remote: n.mesh.is_some(),
                 })
                 .collect(),

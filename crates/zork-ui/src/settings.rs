@@ -184,6 +184,7 @@ pub enum DeviceAction {
 }
 #[derive(Clone)]
 pub struct DeviceData {
+    pub status: crate::device_name::DeviceStatus,
     pub name: String,
     pub version: String,
     pub update_supported: bool,
@@ -217,11 +218,6 @@ pub fn device<V: 'static>(
         .latest_version
         .as_ref()
         .is_some_and(|version| version != &data.version);
-    let online_ink = match data.online {
-        Some(true) => p.success,
-        Some(false) => p.muted,
-        None => p.warning,
-    };
     let show_updates = !data.local || data.background;
     let can_update = show_updates && data.update_supported && !data.busy;
     let version_label = if data.version.starts_with(|c: char| c.is_ascii_digit()) {
@@ -291,7 +287,12 @@ pub fn device<V: 'static>(
                                         .truncate()
                                         .text_size(px(16.))
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .child(data.name.clone()),
+                                        .child(crate::device_name::label(
+                                            "settings-device-name",
+                                            data.name.clone(),
+                                            &data.status,
+                                            None,
+                                        )),
                                 )
                                 .child(crate::components::tooltip::hint(
                                     ui::icon_button("device-rename", !data.busy)
@@ -331,20 +332,6 @@ pub fn device<V: 'static>(
                                 .gap_2()
                                 .text_size(px(11.))
                                 .text_color(rgb(p.muted))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(5.))
-                                        .child(
-                                            div().size(px(5.)).rounded_full().bg(rgb(online_ink)),
-                                        )
-                                        .child(match data.online {
-                                            Some(true) => "在线",
-                                            Some(false) => "离线",
-                                            None => "连接中",
-                                        }),
-                                )
                                 .when(data.local, |v| {
                                     v.child("·").child(if data.busy {
                                         "正在处理…"
@@ -542,6 +529,11 @@ impl SettingsStory {
             rename_modal: ui::ModalState::new(cx),
             family,
             data: DeviceData {
+                status: if state == "stopped" {
+                    crate::device_name::DeviceStatus::Offline
+                } else {
+                    crate::device_name::DeviceStatus::Direct
+                },
                 name: "mini1".into(),
                 update_supported: true,
                 update_reason: None,
@@ -633,7 +625,12 @@ impl gpui::Render for SettingsStory {
                         }
                         DeviceAction::ToggleRunning => {
                             v.data.running = !v.data.running;
-                            v.data.online = Some(v.data.running)
+                            v.data.online = Some(v.data.running);
+                            v.data.status = if v.data.running {
+                                crate::device_name::DeviceStatus::Direct
+                            } else {
+                                crate::device_name::DeviceStatus::Offline
+                            }
                         }
                         DeviceAction::Background(on) => {
                             v.data.background = on;

@@ -90,7 +90,10 @@ pub enum Command {
         session: String,
         text: String,
     },
-    NewChat { peer: String, operation: zork_client_types::new_chat::Action },
+    NewChat {
+        peer: String,
+        operation: zork_client_types::new_chat::Action,
+    },
     RespondToInteraction {
         peer: String,
         session: String,
@@ -293,7 +296,9 @@ impl LocalClient {
             return Ok(subscriptions::WireSubscription::from_adb(self.adb.clone()));
         }
         if matches!(key, subscriptions::Key::ChatFiles) {
-            return Ok(subscriptions::WireSubscription::from_chat_files(self.chat_files.clone()));
+            return Ok(subscriptions::WireSubscription::from_chat_files(
+                self.chat_files.clone(),
+            ));
         }
         if matches!(key, subscriptions::Key::SharedFiles) {
             return Ok(subscriptions::WireSubscription::from_shared_files(
@@ -871,10 +876,29 @@ impl Client {
             self.pause().await?;
         }
         if self.runtime.is_none() {
-            let network = self.enrollment_network()?;
-            let config = self.config(&network)?;
-            let (runtime, identity) = transport::start(&self.root, &config).await?;
-            self.store.put("device", "identity", &identity)?;
+            self.directory
+                .set_mesh_readiness(device_status::MeshReadiness::Preparing);
+            let started = async {
+                let network = self.enrollment_network()?;
+                let config = self.config(&network)?;
+                let (mut runtime, identity) = transport::start(&self.root, &config).await?;
+                if let Err(error) = self.store.put("device", "identity", &identity) {
+                    let _ = runtime.shutdown().await;
+                    return Err(error.into());
+                }
+                Ok(runtime)
+            }
+            .await;
+            let runtime = match started {
+                Ok(started) => started,
+                Err(error) => {
+                    self.directory
+                        .set_mesh_readiness(device_status::MeshReadiness::Failed(format!(
+                            "{error:#}"
+                        )));
+                    return Err(error);
+                }
+            };
             self.runtime = Some(runtime);
         }
         self.watch_devices().await?;
@@ -891,6 +915,8 @@ impl Client {
     }
 
     pub async fn pause(&mut self) -> Result<()> {
+        self.directory
+            .set_mesh_readiness(device_status::MeshReadiness::Stopping);
         self.adb.pause();
         self.directory.stop().await;
         self.chat_files.pause();
@@ -901,6 +927,8 @@ impl Client {
         if let Some(mut runtime) = self.runtime.take() {
             runtime.shutdown().await?;
         }
+        self.directory
+            .set_mesh_readiness(device_status::MeshReadiness::Stopped);
         Ok(())
     }
 
@@ -915,7 +943,10 @@ impl Client {
     }
 
     fn snapshot(&self) -> Result<Value> {
-        enrollment::public_snapshot(&self.store, self.runtime.as_ref().is_some_and(|r| !r.is_finished()))
+        enrollment::public_snapshot(
+            &self.store,
+            self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
+        )
     }
 
     async fn request(
@@ -1110,7 +1141,9 @@ impl Client {
             } => self.begin_invitation(&ticket, &name, switch_from).await,
             Command::PollInvitation => self.poll_invitation().await,
             Command::NextInvitation => self.next_invitation().await,
-            Command::ConfirmInvitationSwitch { input_id, expected } => self.confirm_invitation_switch(&input_id, expected).await,
+            Command::ConfirmInvitationSwitch { input_id, expected } => {
+                self.confirm_invitation_switch(&input_id, expected).await
+            }
             Command::CancelInvitation => self.cancel_invitation().await,
             Command::SavePeer {
                 origin,

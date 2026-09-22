@@ -42,7 +42,8 @@ pub fn install(
 pub fn is_business(family: &str) -> bool {
     matches!(
         family,
-        "welcome"
+        "device-name"
+            | "welcome"
             | "node-directory"
             | "connection"
             | "model"
@@ -381,6 +382,13 @@ pub fn state_label(state: &str) -> String {
         "dropdown" => "选择模型",
         "signed-out" => "未登录",
         "signed-in" => "已登录",
+        "not-started" => "未启动",
+        "preparing" => "准备中",
+        "direct" => "直连",
+        "relay" => "中继",
+        "connecting" => "连接中",
+        "stopping" => "停止中",
+        "revoked" => "访问已撤销",
         "loading" => "加载中",
         "error" => "错误",
         "running" => "运行中",

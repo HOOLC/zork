@@ -7,10 +7,16 @@ use crate::{
 use gpui::{div, prelude::*, rgb, Context, Entity, Task, Window};
 use std::{collections::BTreeMap, sync::Arc};
 
-type Source = (String, String, Arc<crate::api::Profiles>);
+type Source = (
+    String,
+    String,
+    Arc<crate::api::Profiles>,
+    zork_ui::device_name::DeviceStatus,
+);
 struct Device {
     id: String,
     name: String,
+    status: zork_ui::device_name::DeviceStatus,
     source: Arc<crate::api::Profiles>,
     editor: Entity<ProfilesView>,
     _updates: Task<()>,
@@ -157,7 +163,7 @@ impl ModelSettings {
         self.devices.retain(|device| {
             sources
                 .iter()
-                .any(|(id, _, source)| id == &device.id && Arc::ptr_eq(source, &device.source))
+                .any(|(id, _, source, _)| id == &device.id && Arc::ptr_eq(source, &device.source))
         });
         if self
             .selected
@@ -166,13 +172,21 @@ impl ModelSettings {
         {
             self.selected = None;
         }
-        for (id, name, source) in sources {
+        for (id, name, source, status) in sources {
             if let Some(device) = self.devices.iter_mut().find(|d| d.id == id) {
                 device.name = name.clone();
-                device.editor.update(cx, |v, _| v.set_device_name(name));
+                device.status = status.clone();
+                device.editor.update(cx, |v, cx| {
+                    v.set_device_name(name);
+                    v.set_device_status(status, cx);
+                });
                 continue;
             }
-            let editor = cx.new(|cx| ProfilesView::editor(source.clone(), name.clone(), cx));
+            let editor = cx.new(|cx| {
+                let mut view = ProfilesView::editor(source.clone(), name.clone(), cx);
+                view.set_device_status(status.clone(), cx);
+                view
+            });
             let mut updates = source.subscribe_state();
             let _updates = cx.spawn(async move |this, cx| {
                 while updates.changed().await.is_some() {
@@ -184,6 +198,7 @@ impl ModelSettings {
             self.devices.push(Device {
                 id,
                 name,
+                status,
                 source,
                 editor,
                 _updates,
@@ -208,12 +223,13 @@ impl Render for ModelSettings {
                 .is_none_or(|id| id == &device.id)
         }) {
             let state = device.source.snapshot();
+            let name = zork_ui::device_name::summary(&device.name, &device.status, None);
             if state.loading {
-                notices.push(format!("{} · 正在加载模型…", device.name));
+                notices.push(format!("{name} · 正在加载模型…"));
             } else if let Some(error) = &state.error {
-                notices.push(format!("{} · {}", device.name, error));
+                notices.push(format!("{name} · {error}"));
             }
-            append_groups(&mut groups, self.grouping, &device.id, &device.name, &state);
+            append_groups(&mut groups, self.grouping, &device.id, &name, &state);
         }
 
         let empty = groups.is_empty() && notices.is_empty();
@@ -279,26 +295,34 @@ impl Render for ModelSettings {
                         .when(self.devices.is_empty(), |v| v.child("请先连接设备"))
                         .children(self.devices.iter().map(|device| {
                             let id = device.id.clone();
-                            ui::button(
-                                format!("model-add-device-{id}"),
-                                device.name.clone(),
-                                false,
-                                true,
-                            )
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                v.selected = Some(id.clone());
-                                v.adding = false;
-                                if let Some(device) = v.devices.iter().find(|d| d.id == id) {
-                                    device
-                                        .editor
-                                        .update(cx, |editor, cx| editor.add_connection(cx));
-                                }
-                                cx.notify();
-                            }))
-                            .automation(
-                                AutomationRole::Button,
-                                format!("添加连接到 {}", device.name),
-                            )
+                            ui::button(format!("model-add-device-{id}"), "", false, true)
+                                .child(zork_ui::device_name::label(
+                                    format!("model-add-device-name-{id}"),
+                                    device.name.clone(),
+                                    &device.status,
+                                    None,
+                                ))
+                                .on_click(cx.listener(move |v, _, _, cx| {
+                                    v.selected = Some(id.clone());
+                                    v.adding = false;
+                                    if let Some(device) = v.devices.iter().find(|d| d.id == id) {
+                                        device
+                                            .editor
+                                            .update(cx, |editor, cx| editor.add_connection(cx));
+                                    }
+                                    cx.notify();
+                                }))
+                                .automation(
+                                    AutomationRole::Button,
+                                    format!(
+                                        "添加连接到 {}",
+                                        zork_ui::device_name::summary(
+                                            &device.name,
+                                            &device.status,
+                                            None
+                                        )
+                                    ),
+                                )
                         })),
                 )
             })

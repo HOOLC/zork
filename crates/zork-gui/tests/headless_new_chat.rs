@@ -69,6 +69,14 @@ fn main() -> anyhow::Result<()> {
                 .enabled,
             "empty draft can be sent"
         );
+        anyhow::ensure!(
+            snapshot
+                .elements
+                .iter()
+                .find(|e| e.id == "new-chat-device")
+                .is_some_and(|e| e.label.contains("直连")),
+            "selected device must show its Mesh status"
+        );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
@@ -77,7 +85,20 @@ fn main() -> anyhow::Result<()> {
             })??;
             draw(cx)
         };
-        for id in ["new-chat-device", "new-chat-device-1", "new-chat-options"] {
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-device"}}),
+            &mut cx,
+        )?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|e| e.id == "new-chat-device-1")
+                .is_some_and(|e| e.label.contains("Mesh 准备中")),
+            "remote device option must show its Mesh status"
+        );
+        for id in ["new-chat-device-1", "new-chat-options"] {
             action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
         }
         cx.capture_screenshot(window.into())?

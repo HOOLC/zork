@@ -310,7 +310,13 @@ impl SharedFilesView {
                                     version
                                         .sources
                                         .iter()
-                                        .map(|source| source.name.as_str())
+                                        .map(|source| {
+                                            crate::device_name::summary(
+                                                &source.name,
+                                                &source.status,
+                                                Some(&self.locale),
+                                            )
+                                        })
                                         .collect::<Vec<_>>()
                                         .join(" · ")
                                 })
@@ -423,11 +429,12 @@ impl SharedFilesView {
             "shared-source-all",
             self.locale.text("shared_all_sources"),
         )];
-        sources.extend(
-            self.data.devices.iter().map(|device| {
-                Item::new(format!("shared-source-{}", device.id), device.name.clone())
-            }),
-        );
+        sources.extend(self.data.devices.iter().map(|device| {
+            Item::new(
+                format!("shared-source-{}", device.id),
+                crate::device_name::summary(&device.name, &device.status, Some(&self.locale)),
+            )
+        }));
         let items = vec![
             Item::new("shared-refresh", self.locale.text("refresh")).icon("interface/reload.svg"),
             Item::new(

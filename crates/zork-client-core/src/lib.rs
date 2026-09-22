@@ -30,6 +30,8 @@ pub mod desktop;
 #[cfg(not(target_family = "wasm"))]
 mod device_metadata;
 #[cfg(not(target_family = "wasm"))]
+pub mod device_status;
+#[cfg(not(target_family = "wasm"))]
 mod enrollment;
 #[cfg(not(target_family = "wasm"))]
 pub mod file_io;

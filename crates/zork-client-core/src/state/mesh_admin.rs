@@ -76,6 +76,21 @@ impl MeshAdmin {
         }
         source
     }
+    pub fn peer_status(&self, origin: &str) -> zork_client_types::device::DeviceStatus {
+        let device = self.device.upgrade().map(|device| device.snapshot());
+        crate::device_status::project(
+            device
+                .as_ref()
+                .and_then(|device| device.mesh_readiness.as_ref()),
+            self.snapshot()
+                .peers
+                .iter()
+                .find(|peer| peer.origin == origin)
+                .map(|peer| peer.online),
+            &Default::default(),
+            false,
+        )
+    }
     pub fn subscribe(&self) -> Subscription<MeshAdminData> {
         self.state.subscribe()
     }

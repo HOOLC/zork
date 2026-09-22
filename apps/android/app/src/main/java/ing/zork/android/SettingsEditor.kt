@@ -98,7 +98,7 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                 Text(if (kind == "rename") "连接此设备的客户端都会看到新名称。" else "名称可使用中文，原有连接 ID 和 Session 配置保持有效。", fontSize = 12.sp, color = ZorkColors.Muted)
             }
             "connection" -> {
-                Text("${state.device?.name.orEmpty()} · 连接保存在此设备", fontSize = 12.sp, color = ZorkColors.Muted)
+                Text("${deviceNameSummary(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi())} · 连接保存在此设备", fontSize = 12.sp, color = ZorkColors.Muted)
                 SettingsSegments(listOf("subscription" to "订阅账号", "api" to "API 接入"), access, editable && attempt == null) { access = it; providerId = ""; billingId = ""; key = ""; base = "" }
                 SettingsSelect("提供商", providerId, providers.map { it.text("id") to it.text("label", it.text("id")) }, editable && attempt == null) { providerId = it; billingId = ""; base = ""; key = "" }
                 if (billings.size > 1) SettingsSelect("接入方式", billing?.text("id").orEmpty(), billings.map { it.text("id") to it.text("label") }, editable && attempt == null) { billingId = it; key = "" }

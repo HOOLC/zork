@@ -404,6 +404,7 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
                 );
                 view.set_applications(
                     Arc::new(vec![ApplicationEntry {
+                        device_status: zork_ui::device_name::DeviceStatus::Direct,
                         page: app.clone(),
                         device_id: "mini1".into(),
                         device_name: "mini1".into(),

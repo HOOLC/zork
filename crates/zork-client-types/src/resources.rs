@@ -168,6 +168,7 @@ pub struct InspectionState {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceDevice {
+    pub status: crate::device::DeviceStatus,
     pub id: String,
     pub name: String,
     pub catalog: Option<ResourceCatalog>,

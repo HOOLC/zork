@@ -26,6 +26,7 @@ struct Binding {
     client: Arc<StationClient>,
     origin: Option<String>,
     online: Option<bool>,
+    status: zork_client_types::device::DeviceStatus,
 }
 struct Owned {
     data: SharedFilesData,
@@ -154,6 +155,7 @@ impl SharedFiles {
                 client,
                 origin,
                 online: same.and_then(|b| b.online),
+                status: same.map(|b| b.status.clone()).unwrap_or_default(),
             });
         }
         let changed = old.len() != s.bindings.len()
@@ -205,12 +207,16 @@ impl SharedFiles {
             return;
         };
         let origin = data.mesh.origin.clone().or_else(|| binding.origin.clone());
-        if binding.origin == origin && binding.online == data.online {
+        if binding.origin == origin
+            && binding.online == data.online
+            && binding.status == data.status
+        {
             return;
         }
         let name = binding.name.clone();
         binding.origin = origin.clone();
         binding.online = data.online;
+        binding.status = data.status.clone();
         if let Some(origin) = origin {
             s.names.insert(origin, name);
         }

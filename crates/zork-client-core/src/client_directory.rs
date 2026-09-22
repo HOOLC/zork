@@ -30,6 +30,8 @@ pub(crate) struct Directory {
     chat_files: Arc<crate::chat_files::Controller>,
     adb: Arc<crate::adb::Controller>,
     node: Mutex<Option<MeshNode>>,
+    readiness: Mutex<crate::device_status::MeshReadiness>,
+    publication: Mutex<()>,
     connections: Mutex<HashMap<String, Connection>>,
     generation: AtomicU64,
     reconcile: tokio::sync::Mutex<()>,
@@ -65,11 +67,20 @@ impl Directory {
             adb,
             source: Arc::new(zork_observe::ValueSource::new(value)),
             node: Default::default(),
+            readiness: Default::default(),
+            publication: Default::default(),
             connections: Default::default(),
             generation: AtomicU64::new(0),
             reconcile: Default::default(),
             task: Default::default(),
         }))
+    }
+    pub(crate) fn set_mesh_readiness(&self, state: crate::device_status::MeshReadiness) {
+        *self.readiness.lock().unwrap() = state.clone();
+        for device in self.devices() {
+            device.set_mesh_readiness(state.clone());
+        }
+        let _ = self.publish(true);
     }
     pub(crate) async fn start(self: &Arc<Self>, node: MeshNode) -> Result<()> {
         let running = self
@@ -81,6 +92,7 @@ impl Directory {
         if !running {
             self.stop().await;
             *self.node.lock().unwrap() = Some(node);
+            self.set_mesh_readiness(crate::device_status::MeshReadiness::Ready);
             let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
             let weak = Arc::downgrade(self);
             let mut changes = self.store.directory_events();
@@ -268,6 +280,7 @@ impl Directory {
                 Some((self.store.clone(), peer.id.clone())),
                 true,
             );
+            device.set_mesh_readiness(self.readiness.lock().unwrap().clone());
             device.start();
             device.profiles().restore_authorization()?;
             let mut changes = device.subscribe_domains(Domains::CONNECTION | Domains::MESH);
@@ -287,6 +300,10 @@ impl Directory {
                         directory
                             .shared_files
                             .update_device(&id, &watched_client, &state);
+                        let _ = directory.publish(true);
+                        directory
+                            .resources
+                            .set_device_statuses(&directory.statuses());
                         if state.revoked {
                             directory.chat_files.revoke(&id);
                             directory.adb.peer_revoked(&id);
@@ -360,9 +377,19 @@ impl Directory {
                 .map(|(id, name, client, _)| (id, name, client))
                 .collect(),
         );
+        self.resources.set_device_statuses(&self.statuses());
         self.adb.devices_changed();
     }
+    fn statuses(&self) -> HashMap<String, crate::device_status::DeviceStatus> {
+        self.connections
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, connection)| (id.clone(), connection.device.snapshot().status.clone()))
+            .collect()
+    }
     fn publish(&self, changed: bool) -> Result<()> {
+        let _publication = self.publication.lock().unwrap();
         let nodes = self.store.nodes()?;
         let running = self
             .node
@@ -389,13 +416,32 @@ impl Directory {
         {
             return Ok(());
         }
-        let nodes: Vec<_> = nodes.iter().map(directory_node).collect();
+        let states = self.statuses();
+        let readiness = self.readiness.lock().unwrap().clone();
+        let nodes: Vec<_> = nodes
+            .iter()
+            .map(|node| {
+                let mut value = directory_node(node);
+                value["status"] = json!(states.get(&node.id).cloned().unwrap_or_else(|| {
+                    crate::device_status::project(
+                        Some(&readiness),
+                        None,
+                        &Default::default(),
+                        false,
+                    )
+                }));
+                value
+            })
+            .collect();
         let removed = previous["nodes"]
             .as_array()
             .into_iter()
             .flatten()
             .any(|old| !nodes.iter().any(|node| node["id"] == old["id"]));
         let value = json!({"nodes":nodes,"selected_peer":selected,"running":running});
+        if *previous == value {
+            return Ok(());
+        }
         if removed || (!running && previous["running"] == true) {
             self.source.invalidate(value);
         } else {
@@ -407,5 +453,6 @@ impl Directory {
 }
 
 fn directory_node(node: &SavedNode) -> Value {
-    json!({"id":node.id,"name":node.name,"mesh":node.mesh,"group":node.group})
+    json!({"id":node.id,"name":node.name,"mesh":node.mesh,"group":node.group,
+        "status":crate::device_status::DeviceStatus::MeshNotStarted})
 }

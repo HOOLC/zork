@@ -26,7 +26,9 @@ impl RootView {
                         "worker" => Some(self.locale.text("history_role_worker").into()),
                         _ => None,
                     }),
-                environment: self.device_name.clone(),
+                environment: self.device_name.as_ref().map(|name| {
+                    zork_ui::device_name::summary(name, &self.core_device.snapshot().status, None)
+                }),
                 provider: raw
                     .and_then(|r| r.profile.as_ref())
                     .map(|p| p.provider.clone()),

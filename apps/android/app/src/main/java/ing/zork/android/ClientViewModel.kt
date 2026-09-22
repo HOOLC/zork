@@ -24,7 +24,7 @@ internal fun JSONArray?.objects(): List<JSONObject> =
 internal fun JSONObject.text(key: String, fallback: String = ""): String =
     if (isNull(key)) fallback else optString(key, fallback)
 
-internal data class Peer(val id: String, val name: String, val address: String)
+internal data class Peer(val id: String, val name: String, val address: String, val status: DeviceStatusUi = DeviceStatusUi())
 internal data class Conversation(val id: String, val title: String, val leaderId: String? = null,
     val canSend: Boolean = true, val avatar: String? = null, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
@@ -368,9 +368,11 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     private fun applyDirectory(value: JSONObject) {
         val previous = activePeer?.id
         peers = value.optJSONArray("nodes").objects().map {
-            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "")
+            Peer(it.text("id"), it.text("name"), it.optJSONObject("mesh")?.text("addr") ?: "", it.deviceStatus())
         }
         activePeer = peers.find { it.id == (previous ?: value.text("selected_peer")) }
+        settings = settings?.let { current -> current.copy(device = peers.find { it.id == current.device?.id }) }
+        newChat = newChat?.let { current -> peers.find { it.id == current.peer.id }?.let { current.copy(peer = it) } }
         deviceTrees = deviceTrees.filterKeys { id -> peers.any { it.id == id } }
         if (previous != null && activePeer == null) {
             live?.cancel(); closeHistory(); settingsWatch?.cancel()
@@ -711,7 +713,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
                 repo.newChatEvents(peer.id).takeWhile { foreground && generation == newChatGeneration && newChat?.peer?.id == peer.id }.collect { frame ->
                     val snapshot = frame.value.optJSONObject("snapshot") ?: return@collect
                     if (generation != newChatGeneration) return@collect
-                    newChat = NewChatUi(peer, snapshot)
+                    newChat = NewChatUi(peers.find { it.id == peer.id } ?: peer, snapshot)
                     val chat = snapshot.optJSONObject("created")
                     if (chat != null && settings == null) openSession(JSONObject(chat.toString()).put("_peer", peer.id))
                 }

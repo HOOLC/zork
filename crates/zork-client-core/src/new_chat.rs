@@ -39,6 +39,7 @@ pub fn present(
     let option = |value: &str, label: &str| OptionItem {
         value: value.into(),
         label: label.into(),
+        status: None,
     };
     Snapshot {
         text: text.into(),
@@ -162,6 +163,11 @@ impl Fixture {
                 .map(|(value, label)| OptionItem {
                     value: value.into(),
                     label: label.into(),
+                    status: Some(if value == "local" {
+                        crate::device_status::DeviceStatus::Direct
+                    } else {
+                        crate::device_status::DeviceStatus::MeshPreparing
+                    }),
                 })
                 .collect(),
         };

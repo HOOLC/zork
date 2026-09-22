@@ -483,6 +483,7 @@ impl Render for DeviceNavigation {
                 id: device.node.id.clone(),
                 name: device.node.name.clone(),
                 online: device.data.online,
+                status: device.data.status.clone(),
                 direct: device.data.route.direct,
                 public: device.data.route.scope == crate::api::ConnectionScope::Public,
                 chats: device.data.chats.clone(),

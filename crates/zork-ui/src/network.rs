@@ -11,7 +11,7 @@ use std::rc::Rc;
 pub struct Peer {
     pub id: String,
     pub name: String,
-    pub status: String,
+    pub status: crate::device_name::DeviceStatus,
     pub permission: String,
 }
 #[derive(Clone, Default)]
@@ -147,8 +147,8 @@ pub fn network<V: 'static>(
             let action = action.clone();
             let id = peer.id.clone();
             row(
-                peer.name.clone(),
-                format!("{} · {}", peer.status, peer.permission),
+                crate::device_name::summary(&peer.name, &peer.status, None),
+                peer.permission.clone(),
                 ui::button(format!("revoke-peer-{id}"), "移除", false, !data.busy)
                     .on_click(cx.listener(move |v, _, _, cx| {
                         action(v, NetworkAction::Remove(id.clone()), cx)
@@ -474,7 +474,7 @@ impl NetworkStory {
                     vec![Peer {
                         id: "mini2".into(),
                         name: "mini2".into(),
-                        status: "已连接".into(),
+                        status: crate::device_name::DeviceStatus::Connected,
                         permission: "客户端 · 可管理此节点".into(),
                     }]
                 },
@@ -655,7 +655,7 @@ impl gpui::Render for NetworkStory {
                                 v.data.peers.push(Peer {
                                     id: input.origin,
                                     name: input.name,
-                                    status: "已连接".into(),
+                                    status: crate::device_name::DeviceStatus::Connected,
                                     permission: if v.grant {
                                         "客户端 · 可管理此设备"
                                     } else {
