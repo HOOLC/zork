@@ -881,6 +881,8 @@ impl Card {
                 bubbles: &bubbles,
                 presentation: None,
                 handler,
+                accessory_band: 0.,
+                accessories: vec![],
             },
             window,
             cx,

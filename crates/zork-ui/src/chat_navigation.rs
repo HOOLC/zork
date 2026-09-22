@@ -105,6 +105,9 @@ impl Navigation {
         self.active = active;
         self.shared_files = shared_files;
         self.width = width;
+        if all || removed || !changed.is_empty() {
+            crate::components::region::invalidate(cx, &["chats"]);
+        }
         if all || removed {
             crate::components::region::invalidate_all(cx);
         } else if !changed.is_empty() {
@@ -263,6 +266,88 @@ impl Navigation {
                 )
             })
     }
+    fn new_chat_target(&self) -> Option<String> {
+        if let Some(id) = &self.active {
+            if self.devices.iter().any(|device| &device.id == id) {
+                return Some(id.clone());
+            }
+        }
+        self.devices
+            .iter()
+            .find(|device| device.online == Some(true))
+            .or_else(|| self.devices.first())
+            .map(|device| device.id.clone())
+    }
+    fn on_new_chat(&self) -> bool {
+        !self.shared_files
+            && self.devices.iter().any(|device| {
+                self.active.as_deref() == Some(device.id.as_str())
+                    && device.selected_session.is_none()
+            })
+    }
+    fn chat_list(&self, cx: &mut Context<Self>) -> Div {
+        let mut chats: Vec<_> = self
+            .devices
+            .iter()
+            .flat_map(|device| device.chats.iter().map(move |chat| (device, chat)))
+            .collect();
+        chats.sort_by(|a, b| {
+            b.1.updated_at
+                .cmp(&a.1.updated_at)
+                .then_with(|| a.1.chat_id.cmp(&b.1.chat_id))
+                .then_with(|| a.0.id.cmp(&b.0.id))
+        });
+        let target = self.new_chat_target();
+        let mut list = self.tabs.column().child({
+            let node = target.clone();
+            self.tabs
+                .tab("new-chat-entry".into(), self.on_new_chat())
+                .child(ui::icon("icons/plus.svg", 16.))
+                .child(self.locale.text("new_chat"))
+                .on_click(
+                    cx.listener(move |v, _, _, cx| v.go(node.clone(), Destination::NewChat, cx)),
+                )
+                .automation(AutomationRole::Button, self.locale.text("new_chat"))
+        });
+        let mut previous = String::new();
+        for (device, chat) in chats {
+            let label = self.day_label(&chat.updated_at);
+            if label != previous {
+                previous = label.clone();
+                list = list.child(self.day_header(label));
+            }
+            list = list.child(self.chat_row(device, chat, cx));
+        }
+        list
+    }
+    fn day_header(&self, label: String) -> impl IntoElement {
+        div()
+            .id(format!("chat-day-{label}"))
+            .px(px(8.))
+            .pt(px(12.))
+            .pb(px(2.))
+            .text_size(px(12.))
+            .line_height(px(16.))
+            .text_color(rgb(ZORK_UI.palette.muted))
+            .child(label.clone())
+            .automation(AutomationRole::Status, label)
+    }
+    fn day_label(&self, updated: &str) -> String {
+        let Some(day) = calendar_day(updated) else {
+            return self.locale.text("chat_day_earlier").into();
+        };
+        let today = local_today();
+        let age = epoch_days(today.0, today.1, today.2) - epoch_days(day.0, day.1, day.2);
+        if age == 0 {
+            self.locale.text("chat_day_today").into()
+        } else if (1..7).contains(&age) {
+            self.locale
+                .text(&format!("chat_day_{}", weekday(day.0, day.1, day.2)))
+                .into()
+        } else {
+            format!("{:02}-{:02}", day.1, day.2)
+        }
+    }
     fn chat_group(
         &self,
         device: &Device,
@@ -280,11 +365,7 @@ impl Navigation {
             .collect();
         self.tabs
             .column()
-            .children(
-                visible
-                    .iter()
-                    .map(|chat| self.chat_row(device, chat, interactive, cx)),
-            )
+            .children(visible.iter().map(|chat| self.chat_row(device, chat, cx)))
             .when(chats.len() > visible.len() || all, |panel| {
                 panel.child(
                     self.tabs
@@ -311,18 +392,17 @@ impl Navigation {
         &self,
         device: &Device,
         chat: &NavigationChat,
-        interactive: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected = !self.shared_files
             && self.active.as_deref() == Some(&device.id)
-            && device.selected_session.as_deref() == Some(&chat.chat_id)
-            && device.chatting;
+            && device.selected_session.as_deref() == Some(&chat.chat_id);
         let title = if chat.title.is_empty() {
             self.locale.text("device_untitled_task").to_owned()
         } else {
             chat.title.clone()
         };
+        let meta = device.name.clone();
         let node = device.id.clone();
         let session = chat.chat_id.clone();
         let mut rows = vec![(self.locale.text("workspace").into(), chat.workspace.clone())];
@@ -337,20 +417,66 @@ impl Navigation {
             description: chat.description.clone(),
             rows,
         };
-        self.tabs
-            .tab(format!("chat-{}-{}", device.id, chat.chat_id), selected)
-            .pl(px(36.))
-            .tab_stop(interactive)
+        let label = format!("{title}, {meta}");
+        let radius = crate::controls::FIELD_RADIUS;
+        div()
+            .id(format!("chat-{}-{}", device.id, chat.chat_id))
+            .relative()
+            .w_full()
+            .px(px(8.))
+            .py(px(6.))
+            .flex()
+            .flex_col()
+            .gap(px(1.))
+            .cursor_pointer()
+            .when(!selected, |row| {
+                row.child(crate::components::motion::HoverFill {
+                    id: format!("chat-hover-{}-{}", device.id, chat.chat_id).into(),
+                    color: crate::design::INTERACTION.neutral_hover,
+                    radius,
+                    pressed: None,
+                })
+            })
+            .when(selected, |row| {
+                row.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .text_color(rgb(ZORK_UI.palette.selected))
+                        .child(
+                            crate::components::smooth::fill(
+                                format!("chat-active-{}-{}", device.id, chat.chat_id),
+                                radius,
+                            )
+                            .current_color(),
+                        ),
+                )
+            })
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
+                    .text_size(px(13.))
+                    .line_height(px(18.))
                     .text_ellipsis()
                     .child(title.clone()),
             )
-            .when(chat.unread, |v| {
-                v.child(
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .min_w_0()
+                    .text_size(px(11.))
+                    .line_height(px(16.))
+                    .text_color(rgb(ZORK_UI.palette.muted))
+                    .child(ui::icon("icons/node.svg", 12.))
+                    .child(div().min_w_0().text_ellipsis().child(meta)),
+            )
+            .when(chat.unread, |row| {
+                row.child(
                     div()
+                        .absolute()
+                        .right(px(8.))
+                        .top(px(10.))
                         .size(px(6.))
                         .rounded_full()
                         .bg(rgb(ZORK_UI.palette.text)),
@@ -365,7 +491,7 @@ impl Navigation {
                     cx,
                 );
             }))
-            .automation(AutomationRole::Button, title)
+            .automation(AutomationRole::Button, label)
             .map(|row| {
                 crate::components::tooltip::trigger(
                     row,
@@ -375,6 +501,88 @@ impl Navigation {
             })
     }
 }
+fn calendar_day(value: &str) -> Option<(i32, u32, u32)> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    let year: i32 = std::str::from_utf8(&bytes[0..4]).ok()?.parse().ok()?;
+    let month: u32 = std::str::from_utf8(&bytes[5..7]).ok()?.parse().ok()?;
+    let day: u32 = std::str::from_utf8(&bytes[8..10]).ok()?.parse().ok()?;
+    (1..=12).contains(&month).then_some((year, month, day))
+}
+fn epoch_days(year: i32, month: u32, day: u32) -> i64 {
+    let year = year as i64 - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let year_of_era = (year - era * 400) as u64;
+    let month_prime = if month > 2 { month - 3 } else { month + 9 };
+    let day_of_year = (153 * month_prime as u64 + 2) / 5 + day as u64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146097 + day_of_era as i64 - 719468
+}
+fn weekday(year: i32, month: u32, day: u32) -> usize {
+    let offsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let year = if month < 3 { year - 1 } else { year };
+    (year + year / 4 - year / 100 + year / 400 + offsets[month as usize - 1] + day as i32)
+        .rem_euclid(7) as usize
+}
+pub(super) fn iso_days_ago(days: i64) -> String {
+    let today = local_today();
+    let (year, month, day) = ymd_from_epoch(epoch_days(today.0, today.1, today.2) - days);
+    format!("{year:04}-{month:02}-{day:02}T12:00:00")
+}
+fn ymd_from_epoch(days: i64) -> (i32, u32, u32) {
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let day_of_era = z.rem_euclid(146097) as u64;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+    let year = year_of_era as i64 + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    };
+    let year = if month <= 2 { year + 1 } else { year };
+    (year as i32, month as u32, day as u32)
+}
+fn local_today() -> (i32, u32, u32) {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        #[repr(C)]
+        struct Tm {
+            tm_sec: i32,
+            tm_min: i32,
+            tm_hour: i32,
+            tm_mday: i32,
+            tm_mon: i32,
+            tm_year: i32,
+        }
+        unsafe extern "C" {
+            fn time(tloc: *mut i64) -> i64;
+            fn localtime(timer: *const i64) -> *const Tm;
+        }
+        unsafe {
+            let now = time(std::ptr::null_mut());
+            let tm = localtime(&now);
+            if !tm.is_null() {
+                return (
+                    (*tm).tm_year + 1900,
+                    (*tm).tm_mon as u32 + 1,
+                    (*tm).tm_mday as u32,
+                );
+            }
+        }
+    }
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0);
+    ymd_from_epoch(seconds.div_euclid(86_400))
+}
 use crate::navigation::TabGroup;
 impl Render for Navigation {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -383,34 +591,13 @@ impl Render for Navigation {
             .get_or_insert_with(|| cx.new(|_| Default::default()))
             .clone();
         let width = self.width(window.viewport_size().width.as_f32()) - 16.;
-        let ids = self
-            .devices
-            .iter()
-            .map(|d| d.id.clone())
-            .collect::<Vec<_>>();
-        let mut names = ids
-            .iter()
-            .map(|id| format!("device/{id}"))
-            .collect::<HashSet<_>>();
+        let mut names = HashSet::<String>::new();
+        names.insert("chats".into());
         names.insert("footer".into());
         self.regions.retain(|key| names.contains(key));
-        let rows = ids
-            .into_iter()
-            .map(|id| {
-                self.regions.auto_height(
-                    &format!("device/{id}"),
-                    width,
-                    cx,
-                    move |v, window, cx| {
-                        v.devices
-                            .iter()
-                            .find(|d| d.id == id)
-                            .map(|d| v.device(d, window, cx).into_any_element())
-                            .unwrap_or_else(|| gpui::Empty.into_any_element())
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
+        let rows = vec![self.regions.auto_height("chats", width, cx, |v, _, cx| {
+            v.chat_list(cx).into_any_element()
+        })];
         let footer = self.regions.auto_height("footer", width, cx, |v, _, cx| {
             v.render_footer(cx).into_any_element()
         });

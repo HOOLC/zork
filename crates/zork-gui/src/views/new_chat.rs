@@ -75,7 +75,7 @@ impl RootView {
         let mut data = self.core_device.new_chat().presentation();
         data.error = data.error.or_else(|| self.error.clone());
         page.update(cx, |v, cx| {
-            v.configure(data, self.composer_surface_width.min(680.), text, cx)
+            v.configure(data, self.composer_surface_width, text, cx)
         });
         page
     }

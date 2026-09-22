@@ -224,15 +224,9 @@ class Desktop:
         self.click(entry)
         self.wait(lambda: self.visible("new-chat-input"), "new Chat editor")
         assert self.node_api("/v1/node/chats")["items"] == []
-        self.wait(lambda: any(e["id"] == "new-chat-model" and e["enabled"] for e in self.elements()["elements"]), "model choices ready")
-        self.click("new-chat-model")
-        self.wait(lambda: self.visible("new-chat-model-0"), "model menu")
-        self.click("new-chat-model-0")
         self.screenshot("new-chat-empty")
-        assert self.node_api("/v1/node/chats")["items"] == [], "choosing a model created an empty Chat"
         text = "startup first Chat message"
         model.expected = text
-        self.wait(lambda: not self.visible("new-chat-model-0"), "model menu closed")
         self.click("new-chat-input")
         reply = self.ui("/v1/actions", {"type": "type_text", "text": text})
         assert reply.get("accepted") is True

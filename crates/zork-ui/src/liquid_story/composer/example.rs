@@ -336,6 +336,8 @@ impl Render for Example {
                 fan_pinned: self.pinned,
                 bubbles: &bubbles,
                 handler,
+                accessory_band: 0.,
+                accessories: vec![],
                 presentation: Some(view::Presentation {
                     editor_id: "liquid-composer-editor".into(),
                     attach_id: "liquid-composer-attach".into(),

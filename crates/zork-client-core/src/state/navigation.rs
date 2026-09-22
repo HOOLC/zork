@@ -142,6 +142,10 @@ impl NavigationData {
                     .get(channel.chat_id.as_str())
                     .is_some_and(|s| crate::composer::can_stop(s)),
                 executor,
+                model: sessions
+                    .get(channel.chat_id.as_str())
+                    .map(|session| session.model.clone())
+                    .unwrap_or_default(),
                 in_preview: false,
             };
             others.push(chat);

@@ -78,6 +78,8 @@ pub enum Trigger {
     Field,
     Button,
     Icon,
+    /// Label and chevron on the parent surface, without a field fill.
+    Quiet,
 }
 
 pub struct Popover {
@@ -127,8 +129,11 @@ impl Popover {
             }
         }
         let width = measure_label(label, 13., window)
-            + 24.
-            + if trigger == Trigger::Field { 20. } else { 0. };
+            + if trigger == Trigger::Quiet {
+                28.
+            } else {
+                24. + if trigger == Trigger::Field { 20. } else { 0. }
+            };
         self.trigger_measure = Some((label.to_owned().into(), font, trigger, width.ceil()));
         width.ceil()
     }
@@ -455,7 +460,22 @@ impl Popover {
         };
         let p = ZORK_UI.palette;
         let focused = enabled && focus.is_focused(window) && window.last_input_was_keyboard();
-        let trigger = if floating {
+        let quiet = trigger_style == Trigger::Quiet;
+        let quiet_active = quiet && (self.hover.get() || open || focused);
+        let trigger = if floating && quiet {
+            div()
+                .id(id.clone())
+                .w(px(trigger_pose.w as f32))
+                .h(px(trigger_pose.h as f32))
+                .flex()
+                .items_center()
+                .child(popover_face(
+                    label.clone(),
+                    trigger_style,
+                    self.motion.progress(),
+                    leading,
+                ))
+        } else if floating {
             let face = popover_face(
                 label.clone(),
                 trigger_style,
@@ -469,16 +489,28 @@ impl Popover {
                 trigger_pose.r as f32,
                 material.smoothing,
                 super::SurfaceColors {
-                    fill: p.canvas,
-                    border: (trigger_style != Trigger::Icon || self.hover.get() || open || focused)
-                        .then_some(if focused {
-                            crate::design::INTERACTION.focus_border
-                        } else if self.hover.get() {
-                            crate::controls::FIELD_HOVER_BORDER
+                    fill: if quiet {
+                        if quiet_active {
+                            p.sidebar_hover
                         } else {
-                            LIQUID_OUTLINE
-                        }),
-                    parent: p.canvas,
+                            p.sidebar
+                        }
+                    } else {
+                        p.canvas
+                    },
+                    border: if quiet {
+                        focused.then_some(crate::design::INTERACTION.focus_border)
+                    } else {
+                        (trigger_style != Trigger::Icon || self.hover.get() || open || focused)
+                            .then_some(if focused {
+                                crate::design::INTERACTION.focus_border
+                            } else if self.hover.get() {
+                                crate::controls::FIELD_HOVER_BORDER
+                            } else {
+                                LIQUID_OUTLINE
+                            })
+                    },
+                    parent: if quiet { p.sidebar } else { p.canvas },
                     focused,
                 },
                 true,
@@ -560,7 +592,13 @@ impl Popover {
             .relative()
             .w(px(width))
             .h(px(height))
-            .text_color(rgb(if enabled { p.text } else { p.subtle }));
+            .text_color(rgb(if !enabled {
+                p.subtle
+            } else if trigger_style == Trigger::Quiet {
+                p.muted
+            } else {
+                p.text
+            }));
         // Transparent exterior lets the same liquid surface cross arbitrary page
         // content. Children stay inside the current material's inset rectangle.
         let separated = (current.cx - carrier.cx).hypot(current.cy - carrier.cy) > 1.
@@ -581,14 +619,23 @@ impl Popover {
             } else {
                 surface
                     .background_colors(
-                        (floating || open || separated).then_some(p.canvas),
-                        Some(if focused {
-                            crate::design::INTERACTION.focus_border
-                        } else if self.hover.get() {
-                            crate::controls::FIELD_HOVER_BORDER
+                        if trigger_style == Trigger::Quiet {
+                            (self.hover.get() || open || focused || separated)
+                                .then_some(p.sidebar_hover)
                         } else {
-                            LIQUID_OUTLINE
-                        }),
+                            (floating || open || separated).then_some(p.canvas)
+                        },
+                        if trigger_style == Trigger::Quiet {
+                            focused.then_some(crate::design::INTERACTION.focus_border)
+                        } else {
+                            Some(if focused {
+                                crate::design::INTERACTION.focus_border
+                            } else if self.hover.get() {
+                                crate::controls::FIELD_HOVER_BORDER
+                            } else {
+                                LIQUID_OUTLINE
+                            })
+                        },
                         point(px(0.), px(0.)),
                         false,
                     )
@@ -896,8 +943,11 @@ fn popover_face(
         .justify_center()
         .gap_2()
         .px_3()
-        .text_size(px(13.))
+        .text_size(px(if trigger == Trigger::Quiet { 12. } else { 13. }))
         .whitespace_nowrap()
+        .when(trigger == Trigger::Quiet, |v| {
+            v.justify_start().px_0().gap_1()
+        })
         .when(trigger == Trigger::Icon, |v| v.px_0())
         .when_some(leading, |v, path| {
             v.child(gpui::img(path).size(px(18.)).flex_shrink_0())
@@ -912,13 +962,20 @@ fn popover_face(
                 .child(label)
                 .into_any_element()
         })
-        .when(trigger == Trigger::Field, |v| {
-            v.child(
-                crate::controls::icon("icons/chevron-down.svg", 12.).with_transformation(
-                    Transformation::rotate(radians(std::f32::consts::PI * progress as f32)),
-                ),
-            )
-        })
+        .when(
+            trigger == Trigger::Field || trigger == Trigger::Quiet,
+            |v| {
+                v.child(
+                    crate::controls::icon(
+                        "icons/chevron-down.svg",
+                        if trigger == Trigger::Quiet { 10. } else { 12. },
+                    )
+                    .with_transformation(Transformation::rotate(radians(
+                        std::f32::consts::PI * progress as f32,
+                    ))),
+                )
+            },
+        )
 }
 
 fn window_focus(window: &mut Window, focus: &FocusHandle, cx: &mut App) {

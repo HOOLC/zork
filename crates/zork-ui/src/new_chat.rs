@@ -138,14 +138,12 @@ impl Page {
             .iter()
             .map(|o| o.value.clone())
             .collect::<Vec<_>>();
-        ui::dropdown_with_icons(
+        ui::quiet_dropdown(
             id,
             current,
             options,
             self.menus[field],
             self.data.editable && !values.is_empty(),
-            None,
-            vec![None; values.len()],
             window,
             cx,
             move |v, open, cx| {
@@ -178,7 +176,7 @@ impl Render for Page {
             .read(cx)
             .content_height()
             .unwrap_or(composer::EDITOR_MIN)
-            .clamp(composer::EDITOR_MIN, composer::EDITOR_MAX)
+            .clamp(48., composer::EDITOR_MAX)
             + crate::components::liquid_composer::TOP_EXTENSION
             + crate::components::liquid_composer::COMPOSER_CHROME;
         let now = cx.background_executor().now();
@@ -238,6 +236,8 @@ impl Render for Page {
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
+                accessory_band: 0.,
+                accessories: vec![],
                 presentation: Some(composer::Presentation {
                     editor_id: "new-chat-input".into(),
                     attach_id: "new-chat-attach".into(),
@@ -263,9 +263,13 @@ impl Render for Page {
             window,
             cx,
         );
-        let options = (0..3)
-            .map(|i| self.selector(i, window, cx))
-            .collect::<Vec<_>>();
+        let note = if self.data.busy {
+            Some(self.text.text("new_chat_creating"))
+        } else if self.data.uncertain {
+            Some(self.text.text("new_chat_uncertain"))
+        } else {
+            None
+        };
         div()
             .id("new-chat-page")
             .size_full()
@@ -273,45 +277,23 @@ impl Render for Page {
             .flex()
             .flex_col()
             .items_center()
-            .justify_center()
+            .justify_end()
             .px_6()
-            .child(div().mb_8().w(px(self.width)).child(ui::heading(
-                self.text.text("new_chat"),
-                self.text.text("new_chat_intro"),
-            )))
-            .child(div().w(px(self.width)).h(px(height)).child(composer))
-            .child(
-                div()
-                    .w(px(self.width))
-                    .mt_3()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(options),
-            )
-            .child(
-                div()
-                    .w(px(self.width))
-                    .mt_3()
-                    .text_size(px(12.))
-                    .text_color(rgb(ZORK_UI.palette.muted))
-                    .child(self.text.text(if self.data.busy {
-                        "new_chat_creating"
-                    } else if self.data.uncertain {
-                        "new_chat_uncertain"
-                    } else {
-                        "new_chat_hint"
-                    })),
-            )
+            .pb(px(ZORK_UI.layout.composer_bottom_inset))
             .when(self.data.loading, |v| {
-                v.child(crate::components::loading::status(
-                    "new-chat-loading",
-                    self.text.text("new_chat_loading"),
-                ))
+                v.child(
+                    div()
+                        .w(px(self.width))
+                        .mb_2()
+                        .child(crate::components::loading::status(
+                            "new-chat-loading",
+                            self.text.text("new_chat_loading"),
+                        )),
+                )
             })
             .when(self.data.needs_model, |v| {
                 v.child(
-                    div().mt_3().child(
+                    div().w(px(self.width)).mb_2().child(
                         ui::button(
                             "new-chat-model-settings",
                             self.text.text("new_chat_add_model"),
@@ -322,17 +304,29 @@ impl Render for Page {
                     ),
                 )
             })
+            .when_some(note, |v, note| {
+                v.child(
+                    div()
+                        .w(px(self.width))
+                        .mb_2()
+                        .text_size(px(12.))
+                        .text_color(rgb(ZORK_UI.palette.muted))
+                        .child(note),
+                )
+            })
             .when_some(self.data.error.clone(), |v, error| {
                 v.child(
                     div()
                         .id("new-chat-error")
                         .w(px(self.width))
-                        .mt_3()
+                        .mb_2()
+                        .text_size(px(12.))
                         .text_color(rgb(ZORK_UI.palette.danger))
                         .child(error.clone())
                         .automation(AutomationRole::Status, error),
                 )
             })
+            .child(div().w(px(self.width)).h(px(height)).child(composer))
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }
 }

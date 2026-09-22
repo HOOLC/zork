@@ -63,7 +63,20 @@ impl Group {
     pub fn tab(&self, id: String, selected: bool) -> controls::Action {
         self.row(id, selected, true)
     }
+    /// Same hit target and corner radius as the sliding hover, without the marker.
+    pub fn plate(&self, id: impl Into<ElementId>, selected: bool) -> controls::Action {
+        self.anchored(id, selected, true, true)
+    }
     pub fn row(&self, id: impl Into<ElementId>, selected: bool, enabled: bool) -> controls::Action {
+        self.anchored(id, selected, enabled, false)
+    }
+    fn anchored(
+        &self,
+        id: impl Into<ElementId>,
+        selected: bool,
+        enabled: bool,
+        plate: bool,
+    ) -> controls::Action {
         let id = id.into();
         controls::adaptive_action(
             id.clone(),
@@ -93,6 +106,7 @@ impl Group {
                 id,
                 selected,
                 enabled,
+                plate,
                 group: self.clone(),
             }
             .into_any_element(),
@@ -102,6 +116,7 @@ impl Group {
         GroupSurface {
             inner: content.into_any_element(),
             group: self.clone(),
+            plate: None,
             under: None,
             over: None,
         }
@@ -149,6 +164,7 @@ struct Anchor {
     clip: Bounds<Pixels>,
     selected: bool,
     enabled: bool,
+    plate: bool,
     order: u64,
 }
 #[derive(Default)]
@@ -157,6 +173,7 @@ struct State {
     hot: Option<ElementId>,
     order: u64,
     hover: Travel,
+    plate: Travel,
     indicator: Travel,
     samples: Vec<FrameSample>,
     visible: bool,
@@ -279,6 +296,7 @@ struct RowAnchor {
     id: ElementId,
     selected: bool,
     enabled: bool,
+    plate: bool,
     group: Group,
 }
 impl RenderOnce for RowAnchor {
@@ -304,7 +322,7 @@ impl RenderOnce for RowAnchor {
             .absolute()
             .inset_0()
             .on_hover(move |inside, _, cx| {
-                if self.enabled && *inside {
+                if self.enabled && !self.plate && *inside {
                     hover.set_hover(Some(hover_id.clone()), cx);
                 } else if hover.hovered().as_ref() == Some(&hover_id) {
                     hover.set_hover(None, cx);
@@ -323,6 +341,7 @@ impl RenderOnce for RowAnchor {
                                 clip: window.content_mask().bounds,
                                 selected: self.selected,
                                 enabled: self.enabled,
+                                plate: self.plate,
                                 order,
                             },
                         );
@@ -340,6 +359,7 @@ impl RenderOnce for RowAnchor {
 pub struct GroupSurface {
     inner: AnyElement,
     group: Group,
+    plate: Option<Layer>,
     under: Option<Layer>,
     over: Option<Layer>,
 }
@@ -385,7 +405,7 @@ impl Element for GroupSurface {
         let state = self.group.state.clone();
         let style = self.group.style;
         let material = self.group.material;
-        let (under, over) = self.group.notify.update(cx, |_, cx| {
+        let (plate, under, over) = self.group.notify.update(cx, |_, cx| {
             let mut state = state.borrow_mut();
             let viewport = Bounds::new(point(px(0.), px(0.)), window.viewport_size());
             let visible_bounds = bounds
@@ -397,7 +417,7 @@ impl Element for GroupSurface {
                 state
                     .anchors
                     .get(id)
-                    .filter(|a| a.enabled)
+                    .filter(|a| a.enabled && !a.selected)
                     .map(|a| (id.clone(), *a))
             });
             let selected = state
@@ -406,20 +426,34 @@ impl Element for GroupSurface {
                 .filter(|(_, a)| a.selected && a.enabled)
                 .max_by_key(|(_, a)| a.order)
                 .map(|(id, a)| (id.clone(), *a));
-            let indicator = selected.and_then(|(id, a)| {
-                let marker = match style.kind {
-                    Kind::Sidebar => Bounds::new(
-                        point(a.bounds.left() + px(2.), a.bounds.center().y - px(7.)),
-                        size(px(2.), px(14.)),
-                    ),
-                    Kind::Tabs => Bounds::new(
-                        point(a.bounds.center().x - px(7.), a.bounds.bottom() - px(4.)),
-                        size(px(14.), px(2.)),
-                    ),
-                    _ => return None,
-                };
-                Some((id, marker, a.clip))
-            });
+            let indicator = selected
+                .clone()
+                .filter(|(_, a)| !a.plate)
+                .and_then(|(id, a)| {
+                    let marker = match style.kind {
+                        Kind::Sidebar => Bounds::new(
+                            point(a.bounds.left() + px(2.), a.bounds.center().y - px(7.)),
+                            size(px(2.), px(14.)),
+                        ),
+                        Kind::Tabs => Bounds::new(
+                            point(a.bounds.center().x - px(7.), a.bounds.bottom() - px(4.)),
+                            size(px(14.), px(2.)),
+                        ),
+                        _ => return None,
+                    };
+                    Some((id, marker, a.clip))
+                });
+            let plate_target = None;
+            let (plate, plate_changed) = state.plate.frame(
+                plate_target,
+                bounds,
+                style.row_radius,
+                ZORK_UI.palette.selected,
+                material,
+                visible,
+                window,
+                cx,
+            );
             let (under, hover_changed) = state.hover.frame(
                 hot.map(|(id, a)| (id, a.bounds, a.clip)),
                 bounds,
@@ -447,14 +481,29 @@ impl Element for GroupSurface {
                 .as_ref()
                 .is_some_and(|s| s.simulation.moving())
                 || state
+                    .plate
+                    .motion
+                    .surface
+                    .as_ref()
+                    .is_some_and(|s| s.simulation.moving())
+                || state
                     .indicator
                     .motion
                     .surface
                     .as_ref()
                     .is_some_and(|s| s.simulation.moving());
-            if visible && (hover_changed || indicator_changed || moving || state.samples.is_empty())
+            if visible
+                && (hover_changed
+                    || plate_changed
+                    || indicator_changed
+                    || moving
+                    || state.samples.is_empty())
             {
-                let motions = [&state.hover.motion, &state.indicator.motion];
+                let motions = [
+                    &state.hover.motion,
+                    &state.plate.motion,
+                    &state.indicator.motion,
+                ];
                 let surfaces: Vec<_> = motions.iter().filter_map(|m| m.surface.as_ref()).collect();
                 let sample = FrameSample {
                     work_ms: motions.iter().map(|m| m.work_ms).sum(),
@@ -478,11 +527,15 @@ impl Element for GroupSurface {
                     state.samples.drain(..1000);
                 }
             }
-            (under, over)
+            (plate, under, over)
         });
+        self.plate = plate;
         self.under = under;
         self.over = over;
-        for layer in [&mut self.under, &mut self.over].into_iter().flatten() {
+        for layer in [&mut self.plate, &mut self.under, &mut self.over]
+            .into_iter()
+            .flatten()
+        {
             layer
                 .element
                 .layout_as_root(bounds.size.map(AvailableSpace::Definite), window, cx);
@@ -501,6 +554,11 @@ impl Element for GroupSurface {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if let Some(layer) = &mut self.plate {
+            window.with_content_mask(Some(ContentMask { bounds: layer.clip }), |window| {
+                layer.element.paint(window, cx)
+            });
+        }
         if let Some(layer) = &mut self.under {
             window.with_content_mask(Some(ContentMask { bounds: layer.clip }), |window| {
                 layer.element.paint(window, cx)
