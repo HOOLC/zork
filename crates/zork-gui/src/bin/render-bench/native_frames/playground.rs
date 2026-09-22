@@ -215,12 +215,9 @@ pub(super) async fn measure(
     )
     .await?;
     settle(window, driver, config, origin, cx).await?;
-    let state = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
-    let panel = &state["dialog"]["pose"];
-    let directory = [
-        (panel["cx"].as_f64().unwrap() + panel["w"].as_f64().unwrap() / 2. - 36.) as f32,
-        panel["cy"].as_f64().unwrap() as f32,
-    ];
+    let panel = bounds(driver, "liquid-library-dialog")
+        .ok_or_else(|| anyhow::anyhow!("plain directory dialog panel is not mounted"))?;
+    let directory = [panel.x + panel.width - 36., panel.y + panel.height / 2.];
     cases.push(
         scroll(
             window,
@@ -292,6 +289,13 @@ pub(super) async fn measure(
     settle(window, driver, config, origin, cx).await?;
     for index in 0..config.panel_pairs * 2 {
         let open = index % 2 == 0;
+        let before = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
+        let before_dialog = &before["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|card| card["kind"] == "dialog")
+            .expect("dialog specimen")["primitive"]["dialog"];
         let mut input = Some(if open {
             action(json!({"type":"click","target":{"element_id":"liquid-dialog-trigger"}}))
         } else {
@@ -314,7 +318,17 @@ pub(super) async fn measure(
             }
             let continuing = window.update(cx, |_, window, _| window.has_animation_frames())?;
             if begin.elapsed() >= Duration::from_millis(config.phase_ms) && !continuing {
-                break;
+                let state = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
+                let dialog = &state["cards"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|card| card["kind"] == "dialog")
+                    .expect("dialog specimen")["primitive"]["dialog"];
+                let alpha = if open { 1. } else { 0. };
+                if dialog["contentAlpha"] == alpha && dialog["backdropAlpha"] == alpha {
+                    break;
+                }
             }
             anyhow::ensure!(
                 begin.elapsed() < Duration::from_secs(7),
@@ -335,8 +349,11 @@ pub(super) async fn measure(
             .expect("dialog specimen")["primitive"]["dialog"]
             .clone();
         anyhow::ensure!(
-            dialog["moving"] == false && dialog["backdropAlpha"] == if open { 1. } else { 0. },
-            "dialog motion incomplete: {dialog}"
+            dialog["engine"] == "plain"
+                && dialog["open"] == open
+                && dialog["contentAlpha"] == if open { 1. } else { 0. }
+                && dialog["backdropAlpha"] == if open { 1. } else { 0. },
+            "plain dialog motion incomplete: {dialog}"
         );
         let mounted = driver
             .snapshot(false)
@@ -347,9 +364,19 @@ pub(super) async fn measure(
             mounted == open,
             "dialog input tree does not match its state"
         );
+        let fade_frames = ["contentTransitionFrames", "backdropTransitionFrames"].map(|key| {
+            dialog[key]
+                .as_u64()
+                .unwrap_or(0)
+                .saturating_sub(before_dialog[key].as_u64().unwrap_or(0))
+        });
+        anyhow::ensure!(
+            fade_frames.iter().all(|count| *count > 0),
+            "plain dialog skipped its content or backdrop fade: {dialog}"
+        );
         cases.push(json!({"name":if open {"dialog-open"} else {"dialog-close"},"index":index,"frames":frames,
-            "paintOnlyFrames":dialog["paintOnlyFrames"],
-            "after":{"open":dialog["open"],"moving":dialog["moving"],"backdropAlpha":dialog["backdropAlpha"],"mounted":mounted}}));
+            "contentTransitionFrames":fade_frames[0],"backdropTransitionFrames":fade_frames[1],
+            "after":{"open":dialog["open"],"engine":dialog["engine"],"contentAlpha":dialog["contentAlpha"],"backdropAlpha":dialog["backdropAlpha"],"mounted":mounted}}));
         if index < 2 {
             window
                 .update(cx, |_, window, _| window.render_to_image())??
@@ -367,6 +394,6 @@ pub(super) async fn measure(
         ]
     })?;
     Ok(
-        json!({"status":"measured","viewport":viewport,"component":"zork-ui::liquid::Dialog","control":"liquid-dialog-panel","cases":cases}),
+        json!({"status":"measured","viewport":viewport,"component":"zork-ui::modal::PlainDialog","control":"liquid-dialog-panel","cases":cases}),
     )
 }
