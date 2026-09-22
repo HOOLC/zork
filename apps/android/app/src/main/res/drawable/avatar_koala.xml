@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/koala.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/koala.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#EEF3F7" />
   <path android:pathData="M2.4000000000000004 27.0a9.6 11.0 0 1 0 19.2 0a9.6 11.0 0 1 0 -19.2 0Z" android:fillColor="#8B9DAA" />

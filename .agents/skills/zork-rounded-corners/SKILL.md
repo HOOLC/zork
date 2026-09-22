@@ -30,4 +30,4 @@ description: 实现、调整或审查 zork 控件外轮廓的圆角、平滑曲�
 
 只改本次受影响控件，展台已有实现不表示生产已迁入。几何从 [共享测试](../../../crates/zork-liquid/src/tests.rs) 覆盖零半径、短边、大半径、胶囊/圆形与尺寸变化，检查闭合、连续、有限、无自交及边界命中；平台描边和裁切另验实际绘制。
 
-绘制用 `scripts/storybook/test_liquid_borders.py` 检查受影响后端/DPR 的四边、闭合圆角、焦点和向内占位；内容裁切用 `scripts/storybook/test_liquid_content_clip.py` 对照中间帧与实时路径，检查来源文字、反向和动态命中；动态改动另测停帧。共享接入按 [UI parity](../zork-ui-parity/SKILL.md)，检查入口按 [验证规则](../zork-validation/SKILL.md)。
+绘制用原生 `headless_modals` 与 [设计应用测试](../../../scripts/design-pc/test_native_workbench.py) 检查四边、闭合圆角、焦点和向内占位；动态裁切用 [原生逐帧检查](../../../scripts/design-pc/test_native_liquid_clip.py) 对照中间帧与实时路径，检查来源文字、反向和命中，另测停帧。共享接入按 [UI parity](../zork-ui-parity/SKILL.md)，检查入口按 [验证规则](../zork-validation/SKILL.md)。

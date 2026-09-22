@@ -28,6 +28,6 @@
 - [原生节点安装、接入、发布与升级](guides/native-releases.md)
 - [release/dev 开发、自救与提升](guides/release-dev-recovery.md)
 
-组件展台的运行与诊断在 [组件包指南](../crates/zork-ui/README.md#playground)，平台开发说明位于各应用 README。视觉资产与交互参考见 [设计工作区](../apps/zork-design/README.md)，移动端几何见 [Android 设计](../apps/android/design.md)。
+原生设计应用的运行与诊断在 [组件包指南](../crates/zork-ui/README.md#playground)，平台开发说明位于各应用 README。视觉资产与交互参考见 [zork-design-pc](../apps/zork-design-pc/README.md)，移动端几何见 [Android 设计](../apps/android/design.md)。
 
 开发规则和仓库内容边界见 [AGENTS.md](../AGENTS.md)；项目 skills 提供任务入口和检查方法，不另存一套设计或实现清单。

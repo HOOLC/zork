@@ -242,15 +242,7 @@ impl DesktopRoot {
         use zork_client_core::desktop::startup::Onboarding;
         let phase = self.startup_state.onboarding.expect("onboarding visible");
         let locale = self.client_settings.locale;
-        let description = |text| ui::text_role(text, TextRole::Description);
-        let frame = div().size_full().flex().flex_col().child(
-            div()
-                .h(px(48.))
-                .flex_shrink_0()
-                .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                    window.start_window_move()
-                }),
-        );
+        let frame = zork_ui::onboarding::frame();
         if self.onboarding_models_open && matches!(phase, Onboarding::Models | Onboarding::Ready) {
             return frame.child(
                 div()
@@ -307,29 +299,33 @@ impl DesktopRoot {
                     ),
             );
         }
-        let mut body = div()
-            .w_full()
-            .max_w(px(408.))
-            .px_6()
-            .flex()
-            .flex_col()
-            .items_center()
-            .text_center()
-            .child(gpui::img("brand/mark-orange.svg").size(px(72.)).mb(px(28.)));
+        let (title, description) = match phase {
+            Onboarding::Login if self.account_state.busy() => (
+                locale.text("onboarding_browser_title"),
+                locale.text("onboarding_browser_description"),
+            ),
+            Onboarding::Login => (
+                locale.text("onboarding_welcome"),
+                locale.text("onboarding_welcome_description"),
+            ),
+            Onboarding::Preparing => (
+                locale.text("onboarding_preparing_title"),
+                locale.text("onboarding_preparing_description"),
+            ),
+            Onboarding::Models => (
+                locale.text("onboarding_models"),
+                locale.text("onboarding_models_description"),
+            ),
+            Onboarding::Ready => (
+                locale.text("onboarding_ready"),
+                locale.text("onboarding_ready_description"),
+            ),
+        };
+        let mut body = zork_ui::onboarding::hero(title, description);
         match phase {
             Onboarding::Login => {
                 let busy = self.account_state.busy();
                 body = body
-                    .child(ui::page_title(if busy {
-                        locale.text("onboarding_browser_title")
-                    } else {
-                        locale.text("onboarding_welcome")
-                    }))
-                    .child(div().mt_3().child(description(if busy {
-                        locale.text("onboarding_browser_description")
-                    } else {
-                        locale.text("onboarding_welcome_description")
-                    })))
                     .child(
                         div()
                             .mt(px(30.))
@@ -407,12 +403,6 @@ impl DesktopRoot {
                     _ => None,
                 };
                 body = body
-                    .child(ui::page_title(locale.text("onboarding_preparing_title")))
-                    .child(
-                        div()
-                            .mt_3()
-                            .child(description(locale.text("onboarding_preparing_description"))),
-                    )
                     .when(failure.is_none(), |v| {
                         v.child(div().mt_6().child(loading::status(
                             "onboarding-preparing",
@@ -434,48 +424,37 @@ impl DesktopRoot {
             }
             Onboarding::Models | Onboarding::Ready => {
                 let ready = phase == Onboarding::Ready;
-                body = body
-                    .child(ui::page_title(if ready {
-                        locale.text("onboarding_ready")
-                    } else {
-                        locale.text("onboarding_models")
-                    }))
-                    .child(div().mt_3().child(description(if ready {
-                        locale.text("onboarding_ready_description")
-                    } else {
-                        locale.text("onboarding_models_description")
-                    })))
-                    .child(div().mt(px(30.)).child(if ready {
-                        ui::button(
-                            "onboarding-finish",
-                            locale.text("onboarding_start"),
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
-                        .automation(AutomationRole::Button, locale.text("onboarding_start"))
-                    } else {
-                        ui::button(
-                            "onboarding-add-model",
-                            locale.text("onboarding_add_model"),
-                            true,
-                            self.model_settings
-                                .as_ref()
-                                .zip(self.active_node_id.as_ref())
-                                .is_some_and(|(view, id)| view.read(cx).has_device(id)),
-                        )
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            if let (Some(settings), Some(id)) =
-                                (v.model_settings.clone(), v.active_node_id.clone())
-                            {
-                                if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
-                                    v.onboarding_models_open = true;
-                                }
+                body = body.child(div().mt(px(30.)).child(if ready {
+                    ui::button(
+                        "onboarding-finish",
+                        locale.text("onboarding_start"),
+                        true,
+                        true,
+                    )
+                    .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
+                    .automation(AutomationRole::Button, locale.text("onboarding_start"))
+                } else {
+                    ui::button(
+                        "onboarding-add-model",
+                        locale.text("onboarding_add_model"),
+                        true,
+                        self.model_settings
+                            .as_ref()
+                            .zip(self.active_node_id.as_ref())
+                            .is_some_and(|(view, id)| view.read(cx).has_device(id)),
+                    )
+                    .on_click(cx.listener(|v, _, _, cx| {
+                        if let (Some(settings), Some(id)) =
+                            (v.model_settings.clone(), v.active_node_id.clone())
+                        {
+                            if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
+                                v.onboarding_models_open = true;
                             }
-                            cx.notify();
-                        }))
-                        .automation(AutomationRole::Button, locale.text("onboarding_add_model"))
-                    }));
+                        }
+                        cx.notify();
+                    }))
+                    .automation(AutomationRole::Button, locale.text("onboarding_add_model"))
+                }));
             }
         }
         body = body
@@ -498,14 +477,6 @@ impl DesktopRoot {
                 v.child(ui::feedback(error))
             })
             .when_some(self.error.clone(), |v, error| v.child(ui::feedback(error)));
-        frame.child(
-            div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .pb(px(48.))
-                .child(body),
-        )
+        frame.child(zork_ui::onboarding::center(body))
     }
 }

@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/brand/zork-wordmark.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/brand/zork-wordmark.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="136dp" android:height="44dp" android:viewportWidth="136" android:viewportHeight="44">
   <path android:pathData="M3 4H31V10L11 33H31V40H18L21 35L10 40H0V33L21 11H0V7Z" android:fillColor="#24272B" android:fillType="evenOdd" />
   <path android:pathData="M46 14H54L64 24V30Q64 40 54 40H46Q36 40 36 30V24Q36 14 46 14ZM47 21Q43 21 43 26V29Q43 33 47 33H53Q57 33 57 29V27L51 21Z" android:fillColor="#24272B" android:fillType="evenOdd" />

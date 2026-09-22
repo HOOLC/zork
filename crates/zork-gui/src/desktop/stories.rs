@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 pub use zork_ui::stories::{PrimitiveStory, Story};
 
-fn new_chat_story(
+pub(super) fn new_chat_story(
     state: &str,
     width: f32,
     cx: &mut gpui::App,
@@ -71,6 +71,38 @@ pub fn install(cx: &mut gpui::App) {
 
 pub fn catalog() -> Vec<Story> {
     let mut items = zork_ui::stories::catalog();
+    for state in [
+        "login",
+        "waiting",
+        "preparing",
+        "failure",
+        "models",
+        "model-form",
+        "ready",
+    ] {
+        for (width, suffix) in [(360., "compact"), (960., "wide")] {
+            let mut story = Story::new(
+                "onboarding",
+                "首次使用",
+                &format!("{state}-{suffix}"),
+                "crates/zork-ui/src/onboarding.rs / crates/zork-gui/src/desktop/startup.rs",
+                "onboarding",
+            );
+            story.width = width;
+            story.height = 680.;
+            story.target = match state {
+                "login" => "desktop-welcome-login",
+                "waiting" => "onboarding-cancel-login",
+                "preparing" => "onboarding-preparing",
+                "failure" => "desktop-startup-retry",
+                "models" => "onboarding-add-model",
+                "model-form" => "profile-create-dialog",
+                _ => "onboarding-finish",
+            }
+            .into();
+            items.push(story);
+        }
+    }
     for story in &mut items {
         if story.family == "history" {
             story.source = "crates/zork-ui/src/history_page/mod.rs".into();
@@ -574,6 +606,13 @@ impl StoryHost {
         if let Ok(view) = self
             .inner
             .clone()
+            .downcast::<super::onboarding_story::OnboardingStory>()
+        {
+            return view.read(cx).inspect();
+        }
+        if let Ok(view) = self
+            .inner
+            .clone()
             .downcast::<super::interaction_story::InteractionStory>()
         {
             return view.read(cx).inspect();
@@ -590,6 +629,9 @@ impl StoryHost {
             "connection" | "model" | "client" | "device" | "mesh" | "enrollment"
         );
         let inner = match story.family.as_str() {
+            "onboarding" => cx
+                .new(|cx| super::onboarding_story::OnboardingStory::new(&story.state, cx))
+                .into(),
             "new-chat" => new_chat_story(&story.state, story.width, cx).into(),
             "node-directory" => cx
                 .new(|cx| zork_ui::node_directory::Story::new(&story.state, cx))

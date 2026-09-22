@@ -1399,6 +1399,8 @@ pub mod stories;
 
 #[cfg(feature = "headless-bench")]
 mod notification_story;
+#[cfg(feature = "headless-bench")]
+mod onboarding_story;
 
 impl zork_ui::node_directory::Host for DesktopRoot {
     fn nodes_data(&self) -> zork_ui::node_directory::Data {

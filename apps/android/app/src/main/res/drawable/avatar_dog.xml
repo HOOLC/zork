@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/dog.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/dog.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#EDF3FC" />
   <path android:pathData="M17 20Q10 18 8 27L7 39Q7 45 13 44L20 34ZM47 20Q54 18 56 27L57 39Q57 45 51 44L44 34Z" android:fillColor="#526C97" />

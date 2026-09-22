@@ -1017,9 +1017,9 @@ impl Render for PrimitiveStory {
                 self.selection.borrow_mut().begin_frame();
                 let weak = cx.entity().downgrade();
                 let context = SelectionContext::new(
-                    self.id("storybook-table"),
+                    self.id("design-pc-table"),
                     crate::comments::CommentSource {
-                        message_id: Some("storybook-message".into()),
+                        message_id: Some("design-pc-message".into()),
                         ..Default::default()
                     },
                     document.plain_text(),

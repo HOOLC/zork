@@ -1,5 +1,5 @@
 //! Shared liquid palette. Packed colors are RGB; hosts add alpha.
-/// Brand emphasis from apps/zork-design/tokens/design-tokens.json (brand.accent).
+/// Brand emphasis from apps/zork-design-pc/tokens/design-tokens.json (brand.accent).
 /// Keep identity emphasis separate from status colors and neutral surfaces.
 pub const BRAND_ACCENT: u32 = 0xE9643B;
 

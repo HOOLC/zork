@@ -13,8 +13,7 @@
     "url": "git+https://github.com/HOOLC/zork.git"
   },
   "workspaces": [
-    "packages/*",
-    "apps/zork-design"
+    "packages/*"
   ],
   "type": "module",
   "scripts": {
@@ -44,12 +43,9 @@
     "test:installer": "python3 scripts/test-native-installer.py",
     "cache:status": "python3 scripts/build/cache_budget.py",
     "cache:prune": "python3 scripts/build/cache_budget.py --apply",
-    "design:dev": "pnpm --filter zork-design dev",
-    "design:build": "pnpm --filter zork-design build",
-    "design:check": "pnpm --filter zork-design check",
-    "design:test": "pnpm --filter zork-design test",
-    "design:components": "python3 scripts/storybook/build.py",
-    "design:components:web": "python3 scripts/storybook/build_web.py"
+    "design:pc": "python3 scripts/design-pc/build.py --open",
+    "design:pc:build": "python3 scripts/design-pc/build.py",
+    "design:pc:verify": "python3 scripts/design-pc/build.py --verify"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",

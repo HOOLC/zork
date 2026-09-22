@@ -8,7 +8,7 @@ import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = ("zork-ui", "zork-gui", "zork-gui-web")
+UI = ("zork-ui", "zork-gui")
 SERVICES = {"reqwest", "rusqlite", "zork-config", "zork-mesh", "zork-browser",
             "openidconnect", "zork-station", "zork-agent", "zork-profile"}
 # Preserve offsets so diagnostics point to the real source line. String literals
@@ -103,13 +103,10 @@ def check(root):
             for line, reason in violations(path.read_text(), platform_io=platform_io):
                 failures.append(f"{path.relative_to(root)}:{line}: {reason}")
     core = root / "crates/zork-client-core"
-    forbidden = {"zork-ui", "zork-gui", "zork-gui-web"}
+    forbidden = {"zork-ui", "zork-gui"}
     for dependency in dependencies(tomllib.loads((core / "Cargo.toml").read_text())):
         if dependency in forbidden or dependency.startswith("gpui"):
             failures.append(f"crates/zork-client-core/Cargo.toml: UI dependency {dependency}")
-    for path in (root / "crates/zork-gui-web/src").rglob("*.rs"):
-        if re.search(r'#\[path\s*=\s*"[^"\n]*zork-client-core/', mask(path.read_text(), strings=False)):
-            failures.append(f"{path.relative_to(root)}: imports private core source instead of public contracts")
     for path in (root / "apps/android/app/src/main/java").rglob("*.kt"):
         # JNI's narrow OS port supplies URI bytes and legacy preference input.
         for line, reason in violations(path.read_text(), kotlin=True, platform_io=path.name == "NativeBridge.kt"):
@@ -155,7 +152,7 @@ def main():
     if failures:
         print("\n".join(failures))
         return 1
-    print("PASS client boundary: UI dependencies, IO/transport calls, Android intents and public Web core imports")
+    print("PASS client boundary: UI dependencies, IO/transport calls and Android intents")
     return 0
 
 

@@ -74,8 +74,8 @@ holding the state/journal lock. Waiting must be cancellable and idle without pol
   releases foreign references, including callbacks already in flight.
 - Background OS notifications consume committed state without a display-frame wait.
   Core rechecks privacy and access before delivery. OS acceptance is not reading.
-- Web fixtures use the public core contracts and the same business rules. A gallery
-  build is not evidence that a full Web client implements every projection.
+- Native design fixtures use the public core contracts and the same business rules.
+  A component story does not prove the full desktop client applies every projection.
 
 Only readiness hints or complete latest values may conflate freely. Dependent raw
 patches cannot be placed in a conflated flow that discards their predecessors.

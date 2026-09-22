@@ -217,7 +217,7 @@ mod tests {
     use crate::{api::ProfileInfo, state::ProfileData, store::ClientStore};
 
     fn directory(root: &std::path::Path) -> Arc<Directory> {
-        Directory::open(root).unwrap()
+        Directory::fixture(root).unwrap()
     }
 
     fn with_node(root: &std::path::Path) -> Arc<Directory> {

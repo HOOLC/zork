@@ -1,0 +1,27 @@
+{
+  "name": "Zork mobile design",
+  "version": "nav7",
+  "updated": "2026-09-06",
+  "canonical_directory": "apps/zork-design-pc/mobile",
+  "entries": {
+    "index": "README.md",
+    "current_spec": "design-spec.md",
+    "historical_prototype": "../archive/mobile-prototype/index.html",
+    "historical_prototype_notes": "../archive/mobile-prototype/README.md",
+    "historical_concept": "zork-mobile-v1.png",
+    "historical_brief": "concept-v1.md",
+    "historical_assets": "../archive/mobile-prototype/assets",
+    "historical_qa": "../archive/mobile-prototype/design-qa.md",
+    "asset_map": "asset-map.json",
+    "platform_tokens": "../tokens/mobile-tokens.json",
+    "desktop_comparison": "../docs/10-mobile.md"
+  },
+  "validation": {
+    "dom_interactions": "passed",
+    "static_assets": "passed",
+    "visual_qa": "blocked",
+    "reason": "Browser control unavailable; no post-fix screenshot verification"
+  },
+  "collection_integration": "documents and concept image are browsable in zork-design-pc; original prototype archived",
+  "visual_assets_revision": "functional-rounding-v2; navigation behavior remains nav7"
+}

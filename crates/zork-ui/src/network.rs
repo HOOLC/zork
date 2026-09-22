@@ -576,7 +576,7 @@ impl gpui::Render for NetworkStory {
         if enrollment_only {
             return div()
                 .child(self.modal.source("add-device-dialog").bind(
-                    ui::page_action("storybook-add-device", "连接设备").on_click(cx.listener(
+                    ui::page_action("design-pc-add-device", "连接设备").on_click(cx.listener(
                         |v, _, _, cx| {
                             v.open = true;
                             cx.notify();

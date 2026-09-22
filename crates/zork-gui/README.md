@@ -286,7 +286,7 @@ measurements and method（本地生成的验收记录）.
 
 ## Shared components
 
-Visual primitives and assets live in `../zork-ui`; application settings views compose them. The design handbook uses the same Rust through `../zork-gui-web`. Run `python3 scripts/storybook/build.py` from the repository root to rebuild the native/Web comparison gallery. Missing historical design states remain visible in its coverage filter.
+Visual primitives and assets live in `../zork-ui`; application settings views compose them. `zork-design-pc` runs the same native Rust components and embeds the curated design sources. Build and verify it with `python3 scripts/design-pc/build.py --verify` from the repository root.
 
 The default shell uses the original light palette: white canvas and `#F6F5F1`
 sidebar and composer. Conversation chrome is a floating top-right page-panel
