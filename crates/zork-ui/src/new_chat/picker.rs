@@ -153,7 +153,7 @@ impl Page {
                 } else {
                     "new-chat-profile-list"
                 })
-                .max_h(px(280.))
+                .h(px((choice.options.len() as f32 * 40. - 4.).clamp(0., 280.)))
                 .min_h_0()
                 .overflow_y_scroll()
                 .flex()
