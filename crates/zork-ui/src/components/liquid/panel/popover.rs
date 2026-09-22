@@ -84,11 +84,6 @@ impl PopoverPanel {
         self.was_open || self.reveal.opacity() > 0.
     }
 
-    /// A different page has its own natural height and scroll position.
-    pub fn reset_content(&mut self) {
-        self.panel = FloatingPanel::default();
-    }
-
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
         window.focus(&self.focus.focus, cx);
     }

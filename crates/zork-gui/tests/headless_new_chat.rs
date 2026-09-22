@@ -204,6 +204,15 @@ fn main() -> anyhow::Result<()> {
             model_row.visible && model_row.bounds == model_row.visible_bounds,
             "model row clipped at {width}"
         );
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-profile-0")
+                .is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
+            "Profile choice clipped at {width}"
+        );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-models-{width}.png")))?;
         action(
@@ -231,18 +240,7 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
-        for id in ["new-chat-model", "new-chat-profile", "new-chat-picker-back"] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|element| element.id == "new-chat-model-0" && element.visible),
-            "Profile back did not return to the model list"
-        );
-        for id in ["new-chat-profile", "new-chat-profile-1"] {
+        for id in ["new-chat-model", "new-chat-profile-1"] {
             action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
         }
         anyhow::ensure!(
