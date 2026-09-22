@@ -224,6 +224,19 @@ class Desktop:
         self.click(entry)
         self.wait(lambda: self.visible("new-chat-input"), "new Chat editor")
         assert self.node_api("/v1/node/chats")["items"] == []
+        for control in ("new-chat-device", "new-chat-options"):
+            self.wait(lambda: any(e["id"] == control and e["visible"] and e["enabled"]
+                                 for e in self.elements()["elements"]), control + " ready")
+        self.click("new-chat-device")
+        self.wait(lambda: self.visible("new-chat-device-0"), "device choices")
+        self.click("new-chat-device-0")
+        self.click("new-chat-options")
+        self.wait(lambda: self.visible("new-chat-model"), "model/effort panel")
+        self.click("new-chat-model")
+        self.wait(lambda: self.visible("new-chat-model-0"), "model choices")
+        self.click("new-chat-model-0")
+        self.ui("/v1/actions", {"type": "key", "keystroke": "escape"})
+        assert self.node_api("/v1/node/chats")["items"] == [], "selecting controls created an empty Chat"
         self.screenshot("new-chat-empty")
         text = "startup first Chat message"
         model.expected = text

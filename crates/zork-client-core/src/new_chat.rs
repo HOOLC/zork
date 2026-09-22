@@ -1,7 +1,7 @@
 //! Platform-independent model selection and new-Chat presentation.
 use crate::api::ProfileInfo;
-pub use zork_client_types::new_chat::Action;
-use zork_client_types::new_chat::{Choice, OptionItem, Snapshot};
+pub use zork_client_types::new_chat::{Action, Choice};
+use zork_client_types::new_chat::{OptionItem, Snapshot};
 
 pub fn selectable(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
     profiles
@@ -118,6 +118,7 @@ pub struct Fixture {
     text: String,
     selection: (String, String, String),
     scenario: String,
+    device: String,
 }
 impl Fixture {
     pub fn new(scenario: &str) -> Self {
@@ -143,6 +144,7 @@ impl Fixture {
             },
             selection: ("Demo model".into(), "high".into(), "auto".into()),
             scenario: scenario.into(),
+            device: "local".into(),
         }
     }
     pub fn snapshot(&self) -> Snapshot {
@@ -153,6 +155,16 @@ impl Fixture {
             &self.selection.1,
             &self.selection.2,
         );
+        view.device = Choice {
+            value: self.device.clone(),
+            options: [("local", "本机"), ("remote", "远程设备")]
+                .into_iter()
+                .map(|(value, label)| OptionItem {
+                    value: value.into(),
+                    label: label.into(),
+                })
+                .collect(),
+        };
         view.busy = self.scenario == "creating";
         view.uncertain = self.scenario == "retry";
         view.editable = !view.busy && !view.uncertain;
@@ -161,6 +173,18 @@ impl Fixture {
             view.error = Some("设备暂时不可用，输入已保留。".into());
         }
         view
+    }
+    pub fn select_device(&mut self, id: &str) {
+        let snapshot = self.snapshot();
+        if snapshot.editable
+            && snapshot
+                .device
+                .options
+                .iter()
+                .any(|option| option.value == id)
+        {
+            self.device = id.into();
+        }
     }
     pub fn apply(&mut self, action: zork_client_types::new_chat::Action) {
         use zork_client_types::new_chat::Action;

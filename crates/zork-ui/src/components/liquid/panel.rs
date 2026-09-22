@@ -14,6 +14,8 @@ use std::{
 
 mod floating;
 pub use floating::{FloatingPanel, FloatingStyle, Hover, Side};
+mod popover;
+pub use popover::PopoverPanel;
 mod inline;
 pub use inline::{inline, InlinePanel};
 

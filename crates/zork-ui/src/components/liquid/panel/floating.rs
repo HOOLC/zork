@@ -1,9 +1,10 @@
-//! Measured, read-only floating content with one material across hover targets.
+//! Measured floating content with one material across anchors. Interactive hosts own focus and dismissal.
 use super::*;
 
 #[derive(Clone, Copy)]
 pub enum Side {
     Above,
+    AboveEnd(f32),
     Below,
     Beside,
 }
@@ -63,15 +64,18 @@ impl FloatingPanel {
         let clamp_x = |x: f32| x.clamp(12., (viewport.width.as_f32() - width - 12.).max(12.));
         let clamp_y = |y: f32| y.clamp(12., (viewport.height.as_f32() - height - 12.).max(12.));
         let (x, y, available) = match style.side {
-            Side::Above | Side::Below => {
+            Side::Above | Side::AboveEnd(_) | Side::Below => {
                 let above = (anchor.top().as_f32() - 20.).max(2.);
                 let below = (viewport.height.as_f32() - anchor.bottom().as_f32() - 20.).max(2.);
                 let on_top = match style.side {
-                    Side::Above => above >= height || above >= below,
+                    Side::Above | Side::AboveEnd(_) => above >= height || above >= below,
                     _ => below < height && above > below,
                 };
                 (
-                    clamp_x(anchor.center().x.as_f32() - width / 2.),
+                    clamp_x(match style.side {
+                        Side::AboveEnd(offset) => anchor.right().as_f32() - width + offset,
+                        _ => anchor.center().x.as_f32() - width / 2.,
+                    }),
                     if on_top {
                         (anchor.top().as_f32() - height.min(above) - 8.).max(12.)
                     } else {
