@@ -182,10 +182,13 @@ impl PlainDialog {
 
         let reduced = cx.reduce_motion();
         let dt = if reduced { 1. } else { 1. / 60. };
+        let was_alive = self.alive();
         let content_moving = self.reveal.advance(open, dt, reduced);
         let backdrop_moving = self.backdrop.advance(open, dt, reduced);
         let moving = content_moving || backdrop_moving;
-        if moving && !self.scheduled.replace(true) {
+        // Retained modal payloads are released by their owner on its next
+        // render. Schedule one final frame after both reveals snap to zero.
+        if (moving || (was_alive && !self.alive())) && !self.scheduled.replace(true) {
             let scheduled = self.scheduled.clone();
             let owner = owner.clone();
             window.on_next_frame(move |_, cx| {

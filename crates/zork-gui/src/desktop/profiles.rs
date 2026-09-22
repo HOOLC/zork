@@ -17,6 +17,8 @@ use zork_ui::controls::{provider_icon, provider_path};
 
 pub struct ProfilesView {
     source: Arc<crate::api::Profiles>,
+    dialog_only: bool,
+    detail_request: u64,
     source_updates: Option<Task<()>>,
     regions: zork_ui::components::region::Regions<Self>,
     device_name: String,
@@ -67,21 +69,26 @@ pub struct ProfilesView {
     attempt: Option<Value>,
 }
 impl ProfilesView {
-    pub(super) fn open_create(&mut self, cx: &mut Context<Self>) {
-        self.form_open = true;
-        self.id.update(cx, |i, cx| i.clear(cx));
-        self.key.update(cx, |i, cx| i.clear(cx));
-        self.base_url.update(cx, |i, cx| i.clear(cx));
-        self.message = None;
-        zork_ui::components::region::invalidate_all(cx);
-    }
     pub fn set_device_name(&mut self, name: String) {
         self.device_name = name;
     }
-    pub fn new_with_source(source: Arc<crate::api::Profiles>, cx: &mut Context<Self>) -> Self {
+    pub fn editor(source: Arc<crate::api::Profiles>, name: String, cx: &mut Context<Self>) -> Self {
         let mut view = Self::new_source(source, cx);
-        view.refresh(cx);
+        view.dialog_only = true;
+        view.device_name = name;
+        view.set_visible(true, cx);
         view
+    }
+    pub fn add_connection(&mut self, cx: &mut Context<Self>) {
+        self.detail_request += 1;
+        self.model_form_open = false;
+        self.detail = None;
+        self.form_open = true;
+        self.id.update(cx, |v, cx| v.clear(cx));
+        self.key.update(cx, |v, cx| v.clear(cx));
+        self.base_url.update(cx, |v, cx| v.clear(cx));
+        self.message = None;
+        zork_ui::components::region::invalidate_all(cx);
     }
     fn new_source(source: Arc<crate::api::Profiles>, cx: &mut Context<Self>) -> Self {
         let mut field = |label| {
@@ -128,6 +135,8 @@ impl ProfilesView {
         Self {
             modal: ui::ModalState::new(cx),
             source,
+            dialog_only: false,
+            detail_request: 0,
             source_updates: None,
             regions: Default::default(),
             device_name: String::new(),
@@ -469,11 +478,19 @@ impl ProfilesView {
         self.provider_open = false;
     }
     fn open_detail(&mut self, id: String, cx: &mut Context<Self>) {
+        self.open_model(id, None, cx);
+    }
+    pub fn open_model(&mut self, id: String, model: Option<String>, cx: &mut Context<Self>) {
+        self.detail_request += 1;
+        let request = self.detail_request;
         self.watch_source(cx);
         let source = self.source.clone();
         cx.spawn(async move |this, cx| {
             let result = source.open_detail(&id).await;
             let _ = this.update(cx, |v, cx| {
+                if v.detail_request != request {
+                    return;
+                }
                 match result {
                     Ok(()) => {
                         v.detail = Some(source.detail(json!({"profile_id":id})));
@@ -482,6 +499,19 @@ impl ProfilesView {
                         v.model_form_open = false;
                         v.discovered = None;
                         v.model.update(cx, |m, cx| m.clear(cx));
+                        if let Some(model) = &model {
+                            if let Some(value) = v
+                                .detail
+                                .as_ref()
+                                .and_then(|detail| detail["models"].as_array())
+                                .and_then(|models| {
+                                    models.iter().find(|value| value["id"] == *model)
+                                })
+                                .cloned()
+                            {
+                                v.edit_model(Some(value), cx);
+                            }
+                        }
                     }
                     Err(e) => v.message = Some(e.to_string()),
                 }
@@ -1205,12 +1235,15 @@ impl Render for ProfilesView {
             .flex()
             .flex_col()
             .gap_0()
-            .child(header)
-            .when(!self.profiles.is_empty(), |v| {
+            .when(!self.dialog_only, |v| v.child(header))
+            .when(!self.dialog_only && !self.profiles.is_empty(), |v| {
                 v.child(div().flex().flex_col().mx(px(-12.)).children(rows))
             })
             .when(
-                self.profiles.is_empty() && !self.busy && !self.loading_profiles,
+                !self.dialog_only
+                    && self.profiles.is_empty()
+                    && !self.busy
+                    && !self.loading_profiles,
                 |v| {
                     v.child(
                         div()
@@ -1697,6 +1730,16 @@ impl Render for ProfilesView {
                         ui::section()
                             .border_t_0()
                             .py_0()
+                            .when(self.dialog_only, |v| {
+                                v.child(ui::label(format!(
+                                    "{} · {}",
+                                    self.device_name,
+                                    detail["name"]
+                                        .as_str()
+                                        .or_else(|| detail["profile_id"].as_str())
+                                        .unwrap_or("")
+                                )))
+                            })
                             .child(self.input("profile-model", "模型 ID", &self.model, cx))
                             .child(ui::form_field(
                                 "接口协议",
@@ -1921,7 +1964,7 @@ impl ProfilesView {
                 header.child(
                     ui::page_action("profile-add", "添加连接")
                         .on_click(cx.listener(|v, _, _, cx| {
-                            v.open_create(cx);
+                            v.add_connection(cx);
                         }))
                         .map(|button| {
                             self.modal.source("profile-create-dialog").bind(

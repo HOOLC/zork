@@ -6,6 +6,7 @@ pub mod client_settings;
 mod interaction_story;
 pub(crate) mod interaction_view;
 mod mesh_settings;
+mod model_settings;
 pub(crate) mod navigation;
 pub mod node;
 mod notifications;
@@ -19,6 +20,8 @@ pub mod transport;
 pub(crate) mod ui;
 #[cfg(feature = "headless-bench")]
 pub use agents::AgentsView as HeadlessAgentsView;
+#[cfg(feature = "headless-bench")]
+pub use model_settings::ModelSettings as HeadlessModelSettings;
 #[cfg(feature = "headless-bench")]
 pub use profiles::ProfilesView as HeadlessProfilesView;
 #[cfg(feature = "headless-bench")]
@@ -70,21 +73,14 @@ pub struct DesktopRoot {
     node_views: std::collections::HashMap<String, (u64, Entity<RootView>)>,
     navigation: Entity<navigation::DeviceNavigation>,
     pending_notification: Option<String>,
-    profiles: Option<Entity<profiles::ProfilesView>>,
+    model_settings: Option<Entity<model_settings::ModelSettings>>,
     resources: Option<Entity<resources::ResourcesView>>,
     shared_files: Option<Entity<shared_files::SharedFilesView>>,
     showing_shared_files: bool,
     resource_inspector: Option<Entity<resources::ResourcesView>>,
     service_views: std::collections::HashMap<String, (u64, Entity<resources::ResourcesView>)>,
     applications: Arc<Vec<zork_client_core::pages::ApplicationEntry>>,
-    management_views: std::collections::HashMap<
-        String,
-        (
-            u64,
-            Entity<profiles::ProfilesView>,
-            Entity<mesh_settings::MeshSettings>,
-        ),
-    >,
+    mesh_views: std::collections::HashMap<String, (u64, Entity<mesh_settings::MeshSettings>)>,
     device_info: std::collections::HashMap<String, serde_json::Value>,
     management_tab: usize,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
@@ -200,14 +196,14 @@ impl DesktopRoot {
             node_views: std::collections::HashMap::new(),
             navigation,
             pending_notification: None,
-            profiles: None,
+            model_settings: None,
             resources: None,
             shared_files: None,
             showing_shared_files: false,
             resource_inspector: None,
             service_views: Default::default(),
             applications: snapshot.applications.clone(),
-            management_views: Default::default(),
+            mesh_views: Default::default(),
             device_info: Default::default(),
             management_tab: 0,
             mesh_settings: None,
@@ -309,6 +305,9 @@ impl DesktopRoot {
         if let Some(error) = &snapshot.error {
             self.error = Some(error.clone());
         }
+        if nodes_changed && self.model_settings.is_some() {
+            self.sync_model_settings(cx);
+        }
         if nodes_changed {
             self.navigation
                 .update(cx, |nav, cx| nav.update_nodes(&self.nodes, cx));
@@ -396,6 +395,9 @@ impl DesktopRoot {
         if let navigation::Destination::Manage(tab) = destination {
             self.managing = true;
             self.management_tab = if tab == 1 { 0 } else { tab };
+            if matches!(tab, 0 | 1) {
+                self.sync_model_settings(cx);
+            }
             if tab == 5 {
                 let locale = self.client_settings.locale;
                 if let Some(resources) = &self.resources {
@@ -414,6 +416,25 @@ impl DesktopRoot {
             active.update(cx, |v, cx| v.navigate_device(&destination, cx));
         }
         cx.notify();
+    }
+    fn sync_model_settings(&mut self, cx: &mut Context<Self>) {
+        let sources = self
+            .source
+            .snapshot()
+            .nodes
+            .as_ref()
+            .clone()
+            .into_iter()
+            .filter_map(|node| {
+                let view = self.ensure_node_view(&node, cx)?;
+                Some((node.id, node.name, view.read(cx).core_device().profiles()))
+            })
+            .collect();
+        let view = self
+            .model_settings
+            .get_or_insert_with(|| cx.new(model_settings::ModelSettings::new))
+            .clone();
+        view.update(cx, |v, cx| v.set_sources(sources, cx));
     }
     fn close_add_device(&mut self, cx: &mut Context<Self>) {
         self.add_device_open = false;
@@ -440,9 +461,7 @@ impl DesktopRoot {
                 view
             });
             cx.subscribe(&active, |v, _, _: &crate::views::DesktopAction, cx| {
-                v.managing = true;
-                v.management_tab = 0;
-                cx.notify();
+                v.apply_navigation(navigation::Destination::Manage(0), cx);
             })
             .detach();
             let resource_node = node.id.clone();
@@ -487,13 +506,10 @@ impl DesktopRoot {
             zork_client_core::desktop::trace_startup("gui.workspace_navigation_bound");
             cx.subscribe(
                 &active,
-                move |desktop, _, change: &crate::views::NavigationChanged, cx| {
+                move |_, _, change: &crate::views::NavigationChanged, cx| {
                     sidebar.update(cx, |nav, cx| {
                         nav.set_selection(&id, change.selection.clone(), change.locale, cx)
                     });
-                    if let Some((_, profiles, _)) = desktop.management_views.get(&id) {
-                        profiles.update(cx, |view, cx| view.set_locale(change.locale, cx));
-                    }
                 },
             )
             .detach();
@@ -529,29 +545,22 @@ impl DesktopRoot {
         if let Err(error) = cx
             .global::<DesktopRuntime>()
             .startup
-            .observe_onboarding_models(&node.id, profile_source.clone())
+            .observe_onboarding_models(&node.id, profile_source)
         {
             self.error = Some(error.to_string());
         }
-        if let Some((_, profiles, mesh)) = self
-            .management_views
+        if let Some((_, mesh)) = self
+            .mesh_views
             .get(&node.id)
-            .filter(|(version, _, _)| *version == binding)
+            .filter(|(version, _)| *version == binding)
         {
-            self.profiles = Some(profiles.clone());
             self.mesh_settings = Some(mesh.clone());
         } else {
-            let profiles = cx.new(|cx| {
-                let mut view = profiles::ProfilesView::new_with_source(profile_source.clone(), cx);
-                view.set_device_name(node.name.clone());
-                view
-            });
             let mesh = cx.new(|cx| {
                 mesh_settings::MeshSettings::new(retained.read(cx).core_device().mesh_admin(), cx)
             });
-            self.management_views
-                .insert(node.id.clone(), (binding, profiles.clone(), mesh.clone()));
-            self.profiles = Some(profiles);
+            self.mesh_views
+                .insert(node.id.clone(), (binding, mesh.clone()));
             self.mesh_settings = Some(mesh);
         }
         if !self
@@ -569,6 +578,9 @@ impl DesktopRoot {
         }
         let source = self.source.clone();
         let info_node = node.clone();
+        if self.startup_state.onboarding.is_some() {
+            self.sync_model_settings(cx);
+        }
         zork_client_core::desktop::trace_startup("gui.node_management_ready");
         cx.spawn(async move |_, _| {
             let _ = source.refresh_info(&info_node).await;
@@ -586,9 +598,6 @@ impl DesktopRoot {
         });
         if let Some(previous) = &self.active {
             previous.update(cx, |view, cx| view.hide_browser(cx));
-        }
-        if let Some(profiles) = &self.profiles {
-            profiles.update(cx, |view, cx| view.set_locale(locale, cx));
         }
         self.active = Some(active);
         self.managing = false;
@@ -657,7 +666,6 @@ impl DesktopRoot {
             previous.update(cx, |view, cx| view.hide_browser(cx));
         }
         self.active = None;
-        self.profiles = None;
         self.mesh_settings = None;
         self.active_node_name = None;
         self.active_node_id = None;
@@ -694,12 +702,6 @@ impl DesktopRoot {
         if let Some((_, view)) = self.node_views.get(id) {
             view.update(cx, |v, cx| {
                 v.attach_navigation(self.navigation.clone(), name.into());
-                cx.notify();
-            });
-        }
-        if let Some((_, profiles, _)) = self.management_views.get(id) {
-            profiles.update(cx, |v, cx| {
-                v.set_device_name(name.into());
                 cx.notify();
             });
         }
@@ -1010,20 +1012,23 @@ impl Render for DesktopRoot {
                 });
             }
         }
-        for (id, (_, profiles, _)) in &self.management_views {
-            let visible = ((self.managing && self.management_tab == 0)
-                || (matches!(
-                    self.startup_state.onboarding,
-                    Some(
-                        zork_client_core::desktop::startup::Onboarding::Models
-                            | zork_client_core::desktop::startup::Onboarding::Ready
-                    )
-                ) && self.onboarding_models_open))
-                && self.active.is_some()
-                && self.active_node_id.as_ref() == Some(id);
-            profiles.update(cx, |view, cx| view.set_visible(visible, cx));
+        if let Some(view) = &self.model_settings {
+            let onboarding = matches!(
+                self.startup_state.onboarding,
+                Some(
+                    zork_client_core::desktop::startup::Onboarding::Models
+                        | zork_client_core::desktop::startup::Onboarding::Ready
+                )
+            ) && self.onboarding_models_open;
+            let active = onboarding.then(|| self.active_node_id.clone()).flatten();
+            let visible = (self.managing && self.management_tab == 0) || onboarding;
+            view.update(cx, |v, cx| {
+                v.set_onboarding_local(active, cx);
+                v.set_visible(visible, cx);
+                v.set_locale(self.client_settings.locale, cx);
+            });
         }
-        let tab = if self.active.is_none() && !matches!(self.management_tab, 4 | 5) {
+        let tab = if self.active.is_none() && !matches!(self.management_tab, 0 | 4 | 5) {
             3
         } else {
             self.management_tab
@@ -1160,6 +1165,19 @@ impl Render for DesktopRoot {
                                     .child(self.render_client_settings_navigation(tab == 4, cx))
                                     .child(
                                         self.settings_tabs
+                                            .tab("settings-models".into(), tab == 0)
+                                            .child(ui::icon("icons/mesh.svg", 20.))
+                                            .child("模型设置")
+                                            .on_click(cx.listener(|v, _, _, cx| {
+                                                v.apply_navigation(
+                                                    navigation::Destination::Manage(0),
+                                                    cx,
+                                                )
+                                            }))
+                                            .automation(AutomationRole::Button, "模型设置"),
+                                    )
+                                    .child(
+                                        self.settings_tabs
                                             .section(
                                                 "device-settings-heading",
                                                 self.client_settings
@@ -1170,75 +1188,31 @@ impl Render for DesktopRoot {
                                                 let selected =
                                                     self.active_node_id.as_ref() == Some(&node.id);
                                                 let open = node.clone();
-                                                self.settings_tabs
-                                                    .column()
-                                                    .child(
-                                                        self.settings_tabs
-                                                            .tab(
-                                                                format!(
-                                                                    "settings-device-{}",
-                                                                    node.id
-                                                                ),
-                                                                selected && tab == 3,
-                                                            )
-                                                            .child(ui::icon("icons/node.svg", 20.))
-                                                            .child(
-                                                                div()
-                                                                    .flex_1()
-                                                                    .child(node.name.clone()),
-                                                            )
-                                                            .on_click(cx.listener(
-                                                                move |v, _, _, cx| {
-                                                                    if !v.busy {
-                                                                        v.open_node(
-                                                                            open.clone(),
-                                                                            cx,
-                                                                        );
-                                                                        v.managing = true;
-                                                                        v.management_tab = 3;
-                                                                        cx.notify();
-                                                                    }
-                                                                },
-                                                            ))
-                                                            .automation(
-                                                                AutomationRole::Button,
-                                                                format!("{} 设备设置", node.name),
-                                                            ),
-                                                    )
-                                                    .children([(0, "大模型")].into_iter().map(
-                                                        |(index, label)| {
-                                                            let open = node.clone();
-                                                            self.settings_tabs.tab(
-                                                    format!("settings-{}-{index}", node.id),
-                                                    selected && tab == index,
+                                                self.settings_tabs.column().child(
+                                                    self.settings_tabs
+                                                        .tab(
+                                                            format!("settings-device-{}", node.id),
+                                                            selected && tab == 3,
+                                                        )
+                                                        .child(ui::icon("icons/node.svg", 20.))
+                                                        .child(
+                                                            div().flex_1().child(node.name.clone()),
+                                                        )
+                                                        .on_click(cx.listener(
+                                                            move |v, _, _, cx| {
+                                                                if !v.busy {
+                                                                    v.open_node(open.clone(), cx);
+                                                                    v.managing = true;
+                                                                    v.management_tab = 3;
+                                                                    cx.notify();
+                                                                }
+                                                            },
+                                                        ))
+                                                        .automation(
+                                                            AutomationRole::Button,
+                                                            format!("{} 设备设置", node.name),
+                                                        ),
                                                 )
-                                                .pl(px(36.))
-                                                .child(label)
-                                                .on_click(cx.listener(move |v, _, _, cx| {
-                                                    if !v.busy {
-                                                        if v.active_node_id.as_ref()
-                                                            != Some(&open.id)
-                                                        {
-                                                            v.open_node(open.clone(), cx);
-                                                        }
-                                                        v.managing = true;
-                                                        v.management_tab = index;
-                                                        if index == 0 {
-                                                            if let Some(profiles) = &v.profiles {
-                                                                profiles.update(cx, |p, cx| {
-                                                                    p.refresh(cx)
-                                                                });
-                                                            }
-                                                        }
-                                                        cx.notify();
-                                                    }
-                                                }))
-                                                .automation(
-                                                    AutomationRole::Button,
-                                                    format!("{} {label}", node.name),
-                                                )
-                                                        },
-                                                    ))
                                             }))
                                             .child(
                                                 self.settings_tabs
@@ -1312,7 +1286,7 @@ impl Render for DesktopRoot {
                                         })
                                     })
                                     .when(tab == 0, |v| {
-                                        v.when_some(self.profiles.clone(), |v, e| v.child(e))
+                                        v.when_some(self.model_settings.clone(), |v, e| v.child(e))
                                     })
                                     .when(tab == 2, |v| {
                                         v.when_some(self.mesh_settings.clone(), |v, e| v.child(e))

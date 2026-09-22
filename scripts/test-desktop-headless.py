@@ -19,7 +19,7 @@ def main():
          '--bin', 'zork-gui-render-bench', '--', str(ROOT / 'artifacts/headless-render/latest')],
         ['cargo', 'test', '--locked', '-p', 'zork-gui', '--features', 'headless-bench',
          '--test', 'headless_selection', '--test', 'headless_loading',
-         '--test', 'headless_profile_quota'],
+         '--test', 'headless_profile_quota', '--test', 'headless_model_settings'],
         ['cargo', 'test', '--locked', '-p', 'zork-gui', '--features', 'native-blur-bench',
          '--test', 'headless_modals'],
         ['cargo', 'test', '--locked', '-p', 'zork-ui', '-p', 'zork-gui'],

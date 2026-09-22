@@ -301,7 +301,9 @@ impl DesktopRoot {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .when_some(self.profiles.clone(), |v, profiles| v.child(profiles)),
+                            .when_some(self.model_settings.clone(), |v, settings| {
+                                v.child(ui::settings_content(settings))
+                            }),
                     ),
             );
         }
@@ -457,12 +459,18 @@ impl DesktopRoot {
                             "onboarding-add-model",
                             locale.text("onboarding_add_model"),
                             true,
-                            self.profiles.is_some(),
+                            self.model_settings
+                                .as_ref()
+                                .zip(self.active_node_id.as_ref())
+                                .is_some_and(|(view, id)| view.read(cx).has_device(id)),
                         )
                         .on_click(cx.listener(|v, _, _, cx| {
-                            v.onboarding_models_open = true;
-                            if let Some(profiles) = &v.profiles {
-                                profiles.update(cx, |p, cx| p.open_create(cx));
+                            if let (Some(settings), Some(id)) =
+                                (v.model_settings.clone(), v.active_node_id.clone())
+                            {
+                                if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
+                                    v.onboarding_models_open = true;
+                                }
                             }
                             cx.notify();
                         }))
