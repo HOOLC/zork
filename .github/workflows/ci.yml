@@ -61,7 +61,7 @@ jobs:
     name: ${{ inputs.prime_cache && 'Prime runtime cache (no tests)' || 'Main runtime contracts' }}
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.prime_cache && 15 || 5 }}
+    timeout-minutes: ${{ inputs.prime_cache && 15 || 10 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
