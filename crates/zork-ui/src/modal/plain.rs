@@ -30,6 +30,8 @@ pub struct PlainDialog {
     /// Kept for API compatibility with product trigger bindings.
     source: SourceBinding,
     scheduled: Rc<Cell<bool>>,
+    content_transition_frames: u64,
+    backdrop_transition_frames: u64,
 }
 
 impl PlainDialog {
@@ -46,6 +48,8 @@ impl PlainDialog {
             alert: false,
             source: SourceBinding::default(),
             scheduled: Rc::new(Cell::new(false)),
+            content_transition_frames: 0,
+            backdrop_transition_frames: 0,
         }
     }
 
@@ -83,6 +87,8 @@ impl PlainDialog {
             "contentAlpha": self.reveal.opacity(),
             "backdropAlpha": self.backdrop.opacity(),
             "alert": self.alert,
+            "contentTransitionFrames": self.content_transition_frames,
+            "backdropTransitionFrames": self.backdrop_transition_frames,
         })
     }
 
@@ -201,7 +207,14 @@ impl PlainDialog {
 
         let alpha = self.reveal.opacity();
         let backdrop_alpha = self.backdrop.opacity();
-        if alpha <= 0.001 && backdrop_alpha <= 0.001 && !open {
+        if (0.001..0.999).contains(&alpha) {
+            self.content_transition_frames += 1;
+        }
+        if (0.001..0.999).contains(&backdrop_alpha) {
+            self.backdrop_transition_frames += 1;
+        }
+        // Keep advancing both reveals until they snap to the exact closed state.
+        if !moving && alpha <= 0.001 && backdrop_alpha <= 0.001 && !open {
             return None;
         }
 

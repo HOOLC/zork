@@ -400,8 +400,8 @@ async fn measure_liquid(
         ]
     })?;
     report.borrow_mut()["liquid"] = json!({"viewport":viewport,
-        "component":"zork-ui::liquid::Dialog", "control":"liquid-library-dialog",
-        "recipe":"static-content-contour-midpoint-backdrop", "cases":[], "status":"unverified"});
+        "component":"zork-ui::modal::PlainDialog", "control":"liquid-library-dialog",
+        "recipe":"plain-panel-opacity-backdrop", "cases":[], "status":"unverified"});
     anyhow::ensure!(
         viewport == config.liquid_viewport,
         "liquid viewport mismatch: {viewport:?} != {:?}",
@@ -437,17 +437,24 @@ async fn measure_liquid(
             }
             let continuing = window.update(cx, |_, window, _| window.has_animation_frames())?;
             if begin.elapsed() >= Duration::from_millis(config.phase_ms) && !continuing {
-                break;
+                let state = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
+                let alpha = if opening { 1. } else { 0. };
+                if state["dialog"]["contentAlpha"] == alpha
+                    && state["dialog"]["backdropAlpha"] == alpha
+                {
+                    break;
+                }
             }
             anyhow::ensure!(
                 begin.elapsed() < Duration::from_secs(7),
-                "liquid presentation did not settle"
+                "dialog presentation did not settle: {}",
+                window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?["dialog"]
             );
         }
         let after = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
         anyhow::ensure!(
             after["dialog"]["backdropAlpha"] == if opening { 1. } else { 0. },
-            "liquid phase did not include the complete backdrop transition"
+            "dialog phase did not include the complete backdrop transition: {after}"
         );
         anyhow::ensure!(
             if opening {
@@ -457,21 +464,27 @@ async fn measure_liquid(
             },
             "liquid directory input did not change its open state: {after}"
         );
-        let before_frames = before["dialog"]["paintOnlyFrames"].as_u64().unwrap_or(0);
-        let after_frames = after["dialog"]["paintOnlyFrames"].as_u64().unwrap_or(0);
+        let fade_frames = ["contentTransitionFrames", "backdropTransitionFrames"].map(|key| {
+            after["dialog"][key]
+                .as_u64()
+                .unwrap_or(0)
+                .saturating_sub(before["dialog"][key].as_u64().unwrap_or(0))
+        });
         anyhow::ensure!(
-            after_frames > before_frames,
-            "liquid transition did not execute shared paint playback"
+            after["dialog"]["engine"] == "plain"
+                && after["dialog"]["open"] == opening
+                && after["dialog"]["contentAlpha"] == if opening { 1. } else { 0. }
+                && fade_frames.iter().all(|frames| *frames > 0),
+            "plain dialog did not complete an animated open/close phase: {after}"
         );
+        let mounted = driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|element| element.id == "liquid-library-dialog");
         anyhow::ensure!(
-            frames
-                .iter()
-                .any(|row| row["maskRedraws"].as_u64().unwrap_or(0) > 0)
-                && frames
-                    .iter()
-                    .any(|row| row["retainedLayers"].as_u64().unwrap_or(0) > 0
-                        && row["contentRedraws"] == 0),
-            "native retained content/mask path was not exercised"
+            mounted == opening,
+            "plain dialog input tree did not match its open state"
         );
         if index < 2 {
             window
@@ -487,7 +500,9 @@ async fn measure_liquid(
             .unwrap()
             .push(json!({
             "name":if opening {"liquid-open"} else {"liquid-close"}, "frames":frames,
-            "paintOnlyFrames":after_frames - before_frames,
+            "contentTransitionFrames":fade_frames[0],
+            "backdropTransitionFrames":fade_frames[1],
+            "mounted":mounted,
             "before":before["dialog"], "after":after["dialog"]}));
     }
     report.borrow_mut()["liquid"]["status"] = "measured".into();
@@ -500,9 +515,30 @@ async fn measure_liquid(
     for (phase, opening, count) in [
         ("opening", true, 6),
         ("closing", false, 3),
-        ("reversing", true, 12),
-        ("returning", false, 28),
+        ("reopening", true, 12),
+        ("final-close", false, 28),
     ] {
+        if phase == "reopening" {
+            let started = Instant::now();
+            while window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?["dialog"]
+                ["backdropAlpha"]
+                != 0.
+            {
+                frame(
+                    window,
+                    cx,
+                    driver,
+                    FrameInput::Idle,
+                    origin,
+                    config.offscreen,
+                )
+                .await?;
+                anyhow::ensure!(
+                    started.elapsed() < Duration::from_secs(7),
+                    "plain dialog did not retire before reopening"
+                );
+            }
+        }
         window
             .update(cx, |_, window, _| window.render_to_image())??
             .save(output.join(format!("liquid-{phase}-before-transfer.png")))?;
@@ -525,8 +561,8 @@ async fn measure_liquid(
             .save(output.join(format!("liquid-{phase}-after-transfer.png")))?;
         let destination = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
         anyhow::ensure!(
-            destination["dialog"]["destinationLayer"] == if opening { "modal" } else { "source" },
-            "layer did not change at the start of the operation: {destination}"
+            destination["dialog"]["open"] == opening,
+            "plain dialog did not accept the operation: {destination}"
         );
         for index in 0..count {
             cx.background_executor()

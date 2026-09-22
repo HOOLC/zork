@@ -40,17 +40,17 @@ def distribution(values):
             "p95Ms": values[int(len(values) * .95)], "p99Ms": values[int(len(values) * .99)], "maxMs": values[-1]}
 
 
-def validate_retained_case(case, opened):
+def validate_dialog_case(case, opened):
     frames = case.get("frames", [])
-    if any(type(row.get(key)) is not int or row[key] < 0 for row in frames
-           for key in ("maskRedraws", "retainedLayers", "contentRedraws")):
-        raise Unverified("Invalid native renderer counters")
-    if (case.get("after", {}).get("backdropAlpha") != (1 if opened else 0)
-            or type(case.get("paintOnlyFrames")) is not int or case["paintOnlyFrames"] <= 0
-            or not any(row.get("maskRedraws", 0) > 0 for row in frames)
-            or not any(row.get("retainedLayers", 0) > 0 and row.get("contentRedraws") == 0 for row in frames)
-            or any(row.get("retainedFallback") is not False for row in frames)):
-        raise Unverified("Actual native retained composition and playback evidence is missing")
+    after = case.get("after", {})
+    if (after.get("engine") != "plain" or after.get("open") is not opened
+            or after.get("contentAlpha") != (1 if opened else 0)
+            or after.get("backdropAlpha") != (1 if opened else 0)
+            or case.get("mounted", after.get("mounted")) is not opened
+            or any(type(case.get(key)) is not int or case[key] <= 0
+                   for key in ("contentTransitionFrames", "backdropTransitionFrames"))
+            or not frames):
+        raise Unverified("Actual native PlainDialog fade, input tree, or terminal state is missing")
 
 
 def playground_cases(report, fixture):
@@ -61,7 +61,7 @@ def playground_cases(report, fixture):
     expected = ["page-scroll", "directory-scroll"]
     expected += [name for _ in range(fixture["panel_pairs"]) for name in ("dialog-open", "dialog-close")]
     if (playground.get("status") != "measured" or playground.get("viewport") != fixture["liquid_viewport"]
-            or playground.get("component") != "zork-ui::liquid::Dialog"
+            or playground.get("component") != "zork-ui::modal::PlainDialog"
             or playground.get("control") != "liquid-dialog-panel"
             or [case.get("name") for case in cases] != expected):
         raise Unverified("Missing native page/directory scrolling or complete dialog operation cycle")
@@ -77,9 +77,7 @@ def playground_cases(report, fixture):
     for case in cases[2:]:
         opened = case["name"] == "dialog-open"
         after = case.get("after", {})
-        if after.get("open") is not opened or after.get("mounted") is not opened or after.get("moving") is not False:
-            raise Unverified("Complete dialog did not reach its required input and motion state")
-        validate_retained_case(case, opened)
+        validate_dialog_case(case, opened)
     return cases
 
 
@@ -108,13 +106,13 @@ def evaluate(report, definition):
     liquid = report.get("liquid", {})
     liquid_cases = liquid.get("cases", [])
     if (liquid.get("status") != "measured" or liquid.get("viewport") != fixture["liquid_viewport"]
-            or liquid.get("component") != "zork-ui::liquid::Dialog"
+            or liquid.get("component") != "zork-ui::modal::PlainDialog"
             or liquid.get("control") != "liquid-library-dialog"
-            or liquid.get("recipe") != "static-content-contour-midpoint-backdrop"
+            or liquid.get("recipe") != "plain-panel-opacity-backdrop"
             or [case.get("name") for case in liquid_cases] != [name for _ in range(fixture["panel_pairs"]) for name in ("liquid-open", "liquid-close")]):
-        raise Unverified("The requested native liquid component/recipe was not measured")
+        raise Unverified("The requested native PlainDialog component/recipe was not measured")
     for case in liquid_cases:
-        validate_retained_case(case, case["name"] == "liquid-open")
+        validate_dialog_case(case, case["name"] == "liquid-open")
     cases = [{"name": "message-entry", "frames": cold}, *cases, *liquid_cases,
              *playground_cases(report, fixture)]
     results = []

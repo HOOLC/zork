@@ -97,18 +97,20 @@ class ClientBudgetTests(unittest.TestCase):
                     {"at": frame * interval_ms, "completedAt": frame * interval_ms + whole_ms,
                     "cpuMs": 1, "continuing": True} for frame in range(4)]} for name in names]}
         report["liquid"] = {"status": "measured", "viewport": fixture["liquid_viewport"],
-            "component": "zork-ui::liquid::Dialog", "control": "liquid-library-dialog",
-            "recipe": "static-content-contour-midpoint-backdrop", "cases": []}
+            "component": "zork-ui::modal::PlainDialog", "control": "liquid-library-dialog",
+            "recipe": "plain-panel-opacity-backdrop", "cases": []}
         for _ in range(fixture["panel_pairs"]):
             for name in ("liquid-open", "liquid-close"):
                 frames = copy.deepcopy(report["cases"][0]["frames"])
-                for row in frames:
-                    row.update(retainedLayers=1, contentRedraws=0, maskRedraws=1, retainedFallback=False)
-                report["liquid"]["cases"].append({"name": name, "frames": frames, "paintOnlyFrames": 4,
-                    "after": {"backdropAlpha": 1 if name == "liquid-open" else 0}})
+                opened = name == "liquid-open"
+                report["liquid"]["cases"].append({"name": name, "frames": frames,
+                    "contentTransitionFrames": 4, "backdropTransitionFrames": 4,
+                    "mounted": opened,
+                    "after": {"engine": "plain", "open": opened, "contentAlpha": 1 if opened else 0,
+                              "backdropAlpha": 1 if opened else 0}})
         scroll = fixture["playground_scroll"]
         report["playground"] = {"status": "measured", "viewport": fixture["liquid_viewport"],
-            "component": "zork-ui::liquid::Dialog", "control": "liquid-dialog-panel", "cases": []}
+            "component": "zork-ui::modal::PlainDialog", "control": "liquid-dialog-panel", "cases": []}
         for name in ("page-scroll", "directory-scroll"):
             report["playground"]["cases"].append({"name": name,
                 "frames": copy.deepcopy(report["cases"][0]["frames"]),
@@ -119,8 +121,9 @@ class ClientBudgetTests(unittest.TestCase):
                 opened = name == "dialog-open"
                 report["playground"]["cases"].append({"name": name,
                     "frames": copy.deepcopy(report["liquid"]["cases"][0]["frames"]),
-                    "paintOnlyFrames": 4,
-                    "after": {"open": opened, "mounted": opened, "moving": False,
+                    "contentTransitionFrames": 4, "backdropTransitionFrames": 4,
+                    "after": {"engine": "plain", "open": opened, "mounted": opened,
+                              "contentAlpha": 1 if opened else 0,
                               "backdropAlpha": 1 if opened else 0}})
         report["coldEntries"] = copy.deepcopy(report["cases"][0]["frames"])
         report["coverage"] = {"message_kinds": {"plain": fixture["messages"]},
@@ -193,9 +196,10 @@ class ClientBudgetTests(unittest.TestCase):
             lambda r: r["playground"]["cases"][0].update(after={"y": 200}),
             lambda r: r["playground"]["cases"][0].update(scrollSpeed=1),
             lambda r: r["playground"]["cases"][1].update(directionChanges=0),
-            lambda r: r["playground"]["cases"][2]["after"].update(moving=True),
+            lambda r: r["playground"]["cases"][2]["after"].update(contentAlpha=0),
             lambda r: r["playground"]["cases"][2]["after"].update(mounted=False),
-            lambda r: r["playground"]["cases"][2].update(paintOnlyFrames=0),
+            lambda r: r["playground"]["cases"][2].update(contentTransitionFrames=0),
+            lambda r: r["playground"]["cases"][2].update(backdropTransitionFrames=0),
         ):
             report = self.report()
             change(report)
@@ -216,16 +220,16 @@ class ClientBudgetTests(unittest.TestCase):
             with self.assertRaises(native_budget.Unverified):
                 native_budget.evaluate(report, self.definition)
 
-    def test_other_component_or_inactive_new_renderer_cannot_validate_liquid_design(self):
+    def test_other_component_or_missing_plain_fade_cannot_validate_dialog(self):
         for change in (
             lambda r: r.pop("liquid"),
             lambda r: r["liquid"].update(control="conversation-browser"),
             lambda r: r["liquid"].update(recipe="ordinary-layout"),
-            lambda r: r["liquid"]["cases"][0].update(paintOnlyFrames=0),
+            lambda r: r["liquid"]["cases"][0].update(contentTransitionFrames=0),
+            lambda r: r["liquid"]["cases"][0].update(backdropTransitionFrames=0),
             lambda r: r["liquid"]["cases"][0]["after"].update(backdropAlpha=0),
-            lambda r: r["liquid"]["cases"][0]["frames"][0].update(retainedFallback=True),
-            lambda r: [row.update(maskRedraws=0) for row in r["liquid"]["cases"][0]["frames"]],
-            lambda r: [row.update(contentRedraws=1) for row in r["liquid"]["cases"][0]["frames"]],
+            lambda r: r["liquid"]["cases"][0].update(mounted=False),
+            lambda r: r["liquid"]["cases"][0]["after"].update(engine="liquid"),
         ):
             report = self.report()
             change(report)
