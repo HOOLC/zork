@@ -324,10 +324,6 @@ impl DesktopRoot {
                 self.apply_device_name(&node.id, &node.name, cx);
                 self.ensure_node_view(&node, cx);
             }
-            for (id, (_, root)) in &self.node_views {
-                let choice = self.source.new_chat_devices(id);
-                root.update(cx, |root, cx| root.set_new_chat_devices(choice, cx));
-            }
             if let Some(id) = self.active_node_id.clone() {
                 if self.node_views.get(&id).is_some_and(|(_, current)| {
                     self.active.as_ref().is_some_and(|active| active != current)
@@ -338,6 +334,12 @@ impl DesktopRoot {
                         self.managing = managing;
                     }
                 }
+            }
+        }
+        if nodes_changed || statuses_changed {
+            for (id, (_, root)) in &self.node_views {
+                let choice = self.source.new_chat_devices(id);
+                root.update(cx, |root, cx| root.set_new_chat_devices(choice, cx));
             }
         }
         cx.notify();

@@ -577,15 +577,22 @@ impl Directory {
         self.store.put("device", "last-node", &id)
     }
     pub fn new_chat_devices(&self, current: &str) -> zork_client_types::new_chat::Choice {
+        let snapshot = self.snapshot();
         zork_client_types::new_chat::Choice {
             value: current.into(),
-            options: self
-                .snapshot()
+            options: snapshot
                 .nodes
                 .iter()
                 .map(|node| zork_client_types::new_chat::OptionItem {
                     value: node.id.clone(),
                     label: node.name.clone(),
+                    status: Some(
+                        snapshot
+                            .device_statuses
+                            .get(&node.id)
+                            .cloned()
+                            .unwrap_or_default(),
+                    ),
                 })
                 .collect(),
         }
