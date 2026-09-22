@@ -1,4 +1,10 @@
 {
+  "new_chat_choose_intensity": "选择强度",
+  "new_chat_reset_thinking": "恢复默认强度",
+  "new_chat_fixed_thinking": "此模型使用固定思考强度",
+  "thinking_minimal": "最低",
+  "thinking_xhigh": "极高",
+  "thinking_max": "最高",
   "new_chat": "新建 Chat",
   "chat_day_today": "今天",
   "chat_day_0": "星期日",

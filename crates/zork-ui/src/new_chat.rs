@@ -16,6 +16,9 @@ use std::time::Instant;
 #[cfg(target_family = "wasm")]
 use web_time::Instant;
 use zork_client_types::new_chat::{Action, Snapshot};
+mod picker;
+use crate::components::liquid::panel::PopoverPanel;
+use picker::PickerMode;
 
 pub enum Event {
     Intent(Action),
@@ -26,7 +29,11 @@ pub struct Page {
     data: Snapshot,
     text: Text,
     input: Entity<ComposerInput>,
-    menus: [bool; 4],
+    device_menu: bool,
+    picker_open: bool,
+    picker_mode: PickerMode,
+    picker: PopoverPanel,
+    thinking_preview: Option<usize>,
     width: f32,
     scene: composer::Scene,
     previous: Option<Instant>,
@@ -61,7 +68,11 @@ impl Page {
             data: Default::default(),
             text,
             input,
-            menus: [false; 4],
+            device_menu: false,
+            picker_open: false,
+            picker_mode: PickerMode::Strength,
+            picker: PopoverPanel::new(cx),
+            thinking_preview: None,
             width: 480.,
             scene: Default::default(),
             previous: None,
@@ -71,6 +82,13 @@ impl Page {
     }
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
         self.text = text;
+        if self.data.model != data.model || self.data.thinking != data.thinking || !data.editable {
+            self.thinking_preview = None;
+        }
+        if !data.editable {
+            self.picker_open = false;
+            self.device_menu = false;
+        }
         self.input.update(cx, |input, cx| {
             // Rendering can precede delivery of ComposerEdited. Keep a local
             // edit until core echoes it; a frozen submission remains authoritative.
@@ -89,83 +107,47 @@ impl Page {
         self.focus_pending = true;
         cx.notify();
     }
-    fn selector(&self, field: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let (id, key, choice) = match field {
-            0 => ("new-chat-model", "new_chat_choose_model", &self.data.model),
-            1 => (
-                "new-chat-thinking",
-                "new_chat_thinking",
-                &self.data.thinking,
-            ),
-            2 => (
-                "new-chat-profile",
-                "new_chat_profile_auto",
-                &self.data.profile,
-            ),
-            _ => ("new-chat-device", "new_chat_device", &self.data.device),
-        };
-        let label = |value: &str, label: &str| {
-            if field == 2 && value == "auto" {
-                self.text.text("new_chat_profile_auto")
-            } else {
-                label.into()
-            }
-        };
+    fn device_selector(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let choice = &self.data.device;
         let current = choice
             .options
             .iter()
             .find(|o| o.value == choice.value)
-            .map(|o| label(&o.value, &o.label))
-            .unwrap_or_else(|| {
-                if choice.value.is_empty() {
-                    self.text.text(key)
-                } else {
-                    choice.value.clone()
-                }
-            });
+            .map(|o| o.label.clone())
+            .unwrap_or_else(|| self.text.text("new_chat_device"));
         let options = choice
             .options
             .iter()
             .enumerate()
             .map(|(i, o)| {
                 (
-                    format!("{id}-{i}"),
-                    label(&o.value, &o.label),
+                    format!("new-chat-device-{i}"),
+                    o.label.clone(),
                     o.value == choice.value,
                 )
             })
             .collect();
-        let values = choice
-            .options
-            .iter()
-            .map(|o| o.value.clone())
-            .collect::<Vec<_>>();
+        let values: Vec<_> = choice.options.iter().map(|o| o.value.clone()).collect();
         ui::quiet_dropdown(
-            id,
+            "new-chat-device",
             current,
             options,
-            self.menus[field],
+            self.device_menu,
             self.data.editable && !values.is_empty(),
             window,
             cx,
-            move |v, open, cx| {
-                v.menus = [false; 4];
-                v.menus[field] = open;
+            |view, open, cx| {
+                view.device_menu = open;
+                if open {
+                    view.picker_open = false;
+                }
                 cx.notify();
             },
-            move |v, index, cx| {
-                if let Some(value) = values.get(index).cloned() {
-                    if field == 3 {
-                        cx.emit(Event::SelectDevice(value));
-                    } else {
-                        cx.emit(Event::Intent(match field {
-                            0 => Action::Model { value },
-                            1 => Action::Thinking { value },
-                            _ => Action::Profile { value },
-                        }));
-                    }
+            move |view, index, cx| {
+                if let Some(id) = values.get(index) {
+                    cx.emit(Event::SelectDevice(id.clone()));
                 }
-                v.menus = [false; 4];
+                view.device_menu = false;
                 cx.notify();
             },
         )
@@ -230,6 +212,20 @@ impl Render for Page {
             },
             ..Default::default()
         };
+        let trigger = self.picker.trigger(
+            "new-chat-options",
+            self.text.text("new_chat_choose_intensity"),
+            130.,
+            self.picker_open,
+            self.data.editable,
+            cx,
+            |view, open, cx| {
+                view.picker_open = open;
+                view.device_menu = false;
+                view.picker_mode = PickerMode::Strength;
+                cx.notify();
+            },
+        );
         let composer = composer::render(
             composer::Props {
                 id: "new-chat-composer",
@@ -243,7 +239,12 @@ impl Render for Page {
                 bubbles: &[],
                 handler,
                 accessory_band: 0.,
-                accessories: vec![],
+                accessories: vec![div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .child(trigger)
+                    .into_any_element()],
                 presentation: Some(composer::Presentation {
                     editor_id: "new-chat-input".into(),
                     attach_id: "new-chat-attach".into(),
@@ -269,10 +270,27 @@ impl Render for Page {
             window,
             cx,
         );
-        let options = [3, 0, 1, 2]
-            .into_iter()
-            .map(|field| self.selector(field, window, cx))
-            .collect::<Vec<_>>();
+        let device = self.device_selector(window, cx);
+        let popup_width = 272_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
+        let content = if self.picker_open || self.picker.alive() {
+            self.picker_content(popup_width, window, cx)
+        } else {
+            div().into_any_element()
+        };
+        let popup = self.picker.render(
+            "new-chat-options-panel",
+            self.picker_open,
+            popup_width,
+            ZORK_UI.composer.action_size,
+            content,
+            window,
+            cx,
+            |view, cx| {
+                view.picker_open = false;
+                view.thinking_preview = None;
+                cx.notify();
+            },
+        );
         let note = if self.data.busy {
             Some(self.text.text("new_chat_creating"))
         } else if self.data.uncertain {
@@ -336,16 +354,32 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .child(div().w(px(self.width)).h(px(height)).child(composer))
+            .child(
+                crate::components::liquid::primitives::surface(
+                    "new-chat-context",
+                    16.,
+                    ZORK_UI.palette.sidebar_hover,
+                    false,
+                )
+                .w(px((self.width - 24.).max(196.)))
+                .px_3()
+                .font_weight(FontWeight::NORMAL)
+                .pt_2()
+                .pb(px(16.))
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(ui::icon("icons/node.svg", 14.))
+                .child(device),
+            )
             .child(
                 div()
+                    .mt(px(-8.))
                     .w(px(self.width))
-                    .mt_2()
-                    .flex()
-                    .flex_wrap()
-                    .gap_3()
-                    .children(options),
+                    .h(px(height))
+                    .child(composer),
             )
+            .children(popup)
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }
 }

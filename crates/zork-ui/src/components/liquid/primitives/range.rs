@@ -116,6 +116,39 @@ pub fn slider<V: 'static>(
     cx: &mut Context<V>,
     change: impl Fn(&mut V, Vec<f64>, bool, &mut Context<V>) + 'static,
 ) -> AnyElement {
+    render_slider(
+        id, label, values, scale, length, disabled, false, window, cx, change,
+    )
+}
+
+pub fn step_slider<V: 'static>(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    values: Vec<f64>,
+    scale: Scale,
+    length: f32,
+    disabled: bool,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    change: impl Fn(&mut V, Vec<f64>, bool, &mut Context<V>) + 'static,
+) -> AnyElement {
+    render_slider(
+        id, label, values, scale, length, disabled, true, window, cx, change,
+    )
+}
+
+fn render_slider<V: 'static>(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    values: Vec<f64>,
+    scale: Scale,
+    length: f32,
+    disabled: bool,
+    capsule: bool,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    change: impl Fn(&mut V, Vec<f64>, bool, &mut Context<V>) + 'static,
+) -> AnyElement {
     let id = id.into();
     let label = label.into();
     let disabled = disabled || !scale.valid() || values.is_empty();
@@ -134,7 +167,7 @@ pub fn slider<V: 'static>(
     let (width, height) = if scale.vertical {
         (32., length)
     } else {
-        (length, 32.)
+        (length, if capsule { 28. } else { 32. })
     };
     let mut track = div()
         .id(id.clone())
@@ -146,7 +179,11 @@ pub fn slider<V: 'static>(
         .when(disabled, |v| v.opacity(0.4));
     let span = (length - 20.).max(1.);
     let bounds = Pose::rect(0., 0., width as f64, height as f64, 0.);
-    let rail_pose = zork_liquid::recipes::slider_rail(bounds, scale.vertical);
+    let rail_pose = if capsule && !scale.vertical {
+        Pose::rect(0., 2., width as f64, 24., 12.)
+    } else {
+        zork_liquid::recipes::slider_rail(bounds, scale.vertical)
+    };
     let rail = surface(
         format!("{id}-rail"),
         rail_pose.r as f32,
@@ -188,6 +225,19 @@ pub fn slider<V: 'static>(
             scale.vertical,
             active,
         );
+        let target = if capsule {
+            Pose {
+                w: target.w * 1.4,
+                h: target.h * 1.4,
+                r: target.r * 1.4,
+                ..target
+            }
+        } else {
+            target
+        };
+        let diameter = if capsule { 28. } else { 20. };
+        let inset = ((if scale.vertical { width } else { height }) - diameter) / 2.;
+        let offset = (20. - diameter) / 2.;
         let material_id = format!("{id}-material-{i}");
         layers.push(
             controls::with_control_surface(
@@ -209,7 +259,14 @@ pub fn slider<V: 'static>(
                         .inset_0()
                         .w(px(width))
                         .h(px(height))
-                        .child(surface.background(BRAND_ACCENT, None))
+                        .child(surface.background(
+                            if capsule {
+                                ZORK_UI.palette.canvas
+                            } else {
+                                BRAND_ACCENT
+                            },
+                            capsule.then_some(ZORK_UI.palette.border_strong),
+                        ))
                 },
             )
             .into_any_element(),
@@ -217,12 +274,14 @@ pub fn slider<V: 'static>(
         let thumb = div()
             .id(format!("{id}-thumb-{i}"))
             .absolute()
-            .size(px(20.))
+            .size(px(diameter))
             .when(scale.vertical, |v| {
-                v.left(px(6.)).top(px(scale.fraction(value) * span))
+                v.left(px(inset))
+                    .top(px(scale.fraction(value) * span + offset))
             })
             .when(!scale.vertical, |v| {
-                v.top(px(6.)).left(px(scale.fraction(value) * span))
+                v.top(px(inset))
+                    .left(px(scale.fraction(value) * span + offset))
             })
             .role(Role::Slider)
             .aria_label(format!("{label} {}", i + 1))
@@ -262,8 +321,12 @@ pub fn slider<V: 'static>(
                     v.child(
                         div()
                             .absolute()
-                            .inset(px(5.))
-                            .bg(rgb(ZORK_UI.palette.canvas))
+                            .inset(px(if capsule { 0. } else { 5. }))
+                            .when(capsule, |v| {
+                                v.border_2()
+                                    .border_color(rgb(crate::design::INTERACTION.focus_border))
+                            })
+                            .when(!capsule, |v| v.bg(rgb(ZORK_UI.palette.canvas)))
                             .rounded_full(),
                     )
                 },
@@ -301,8 +364,11 @@ pub fn slider<V: 'static>(
         presented.first().copied().unwrap_or(10.)
     };
     let high = presented.last().copied().unwrap_or(low);
-    let fill_pose =
-        zork_liquid::recipes::slider_range(bounds, low as f64, high as f64, scale.vertical);
+    let fill_pose = if capsule && !scale.vertical {
+        Pose::rect(0., 2., high as f64, 24., 12.)
+    } else {
+        zork_liquid::recipes::slider_range(bounds, low as f64, high as f64, scale.vertical)
+    };
     let fill = surface(
         format!("{id}-range"),
         fill_pose.r as f32,
@@ -314,7 +380,28 @@ pub fn slider<V: 'static>(
     .top(px(fill_pose.top() as f32))
     .w(px(fill_pose.w as f32))
     .h(px(fill_pose.h as f32));
-    track = track.child(rail).child(fill).children(layers);
+    track = track.child(rail).child(fill);
+    if capsule && !scale.vertical && scale.valid() {
+        let count = (((scale.max - scale.min) / scale.step).round() as usize + 1).min(32);
+        for index in 0..count {
+            let value = scale.min + index as f64 * scale.step;
+            let x = 10. + scale.fraction(value) * span;
+            track = track.child(
+                surface(
+                    format!("{id}-tick-{index}"),
+                    2.,
+                    ZORK_UI.palette.muted,
+                    false,
+                )
+                .absolute()
+                .left(px(x - 2.))
+                .top(px(height / 2. - 2.))
+                .size(px(4.))
+                .opacity(0.45),
+            );
+        }
+    }
+    track = track.children(layers);
     let down = state.clone();
     let down_callback = callback.clone();
     let measured = state.clone();

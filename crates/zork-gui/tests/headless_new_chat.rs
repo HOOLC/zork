@@ -47,9 +47,7 @@ fn main() -> anyhow::Result<()> {
         for id in [
             "new-chat-input",
             "new-chat-device",
-            "new-chat-model",
-            "new-chat-thinking",
-            "new-chat-profile",
+            "new-chat-options",
             "new-chat-send",
         ] {
             let element = snapshot
@@ -79,16 +77,52 @@ fn main() -> anyhow::Result<()> {
             })??;
             draw(cx)
         };
+        for id in ["new-chat-device", "new-chat-device-1", "new-chat-options"] {
+            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
+        }
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-picker-max-{width}.png")))?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            &mut cx,
+        )?;
+        action(json!({"type":"key","keystroke":"home"}), &mut cx)?;
+        action(json!({"type":"key","keystroke":"right"}), &mut cx)?;
+        let label_center = driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .find(|e| e.id == "new-chat-thinking-label")
+            .unwrap()
+            .center;
+        action(
+            json!({"type":"click","target":{"x":label_center.x,"y":label_center.y}}),
+            &mut cx,
+        )?;
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-picker-{width}.png")))?;
         for id in [
-            "new-chat-device",
-            "new-chat-device-1",
             "new-chat-model",
             "new-chat-model-1",
-            "new-chat-thinking",
-            "new-chat-thinking-1",
-            "new-chat-profile",
-            "new-chat-profile-1",
+            "new-chat-thinking-thumb-0",
         ] {
+            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
+        }
+        action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-reset"}}),
+            &mut cx,
+        )?;
+        anyhow::ensure!(
+            host.read_with(&cx, |view, cx| view.inspect(cx))["thinking"]["value"] == "off",
+            "reset did not use the selected model's default"
+        );
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            &mut cx,
+        )?;
+        action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
+        for id in ["new-chat-model", "new-chat-profile", "new-chat-profile-1"] {
             action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
         }
         let state = host.read_with(&cx, |view, cx| view.inspect(cx));
@@ -99,6 +133,25 @@ fn main() -> anyhow::Result<()> {
                 && state["profile"]["value"] == "personal",
             "selection did not reach core fixture: {state}"
         );
+        action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
+        anyhow::ensure!(
+            !driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|e| e.id == "new-chat-model" && e.visible),
+            "Escape did not close picker"
+        );
+        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|e| e.id == "new-chat-model" && e.visible),
+            "close did not restore trigger focus"
+        );
+        action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         action(
             json!({"type":"click","target":{"element_id":"new-chat-input"}}),
             &mut cx,
