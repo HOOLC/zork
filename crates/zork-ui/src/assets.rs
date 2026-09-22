@@ -174,6 +174,7 @@ impl AssetSource for EmbeddedAssets {
             "icons/permission.svg" => Some(include_bytes!("../assets/icons/permission.svg")),
             "icons/open.svg" => Some(include_bytes!("../assets/icons/open.svg")),
             "icons/mesh.svg" => Some(include_bytes!("../assets/icons/mesh.svg")),
+            "icons/models.svg" => Some(include_bytes!("../assets/icons/models.svg")),
             "icons/phosphor-terminal-window.svg" => Some(include_bytes!(
                 "../assets/icons/phosphor-terminal-window.svg"
             )),
@@ -226,6 +227,12 @@ impl AssetSource for EmbeddedAssets {
             "icons/edit.svg" => Some(include_bytes!("../assets/icons/edit.svg")),
             "icons/download.svg" => Some(include_bytes!("../assets/icons/download.svg")),
             "icons/grouping.svg" => Some(include_bytes!("../assets/icons/grouping.svg")),
+            "icons/group-by-provider.svg" => {
+                Some(include_bytes!("../assets/icons/group-by-provider.svg"))
+            }
+            "icons/group-by-model.svg" => {
+                Some(include_bytes!("../assets/icons/group-by-model.svg"))
+            }
             "icons/shapes.svg" => Some(include_bytes!("../assets/icons/shapes.svg")),
             "icons/stop.svg" => Some(include_bytes!("../assets/icons/stop.svg")),
             "icons/cube.svg" => Some(include_bytes!("../assets/icons/cube.svg")),
@@ -349,6 +356,8 @@ impl AssetSource for EmbeddedAssets {
                 "edit.svg".into(),
                 "file.svg".into(),
                 "filter.svg".into(),
+                "group-by-model.svg".into(),
+                "group-by-provider.svg".into(),
                 "handoff.svg".into(),
                 "history.svg".into(),
                 "home.svg".into(),
@@ -357,6 +366,7 @@ impl AssetSource for EmbeddedAssets {
                 "loader.svg".into(),
                 "mention.svg".into(),
                 "mesh.svg".into(),
+                "models.svg".into(),
                 "microphone.svg".into(),
                 "minus.svg".into(),
                 "node.svg".into(),

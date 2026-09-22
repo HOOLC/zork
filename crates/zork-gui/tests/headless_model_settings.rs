@@ -25,10 +25,16 @@ impl Render for SettingsShell {
     }
 }
 fn main() -> anyhow::Result<()> {
-    anyhow::ensure!(
-        gpui::AssetSource::load(&EmbeddedAssets, "icons/grouping.svg")?.is_some(),
-        "Grouping icon is not embedded"
-    );
+    for icon in [
+        "icons/models.svg",
+        "icons/group-by-provider.svg",
+        "icons/group-by-model.svg",
+    ] {
+        anyhow::ensure!(
+            gpui::AssetSource::load(&EmbeddedAssets, icon)?.is_some(),
+            "{icon} is not embedded"
+        );
+    }
     let output =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/model-settings");
     std::fs::create_dir_all(&output)?;
@@ -49,7 +55,7 @@ fn main() -> anyhow::Result<()> {
         fixture["profile"]["models"] = json!([{
             "id": "shared-model", "enabled": true, "api": "openai-responses",
             "limits": {"context_window_tokens": 128000, "max_output_tokens": 8192}, "thinking": ["low"], "default_thinking": "low"
-        }]);
+        }, {"id": "old-model", "enabled": false, "api": "openai-responses"}]);
         let client = Arc::new(StationClient::fixture(
             fixture,
             serde_json::from_str(include_str!("fixtures/provider_catalog.json"))?,
@@ -139,11 +145,44 @@ fn main() -> anyhow::Result<()> {
     view.update(&mut cx, |v, cx| v.set_onboarding_local(None, cx));
     draw(&mut cx)?;
     anyhow::ensure!(rows().len() == 2, "Normal settings lost a device");
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "model-disabled-toggle"),
+        "Disabled models need a collapsed entry"
+    );
     cx.capture_screenshot(window.into())?
         .save(output.join("by-provider.png"))?;
+    click("model-disabled-toggle", &mut cx)?;
+    anyhow::ensure!(rows().len() == 4, "Disabled models did not expand");
+    click("model-disabled-toggle", &mut cx)?;
+    anyhow::ensure!(rows().len() == 2, "Disabled models did not collapse");
+    click("models-add", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "model-add-device-laptop" && e.visible),
+        "Adding a connection did not open the device dialog"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("add-device.png"))?;
+    click("model-add-device-laptop", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-close-form" && e.visible),
+        "Selecting a device did not open the connection dialog"
+    );
+    click("profile-close-form", &mut cx)?;
     for label in [
-        "当前按供应商分组，点击切换为按模型分组",
-        "当前按模型分组，点击切换为按供应商分组",
+        "按供应商分组 · 点击切换为按模型分组",
+        "按模型分组 · 点击切换为按供应商分组",
     ] {
         cx.update_window(window.into(), |_, w, cx| {
             driver.dispatch(
@@ -187,6 +226,40 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(rows().len() == 2, "Grouping merged distinct model sources");
     cx.capture_screenshot(window.into())?
         .save(output.join("by-model.png"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        w.resize(size(px(600.), px(760.)));
+        w.bounds_changed(cx);
+    })?;
+    draw(&mut cx)?;
+    anyhow::ensure!(rows().len() == 2, "Narrow layout lost a model source");
+    for row in rows() {
+        anyhow::ensure!(
+            row.visible && row.bounds.x >= 0. && row.bounds.x + row.bounds.width <= 600.,
+            "Narrow layout clipped a model row: {:?}",
+            row.bounds
+        );
+    }
+    for id in [
+        "models-add",
+        "model-grouping-toggle",
+        "model-disabled-toggle",
+    ] {
+        let element = driver
+            .snapshot(false)
+            .elements
+            .into_iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Narrow layout lost {id}"))?;
+        anyhow::ensure!(
+            element.visible
+                && element.bounds.x >= 0.
+                && element.bounds.x + element.bounds.width <= 600.,
+            "Narrow layout clipped {id}: {:?}",
+            element.bounds
+        );
+    }
+    cx.capture_screenshot(window.into())?
+        .save(output.join("by-model-narrow.png"))?;
     let laptop = rows()
         .into_iter()
         .find(|e| e.label.contains("laptop"))
@@ -210,6 +283,23 @@ fn main() -> anyhow::Result<()> {
             .is_null(),
         "Removed source retained its editor"
     );
-    println!("PASS model settings: icon tooltips, both grouping modes, same model on two devices, matching editor, source removal");
+    click("models-add", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-close-form" && e.visible),
+        "Single-device add did not open the connection dialog"
+    );
+    anyhow::ensure!(
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id.starts_with("model-add-device-") && e.visible),
+        "Single-device add showed an unnecessary chooser"
+    );
+    println!("PASS model settings: add dialog, disabled disclosure, icon tooltips, both grouping modes, same model on two devices, matching editor, source removal");
     Ok(())
 }

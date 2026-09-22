@@ -4,7 +4,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
 };
-use gpui::{div, prelude::*, rgb, Context, Entity, Task, Window};
+use gpui::{div, prelude::*, px, rgb, Context, Entity, Task, Window};
 use std::{collections::BTreeMap, sync::Arc};
 
 type Source = (
@@ -30,9 +30,12 @@ enum Grouping {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ModelRow {
     device_id: String,
+    device_name: String,
     profile_id: String,
+    profile_name: String,
+    provider_id: String,
+    provider_label: String,
     model: Option<(String, bool)>,
-    origin: String,
 }
 type Groups = BTreeMap<String, Vec<ModelRow>>;
 fn append_groups(
@@ -49,24 +52,22 @@ fn append_groups(
             .find(|p| p["id"] == profile.provider)
             .and_then(|p| p["label"].as_str())
             .unwrap_or(&profile.provider);
-        let origin = format!(
-            "{} · {} · {}",
-            provider,
-            profile.display_name(),
-            device_name
-        );
+        let row = |model| ModelRow {
+            device_id: device_id.to_owned(),
+            device_name: device_name.to_owned(),
+            profile_id: profile.profile_id.clone(),
+            profile_name: profile.display_name().to_owned(),
+            provider_id: profile.provider.clone(),
+            provider_label: provider.to_owned(),
+            model,
+        };
         if profile.models.is_empty() {
             let group = if grouping == Grouping::Provider {
                 provider
             } else {
                 "待配置模型"
             };
-            groups.entry(group.into()).or_default().push(ModelRow {
-                device_id: device_id.to_owned(),
-                profile_id: profile.profile_id.clone(),
-                model: None,
-                origin: origin.clone(),
-            });
+            groups.entry(group.into()).or_default().push(row(None));
         }
         for model in &profile.models {
             let group = if grouping == Grouping::Provider {
@@ -74,12 +75,10 @@ fn append_groups(
             } else {
                 &model.id
             };
-            groups.entry(group.into()).or_default().push(ModelRow {
-                device_id: device_id.to_owned(),
-                profile_id: profile.profile_id.clone(),
-                model: Some((model.id.clone(), model.enabled)),
-                origin: origin.clone(),
-            });
+            groups
+                .entry(group.into())
+                .or_default()
+                .push(row(Some((model.id.clone(), model.enabled))));
         }
     }
 }
@@ -87,15 +86,19 @@ pub struct ModelSettings {
     devices: Vec<Device>,
     grouping: Grouping,
     adding: bool,
+    show_disabled: bool,
+    modal: ui::ModalState,
     selected: Option<String>,
     onboarding_local: Option<String>,
 }
 impl ModelSettings {
-    pub fn new(_: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             devices: vec![],
             grouping: Grouping::default(),
             adding: false,
+            show_disabled: false,
+            modal: ui::ModalState::new(cx),
             selected: None,
             onboarding_local: None,
         }
@@ -134,6 +137,152 @@ impl ModelSettings {
         }
         cx.notify();
     }
+    fn add_on_device(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.selected = Some(id.to_owned());
+        self.adding = false;
+        if let Some(device) = self.devices.iter().find(|device| device.id == id) {
+            device
+                .editor
+                .update(cx, |editor, cx| editor.add_connection(cx));
+        }
+        cx.notify();
+    }
+    fn render_group(
+        &self,
+        group_index: usize,
+        key: String,
+        rows: Vec<ModelRow>,
+        grouping: Grouping,
+        muted: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let palette = ZORK_UI.palette;
+        let provider = rows
+            .first()
+            .map(|row| row.provider_id.as_str())
+            .unwrap_or("");
+        let title = if grouping == Grouping::Provider {
+            rows.first()
+                .map(|row| row.provider_label.clone())
+                .unwrap_or(key)
+        } else {
+            key
+        };
+        ui::section()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(if grouping == Grouping::Provider {
+                        zork_ui::controls::provider_icon(provider, 22.).into_any_element()
+                    } else {
+                        ui::icon("icons/models.svg", 20.).into_any_element()
+                    })
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(rgb(palette.muted))
+                            .child(rows.len().to_string()),
+                    ),
+            )
+            .children(rows.into_iter().enumerate().map(|(row_index, row)| {
+                let ModelRow {
+                    device_id,
+                    device_name,
+                    profile_id,
+                    profile_name,
+                    provider_id,
+                    provider_label,
+                    model,
+                } = row;
+                let model_id = model.as_ref().map(|(id, _)| id.clone());
+                let title = if grouping == Grouping::Provider {
+                    model_id.clone().unwrap_or_else(|| "配置模型".into())
+                } else {
+                    provider_label.clone()
+                };
+                let detail = (profile_name != provider_label).then_some(profile_name);
+                let automation = format!(
+                    "{}，{}，{}{}",
+                    model_id.as_deref().unwrap_or("待配置模型"),
+                    provider_label,
+                    device_name,
+                    if muted { "，未启用" } else { "" }
+                );
+                ui::quiet_button(
+                    format!("model-entry-{group_index}-{row_index}"),
+                    "",
+                    true,
+                    ui::IconButtonSize::Standard,
+                )
+                .radius(ui::FIELD_RADIUS)
+                .font_weight(gpui::FontWeight::NORMAL)
+                .w_full()
+                .h_auto()
+                .py_2()
+                .px_3()
+                .justify_between()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .min_w_0()
+                        .when(grouping == Grouping::Model, |v| {
+                            v.child(zork_ui::controls::provider_icon(&provider_id, 18.))
+                        })
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_w_0()
+                                .items_start()
+                                .gap_1()
+                                .child(div().w_full().truncate().child(title))
+                                .when_some(detail, |v, detail| {
+                                    v.child(
+                                        div()
+                                            .w_full()
+                                            .truncate()
+                                            .text_size(px(11.))
+                                            .text_color(rgb(palette.muted))
+                                            .child(detail),
+                                    )
+                                }),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .max_w(px(160.))
+                        .truncate()
+                        .text_size(px(11.))
+                        .text_color(rgb(palette.muted))
+                        .child(device_name),
+                )
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    v.selected = Some(device_id.clone());
+                    if let Some(device) = v.devices.iter().find(|d| d.id == device_id) {
+                        device.editor.update(cx, |editor, cx| {
+                            editor.open_model(profile_id.clone(), model_id.clone(), cx)
+                        });
+                    }
+                    cx.notify();
+                }))
+                .automation(AutomationRole::Button, automation)
+            }))
+            .into_any_element()
+    }
     #[cfg(feature = "headless-bench")]
     pub fn headless_selection(&self, cx: &gpui::App) -> serde_json::Value {
         self.selected.as_ref().and_then(|id| self.devices.iter().find(|d| &d.id == id))
@@ -148,6 +297,10 @@ impl ModelSettings {
         }
     }
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if !visible && self.adding {
+            self.adding = false;
+            cx.notify();
+        }
         for device in &self.devices {
             let visible = visible
                 && self
@@ -208,13 +361,23 @@ impl ModelSettings {
     }
 }
 impl Render for ModelSettings {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = ZORK_UI.palette;
         let grouping_hint = match self.grouping {
-            Grouping::Provider => "当前按供应商分组，点击切换为按模型分组",
-            Grouping::Model => "当前按模型分组，点击切换为按供应商分组",
+            Grouping::Provider => "按供应商分组 · 点击切换为按模型分组",
+            Grouping::Model => "按模型分组 · 点击切换为按供应商分组",
         };
-        // This is a read-only rendering projection, never another editable catalog.
+        let grouping_icon = match self.grouping {
+            Grouping::Provider => "icons/group-by-provider.svg",
+            Grouping::Model => "icons/group-by-model.svg",
+        };
+        self.modal
+            .sync(self.adding.then_some("model-device-dialog"), window, cx);
+        let chooser_visible = self
+            .modal
+            .retain("model-device-dialog", self.adding.then_some(()), cx)
+            .is_some();
+        // These groups are rebuilt from core snapshots for presentation only.
         let mut groups = Groups::new();
         let mut notices = Vec::new();
         for device in self.devices.iter().filter(|device| {
@@ -229,15 +392,42 @@ impl Render for ModelSettings {
             } else if let Some(error) = &state.error {
                 notices.push(format!("{name} · {error}"));
             }
-            append_groups(&mut groups, self.grouping, &device.id, &name, &state);
+            let row_device = if matches!(
+                device.status,
+                zork_ui::device_name::DeviceStatus::Connected
+                    | zork_ui::device_name::DeviceStatus::Direct
+            ) {
+                &device.name
+            } else {
+                &name
+            };
+            append_groups(&mut groups, self.grouping, &device.id, row_device, &state);
         }
-
-        let empty = groups.is_empty() && notices.is_empty();
+        let mut active = Groups::new();
+        let mut disabled = Groups::new();
+        let mut unconfigured = Groups::new();
+        for (key, rows) in groups {
+            for row in rows {
+                match row.model.as_ref() {
+                    Some((_, true)) => active.entry(key.clone()).or_default().push(row),
+                    Some((_, false)) => disabled.entry(key.clone()).or_default().push(row),
+                    None => unconfigured
+                        .entry(row.provider_id.clone())
+                        .or_default()
+                        .push(row),
+                }
+            }
+        }
+        let active_count: usize = active.values().map(Vec::len).sum();
+        let disabled_count: usize = disabled.values().map(Vec::len).sum();
+        let unconfigured_count: usize = unconfigured.values().map(Vec::len).sum();
+        let has_notices = !notices.is_empty();
+        let grouping = self.grouping;
         div()
             .w_full()
             .flex()
             .flex_col()
-            .gap_4()
+            .gap_2()
             .child(
                 div()
                     .flex()
@@ -249,11 +439,24 @@ impl Render for ModelSettings {
                             .on_click(cx.listener(|v, _, _, cx| {
                                 if v.onboarding_local.is_some() {
                                     v.add_local_connection(cx);
+                                } else if v.devices.len() == 1 {
+                                    let id = v.devices[0].id.clone();
+                                    v.add_on_device(&id, cx);
                                 } else {
-                                    v.adding = !v.adding;
+                                    v.adding = true;
                                 }
                                 cx.notify();
                             }))
+                            .map(|button| {
+                                self.modal.source("model-device-dialog").bind(
+                                    button,
+                                    "添加连接",
+                                    ui::ActionStyle {
+                                        icon: Some("icons/plus.svg"),
+                                        ..Default::default()
+                                    },
+                                )
+                            })
                             .automation(AutomationRole::Button, "添加连接"),
                     ),
             )
@@ -265,15 +468,15 @@ impl Render for ModelSettings {
                     .gap_4()
                     .child(div().text_color(rgb(palette.muted)).child(
                         if self.onboarding_local.is_some() {
-                            "本机的模型与连接"
+                            format!("本机 · {active_count} 个已启用模型")
                         } else {
-                            "所有设备的模型与连接"
+                            format!("{active_count} 个已启用模型")
                         },
                     ))
                     .when(self.onboarding_local.is_none(), |v| {
                         v.child(zork_ui::components::tooltip::hint(
                             ui::icon_button("model-grouping-toggle", true)
-                                .child(ui::icon("icons/grouping.svg", 16.))
+                                .child(ui::icon(grouping_icon, 16.))
                                 .aria_label(grouping_hint)
                                 .on_click(cx.listener(|v, _, _, cx| {
                                     v.grouping = match v.grouping {
@@ -288,110 +491,72 @@ impl Render for ModelSettings {
                         ))
                     }),
             )
-            .when(self.adding && self.onboarding_local.is_none(), |v| {
+            .children(notices.into_iter().map(ui::feedback))
+            .when(active_count == 0 && !has_notices, |v| {
                 v.child(
-                    ui::section()
-                        .child(ui::label("选择保存连接的设备"))
-                        .when(self.devices.is_empty(), |v| v.child("请先连接设备"))
-                        .children(self.devices.iter().map(|device| {
-                            let id = device.id.clone();
-                            ui::button(format!("model-add-device-{id}"), "", false, true)
-                                .child(zork_ui::device_name::label(
-                                    format!("model-add-device-name-{id}"),
-                                    device.name.clone(),
-                                    &device.status,
-                                    None,
-                                ))
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    v.selected = Some(id.clone());
-                                    v.adding = false;
-                                    if let Some(device) = v.devices.iter().find(|d| d.id == id) {
-                                        device
-                                            .editor
-                                            .update(cx, |editor, cx| editor.add_connection(cx));
-                                    }
-                                    cx.notify();
-                                }))
-                                .automation(
-                                    AutomationRole::Button,
-                                    format!(
-                                        "添加连接到 {}",
-                                        zork_ui::device_name::accessible_summary(
-                                            &device.name,
-                                            &device.status,
-                                            None
-                                        )
-                                    ),
-                                )
-                        })),
+                    ui::section().child(ui::label("暂无启用的模型")).child(
+                        div()
+                            .text_color(rgb(palette.muted))
+                            .child("添加连接或启用已有模型后，会显示在这里。"),
+                    ),
                 )
             })
-            .children(notices.into_iter().map(ui::feedback))
-            .when(empty, |v| v.child("暂无模型，添加连接后即可配置。"))
-            .children(
-                groups
-                    .into_iter()
-                    .enumerate()
-                    .map(|(group_index, (label, rows))| {
-                        ui::section().child(ui::label(label)).children(
-                            rows.into_iter().enumerate().map(|(row_index, row)| {
-                                let ModelRow {
-                                    device_id,
-                                    profile_id,
-                                    model,
-                                    origin,
-                                } = row;
-                                let label = model
-                                    .as_ref()
-                                    .map(|(id, _)| id.as_str())
-                                    .unwrap_or("待配置模型");
-                                let disabled = model.as_ref().is_some_and(|(_, enabled)| !enabled);
-                                let automation = format!("{} · {}", label, origin);
-                                ui::quiet_button(
-                                    format!("model-entry-{group_index}-{row_index}"),
-                                    "",
+            .children(active.into_iter().enumerate().map(|(index, (key, rows))| {
+                self.render_group(index, key, rows, grouping, false, cx)
+            }))
+            .when(unconfigured_count > 0, |v| {
+                v.child(
+                    ui::section()
+                        .gap_2()
+                        .child(
+                            div()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(format!("待配置连接 · {unconfigured_count}")),
+                        )
+                        .children(unconfigured.into_iter().enumerate().map(
+                            |(index, (key, rows))| {
+                                self.render_group(
+                                    1000 + index,
+                                    key,
+                                    rows,
+                                    Grouping::Provider,
+                                    false,
+                                    cx,
+                                )
+                            },
+                        )),
+                )
+            })
+            .when(disabled_count > 0, |v| {
+                v.child(
+                    ui::section()
+                        .child(
+                            div().flex().child(
+                                ui::action_link(
+                                    "model-disabled-toggle",
+                                    if self.show_disabled {
+                                        format!("收起未启用模型 · {disabled_count}")
+                                    } else {
+                                        format!("查看未启用模型 · {disabled_count}")
+                                    },
                                     true,
-                                    ui::IconButtonSize::Standard,
                                 )
-                                .radius(ui::FIELD_RADIUS)
-                                .font_weight(gpui::FontWeight::NORMAL)
-                                .w_full()
-                                .h_auto()
-                                .py_3()
-                                .justify_start()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .items_start()
-                                        .gap_1()
-                                        .child(format!(
-                                            "{}{}",
-                                            label,
-                                            if disabled { " · 未启用" } else { "" }
-                                        ))
-                                        .child(div().text_color(rgb(palette.muted)).child(origin)),
-                                )
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    v.selected = Some(device_id.clone());
-                                    if let Some(device) =
-                                        v.devices.iter().find(|d| d.id == device_id)
-                                    {
-                                        device.editor.update(cx, |editor, cx| {
-                                            editor.open_model(
-                                                profile_id.clone(),
-                                                model.as_ref().map(|(id, _)| id.clone()),
-                                                cx,
-                                            )
-                                        });
-                                    }
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.show_disabled = !v.show_disabled;
                                     cx.notify();
                                 }))
-                                .automation(AutomationRole::Button, automation)
-                            }),
+                                .automation(AutomationRole::Button, "切换未启用模型"),
+                            ),
                         )
-                    }),
-            )
+                        .when(self.show_disabled, |v| {
+                            v.children(disabled.into_iter().enumerate().map(
+                                |(index, (key, rows))| {
+                                    self.render_group(2000 + index, key, rows, grouping, true, cx)
+                                },
+                            ))
+                        }),
+                )
+            })
             .when_some(
                 self.selected
                     .as_ref()
@@ -399,6 +564,58 @@ impl Render for ModelSettings {
                     .map(|d| d.editor.clone()),
                 |v, editor| v.child(editor),
             )
+            .when(chooser_visible, |v| {
+                v.child(ui::detail_modal(
+                    "model-device-dialog",
+                    "选择保存连接的设备",
+                    ui::section()
+                        .border_t_0()
+                        .py_0()
+                        .when(self.devices.is_empty(), |v| v.child("请先连接设备"))
+                        .children(self.devices.iter().map(|device| {
+                            let id = device.id.clone();
+                            ui::quiet_button(
+                                format!("model-add-device-{id}"),
+                                "",
+                                true,
+                                ui::IconButtonSize::Standard,
+                            )
+                            .w_full()
+                            .h_auto()
+                            .py_3()
+                            .justify_start()
+                            .child(zork_ui::device_name::label(
+                                format!("model-add-device-name-{id}"),
+                                device.name.clone(),
+                                &device.status,
+                                None,
+                            ))
+                            .on_click(cx.listener(move |v, _, _, cx| {
+                                v.add_on_device(&id, cx);
+                            }))
+                            .automation(
+                                AutomationRole::Button,
+                                format!(
+                                    "添加连接到 {}",
+                                    zork_ui::device_name::accessible_summary(
+                                        &device.name,
+                                        &device.status,
+                                        None
+                                    )
+                                ),
+                            )
+                        })),
+                    None,
+                    &self.modal,
+                    window,
+                    cx,
+                    true,
+                    |v, _, cx| {
+                        v.adding = false;
+                        cx.notify();
+                    },
+                ))
+            })
     }
 }
 
@@ -449,7 +666,7 @@ mod tests {
         let mut groups = Groups::new();
         append_groups(&mut groups, Grouping::Provider, "node", "My device", &state);
         assert_eq!(groups["custom"][0].profile_id, "new");
-        assert!(groups["custom"][0].origin.contains("My device"));
+        assert_eq!(groups["custom"][0].device_name, "My device");
         groups.clear();
         append_groups(&mut groups, Grouping::Model, "node", "My device", &state);
         assert_eq!(groups["待配置模型"][0].profile_id, "new");
