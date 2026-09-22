@@ -1390,12 +1390,15 @@ impl RootView {
             .iter()
             .filter_map(|a| a["id"].as_str().map(str::to_owned))
             .collect::<std::collections::HashSet<_>>();
-        let aliases = self
+        let mut aliases = self
             .mesh_status
             .peers
             .iter()
             .map(|p| (p.origin.clone(), p.name.clone()))
             .collect::<HashMap<_, _>>();
+        if let (Some(origin), Some(name)) = (&self.mesh_status.origin, &local_name) {
+            aliases.insert(origin.clone(), name.clone());
+        }
         #[cfg(feature = "headless-bench")]
         let benchmark_rows = self.benchmark_rows.clone();
         #[cfg(feature = "headless-bench")]

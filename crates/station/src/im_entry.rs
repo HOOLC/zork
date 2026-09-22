@@ -268,12 +268,19 @@ impl ImEntryStation {
                     if let Some(key) = fact.author.id.strip_prefix("session:") {
                         if let Ok(Some(session)) = self.db.get_session(key) {
                             value["model"] = json!(session.model);
-                            value["device"] = json!(zork_config::device_name());
+                            if let Ok(Some(origin)) = self.db.local_device_origin() {
+                                value["device"] = json!(origin);
+                            }
                         }
                     } else if let Ok(Some(agent)) = self.db.node_agent(&fact.author.id) {
                         value["author_name"] = json!(agent.name);
                         value["author_avatar"] = json!(agent.avatar);
                         value["model"] = json!(agent.model);
+                        if !fact.author.id.contains('/') {
+                            if let Ok(Some(origin)) = self.db.local_device_origin() {
+                                value["device"] = json!(origin);
+                            }
+                        }
                     }
                     if !fact.author.id.starts_with("session:") {
                         if let Some((origin, _)) = fact.author.id.split_once('/') {
@@ -619,6 +626,11 @@ mod tests {
             .unwrap(),
         );
         let entries = ImEntryStation::new(db.clone(), connections);
+        db.sync_reconcile_catalog(
+            Some(json!({"name": "studio-dev", "origin": "key:local"})),
+            Some(&[]),
+        )
+        .unwrap();
         let request = StartChat {
             request_id: ulid::Ulid::new().to_string(),
             content: "first".into(),
@@ -656,7 +668,7 @@ mod tests {
         let row = db.chat_visible_message(&message.message_id).unwrap();
         let projected = entries.message_json(&row);
         assert_eq!(projected["model"], "session-model");
-        assert_eq!(projected["device"], zork_config::device_name());
+        assert_eq!(projected["device"], "key:local");
         assert!(projected.get("author_avatar").is_none());
 
         db.insert_node_agent(
@@ -688,6 +700,7 @@ mod tests {
             .unwrap();
         let projected = entries.message_json(&db.chat_visible_message(&legacy.message_id).unwrap());
         assert_eq!(projected["model"], "agent-model");
+        assert_eq!(projected["device"], "key:local");
         assert_eq!(projected["author_avatar"], "fox");
     }
 

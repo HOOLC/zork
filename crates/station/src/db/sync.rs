@@ -398,6 +398,20 @@ impl StationDb {
         Ok(())
     }
 
+    /// Read the authenticated local origin from the reconciled device catalog.
+    pub fn local_device_origin(&self) -> Result<Option<String>> {
+        let conn = self.conn.lock().expect("db mutex");
+        let origin = conn
+            .query_row(
+                "SELECT json_extract(value,'$.origin') FROM sync_entities WHERE scope=?1 AND kind='device' AND id='self' AND value IS NOT NULL",
+                [Scope::Catalog {}.key()],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(origin.filter(|origin| !origin.is_empty()))
+    }
+
     /// The durable high-water mark is authoritative; notifications are hints.
     pub fn sync_cursor(&self, owner: &str, scope: Scope) -> Result<Cursor> {
         let conn = self.published_messages()?;
