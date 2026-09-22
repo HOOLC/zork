@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/owl.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/owl.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#EFF3E9" />
   <path android:pathData="M12 31L11 14Q17 15 23 20Q32 17 41 20Q47 15 53 14L52 31V38Q51 54 32 56Q13 54 12 38Z" android:fillColor="#7E906F" />

@@ -1,6 +1,6 @@
 ---
 name: zork-client-subscriptions
-description: 设计、实现或审查 zork Rust core 到 GPUI、Android/JNI、Web 的状态订阅、增量传递和高频更新调度；守护版本基线、慢消费者、取消与性能边界。纯视觉动效或仅服务端网络通知不使用本 skill。
+description: 设计、实现或审查 zork Rust core 到 GPUI、Android/JNI 的状态订阅、增量传递和高频更新调度；守护版本基线、慢消费者、取消与性能边界。纯视觉动效或仅服务端网络通知不使用本 skill。
 ---
 
 # 客户端状态订阅

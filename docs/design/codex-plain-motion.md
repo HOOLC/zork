@@ -11,4 +11,4 @@ Remove liquid deformation from product UI while keeping hover/selection travel a
 
 ## Plain dialogs
 
-Product and storybook window dialogs use `modal::PlainDialog` (backdrop + `smooth::surface` + opacity fade). They no longer run liquid pair morph / source ink transfer.
+Product and `zork-design-pc` window dialogs use `modal::PlainDialog` (backdrop + `smooth::surface` + opacity fade). They no longer run liquid pair morph / source ink transfer.

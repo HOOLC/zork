@@ -16,18 +16,12 @@ pre-commit:
       run: cargo fmt --all -- --check
     client-boundary:
       glob:
-        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui,crates/zork-gui-web}/*"
-        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui,crates/zork-gui-web}/**/*"
+        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui}/*"
+        - "{crates/zork-client-core,crates/zork-ui,crates/zork-gui}/**/*"
         - "apps/android/app/src/main/java/**/*.kt"
         - "scripts/check-client-boundary.py"
         - "Cargo.toml"
       run: python3 scripts/check-client-boundary.py --self-test && python3 scripts/check-client-boundary.py
-    design-check:
-      glob:
-        - "apps/zork-design/*"
-        - "apps/zork-design/**/*"
-        - "{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts}"
-      run: pnpm design:check && pnpm design:test
     hook-config:
       glob: "lefthook.yml"
       run: pnpm exec lefthook validate

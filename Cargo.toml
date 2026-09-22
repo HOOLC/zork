@@ -18,14 +18,13 @@ members = [
   "crates/zork-mesh",
   "crates/zork-notify",
   "crates/zork-observe",
-  "crates/zork-gui-web",
   "crates/zork-ui",
   "crates/zork-liquid",
   "crates/zork-client-core",
   "crates/zork-client-types",
   "crates/zork-android",
 ]
-exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/gpui-web-gpui-unofficial", "vendor/rustls-platform-verifier", "vendor/noq-udp"]
+exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/rustls-platform-verifier", "vendor/noq-udp"]
 resolver = "2"
 
 [workspace.package]
@@ -52,11 +51,6 @@ opt-level = 3
 # The desktop updater packages the dev profile. Optimize desktop rendering
 # while leaving other workspace packages on the fast development profile.
 [profile.dev.package.gpui-unofficial]
-opt-level = 3
-
-# The Web gallery is interactive performance evidence, including in dev builds.
-# Keep per-frame WebGL submission and font shaping out of debug code paths.
-[profile.dev.package.gpui-web-gpui-unofficial]
 opt-level = 3
 
 [profile.dev.package.gpui-wgpu-gpui-unofficial]
@@ -146,8 +140,6 @@ opt-level = 3
 [profile.dev.package.lyon_algorithms]
 opt-level = 3
 
-# gpui-base's library does not use the profiler; enabling it transitively
-# makes GPUI 1.17 action dispatch call std::time::Instant on wasm.
 [patch.crates-io]
 iroh = { path = "vendor/iroh" }
 swarm-discovery = { path = "vendor/swarm-discovery" }
@@ -158,7 +150,6 @@ gpui-base-uo = { path = "vendor/gpui-base-uo" }
 gpui-wgpu-gpui-unofficial = { path = "vendor/gpui-wgpu-gpui-unofficial" }
 gpui-apple-gpui-unofficial = { path = "vendor/gpui-apple-gpui-unofficial" }
 gpui-macos-gpui-unofficial = { path = "vendor/gpui-macos-gpui-unofficial" }
-gpui-web-gpui-unofficial = { path = "vendor/gpui-web-gpui-unofficial" }
 
 [patch."https://github.com/AFK-surf/synchronicity.git"]
 synch-engine = { path = "vendor/synch-engine" }

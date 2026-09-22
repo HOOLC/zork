@@ -17,6 +17,15 @@ pub struct Controller {
     commands: mpsc::Sender<Action>,
 }
 impl Controller {
+    #[cfg(test)]
+    pub(crate) fn fixture(snapshot: Snapshot) -> Arc<Self> {
+        let (commands, _receiver) = mpsc::channel(16);
+        Arc::new(Self {
+            source: Arc::new(ValueSource::new(snapshot)),
+            commands,
+        })
+    }
+
     pub fn open(root: &Path) -> Result<Arc<Self>> {
         Self::new(Account::configured(root)?)
     }

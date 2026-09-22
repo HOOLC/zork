@@ -469,7 +469,7 @@ impl AssetSource for EmbeddedAssets {
         ])
     }
 }
-/// Embedded monospace face shared by native and Web message rendering.
+/// Embedded monospace face shared by the client and native design browser.
 pub const CODE_FONT_FAMILY: &str = "JetBrains Mono";
 pub const CODE_FONT: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
 

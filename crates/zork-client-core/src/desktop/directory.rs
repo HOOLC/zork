@@ -64,6 +64,19 @@ impl Drop for HostConnection {
 }
 impl Directory {
     pub fn open(root: &Path) -> Result<Arc<Self>> {
+        Self::open_with_account(root, None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture(root: &Path) -> Result<Arc<Self>> {
+        let account = crate::relay_account::controller::Controller::fixture(Default::default());
+        Self::open_with_account(root, Some(account))
+    }
+
+    fn open_with_account(
+        root: &Path,
+        account: Option<Arc<crate::relay_account::controller::Controller>>,
+    ) -> Result<Arc<Self>> {
         let data_lease = super::data_reset::acquire(root)?;
         let store = Arc::new(ClientStore::open(root)?);
         let (local_enabled, error) = match store.local_node_enabled() {
@@ -71,7 +84,10 @@ impl Directory {
             Err(e) => (false, Some(e.to_string())),
         };
         zork_config::relay_account::bind_profile(root)?;
-        let account = crate::relay_account::controller::Controller::open(root)?;
+        let account = match account {
+            Some(account) => account,
+            None => crate::relay_account::controller::Controller::open(root)?,
+        };
         let state = DirectoryData {
             nodes: Arc::new(store.nodes()?),
             local_enabled,

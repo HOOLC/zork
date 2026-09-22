@@ -3,10 +3,8 @@ import json, hashlib
 root=Path(__file__).resolve().parent
 repo=root.parent.parent
 out=[]
-sources=[('rust','rs','crates/zork-ui/src/components/message_code.rs'),('typescript','js','scripts/storybook/capture_design.py'),('json','json','package.json'),('yaml','yaml','.github/workflows/ci.yml'),('python','py','scripts/lib/build_env.py')]
-# Real TS fixture, selected from repository rather than relabeling another language.
-ts=next(p for p in (repo/'apps/zork-design/src').rglob('*.ts') if 'node_modules' not in p.parts and p.stat().st_size>3000)
-sources[1]=('typescript','js',str(ts.relative_to(repo)))
+sources=[('rust','rs','crates/zork-ui/src/components/message_code.rs'),('typescript','ts','benchmarks/gpu-lexer/inputs/reference-entry.ts'),('json','json','benchmarks/gpu-lexer/inputs/package.json'),('yaml','yaml','.github/workflows/ci.yml'),('python','py','scripts/lib/build_env.py')]
+# Removed design-site code and package metadata remain fixed benchmark inputs.
 for name,lang,path in sources:
     source=(repo/path).read_text()
     if name=='typescript': lang='ts'

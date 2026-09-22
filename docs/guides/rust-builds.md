@@ -11,7 +11,7 @@ workspace 内直接依赖同一个第三方 crate 时，使用同一版本和同
 - 不添加仅用于影响 feature 解析的依赖或 crate。
 - 不把 debug/release、目标平台、编译器版本、源代码和 `rustflags` 不同的产物视为同一缓存项。
 
-统一依赖的实际范围以根 `Cargo.toml` 为准。`getrandom` 的 `wasm_js` 后端仅在 Web crate 的 wasm 目标依赖中启用。
+统一依赖的实际范围以根 `Cargo.toml` 为准。
 
 ## 边界
 
@@ -24,12 +24,6 @@ workspace 内直接依赖同一个第三方 crate 时，使用同一版本和同
 ## macOS Metal 工具链
 
 原生客户端在构建时编译 Metal shader，避免每次启动编译源码。macOS 构建机需要与 Xcode 匹配的 Metal Toolchain；构建前用 `xcrun --find metal` 和 `xcrun --find metallib` 检查。修改 shader 或生成绑定后重建原生渲染器，再验证实际绘制结果。
-
-GPUI Web 使用当前 Rust 的 WebAssembly target，或匹配该编译器的 `rust-src`。
-若工具链没有自带 linker，可在忽略的 `.env` 中用 `ZORK_WASM_LD` 指定兼容的
-`wasm-ld`；未指定时优先使用 PATH 中的 `wasm-ld`，否则保留 Cargo 的默认选择。
-显式 `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_LINKER` 优先，不依赖固定 Homebrew
-Cellar 版本，也不修改全局 LLVM 链接。
 
 ## 可选的本机存储配置
 
@@ -62,7 +56,7 @@ Android 独立入口为 `android`。不配置构建根时仍使用各 checkout �
 源码、锁文件和必要资产随工作区迁移；节点运行数据、身份与活跃数据库按独立的
 运行环境管理，不随构建缓存切换。
 
-现有 pnpm 的 Rust build/dev/test/start 入口，以及 Android、storybook、
+现有 pnpm 的 Rust build/dev/test/start 入口，以及 Android、zork-design-pc、
 桌面 headless Python 入口读取配置。其他脚本或直接 Cargo 命令不会自动
 读取 `.env`，在仓库根目录先执行：
 

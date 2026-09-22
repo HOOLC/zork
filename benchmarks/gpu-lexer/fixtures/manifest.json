@@ -37,70 +37,70 @@
   {
     "file": "typescript-512.txt",
     "language": "ts",
-    "source": "apps/zork-design/src/bridge/reference-entry.ts",
+    "source": "benchmarks/gpu-lexer/inputs/reference-entry.ts",
     "sha256": "0334a36945e47d9bbc8d7d7c14828a84c64d0b95c25c2c3bbde627467293a22e",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "typescript-4096.txt",
     "language": "ts",
-    "source": "apps/zork-design/src/bridge/reference-entry.ts",
+    "source": "benchmarks/gpu-lexer/inputs/reference-entry.ts",
     "sha256": "600fe7f09782ccefc49bd955a846bd35cc2213cf294ad9fe401035296f581ab5",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "typescript-16384.txt",
     "language": "ts",
-    "source": "apps/zork-design/src/bridge/reference-entry.ts",
+    "source": "benchmarks/gpu-lexer/inputs/reference-entry.ts",
     "sha256": "76a57db73ef7da5583d44909e4f65a611ea508ace19b4aadfb3ee4a77c0c41b0",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "typescript-61440.txt",
     "language": "ts",
-    "source": "apps/zork-design/src/bridge/reference-entry.ts",
+    "source": "benchmarks/gpu-lexer/inputs/reference-entry.ts",
     "sha256": "7261879fb6db842a28986669e589d1d7ceee1d50ed4ba1c1436a47230fdbc1ec",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "typescript-262144.txt",
     "language": "ts",
-    "source": "apps/zork-design/src/bridge/reference-entry.ts",
+    "source": "benchmarks/gpu-lexer/inputs/reference-entry.ts",
     "sha256": "a08ea210eeb42202d869f5275c5f2d1dacddb840d212bd8a953043da64caeb63",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "json-512.txt",
     "language": "json",
-    "source": "package.json",
+    "source": "benchmarks/gpu-lexer/inputs/package.json",
     "sha256": "4321f44739e16fda34ab5012c4f1da8d3e63103f5569d210ce200c8cabd01688",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "json-4096.txt",
     "language": "json",
-    "source": "package.json",
+    "source": "benchmarks/gpu-lexer/inputs/package.json",
     "sha256": "d2ec080d8b6df3e4523e6684f1753737032108bd7b3c32ef02a3c03a9ae7e146",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "json-16384.txt",
     "language": "json",
-    "source": "package.json",
+    "source": "benchmarks/gpu-lexer/inputs/package.json",
     "sha256": "908bcf3fde1d9b2d1208e9278bb7bf94c6d6f7d73a9f6e0ae590209d2cd85357",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "json-61440.txt",
     "language": "json",
-    "source": "package.json",
+    "source": "benchmarks/gpu-lexer/inputs/package.json",
     "sha256": "5cb7b72943d1c0ab355cb9c16e82c92399aa5514a3e4a00abb94e4da5a5bffd9",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },
   {
     "file": "json-262144.txt",
     "language": "json",
-    "source": "package.json",
+    "source": "benchmarks/gpu-lexer/inputs/package.json",
     "sha256": "db6ad0b8a1abc5bcc485d297b946ddb1afc547df689d2de0b6b8893972a3ddcb",
     "construction": "whole-line prefix / repetition of repository source; may end mid-syntax"
   },

@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontVariation
 
-// Mobile nav7 tokens from zork-design/mobile/prototype/style.css and navigation.css.
+// Mobile nav7 tokens from zork-design-pc/archive/mobile-prototype/style.css and navigation.css.
 internal object ZorkColors {
     val Paper = Color(0xFFF6F5F1)
     val Canvas = Color(0xFFFFFFFF)

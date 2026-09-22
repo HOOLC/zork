@@ -15,8 +15,8 @@ path = "src/bin/render-bench.rs"
 required-features = ["headless-bench"]
 
 [[bin]]
-name = "zork-gui-storybook"
-path = "src/bin/storybook.rs"
+name = "zork-design-pc"
+path = "src/bin/design_pc.rs"
 required-features = ["headless-bench"]
 
 [[test]]

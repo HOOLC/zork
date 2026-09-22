@@ -14,7 +14,7 @@ from build_env import build_environment
 def main():
     env = dict(build_environment(), CARGO_INCREMENTAL='0', CARGO_PROFILE_DEV_DEBUG='0', CARGO_BUILD_JOBS='4')
     commands = [
-        [sys.executable, str(ROOT / 'scripts/storybook/test_package.py')],
+        [sys.executable, str(ROOT / 'scripts/design-pc/test_package.py')],
         ['cargo', 'run', '--locked', '-p', 'zork-gui', '--features', 'headless-bench',
          '--bin', 'zork-gui-render-bench', '--', str(ROOT / 'artifacts/headless-render/latest')],
         ['cargo', 'test', '--locked', '-p', 'zork-gui', '--features', 'headless-bench',

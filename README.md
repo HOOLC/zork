@@ -133,7 +133,7 @@ business intents through `zork-client-core` and render its state. See the
 
 This repository includes a macOS desktop client and Android client. Native node
 packaging targets macOS and Linux on ARM64 and x64; desktop app packaging and
-signing follow a separate workflow. The Web design workspace is an interactive
+signing follow a separate workflow. The native design app is an interactive
 reference and component showcase. See [native releases](docs/guides/native-releases.md)
 for platform requirements.
 
@@ -152,7 +152,7 @@ for platform requirements.
 | `apps/android`, `crates/zork-android`                      | Android application and Rust bridge                           |
 | `crates/zork-mesh`                                         | Device transport, enrollment and synchronization support      |
 | `crates/profile`, `crates/slack`                           | Model profiles and Slack integration                          |
-| `apps/zork-design`, `crates/zork-gui-web`                  | Design references and Web component showcase                  |
+| `apps/zork-design-pc`, `zork-design-pc`                    | Editable design sources and native component browser          |
 | `scripts`, `.github/workflows`                             | Development, packaging and validation                         |
 | `benchmarks`                                               | Independent benchmarks and experiments                        |
 | `docs`                                                     | Architecture, contracts and operating guides                  |
@@ -160,7 +160,7 @@ for platform requirements.
 ### Development checks
 
 Install local checks with `pnpm hooks:install`. Commit hooks run fast static and
-design checks; push hooks run the affected test suites. Branches and PRs do not
+boundary checks; push hooks run the affected test suites. Branches and PRs do not
 start automatic CI. Main runs the shared runtime contracts and path-scoped
 Cloudflare validation; native packaging and upgrade checks remain in tag releases.
 
@@ -175,8 +175,7 @@ pnpm test:desktop       # native desktop tests
 python3 scripts/check-client-boundary.py
 ```
 
-Design workspace: `pnpm design:dev`, `pnpm design:check`, `pnpm design:test` and
-`pnpm design:build`. DeepSWE adapter tests: `pnpm benchmark:deep-swe:test`.
+Native design browser: `pnpm design:pc` or `pnpm design:pc:verify`. DeepSWE adapter tests: `pnpm benchmark:deep-swe:test`.
 Functional tests and performance measurements have separate entry points; see
 [validation](.agents/skills/zork-validation/SKILL.md) and [repository content](AGENTS.md#repository-content).
 
@@ -187,8 +186,8 @@ Functional tests and performance measurements have separate entry points; see
 The [documentation index](docs/README.md) groups Agent, Chat, client, Mesh, UI and
 engineering contracts and pending proposals. Implementation details stay with the
 source and generated help; test results belong to their run artifacts.
-The [design workspace](apps/zork-design/README.md) contains the handbook, prototypes
-and shared visual references.
+The [native design browser](apps/zork-design-pc/README.md) contains editable guidelines,
+curated assets and historical visual references.
 
 ## License
 

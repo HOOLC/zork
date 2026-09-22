@@ -1,4 +1,4 @@
-<!-- Generated from apps/zork-design/mobile/prototype/assets/avatars/fox.svg; do not redraw. -->
+<!-- Generated from apps/zork-design-pc/archive/mobile-prototype/assets/avatars/fox.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
   <path android:pathData="M18.0 0.0H46.0A18.0 18.0 0 0 1 64.0 18.0V46.0A18.0 18.0 0 0 1 46.0 64.0H18.0A18.0 18.0 0 0 1 0.0 46.0V18.0A18.0 18.0 0 0 1 18.0 0.0Z" android:fillColor="#FFF0E8" />
   <path android:pathData="M11 30L12 13Q12 10 15 12L27 23H37L49 12Q52 10 52 13L53 30Q53 43 32 56Q11 43 11 30Z" android:fillColor="#D67B47" />
