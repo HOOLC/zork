@@ -190,6 +190,26 @@ fn main() -> anyhow::Result<()> {
         )?;
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-picker-{width}.png")))?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-model"}}),
+            &mut cx,
+        )?;
+        let model_row = driver
+            .snapshot(false)
+            .elements
+            .into_iter()
+            .find(|element| element.id == "new-chat-model-0")
+            .ok_or_else(|| anyhow::anyhow!("missing model row at {width}"))?;
+        anyhow::ensure!(
+            model_row.visible && model_row.bounds == model_row.visible_bounds,
+            "model row clipped at {width}"
+        );
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-models-{width}.png")))?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-picker-back"}}),
+            &mut cx,
+        )?;
         for id in [
             "new-chat-model",
             "new-chat-model-1",
@@ -211,9 +231,29 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
-        for id in ["new-chat-model", "new-chat-profile", "new-chat-profile-1"] {
+        for id in ["new-chat-model", "new-chat-profile", "new-chat-picker-back"] {
             action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
         }
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-model-0" && element.visible),
+            "Profile back did not return to the model list"
+        );
+        for id in ["new-chat-profile", "new-chat-profile-1"] {
+            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
+        }
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label.contains("Demo fast")),
+            "picker trigger did not show the selected model"
+        );
         let state = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
             state["device"]["value"] == "remote"

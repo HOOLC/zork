@@ -1,6 +1,9 @@
 //! Model and reasoning controls share one compact, anchored panel.
 use super::*;
-use crate::components::liquid::primitives::range::{self, Scale};
+use crate::components::liquid::{
+    controls::{adaptive_action, ActionStyle},
+    primitives::range::{self, Scale},
+};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum PickerMode {
@@ -42,15 +45,27 @@ impl Page {
         mode: PickerMode,
         cx: &Context<Self>,
     ) -> AnyElement {
-        ui::quiet_button(
+        adaptive_action(
             id,
             label.clone(),
-            self.picker_open && self.data.editable,
-            ui::IconButtonSize::Small,
+            ActionStyle {
+                quiet: true,
+                leading: true,
+                trailing: Some("icons/arrow-right.svg"),
+                radius: Some(8.),
+                disabled: !(self.picker_open && self.data.editable),
+                ..Default::default()
+            },
+            ZORK_UI.palette.canvas,
         )
-        .font_weight(FontWeight::NORMAL)
-        .gap_1()
-        .child(ui::icon("icons/chevron-down.svg", 10.))
+        .w_full()
+        .h(px(32.))
+        .px_0()
+        .font_weight(if mode == PickerMode::Models {
+            FontWeight::MEDIUM
+        } else {
+            FontWeight::NORMAL
+        })
         .on_click(cx.listener(move |view, _, window, cx| {
             view.picker_mode = mode;
             view.picker.focus(window, cx);
@@ -83,42 +98,102 @@ impl Page {
             let title = self.text.text(if models {
                 "new_chat_choose_model"
             } else {
-                "new_chat_profile_auto"
+                "new_chat_choose_profile"
             });
-            let mut rows = div().flex().flex_col().gap_1().child(
-                ui::quiet_button(
-                    "new-chat-picker-back",
-                    title.clone(),
-                    enabled,
-                    ui::IconButtonSize::Small,
+            let back_label = self.text.text("back");
+            let header = div()
+                .h(px(30.))
+                .mb_2()
+                .flex()
+                .items_center()
+                .child(
+                    adaptive_action(
+                        "new-chat-picker-back",
+                        "",
+                        ActionStyle {
+                            quiet: true,
+                            icon_only: Some(true),
+                            icon: Some("icons/arrow-left.svg"),
+                            disabled: !enabled,
+                            ..Default::default()
+                        },
+                        ZORK_UI.palette.canvas,
+                    )
+                    .size(px(28.))
+                    .px_0()
+                    .aria_label(back_label.clone())
+                    .on_click(cx.listener(move |view, _, window, cx| {
+                        view.picker_mode = if models {
+                            PickerMode::Strength
+                        } else {
+                            PickerMode::Models
+                        };
+                        view.picker.focus(window, cx);
+                        cx.notify();
+                    }))
+                    .automation_enabled(
+                        enabled,
+                        AutomationRole::Button,
+                        back_label,
+                    ),
                 )
-                .child(ui::icon("icons/arrow-left.svg", 14.))
-                .on_click(cx.listener(|view, _, window, cx| {
-                    view.picker_mode = PickerMode::Strength;
-                    view.picker.focus(window, cx);
-                    cx.notify();
-                }))
-                .automation_enabled(enabled, AutomationRole::Button, title),
-            );
+                .child(
+                    div()
+                        .flex_1()
+                        .text_center()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(ZORK_UI.palette.text))
+                        .child(title),
+                )
+                .child(div().w(px(28.)));
+            let mut rows = div()
+                .id("new-chat-picker-list")
+                .max_h(px(280.))
+                .min_h_0()
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .gap_1();
             for (index, option) in choice.options.iter().enumerate() {
                 let value = option.value.clone();
                 let label = if !models && value == "auto" {
-                    self.text.text("new_chat_profile_auto")
+                    self.text.text("new_chat_profile_automatic")
                 } else {
                     option.label.clone()
                 };
+                let selected = value == choice.value;
                 rows = rows.child(
-                    ui::choice(
+                    adaptive_action(
                         format!(
                             "new-chat-{}-{index}",
                             if models { "model" } else { "profile" }
                         ),
                         label.clone(),
-                        value == choice.value,
-                        enabled,
+                        ActionStyle {
+                            quiet: true,
+                            selected,
+                            leading: true,
+                            trailing: selected.then_some("icons/check.svg"),
+                            radius: Some(8.),
+                            disabled: !enabled,
+                            ..Default::default()
+                        },
+                        ZORK_UI.palette.canvas,
                     )
                     .w_full()
-                    .justify_start()
+                    .h(px(36.))
+                    .px_0()
+                    .font_weight(if selected {
+                        FontWeight::MEDIUM
+                    } else {
+                        FontWeight::NORMAL
+                    })
+                    .aria_toggled(if selected {
+                        Toggled::True
+                    } else {
+                        Toggled::False
+                    })
                     .on_click(cx.listener(move |view, _, window, cx| {
                         view.picker.focus(window, cx);
                         cx.emit(Event::Intent(if models {
@@ -137,6 +212,7 @@ impl Page {
                     .automation_enabled(enabled, AutomationRole::Button, label),
                 );
             }
+            let mut content = div().flex().flex_col().child(header).child(rows);
             if models {
                 let label = self
                     .data
@@ -152,14 +228,21 @@ impl Page {
                         }
                     })
                     .unwrap_or_else(|| self.text.text("new_chat_profile_auto"));
-                rows = rows.child(div().mt_2().child(self.picker_button(
-                    "new-chat-profile",
-                    label,
-                    PickerMode::Profiles,
-                    cx,
-                )));
+                content = content.child(
+                    div()
+                        .mt_2()
+                        .pt_1()
+                        .border_t(px(crate::design::BORDER_WIDTH))
+                        .border_color(rgb(ZORK_UI.palette.border))
+                        .child(self.picker_button(
+                            "new-chat-profile",
+                            label,
+                            PickerMode::Profiles,
+                            cx,
+                        )),
+                );
             }
-            return rows.into_any_element();
+            return content.into_any_element();
         }
         let levels = &self.data.thinking.options;
         let selected = self
@@ -236,7 +319,7 @@ impl Page {
                     step: 1.,
                     ..Default::default()
                 },
-                width - 24.,
+                width - 20.,
                 !enabled,
                 window,
                 cx,
