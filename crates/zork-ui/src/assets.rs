@@ -225,6 +225,7 @@ impl AssetSource for EmbeddedAssets {
             "icons/settings.svg" => Some(include_bytes!("../assets/icons/settings.svg")),
             "icons/edit.svg" => Some(include_bytes!("../assets/icons/edit.svg")),
             "icons/download.svg" => Some(include_bytes!("../assets/icons/download.svg")),
+            "icons/grouping.svg" => Some(include_bytes!("../assets/icons/grouping.svg")),
             "icons/shapes.svg" => Some(include_bytes!("../assets/icons/shapes.svg")),
             "icons/stop.svg" => Some(include_bytes!("../assets/icons/stop.svg")),
             "icons/cube.svg" => Some(include_bytes!("../assets/icons/cube.svg")),
