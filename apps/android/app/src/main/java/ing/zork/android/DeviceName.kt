@@ -12,7 +12,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
 /** Presentation of the shared Rust DeviceStatus, without readiness inference. */
@@ -35,6 +34,13 @@ internal fun deviceStatusText(status: DeviceStatusUi): String = when (status.sta
     else -> "连接中"
 }
 internal fun deviceNameSummary(name: String, status: DeviceStatusUi) = "$name · ${deviceStatusText(status)}"
+internal fun compactDeviceName(name: String, status: DeviceStatusUi) = "$name ${when (status.state) {
+    "direct", "connected" -> "●"
+    "relay" -> "◉"
+    "mesh_preparing", "mesh_stopping", "connecting" -> "◌"
+    "mesh_failed", "revoked" -> "×"
+    else -> "○"
+}}"
 
 @Composable
 internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier = Modifier) {
@@ -51,8 +57,7 @@ internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier
         if (status.state in listOf("mesh_preparing", "mesh_stopping", "connecting")) {
             CircularProgressIndicator(Modifier.size(12.dp), color = color, strokeWidth = 1.dp)
         } else {
-            Box(Modifier.size(5.dp).background(color, CircleShape))
+            Box(Modifier.size(7.dp).background(color, CircleShape))
         }
-        Text(deviceStatusText(status), fontSize = 11.sp, color = color, maxLines = 1)
     }
 }

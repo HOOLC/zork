@@ -28,8 +28,23 @@ pub fn status_text(status: &DeviceStatus, locale: Option<&Text>) -> String {
         .unwrap_or_else(|| fallback.into())
 }
 
-/// Text-only hosts (menu details and tooltip rows) retain the same status wording.
-pub fn summary(name: &str, status: &DeviceStatus, locale: Option<&Text>) -> String {
+/// Compact symbol for text-only hosts that cannot render the full indicator.
+pub fn status_symbol(status: &DeviceStatus) -> &'static str {
+    match status {
+        DeviceStatus::Direct | DeviceStatus::Connected => "●",
+        DeviceStatus::Relay => "◉",
+        DeviceStatus::MeshPreparing | DeviceStatus::MeshStopping | DeviceStatus::Connecting => "◌",
+        DeviceStatus::MeshFailed(_) | DeviceStatus::Revoked => "×",
+        DeviceStatus::MeshNotStarted | DeviceStatus::MeshStopped | DeviceStatus::Offline => "○",
+    }
+}
+
+pub fn summary(name: &str, status: &DeviceStatus, _locale: Option<&Text>) -> String {
+    format!("{name} {}", status_symbol(status))
+}
+
+/// Full wording remains available for accessibility and on-demand details.
+pub fn accessible_summary(name: &str, status: &DeviceStatus, locale: Option<&Text>) -> String {
     format!("{name} · {}", status_text(status, locale))
 }
 
@@ -59,7 +74,7 @@ pub fn label(
             .into_any_element()
     } else {
         div()
-            .size(px(5.))
+            .size(px(7.))
             .rounded_full()
             .bg(rgb(ink))
             .into_any_element()
@@ -73,18 +88,9 @@ pub fn label(
         .flex_shrink_0()
         .flex()
         .items_center()
-        .gap(px(5.))
-        .text_size(px(11.))
-        .font_weight(gpui::FontWeight::NORMAL)
-        .text_color(rgb(ink))
         .child(indicator)
-        .child(text)
         .automation(AutomationRole::Status, detail.clone());
-    let badge = if matches!(status, DeviceStatus::MeshFailed(_)) {
-        tooltip::hint(badge, format!("device-status-{id:?}"), detail.clone()).into_any_element()
-    } else {
-        badge.into_any_element()
-    };
+    let badge = tooltip::hint(badge, format!("device-status-{id:?}"), detail.clone());
     div()
         .id(id)
         .min_w_0()

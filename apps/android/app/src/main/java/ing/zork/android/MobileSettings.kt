@@ -128,7 +128,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 if (peers.isNotEmpty()) SettingsListGroup {
                     peers.forEachIndexed { index, peer ->
                         if (index > 0) SettingsListDivider()
-                        SettingsListRow(deviceNameSummary(peer.name, peer.status), R.drawable.ic_node, action = { actions.device(peer) })
+                        SettingsListRow(compactDeviceName(peer.name, peer.status), R.drawable.ic_node, action = { actions.device(peer) })
                     }
                 }
                 SettingsButton("连接设备", click = actions.addDevice)

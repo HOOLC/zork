@@ -82,6 +82,8 @@ class AppRuntime:
                     os.kill(pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
+        wait(lambda: gui not in (Path(image) for image in self.processes().values()),
+             'Installed GUI did not close; no snapshot taken', self.timeout)
         self.node.stop()
         for pid, image in self.processes().items():
             if process_path(pid) == Path(image):

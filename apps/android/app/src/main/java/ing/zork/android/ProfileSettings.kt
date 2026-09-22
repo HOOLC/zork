@@ -129,7 +129,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                 }
                 item(key = "heading") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("${deviceNameSummary(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi())} · ${if (state.profilesReady) state.profiles.size else "—"} 个连接", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
+                        Text("${compactDeviceName(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi())} · ${if (state.profilesReady) state.profiles.size else "—"} 个连接", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
                         SettingsButton("添加", enabled = enabled) { editingJson = null; editor = "connection" }
                     }
                 }

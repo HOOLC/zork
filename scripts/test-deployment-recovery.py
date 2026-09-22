@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import sqlite3
 import socket
 import subprocess
@@ -266,6 +267,37 @@ class RecoveryTests(unittest.TestCase):
             runtime.start(original)
         start.assert_called_once_with(original['node'], candidate=False)
         gui.assert_not_called()
+
+    def test_app_stop_waits_for_gui_before_stopping_node(self):
+        runtime = AppRuntime({'payload': str(self.binary), 'data': str(self.data), 'channel': 'dev'}, self.root / 'app.log')
+        gui = (runtime.app / 'Contents/MacOS/zork-gui').resolve()
+        state = {'gui_running': True, 'signalled': False, 'node_stopped': False}
+
+        def processes():
+            return {42: str(gui)} if state['gui_running'] else {}
+
+        def kill(pid, sig):
+            self.assertEqual((pid, sig), (42, signal.SIGTERM))
+            state['signalled'] = True
+
+        def wait_for_stop(check, message, timeout):
+            if 'GUI' in message:
+                self.assertTrue(state['signalled'])
+                self.assertFalse(state['node_stopped'])
+                state['gui_running'] = False
+            self.assertTrue(check())
+
+        def stop_node():
+            state['node_stopped'] = True
+
+        with patch.object(runtime, 'processes', side_effect=processes), \
+             patch.object(runtime.node, 'stop', side_effect=stop_node), \
+             patch('deployment_macos.process_path', return_value=gui), \
+             patch('deployment_macos.os.kill', side_effect=kill), \
+             patch('deployment_macos.wait', side_effect=wait_for_stop), \
+             patch('deployment_macos.pause_service'):
+            runtime.stop()
+        self.assertTrue(state['node_stopped'])
 
     def test_source_stamp_ignores_inherited_git_repository(self):
         with patch.dict(os.environ, {'GIT_DIR': str(self.root / 'not-a-repo'), 'GIT_WORK_TREE': str(self.root)}):

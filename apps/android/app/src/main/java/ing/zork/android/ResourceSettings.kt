@@ -43,8 +43,8 @@ internal fun ResourceSettings(state: MobileSettingsState, actions: SettingsActio
                 if (loading) Text("正在读取…", color = ZorkColors.Muted, fontSize = 13.sp)
                 state.message?.let { Text(it, color = ZorkColors.Danger) }
                 devices.forEach { device ->
-                    device.text("error").takeIf { it.isNotBlank() }?.let { Text("${deviceNameSummary(device.text("name"), device.deviceStatus())} · $it", color = ZorkColors.Danger) }
-                    device.optJSONArray("issues").objects().forEach { Text("${deviceNameSummary(device.text("name"), device.deviceStatus())} · ${it.text("error")}", color = ZorkColors.Danger) }
+                    device.text("error").takeIf { it.isNotBlank() }?.let { Text("${compactDeviceName(device.text("name"), device.deviceStatus())} · $it", color = ZorkColors.Danger) }
+                    device.optJSONArray("issues").objects().forEach { Text("${compactDeviceName(device.text("name"), device.deviceStatus())} · ${it.text("error")}", color = ZorkColors.Danger) }
                 }
                 inspection?.text("error")?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger) }
             }
@@ -117,7 +117,7 @@ internal fun ResourceSettings(state: MobileSettingsState, actions: SettingsActio
                     }
                     items(rows, key = { (device, row) -> "${device.text("id")}:${row.text("id")}" }) { (device, row) ->
                         SettingsListGroup {
-                            SettingsListRow(row.text("name"), subtext = "${deviceNameSummary(device.text("name"), device.deviceStatus())} · ${resourceStatus(row.text("status"))}", detail = row.text("description"), action = {
+                            SettingsListRow(row.text("name"), subtext = "${compactDeviceName(device.text("name"), device.deviceStatus())} · ${resourceStatus(row.text("status"))}", detail = row.text("description"), action = {
                                 val query = if (selection.kind == "mcp") JSONObject().put("mcp", row.text("id"))
                                     else JSONObject().put("service", JSONObject().put("id", row.text("id")))
                                 actions.resource(selection.copy(peer = device.text("id"), query = query.toString(), title = row.text("name")))
