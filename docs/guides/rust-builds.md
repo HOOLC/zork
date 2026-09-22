@@ -50,8 +50,9 @@ ZORK_BUILD_LOW_WATER_GIB=80
 # ZORK_BUILD_MOUNT=/path/to/mount
 ```
 
-`ZORK_BUILD_ROOT` 下默认 Cargo 输出为 `target`，Android 独立入口为
-`android`；手工隔离构建可放 `isolated/<任务名>`。不配置时仍使用项目
+`ZORK_BUILD_ROOT` 下主 checkout 的默认 Cargo 输出为 `target`，Git worktree
+默认使用 `isolated/<worktree 名>`，避免不同源码修订共用 Cargo 指纹和库产物；
+Android 独立入口为 `android`。不配置构建根时仍使用各 checkout 自己的
 `target`，不会要求共享盘。路径相对仓库根目录解析，支持引号和 `~`，
 不执行命令、也不展开 `$变量`。进程环境变量优先于 `.env`；显式
 `CARGO_TARGET_DIR` 优先于自动生成的路径。
@@ -82,16 +83,32 @@ Cargo 前同样使用上面的 `--shell` 入口，使清理作用于后续子进
 ```sh
 pnpm cache:status          # 只预览
 pnpm cache:prune           # 显式执行回收
+python3 scripts/build/cache_budget.py --auto --dry-run  # 预览自动策略
+python3 scripts/build/cache_budget.py --auto            # 供本机维护任务定期执行
 ```
 
 预算统计配置根目录的磁盘占用。超出高水位后，按最后修改时间选择旧
-`target`、`android` 和 `isolated/*` 中带 Rust 缓存标识的目录，目标降到
+`target`、`android` 和 `isolated/*` 中带 Rust 缓存标识的目录，兼容旧的
+`isolated/*/target` 布局，目标降到
 低水位。默认保留最近 24 小时修改的目录；不遍历任意源码目录，不跟随
-候选目录软链接。根目录内的其他文件会计入占用，但不会自动删除。
+候选目录软链接。在目标目录放 `.zork-cache-keep` 可显式保留需复查的构建缓存，
+用完后由保留者移除该标记。根目录内的其他文件会计入占用，但不会自动删除。
 
-**执行回收前停止这个缓存根目录的构建和运行任务，并在清理结束前不要
-启动新任务。** 脚本再次检查文件修改时间和打开的文件，检查失败或目录
-在使用中则拒绝/跳过；这些检查无法对未协作的新进程提供原子互斥。
+`--auto` 只回收已释放的隔离 Cargo target，不清理共用的 `target`、
+Android 产物或源码；适合在个人开发机定期运行。通过 `build_env.py` 使用
+`isolated/<worktree 名>`（或其 `target` 子目录）时会登记来源 worktree；
+显式设置 `CARGO_TARGET_DIR` 要先于调用 `build_env.py`。只有
+该 worktree 已移除、目标超过保留期且没有打开文件，才允许自动回收。这避免
+定期任务与仍在进行的构建之间仅凭一次占用检查作决定。固定用途的隔离目录与
+未登记的旧目录仍由其任务所有者管理。自动任务串行化回收实例，并在每个目标
+回收前重新检查来源、Cargo 的 `CACHEDIR.TAG`、修改时间与打开文件。若这些
+目标使占用仍高于预算，下次运行继续检查。旧目录缺少 `CACHEDIR.TAG` 时需
+人工核对其内容，不能由自动任务补造标记。`--apply` 保留手动
+回收共用目标的能力。
+
+手动清理共用 `target` 或 `android` 前，停止使用该目标的构建与运行任务。
+自动模式只处理独立目标；脚本检查修改时间和打开文件，检查失败或目录在用
+则拒绝/跳过。未通过仓库构建入口启动的进程仍需遵守目标目录的占用边界。
 随后调用 `cargo clean --target-dir`，不直接删除源码或数据库。
 共享目录需由同一主机专用；本机无法确认其他主机的打开文件。
 

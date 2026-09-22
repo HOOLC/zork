@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).parent / 'lib'))
-from build_env import build_environment, settings, GIT_CONTEXT
+from build_env import build_environment, register_isolated_target, settings, GIT_CONTEXT
 spec = importlib.util.spec_from_file_location('cache_budget', Path(__file__).parent / 'build/cache_budget.py')
 cache = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cache)
@@ -60,6 +60,18 @@ class BuildSettingsTest(unittest.TestCase):
             self.assertNotIn('SECRET', settings(root, {}))
             self.assertEqual(build_environment(root, {'CARGO_TARGET_DIR': 'override'})['CARGO_TARGET_DIR'], str(root / 'override'))
 
+    def test_worktree_defaults_to_its_own_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'worktree'; root.mkdir()
+            (root / '.git').write_text('gitdir: /elsewhere/worktrees/worktree\n')
+            env = {'ZORK_BUILD_ROOT': str(Path(d) / 'cache')}
+            self.assertEqual(build_environment(root, env)['CARGO_TARGET_DIR'],
+                             str(Path(d) / 'cache/isolated/worktree'))
+            self.assertEqual(build_environment(root, env, 'android')['CARGO_TARGET_DIR'],
+                             str(Path(d) / 'cache/android'))
+            self.assertEqual(build_environment(root, dict(env, CARGO_TARGET_DIR='explicit'))['CARGO_TARGET_DIR'],
+                             str(root / 'explicit'))
+
     def test_variant_and_no_execution(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -72,13 +84,31 @@ class BuildSettingsTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build_environment(Path('/absent'), {'ZORK_BUILD_MOUNT': '/missing'})
 
+    def test_isolated_target_owner_matches_worktree(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d).resolve()
+            worktree = base / 'task'; worktree.mkdir()
+            cache_root = base / 'cache'
+            target = cache_root / 'isolated/task'
+            register_isolated_target({'ZORK_BUILD_ROOT': str(cache_root),
+                                      'CARGO_TARGET_DIR': str(target)}, worktree)
+            self.assertEqual(json.loads((target / '.zork-cache-owner.json').read_text()),
+                             {'worktree': str(worktree)})
+            unrelated = cache_root / 'isolated/other'
+            register_isolated_target({'ZORK_BUILD_ROOT': str(cache_root),
+                                      'CARGO_TARGET_DIR': str(unrelated)}, worktree)
+            self.assertFalse(unrelated.exists())
+
     def test_candidate_scope(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for name in ['target', 'source', 'isolated/one']:
+            for name in ['target', 'source', 'isolated/one', 'isolated/legacy/target']:
                 p = root / name; p.mkdir(parents=True); (p / '.rustc_info.json').write_text('{}')
             (root / 'isolated/link').symlink_to(root / 'source', target_is_directory=True)
-            self.assertEqual(set(cache.candidates(root)), {root / 'target', root / 'isolated/one'})
+            self.assertEqual(set(cache.candidates(root)),
+                             {root / 'target', root / 'isolated/one', root / 'isolated/legacy/target'})
+            (root / 'isolated/one/.zork-cache-keep').write_text('needed for follow-up')
+            self.assertNotIn(root / 'isolated/one', cache.candidates(root))
 
     def test_budget_validation(self):
         for env in [{'ZORK_BUILD_BUDGET_GIB':'nan'}, {'ZORK_BUILD_LOW_WATER_GIB':'101'}]:
@@ -100,6 +130,125 @@ class BuildSettingsTest(unittest.TestCase):
                 cache.main()
                 run.assert_not_called()
             self.assertTrue(target.exists())
+
+    def test_auto_only_cleans_old_idle_isolated_targets(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            shared = root / 'target'
+            old = root / 'isolated/old/target'
+            for path in (shared, old):
+                path.mkdir(parents=True)
+                (path / '.rustc_info.json').write_text('{}')
+                (path / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (old / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(root / 'gone')}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            def sized(path):
+                return 2**31 if path == root else 2**30
+            with patch('sys.argv', ['cache_budget', '--auto']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', side_effect=sized), \
+                 patch('cache_budget.latest_write', return_value=0), \
+                 patch('cache_budget.idle', return_value=True), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[0], ['cargo', 'clean', '--target-dir', str(old)])
+
+    def test_auto_skips_busy_target(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            old = root / 'isolated/old'
+            old.mkdir(parents=True)
+            (old / '.rustc_info.json').write_text('{}')
+            (old / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (old / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(root / 'gone')}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            with patch('sys.argv', ['cache_budget', '--auto']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', return_value=2**31), \
+                 patch('cache_budget.latest_write', return_value=0), \
+                 patch('cache_budget.idle', return_value=False), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_not_called()
+
+    def test_auto_dry_run_never_cleans(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            old = root / 'isolated/old'
+            old.mkdir(parents=True)
+            (old / '.rustc_info.json').write_text('{}')
+            (old / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (old / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(root / 'gone')}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            with patch('sys.argv', ['cache_budget', '--auto', '--dry-run']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', return_value=2**31), \
+                 patch('cache_budget.latest_write', return_value=0), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_not_called()
+
+    def test_untagged_target_cannot_enter_cleanup_plan(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            old = root / 'isolated/legacy/target'
+            old.mkdir(parents=True)
+            (old / '.rustc_info.json').write_text('{}')
+            with patch('cache_budget.size', return_value=2**30), \
+                 patch('cache_budget.latest_write', return_value=0):
+                self.assertEqual(cache.plan(root, 2**31, 2**30, 2**29, 24, True), [])
+
+    def test_auto_keeps_target_while_owner_worktree_exists(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            owner = root / 'worktree'; owner.mkdir()
+            target = root / 'isolated/worktree'; target.mkdir(parents=True)
+            (target / '.rustc_info.json').write_text('{}')
+            (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(owner)}))
+            with patch('cache_budget.size', return_value=2**30), \
+                 patch('cache_budget.latest_write', return_value=0):
+                self.assertEqual(cache.plan(root, 2**31, 2**30, 2**29, 24, True), [])
+                owner.rmdir()
+                self.assertEqual(cache.plan(root, 2**31, 2**30, 2**29, 24, True),
+                                 [(target, 2**30)])
+
+    def test_cargo_rejection_is_reported_after_other_candidates(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            targets = [root / 'isolated/first', root / 'isolated/second']
+            for target in targets:
+                target.mkdir(parents=True)
+                (target / '.rustc_info.json').write_text('{}')
+                (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+                (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(root / 'gone')}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            failure = subprocess.CalledProcessError(101, ['cargo', 'clean'])
+            def sized(path):
+                return 2**31 if path == root else 2**29
+            with patch('sys.argv', ['cache_budget', '--auto']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('sys.stderr', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', side_effect=sized), \
+                 patch('cache_budget.latest_write', return_value=0), \
+                 patch('cache_budget.idle', return_value=True), \
+                 patch('cache_budget.subprocess.run', side_effect=[failure, subprocess.CompletedProcess([], 0)]) as run:
+                with self.assertRaises(SystemExit):
+                    cache.main()
+                self.assertEqual(run.call_count, 2)
 
     def test_open_files_fail_closed(self):
         from subprocess import CompletedProcess
