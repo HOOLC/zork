@@ -63,6 +63,7 @@ use zork_client_core::conversation::{decode_sse_event, DecodedSseEvent};
 
 pub enum DesktopAction {
     ManageNode,
+    SelectChatDevice(String),
 }
 impl gpui::EventEmitter<DesktopAction> for RootView {}
 pub struct NavigationChanged {
@@ -83,6 +84,7 @@ pub struct RootView {
     #[cfg(feature = "headless-bench")]
     benchmark_artifact_indices: std::cell::RefCell<std::collections::HashSet<usize>>,
     new_chat_page: Option<Entity<zork_ui::new_chat::Page>>,
+    new_chat_devices: zork_client_core::new_chat::Choice,
     new_chat_updates: Option<Task<()>>,
     local_cache: Option<(Arc<crate::desktop::store::ClientStore>, String)>,
     delivery_task: Option<Task<()>>,
@@ -422,6 +424,7 @@ impl RootView {
             #[cfg(feature = "headless-bench")]
             benchmark_artifact_indices: Default::default(),
             new_chat_page: None,
+            new_chat_devices: Default::default(),
             new_chat_updates: None,
             comment_input,
             draft_state: Arc::new(Default::default()),

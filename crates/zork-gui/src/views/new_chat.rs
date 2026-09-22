@@ -1,6 +1,18 @@
 use super::*;
 
 impl RootView {
+    pub(crate) fn set_new_chat_devices(
+        &mut self,
+        choice: zork_client_core::new_chat::Choice,
+        cx: &mut Context<Self>,
+    ) {
+        if self.new_chat_devices != choice {
+            self.new_chat_devices = choice;
+            zork_ui::components::region::invalidate_all(cx);
+            cx.notify();
+        }
+    }
+
     pub(super) fn watch_new_chat(&mut self, cx: &mut Context<Self>) {
         let mut updates = self.core_device.new_chat().subscribe_view();
         updates.snapshot();
@@ -66,6 +78,9 @@ impl RootView {
                         zork_ui::components::region::invalidate_all(cx);
                     }
                     zork_ui::new_chat::Event::ConfigureModels => cx.emit(DesktopAction::ManageNode),
+                    zork_ui::new_chat::Event::SelectDevice(id) => {
+                        cx.emit(DesktopAction::SelectChatDevice(id.clone()))
+                    }
                 },
             )
             .detach();
@@ -73,6 +88,7 @@ impl RootView {
             page
         };
         let mut data = self.core_device.new_chat().presentation();
+        data.device = self.new_chat_devices.clone();
         data.error = data.error.or_else(|| self.error.clone());
         page.update(cx, |v, cx| {
             v.configure(data, self.composer_surface_width, text, cx)

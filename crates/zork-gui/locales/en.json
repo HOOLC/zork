@@ -1,4 +1,10 @@
 {
+  "new_chat_choose_intensity": "Choose effort",
+  "new_chat_reset_thinking": "Reset effort",
+  "new_chat_fixed_thinking": "This model uses fixed effort",
+  "thinking_minimal": "Minimal",
+  "thinking_xhigh": "Extra high",
+  "thinking_max": "Maximum",
   "new_chat": "New Chat",
   "chat_day_today": "Today",
   "chat_day_0": "Sunday",
@@ -10,6 +16,7 @@
   "chat_day_6": "Saturday",
   "chat_day_earlier": "Earlier",
   "new_chat_intro": "What would you like to work on?",
+  "new_chat_device": "Device",
   "new_chat_choose_model": "Choose model",
   "new_chat_thinking": "Thinking depth",
   "new_chat_profile_auto": "Profile · Automatic",
