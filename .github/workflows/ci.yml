@@ -61,7 +61,7 @@ jobs:
     name: ${{ inputs.prime_cache && 'Prime runtime cache (no tests)' || 'Main runtime contracts' }}
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.prime_cache && 15 || 5 }}
+    timeout-minutes: ${{ inputs.prime_cache && 15 || 7 }}
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -85,10 +85,10 @@ jobs:
         if: env.KACHE_CONFIGURED == 'true'
         uses: kunobi-ninja/kache-action@v1
         with:
-          # Cache linked test/program artifacts as well as libraries. Let the
-          # action own uploads and its single manifest publication.
+          # The target cache is saved before tests. Keep Kache restore-only so
+          # its post-step cannot repeat an upload after runtime tests complete.
           version: "0.26.0"
-          save-cache: true
+          save-cache: false
           cache-executables: true
           pr-comment: false
           manifest-key: zork-main-runtime-${{ runner.os }}-${{ runner.arch }}
