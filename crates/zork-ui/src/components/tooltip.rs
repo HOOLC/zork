@@ -489,9 +489,15 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
         let hover_state = state.clone();
         let panel_state = state.clone();
         let escape_state = state.clone();
-        let width = (crate::components::liquid::overlay::measure_label(&self.text, 12., window)
-            + 16.)
+        // Round shaped text outwards before adding padding. Fractional glyph
+        // widths must not make a short hint wrap its final character.
+        let natural_width =
+            crate::components::liquid::overlay::measure_label(&self.text, 12., window).ceil() + 18.;
+        let available_width = (window.viewport_size().width.as_f32() - 24.)
+            .max(2.)
             .min(360.);
+        let width = natural_width.min(available_width);
+        let single_line = natural_width <= available_width;
         let text = self.text.clone();
         let content = div()
             .id(format!("control-hint-{}", self.key))
@@ -500,7 +506,8 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
             .text_size(px(12.))
             .line_height(px(20.))
             .text_color(rgb(ZORK_UI.palette.text))
-            .whitespace_normal()
+            .when(single_line, |v| v.whitespace_nowrap())
+            .when(!single_line, |v| v.whitespace_normal())
             .child(text.clone())
             .automation(AutomationRole::Status, text);
         let hover = std::rc::Rc::new(move |inside: &bool, _: &mut Window, cx: &mut gpui::App| {
