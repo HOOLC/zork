@@ -258,7 +258,7 @@ impl Render for Page {
             |view, open, cx| {
                 view.picker_open = open;
                 view.device_menu = false;
-                view.picker_mode = PickerMode::Strength;
+                view.set_picker_mode(PickerMode::Strength);
                 cx.notify();
             },
         );
