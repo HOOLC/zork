@@ -178,6 +178,10 @@ impl Startup {
     pub fn finish_onboarding(&self) -> Result<()> {
         let mut state = self.recovery.state.lock().unwrap();
         anyhow::ensure!(
+            !self.recovery.stopping.load(Ordering::Acquire),
+            "客户端正在退出"
+        );
+        anyhow::ensure!(
             state.onboarding == Some(Onboarding::Ready),
             "模型尚未准备好"
         );

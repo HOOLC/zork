@@ -341,6 +341,18 @@ impl Startup {
         if matches!(state.mesh, Phase::Failed(_)) {
             self.recovery.launch(Step::Mesh);
         }
+        if state.onboarding == Some(Onboarding::Models) && state.onboarding_error.is_some() {
+            if let Some((id, _, profiles, _)) =
+                self.recovery.onboarding_models.lock().unwrap().as_ref()
+            {
+                if let Ok((_, client)) = self.directory.connection(id) {
+                    let profiles = profiles.clone();
+                    client.spawn(async move {
+                        profiles.refresh().await;
+                    });
+                }
+            }
+        }
     }
 
     pub fn shutdown(&self) -> impl Future<Output = ()> + Send + 'static {

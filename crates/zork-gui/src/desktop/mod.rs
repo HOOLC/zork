@@ -1012,7 +1012,13 @@ impl Render for DesktopRoot {
         }
         for (id, (_, profiles, _)) in &self.management_views {
             let visible = ((self.managing && self.management_tab == 0)
-                || (self.startup_state.onboarding.is_some() && self.onboarding_models_open))
+                || (matches!(
+                    self.startup_state.onboarding,
+                    Some(
+                        zork_client_core::desktop::startup::Onboarding::Models
+                            | zork_client_core::desktop::startup::Onboarding::Ready
+                    )
+                ) && self.onboarding_models_open))
                 && self.active.is_some()
                 && self.active_node_id.as_ref() == Some(id);
             profiles.update(cx, |view, cx| view.set_visible(visible, cx));

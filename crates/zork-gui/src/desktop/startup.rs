@@ -472,6 +472,21 @@ impl DesktopRoot {
             }
         }
         body = body
+            .when(
+                phase == Onboarding::Models && self.startup_state.onboarding_error.is_some(),
+                |v| {
+                    v.child(
+                        ui::button(
+                            "onboarding-retry-models",
+                            locale.text("onboarding_retry"),
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(|v, _, _, cx| v.retry_startup(cx)))
+                        .automation(AutomationRole::Button, locale.text("onboarding_retry")),
+                    )
+                },
+            )
             .when_some(self.startup_state.onboarding_error.clone(), |v, error| {
                 v.child(ui::feedback(error))
             })
