@@ -101,7 +101,7 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 LiquidButton(selected?.let { sharedSize(it.size) }.orEmpty(), quiet = true, onClick = { sheet = "versions" })
                 LiquidButton("详细信息", quiet = true, onClick = { detailsOpen = !detailsOpen })
-                if (detailsOpen) Text(selected?.sources?.joinToString(" · ") { deviceNameSummary(it.name, it.status) }.orEmpty(), fontSize = 12.sp, color = ZorkColors.Muted)
+                if (detailsOpen) Text(selected?.sources?.joinToString(" · ") { compactDeviceName(it.name, it.status) }.orEmpty(), fontSize = 12.sp, color = ZorkColors.Muted)
                 if (preview.loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 preview.error?.let { Text(it, color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp) }
                 if (preview.cached) Text("正在查看已缓存的副本", color = ZorkColors.Muted, fontSize = 12.sp)
@@ -144,12 +144,12 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
     LiquidRetained(sheet) { shown, open, closed -> when (shown) {
         "sources", "settings" -> SettingsSheet(if (shown == "sources") "文件来源" else "共享来源", dismiss = { sheet = null }, open = open, onClosed = closed) {
             SharedChoice("所有设备", data.source == null) { actions.source(null); sheet = null }
-            data.devices.forEach { source -> SharedChoice(deviceNameSummary(source.name, source.status), data.source == source.id) { actions.source(source.id); sheet = null } }
+            data.devices.forEach { source -> SharedChoice(compactDeviceName(source.name, source.status), data.source == source.id) { actions.source(source.id); sheet = null } }
         }
         "versions" -> SettingsSheet("文件版本", dismiss = { sheet = null }, open = open, onClosed = closed) {
             preview?.versions?.forEach { version ->
                 val modified = remember(version.modified) { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochSecond(version.modified / 1_000_000_000)) }
-                SharedChoice("${version.sources.joinToString(" · ") { deviceNameSummary(it.name, it.status) }} · ${sharedSize(version.size)}\n$modified${if (!version.canRead) " · 暂不可读取" else ""}", preview.selected == version.root) { actions.version(version.root); sheet = null }
+                SharedChoice("${version.sources.joinToString(" · ") { compactDeviceName(it.name, it.status) }} · ${sharedSize(version.size)}\n$modified${if (!version.canRead) " · 暂不可读取" else ""}", preview.selected == version.root) { actions.version(version.root); sheet = null }
             }
         }
         "more" -> SettingsSheet("更多", dismiss = { sheet = null }, open = open, onClosed = closed) {

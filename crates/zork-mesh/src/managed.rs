@@ -236,6 +236,7 @@ async fn start_owned(
     control: Option<Arc<dyn crate::control::ControlHandler>>,
     retiring: &[String],
 ) -> Result<Runtime> {
+    let startup_started = std::time::Instant::now();
     validate(config)?;
     let channel = zork_config::channel::activate_for_data(root)?;
     ensure!(
@@ -272,6 +273,7 @@ async fn start_owned(
         Ok((lock, clean_start))
     })
     .await??;
+    let local_ms = startup_started.elapsed().as_millis() as u64;
     synch_net::tls::install_crypto_provider();
     let mut options = synch_engine::NodeConfig::new(data.clone());
     // Zork serves native control; no node executes published socket programs.
@@ -286,6 +288,7 @@ async fn start_owned(
     });
     options.dns.no_tuf = config.offline;
     let engine = synch_engine::Node::open(options).await?;
+    let engine_open_ms = startup_started.elapsed().as_millis() as u64 - local_ms;
     // Publish the bound loopback endpoint before readoption: two same-host
     // peers must be able to find each other while both are still starting.
     let local_registration = match crate::local_discovery::install(engine.net().endpoint()).await {
@@ -313,6 +316,7 @@ async fn start_owned(
         startup_publish,
         control_connections,
     );
+    let history_started = std::time::Instant::now();
     let setup: Result<()> = async {
         // Zork currently supports static key identities. Its own enrollment
         // service owns membership; there is no CLI or cloud-tunnel lifecycle.
@@ -338,9 +342,19 @@ async fn start_owned(
     }
     .await;
     if let Err(error) = setup {
+        tracing::warn!(
+            client_only,
+            clean_start,
+            local_ms,
+            engine_open_ms,
+            history_ms = history_started.elapsed().as_millis() as u64,
+            %error,
+            "Mesh startup history failed"
+        );
         let _ = engine.shutdown().await;
         return Err(error);
     }
+    let history_ms = history_started.elapsed().as_millis() as u64;
     let (stop_loops, _) = broadcast::channel::<()>(1);
     let mut loops = JoinSet::new();
     let pushing = engine.clone();
@@ -452,15 +466,27 @@ async fn start_owned(
             errors.join(", ")
         );
         if clean_close {
-            if let Err(error) =
-                tokio::task::spawn_blocking(move || crate::clean_start::record(&data)).await?
-            {
-                tracing::warn!(%error, "Mesh clean restart receipt unavailable");
+            match tokio::task::spawn_blocking(move || crate::clean_start::record(&data)).await? {
+                Ok(()) => tracing::info!(
+                    client_only,
+                    elapsed_ms = draining_started.elapsed().as_millis() as u64,
+                    "Mesh clean restart receipt recorded"
+                ),
+                Err(error) => tracing::warn!(%error, "Mesh clean restart receipt unavailable"),
             }
         }
         drop(lock);
         Ok(())
     });
+    tracing::info!(
+        client_only,
+        clean_start,
+        local_ms,
+        engine_open_ms,
+        history_ms,
+        elapsed_ms = startup_started.elapsed().as_millis() as u64,
+        "Mesh startup completed"
+    );
     Ok(Runtime {
         node: handle,
         stop: Some(stop),

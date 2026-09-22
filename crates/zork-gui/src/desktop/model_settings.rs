@@ -316,7 +316,7 @@ impl Render for ModelSettings {
                                     AutomationRole::Button,
                                     format!(
                                         "添加连接到 {}",
-                                        zork_ui::device_name::summary(
+                                        zork_ui::device_name::accessible_summary(
                                             &device.name,
                                             &device.status,
                                             None

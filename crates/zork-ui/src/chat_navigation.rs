@@ -383,7 +383,11 @@ impl Navigation {
         } else {
             chat.title.clone()
         };
-        let meta = crate::device_name::summary(&device.name, &device.status, Some(&self.locale));
+        let meta = crate::device_name::accessible_summary(
+            &device.name,
+            &device.status,
+            Some(&self.locale),
+        );
         let node = device.id.clone();
         let session = chat.chat_id.clone();
         let mut rows = vec![(self.locale.text("workspace").into(), chat.workspace.clone())];

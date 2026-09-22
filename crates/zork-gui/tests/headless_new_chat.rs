@@ -74,8 +74,8 @@ fn main() -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .find(|e| e.id == "new-chat-device")
-                .is_some_and(|e| e.label.contains("直连")),
-            "selected device must show its Mesh status"
+                .is_some_and(|e| e.label.contains('●') && !e.label.contains("直连")),
+            "selected device must show a compact Mesh status icon"
         );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-{width}.png")))?;
@@ -95,8 +95,8 @@ fn main() -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .find(|e| e.id == "new-chat-device-1")
-                .is_some_and(|e| e.label.contains("Mesh 准备中")),
-            "remote device option must show its Mesh status"
+                .is_some_and(|e| e.label.contains('◌') && !e.label.contains("Mesh 准备中")),
+            "remote device option must show a compact Mesh status icon"
         );
         for id in ["new-chat-device-1", "new-chat-options"] {
             action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;

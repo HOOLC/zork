@@ -9,6 +9,9 @@ pub mod startup;
 pub mod transport;
 pub use zork_browser as browser_engine;
 pub use zork_config::startup::mark as trace_startup;
+/// Keep Mesh readiness timing visible in installed-client logs.
+pub const DEFAULT_LOG_FILTER: &str =
+    "warn,zork_mesh::managed=info,zork_client_core::desktop::transport=info";
 pub fn automation_token() -> String {
     zork_config::random_token()
 }

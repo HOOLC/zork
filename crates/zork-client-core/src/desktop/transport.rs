@@ -117,6 +117,8 @@ impl ClientMesh {
         network: Option<&zork_config::MeshConfig>,
         state: &mut Option<Embedded>,
     ) -> Result<String> {
+        let started = std::time::Instant::now();
+        let cold_start = state.is_none();
         if state.is_none() {
             self.publish_readiness(MeshReadiness::Preparing);
         }
@@ -227,6 +229,11 @@ impl ClientMesh {
                 "pid": std::process::id(), "origin": origin, "embedded": true
             }))?,
         )?;
+        tracing::info!(
+            cold_start,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "Client Mesh ready"
+        );
         Ok(origin)
     }
 }

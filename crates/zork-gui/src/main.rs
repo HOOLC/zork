@@ -5,6 +5,8 @@ use zork_gui::automation::{AutomationRoot, DevAutomation, DEFAULT_DEV_PORT};
 use zork_gui::components;
 use zork_gui::window_chrome::native_titlebar_options;
 
+#[cfg(target_os = "macos")]
+use anyhow::Context as _;
 use zork_gui::desktop::DesktopRoot;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -85,6 +87,36 @@ fn prepare_app_environment() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn quit_on_sigterm() -> anyhow::Result<futures_channel::oneshot::Receiver<()>> {
+    let (armed, ready) = std::sync::mpsc::sync_channel(1);
+    let (quit, requested) = futures_channel::oneshot::channel();
+    std::thread::Builder::new()
+        .name("zork-gui-terminate".into())
+        .spawn(move || {
+            let failed = armed.clone();
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .and_then(|runtime| {
+                    runtime.block_on(async {
+                        let mut signal = tokio::signal::unix::signal(
+                            tokio::signal::unix::SignalKind::terminate(),
+                        )?;
+                        let _ = armed.send(Ok(()));
+                        signal.recv().await;
+                        let _ = quit.send(());
+                        Ok(())
+                    })
+                });
+            if let Err(error) = result {
+                let _ = failed.send(Err(error));
+            }
+        })?;
+    ready.recv().context("SIGTERM handler did not start")??;
+    Ok(requested)
+}
+
 fn main() {
     zork_client_core::desktop::trace_startup("gui.main");
     let options = parse_args_from(std::env::args().skip(1)).unwrap_or_else(|error| {
@@ -113,13 +145,19 @@ fn main() {
     // transport failures observable there; RUST_LOG enables scoped diagnostics.
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| zork_client_core::desktop::DEFAULT_LOG_FILTER.into()),
         )
         .with_ansi(false)
         .try_init();
     zork_client_core::desktop::trace_startup("gui.environment_ready");
     let startup = zork_client_core::desktop::startup::Startup::prepare().unwrap_or_else(|error| {
         eprintln!("无法打开客户端运行时：{error:#}");
+        std::process::exit(1);
+    });
+    #[cfg(target_os = "macos")]
+    let terminate = quit_on_sigterm().unwrap_or_else(|error| {
+        eprintln!("failed to install graceful termination: {error:#}");
         std::process::exit(1);
     });
     let initial_size = options
@@ -159,6 +197,13 @@ fn main() {
             std::process::exit(1);
         });
         DesktopRoot::install_startup(startup, cx);
+        #[cfg(target_os = "macos")]
+        cx.spawn(async move |cx| {
+            if terminate.await.is_ok() {
+                cx.update(|cx| cx.quit());
+            }
+        })
+        .detach();
         zork_client_core::desktop::trace_startup("gui.run_callback");
         zork_gui::assets::init_fonts(cx);
         zork_client_core::desktop::trace_startup("gui.fonts_ready");
