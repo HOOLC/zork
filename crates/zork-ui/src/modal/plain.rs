@@ -71,7 +71,9 @@ impl PlainDialog {
     }
 
     pub fn alive(&self) -> bool {
-        self.reveal.opacity() > 0.001 || self.backdrop.opacity() > 0.001 || self.open
+        // Retain the host until Reveal snaps both springs to zero. Dropping at
+        // the paint threshold would leave a nonzero tail that can never settle.
+        self.reveal.opacity() > 0. || self.backdrop.opacity() > 0. || self.open
     }
 
     pub fn inspect(&self) -> serde_json::Value {
