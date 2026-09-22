@@ -15,6 +15,8 @@ pub struct FloatingStyle {
     pub radius: f32,
     pub priority: usize,
     pub role: Role,
+    /// Minimum height used to choose a side before the content is measured.
+    pub placement_min_height: f32,
 }
 impl FloatingStyle {
     pub fn details(width: f32, side: Side) -> Self {
@@ -24,6 +26,7 @@ impl FloatingStyle {
             radius: crate::controls::CARD_RADIUS,
             priority: 210,
             role: Role::Tooltip,
+            placement_min_height: 2.,
         }
     }
 }
@@ -60,7 +63,12 @@ impl FloatingPanel {
         let viewport = window.viewport_size();
         let width = style.width.min((viewport.width.as_f32() - 24.).max(2.));
         let max_height = (viewport.height.as_f32() - 24.).max(2.);
-        let height = self.panel.content_height().unwrap_or(2.).min(max_height);
+        let height = self
+            .panel
+            .content_height()
+            .unwrap_or(style.placement_min_height)
+            .max(style.placement_min_height)
+            .min(max_height);
         let clamp_x = |x: f32| x.clamp(12., (viewport.width.as_f32() - width - 12.).max(12.));
         let clamp_y = |y: f32| y.clamp(12., (viewport.height.as_f32() - height - 12.).max(12.));
         let (x, y, available) = match style.side {
