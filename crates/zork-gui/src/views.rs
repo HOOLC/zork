@@ -1396,8 +1396,12 @@ impl RootView {
             .iter()
             .map(|p| (p.origin.clone(), p.name.clone()))
             .collect::<HashMap<_, _>>();
-        if let (Some(origin), Some(name)) = (&self.mesh_status.origin, &local_name) {
-            aliases.insert(origin.clone(), name.clone());
+        let device = self.core_device.snapshot();
+        let local_origin = device.info["sync"]["owner"]
+            .as_str()
+            .or(self.mesh_status.origin.as_deref());
+        if let (Some(origin), Some(name)) = (local_origin, &local_name) {
+            aliases.insert(origin.to_owned(), name.clone());
         }
         #[cfg(feature = "headless-bench")]
         let benchmark_rows = self.benchmark_rows.clone();
