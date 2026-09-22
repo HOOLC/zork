@@ -272,12 +272,11 @@ impl DesktopRoot {
                                     false,
                                     true,
                                 )
-                                .on_click(cx.listener(
-                                    |v, _, _, cx| {
-                                        v.onboarding_models_open = false;
-                                        cx.notify();
-                                    },
-                                )),
+                                .on_click(cx.listener(|v, _, _, cx| {
+                                    v.onboarding_models_open = false;
+                                    cx.notify();
+                                }))
+                                .automation(AutomationRole::Button, locale.text("onboarding_back")),
                             )
                             .when(phase == Onboarding::Ready, |v| {
                                 v.child(

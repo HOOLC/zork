@@ -138,6 +138,26 @@ impl<V: Render + 'static> Fixture<V> {
             "modal was clipped by settings scroll container"
         );
         anyhow::ensure!(
+            (card.bounds.x + card.bounds.width / 2. - width / 2.).abs() < 1.
+                && (card.bounds.y + card.bounds.height / 2. - height / 2.).abs() < 1.,
+            "dialog centered in its host instead of the window: {:?}",
+            card.bounds
+        );
+        let pixels = self.cx.capture_screenshot(self.window.into())?;
+        for (x, y) in [
+            (2, 2),
+            (pixels.width() - 3, 2),
+            (2, pixels.height() - 3),
+            (pixels.width() - 3, pixels.height() - 3),
+        ] {
+            anyhow::ensure!(
+                pixels.get_pixel(x, y).0[..3]
+                    .iter()
+                    .all(|channel| *channel < 180),
+                "modal backdrop did not cover window corner ({x}, {y})"
+            );
+        }
+        anyhow::ensure!(
             (card.bounds.width - 540.).abs() < 1.,
             "modal width drifted from the shared desktop design"
         );
