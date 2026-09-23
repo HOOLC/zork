@@ -1,7 +1,6 @@
 //! Compact participant activity line from the approved Zork conversation design.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    controls as ui,
     design::ZORK_UI,
 };
 use gpui::{div, prelude::*, px, rgb, Animation, AnimationExt, AnyElement, Div};
@@ -21,7 +20,6 @@ pub struct SessionRow {
 /// one-row or three-row mode. The host owns history reads and navigation.
 pub fn render_session(
     name: &str,
-    avatar: Option<&str>,
     stopped: bool,
     leaving: bool,
     animate: bool,
@@ -43,13 +41,6 @@ pub fn render_session(
         .min_w_0()
         .flex()
         .gap(px(8.))
-        .child(
-            div()
-                .mt(px(6.))
-                .size(px(20.))
-                .flex_shrink_0()
-                .child(ui::agent_avatar(avatar, 20.)),
-        )
         .child(
             div()
                 .min_w_0()
@@ -167,7 +158,6 @@ pub fn render_session(
 pub struct Presentation {
     pub id: String,
     pub name: String,
-    pub avatar: Option<String>,
     pub label: String,
     pub failed: bool,
     pub running: bool,
@@ -197,14 +187,6 @@ pub fn render_with_id(id: String, items: &[Presentation], animate: bool) -> Div 
         .flex()
         .items_center()
         .gap(px(6.))
-        .children(items.iter().map(|item| {
-            div()
-                .id(format!("activity-avatar-{}", item.id))
-                .size(px(15.))
-                .flex_shrink_0()
-                .rounded(px(5.))
-                .child(ui::agent_avatar(item.avatar.as_deref(), 15.))
-        }))
         .when(
             items.iter().any(|item| item.running && !item.failed),
             |view| {

@@ -1300,7 +1300,6 @@ impl RootView {
             .map(|member| zork_ui::conversation_toolbar::Member {
                 id: member.id,
                 name: member.name,
-                avatar: member.avatar,
             })
             .collect();
         zork_ui::conversation_toolbar::render(
@@ -1338,7 +1337,6 @@ impl RootView {
                 (
                     preview.session.clone(),
                     preview.name.clone(),
-                    preview.avatar.clone(),
                     preview.stopped,
                     preview.leaving,
                     preview.expanded,
@@ -1605,13 +1603,12 @@ impl RootView {
                     })
             } else if activity_in_transcript {
                 let compact = session_activity.as_ref().map(
-                    |(session, name, avatar, stopped, leaving, expanded, rows)| {
+                    |(session, name, stopped, leaving, expanded, rows)| {
                         let expand_root = activity_root.clone();
                         let open_root = activity_root.clone();
                         let session = session.clone();
                         zork_ui::components::activity::render_session(
                             name,
-                            avatar.as_deref(),
                             *stopped,
                             *leaving,
                             animate_activity,
@@ -1907,7 +1904,6 @@ impl RootView {
                 Some(crate::components::activity::Presentation {
                     id: p.id.clone(),
                     name: p.name.clone(),
-                    avatar: p.avatar.clone(),
                     label: agent_status_label(status, self.locale),
                     failed: matches!(status, AgentStatus::Failed { .. }),
                     running: matches!(

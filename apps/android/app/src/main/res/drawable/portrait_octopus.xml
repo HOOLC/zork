@@ -1,8 +1,0 @@
-<!-- Generated from crates/zork-ui/assets/avatars/portraits/octopus.svg; do not redraw. -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
-  <path android:pathData="M15 34C15 21 21 14 32 14S49 21 49 34V41C49 45 54 44 54 48C54 53 48 55 44 51C40 56 35 56 32 52C29 56 24 56 20 51C16 55 10 53 10 48C10 44 15 45 15 41Z" android:fillColor="#AA80A4" />
-  <path android:pathData="M20 42Q32 37 44 42Q42 49 38 47Q33 51 32 47Q27 51 23 47Q20 48 20 42Z" android:fillColor="#EAD8E7" />
-  <path android:pathData="M22.1 32.0a1.9 2.35 0 1 0 3.8 0a1.9 2.35 0 1 0 -3.8 0Z" android:fillColor="#29323D" />
-  <path android:pathData="M38.1 32.0a1.9 2.35 0 1 0 3.8 0a1.9 2.35 0 1 0 -3.8 0Z" android:fillColor="#29323D" />
-  <path android:pathData="M29 39q3 2.5 6 0" android:fillColor="#00000000" android:strokeColor="#29323D" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
-</vector>

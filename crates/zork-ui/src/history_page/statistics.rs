@@ -3,7 +3,6 @@ use super::*;
 #[derive(Clone, Default)]
 pub struct Runtime {
     pub name: String,
-    pub avatar: Option<String>,
     pub role: Option<String>,
     pub environment: Option<String>,
     pub provider: Option<String>,
@@ -71,10 +70,6 @@ impl Statistics {
             .text_size(px(11.))
             .line_height(px(16.5))
             .text_color(rgb(SUBTLE))
-            .child(crate::controls::agent_avatar(
-                runtime.avatar.as_deref(),
-                16.,
-            ))
             .child(
                 div()
                     .max_w(px((width - 56.).max(1.)))

@@ -1,7 +1,6 @@
 //! Read-only conversation members and the complete file/page menu.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    controls as ui,
     design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
@@ -9,7 +8,6 @@ use std::rc::Rc;
 pub struct Member {
     pub id: String,
     pub name: String,
-    pub avatar: Option<String>,
 }
 pub fn render<V: 'static>(
     members: Vec<Member>,
@@ -34,11 +32,16 @@ pub fn render<V: 'static>(
             let open = open.clone();
             div()
                 .id(format!("header-member-{}", member.id))
-                .size(px(26.))
-                .rounded_full()
+                .w(px(30.))
+                .h(px(26.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(8.))
                 .bg(rgb(ZORK_UI.palette.canvas))
                 .cursor_pointer()
-                .child(ui::agent_avatar(member.avatar.as_deref(), 26.))
+                .text_size(px(11.))
+                .child(member.name.chars().take(2).collect::<String>())
                 .on_click(cx.listener(move |v, _, _, cx| open(v, member.id.clone(), cx)))
                 .automation(
                     AutomationRole::Button,

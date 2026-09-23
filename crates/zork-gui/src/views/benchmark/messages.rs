@@ -181,7 +181,7 @@ pub fn line(index: usize) -> TranscriptLine {
             created_at: Some("2026-09-07T08:00:00Z".into()),
             author_agent_id: Some(format!("leader-{}", index % 4)),
             author_name: Some(format!("助手 {}", index % 4)),
-            author_avatar: Some(zork_ui::controls::AGENT_AVATARS[index % 12].0.into()),
+            author_avatar: None,
             device: Some(format!("fixture-device-{}", index % 3)),
             ..Default::default()
         }
@@ -207,7 +207,7 @@ pub fn coverage(count: usize) -> serde_json::Value {
             (count / kinds.len() + usize::from(index < count % kinds.len())).into(),
         );
     }
-    serde_json::json!({"message_kinds":counts,"roles":["user","assistant"],"agent_avatars":12,
+    serde_json::json!({"message_kinds":counts,"roles":["user","assistant"],
         "image_markdown":"link fallback; raster image preview is tested separately",
         "separate_surfaces":["file artifact card","PNG image preview","text artifact preview","participant activity","delivery state"]})
 }

@@ -19,7 +19,7 @@ impl Story {
             let renderer = cx.svg_renderer();
             let svg = Arc::new(
                 renderer
-                    .parse_svg(include_bytes!("../../assets/avatars/portraits/fox.svg"))
+                    .parse_svg(include_bytes!("../../tests/fixtures/image-file.svg"))
                     .expect("fixture SVG"),
             );
             let rendered = renderer.render_parsed(&svg, 1.).expect("fixture raster");
@@ -36,7 +36,7 @@ impl Story {
         let info = Info {
             id: "demo-file".into(),
             name: if image_view {
-                "角色插图.svg"
+                "文件插图.svg"
             } else {
                 "设计说明.md"
             }

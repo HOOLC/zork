@@ -26,7 +26,7 @@ internal fun JSONObject.text(key: String, fallback: String = ""): String =
 
 internal data class Peer(val id: String, val name: String, val address: String, val status: DeviceStatusUi = DeviceStatusUi())
 internal data class Conversation(val id: String, val title: String, val leaderId: String? = null,
-    val canSend: Boolean = true, val avatar: String? = null, val canStop: Boolean = canSend)
+    val canSend: Boolean = true, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
     val user: Boolean, val pending: Boolean = false, val attempted: Boolean = false,
     val createdAt: String = "", val device: String = "", val model: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
@@ -591,13 +591,13 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (sessionId.isNotBlank()) {
             // The list already identifies this conversation. Show it and its local
             // history before waiting for the remote runtime to be prepared.
-            openConversation(Conversation(sessionId, leader.text("name"), leader.text("id"), avatar = leader.text("avatar")),
+            openConversation(Conversation(sessionId, leader.text("name"), leader.text("id")),
                 prepareLeader = leader.text("id"))
             return
         }
         action {
             val opened = repo.command("settings_action", "peer" to peer.id, "operation" to JSONObject().put("action", "open_agent").put("id", leader.text("id")))
-            openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id"), avatar = leader.text("avatar")))
+            openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id")))
         }
     }
 
@@ -892,7 +892,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         settings = null
         if (activePeer?.id != peer.id) { activePeer = peer; conversation = null }
         val opened = repo.command("settings_action", "peer" to peer.id, "operation" to JSONObject().put("action", "open_agent").put("id", leader.text("id")))
-        openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id"), avatar = leader.text("avatar")),
+        openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id")),
             preparedDraft = "帮我看看 ${targetDevice.name} 的设备配置。")
     }
 
@@ -914,7 +914,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         val peer = peers.find { it.id == leader.text("_peer") } ?: activePeer ?: return@action
         settings = null; if (activePeer?.id != peer.id) { live?.cancel(); activePeer = peer; conversation = null }
         val opened = repo.command("settings_action", "peer" to peer.id, "operation" to JSONObject().put("action", "open_agent").put("id", leader.text("id")))
-        openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id"), avatar = leader.text("avatar")),
+        openConversation(Conversation(opened.text("session_id"), leader.text("name"), leader.text("id")),
             preparedDraft = "我想添加一台新设备，请帮我准备接入步骤。")
     }
 

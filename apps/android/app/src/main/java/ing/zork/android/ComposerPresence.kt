@@ -11,14 +11,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
 internal data class ComposerMember(
-    val id: String, val name: String, val avatar: String, val label: String,
+    val id: String, val name: String, val label: String,
     val failed: Boolean, val session: String = "",
 )
 
@@ -51,7 +50,7 @@ internal fun activityLabel(activity: JSONObject?): String = when (activity?.text
 internal fun rememberComposerPresence(state: WorkbenchState, availableWidth: Float): ComposerPresence {
     val members = state.participants.map {
         val activity = it.optJSONObject("activity")
-        ComposerMember(it.text("id"), it.text("name"), it.text("avatar"), activityLabel(activity),
+        ComposerMember(it.text("id"), it.text("name"), activityLabel(activity),
             activity?.text("state") == "failed", it.text("session_id"))
     }
     return remember(members) { ComposerPresence(members) }
@@ -74,7 +73,6 @@ internal fun ComposerMembers(
                         Row(Modifier.height(40.dp).padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ComposerPortrait(member.avatar, member.name)
                             Text("${member.name} · ${member.label.ifBlank { "空闲" }}", fontSize = 12.sp,
                                 color = if (member.failed) ZorkColors.Danger else ZorkColors.Ink)
                         }
@@ -83,17 +81,4 @@ internal fun ComposerMembers(
             }
         }
     }
-}
-
-@Composable
-private fun ComposerPortrait(avatar: String, name: String) {
-    val resource = when (avatar) {
-        "fox" -> R.drawable.portrait_fox; "panda" -> R.drawable.portrait_panda
-        "bear" -> R.drawable.portrait_bear; "bunny" -> R.drawable.portrait_bunny
-        "chick" -> R.drawable.portrait_chick; "deer" -> R.drawable.portrait_deer
-        "dog" -> R.drawable.portrait_dog; "koala" -> R.drawable.portrait_koala
-        "octopus" -> R.drawable.portrait_octopus; "owl" -> R.drawable.portrait_owl
-        "penguin" -> R.drawable.portrait_penguin; else -> R.drawable.portrait_cat
-    }
-    androidx.compose.foundation.Image(painterResource(resource), name, Modifier.size(22.dp))
 }

@@ -39,42 +39,6 @@ impl AssetSource for EmbeddedAssets {
             "history/stop.svg" => Some(include_bytes!("../assets/history/stop.svg")),
             "history/terminal.svg" => Some(include_bytes!("../assets/history/terminal.svg")),
 
-            "avatars/portraits/cat.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/cat.svg"))
-            }
-            "avatars/portraits/bunny.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/bunny.svg"))
-            }
-            "avatars/portraits/bear.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/bear.svg"))
-            }
-            "avatars/portraits/fox.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/fox.svg"))
-            }
-            "avatars/portraits/panda.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/panda.svg"))
-            }
-            "avatars/portraits/chick.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/chick.svg"))
-            }
-            "avatars/portraits/dog.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/dog.svg"))
-            }
-            "avatars/portraits/owl.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/owl.svg"))
-            }
-            "avatars/portraits/koala.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/koala.svg"))
-            }
-            "avatars/portraits/penguin.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/penguin.svg"))
-            }
-            "avatars/portraits/deer.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/deer.svg"))
-            }
-            "avatars/portraits/octopus.svg" => {
-                Some(include_bytes!("../assets/avatars/portraits/octopus.svg"))
-            }
             "browser/globe.svg" => Some(include_bytes!("../assets/browser/globe.svg")),
             "browser/expand.svg" => Some(include_bytes!("../assets/browser/expand.svg")),
             "browser/restore.svg" => Some(include_bytes!("../assets/browser/restore.svg")),
@@ -83,12 +47,6 @@ impl AssetSource for EmbeddedAssets {
             "browser/go.svg" => Some(include_bytes!("../assets/browser/go.svg")),
             "browser/download.svg" => Some(include_bytes!("../assets/browser/download.svg")),
             "loading/native-ring.svg" => Some(include_bytes!("../assets/loading/native-ring.svg")),
-            "avatars/cat.svg" => Some(include_bytes!("../assets/avatars/cat.svg")),
-            "avatars/bunny.svg" => Some(include_bytes!("../assets/avatars/bunny.svg")),
-            "avatars/bear.svg" => Some(include_bytes!("../assets/avatars/bear.svg")),
-            "avatars/fox.svg" => Some(include_bytes!("../assets/avatars/fox.svg")),
-            "avatars/panda.svg" => Some(include_bytes!("../assets/avatars/panda.svg")),
-            "avatars/chick.svg" => Some(include_bytes!("../assets/avatars/chick.svg")),
             "interface/circle-x.svg" => Some(include_bytes!("../assets/interface/circle-x.svg")),
             "interface/arrow-up.svg" => Some(include_bytes!("../assets/interface/arrow-up.svg")),
             "interface/chevron-down.svg" => {
@@ -151,12 +109,6 @@ impl AssetSource for EmbeddedAssets {
             "interface/loader.svg" => Some(include_bytes!("../assets/interface/loader.svg")),
             "interface/file.svg" => Some(include_bytes!("../assets/interface/file.svg")),
             "interface/download.svg" => Some(include_bytes!("../assets/interface/download.svg")),
-            "avatars/owl.svg" => Some(include_bytes!("../assets/avatars/owl.svg")),
-            "avatars/octopus.svg" => Some(include_bytes!("../assets/avatars/octopus.svg")),
-            "avatars/deer.svg" => Some(include_bytes!("../assets/avatars/deer.svg")),
-            "avatars/dog.svg" => Some(include_bytes!("../assets/avatars/dog.svg")),
-            "avatars/koala.svg" => Some(include_bytes!("../assets/avatars/koala.svg")),
-            "avatars/penguin.svg" => Some(include_bytes!("../assets/avatars/penguin.svg")),
             "icons/task.svg" => Some(include_bytes!("../assets/icons/task.svg")),
             "icons/offline.svg" => Some(include_bytes!("../assets/icons/offline.svg")),
             "icons/result.svg" => Some(include_bytes!("../assets/icons/result.svg")),
@@ -317,22 +269,6 @@ impl AssetSource for EmbeddedAssets {
             ]);
         }
 
-        if path == "avatars" {
-            return Ok(vec![
-                "cat.svg".into(),
-                "bunny.svg".into(),
-                "bear.svg".into(),
-                "fox.svg".into(),
-                "panda.svg".into(),
-                "chick.svg".into(),
-                "dog.svg".into(),
-                "owl.svg".into(),
-                "koala.svg".into(),
-                "penguin.svg".into(),
-                "deer.svg".into(),
-                "octopus.svg".into(),
-            ]);
-        }
         if path == "icons" {
             return Ok(vec![
                 "more-horizontal.svg".into(),

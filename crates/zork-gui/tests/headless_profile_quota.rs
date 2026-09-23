@@ -169,7 +169,7 @@ fn main() -> anyhow::Result<()> {
                 let avatar = snapshot
                     .elements
                     .iter()
-                    .find(|e| e.id == "profile-avatar-fixture")
+                    .find(|e| e.id == "profile-provider-mark-fixture")
                     .unwrap();
                 anyhow::ensure!(
                     avatar.bounds.x - row.bounds.x >= 12.,

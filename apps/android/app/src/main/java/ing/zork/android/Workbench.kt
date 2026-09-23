@@ -302,12 +302,14 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
                 Box(Modifier.size(44.dp, 44.dp)
                     .historyPress(enabled = member.text("session_id").isNotBlank(), radius = 12.dp) { actions.history(member.text("session_id"), member.text("name")) }
                     .semantics { contentDescription = "${member.text("name")} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Avatar(member.text("avatar"), 30.dp, member.text("name"))
+                    Text(member.text("name").take(2), fontSize = 12.sp, color = ZorkColors.Ink,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             } else state.conversation?.let {
                 Box(Modifier.size(44.dp, 44.dp).historyPress(radius = 12.dp) { actions.history(it.id, it.title) }
                     .semantics { contentDescription = "${it.title} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Avatar(it.avatar, 30.dp, it.title)
+                    Text(it.title.take(2), fontSize = 12.sp, color = ZorkColors.Ink,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -768,17 +770,6 @@ internal fun IconAction(resource: Int, description: String, enabled: Boolean = t
     }
 }
 
-@Composable
-internal fun Avatar(name: String?, size: Dp, description: String? = null) {
-    val resource = when (name) {
-        "fox" -> R.drawable.avatar_fox; "cat" -> R.drawable.avatar_cat; "panda" -> R.drawable.avatar_panda
-        "bear" -> R.drawable.avatar_bear; "bunny" -> R.drawable.avatar_bunny; "chick" -> R.drawable.avatar_chick
-        "deer" -> R.drawable.avatar_deer; "dog" -> R.drawable.avatar_dog; "koala" -> R.drawable.avatar_koala
-        "octopus" -> R.drawable.avatar_octopus; "owl" -> R.drawable.avatar_owl; "penguin" -> R.drawable.avatar_penguin
-        else -> R.drawable.avatar_cat
-    }
-    Image(painterResource(resource), description, Modifier.size(size))
-}
 @Composable
 private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(ZorkColors.Paper).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

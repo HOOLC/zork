@@ -371,64 +371,6 @@ pub fn field_with_error(
 pub fn feedback(message: String) -> Div {
     status_notice(message, NoticeKind::Info)
 }
-pub fn avatar(id: &str, name: &str, size: f32) -> Div {
-    let hash = id
-        .bytes()
-        .fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize));
-    let (fill, ink) =
-        crate::design::LEADER_AVATAR_COLORS[hash % crate::design::LEADER_AVATAR_COLORS.len()];
-    let initial = name
-        .trim()
-        .chars()
-        .next()
-        .unwrap_or('L')
-        .to_uppercase()
-        .collect::<String>();
-    div()
-        .size(px(size))
-        .flex_shrink_0()
-        .rounded_full()
-        .bg(rgb(fill))
-        .text_color(rgb(ink))
-        .text_size(px(size * 0.38))
-        .font_weight(FontWeight::SEMIBOLD)
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(initial)
-}
-
-/// The stored key is shared by creation, settings and conversation views.
-pub const AGENT_AVATARS: [(&str, &str, &str); 12] = [
-    ("cat", "小猫", "avatars/cat.svg"),
-    ("bunny", "小兔", "avatars/bunny.svg"),
-    ("bear", "小熊", "avatars/bear.svg"),
-    ("fox", "狐狸", "avatars/fox.svg"),
-    ("panda", "熊猫", "avatars/panda.svg"),
-    ("chick", "小鸡", "avatars/chick.svg"),
-    ("dog", "小狗", "avatars/dog.svg"),
-    ("owl", "猫头鹰", "avatars/owl.svg"),
-    ("koala", "考拉", "avatars/koala.svg"),
-    ("penguin", "企鹅", "avatars/penguin.svg"),
-    ("deer", "小鹿", "avatars/deer.svg"),
-    ("octopus", "章鱼", "avatars/octopus.svg"),
-];
-/// Portrait only, for members sitting directly on the composer material.
-pub fn agent_portrait(avatar: Option<&str>, size: f32) -> Div {
-    let (key, _, _) = AGENT_AVATARS
-        .iter()
-        .find(|(key, _, _)| Some(*key) == avatar)
-        .unwrap_or(&AGENT_AVATARS[0]);
-    div()
-        .size(px(size))
-        .flex_shrink_0()
-        .child(gpui::img(format!("avatars/portraits/{key}.svg")).size(px(size)))
-}
-
-pub fn agent_avatar(avatar: Option<&str>, size: f32) -> Div {
-    agent_portrait(avatar, size)
-}
-
 /// A single-selection field with a window-clamped overlay; choices never reflow the form.
 pub fn dropdown<V: 'static>(
     id: impl Into<gpui::SharedString>,

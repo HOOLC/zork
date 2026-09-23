@@ -106,7 +106,7 @@ mod tests {
     fn svg_preserves_intrinsic_size_and_transparency() {
         let renderer = gpui::SvgRenderer::new(Arc::new(crate::assets::EmbeddedAssets));
         let image = decode(
-            include_bytes!("../../../../zork-ui/assets/avatars/portraits/fox.svg"),
+            include_bytes!("../../../../zork-ui/tests/fixtures/image-file.svg"),
             gpui::ImageFormat::Svg,
             &renderer,
         )

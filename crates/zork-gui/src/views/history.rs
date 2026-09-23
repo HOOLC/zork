@@ -457,7 +457,7 @@ mod canvas_tests {
             assert!(view.history.subscription.is_some());
             view.history.detail = Some("alice-event".into());
 
-            // Clicking another avatar switches the open page instead of closing it.
+            // Clicking another member entry switches the open page instead of closing it.
             view.toggle_history("session-b", cx);
             assert!(view.history.open);
             assert_eq!(view.history.session.as_deref(), Some("session-b"));

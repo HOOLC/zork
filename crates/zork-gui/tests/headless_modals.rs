@@ -169,8 +169,8 @@ impl<V: Render + 'static> Fixture<V> {
         let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../artifacts/headless-interactions/modals");
         std::fs::create_dir_all(&out)?;
-        // SVG decoding is asynchronous. Require painted avatars and stable pixels,
-        // without advancing the virtual clock (which would animate the text caret).
+        // Wait for stable pixels without advancing the virtual clock, which
+        // would animate the text caret.
         let started = std::time::Instant::now();
         let mut previous = None;
         let mut stable = 0;
@@ -180,35 +180,7 @@ impl<V: Render + 'static> Fixture<V> {
                 .update_window(self.window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
             let pixels = self.cx.capture_screenshot(self.window.into())?;
             let snapshot = self.driver.snapshot(false);
-            let scale = snapshot.scale_factor;
-            let avatars = [
-                "cat", "bunny", "bear", "fox", "panda", "chick", "dog", "owl", "koala", "penguin",
-                "deer", "octopus",
-            ];
-            let ready = snapshot
-                .elements
-                .iter()
-                .filter(|e| {
-                    avatars.iter().any(|a| e.id == format!("agent-avatar-{a}"))
-                        && e.visible_bounds.width >= 16.
-                        && e.visible_bounds.height >= 16.
-                })
-                .all(|e| {
-                    let colors: std::collections::HashSet<_> = (-8..8)
-                        .flat_map(|dy| (-8..8).map(move |dx| (dx, dy)))
-                        .map(|(dx, dy)| {
-                            let x = ((e.center.x + dx as f32) * scale)
-                                .clamp(0., (pixels.width() - 1) as f32)
-                                as u32;
-                            let y = ((e.center.y + dy as f32) * scale)
-                                .clamp(0., (pixels.height() - 1) as f32)
-                                as u32;
-                            pixels.get_pixel(x, y).0
-                        })
-                        .collect();
-                    colors.len() > 4
-                });
-            if ready && previous.as_ref() == Some(pixels.as_raw()) {
+            if previous.as_ref() == Some(pixels.as_raw()) {
                 stable += 1;
             } else {
                 stable = 0;
@@ -228,7 +200,7 @@ impl<V: Render + 'static> Fixture<V> {
                     out.join(format!("failed-{name}.json")),
                     serde_json::to_vec_pretty(&snapshot)?,
                 )?;
-                anyhow::bail!("screenshot did not settle or has unloaded SVGs: {name} (avatars={ready}, stable={stable})");
+                anyhow::bail!("screenshot did not settle: {name} (stable={stable})");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }

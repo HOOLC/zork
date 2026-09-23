@@ -392,15 +392,6 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
     },
 };
 
-/// Muted identity accents shared by Leader avatars across settings and conversations.
-pub const LEADER_AVATAR_COLORS: [(u32, u32); 6] = [
-    (0xEBE6F4, 0x635078),
-    (0xE2EEE9, 0x3B6758),
-    (0xEEE7DD, 0x795F3D),
-    (0xE1EAF1, 0x44667E),
-    (0xF0E2E2, 0x81595D),
-    (0xE9EBDE, 0x656B3F),
-];
 pub const LEADER_SIDEBAR_WIDTH: f32 = 264.;
 
 /// Unified desktop device navigation; the legacy station shell keeps its rail.

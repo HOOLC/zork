@@ -118,7 +118,6 @@ impl Render for Story {
                     vec![crate::conversation_toolbar::Member {
                         id: "leader".into(),
                         name: "产品领队".into(),
-                        avatar: Some("fox".into()),
                     }],
                     self.menu.clone(),
                     12.,

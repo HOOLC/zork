@@ -90,7 +90,6 @@ internal fun SettingsListDivider() {
 internal fun SettingsListRow(
     label: String,
     icon: Int? = null,
-    avatar: String? = null,
     subtext: String? = null,
     detail: String? = null,
     value: String? = null,
@@ -99,10 +98,9 @@ internal fun SettingsListRow(
     action: (() -> Unit)? = null,
 ) {
     ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 56.dp), onClick = action) {
-        if (leading != null || avatar != null || icon != null) Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        if (leading != null || icon != null) Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
             when {
                 leading != null -> leading()
-                avatar != null -> Avatar(avatar, 32.dp)
                 icon != null -> Icon(painterResource(icon), null, Modifier.size(24.dp), tint = ZorkColors.Muted)
             }
         }

@@ -39,84 +39,84 @@
     {
       "path": "assets/avatars/owl.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/owl.svg",
       "sha256": "ed7e75c79f7fa68ac3a9391d77ff5a7344dad26bec1d765abae77b2c08257b19"
     },
     {
       "path": "assets/avatars/panda.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/panda.svg",
       "sha256": "34e373f13b7c3ac1ab25de06b1956ae8eacd396b4e7b012d683096024b3d57b7"
     },
     {
       "path": "assets/avatars/bunny.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/bunny.svg",
       "sha256": "1045fad070bd2a0a415ad14ee16c8443132ebac8966559997831ea73806397fc"
     },
     {
       "path": "assets/avatars/octopus.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/octopus.svg",
       "sha256": "1b92b73c5c3292fb0ac8222108737572b75cbf25144db40a6201a6b13e3a6e6c"
     },
     {
       "path": "assets/avatars/deer.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/deer.svg",
       "sha256": "710f0541f2c27df5bb3775cd754fafcafc08daec2750b6367b7b07db6cb10edd"
     },
     {
       "path": "assets/avatars/dog.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/dog.svg",
       "sha256": "336727c0e3593d9f41a42932b4ebeccdc456ba8167fe62643289302625b693bb"
     },
     {
       "path": "assets/avatars/chick.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/chick.svg",
       "sha256": "46832f72b6f9b7c012b83ecfc1b4fc8fd44fb3ea530b1a37b195fdb0bfb86d21"
     },
     {
       "path": "assets/avatars/bear.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/bear.svg",
       "sha256": "e5935143ec4b830c31bae62b8a72ab79cf7cfa104a051b5c3627c712bff9d153"
     },
     {
       "path": "assets/avatars/koala.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/koala.svg",
       "sha256": "69b866a6b64dd6d0797d7d826f56e0ad2136ab5b29d5fae9b6d203289382f56a"
     },
     {
       "path": "assets/avatars/fox.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/fox.svg",
       "sha256": "7fc45f3e839c52ddf428039c5215238b917c980980ed98f7f5c42a63dafb9671"
     },
     {
       "path": "assets/avatars/cat.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/cat.svg",
       "sha256": "a7468d5c05984690b6c5cf3da381b27f691854e5989e6ef31fd861c554950385"
     },
     {
       "path": "assets/avatars/penguin.svg",
       "category": "svg/avatars",
-      "status": "current-direction",
+      "status": "historical-not-current",
       "source": "artifacts/brand-review-site/src/svg/avatars/penguin.svg",
       "sha256": "e7a19d72d2edfb682a3f131078c3c2a1dc05606c5408755d9bf760a15b80805a"
     },

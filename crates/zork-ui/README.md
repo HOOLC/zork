@@ -1,6 +1,6 @@
 # zork-ui
 
-Shared Rust/GPUI visual components used by the native client and `zork-design-pc`. The package owns tokens, fonts/SVG assets, buttons, fields, dropdowns, navigation rows, avatars, provider marks, Markdown rendering and text selection, activity and brand motion. It has no Station, database, mesh or HTTP service dependency.
+Shared Rust/GPUI visual components used by the native client and `zork-design-pc`. The package owns tokens, fonts/SVG assets, buttons, fields, dropdowns, navigation rows, provider marks, Markdown rendering and text selection, activity and brand motion. It has no Station, database, mesh or HTTP service dependency.
 
 Desktop controls use GPUI, `gpui-base` and `gpui-component` for input, selection, menus, popovers and popup positioning. Zork supplies shared colors, dimensions, content and intent callbacks. Android uses Compose Material3 controls with the same visual semantics and native touch behavior. `PlainDialog` retains its panel and backdrop opacity fade; other controls use ordinary static surfaces. Client business state and operations remain in `zork-client-core`.
 
