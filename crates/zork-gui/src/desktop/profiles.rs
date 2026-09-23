@@ -2044,6 +2044,8 @@ impl ProfilesView {
         let id = profile.profile_id.clone();
         self.render_profile_row_with_click(
             profile,
+            &self.catalog,
+            self.quota_failures.contains(&profile.profile_id),
             cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
         )
     }
@@ -2051,6 +2053,8 @@ impl ProfilesView {
     pub(super) fn render_profile_row_with_click(
         &self,
         profile: &ProfileInfo,
+        catalog: &[Value],
+        quota_failed: bool,
         on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
     ) -> gpui::AnyElement {
         let p = ZORK_UI.palette;
@@ -2061,7 +2065,7 @@ impl ProfilesView {
             .as_ref()
             .map(|scope| format!("{scope}-{id}"))
             .unwrap_or_else(|| id.clone());
-        let provider = self.catalog.iter().find(|p| p["id"] == profile.provider);
+        let provider = catalog.iter().find(|p| p["id"] == profile.provider);
         let provider_name = provider
             .and_then(|p| p["label"].as_str())
             .unwrap_or(&profile.provider);
@@ -2094,6 +2098,11 @@ impl ProfilesView {
                 "profile_unverified"
             })
             .to_owned();
+        let quota = if quota_failed {
+            QuotaPresentation::failure(self.locale)
+        } else {
+            QuotaPresentation::new(profile, self.locale)
+        };
 
         ui::quiet_button(
             format!("profile-detail-{row_key}"),
@@ -2149,10 +2158,9 @@ impl ProfilesView {
                         .child(billing_summary.clone())
                         .automation(AutomationRole::Status, billing_summary),
                 )
-                .when_some(
-                    self.quota.get(&profile.profile_id).filter(|q| q.visible()),
-                    |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
-                ),
+                .when(quota.visible(), |v| {
+                    v.child(self.render_quota_summary(&profile.profile_id, &quota))
+                }),
         )
         .child(
             div()

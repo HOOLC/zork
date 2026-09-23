@@ -29,6 +29,8 @@ struct ConnectionRow {
     device_name: String,
     provider_label: String,
     profile: ProfileInfo,
+    providers: Arc<Vec<serde_json::Value>>,
+    quota_failed: bool,
 }
 type Groups = BTreeMap<String, Vec<ConnectionRow>>;
 fn append_groups(
@@ -52,6 +54,8 @@ fn append_groups(
                 device_name: device_name.to_owned(),
                 provider_label: provider.to_owned(),
                 profile: profile.clone(),
+                providers: state.providers.clone(),
+                quota_failed: state.failed.contains(&profile.profile_id),
             });
     }
 }
@@ -210,7 +214,12 @@ impl ModelSettings {
                     cx.notify();
                 });
                 let card = editor.read_with(cx, |view, _| {
-                    view.render_profile_row_with_click(&row.profile, on_click)
+                    view.render_profile_row_with_click(
+                        &row.profile,
+                        &row.providers,
+                        row.quota_failed,
+                        on_click,
+                    )
                 });
                 div()
                     .flex()
@@ -241,6 +250,7 @@ impl ModelSettings {
                 .editor
                 .update(cx, |view, cx| view.set_locale(locale, cx));
         }
+        cx.notify();
     }
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         if !visible && self.adding {
