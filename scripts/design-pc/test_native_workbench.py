@@ -183,11 +183,11 @@ def main():
         assert not native.element("new-chat-context")
         assert not native.element("new-chat-device")
         options = native.element("new-chat-options")
-        assert options["label"] == "思考 · 高"
+        assert options["label"] == "Demo model · 高"
         assert options["bounds"] == options["visible_bounds"]
         assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
         save("09-onboarding-new-chat")
-        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its current thinking level")
+        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its selected model and thinking level")
 
         choose("story-scenario", "story-scenario-onboarding-models-compact")
         click("onboarding-add-model")

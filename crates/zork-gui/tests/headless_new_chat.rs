@@ -60,6 +60,14 @@ fn main() -> anyhow::Result<()> {
                 "clipped {id} at {width}"
             );
         }
+        anyhow::ensure!(
+            snapshot
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label == "Demo model · 高"),
+            "the model picker trigger must identify the selected model at {width}"
+        );
         let bounds = |id| {
             snapshot
                 .elements
@@ -213,6 +221,15 @@ fn main() -> anyhow::Result<()> {
                 && state["thinking"]["value"] == "low"
                 && state["profile"]["value"] == "personal",
             "selection did not reach core fixture: {state}"
+        );
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label == "Demo fast · 低"),
+            "the model picker trigger did not follow the selection at {width}"
         );
         action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         anyhow::ensure!(

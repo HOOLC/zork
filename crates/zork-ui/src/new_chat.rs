@@ -242,18 +242,23 @@ impl Render for Page {
             },
             ..Default::default()
         };
-        let selected_thinking = match self.data.thinking.value.as_str() {
-            "off" | "low" | "medium" | "high" | "minimal" | "xhigh" | "max" => Some(format!(
-                "{} · {}",
-                self.text.text("new_chat_thinking_short"),
-                self.thinking_label(&self.data.thinking.value)
-            )),
-            _ => None,
-        };
+        let trigger_label = self.selected_model_label().map_or_else(
+            || self.text.text("new_chat_choose_model"),
+            |model| {
+                if self.data.thinking.value.is_empty() {
+                    model
+                } else {
+                    format!(
+                        "{model} · {}",
+                        self.thinking_label(&self.data.thinking.value)
+                    )
+                }
+            },
+        );
         let trigger = self.picker.trigger(
             "new-chat-options",
-            selected_thinking.unwrap_or_else(|| self.text.text("new_chat_choose_intensity")),
-            152.,
+            trigger_label,
+            (self.width - 88.).clamp(120., 180.),
             self.picker_open,
             self.data.editable,
             cx,
