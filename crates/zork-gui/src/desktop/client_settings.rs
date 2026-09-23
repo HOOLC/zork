@@ -9,7 +9,6 @@ use gpui::{div, prelude::*, Context, Div, Entity};
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Page {
     #[default]
-    Appearance,
     Notifications,
     Account,
     Data,
@@ -18,38 +17,12 @@ pub enum Page {
 pub struct State {
     pub page: Page,
     pub locale: Locale,
-    pub message_preview_height: u32,
-    pub(super) appearance: Option<Entity<zork_ui::settings::appearance::Appearance>>,
     pub notification_permission: super::notifications::Permission,
     pub notification_error: Option<String>,
     pub notification_busy: bool,
     pub(super) data: Option<Entity<zork_ui::settings::data::DataSettings>>,
     pub(super) reset: zork_client_core::data_reset::Snapshot,
     pub(super) reset_updates: Option<gpui::Task<()>>,
-}
-
-pub(crate) use zork_client_core::preferences::{MESSAGE_PREVIEW_MAX, MESSAGE_PREVIEW_MIN};
-
-#[cfg(test)]
-fn dragged_preview_height(start: u32, delta: f32) -> u32 {
-    zork_ui::settings::appearance::dragged_height(
-        start,
-        delta,
-        MESSAGE_PREVIEW_MIN,
-        MESSAGE_PREVIEW_MAX,
-    )
-}
-
-pub(crate) fn load_message_preview_height(store: &super::store::ClientStore) -> u32 {
-    zork_client_core::preferences::read(store).message_preview_height
-}
-
-pub(crate) fn message_preview_limit(height: u32, available: f32) -> f32 {
-    if height == 0 {
-        (available * 0.45).clamp(80., 240.)
-    } else {
-        height as f32
-    }
 }
 
 impl DesktopRoot {
@@ -73,13 +46,6 @@ impl DesktopRoot {
             }
         }));
     }
-    fn save_message_preview_height(&mut self, height: u32, cx: &mut Context<Self>) {
-        if let Err(error) = self.source.save_message_preview_height(height) {
-            self.error = Some(error.to_string());
-        }
-        cx.notify();
-    }
-
     fn client_locale(&self) -> Locale {
         self.client_settings.locale
     }
@@ -89,10 +55,7 @@ impl DesktopRoot {
         cx: &mut Context<Self>,
     ) -> Div {
         let locale = self.client_locale();
-        let mut pages = vec![
-            (Page::Appearance, "client_appearance"),
-            (Page::Notifications, "client_notifications"),
-        ];
+        let mut pages = vec![(Page::Notifications, "client_notifications")];
         pages.push((Page::Account, "client_account"));
         pages.push((Page::Data, "client_data"));
         self.settings_tabs
@@ -121,41 +84,12 @@ impl DesktopRoot {
         let t = |key| locale.text(key);
         let state = &self.client_settings;
         let title = match state.page {
-            Page::Appearance => "client_appearance",
             Page::Notifications => "client_notifications",
             Page::Account => "client_account",
             Page::Data => "client_data",
         };
         let account_page = state.page == Page::Account;
         let content = match state.page {
-            Page::Appearance => {
-                let data = zork_ui::settings::appearance::Data {
-                    height: state.message_preview_height,
-                    automatic: 240,
-                    minimum: MESSAGE_PREVIEW_MIN,
-                    maximum: MESSAGE_PREVIEW_MAX,
-                };
-                let text =
-                    zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
-                let view = if let Some(view) = &state.appearance {
-                    view.clone()
-                } else {
-                    let view = cx.new(|cx| {
-                        zork_ui::settings::appearance::Appearance::new(data, text.clone(), cx)
-                    });
-                    cx.subscribe(
-                        &view,
-                        |v, _, event: &zork_ui::settings::appearance::Changed, cx| {
-                            v.save_message_preview_height(event.0, cx)
-                        },
-                    )
-                    .detach();
-                    self.client_settings.appearance = Some(view.clone());
-                    view
-                };
-                view.update(cx, |v, cx| v.configure(data, text, cx));
-                div().child(view)
-            }
             Page::Notifications => self.render_notification_settings(cx),
             Page::Account => self.render_account(cx),
             Page::Data => {
@@ -188,47 +122,5 @@ impl DesktopRoot {
             .gap_5()
             .when(!account_page, |view| view.child(ui::page_title(t(title))))
             .child(content)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use zork_client_core::preferences::MESSAGE_PREVIEW_HEIGHT_KEY;
-    #[test]
-    fn message_preview_preferences_survive_reopening_and_reject_invalid_values() {
-        let directory = tempfile::tempdir().unwrap();
-        {
-            let store = super::super::store::ClientStore::open(directory.path()).unwrap();
-            assert_eq!(load_message_preview_height(&store), 0);
-            store
-                .put("device", MESSAGE_PREVIEW_HEIGHT_KEY, &277_u32)
-                .unwrap();
-        }
-        let store = super::super::store::ClientStore::open(directory.path()).unwrap();
-        assert_eq!(load_message_preview_height(&store), 277);
-        store
-            .put("device", MESSAGE_PREVIEW_HEIGHT_KEY, &99999_u32)
-            .unwrap();
-        assert_eq!(load_message_preview_height(&store), 0);
-        store
-            .put("device", MESSAGE_PREVIEW_HEIGHT_KEY, &"invalid")
-            .unwrap();
-        assert_eq!(load_message_preview_height(&store), 0);
-    }
-
-    #[test]
-    fn message_preview_default_preserves_adaptive_height() {
-        assert_eq!(message_preview_limit(0, 100.), 80.);
-        assert_eq!(message_preview_limit(0, 400.), 180.);
-        assert_eq!(message_preview_limit(0, 1000.), 240.);
-        assert_eq!(message_preview_limit(480, 1000.), 480.);
-    }
-
-    #[test]
-    fn preview_drag_is_continuous_and_bounded() {
-        assert_eq!(dragged_preview_height(240, 37.), 277);
-        assert_eq!(dragged_preview_height(240, -1000.), 80);
-        assert_eq!(dragged_preview_height(240, 1000.), 720);
     }
 }

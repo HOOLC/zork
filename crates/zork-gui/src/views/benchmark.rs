@@ -45,6 +45,9 @@ impl RootView {
             self.transcript_list.is_following_tail(),
         )
     }
+    pub fn benchmark_transcript_len(&self) -> usize {
+        self.lines.len()
+    }
     pub fn benchmark_file_fan_progress(&self) -> f32 {
         self.file_ui.draft.progress
     }

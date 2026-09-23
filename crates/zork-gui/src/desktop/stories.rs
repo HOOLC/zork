@@ -163,18 +163,6 @@ pub fn catalog() -> Vec<Story> {
             vec![json!({"type":"move","target":{"element_id":"member-activity-source"}})];
         items.push(story);
     }
-    for state in ["automatic", "minimum", "custom", "maximum"] {
-        let mut story = Story::new(
-            "appearance",
-            "客户端外观",
-            state,
-            "crates/zork-ui/src/settings/appearance.rs",
-            "appearance",
-        );
-        story.width = 640.;
-        story.height = 880.;
-        items.push(story);
-    }
     for state in ["idle", "error"] {
         let mut story = Story::new(
             "data-settings",
@@ -252,19 +240,6 @@ pub fn catalog() -> Vec<Story> {
         );
         story.width = 320.;
         story.height = 760.;
-        items.push(story);
-    }
-    for state in ["markdown", "literal", "long"] {
-        let mut story = Story::new(
-            "message-reader",
-            "全文阅读",
-            state,
-            "crates/zork-ui/src/components/message_reader.rs",
-            "message-reader",
-        );
-        story.width = 900.;
-        story.height = 760.;
-        story.actions = vec![click("message-reader-open")];
         items.push(story);
     }
     for state in ["list", "grid", "preview", "empty", "loading", "error"] {
@@ -678,17 +653,6 @@ impl StoryHost {
                     )
                 })
                 .into(),
-            "appearance" => cx
-                .new(|cx| {
-                    zork_ui::settings::appearance::Story::new(
-                        &story.state,
-                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                            crate::i18n::Locale::ZhCn.text(key).into()
-                        })),
-                        cx,
-                    )
-                })
-                .into(),
             "data-settings" => cx
                 .new(|cx| {
                     zork_ui::settings::data::DataSettings::new(
@@ -746,17 +710,6 @@ impl StoryHost {
                 cx,
             )
             .into(),
-            "message-reader" => cx
-                .new(|cx| {
-                    zork_ui::components::message_reader::stories::Story::new(
-                        &story.state,
-                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                            crate::i18n::Locale::ZhCn.text(key).into()
-                        })),
-                        cx,
-                    )
-                })
-                .into(),
             "shared-files" => zork_ui::shared_files::stories::create(
                 &story.state,
                 zork_ui::resources::Text(std::rc::Rc::new(|key| {

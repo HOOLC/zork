@@ -12,12 +12,7 @@ impl RootView {
         self.comment_editor
             .update(cx, |editor, cx| editor.dismiss(cx));
         self.transcript_selection.borrow_mut().clear();
-        self.message_reader
-            .update(cx, |reader, cx| reader.clear_selection(cx));
-        zork_ui::components::region::invalidate(
-            cx,
-            &["composer", "transcript", "message-reader", "overlays"],
-        );
+        zork_ui::components::region::invalidate(cx, &["composer", "transcript", "overlays"]);
     }
     pub(super) fn current_comments(&self) -> &[DraftComment] {
         &self.draft_state.comments
@@ -84,8 +79,6 @@ impl RootView {
         }
         self.draft_state = self.core_device.draft(&session);
         self.transcript_selection.borrow_mut().clear();
-        self.message_reader
-            .update(cx, |reader, cx| reader.clear_selection(cx));
         self.comment_editor
             .update(cx, |editor, cx| editor.dismiss(cx));
         self.save_draft(cx);

@@ -132,7 +132,6 @@ impl DesktopRoot {
         let store = source.store.clone();
         let snapshot = source.snapshot();
         let client_settings = client_settings::State {
-            message_preview_height: client_settings::load_message_preview_height(&store),
             locale: crate::i18n::load_locale(
                 &crate::i18n::preferences_path(),
                 std::env::var("ZORK_GUI_LOCALE").ok().as_deref(),
@@ -306,15 +305,6 @@ impl DesktopRoot {
             self.device_statuses = snapshot.device_statuses.clone();
             for (_, mesh) in self.mesh_views.values() {
                 mesh.update(cx, |_, cx| cx.notify());
-            }
-        }
-        if self.client_settings.message_preview_height
-            != snapshot.preferences.message_preview_height
-        {
-            let height = snapshot.preferences.message_preview_height;
-            self.client_settings.message_preview_height = height;
-            for (_, root) in self.node_views.values() {
-                root.update(cx, |root, cx| root.set_message_preview_height(height, cx));
             }
         }
         if let Some(error) = &snapshot.error {
@@ -1056,14 +1046,6 @@ use zork_ui::node_directory::Host as _;
 
 impl Render for DesktopRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !(self.managing
-            && self.management_tab == 4
-            && self.client_settings.page == client_settings::Page::Appearance)
-        {
-            if let Some(view) = &self.client_settings.appearance {
-                view.update(cx, |view, cx| view.cancel(cx));
-            }
-        }
         if !(self.managing
             && self.management_tab == 4
             && self.client_settings.page == client_settings::Page::Data)

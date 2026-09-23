@@ -70,7 +70,6 @@ pub fn is_business(family: &str) -> bool {
             | "browser"
             | "attachment-viewer"
             | "chat-navigation"
-            | "message-reader"
             | "conversation-files"
             | "member-activity"
     )

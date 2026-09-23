@@ -319,8 +319,8 @@ def main():
         f.wait(lambda: (cache('device', 'sidebar-width') or 0) > old + 30, 'sidebar width persisted')
         assert_rows(['device-node-0', 'leader-node-0-leader', task_id, 'device-add', 'desktop-manage'])
         click('desktop-manage')
-        click('client_appearance')
-        ready('message-preview-resize')
+        click('client_notifications')
+        ready('client_notifications')
         for removed in ('client_diagnostics', 'client_about', 'client-check-connections', 'client-copy-diagnostics', 'client-license'):
             assert not native.element(removed), f'removed client setting remains: {removed}'
         capture('client-settings')

@@ -37,6 +37,9 @@ fn main() -> anyhow::Result<()> {
     if std::env::args().any(|arg| arg == "--settings-tabs") {
         return settings_sidebar_checks(&output);
     }
+    if std::env::args().any(|arg| arg == "--settings-process") {
+        return settings_sidebar_process(&output);
+    }
     if std::env::args().any(|arg| arg == "--collapse") {
         return collapse::run(&output);
     }
@@ -729,7 +732,19 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
             Ok(())
         };
         pump(&mut cx, 20)?;
+        action(
+            &mut cx,
+            json!({"type":"click","target":{"element_id":"desktop-manage"}}),
+        )?;
+        pump(&mut cx, 20)?;
         let snapshot = driver.snapshot(false);
+        anyhow::ensure!(
+            !snapshot
+                .elements
+                .iter()
+                .any(|element| element.id == "client_appearance"),
+            "Removed appearance tab is still in the client settings sidebar"
+        );
         let bounds = |id: &str| {
             snapshot
                 .elements
@@ -738,9 +753,9 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 .unwrap_or_else(|| panic!("missing settings tab {id}"))
                 .bounds
         };
-        let appearance = bounds("client_appearance");
         let notifications = bounds("client_notifications");
         let account = bounds("client_account");
+        let data = bounds("client_data");
         let client_heading = bounds("client-settings-heading");
         let device_heading = bounds("device-settings-heading");
         let device_tab = bounds("settings-device-fixture");
@@ -751,27 +766,25 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
             "settings section headings differ"
         );
         anyhow::ensure!(
-            (appearance.y - client_heading.y - client_heading.height - 2.).abs() < 0.1
+            (notifications.y - client_heading.y - client_heading.height - 2.).abs() < 0.1
                 && (device_tab.y - device_heading.y - device_heading.height - 2.).abs() < 0.1,
             "settings section heading/tab spacing differs"
         );
         for id in [
             "desktop-return",
-            "client_appearance",
             "client_notifications",
             "client_account",
+            "client_data",
             "settings-device-fixture",
-            "settings-fixture-1",
-            "settings-fixture-0",
             "settings-add-device",
         ] {
             let row = bounds(id);
             anyhow::ensure!(
-                row.height == 32. && row.width == appearance.width,
+                row.height == 32. && row.width == notifications.width,
                 "settings tab geometry differs: {id}: {row:?}"
             );
         }
-        for (previous, next) in [(appearance, notifications), (notifications, account)] {
+        for (previous, next) in [(notifications, account), (account, data)] {
             anyhow::ensure!(
                 (next.y - previous.y - previous.height - 2.).abs() < 0.1,
                 "settings tab gap differs: {previous:?} -> {next:?}"
@@ -787,7 +800,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         };
         action(
             &mut cx,
-            json!({"type":"click","target":{"element_id":"client_appearance"}}),
+            json!({"type":"click","target":{"element_id":"client_notifications"}}),
         )?;
         action(
             &mut cx,
@@ -795,54 +808,20 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         )?;
         pump(&mut cx, 20)?;
         cx.capture_screenshot(window.into())?
-            .save(output.join(format!("settings-{width}-active-appearance.png")))?;
-        let appearance_marker = sample(&mut cx, appearance.x + 3., appearance.y + 16.)?;
+            .save(output.join(format!("settings-{width}-active-notifications.png")))?;
+        let notifications_marker = sample(&mut cx, notifications.x + 3., notifications.y + 16.)?;
         anyhow::ensure!(
-            appearance_marker[..3] == color,
-            "appearance active marker missing: {appearance_marker:?} at {appearance:?}"
+            notifications_marker[..3] == color,
+            "notifications active marker missing: {notifications_marker:?} at {notifications:?}"
         );
         anyhow::ensure!(
             sample(
                 &mut cx,
-                appearance.x + appearance.width - 12.,
-                appearance.y + 16.
+                notifications.x + notifications.width - 12.,
+                notifications.y + 16.
             )? == sample(&mut cx, account.x + account.width - 12., account.y + 16.)?,
             "selected settings tab retained a fill"
         );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("settings-{width}-active-appearance.png")))?;
-        action(
-            &mut cx,
-            json!({"type":"move","target":{"element_id":"client_appearance"}}),
-        )?;
-        pump(&mut cx, 20)?;
-        cx.update(|cx| cx.set_reduce_motion(false));
-        action(
-            &mut cx,
-            json!({"type":"move","target":{"element_id":"client_account"}}),
-        )?;
-        pump(&mut cx, 2)?;
-        let moving = cx.capture_screenshot(window.into())?;
-        let x = ((appearance.x + appearance.width - 12.) * scale) as u32;
-        let top = ((appearance.y * scale) as u32..((account.y + account.height) * scale) as u32)
-            .find(|y| moving.get_pixel(x, *y).0[..3] == [239, 238, 234])
-            .map(|y| y as f32 / scale)
-            .unwrap_or(-1.);
-        anyhow::ensure!(
-            top > appearance.y + 2. && top < account.y,
-            "settings hover did not slide: {top}"
-        );
-        let marker = moving
-            .get_pixel(
-                ((appearance.x + 3.) * scale) as u32,
-                ((appearance.y + 16.) * scale) as u32,
-            )
-            .0;
-        anyhow::ensure!(
-            marker[..3] == color,
-            "moving hover displaced the active marker"
-        );
-        moving.save(output.join(format!("settings-{width}-hover-moving.png")))?;
         action(
             &mut cx,
             json!({"type":"click","target":{"element_id":"client_account"}}),
@@ -857,25 +836,9 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
             "account selection did not move the marker"
         );
         anyhow::ensure!(
-            sample(&mut cx, appearance.x + 3., appearance.y + 16.)?[..3] != color,
+            sample(&mut cx, notifications.x + 3., notifications.y + 16.)?[..3] != color,
             "old active marker remained"
         );
-        action(
-            &mut cx,
-            json!({"type":"move","target":{"element_id":"settings-fixture-0"}}),
-        )?;
-        pump(&mut cx, 45)?;
-        let models = bounds("settings-fixture-0");
-        anyhow::ensure!(
-            sample(&mut cx, models.x + models.width - 12., models.y + 16.)?[..3] == [239, 238, 234],
-            "nested settings tab did not share hover feedback"
-        );
-        anyhow::ensure!(
-            sample(&mut cx, account.x + 3., account.y + 16.)?[..3] == color,
-            "hovering nested settings changed selection"
-        );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("settings-{width}-nested-hover.png")))?;
         action(
             &mut cx,
             json!({"type":"move","target":{"x":width-1.,"y":height-1.}}),
@@ -886,11 +849,13 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(
             output.join(format!("settings-{width}.json")),
             serde_json::to_vec_pretty(
-                &json!({"width":width,"height":height,"appearance":appearance,"account":account,"client_heading":client_heading,"device_heading":device_heading,"moving_top":top,"idle_callbacks":pending}),
+                &json!({"width":width,"height":height,"notifications":notifications,"account":account,"client_heading":client_heading,"device_heading":device_heading,"idle_callbacks":pending}),
             )?,
         )?;
     }
-    println!("PASS actual settings sidebar: shared geometry, sliding hover, independent active marker, selection, nested tabs, idle");
+    println!(
+        "PASS client settings sidebar: shared geometry, independent active marker, selection, idle"
+    );
     Ok(())
 }
 
