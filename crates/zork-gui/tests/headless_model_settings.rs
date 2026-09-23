@@ -5,7 +5,7 @@ use gpui::{
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 use zork_gui::{
-    api::{Profiles, StationClient},
+    api::{ProfileData, Profiles, StationClient},
     assets::EmbeddedAssets,
     automation::{AutomationRoot, HeadlessAutomation},
     desktop::HeadlessModelSettings,
@@ -50,20 +50,24 @@ fn main() -> anyhow::Result<()> {
         HeadlessAutomation::install(cx)
     });
     let mut sources = vec![];
+    let provider_catalog: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/provider_catalog.json"))?;
     for id in ["desktop", "laptop"] {
         let mut fixture = zork_ui::stories::page_fixture();
         fixture["profile"]["models"] = json!([{
             "id": "shared-model", "enabled": true, "api": "openai-responses",
             "limits": {"context_window_tokens": 128000, "max_output_tokens": 8192}, "thinking": ["low"], "default_thinking": "low"
         }, {"id": "old-model", "enabled": false, "api": "openai-responses"}]);
-        let client = Arc::new(StationClient::fixture(
-            fixture,
-            serde_json::from_str(include_str!("fixtures/provider_catalog.json"))?,
-        ));
+        let client = Arc::new(StationClient::fixture(fixture, provider_catalog.clone()));
+        let profiles = Profiles::new(client);
+        profiles.seed(ProfileData {
+            providers: Arc::new(provider_catalog["providers"].as_array().unwrap().clone()),
+            ..Default::default()
+        });
         sources.push((
             id.into(),
             id.into(),
-            Profiles::new(client),
+            profiles,
             zork_ui::device_name::DeviceStatus::Connected,
         ));
     }
@@ -106,17 +110,89 @@ fn main() -> anyhow::Result<()> {
             .filter(|e| e.id.starts_with("model-entry-"))
             .collect::<Vec<_>>()
     };
+    let all_rows = || {
+        driver
+            .snapshot(true)
+            .elements
+            .into_iter()
+            .filter(|e| e.id.starts_with("model-entry-"))
+            .collect::<Vec<_>>()
+    };
+    let snapshot = driver.snapshot(false);
+    for device in ["desktop", "laptop"] {
+        let connection = snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == format!("profile-detail-{device}-fixture") && e.visible)
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} connection overview"))?;
+        anyhow::ensure!(
+            connection.label.contains(device),
+            "Connection overview lost its device identity"
+        );
+        let billing = snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == format!("profile-billing-{device}-fixture"))
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} billing"))?;
+        anyhow::ensure!(
+            billing.label == "OpenAI · ChatGPT 订阅 (Codex)",
+            "Connection billing disappeared: {}",
+            billing.label
+        );
+        let quota = snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == format!("profile-quota-summary-{device}-fixture"))
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} quota"))?;
+        anyhow::ensure!(
+            quota.label.contains("5小时")
+                && quota.label.contains("7天")
+                && quota.label.matches("剩余").count() == 2,
+            "Connection quota disappeared: {}",
+            quota.label
+        );
+        anyhow::ensure!(
+            snapshot.elements.iter().any(|e| {
+                e.id == format!("profile-model-count-{device}-fixture") && e.label == "2 个模型"
+            }),
+            "Connection model count disappeared"
+        );
+        anyhow::ensure!(
+            snapshot.elements.iter().any(|e| {
+                e.id == format!("profile-verification-{device}-fixture") && e.label == "已验证"
+            }),
+            "Connection verification disappeared"
+        );
+    }
     anyhow::ensure!(
         rows().len() == 2,
         "Expected models from both devices: {:?}",
         rows().iter().map(|e| &e.label).collect::<Vec<_>>()
     );
+    click("profile-detail-desktop-fixture", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-detail-dialog-close" && e.visible),
+        "Connection overview did not open the existing detail dialog"
+    );
+    click("profile-detail-dialog-close", &mut cx)?;
     view.update(&mut cx, |v, cx| {
         anyhow::ensure!(v.begin_onboarding("desktop", cx), "Local editor missing");
         Ok::<_, anyhow::Error>(())
     })?;
     draw(&mut cx)?;
     anyhow::ensure!(rows().len() == 1, "Onboarding showed another device");
+    anyhow::ensure!(
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-detail-laptop-fixture" && e.visible),
+        "Onboarding showed another device's connection"
+    );
     anyhow::ensure!(
         driver
             .snapshot(false)
@@ -156,9 +232,17 @@ fn main() -> anyhow::Result<()> {
     cx.capture_screenshot(window.into())?
         .save(output.join("by-provider.png"))?;
     click("model-disabled-toggle", &mut cx)?;
-    anyhow::ensure!(rows().len() == 4, "Disabled models did not expand");
+    anyhow::ensure!(
+        all_rows().len() == 4,
+        "Disabled models did not expand: {} rows",
+        all_rows().len()
+    );
     click("model-disabled-toggle", &mut cx)?;
-    anyhow::ensure!(rows().len() == 2, "Disabled models did not collapse");
+    anyhow::ensure!(
+        all_rows().len() == 2,
+        "Disabled models did not collapse: {} rows",
+        all_rows().len()
+    );
     click("models-add", &mut cx)?;
     anyhow::ensure!(
         driver
@@ -232,6 +316,21 @@ fn main() -> anyhow::Result<()> {
     })?;
     draw(&mut cx)?;
     anyhow::ensure!(rows().len() == 2, "Narrow layout lost a model source");
+    for device in ["desktop", "laptop"] {
+        let connection = driver
+            .snapshot(false)
+            .elements
+            .into_iter()
+            .find(|e| e.id == format!("profile-detail-{device}-fixture"))
+            .ok_or_else(|| anyhow::anyhow!("Narrow layout lost {device} connection"))?;
+        anyhow::ensure!(
+            connection.visible
+                && connection.bounds.x >= 0.
+                && connection.bounds.x + connection.bounds.width <= 600.,
+            "Narrow layout clipped {device} connection: {:?}",
+            connection.bounds
+        );
+    }
     for row in rows() {
         anyhow::ensure!(
             row.visible && row.bounds.x >= 0. && row.bounds.x + row.bounds.width <= 600.,

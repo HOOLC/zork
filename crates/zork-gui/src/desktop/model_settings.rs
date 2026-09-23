@@ -368,7 +368,7 @@ impl ModelSettings {
                 continue;
             }
             let editor = cx.new(|cx| {
-                let mut view = ProfilesView::editor(source.clone(), name.clone(), cx);
+                let mut view = ProfilesView::editor(source.clone(), id.clone(), name.clone(), cx);
                 view.set_device_status(status.clone(), cx);
                 view
             });
@@ -412,12 +412,23 @@ impl Render for ModelSettings {
         // These groups are rebuilt from core snapshots for presentation only.
         let mut groups = Groups::new();
         let mut notices = Vec::new();
+        let mut connection_count = 0;
+        let visible_device_count = self
+            .devices
+            .iter()
+            .filter(|device| {
+                self.onboarding_local
+                    .as_ref()
+                    .is_none_or(|id| id == &device.id)
+            })
+            .count();
         for device in self.devices.iter().filter(|device| {
             self.onboarding_local
                 .as_ref()
                 .is_none_or(|id| id == &device.id)
         }) {
             let state = device.source.snapshot();
+            connection_count += state.profiles.len();
             let name = zork_ui::device_name::summary(&device.name, &device.status, None);
             if state.loading {
                 notices.push(format!("{name} · 正在加载模型…"));
@@ -490,6 +501,60 @@ impl Render for ModelSettings {
                                 )
                             })
                             .automation(AutomationRole::Button, "添加连接"),
+                    ),
+            )
+            .child(
+                ui::section()
+                    .gap_2()
+                    .when(connection_count == 0, |v| v.border_t_0().py_0())
+                    .when(connection_count > 0, |v| {
+                        v.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .child("模型连接"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(rgb(palette.muted))
+                                        .child(connection_count.to_string()),
+                                ),
+                        )
+                    })
+                    .children(
+                        self.devices
+                            .iter()
+                            .filter(|device| {
+                                self.onboarding_local
+                                    .as_ref()
+                                    .is_none_or(|id| id == &device.id)
+                            })
+                            .map(|device| {
+                                let has_connections = !device.source.snapshot().profiles.is_empty();
+                                div()
+                                    .when(visible_device_count > 1 && has_connections, |v| {
+                                        v.child(
+                                            div()
+                                                .pt_2()
+                                                .text_size(px(11.))
+                                                .text_color(rgb(palette.muted))
+                                                .child(format!(
+                                                    "设备 · {}",
+                                                    zork_ui::device_name::summary(
+                                                        &device.name,
+                                                        &device.status,
+                                                        None,
+                                                    )
+                                                )),
+                                        )
+                                    })
+                                    .child(device.editor.clone())
+                            }),
                     ),
             )
             .child(
@@ -589,13 +654,6 @@ impl Render for ModelSettings {
                         }),
                 )
             })
-            .when_some(
-                self.selected
-                    .as_ref()
-                    .and_then(|id| self.devices.iter().find(|d| &d.id == id))
-                    .map(|d| d.editor.clone()),
-                |v, editor| v.child(editor),
-            )
             .when(chooser_visible, |v| {
                 v.child(ui::detail_modal(
                     "model-device-dialog",

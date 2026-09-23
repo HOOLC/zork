@@ -18,6 +18,8 @@ use zork_ui::controls::{provider_icon, provider_path};
 pub struct ProfilesView {
     source: Arc<crate::api::Profiles>,
     dialog_only: bool,
+    show_connection_rows: bool,
+    row_scope: Option<String>,
     detail_request: u64,
     source_updates: Option<Task<()>>,
     regions: zork_ui::components::region::Regions<Self>,
@@ -83,9 +85,16 @@ impl ProfilesView {
     pub fn set_device_name(&mut self, name: String) {
         self.device_name = name;
     }
-    pub fn editor(source: Arc<crate::api::Profiles>, name: String, cx: &mut Context<Self>) -> Self {
+    pub fn editor(
+        source: Arc<crate::api::Profiles>,
+        device_id: String,
+        name: String,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut view = Self::new_source(source, cx);
         view.dialog_only = true;
+        view.show_connection_rows = true;
+        view.row_scope = Some(device_id);
         view.device_name = name;
         view.set_visible(true, cx);
         view
@@ -147,6 +156,8 @@ impl ProfilesView {
             modal: ui::ModalState::new(cx),
             source,
             dialog_only: false,
+            show_connection_rows: false,
+            row_scope: None,
             detail_request: 0,
             source_updates: None,
             regions: Default::default(),
@@ -1265,9 +1276,10 @@ impl Render for ProfilesView {
             .flex_col()
             .gap_0()
             .when(!self.dialog_only, |v| v.child(header))
-            .when(!self.dialog_only && !self.profiles.is_empty(), |v| {
-                v.child(div().flex().flex_col().mx(px(-12.)).children(rows))
-            })
+            .when(
+                (!self.dialog_only || self.show_connection_rows) && !self.profiles.is_empty(),
+                |v| v.child(div().flex().flex_col().mx(px(-12.)).children(rows)),
+            )
             .when(
                 !self.dialog_only
                     && self.profiles.is_empty()
@@ -2033,6 +2045,11 @@ impl ProfilesView {
         let p = ZORK_UI.palette;
 
         let id = profile.profile_id.clone();
+        let row_key = self
+            .row_scope
+            .as_ref()
+            .map(|scope| format!("{scope}-{id}"))
+            .unwrap_or_else(|| id.clone());
         let provider = self.catalog.iter().find(|p| p["id"] == profile.provider);
         let provider_name = provider
             .and_then(|p| p["label"].as_str())
@@ -2046,9 +2063,29 @@ impl ProfilesView {
             })
             .and_then(|b| b["label"].as_str())
             .unwrap_or("");
+        let billing_summary = format!(
+            "{}{}{}",
+            provider_name,
+            if billing.is_empty() { "" } else { " · " },
+            billing
+        );
+        let model_count = if profile.models.is_empty() {
+            "待配置模型".to_owned()
+        } else {
+            format!("{} 个模型", profile.models.len())
+        };
+        let verified = profile.is_verified();
+        let verification = self
+            .locale
+            .text(if verified {
+                "profile_verified"
+            } else {
+                "profile_unverified"
+            })
+            .to_owned();
 
         ui::quiet_button(
-            format!("profile-detail-{id}"),
+            format!("profile-detail-{row_key}"),
             "",
             true,
             ui::IconButtonSize::Standard,
@@ -2066,7 +2103,7 @@ impl ProfilesView {
         .gap_3()
         .child(
             div()
-                .id(format!("profile-avatar-{}", profile.profile_id))
+                .id(format!("profile-avatar-{row_key}"))
                 .size(px(40.))
                 .flex_shrink_0()
                 .rounded(px(ui::FIELD_RADIUS))
@@ -2093,53 +2130,40 @@ impl ProfilesView {
                 )
                 .child(
                     div()
+                        .id(format!("profile-billing-{row_key}"))
                         .truncate()
                         .text_size(px(11.))
                         .line_height(px(16.))
                         .text_color(rgb(p.muted))
-                        .child(format!(
-                            "{}{}{}",
-                            provider_name,
-                            if billing.is_empty() { "" } else { " · " },
-                            billing
-                        )),
+                        .child(billing_summary.clone())
+                        .automation(AutomationRole::Status, billing_summary),
                 )
                 .when_some(
                     self.quota.get(&profile.profile_id).filter(|q| q.visible()),
                     |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
                 ),
         )
-        .child(div().text_size(px(11.)).text_color(rgb(p.muted)).child(
-            if profile.models.is_empty() {
-                "待配置模型".into()
-            } else {
-                format!("{} 个模型", profile.models.len())
-            },
-        ))
         .child(
             div()
+                .id(format!("profile-model-count-{row_key}"))
+                .text_size(px(11.))
+                .text_color(rgb(p.muted))
+                .child(model_count.clone())
+                .automation(AutomationRole::Status, model_count),
+        )
+        .child(
+            div()
+                .id(format!("profile-verification-{row_key}"))
                 .px_2()
                 .py_1()
                 .rounded_full()
                 .text_size(px(11.))
                 .bg(gpui::rgba(
-                    ((if profile.is_verified() {
-                        p.success
-                    } else {
-                        p.warning
-                    }) << 8)
-                        | 0x12,
+                    ((if verified { p.success } else { p.warning }) << 8) | 0x12,
                 ))
-                .text_color(rgb(if profile.is_verified() {
-                    p.success
-                } else {
-                    p.warning
-                }))
-                .child(self.locale.text(if profile.is_verified() {
-                    "profile_verified"
-                } else {
-                    "profile_unverified"
-                })),
+                .text_color(rgb(if verified { p.success } else { p.warning }))
+                .child(verification.clone())
+                .automation(AutomationRole::Status, verification),
         )
         .map(|row| {
             self.modal.source("profile-detail-dialog").bind(
@@ -2151,14 +2175,26 @@ impl ProfilesView {
                 },
             )
         })
-        .automation(AutomationRole::Button, profile.display_name().to_owned())
+        .automation(
+            AutomationRole::Button,
+            if self.row_scope.is_some() {
+                format!("{} · {}", profile.display_name(), self.device_name)
+            } else {
+                profile.display_name().to_owned()
+            },
+        )
         .into_any_element()
     }
 
     fn render_quota_summary(&self, id: &str, quota: &QuotaPresentation) -> gpui::AnyElement {
         let p = ZORK_UI.palette;
+        let row_key = self
+            .row_scope
+            .as_ref()
+            .map(|scope| format!("{scope}-{id}"))
+            .unwrap_or_else(|| id.to_owned());
         div()
-            .id(format!("profile-quota-summary-{id}"))
+            .id(format!("profile-quota-summary-{row_key}"))
             .flex()
             .items_center()
             .gap(px(16.))
