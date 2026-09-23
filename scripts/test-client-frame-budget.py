@@ -11,6 +11,7 @@ import platform
 import signal
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE_ID = "client-frame"
@@ -147,10 +148,17 @@ def evaluate(report, definition):
     return results
 
 
-def competing_processes():
-    lines = subprocess.check_output(["ps", "-axo", "pid=,comm="], text=True).splitlines()
-    return [line.strip() for line in lines if line.split() and
-            (line.split()[-1].rsplit("/", 1)[-1] in ("cargo", "rustc") or line.endswith("Chrome for Testing"))]
+def competing_processes(own_group=None):
+    lines = subprocess.check_output(["ps", "-axo", "pid=,pgid=,comm="], text=True).splitlines()
+    result = []
+    for line in lines:
+        fields = line.strip().split(None, 2)
+        if len(fields) != 3 or (own_group is not None and int(fields[1]) == own_group):
+            continue
+        command = fields[2].rsplit("/", 1)[-1]
+        if command in ("cargo", "rustc", "zork-gui-render-bench", "Chrome for Testing"):
+            result.append(line.strip())
+    return result
 
 
 def stop_native_process(process):
@@ -197,7 +205,18 @@ def main():
             process = subprocess.Popen(["caffeinate", "-d", "-i", "-u", str(binary), "--native-frames", str(config), str(output)],
                                        cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                process.wait(timeout=180)
+                deadline = time.monotonic() + 180
+                while True:
+                    try:
+                        process.wait(timeout=min(1, max(.01, deadline - time.monotonic())))
+                        break
+                    except subprocess.TimeoutExpired:
+                        competing = competing_processes(process.pid)
+                        if competing:
+                            report["competingProcessesDuring"] = competing
+                            raise Unverified("Concurrent build/render benchmark observed during measurement")
+                        if time.monotonic() >= deadline:
+                            raise Unverified("Native frame measurement timed out")
             finally:
                 stop_native_process(process)
         report["exitCode"] = process.returncode

@@ -249,6 +249,7 @@ enum ListItem {
     },
     Measured {
         size: Size<Pixels>,
+        available_width: Option<Pixels>,
         focus_handle: Option<FocusHandle>,
     },
 }
@@ -259,6 +260,17 @@ impl ListItem {
             Some(*size)
         } else {
             None
+        }
+    }
+
+    fn size_at_width(&self, width: Option<Pixels>) -> Option<Size<Pixels>> {
+        match self {
+            Self::Measured {
+                size,
+                available_width,
+                ..
+            } if *available_width == width => Some(*size),
+            _ => None,
         }
     }
 
@@ -723,7 +735,10 @@ impl ListState {
         let scroll_top = cursor.start().1.0 + scroll_top.offset_in_item;
 
         cursor.seek_forward(&Count(ix), Bias::Right);
-        if let Some(&ListItem::Measured { size, .. }) = cursor.item() {
+        if let Some(size) = cursor
+            .item()
+            .and_then(|item| item.size_at_width(Some(bounds.size.width)))
+        {
             let &Dimensions(Count(count), Height(top), _) = cursor.start();
             if count == ix {
                 let top = bounds.top() + top - scroll_top;
@@ -1010,13 +1025,16 @@ impl StateInner {
         let mut measured_items = Vec::default();
 
         for (ix, item) in cursor.enumerate() {
-            let size = item.size().unwrap_or_else(|| {
-                let mut element = render_item(ix, window, cx);
-                element.layout_as_root(available_item_space, window, cx)
-            });
+            let size = item
+                .size_at_width(Some(available_width))
+                .unwrap_or_else(|| {
+                    let mut element = render_item(ix, window, cx);
+                    element.layout_as_root(available_item_space, window, cx)
+                });
 
             measured_items.push(ListItem::Measured {
                 size,
+                available_width: Some(available_width),
                 focus_handle: item.focus_handle(),
             });
         }
@@ -1068,7 +1086,7 @@ impl StateInner {
             }
 
             // Use the previously cached height and focus handle if available
-            let mut size = item.size();
+            let mut size = item.size_at_width(available_width);
 
             // If we're within the visible area or the height wasn't cached, render and measure the item's element
             if visible_height < available_height || size.is_none() {
@@ -1119,6 +1137,7 @@ impl StateInner {
             max_item_width = max_item_width.max(size.width);
             measured_items.push_back(ListItem::Measured {
                 size,
+                available_width,
                 focus_handle: item.focus_handle(),
             });
         }
@@ -1140,6 +1159,7 @@ impl StateInner {
                     rendered_height += element_size.height;
                     measured_items.push_front(ListItem::Measured {
                         size: element_size,
+                        available_width,
                         focus_handle,
                     });
                     item_layouts.push_front(ItemLayout {
@@ -1184,10 +1204,10 @@ impl StateInner {
                 // example when older rows replace a paging control). Those
                 // preceding items are visible, not merely leading overdraw.
                 let visible = leading_overdraw < px(0.);
-                let mut element = (visible || item.size().is_none())
+                let mut element = (visible || item.size_at_width(available_width).is_none())
                     .then(|| render_item(cursor.start().0, window, cx));
                 let size = element.as_mut().map_or_else(
-                    || item.size().unwrap(),
+                    || item.size_at_width(available_width).unwrap(),
                     |element| element.layout_as_root(available_item_space, window, cx),
                 );
 
@@ -1208,6 +1228,7 @@ impl StateInner {
                 leading_overdraw += size.height;
                 measured_items.push_front(ListItem::Measured {
                     size,
+                    available_width,
                     focus_handle: item.focus_handle(),
                 });
             } else {
@@ -1324,14 +1345,17 @@ impl StateInner {
                                         offset_in_item = Pixels::ZERO;
                                         break;
                                     };
-                                    let size = prev_item.size().unwrap_or_else(|| {
-                                        let mut element = render_item(cursor.start().0, window, cx);
-                                        let item_available_size = size(
-                                            bounds.size.width.into(),
-                                            AvailableSpace::MinContent,
-                                        );
-                                        element.layout_as_root(item_available_size, window, cx)
-                                    });
+                                    let size = prev_item
+                                        .size_at_width(Some(bounds.size.width))
+                                        .unwrap_or_else(|| {
+                                            let mut element =
+                                                render_item(cursor.start().0, window, cx);
+                                            let item_available_size = size(
+                                                bounds.size.width.into(),
+                                                AvailableSpace::MinContent,
+                                            );
+                                            element.layout_as_root(item_available_size, window, cx)
+                                        });
                                     item_ix = cursor.start().0;
                                     offset_in_item += size.height;
                                 }
@@ -1354,12 +1378,16 @@ impl StateInner {
                                 cursor.prev();
                                 let Some(item) = cursor.item() else { break };
 
-                                let size = item.size().unwrap_or_else(|| {
-                                    let mut item = render_item(cursor.start().0, window, cx);
-                                    let item_available_size =
-                                        size(bounds.size.width.into(), AvailableSpace::MinContent);
-                                    item.layout_as_root(item_available_size, window, cx)
-                                });
+                                let size = item
+                                    .size_at_width(Some(bounds.size.width))
+                                    .unwrap_or_else(|| {
+                                        let mut item = render_item(cursor.start().0, window, cx);
+                                        let item_available_size = size(
+                                            bounds.size.width.into(),
+                                            AvailableSpace::MinContent,
+                                        );
+                                        item.layout_as_root(item_available_size, window, cx)
+                                    });
                                 height -= size.height;
                             }
 
@@ -1563,18 +1591,9 @@ impl Element for List {
             .last_layout_bounds
             .is_none_or(|last_bounds| last_bounds.size.width != bounds.size.width)
         {
-            let new_items = SumTree::from_iter(
-                state.items.iter().map(|item| ListItem::Unmeasured {
-                    // Width changes invalidate exact measurements, not the
-                    // estimate. Zero-height unseen prefixes cannot be reached
-                    // by scrolling from an initial tail position.
-                    size_hint: item.size_hint(),
-                    focus_handle: item.focus_handle(),
-                }),
-                (),
-            );
-
-            state.items = new_items;
+            // Preserve offscreen heights as estimates. Measured entries carry
+            // their constraint, so visible/overdraw rows are remeasured lazily.
+            // Rebuilding the whole tree here makes resize animations O(N)/frame.
             state.measuring_behavior.reset();
         }
 
@@ -1749,6 +1768,84 @@ mod test {
         IntoElement, ListState, Render, Styled, TestAppContext, Window, canvas, div, list, point,
         px, size,
     };
+
+    #[gpui::test]
+    fn width_changes_remeasure_visible_rows_and_preserve_offscreen_estimates(
+        cx: &mut TestAppContext,
+    ) {
+        let cx = cx.add_empty_window();
+        let state = ListState::new(100_000, crate::ListAlignment::Top, px(40.));
+        state.reset_with_uniform_height(100_000, px(40.));
+        let height = Rc::new(Cell::new(40.));
+        let renders = Rc::new(Cell::new(0));
+        struct View {
+            state: ListState,
+            height: Rc<Cell<f32>>,
+            renders: Rc<Cell<usize>>,
+        }
+        impl Render for View {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let height = self.height.get();
+                let renders = self.renders.clone();
+                list(self.state.clone(), move |_, _, _| {
+                    renders.set(renders.get() + 1);
+                    div().h(px(height)).w_full().into_any()
+                })
+                .w_full()
+                .h_full()
+            }
+        }
+        let view = cx.update(|_, cx| {
+            cx.new(|_| View {
+                state: state.clone(),
+                height: height.clone(),
+                renders: renders.clone(),
+            })
+        });
+        state.scroll_to(gpui::ListOffset {
+            item_ix: 90_000,
+            offset_in_item: px(10.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.clone().into_any_element()
+        });
+        state.scroll_to(gpui::ListOffset {
+            item_ix: 0,
+            offset_in_item: px(0.),
+        });
+        height.set(80.);
+        renders.set(0);
+        cx.draw(point(px(0.), px(0.)), size(px(200.), px(200.)), |_, _| {
+            view.clone().into_any_element()
+        });
+        assert!(
+            renders.get() < 20,
+            "width change rendered {} rows",
+            renders.get()
+        );
+        let inner = state.0.borrow();
+        let old = inner.items.iter().nth(90_000).unwrap();
+        assert_eq!(old.size_at_width(Some(px(100.))).unwrap().height, px(40.));
+        assert!(old.size_at_width(Some(px(200.))).is_none());
+        drop(inner);
+        state.scroll_to(gpui::ListOffset {
+            item_ix: 90_000,
+            offset_in_item: px(10.),
+        });
+        cx.draw(point(px(0.), px(0.)), size(px(200.), px(200.)), |_, _| {
+            view.clone().into_any_element()
+        });
+        assert_eq!(state.logical_scroll_top().item_ix, 90_000);
+        assert_eq!(state.logical_scroll_top().offset_in_item, px(10.));
+        assert_eq!(state.bounds_for_item(90_000).unwrap().size.height, px(80.));
+        state.set_follow_mode(FollowMode::Tail);
+        height.set(40.);
+        cx.draw(point(px(0.), px(0.)), size(px(100.), px(200.)), |_, _| {
+            view.into_any_element()
+        });
+        assert!(state.is_following_tail());
+        assert_eq!(state.bounds_for_item(99_999).unwrap().bottom(), px(200.));
+    }
 
     #[gpui::test]
     fn test_autoscroll_above_item_top_renders_items_above(cx: &mut TestAppContext) {
