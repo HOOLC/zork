@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -310,9 +312,13 @@ internal fun HistoryTimeline(entries: List<HistoryRow>, revision: Long, now: Lon
                     color = if (chosen?.failed == true) ZorkColors.HistoryError else ZorkColors.Muted)
             }
             if (chosen != null) HistoryIconAction(R.drawable.ic_result, "查看时间轴记录详情") { detail(chosen.id) }
-            Box {
+            var menuAnchor by remember { mutableStateOf<Rect?>(null) }
+            Box(Modifier.onGloballyPositioned {
+                val topLeft = it.positionOnScreen()
+                menuAnchor = Rect(topLeft, Size(it.size.width.toFloat(), it.size.height.toFloat()))
+            }) {
                 HistoryIconAction(R.drawable.ic_settings_three, "时间轴操作") { menu = true }
-                LiquidMenu(menu, { menu = false }, 200.dp) {
+                PlainMenu("时间轴操作", menu, { menu = false }, 200.dp, menuAnchor) {
                     LiquidMenuItem("缩小时间轴", false, enabled = view.zoom > 1, onClick = { view.transform(.5); menu = false })
                     LiquidMenuItem("放大时间轴", false, enabled = view.zoom < 64, onClick = { view.transform(2.0); menu = false })
                     LiquidMenuItem("选择时间范围", view.selecting, onClick = { view.selecting = !view.selecting; view.range = null; menu = false })

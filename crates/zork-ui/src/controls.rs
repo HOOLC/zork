@@ -29,6 +29,8 @@ pub use zork_liquid::tokens::{
 pub const BUTTON_PADDING_X: f32 = 16.;
 pub const MODAL_RADIUS: f32 = CARD_RADIUS;
 pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
+/// Ordinary Codex-style popup geometry, independent of field and card radii.
+pub const PLAIN_POPOVER_RADIUS: f32 = 16.;
 pub const MENU_OUTSET: f32 = 4.;
 pub const MENU_GAP: f32 = 6.;
 pub const MENU_PADDING: f32 = 8.;
@@ -463,7 +465,9 @@ pub fn dropdown_with_icons<V: 'static>(
         options,
         open,
         enabled,
+        crate::components::liquid::overlay::Selection::Single,
         false,
+        None,
         leading,
         option_icons,
         window,
@@ -479,6 +483,7 @@ pub fn quiet_dropdown<V: 'static>(
     options: Vec<(String, String, bool)>,
     open: bool,
     enabled: bool,
+    max_width: f32,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<V>,
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
@@ -490,7 +495,39 @@ pub fn quiet_dropdown<V: 'static>(
         options,
         open,
         enabled,
+        crate::components::liquid::overlay::Selection::Single,
         true,
+        Some(max_width),
+        None,
+        vec![],
+        window,
+        cx,
+        set_open,
+        choose,
+    )
+}
+/// A choice field may keep its menu open for multiple selections.
+pub fn dropdown_with_selection<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    label: String,
+    options: Vec<(String, String, bool)>,
+    open: bool,
+    enabled: bool,
+    selection: crate::components::liquid::overlay::Selection,
+    window: &mut gpui::Window,
+    cx: &mut gpui::Context<V>,
+    set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
+    choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
+) -> gpui::AnyElement {
+    menu_dropdown(
+        id,
+        label,
+        options,
+        open,
+        enabled,
+        selection,
+        false,
+        None,
         None,
         vec![],
         window,
@@ -505,7 +542,9 @@ fn menu_dropdown<V: 'static>(
     options: Vec<(String, String, bool)>,
     open: bool,
     enabled: bool,
+    selection: crate::components::liquid::overlay::Selection,
     quiet: bool,
+    max_width: Option<f32>,
     leading: Option<&'static str>,
     option_icons: Vec<Option<&'static str>>,
     window: &mut gpui::Window,
@@ -514,7 +553,7 @@ fn menu_dropdown<V: 'static>(
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
     use crate::components::liquid::{
-        overlay::{Choice, Placement, Popover, Selection, Trigger},
+        overlay::{Choice, Placement, Popover, Trigger},
         Material,
     };
     use std::{cell::RefCell, rc::Rc};
@@ -546,12 +585,13 @@ fn menu_dropdown<V: 'static>(
         state.borrow_mut().trigger_width(&label, trigger, window)
     } else {
         width.max(32.)
-    };
+    }
+    .min(max_width.unwrap_or(f32::MAX).max(48.));
     let popover = state.borrow_mut().render_with_icons(
         id,
         label,
         choices,
-        Selection::Single,
+        selection,
         trigger,
         open,
         enabled,

@@ -38,17 +38,18 @@ internal fun LiquidChoiceField(
     var expanded by remember { mutableStateOf(false) }
     var width by remember { mutableStateOf(160.dp) }
     val density = LocalDensity.current
-    LaunchedEffect(enabled, options.isEmpty()) { if (!enabled || options.isEmpty()) expanded = false }
+    LaunchedEffect(enabled, options.map { it.first }) { expanded = false }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
         Box {
             LiquidSelectTrigger(text, label, Modifier.fillMaxWidth().onSizeChanged {
                 width = with(density) { it.width.toDp() }
-            }, enabled && options.isNotEmpty(), onClick = { expanded = !expanded })
-            LiquidMenu(expanded, { expanded = false }, width) {
+            }, enabled && options.isNotEmpty(), expanded = expanded, onClick = { expanded = !expanded })
+            PlainMenu(label, expanded, { expanded = false }, width) {
                 LazyColumn(userScrollEnabled = expanded && LocalLiquidInteractive.current) {
                     items(options, key = { it.first }) { (id, name) ->
-                        LiquidMenuItem(name, id in selected, enabled && expanded, onClick = {
+                        LiquidMenuItem(name, id in selected, enabled && expanded,
+                            choice = true, multiple = !closeOnSelect, onClick = {
                             choose(id)
                             if (closeOnSelect) expanded = false
                         })

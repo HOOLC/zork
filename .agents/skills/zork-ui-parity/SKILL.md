@@ -15,6 +15,7 @@ description: 新增或修改 zork UI 控件、共享组件及 zork-design-pc 展
 - 输入复用 `ComposerInput` 与宿主键盘映射，明确 Composer 提交与独立多行字段换行的 Enter 语义。相同 `set_value` 回声保留光标/历史，恢复其他字段用 `reset_value`；IME 候选不提交。只读和禁用状态同时约束键盘、IME 与粘贴；折叠退场内容同步禁用后代 Tab 停靠点。
 - 模态和自绘示例共用 `modal::trap_focus` / `navigation::move_focus`，同时覆盖原始按键和编辑器动作。来源被遮挡或离屏时，组件仍持有其焦点句柄，打开移交内容、关闭回到来源。显式 `FocusHandle` 须同步其 `tab_stop`，仅设元素属性无效；共享元素在布局前保留稳定自动化 ID。GPUI 可聚焦点击控件已将 Enter/Space 转为 `ClickEvent::Keyboard`，不在 key-down 再执行同一次操作。
 - 使用液态 overlay 的控件按 [液态合同](../../../docs/design/interface.md#liquid) 检查材料身份、绘制归属、生命周期和视觉配方。对照开合中间帧的连接、分离与融合，以及真实背景和遮暗层上的边框、实色遮挡、图标按钮反馈、主操作配色与焦点/错误状态。来源的持续呈现和单次合成须覆盖透明填充、文字边缘、父级透明度、缓存回退及快速反向；输入区域存在不能代替像素验证。滑动反馈另比较短、中、长距离的速度、耗时及中途反向。core 接受意图后的临时气泡不证明消息送达。
+- 普通下拉与模型选择面板按 [静态浮层合同](../../../docs/design/interface.md#interaction) 核对定位、淡入、描边、阴影和焦点，不要求来源材质转移。
 
 ## 对照与性能
 

@@ -1,6 +1,8 @@
 package ing.zork.android
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -37,6 +39,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -169,8 +172,8 @@ internal fun LiquidIconButton(
 }
 
 @Composable
-internal fun LiquidSelectTrigger(text: String, label: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
-    LiquidAction(modifier.semantics { contentDescription = label }, false, enabled, false, true, LiquidTokens.FieldRadius, onClick) {
+internal fun LiquidSelectTrigger(text: String, label: String, modifier: Modifier = Modifier, enabled: Boolean = true, expanded: Boolean = false, onClick: () -> Unit) {
+    LiquidAction(modifier.semantics { contentDescription = "$label：$text"; stateDescription = if (expanded) "已展开" else "已收起" }, false, enabled, false, true, LiquidTokens.FieldRadius, onClick) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Glyph(R.drawable.ic_chevron_down, 16.dp, ZorkColors.Muted)
@@ -179,9 +182,15 @@ internal fun LiquidSelectTrigger(text: String, label: String, modifier: Modifier
 }
 
 @Composable
-internal fun LiquidMenuItem(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    LiquidAction(Modifier.fillMaxWidth(), false, enabled, true, false,
-        (LiquidTokens.FieldRadius.value - 6f).coerceAtLeast(0f).dp, onClick) {
+internal fun LiquidMenuItem(text: String, selected: Boolean, enabled: Boolean = true,
+    choice: Boolean = false, multiple: Boolean = false, onClick: () -> Unit) {
+    val radius = PlainMenuStyle.RowRadius
+    LiquidAction(Modifier.fillMaxWidth()
+        .then(if (choice && selected) Modifier.background(ZorkColors.Selected, RoundedCornerShape(radius)) else Modifier)
+        .then(if (choice) Modifier.semantics { stateDescription = if (selected) "已选中" else "未选中" } else Modifier),
+        false, enabled, true, false,
+        radius, onClick,
+        role = if (!choice) Role.Button else if (multiple) Role.Checkbox else Role.RadioButton) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(text, Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -199,16 +208,16 @@ internal fun LiquidListRow(modifier: Modifier = Modifier, onClick: (() -> Unit)?
             horizontalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
     if (onClick == null) Box(modifier, contentAlignment = Alignment.CenterStart) { row() }
-    else LiquidAction(modifier, false, true, true, false, 0.dp, onClick, row)
+    else LiquidAction(modifier, false, true, true, false, 0.dp, onClick, content = row)
 }
 
 @Composable
 internal fun LiquidAction(
     modifier: Modifier, primary: Boolean, enabled: Boolean, quiet: Boolean, opensPanel: Boolean,
-    radius: Dp, onClick: () -> Unit, content: @Composable () -> Unit,
+    radius: Dp, onClick: () -> Unit, role: Role = Role.Button, content: @Composable () -> Unit,
 ) {
     val ink = when { !enabled -> ZorkColors.Disabled; primary -> ZorkColors.Canvas; else -> ZorkColors.Ink }
-    Box(modifier.liquidPressable(primary, enabled, quiet, opensPanel, radius, onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier.liquidPressable(primary, enabled, quiet, opensPanel, radius, role = role, onClick = onClick), contentAlignment = Alignment.Center) {
         CompositionLocalProvider(LocalContentColor provides ink, content = content)
     }
 }
@@ -219,6 +228,7 @@ internal fun LiquidAction(
 internal fun Modifier.liquidPressable(
     primary: Boolean = false, enabled: Boolean = true, quiet: Boolean = true,
     opensPanel: Boolean = false, radius: Dp = 6.dp,
+    role: Role = Role.Button,
     interactionSource: MutableInteractionSource? = null, onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier {
@@ -261,7 +271,7 @@ internal fun Modifier.liquidPressable(
         }.focusRequester(origin.focus)
         .focusProperties { canFocus = interactive }
         .combinedClickable(interactionSource = interaction, indication = null, enabled = interactive,
-            role = Role.Button, onLongClick = onLongClick?.let { action -> {
+            role = role, onLongClick = onLongClick?.let { action -> {
                 node.host.activate(origin)
                 action()
             } }, onClick = {

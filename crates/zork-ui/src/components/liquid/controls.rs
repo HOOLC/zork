@@ -1299,7 +1299,8 @@ pub fn menu_item_with_icon(
         MenuSurface::StaticGroup { radius } => (p.canvas, None, radius, true),
         MenuSurface::Grouped { clip, radius } => (p.canvas, Some(clip), radius, true),
     };
-    let focus = action_focus(id.clone(), window, cx).tab_stop(enabled);
+    // A popover moves among options with arrows; Tab leaves the menu.
+    let focus = action_focus(id.clone(), window, cx).tab_stop(false);
     let group: SharedString = format!("liquid-menu-{id:?}").into();
     let fill = parent;
     let contents = div()
@@ -1336,7 +1337,10 @@ pub fn menu_item_with_icon(
                     .h(px(14.))
                     .flex_shrink_0()
                     .opacity(if checked { 1. } else { 0. })
-                    .child(crate::controls::icon("icons/check.svg", 14.)),
+                    .child(
+                        crate::controls::icon("icons/check.svg", 14.)
+                            .text_color(rgb(crate::design::BRAND_ACCENT)),
+                    ),
             )
         });
     let mut layer = div().size_full().absolute().inset_0();
@@ -1371,15 +1375,10 @@ pub fn menu_item_with_icon(
                     .id(format!("{id:?}-grouped-press"))
                     .absolute()
                     .inset_0()
+                    .rounded(px(radius as f32))
+                    .bg(rgb(INTERACTION.neutral_pressed))
                     .opacity(0.)
-                    .group_active(group.clone(), |v| v.opacity(1.))
-                    .child(
-                        crate::components::smooth::fill(
-                            format!("{id:?}-pressed-fill"),
-                            radius as f32,
-                        )
-                        .bg(rgb(INTERACTION.neutral_pressed)),
-                    ),
+                    .group_active(group.clone(), |v| v.opacity(1.)),
             )
         } else {
             layer
@@ -1396,11 +1395,25 @@ pub fn menu_item_with_icon(
             .w(px(width))
             .h(px(MENU_ROW_HEIGHT))
             .flex_shrink_0()
+            .when(checked == Some(true), |v| {
+                v.child(clip.fill(
+                    format!("{id:?}-selected-background"),
+                    radius,
+                    Some(p.selected),
+                    None,
+                    window,
+                    cx,
+                ))
+            })
             .when(stroke.is_some(), |v| {
                 v.child(clip.fill(
                     format!("{id:?}-selected-fill"),
                     radius,
-                    Some(fill),
+                    Some(if checked == Some(true) {
+                        p.selected
+                    } else {
+                        fill
+                    }),
                     stroke,
                     window,
                     cx,
@@ -1415,11 +1428,16 @@ pub fn menu_item_with_icon(
             .w(px(width))
             .h(px(MENU_ROW_HEIGHT))
             .flex_shrink_0()
+            .rounded(px(radius as f32))
+            .when(checked == Some(true), |v| v.bg(rgb(p.selected)))
             .when(
                 enabled && focus.is_focused(window) && window.last_input_was_keyboard(),
                 |v| {
                     v.child(
-                        crate::components::smooth::fill(format!("{id:?}-focus"), radius as f32)
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .rounded(px(radius as f32))
                             .border(px(crate::design::BORDER_WIDTH))
                             .border_color(rgb(INTERACTION.focus_border)),
                     )
@@ -1448,7 +1466,7 @@ pub fn menu_item_with_icon(
     control
         .group(group)
         .track_focus(&focus)
-        .tab_stop(enabled)
+        .tab_stop(false)
         .when(enabled, |v| v.cursor_pointer())
         .capture_any_mouse_down(move |_, _, cx| {
             if !enabled {

@@ -378,6 +378,13 @@ fn main() -> anyhow::Result<()> {
         let model_label = f.element("agent-edit-model-select").unwrap().label.clone();
         let effort_label = effort.label.clone();
         f.click("agent-edit-profile-select")?;
+        f.key("tab")?;
+        anyhow::ensure!(
+            f.element("agent-edit-profile-select-menu")
+                .is_none_or(|menu| !menu.enabled),
+            "Tab left the dropdown open after focus moved away"
+        );
+        f.click("agent-edit-profile-select")?;
         let option = f
             .element("agent-edit-profile-0")
             .expect("dropdown options must be visible");
@@ -407,6 +414,24 @@ fn main() -> anyhow::Result<()> {
             "dropdown option enters the rounded panel edge"
         );
         f.screenshot(&format!("agent-dropdown-{width}.png"))?;
+        let scale = f.driver.snapshot(false).scale_factor;
+        let pixels = f.cx.capture_screenshot(f.window.into())?;
+        let x0 = ((option.bounds.x + 8.) * scale) as u32;
+        let x1 = ((option.bounds.x + 180.) * scale) as u32;
+        let y0 = ((option.bounds.y + 6.) * scale) as u32;
+        let y1 = ((option.bounds.y + 26.) * scale) as u32;
+        let ink = (y0..y1)
+            .step_by(2)
+            .flat_map(|y| (x0..x1).step_by(2).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let pixel = pixels.get_pixel(x, y).0;
+                pixel[0] < 150 && pixel[1] < 150 && pixel[2] < 150
+            })
+            .count();
+        anyhow::ensure!(
+            ink > 20,
+            "dropdown option ink painted behind its dialog: {ink} dark pixels"
+        );
         f.click("agent-edit-profile-0")?;
         anyhow::ensure!(
             f.element("agent-edit-model-select").unwrap().label == model_label

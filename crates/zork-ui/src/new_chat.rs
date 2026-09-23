@@ -142,6 +142,7 @@ impl Page {
             options,
             self.device_menu,
             self.data.editable && !values.is_empty(),
+            (self.width - 70.).max(48.),
             window,
             cx,
             |view, open, cx| {
