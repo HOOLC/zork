@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).parent / 'lib'))
-from build_env import build_environment, register_isolated_target, settings, GIT_CONTEXT
+from build_env import build_environment, register_isolated_target, run_measured, settings, GIT_CONTEXT
 spec = importlib.util.spec_from_file_location('cache_budget', Path(__file__).parent / 'build/cache_budget.py')
 cache = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cache)
@@ -83,6 +83,23 @@ class BuildSettingsTest(unittest.TestCase):
         with patch('build_env.os.path.ismount', return_value=False):
             with self.assertRaises(ValueError):
                 build_environment(Path('/absent'), {'ZORK_BUILD_MOUNT': '/missing'})
+
+    def test_measured_command_records_result_without_arguments(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            cache_root = root / 'cache'; cache_root.mkdir()
+            env = dict(os.environ, ZORK_BUILD_ROOT=str(cache_root),
+                       CARGO_TARGET_DIR=str(cache_root / 'target'))
+            command = [sys.executable, '-c', 'import sys; sys.exit(7)', 'private-argument']
+            self.assertEqual(run_measured(command, env, root), 7)
+            raw = (cache_root / '.zork-build-usage.jsonl').read_text()
+            record = json.loads(raw)
+            self.assertEqual(record['exit_code'], 7)
+            self.assertEqual(record['target_dir'], str(cache_root / 'target'))
+            self.assertGreaterEqual(record['elapsed_ms'], 0)
+            self.assertIsInstance(record['free_before_bytes'], int)
+            self.assertIsInstance(record['free_after_bytes'], int)
+            self.assertNotIn('private-argument', raw)
 
     def test_isolated_target_owner_matches_worktree(self):
         with tempfile.TemporaryDirectory() as d:
@@ -241,6 +258,68 @@ class BuildSettingsTest(unittest.TestCase):
                 owner.rmdir()
                 self.assertEqual(cache.plan(root, 2**31, 2**30, 2**29, 24, True),
                                  [(target, 2**30)])
+
+    def test_reclaim_released_ignores_budget_and_age_but_preserves_live_owner(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            live_owner = root / 'worktree'; live_owner.mkdir()
+            released_target = root / 'isolated/released'
+            live_target = root / 'isolated/worktree'
+            for target, owner in ((released_target, root / 'gone'), (live_target, live_owner)):
+                target.mkdir(parents=True)
+                (target / '.rustc_info.json').write_text('{}')
+                (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+                (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(owner)}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            with patch('sys.argv', ['cache_budget', '--reclaim-released']), \
+                 patch('sys.stdout', new_callable=io.StringIO) as output, \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', return_value=2**20), \
+                 patch('cache_budget.latest_write', side_effect=AssertionError('age must not be checked')), \
+                 patch('cache_budget.idle', return_value=True), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[0],
+                                 ['cargo', 'clean', '--target-dir', str(released_target)])
+                self.assertEqual(json.loads(output.getvalue().split('\nRemaining bytes:')[0])['mode'], 'reclaim')
+                self.assertEqual(json.loads((root / '.zork-cache-cleanups.jsonl').read_text())['cleaned'],
+                                 [str(released_target)])
+
+    def test_reclaim_released_preview_preserves_all_targets(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            target = root / 'isolated/released'; target.mkdir(parents=True)
+            (target / '.rustc_info.json').write_text('{}')
+            (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(root / 'gone')}))
+            env = {'ZORK_BUILD_ROOT': str(root), 'ZORK_BUILD_BUDGET_GIB': '1',
+                   'ZORK_BUILD_LOW_WATER_GIB': '0.5'}
+            with patch('sys.argv', ['cache_budget', '--reclaim-released', '--dry-run']), \
+                 patch('sys.stdout', new_callable=io.StringIO) as output, \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', return_value=2**20), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_not_called()
+                self.assertEqual(json.loads(output.getvalue())['candidates'][0]['path'], str(target))
+
+    def test_reclaim_released_without_candidates_skips_full_root_scan(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            env = {'ZORK_BUILD_ROOT': str(root)}
+            with patch('sys.argv', ['cache_budget', '--reclaim-released']), \
+                 patch('sys.stdout', new_callable=io.StringIO) as output, \
+                 patch('cache_budget.build_environment', return_value=env), \
+                 patch('cache_budget.size', side_effect=AssertionError('root scan is unnecessary')), \
+                 patch('cache_budget.subprocess.run') as run:
+                cache.main()
+                run.assert_not_called()
+                self.assertEqual(json.loads(output.getvalue())['candidates'], [])
 
     def test_cargo_rejection_is_reported_after_other_candidates(self):
         import io
