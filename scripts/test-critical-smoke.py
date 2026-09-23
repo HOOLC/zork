@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location("critical_smoke", Path(__file__).with_name("smoke-critical.py"))
 smoke = importlib.util.module_from_spec(spec)
@@ -85,6 +85,22 @@ class GateTests(unittest.TestCase):
 class ClientBudgetTests(unittest.TestCase):
     def setUp(self):
         self.definition = copy.deepcopy(smoke.GATES["client-frame"])
+
+    def test_completed_native_process_does_not_signal_its_old_group(self):
+        process = Mock(pid=42)
+        process.poll.return_value = 0
+        with patch.object(native_budget.os, "killpg") as kill:
+            native_budget.stop_native_process(process)
+        kill.assert_not_called()
+        process.wait.assert_not_called()
+
+    def test_running_native_process_is_stopped(self):
+        process = Mock(pid=42)
+        process.poll.return_value = None
+        with patch.object(native_budget.os, "killpg") as kill:
+            native_budget.stop_native_process(process)
+        kill.assert_called_once_with(42, native_budget.signal.SIGTERM)
+        process.wait.assert_called_once_with(timeout=5)
 
     def report(self, whole_ms=7, interval_ms=7):
         fixture = self.definition["fixture"]
