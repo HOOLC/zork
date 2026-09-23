@@ -25,13 +25,11 @@ fn profile_label(id: &str) -> &str {
 }
 
 pub struct AgentsView {
-    #[cfg(not(target_family = "wasm"))]
     resources: Option<(
         Arc<zork_client_core::resources::Resources>,
         String,
         crate::i18n::Locale,
     )>,
-    #[cfg(not(target_family = "wasm"))]
     skills: Option<(String, Entity<super::resources::ResourcesView>)>,
     source: Arc<crate::api::Agents>,
     source_updates: Option<gpui::Task<()>>,
@@ -62,7 +60,6 @@ pub struct AgentsView {
     message: Option<String>,
 }
 impl AgentsView {
-    #[cfg(not(target_family = "wasm"))]
     pub fn set_resources(
         &mut self,
         resources: Arc<zork_client_core::resources::Resources>,
@@ -72,39 +69,33 @@ impl AgentsView {
         self.resources = Some((resources, node, locale));
     }
     fn skill_section(&self) -> gpui::Div {
-        let body = div();
-        #[cfg(not(target_family = "wasm"))]
-        let body = body.when_some(
+        div().when_some(
             self.skills.as_ref().map(|(_, view)| view.clone()),
             |body, view| body.child(view),
-        );
-        body
+        )
     }
     fn sync_skills(&mut self, _cx: &mut Context<Self>) {
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let selected = self
-                .editing_avatar
-                .as_ref()
-                .and_then(|agent| agent["id"].as_str());
-            if self.skills.as_ref().map(|(id, _)| id.as_str()) != selected {
-                self.skills = selected.and_then(|agent| {
-                    self.resources.as_ref().map(|(core, node, locale)| {
-                        (
-                            agent.to_owned(),
-                            _cx.new(|cx| {
-                                super::resources::ResourcesView::skills(
-                                    core.clone(),
-                                    node.clone(),
-                                    agent.to_owned(),
-                                    *locale,
-                                    cx,
-                                )
-                            }),
-                        )
-                    })
-                });
-            }
+        let selected = self
+            .editing_avatar
+            .as_ref()
+            .and_then(|agent| agent["id"].as_str());
+        if self.skills.as_ref().map(|(id, _)| id.as_str()) != selected {
+            self.skills = selected.and_then(|agent| {
+                self.resources.as_ref().map(|(core, node, locale)| {
+                    (
+                        agent.to_owned(),
+                        _cx.new(|cx| {
+                            super::resources::ResourcesView::skills(
+                                core.clone(),
+                                node.clone(),
+                                agent.to_owned(),
+                                *locale,
+                                cx,
+                            )
+                        }),
+                    )
+                })
+            });
         }
     }
 
@@ -199,9 +190,7 @@ impl AgentsView {
         let instructions = field("职责和偏好（可选）");
         let remote_grants = field("粘贴远端领队引用，多个以空格分隔");
         Self {
-            #[cfg(not(target_family = "wasm"))]
             resources: None,
-            #[cfg(not(target_family = "wasm"))]
             skills: None,
             modal: ui::ModalState::new(cx),
             source,
@@ -234,14 +223,11 @@ impl AgentsView {
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_fixture(cx: &mut Context<Self>) -> Self {
-        #[cfg(not(target_family = "wasm"))]
         let client = Arc::new(StationClient::fixture(
             zork_ui::stories::page_fixture(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
                 .expect("provider fixture"),
         ));
-        #[cfg(target_family = "wasm")]
-        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let source = crate::api::Agents::new(client.clone(), crate::api::Profiles::new(client));
         let mut view = Self::new_inner(source, cx);
         let fixture = zork_ui::stories::page_fixture();

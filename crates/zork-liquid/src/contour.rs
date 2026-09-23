@@ -283,7 +283,7 @@ impl<'a> Tracer<'a> {
         } else {
             // A dense fallback scans each cell exactly once. Cache two rows,
             // not a hash entry for every sample and every visited interior cell.
-            // Only boundary links survive beyond a row (also bounds wasm memory).
+            // Only boundary links survive beyond a row, bounding memory use.
             let row = |y: usize, sampler: &Sampler<'_>, grid: Grid| {
                 (0..grid.width)
                     .map(|x| {

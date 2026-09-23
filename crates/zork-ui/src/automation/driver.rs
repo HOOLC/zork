@@ -1,11 +1,11 @@
-#[cfg(all(not(target_family = "wasm"), feature = "native-screenshots"))]
+#[cfg(feature = "native-screenshots")]
 use std::io::Cursor;
 
 use gpui::{
     point, px, AnyWindowHandle, App, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase, Window,
 };
-#[cfg(all(not(target_family = "wasm"), feature = "native-screenshots"))]
+#[cfg(feature = "native-screenshots")]
 use image::{DynamicImage, ImageFormat};
 use tokio::sync::{mpsc, oneshot};
 use unicode_segmentation::UnicodeSegmentation;
@@ -93,7 +93,7 @@ fn execute(
     }
 }
 
-#[cfg(all(not(target_family = "wasm"), feature = "native-screenshots"))]
+#[cfg(feature = "native-screenshots")]
 fn deliver_test_frame(
     window: &mut Window,
     cx: &mut App,
@@ -110,7 +110,7 @@ fn deliver_test_frame(
     }))
 }
 
-#[cfg(not(all(not(target_family = "wasm"), feature = "native-screenshots")))]
+#[cfg(not(feature = "native-screenshots"))]
 fn deliver_test_frame(
     _: &mut Window,
     _: &mut App,
@@ -122,7 +122,7 @@ fn deliver_test_frame(
     ))
 }
 
-#[cfg(all(not(target_family = "wasm"), feature = "native-screenshots"))]
+#[cfg(feature = "native-screenshots")]
 fn capture_screenshot(
     window: &Window,
     registry: &AutomationRegistry,
@@ -152,19 +152,11 @@ fn capture_screenshot(
     }))
 }
 
-#[cfg(all(not(target_family = "wasm"), not(feature = "native-screenshots")))]
+#[cfg(not(feature = "native-screenshots"))]
 fn capture_screenshot(_: &Window, _: &AutomationRegistry) -> Result<DriverOutput, DriverError> {
     Err(DriverError::new(
         "capture_unavailable",
         "Enable native-screenshots in the host application",
-    ))
-}
-
-#[cfg(target_family = "wasm")]
-fn capture_screenshot(_: &Window, _: &AutomationRegistry) -> Result<DriverOutput, DriverError> {
-    Err(DriverError::new(
-        "browser_capture_required",
-        "Capture the live GPUI canvas with the browser",
     ))
 }
 

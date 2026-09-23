@@ -9,14 +9,11 @@ use crate::{
 };
 use controls::ControlElement;
 use gpui::{prelude::*, *};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 mod anchor;
 mod source;
@@ -1329,8 +1326,7 @@ impl Dialog {
     }
 
     // Keep the full renderer independent of caller, body and callback types.
-    // Native and WASM share this implementation instead of compiling it once
-    // for every application view and event closure.
+    // Keep this implementation independent of application view and event closure types.
     fn render_content(
         &mut self,
         id: SharedString,

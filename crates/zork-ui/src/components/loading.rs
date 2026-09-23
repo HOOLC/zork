@@ -4,11 +4,8 @@ use crate::automation::{AutomationElementExt, AutomationRole};
 use gpui::{
     div, prelude::*, px, App, Context, ElementId, Render, RenderOnce, Transformation, Window,
 };
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{cell::Cell, rc::Rc, time::Duration};
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(gpui::IntoElement)]
 pub struct Indicator {

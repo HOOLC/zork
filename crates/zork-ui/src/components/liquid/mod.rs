@@ -1,4 +1,4 @@
-//! Shared liquid material, contour and rendering contracts for native and WASM.
+//! Shared liquid material, contour and rendering contracts for native views.
 //! Geometry and physics contain no GPUI or platform types.
 pub mod composer;
 pub mod controls;

@@ -11,7 +11,6 @@ pub(super) const ADAPTER: Adapter = Adapter {
     },
     project,
     resolve,
-    #[cfg(not(target_family = "wasm"))]
     execute: |conversation, command| conversation.submit_configuration_review(command),
 };
 
@@ -246,5 +245,4 @@ fn project(
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) mod delivery;

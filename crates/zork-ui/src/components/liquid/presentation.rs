@@ -6,14 +6,11 @@ use super::{
     Material, Pose,
 };
 use gpui::{prelude::*, *};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct ContentMotion {

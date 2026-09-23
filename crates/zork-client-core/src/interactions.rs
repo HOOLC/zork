@@ -121,14 +121,12 @@ struct Adapter {
         &BTreeMap<String, String>,
     ) -> Card,
     resolve: fn(Command) -> anyhow::Result<Command>,
-    #[cfg(not(target_family = "wasm"))]
     execute: fn(&std::sync::Arc<crate::state::Conversation>, Command) -> anyhow::Result<()>,
 }
 const ADAPTERS: &[Adapter] = &[agent_configuration::ADAPTER, provider_login::ADAPTER];
 fn adapter(handler: &str) -> Option<&'static Adapter> {
     ADAPTERS.iter().find(|a| a.key == handler)
 }
-#[cfg(not(target_family = "wasm"))]
 fn accepts(handler: &str, request: &Request) -> bool {
     adapter(handler).is_some_and(|a| (a.accepts)(request))
 }
@@ -207,7 +205,6 @@ pub fn local_script_card(
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn dispatch(
     conversation: &std::sync::Arc<crate::state::Conversation>,
     handler: &str,
@@ -266,7 +263,6 @@ impl Card {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn view(
     metadata: &crate::api::MessageMetadata,
     submission: Option<&Submission>,
@@ -302,7 +298,6 @@ pub(crate) fn view(
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn request(metadata: &crate::api::MessageMetadata) -> Option<Request> {
     let content = MessageContent::parse(metadata.interaction.as_deref()?)?;
     match content.content {
@@ -315,13 +310,11 @@ pub(crate) fn request(metadata: &crate::api::MessageMetadata) -> Option<Request>
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn initial_result(metadata: &crate::api::MessageMetadata) -> Option<Resolution> {
     let initial = MessageContent::parse(metadata.interaction.as_deref()?)?.snapshot?;
     (metadata.id.as_deref() == Some(&initial.request_message_id)).then_some(initial)
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ResultEvent {
     pub request_id: String,
@@ -329,7 +322,6 @@ pub(crate) struct ResultEvent {
     pub result: Resolution,
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn result_event(metadata: &crate::api::MessageMetadata) -> Option<ResultEvent> {
     if metadata.author_kind != Some(zork_client_types::chat::AuthorKind::System) {
         return None;
@@ -350,12 +342,10 @@ pub(crate) fn result_event(metadata: &crate::api::MessageMetadata) -> Option<Res
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn result(metadata: &crate::api::MessageMetadata) -> Option<Resolution> {
     result_event(metadata).map(|event| event.result)
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn cached_result(metadata: &crate::api::MessageMetadata) -> Option<ResultEvent> {
     request(metadata)?;
     let content = MessageContent::parse(metadata.interaction.as_deref()?)?;
@@ -371,7 +361,6 @@ pub(crate) fn cached_result(metadata: &crate::api::MessageMetadata) -> Option<Re
     })
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn merge_result(
     metadata: &mut crate::api::MessageMetadata,
     event: &ResultEvent,

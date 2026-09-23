@@ -214,14 +214,11 @@ impl ProfilesView {
     #[cfg(feature = "headless-bench")]
     fn fixture(detail: bool, cx: &mut Context<Self>) -> Self {
         let fixture = zork_ui::stories::page_fixture();
-        #[cfg(not(target_family = "wasm"))]
         let client = Arc::new(StationClient::fixture(
             fixture.clone(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
                 .expect("provider fixture"),
         ));
-        #[cfg(target_family = "wasm")]
-        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
         view.seed_fixture_catalog();
         view.device_name = fixture["device"]["name"].as_str().unwrap().into();

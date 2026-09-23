@@ -8,11 +8,8 @@ use crate::{
     design::{FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{collections::VecDeque, time::Duration};
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 pub fn colors(kind: NoticeKind) -> (u32, u32) {
     match kind {

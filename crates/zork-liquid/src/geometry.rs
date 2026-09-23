@@ -98,9 +98,8 @@ pub(crate) fn mix(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 pub(crate) fn length(p: Point) -> f64 {
-    // UI coordinates are bounded. Avoid libm hypot's software 128-bit/FMA
-    // path on wasm for every distance-field sample. Retain its numerical
-    // behavior for inputs outside the safe range for squaring.
+    // UI coordinates are bounded. Avoid hypot for every distance-field sample
+    // while retaining its behavior outside the safe range for squaring.
     let magnitude = p[0].abs().max(p[1].abs());
     if magnitude == 0. || (1e-150..=1e150).contains(&magnitude) {
         (p[0] * p[0] + p[1] * p[1]).sqrt()
