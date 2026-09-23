@@ -2,6 +2,7 @@ pub mod activity;
 pub mod attachment_fan;
 pub mod attachments;
 pub mod brand;
+pub(crate) mod choice_menu;
 pub mod comments;
 pub mod flyout;
 pub mod frame_delivery;
@@ -11,7 +12,6 @@ pub mod interaction;
 pub mod loading;
 pub mod message;
 pub mod selection;
-pub mod selector_menu;
 pub mod text_input;
 pub fn init(cx: &mut gpui::App) {
     text_input::init(cx);

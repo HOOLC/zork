@@ -459,6 +459,7 @@ impl Chrome {
                 .flex_1()
                 .min_w_0()
                 .h(px(CONTROL_SIZE))
+                .min_h_0()
                 .pl_2()
                 .pr_1()
                 .gap_1()

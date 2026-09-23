@@ -1836,19 +1836,28 @@ impl Render for ProfilesView {
                             .child(
                                 div()
                                     .flex()
+                                    .flex_wrap()
                                     .gap_3()
-                                    .child(self.input(
-                                        "profile-thinking-levels",
-                                        "推理级别，用逗号分隔",
-                                        &self.thinking_levels,
-                                        cx,
-                                    ))
-                                    .child(self.input(
-                                        "profile-default-thinking",
-                                        "默认推理级别",
-                                        &self.default_thinking,
-                                        cx,
-                                    )),
+                                    .child(
+                                        self.input(
+                                            "profile-thinking-levels",
+                                            "推理级别，用逗号分隔",
+                                            &self.thinking_levels,
+                                            cx,
+                                        )
+                                        .min_w(px(220.))
+                                        .flex_basis(px(220.)),
+                                    )
+                                    .child(
+                                        self.input(
+                                            "profile-default-thinking",
+                                            "默认推理级别",
+                                            &self.default_thinking,
+                                            cx,
+                                        )
+                                        .min_w(px(220.))
+                                        .flex_basis(px(220.)),
+                                    ),
                             )
                             .child(
                                 div()

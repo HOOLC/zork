@@ -342,6 +342,35 @@ fn markdown_polish(fixture: &mut Fixture) -> Result<()> {
     let indent = item.bounds.x - paragraph.bounds.x;
     ensure!((14.0..=18.0).contains(&indent), "list indent is {indent}px");
     let code = fixture.text(CODE)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        fixture.frame()?;
+        let pixels = fixture.cx.capture_screenshot(fixture.window)?;
+        let scale = fixture.automation.snapshot(false).scale_factor;
+        let b = &code.visible_bounds;
+        let mut colored = 0;
+        for y in (b.y * scale) as u32..((b.y + b.height) * scale) as u32 {
+            for x in (b.x * scale) as u32..((b.x + b.width) * scale) as u32 {
+                let pixel = pixels.get_pixel(x, y);
+                if pixel[0].max(pixel[1]).max(pixel[2]) - pixel[0].min(pixel[1]).min(pixel[2]) > 30
+                {
+                    colored += 1;
+                }
+            }
+        }
+        if colored > 8 {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "background code colors never reached the native view"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    ensure!(
+        fixture.text(CODE)?.bounds == code.bounds,
+        "highlight completion moved selectable text"
+    );
     let (from, to) = ends(&code);
     fixture.drag(from, to)?;
     ensure!(

@@ -791,7 +791,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
             comments.forEach { comment ->
                 HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
                 Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).zorkPressable(opensPanel = true) { actions.editComment(comment) }) {
+                    Column(Modifier.weight(1f).zorkPressable() { actions.editComment(comment) }) {
                         Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))
                             Text(comment.quote, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted, maxLines = 1,

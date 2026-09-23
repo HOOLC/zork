@@ -85,11 +85,16 @@ pub struct Action {
     children: Vec<AnyElement>,
     overlays: Vec<AnyElement>,
     handlers: Vec<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
-    input: Option<Entity<ComposerInput>>,
-    editor_slot: Option<AnyElement>,
 }
 
-pub type Field = Action;
+/// Text fields own a non-button surface; editing, focus and IME stay in ComposerInput.
+pub struct Field {
+    inner: Stateful<Div>,
+    input: Entity<ComposerInput>,
+    editor_slot: Option<AnyElement>,
+    children: Vec<AnyElement>,
+    invalid: bool,
+}
 
 pub fn adaptive_input(
     id: impl Into<ElementId>,
@@ -97,40 +102,146 @@ pub fn adaptive_input(
     invalid: bool,
     parent: u32,
 ) -> Field {
-    let mut field = adaptive_action(
-        id,
-        "",
-        ActionStyle {
-            field: true,
-            ..Default::default()
-        },
-        parent,
-    );
-    let target = input.clone();
-    field.inner = field.inner.take().map(|button| {
-        button
-            .role(Role::TextInput)
-            .focusable(false)
-            .h(px(crate::controls::FIELD_HEIGHT))
+    Field {
+        inner: div()
+            .id(id.into())
+            .min_h(px(crate::controls::FIELD_HEIGHT))
             .w_full()
+            .min_w_0()
+            .flex()
+            .items_center()
             .px_3()
             .py(px(5.))
-            .justify_start()
-            .items_start()
             .line_height(px(20.))
             .text_size(px(13.))
             .font_weight(FontWeight::NORMAL)
+            .rounded(px(crate::controls::FIELD_RADIUS))
+            .overflow_hidden()
             .bg(rgb(if invalid {
                 crate::design::FORM.error_surface
             } else {
                 parent
             }))
-            .border_color(rgb(if invalid { 0xC9837E } else { UI_OUTLINE }))
-    });
-    field.input = Some(input.clone());
-    field.on_click(move |_, window, cx| {
-        window.focus(&target.read(cx).focus_handle(), cx);
-    })
+            .border(px(crate::design::BORDER_WIDTH)),
+        input: input.clone(),
+        editor_slot: None,
+        children: vec![],
+        invalid,
+    }
+}
+impl Field {
+    pub fn editor_slot(mut self, content: impl IntoElement) -> Self {
+        self.editor_slot = Some(content.into_any_element());
+        self
+    }
+}
+impl Styled for Field {
+    fn style(&mut self) -> &mut StyleRefinement {
+        self.inner.style()
+    }
+}
+impl InteractiveElement for Field {
+    fn interactivity(&mut self) -> &mut Interactivity {
+        self.inner.interactivity()
+    }
+}
+impl StatefulInteractiveElement for Field {}
+impl ParentElement for Field {
+    fn extend(&mut self, children: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(children);
+    }
+}
+impl Field {
+    fn prepare(&mut self, window: &mut Window, cx: &mut App) {
+        let input = self.input.read(cx);
+        let focus = input.focus_handle();
+        let disabled = input.is_disabled();
+        let focused = !disabled && focus.contains_focused(window, cx);
+        let form = &crate::design::FORM;
+        let border = match (self.invalid, focused) {
+            (true, true) => form.error_focus_border,
+            (true, false) => form.error_border,
+            (false, true) => form.focus_border,
+            (false, false) => UI_OUTLINE,
+        };
+        let inner = std::mem::replace(&mut self.inner, div().id("field-layout"));
+        self.inner = inner
+            .border_color(rgb(border))
+            .when(disabled, |v| {
+                v.cursor_default().text_color(rgb(ZORK_UI.palette.subtle))
+            })
+            .when(!disabled, |v| {
+                v.cursor_text()
+                    .hover(|v| {
+                        v.border_color(rgb(if self.invalid || focused {
+                            border
+                        } else {
+                            form.hover_border
+                        }))
+                    })
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        window.focus(&focus, cx)
+                    })
+            })
+            .child(
+                self.editor_slot
+                    .take()
+                    .unwrap_or_else(|| self.input.clone().into_any_element()),
+            )
+            .children(std::mem::take(&mut self.children));
+    }
+}
+
+impl IntoElement for Field {
+    type Element = Self;
+    fn into_element(self) -> Self {
+        self
+    }
+}
+impl Element for Field {
+    type RequestLayoutState = <Stateful<Div> as Element>::RequestLayoutState;
+    type PrepaintState = <Stateful<Div> as Element>::PrepaintState;
+    fn id(&self) -> Option<ElementId> {
+        Element::id(&self.inner)
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+    fn request_layout(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        self.prepare(window, cx);
+        self.inner.request_layout(id, inspector, window, cx)
+    }
+    fn prepaint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        self.inner
+            .prepaint(id, inspector, bounds, layout, window, cx)
+    }
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout: &mut Self::RequestLayoutState,
+        prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.inner
+            .paint(id, inspector, bounds, layout, prepaint, window, cx)
+    }
 }
 
 pub fn adaptive_action(
@@ -143,13 +254,18 @@ pub fn adaptive_action(
     let label = label.into();
     let appearance = appearance.resolved();
     let enabled = !appearance.disabled && !appearance.busy;
-    let solid = appearance.primary && !appearance.field;
+    let solid = appearance.primary && !appearance.select_trigger;
     let soft = appearance.variant == Some(ButtonVariant::Soft)
         || (appearance.quiet && appearance.selected);
     let icon_only = appearance
         .icon_only
-        .unwrap_or(label.is_empty() && !appearance.field);
-    let fill = if solid {
+        .unwrap_or(label.is_empty() && !appearance.select_trigger);
+    let danger = appearance.variant == Some(ButtonVariant::Danger);
+    let fill = if appearance.disabled {
+        INTERACTION.neutral_pressed
+    } else if danger {
+        ZORK_UI.palette.danger
+    } else if solid {
         BRAND_ACCENT
     } else if soft {
         ZORK_UI.palette.selected
@@ -159,37 +275,45 @@ pub fn adaptive_action(
         ZORK_UI.palette.canvas
     };
     let radius = appearance.radius.unwrap_or_else(|| {
-        if appearance.field {
+        if appearance.select_trigger {
             crate::controls::FIELD_RADIUS
         } else {
-            CONTROL_HEIGHT / 2.
+            crate::controls::BUTTON_RADIUS
         }
     });
-    let outlined = !(soft
-        || solid
-        || appearance.quiet
-        || appearance.radio.is_some()
-        || (icon_only && !appearance.opens_panel));
+    let outlined = !(soft || solid || appearance.quiet || appearance.radio.is_some() || icon_only);
     let ink = action_ink(&label, appearance);
     let selected_color = ZORK_UI.palette.selected;
     let mut button = gpui_base::Button::new(id.clone())
         .disabled(!enabled)
-        .selected(appearance.selected || appearance.expanded)
+        .selected(appearance.selected)
         .accessibility_label(label.clone())
-        .h(px(CONTROL_HEIGHT))
+        .min_h(px(CONTROL_HEIGHT))
+        .py(px(6.))
+        .line_height(px(18.))
         .flex_shrink_0()
-        .px(px(crate::controls::BUTTON_PADDING_X))
+        .px(px(if appearance.select_trigger || appearance.leading {
+            0.
+        } else {
+            crate::controls::BUTTON_PADDING_X
+        }))
         .flex()
         .items_center()
         .justify_center()
         .gap(px(7.))
-        .text_size(px(12.))
+        .text_size(px(if appearance.select_trigger || appearance.leading {
+            13.
+        } else {
+            12.
+        }))
         .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(ink))
         .whitespace_nowrap()
         .rounded(px(radius.max(0.)))
         .overflow_hidden()
         .bg(rgb(fill))
+        .border(px(crate::design::BORDER_WIDTH))
+        .border_color(rgba(0))
         .styles(|styles| styles.selected(|state| state.bg(rgb(selected_color))));
     if outlined {
         button = button
@@ -200,17 +324,21 @@ pub fn adaptive_action(
                 UI_OUTLINE
             }));
     }
-    if enabled {
+    if enabled && !appearance.select_trigger {
         button = button
             .hover(|v| {
-                v.bg(rgb(if solid {
+                v.bg(rgb(if danger {
+                    INTERACTION.danger_hover
+                } else if solid {
                     INTERACTION.accent_hover
                 } else {
                     INTERACTION.neutral_hover
                 }))
             })
             .active(|v| {
-                v.bg(rgb(if solid {
+                v.bg(rgb(if danger {
+                    INTERACTION.danger_pressed
+                } else if solid {
                     INTERACTION.accent_pressed
                 } else {
                     INTERACTION.neutral_pressed
@@ -230,8 +358,6 @@ pub fn adaptive_action(
         children: Vec::new(),
         overlays: Vec::new(),
         handlers: Vec::new(),
-        input: None,
-        editor_slot: None,
     }
 }
 
@@ -249,10 +375,6 @@ impl Action {
     pub fn selected(mut self, selected: bool) -> Self {
         self.appearance.selected = selected;
         self.inner = self.inner.take().map(|button| button.selected(selected));
-        self
-    }
-    pub fn editor_slot(mut self, content: impl IntoElement) -> Self {
-        self.editor_slot = Some(content.into_any_element());
         self
     }
     pub(super) fn overlay(mut self, overlay: AnyElement) -> Self {
@@ -329,17 +451,27 @@ impl Element for Action {
                 }
             });
         }
-        if let Some(input) = &self.input {
-            button = button.child(
-                self.editor_slot
-                    .take()
-                    .unwrap_or_else(|| input.clone().into_any_element()),
-            );
-        } else {
+        if self.appearance.select_trigger && !self.appearance.disabled && !self.appearance.busy {
+            button = button.hover(|v| v.border_color(rgb(crate::design::FORM.hover_border)));
+        }
+        // Respect the caller's final size, including compact actions.
+        let height = match button.style().size.height {
+            Some(Length::Definite(DefiniteLength::Absolute(length))) => {
+                length.to_pixels(window.rem_size()).as_f32()
+            }
+            _ => CONTROL_HEIGHT,
+        };
+        if !self.label.is_empty()
+            || self.appearance.icon.is_some()
+            || self.appearance.image.is_some()
+            || self.appearance.trailing.is_some()
+            || self.appearance.radio.is_some()
+            || self.appearance.busy
+        {
             button = button.child(action_content(
                 &self.id,
                 self.label.clone(),
-                CONTROL_HEIGHT,
+                height,
                 self.appearance,
             ));
         }

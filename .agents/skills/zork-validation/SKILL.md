@@ -13,6 +13,8 @@ description: 为 zork 代码改动选择并执行回归验证，或诊断构建�
 
 Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow 为准。客户端另跑 `scripts/check-client-boundary.py` 并审查实际业务调用链；静态扫描或截图不能证明边界正确。
 
+workspace 排除的 vendored crate 用自身 `--manifest-path` 与 `--locked` 运行单测，沿用任务的构建环境和隔离 target；workspace 的 `-p` 不能执行它的 dev-dependencies。修改 GPUI 时，其独立单测之外仍需跑产品原生回归，避免把另一份依赖解析的结果当作客户端验收。
+
 分支与 PR 不自动运行 CI；提交和推送前使用仓库 hooks 完成对应验证。main 只承担必要的运行时契约与部署输入检查，其他回归留在本地；不为替代本地验证而反复触发远端任务。发布和已批准关键门禁仍按各自入口执行。
 
 - 桌面普通逻辑：`pnpm test:desktop`。完整桌面/发布验证：`scripts/test-desktop-headless.py`；先读覆盖，避免重复运行。原生显示性能用 `scripts/test-desktop-performance.py`，需要解锁桌面。

@@ -134,8 +134,7 @@ internal fun ZorkListRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun Modifier.zorkPressable(
-    primary: Boolean = false, enabled: Boolean = true, quiet: Boolean = true,
-    opensPanel: Boolean = false, radius: Dp = 6.dp, role: Role = Role.Button,
+    enabled: Boolean = true, role: Role = Role.Button,
     interactionSource: MutableInteractionSource? = null, onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = this.combinedClickable(

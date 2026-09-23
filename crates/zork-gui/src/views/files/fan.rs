@@ -1,4 +1,4 @@
-use super::motion::{DraftFiles, Frame};
+use super::layout::Frame;
 use super::*;
 use std::cell::RefCell;
 use zork_client_core::files::FileRef;
@@ -10,20 +10,8 @@ pub(in crate::views) struct FanState {
     pub hovered: bool,
     pub pinned: bool,
     pub active: Option<usize>,
-    pub progress: f32,
-    row: Option<usize>,
 }
 impl FanState {
-    fn advance(&mut self, _: std::time::Instant, _: bool) -> bool {
-        self.progress = if self.open() { 1. } else { 0. };
-        false
-    }
-    fn transition(&mut self, _: std::time::Instant, _: bool) {
-        self.progress = if self.open() { 1. } else { 0. };
-    }
-    fn set_hover(&mut self, hover: bool, _: std::time::Instant, _: bool) {
-        self.hovered = hover;
-    }
     pub fn open(self) -> bool {
         self.hovered || self.pinned
     }
@@ -119,60 +107,16 @@ impl PreviewCache {
 #[derive(Default)]
 pub(in crate::views) struct UiState {
     pub draft: FanState,
-    pub draft_files: DraftFiles,
     pub messages: Rc<RefCell<HashMap<String, FanState>>>,
     pub previews: Rc<RefCell<PreviewCache>>,
     pub message_previews: Rc<RefCell<super::message::PreviewCache>>,
 }
 
 impl RootView {
-    pub(in crate::views) fn advance_file_fans(&mut self, window: &Window, cx: &mut Context<Self>) {
-        let now = cx.background_executor().now();
-        let mut moving = self.file_ui.draft.advance(now, cx.reduce_motion());
-        moving |= self.file_ui.draft_files.advance(
-            &self.draft_state.files,
-            &mut self.file_ui.draft,
-            now,
-            cx.reduce_motion(),
-            (self.composer_surface_width - 72.).max(168.),
-        );
-        let mut remeasure = Vec::new();
-        for state in self.file_ui.messages.borrow_mut().values_mut() {
-            let previous = state.progress;
-            moving |= state.advance(now, cx.reduce_motion());
-            if state.progress != previous {
-                if let Some(row) = state.row {
-                    remeasure.push(row);
-                }
-            }
-        }
-        if !remeasure.is_empty() {
-            let was_following = self.transcript_list.is_following_tail();
-            let anchor = self.transcript_list.logical_scroll_top();
-            for row in remeasure {
-                if row < self.lines.len() {
-                    self.transcript_list.splice(row..row + 1, 1);
-                }
-            }
-            if was_following {
-                self.transcript_list.set_follow_mode(FollowMode::Tail);
-                self.transcript_list.scroll_to_end();
-            } else {
-                self.transcript_list.scroll_to(anchor);
-            }
-        }
-        if moving {
-            let root = cx.entity().downgrade();
-            window.on_next_frame(move |_, cx| {
-                let _ = root.update(cx, |_, cx| {
-                    zork_ui::components::region::invalidate(cx, &["composer", "transcript"])
-                });
-            });
-        }
-    }
     pub(in crate::views) fn draft_file_frame(&self) -> Frame {
-        self.file_ui.draft_files.frame(
-            self.file_ui.draft.progress,
+        Frame::settled(
+            &self.draft_state.files,
+            self.file_ui.draft.open(),
             (self.composer_surface_width - 72.).max(168.),
         )
     }
@@ -338,9 +282,6 @@ impl RootView {
     pub(in crate::views) fn close_draft_fan(&mut self, cx: &mut Context<Self>) {
         self.file_ui.draft.hovered = false;
         self.file_ui.draft.pinned = false;
-        self.file_ui
-            .draft
-            .transition(cx.background_executor().now(), cx.reduce_motion());
         zork_ui::components::region::invalidate(cx, &["composer", "transcript"]);
     }
     fn highlight_file(
@@ -379,16 +320,12 @@ impl RootView {
         if let Some((key, index)) = message {
             let mut states = self.file_ui.messages.borrow_mut();
             let state = states.entry(key).or_default();
-            state.row = Some(index);
             let old = state.open();
             if let Some(hover) = hover {
-                state.set_hover(hover, cx.background_executor().now(), cx.reduce_motion());
+                state.hovered = hover;
             }
             if toggle {
                 state.pinned = !state.pinned;
-            }
-            if old != state.open() {
-                state.transition(cx.background_executor().now(), cx.reduce_motion());
             }
             if old != state.open() && index < self.lines.len() {
                 let anchor = self.transcript_list.logical_scroll_top();
@@ -398,21 +335,11 @@ impl RootView {
             drop(states);
             zork_ui::components::region::invalidate(cx, &["transcript"]);
         } else {
-            let old = self.file_ui.draft.open();
             if let Some(hover) = hover {
-                self.file_ui.draft.set_hover(
-                    hover,
-                    cx.background_executor().now(),
-                    cx.reduce_motion(),
-                );
+                self.file_ui.draft.hovered = hover;
             }
             if toggle {
                 self.file_ui.draft.pinned = !self.file_ui.draft.pinned;
-            }
-            if old != self.file_ui.draft.open() {
-                self.file_ui
-                    .draft
-                    .transition(cx.background_executor().now(), cx.reduce_motion());
             }
             zork_ui::components::region::invalidate(cx, &["composer", "transcript"]);
         }
@@ -469,7 +396,7 @@ fn render(
                 id: visual.file.id.clone(),
                 name: visual.file.name.clone(),
                 image: Some(cache.borrow_mut().image(&visual.file, FRONT_ANGLE)),
-                removable: draft && open && state.progress > 0.98,
+                removable: draft && open,
             })
             .collect(),
         width: frame.width,

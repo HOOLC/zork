@@ -48,6 +48,27 @@ fn main() -> anyhow::Result<()> {
         Ok(())
     };
     pump(&mut cx)?;
+    let initial = driver.snapshot(false);
+    for _ in 0..16 {
+        let action = serde_json::from_value(json!({"type":"key","keystroke":"tab"}))?;
+        cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
+        pump(&mut cx)?;
+        let focused = driver.snapshot(false);
+        for before in initial
+            .elements
+            .iter()
+            .filter(|e| e.id.starts_with("interaction-overview-"))
+        {
+            if let Some(after) = focused.elements.iter().find(|e| e.id == before.id) {
+                anyhow::ensure!(
+                    before.bounds == after.bounds,
+                    "Keyboard focus changed control geometry: {}",
+                    before.id
+                );
+            }
+        }
+    }
+
     for surface in ["canvas", "sidebar"] {
         for role in ["chat", "browser", "settings"] {
             let id = format!("interaction-overview-{surface}-{role}");

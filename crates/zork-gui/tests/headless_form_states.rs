@@ -61,6 +61,14 @@ fn main() -> anyhow::Result<()> {
             .0)
     };
     let original = field_pixel(&mut cx)?;
+    act(
+        &mut cx,
+        json!({"type":"move","target":{"element_id":"form-name"}}),
+    )?;
+    anyhow::ensure!(
+        field_pixel(&mut cx)? == original,
+        "Hover changed the field surface"
+    );
     act(&mut cx, click("form-name"))?;
     anyhow::ensure!(
         field_pixel(&mut cx)? == original,
@@ -92,6 +100,14 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(
         invalid[..3] == [255, 250, 250],
         "Invalid field lost its semantic surface: {invalid:?}"
+    );
+    act(
+        &mut cx,
+        json!({"type":"move","target":{"element_id":"form-name"}}),
+    )?;
+    anyhow::ensure!(
+        field_pixel(&mut cx)? == invalid,
+        "Hover hid the invalid field surface"
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("invalid-focused.png"))?;
@@ -209,6 +225,55 @@ fn main() -> anyhow::Result<()> {
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("saved.png"))?;
-    println!("PASS: stable field focus, inline error/focus recovery, select/escape, switch, busy geometry and successful retry");
+    cx.update_window(window.into(), |_, w, _| w.remove_window())?;
+    let story = stories::catalog()
+        .into_iter()
+        .find(|s| s.id == "dropdown-long-list")
+        .unwrap();
+    let window = cx.open_window(gpui::size(px(800.), px(760.)), |_, cx| {
+        let host = cx.new(|cx| StoryHost::new(story, cx));
+        cx.new(|_| AutomationRoot::new(host))
+    })?;
+    let pump = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        for _ in 0..4 {
+            cx.run_until_parked();
+            cx.advance_clock(Duration::from_millis(16));
+            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
+        }
+        Ok(())
+    };
+    let act = |cx: &mut HeadlessAppContext, value: serde_json::Value| -> anyhow::Result<()> {
+        cx.update_window(window.into(), |_, w, cx| {
+            driver.dispatch(serde_json::from_value(value).unwrap(), w, cx)
+        })??;
+        pump(cx)
+    };
+    pump(&mut cx)?;
+    act(&mut cx, click("story-select"))?;
+    act(&mut cx, json!({"type":"key","keystroke":"end"}))?;
+    act(&mut cx, json!({"type":"key","keystroke":"up"}))?;
+    act(&mut cx, json!({"type":"key","keystroke":"down"}))?;
+    let snapshot = driver.snapshot(false);
+    let last = snapshot
+        .elements
+        .iter()
+        .find(|e| e.id == "story-option-39")
+        .unwrap();
+    anyhow::ensure!(
+        last.visible && last.visible_bounds.height >= 28.,
+        "Keyboard focus moved outside the visible menu: {last:?}"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("long-select-end.png"))?;
+    act(&mut cx, json!({"type":"key","keystroke":"enter"}))?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "story-select" && e.label == "模型连接 40"),
+        "Keyboard did not select the final option"
+    );
+    println!("PASS: stable field hover/focus/error, selection and keyboard scrolling, switch, busy geometry and successful retry");
     Ok(())
 }

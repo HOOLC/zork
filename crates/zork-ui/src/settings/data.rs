@@ -20,7 +20,7 @@ pub struct DataSettings {
 impl EventEmitter<Confirmed> for DataSettings {}
 impl DataSettings {
     pub fn new(data: Data, text: Text, cx: &mut Context<Self>) -> Self {
-        let mut alert = AlertDialog::new(cx);
+        let mut alert = AlertDialog::new(cx).destructive();
         alert.cancel_label(text.text("client_data_cancel"));
         Self {
             data,

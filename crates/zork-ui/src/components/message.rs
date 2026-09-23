@@ -116,7 +116,7 @@ pub struct MessageDocument {
     truncated: bool,
     blocks: Vec<MessageBlock>,
     plain_text_cache: std::cell::OnceCell<SharedString>,
-    code_cache: Vec<std::cell::OnceCell<code::Presentation>>,
+    code_cache: Vec<std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
     width_cache: std::cell::RefCell<Option<(gpui::Font, f32, f32, f32)>>,
 }
 // Keep the most common pathological blocks (single huge paragraphs/code logs)
@@ -353,7 +353,7 @@ fn bounded_width(text: &str, cap: f32, mut measure: impl FnMut(&str) -> f32) -> 
 
 fn collect_code_cache(
     blocks: &[MessageBlock],
-    cache: &mut Vec<std::cell::OnceCell<code::Presentation>>,
+    cache: &mut Vec<std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
 ) {
     for block in blocks {
         match block {
@@ -668,7 +668,7 @@ fn render_blocks<'a>(
     id: &str,
     blocks: &[MessageBlock],
     selection: Option<&SelectionContext>,
-    code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<code::Presentation>>,
+    code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
 ) -> AnyElement {
     let children = blocks
         .iter()
@@ -688,7 +688,7 @@ fn render_block<'a>(
     id: &str,
     block: &MessageBlock,
     selection: Option<&SelectionContext>,
-    code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<code::Presentation>>,
+    code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
 ) -> AnyElement {
     match block {
         MessageBlock::Paragraph(content) => div()
@@ -991,11 +991,46 @@ fn merge_selection_highlight(
 fn render_code(
     id: &str,
     language: Option<&str>,
-    prepared: &code::Presentation,
+    prepared: &std::rc::Rc<code::Presentation>,
     selection: Option<&SelectionContext>,
 ) -> AnyElement {
+    CodeBlockView {
+        id: id.to_owned(),
+        language: language.map(str::to_owned),
+        prepared: prepared.clone(),
+        selection: selection.cloned(),
+    }
+    .into_any_element()
+}
+
+#[derive(IntoElement)]
+struct CodeBlockView {
+    id: String,
+    language: Option<String>,
+    prepared: std::rc::Rc<code::Presentation>,
+    selection: Option<SelectionContext>,
+}
+impl gpui::RenderOnce for CodeBlockView {
+    fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+        let highlights = self.prepared.highlights(window, cx);
+        render_code_ready(
+            &self.id,
+            self.language.as_deref(),
+            &self.prepared,
+            self.selection.as_ref(),
+            highlights,
+        )
+    }
+}
+
+fn render_code_ready(
+    id: &str,
+    language: Option<&str>,
+    prepared: &code::Presentation,
+    selection: Option<&SelectionContext>,
+    mut highlights: code::Runs,
+) -> AnyElement {
     let code = &prepared.text;
-    let mut highlights = prepared.highlights.clone();
     let offset = selection.map(|selection| selection.offset(code));
     if let Some((selection, offset)) = selection.zip(offset) {
         if let Some(selected) = selection.highlight(offset, code.len()) {
@@ -1092,7 +1127,8 @@ mod selection_style_tests {
     }
 
     #[test]
-    fn revisiting_long_history_does_not_reparse_code_after_global_cache_eviction() {
+    fn preparing_and_revisiting_history_does_not_parse_code_synchronously() {
+        let before = code::parse_count();
         let documents = (0..64).map(|index| MessageDocument::parse(&format!(
             "正文 {index}\n\n```rust\nlet task_{index} = \"中文\";\n```\n\n> ```json\n> {{\"task\":{index}}}\n> ```"
         ))).collect::<Vec<_>>();
@@ -1105,6 +1141,10 @@ mod selection_style_tests {
                 .all(|cache| cache.get().is_some()));
         }
         let parses = code::parse_count();
+        assert_eq!(
+            parses, before,
+            "preparing code parsed on the rendering thread"
+        );
         for (index, document) in documents.iter().enumerate() {
             let _ = render_document(&format!("cache-{index}"), document);
             let first = document.shared_plain_text();

@@ -132,6 +132,14 @@ class GateTests(unittest.TestCase):
 
 
 class ClientBudgetTests(unittest.TestCase):
+    def test_competition_guard_excludes_own_native_group_but_detects_other_benchmarks(self):
+        processes = "10 10 /usr/bin/caffeinate\n11 10 /ours/zork-gui-render-bench\n20 20 /other/zork-gui-render-bench\n30 30 /bin/rustc\n40 40 /Apps/Chrome for Testing\n"
+        with patch.object(native_budget.subprocess, "check_output", return_value=processes):
+            found = native_budget.competing_processes(10)
+        self.assertEqual(len(found), 3)
+        self.assertFalse(any("/ours/" in line for line in found))
+        self.assertTrue(any("/other/" in line for line in found))
+
     def setUp(self):
         self.definition = copy.deepcopy(smoke.GATES["client-frame"])
 

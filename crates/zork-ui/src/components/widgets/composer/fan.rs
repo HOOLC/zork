@@ -17,7 +17,7 @@ pub struct Frame {
     pub files: Vec<File>,
     pub width: f32,
     pub height: f32,
-    pub expanded: f32,
+    pub expanded: bool,
 }
 pub struct Ids {
     pub root: String,
@@ -44,7 +44,7 @@ pub fn render(
 ) -> Stateful<Div> {
     let hover = handler.clone();
     let toggle = handler.clone();
-    let expanded = frame.expanded > 0.5;
+    let expanded = frame.expanded;
     let toggle_id = ids.toggle.clone();
     let mut root = div()
         .id(ids.root)

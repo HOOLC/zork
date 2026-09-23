@@ -9,7 +9,7 @@ use gpui::{prelude::*, *};
 mod adaptive;
 pub use adaptive::{adaptive_action, adaptive_input, Action, Field};
 
-/// Shared focus binding for controls that defer their material construction and
+/// Shared focus binding for controls and
 /// for ordinary compositional rows used as overlay sources.
 pub trait ControlElement: Element + StatefulInteractiveElement + ParentElement + Styled {
     fn control_focus(self, focus: &FocusHandle) -> Self;
@@ -193,7 +193,7 @@ pub fn segments<V: 'static>(
     )
 }
 
-/// Responsive forms use the same segmented material and keyboard selection as
+/// Responsive forms use the same segmented control and keyboard selection as
 /// fixed gallery controls. Hints remain attached to the actual option handles.
 pub fn deferred_segmented(
     id: impl Into<SharedString>,
@@ -531,6 +531,7 @@ impl RenderOnce for DeferredToggle {
 #[derive(Clone, Copy, PartialEq)]
 pub enum ButtonVariant {
     Solid,
+    Danger,
     Soft,
     Outline,
     Ghost,
@@ -546,14 +547,12 @@ pub struct ActionStyle {
     pub busy: bool,
     pub icon: Option<&'static str>,
     pub image: Option<&'static str>,
-    /// Select and field triggers use the same button and focus behavior.
-    pub field: bool,
+    /// A select trigger keeps its surface stable and emphasizes its border.
+    pub select_trigger: bool,
     /// Full-width disclosure actions keep the label leading and the icon trailing.
     pub leading: bool,
     pub trailing: Option<&'static str>,
     pub expanded: bool,
-    /// Icon triggers reveal an outline when they can separate into a panel.
-    pub opens_panel: bool,
     pub radio: Option<bool>,
     /// Custom-content controls declare whether they have an icon-only face.
     pub icon_only: Option<bool>,
@@ -564,7 +563,7 @@ pub struct ActionStyle {
 impl ActionStyle {
     fn resolved(mut self) -> Self {
         if let Some(variant) = self.variant {
-            self.primary = variant == ButtonVariant::Solid;
+            self.primary = matches!(variant, ButtonVariant::Solid | ButtonVariant::Danger);
             self.quiet = variant == ButtonVariant::Ghost;
         }
         self
@@ -594,6 +593,8 @@ pub fn action(
     adaptive_action(id, label, style, parent)
         .track_focus(&focus)
         .w(px(width))
+        .min_h_0()
+        .py_0()
         .h(px(height))
 }
 
@@ -602,7 +603,7 @@ fn action_ink(_label: &str, style: ActionStyle) -> u32 {
     let p = ZORK_UI.palette;
     if style.disabled {
         p.subtle
-    } else if style.primary && !style.field {
+    } else if style.primary && !style.select_trigger {
         p.canvas
     } else {
         p.text
@@ -625,7 +626,7 @@ pub(crate) fn action_content(
         .items_center()
         .justify_center()
         .gap(px(7.))
-        .when(style.field || style.leading, |v| {
+        .when(style.select_trigger || style.leading, |v| {
             v.w_full().px_3().justify_start()
         })
         .when_some(style.radio, |v, selected| {
@@ -657,7 +658,9 @@ pub(crate) fn action_content(
             v.child(
                 div()
                     .min_w_0()
-                    .when(style.field || style.leading, |v| v.flex_1().truncate())
+                    .when(style.select_trigger || style.leading, |v| {
+                        v.flex_1().truncate()
+                    })
                     .child(label.clone()),
             )
         })
@@ -670,18 +673,13 @@ pub(crate) fn action_content(
                 icon.into_any_element()
             })
         })
-        .text_size(px(if style.field || style.leading {
-            13.
-        } else {
-            12.
-        }))
         .text_color(rgb(color))
         .whitespace_nowrap()
         .when(style.busy, |v| v.opacity(0.));
     div()
         .id(format!("widget-action-content-{id:?}"))
         .relative()
-        .when(style.field || style.leading, |v| v.w_full())
+        .when(style.select_trigger || style.leading, |v| v.w_full())
         .child(ink)
         .when(style.busy, |v| {
             v.child(
@@ -699,7 +697,7 @@ pub(crate) fn action_content(
         })
 }
 
-/// Shared native text field with an optional content slot.
+/// Fixed layout slots use the same field as content-sized production forms.
 pub fn input(
     id: impl Into<ElementId>,
     input: &Entity<ComposerInput>,
@@ -707,65 +705,13 @@ pub fn input(
     height: f32,
     invalid: bool,
     parent: u32,
-    window: &mut Window,
-    cx: &mut App,
+    _window: &mut Window,
+    _cx: &mut App,
 ) -> Stateful<Div> {
-    input_content(
-        id.into(),
-        input,
-        width,
-        height,
-        invalid,
-        parent,
-        None,
-        window,
-        cx,
-    )
-}
-
-fn input_content(
-    id: ElementId,
-    input: &Entity<ComposerInput>,
-    width: f32,
-    height: f32,
-    invalid: bool,
-    parent: u32,
-    content: Option<AnyElement>,
-    window: &mut Window,
-    cx: &mut App,
-) -> Stateful<Div> {
-    let focus = input.read(cx).focus_handle();
-    let target = input.clone();
-    skin(
-        id,
-        width,
-        height,
-        crate::controls::FIELD_RADIUS,
-        SurfaceColors {
-            fill: if invalid {
-                crate::design::FORM.error_surface
-            } else {
-                parent
-            },
-            border: Some(if invalid { 0xC9837E } else { UI_OUTLINE }),
-            parent,
-            focused: focus.is_focused(window),
-        },
-        content.unwrap_or_else(|| {
-            div()
-                .absolute()
-                .left(px(12.))
-                .top(px(5.))
-                .w(px((width - 24.).max(2.)))
-                .h(px((height - 10.).max(2.)))
-                .line_height(px(20.))
-                .text_size(px(13.))
-                .child(input.clone())
-                .into_any_element()
-        }),
-        window,
-        cx,
-    )
-    .track_focus(&focus)
-    .on_click(move |_, w, cx| w.focus(&target.read(cx).focus_handle(), cx))
+    let id = id.into();
+    let field = adaptive_input(id.clone(), input, invalid, parent)
+        .w(px(width))
+        .min_h_0()
+        .h(px(height));
+    div().id(id).w(px(width)).h(px(height)).child(field)
 }

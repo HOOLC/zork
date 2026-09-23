@@ -16,6 +16,8 @@ pub struct InteractionPalette {
     pub primary_pressed: u32,
     pub accent_hover: u32,
     pub accent_pressed: u32,
+    pub danger_hover: u32,
+    pub danger_pressed: u32,
     pub focus_border: u32,
 }
 pub const INTERACTION: InteractionPalette = InteractionPalette {
@@ -25,8 +27,64 @@ pub const INTERACTION: InteractionPalette = InteractionPalette {
     primary_pressed: 0x1B1E21,
     accent_hover: 0xDB572F,
     accent_pressed: 0xC84A27,
+    danger_hover: 0xA61B24,
+    danger_pressed: 0x8F1720,
     focus_border: 0x646970,
 };
+
+/// Apply the same palette to complete library components and our Base wrappers.
+/// Initialize after gpui-component, before constructing any product windows.
+pub(crate) fn init_component_theme(cx: &mut gpui::App) {
+    use gpui::{px, rgb};
+    let p = ZORK_UI.palette;
+    let theme = gpui_component::Theme::global_mut(cx);
+    theme.font_family = "Inter Variable".into();
+    theme.font_size = px(13.);
+    theme.mono_font_family = crate::assets::CODE_FONT_FAMILY.into();
+    theme.radius = px(crate::controls::FIELD_RADIUS);
+    theme.radius_lg = px(crate::controls::CARD_RADIUS);
+    theme.background = rgb(p.canvas).into();
+    theme.foreground = rgb(p.text).into();
+    theme.border = rgb(UI_OUTLINE).into();
+    theme.input = rgb(UI_OUTLINE).into();
+    theme.ring = rgb(FORM.focus_border).into();
+    theme.caret = rgb(p.text).into();
+    theme.muted = rgb(p.selected).into();
+    theme.muted_foreground = rgb(p.muted).into();
+    theme.accent = rgb(INTERACTION.neutral_hover).into();
+    theme.accent_foreground = rgb(p.text).into();
+    theme.primary = rgb(BRAND_ACCENT).into();
+    theme.primary_foreground = rgb(p.canvas).into();
+    theme.primary_hover = rgb(INTERACTION.accent_hover).into();
+    theme.primary_active = rgb(INTERACTION.accent_pressed).into();
+    theme.secondary = rgb(p.selected).into();
+    theme.secondary_foreground = rgb(p.text).into();
+    theme.popover = rgb(p.canvas).into();
+    theme.popover_foreground = rgb(p.text).into();
+    theme.colors.list = rgb(p.canvas).into();
+    theme.list_hover = rgb(INTERACTION.neutral_hover).into();
+    theme.list_active = rgb(p.selected).into();
+    theme.list_active_border = rgb(FORM.focus_border).into();
+    theme.slider_bar = rgb(BRAND_ACCENT).into();
+    theme.slider_thumb = rgb(p.canvas).into();
+    theme.switch = rgb(FORM.switch_off).into();
+    theme.switch_thumb = rgb(p.canvas).into();
+    theme.button = rgb(p.canvas).into();
+    theme.button_foreground = rgb(p.text).into();
+    theme.button_hover = rgb(INTERACTION.neutral_hover).into();
+    theme.button_active = rgb(INTERACTION.neutral_pressed).into();
+    theme.button_primary = theme.primary;
+    theme.button_primary_foreground = theme.primary_foreground;
+    theme.button_primary_hover = theme.primary_hover;
+    theme.button_primary_active = theme.primary_active;
+    theme.danger = rgb(p.danger).into();
+    theme.danger_foreground = rgb(p.canvas).into();
+    theme.scrollbar_thumb = rgb(p.muted).into();
+    theme.scrollbar_thumb_hover = rgb(p.text).into();
+    // This pinned library still reads resolved component tokens in its widgets.
+    theme.tokens = (&theme.colors).into();
+    gpui_component::Theme::sync_base(cx);
+}
 
 /// Form and feedback colors extend the existing approved warm-white palette.
 pub struct FormPalette {

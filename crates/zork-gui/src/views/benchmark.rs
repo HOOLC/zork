@@ -49,7 +49,11 @@ impl RootView {
         self.lines.len()
     }
     pub fn benchmark_file_fan_progress(&self) -> f32 {
-        self.file_ui.draft.progress
+        if self.file_ui.draft.open() {
+            1.
+        } else {
+            0.
+        }
     }
     pub fn benchmark_file_geometry(&self) -> serde_json::Value {
         let frame = self.draft_file_frame();

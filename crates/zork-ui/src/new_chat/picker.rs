@@ -47,37 +47,6 @@ impl Page {
                 .min(levels.len() - 1)
         })
     }
-    fn picker_option(
-        &self,
-        id: String,
-        label: String,
-        value: String,
-        selected: bool,
-        model: bool,
-        enabled: bool,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        ui::choice(id, label.clone(), selected, enabled)
-            .w_full()
-            .h(px(36.))
-            .justify_start()
-            .on_click(cx.listener(move |view, _, window, cx| {
-                window.focus(&view.picker_focus, cx);
-                cx.emit(Event::Intent(if model {
-                    Action::Model {
-                        value: value.clone(),
-                    }
-                } else {
-                    Action::Profile {
-                        value: value.clone(),
-                    }
-                }));
-                view.thinking_preview = None;
-                cx.notify();
-            }))
-            .automation_enabled(enabled, AutomationRole::Button, label)
-            .into_any_element()
-    }
     pub(super) fn picker_content(
         &self,
         width: f32,
@@ -130,52 +99,80 @@ impl Page {
             let available_width = (width - 24. - 12.).max(4.);
             let model_width = (available_width * 0.6).max(2.);
             let profile_width = (available_width - model_width).max(2.);
-            let mut model_rows = div()
-                .id("new-chat-model-list")
-                .h(px(
-                    (self.data.model.options.len() as f32 * 40. - 4.).clamp(0., 280.)
-                ))
-                .min_h_0()
-                .overflow_y_scroll()
-                .flex()
-                .flex_col()
-                .gap_1();
-            for (index, option) in self.data.model.options.iter().enumerate() {
-                model_rows = model_rows.child(self.picker_option(
-                    format!("new-chat-model-{index}"),
-                    option.label.clone(),
-                    option.value.clone(),
-                    option.value == self.data.model.value,
-                    true,
-                    enabled,
-                    cx,
-                ));
-            }
-            let mut profile_rows = div()
-                .id("new-chat-profile-list")
-                .h(px(
-                    (self.data.profile.options.len() as f32 * 40. - 4.).clamp(0., 280.)
-                ))
-                .min_h_0()
-                .overflow_y_scroll()
-                .flex()
-                .flex_col()
-                .gap_1();
-            for (index, option) in self.data.profile.options.iter().enumerate() {
-                profile_rows = profile_rows.child(self.picker_option(
-                    format!("new-chat-profile-{index}"),
-                    if option.value == "auto" {
-                        self.text.text("new_chat_profile_automatic")
-                    } else {
-                        option.label.clone()
-                    },
-                    option.value.clone(),
-                    option.value == self.data.profile.value,
-                    false,
-                    enabled,
-                    cx,
-                ));
-            }
+            let model_values: Vec<_> = self
+                .data
+                .model
+                .options
+                .iter()
+                .map(|o| o.value.clone())
+                .collect();
+            let model_rows = crate::components::choice_menu::inline_list(
+                "new-chat-model-list",
+                self.data
+                    .model
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(i, o)| {
+                        (
+                            format!("new-chat-model-{i}"),
+                            o.label.clone(),
+                            o.value == self.data.model.value,
+                        )
+                    })
+                    .collect(),
+                enabled,
+                window,
+                cx,
+                move |view, index, cx| {
+                    if let Some(value) = model_values.get(index) {
+                        cx.emit(Event::Intent(Action::Model {
+                            value: value.clone(),
+                        }));
+                        view.thinking_preview = None;
+                        cx.notify();
+                    }
+                },
+            );
+            let profile_values: Vec<_> = self
+                .data
+                .profile
+                .options
+                .iter()
+                .map(|o| o.value.clone())
+                .collect();
+            let profile_rows = crate::components::choice_menu::inline_list(
+                "new-chat-profile-list",
+                self.data
+                    .profile
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(i, o)| {
+                        (
+                            format!("new-chat-profile-{i}"),
+                            if o.value == "auto" {
+                                self.text.text("new_chat_profile_automatic")
+                            } else {
+                                o.label.clone()
+                            },
+                            o.value == self.data.profile.value,
+                        )
+                    })
+                    .collect(),
+                enabled,
+                window,
+                cx,
+                move |view, index, cx| {
+                    if let Some(value) = profile_values.get(index) {
+                        cx.emit(Event::Intent(Action::Profile {
+                            value: value.clone(),
+                        }));
+                        view.thinking_preview = None;
+                        cx.notify();
+                    }
+                },
+            );
             let columns = div()
                 .flex()
                 .gap(px(12.))
@@ -385,12 +382,7 @@ impl Page {
                             cx.stop_propagation();
                         }
                     }))
-                    .child(
-                        Slider::new(&slider)
-                            .disabled(!enabled)
-                            .w_full()
-                            .bg(rgb(crate::design::BRAND_ACCENT)),
-                    )
+                    .child(Slider::new(&slider).disabled(!enabled).w_full())
                     .automation_enabled(enabled, AutomationRole::Option, label),
             );
         } else {

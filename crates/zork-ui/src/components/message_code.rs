@@ -1,23 +1,128 @@
 //! Cached, pure-Rust syntax highlighting for messages.
-use gpui::{rgb, HighlightStyle};
-use std::{cell::RefCell, collections::VecDeque, ops::Range};
+use gpui::{rgb, AnyWindowHandle, App, Global, HighlightStyle, Window};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    ops::Range,
+    rc::{Rc, Weak},
+    sync::{LazyLock, Mutex},
+};
 use syntect::{
     easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet, util::LinesWithEndings,
 };
 
 pub(super) type Runs = Vec<(Range<usize>, HighlightStyle)>;
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(super) struct Presentation {
     pub text: gpui::SharedString,
-    pub highlights: Runs,
+    state: Rc<RefCell<State>>,
     pub layout_cache: super::text_cache::TextCache,
 }
-pub(super) fn prepare(language: Option<&str>, code: &str) -> Presentation {
-    Presentation {
+pub(super) fn prepare(language: Option<&str>, code: &str) -> Rc<Presentation> {
+    Rc::new(Presentation {
         text: code.to_owned().into(),
-        highlights: highlights(language, code),
+        state: Rc::new(RefCell::new(State {
+            language: language.unwrap_or_default().into(),
+            ready: (!eligible(language, code)).then(Vec::new),
+            queued: false,
+            windows: Vec::new(),
+        })),
         layout_cache: Default::default(),
+    })
+}
+
+#[derive(Debug)]
+struct State {
+    language: String,
+    ready: Option<Runs>,
+    queued: bool,
+    windows: Vec<AnyWindowHandle>,
+}
+struct Request {
+    state: Weak<RefCell<State>>,
+    text: gpui::SharedString,
+}
+#[derive(Default)]
+struct Worker {
+    running: bool,
+    pending: VecDeque<Request>,
+}
+impl Global for Worker {}
+const MAX_PENDING: usize = 64;
+
+impl Presentation {
+    pub(super) fn highlights(&self, window: &mut Window, cx: &mut App) -> Runs {
+        let mut state = self.state.borrow_mut();
+        if let Some(runs) = &state.ready {
+            return runs.clone();
+        }
+        let handle = window.window_handle();
+        if !state.windows.contains(&handle) {
+            state.windows.push(handle);
+        }
+        if state.queued {
+            return Vec::new();
+        }
+        state.queued = true;
+        drop(state);
+        let worker = cx.default_global::<Worker>();
+        while worker.pending.len() >= MAX_PENDING {
+            if let Some(old) = worker.pending.pop_front().and_then(|r| r.state.upgrade()) {
+                old.borrow_mut().queued = false;
+            }
+        }
+        worker.pending.push_back(Request {
+            state: Rc::downgrade(&self.state),
+            text: self.text.clone(),
+        });
+        pump(cx);
+        Vec::new()
     }
+}
+
+fn pump(cx: &mut App) {
+    let worker = cx.default_global::<Worker>();
+    if worker.running {
+        return;
+    }
+    let request = loop {
+        let Some(request) = worker.pending.pop_front() else {
+            return;
+        };
+        if request.state.strong_count() > 0 {
+            break request;
+        }
+    };
+    let language = request.state.upgrade().unwrap().borrow().language.clone();
+    worker.running = true;
+    let work = cx
+        .background_executor()
+        .spawn(async move { highlights(Some(&language), &request.text) });
+    cx.spawn(async move |cx| {
+        let runs = work.await;
+        let _ = cx.update(|cx| {
+            if let Some(state) = request.state.upgrade() {
+                let windows = {
+                    let mut state = state.borrow_mut();
+                    state.ready = Some(runs);
+                    state.queued = false;
+                    std::mem::take(&mut state.windows)
+                };
+                for window in windows {
+                    let _ = window.update(cx, |_, window, _| window.refresh());
+                }
+            }
+            cx.default_global::<Worker>().running = false;
+            pump(cx);
+        });
+    })
+    .detach();
+}
+
+fn eligible(language: Option<&str>, code: &str) -> bool {
+    language.is_some_and(|s| !s.is_empty())
+        && code.len() <= 64 * 1024
+        && !code.lines().any(|line| line.len() > 4096)
 }
 #[cfg(test)]
 thread_local! { static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
@@ -31,13 +136,13 @@ struct Highlighter {
     themes: ThemeSet,
     cache: VecDeque<(String, String, Runs)>,
 }
-thread_local! {
-    static HIGHLIGHTER: RefCell<Highlighter> = RefCell::new(Highlighter {
+static HIGHLIGHTER: LazyLock<Mutex<Highlighter>> = LazyLock::new(|| {
+    Mutex::new(Highlighter {
         syntaxes: SyntaxSet::load_defaults_newlines(),
         themes: ThemeSet::load_defaults(),
         cache: VecDeque::new(),
-    });
-}
+    })
+});
 
 pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
     let Some(language) = language.filter(|s| !s.is_empty()) else {
@@ -55,8 +160,10 @@ pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
         "yml" => "yaml".to_owned(),
         other => other.to_owned(),
     };
-    HIGHLIGHTER.with(|state| {
-        let mut state = state.borrow_mut();
+    {
+        let mut state = HIGHLIGHTER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if let Some(index) = state
             .cache
             .iter()
@@ -105,12 +212,80 @@ pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
             .cache
             .push_back((token, code.to_owned(), runs.clone()));
         runs
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn first_render_does_not_parse_and_completion_belongs_to_the_document(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let cx = cx.add_empty_window();
+        let old = prepare(Some("rust"), "let old = 1;\n");
+        let retired = Rc::downgrade(&old.state);
+        let current = prepare(Some("rust"), "let current = \"你好🐈\";\n");
+        let before = parse_count();
+        cx.update(|window, cx| {
+            cx.default_global::<Worker>().running = true;
+            assert!(old.highlights(window, cx).is_empty());
+            assert!(current.highlights(window, cx).is_empty());
+            assert_eq!(parse_count(), before, "render initialized the parser");
+        });
+        drop(old);
+        assert!(retired.upgrade().is_none());
+        cx.update(|_, cx| {
+            cx.default_global::<Worker>().running = false;
+            pump(cx);
+        });
+        cx.run_until_parked();
+        let ready = current
+            .state
+            .borrow()
+            .ready
+            .clone()
+            .expect("background highlight completed");
+        assert_eq!(ready, highlights(Some("rust"), &current.text));
+        assert!(!ready.is_empty());
+        let parses = parse_count();
+        cx.update(|window, cx| assert_eq!(current.highlights(window, cx), ready));
+        cx.run_until_parked();
+        assert_eq!(
+            parse_count(),
+            parses,
+            "revisiting unchanged code parsed again"
+        );
+    }
+
+    #[gpui::test]
+    fn rapid_scrolling_keeps_pending_work_bounded_and_releases_retired_documents(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let cx = cx.add_empty_window();
+        let documents = (0..100)
+            .map(|i| prepare(Some("rust"), &format!("let item_{i} = 1;")))
+            .collect::<Vec<_>>();
+        cx.update(|window, cx| {
+            cx.default_global::<Worker>().running = true;
+            for document in &documents {
+                document.highlights(window, cx);
+            }
+            assert_eq!(cx.global::<Worker>().pending.len(), MAX_PENDING);
+            assert!(
+                !documents[0].state.borrow().queued,
+                "evicted work must be retryable"
+            );
+        });
+        drop(documents);
+        cx.update(|_, cx| {
+            cx.default_global::<Worker>().running = false;
+            pump(cx);
+            assert!(cx.global::<Worker>().pending.is_empty());
+            assert!(!cx.global::<Worker>().running);
+        });
+    }
+
     #[test]
     fn syntax_colors_preserve_utf8_ranges_and_newlines() {
         for (language, code) in [

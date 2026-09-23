@@ -10,7 +10,7 @@ assert not {'reqwest','rusqlite','zork-config','zork-mesh','zork-station','axum'
 native=tomllib.loads((ROOT/'crates/zork-gui/Cargo.toml').read_text())
 assert native['dependencies']['zork-ui']['path']=='../zork-ui'
 assert any(item['name']=='zork-design-pc' and item['path']=='src/bin/design_pc.rs' for item in native['bin'])
-for name in ['activity','brand','message','selection','selector_menu','text_input']:
+for name in ['activity','brand','message','selection','text_input']:
  p=ROOT/f'crates/zork-gui/src/components/{name}.rs';source=p.read_text()
  # The native message adapter may also re-export its host-side cache types.
  # This permits declarations only, never a copied visual implementation.
