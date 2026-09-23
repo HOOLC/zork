@@ -237,17 +237,12 @@ impl Render for Page {
             .find(|option| option.value == self.data.model.value)
             .map(|option| option.label.clone())
             .unwrap_or_else(|| self.text.text("new_chat_choose_model"));
-        let trigger_label = if self.data.model.value.is_empty() {
-            model_label
-        } else if self.data.thinking.value.is_empty() {
-            model_label
-        } else {
-            format!(
-                "{} · {}",
-                model_label,
-                self.thinking_label(&self.data.thinking.value)
-            )
-        };
+        let trigger_label = self
+            .selected_thinking_index()
+            .and_then(|index| self.data.thinking.options.get(index))
+            .filter(|_| !self.data.model.value.is_empty())
+            .map(|option| format!("{} · {}", model_label, self.thinking_label(&option.value)))
+            .unwrap_or(model_label);
         let trigger = self.picker.trigger(
             "new-chat-options",
             trigger_label,

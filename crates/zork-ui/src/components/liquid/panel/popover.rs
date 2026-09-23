@@ -55,7 +55,10 @@ impl PopoverPanel {
             id,
             label.clone(),
             ActionStyle {
-                variant: Some(ButtonVariant::Ghost),
+                variant: Some(ButtonVariant::Soft),
+                leading: true,
+                trailing: Some("icons/chevron-down.svg"),
+                expanded: open,
                 disabled: !enabled,
                 ..Default::default()
             },
@@ -66,9 +69,7 @@ impl PopoverPanel {
         .h(px(28.))
         .font_weight(FontWeight::NORMAL)
         .radius(14.)
-        .px_3()
-        .gap_2()
-        .child(controls::icon("icons/chevron-down.svg", 12.))
+        .px_0()
         .control_overlay(self.anchor.measure(open, cx).into_any_element())
         .aria_expanded(open)
         .on_click(cx.listener(move |view, _, _, cx| {

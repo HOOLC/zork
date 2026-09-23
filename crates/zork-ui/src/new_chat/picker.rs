@@ -20,6 +20,19 @@ impl Page {
             _ => value.to_owned(),
         }
     }
+    pub(super) fn selected_thinking_index(&self) -> Option<usize> {
+        let levels = &self.data.thinking.options;
+        (!levels.is_empty()).then(|| {
+            self.thinking_preview
+                .unwrap_or_else(|| {
+                    levels
+                        .iter()
+                        .position(|option| option.value == self.data.thinking.value)
+                        .unwrap_or(0)
+                })
+                .min(levels.len() - 1)
+        })
+    }
     fn picker_button(&self, id: &'static str, label: String, cx: &Context<Self>) -> AnyElement {
         let accessible_label = format!("{}: {}", self.text.text("new_chat_choose_model"), label);
         adaptive_action(
@@ -259,15 +272,7 @@ impl Page {
                 .into_any_element();
         }
         let levels = &self.data.thinking.options;
-        let selected = self
-            .thinking_preview
-            .unwrap_or_else(|| {
-                levels
-                    .iter()
-                    .position(|o| o.value == self.data.thinking.value)
-                    .unwrap_or(0)
-            })
-            .min(levels.len().saturating_sub(1));
+        let selected = self.selected_thinking_index().unwrap_or(0);
         let label = levels
             .get(selected)
             .map(|o| self.thinking_label(&o.value))
