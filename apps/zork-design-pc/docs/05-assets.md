@@ -41,6 +41,8 @@ Lobe Icons 来源记录见 [sources](../licenses/provider-icons-sources.json)，
 
 ## 使用优先级
 
-SVG 为母稿，预览 PNG 为检视图。后续修改应先改 SVG，再重建预览。界面直接使用小尺寸 SVG；PNG 仅用于验证截图，不作为装饰素材。App icon 仍是平台提案，状态符号为已有功能图标的别名。
+SVG 为母稿，预览 PNG 为检视图。后续修改应先改 SVG，再重建预览。界面直接使用小尺寸 SVG；PNG 仅用于验证截图，不作为装饰素材。状态符号为已有功能图标的别名。
+
+桌面 App 实际使用的图标资源位于 `crates/zork-ui/assets/app/`：正式版沿用橙底的 `icon.png`，Dev 为深灰底终端徽记，Design 为浅紫底设计闪光徽记。macOS 的 ICNS 由 `scripts/build/macos-icon.py` 生成；本目录的 `assets/concepts/app-icon` 保留原提案供对照。
 
 头像新增与生成规则单独维护在 [头像生成规范](11-avatars.md)，场景与图标规范见 [图标与 SVG 状态](12-icons-and-scenes.md)。
