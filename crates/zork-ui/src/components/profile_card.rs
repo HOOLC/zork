@@ -56,16 +56,17 @@ pub fn render(
         true,
         controls::IconButtonSize::Standard,
     )
-    .radius(controls::FIELD_RADIUS)
+    .radius(crate::design::RADIUS.container)
     .font_weight(gpui::FontWeight::NORMAL)
     .justify_start()
     .w_full()
     .on_click(on_click)
     .h_auto()
     .min_h(px(80.))
-    .px(px(12.))
-    .py(px(8.))
-    .rounded(px(controls::FIELD_RADIUS))
+    .pl(px(14.))
+    .pr(px(16.))
+    .py(px(12.))
+    .rounded(px(crate::design::RADIUS.container))
     .flex()
     .items_center()
     .gap_3()
@@ -74,7 +75,7 @@ pub fn render(
             .id(format!("profile-provider-mark-{}", card.key))
             .size(px(40.))
             .flex_shrink_0()
-            .rounded(px(controls::FIELD_RADIUS))
+            .rounded(px(12.))
             .bg(rgb(p.sidebar))
             .flex()
             .items_center()
@@ -109,7 +110,7 @@ pub fn render(
                                 .flex_shrink_0()
                                 .max_w(px(150.))
                                 .min_w_0()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .child(device_name::label(
                                     format!("profile-device-{}", card.key),
@@ -124,7 +125,7 @@ pub fn render(
                 div()
                     .id(format!("profile-billing-{}", card.key))
                     .truncate()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(rgb(p.muted))
                     .child(card.billing.clone())
@@ -140,7 +141,7 @@ pub fn render(
     .child(
         div()
             .id(format!("profile-model-count-{}", card.key))
-            .text_size(px(11.))
+            .text_size(px(12.))
             .text_color(rgb(p.muted))
             .child(card.model_count.clone())
             .automation(AutomationRole::Status, card.model_count),
@@ -151,7 +152,7 @@ pub fn render(
             .px_2()
             .py_1()
             .rounded_full()
-            .text_size(px(11.))
+            .text_size(px(12.))
             .bg(gpui::rgba(
                 ((if card.verified { p.success } else { p.warning }) << 8) | 0x12,
             ))
@@ -171,7 +172,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
         .gap(px(10.))
         .min_w_0()
         .mt(px(3.))
-        .text_size(px(11.))
+        .text_size(px(12.))
         .when(quota.failed, |v| {
             v.text_color(rgb(p.warning)).child(quota.summary.clone())
         })

@@ -8,8 +8,9 @@ pub const ROW_SPACING: f32 = 35.;
 pub const DOCK_GAP: f32 = 3.;
 pub const TOP_EXTENSION: f32 = 12.;
 pub const EDITOR_TOP_INSET: f32 = 8.;
-/// Equal side and bottom spacing keeps the action concentric with the outer corner.
-pub const ACTION_INSET: f32 = 6.;
+/// Equal side and bottom spacing keeps the action concentric with the outer
+/// corner: a 24 px action plus 12 px inset meets the 24 px container radius.
+pub const ACTION_INSET: f32 = 12.;
 /// Outer corner follows the circular send button plus its bottom inset.
 pub const SURFACE_RADIUS: f32 = crate::design::LIGHT_UI.composer.surface_radius;
 pub const EDITOR_ACTION_GAP: f32 = 2.;

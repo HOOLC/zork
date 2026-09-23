@@ -297,7 +297,7 @@ pub fn quiet_button(
     .min_h_0()
     .py_0()
     .w_auto()
-    .px_2()
+    .px(px(12.))
     .gap_1()
 }
 
@@ -584,10 +584,12 @@ pub fn status_notice(message: String, kind: NoticeKind) -> Div {
     use crate::components::widgets::primitives::{feedback, surface};
     let (_, fill) = feedback::colors(kind);
     div().w_full().child(
-        surface("status-notice-surface", FIELD_RADIUS, fill, false)
+        // A banner is a container: its corner and insets grow together.
+        surface("status-notice-surface", crate::design::RADIUS.container, fill, false)
             .w_full()
-            .px_3()
-            .py_2()
+            .pl(px(18.))
+            .pr(px(12.))
+            .py(px(12.))
             .child(feedback::notice_content(
                 "status-notice",
                 message,

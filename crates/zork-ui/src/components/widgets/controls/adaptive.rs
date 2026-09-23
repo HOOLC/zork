@@ -110,7 +110,7 @@ pub fn adaptive_input(
             .min_w_0()
             .flex()
             .items_center()
-            .px_3()
+            .px(px(16.))
             .py(px(5.))
             .line_height(px(20.))
             .text_size(px(13.))

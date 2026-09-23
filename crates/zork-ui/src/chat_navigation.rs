@@ -143,7 +143,8 @@ impl Navigation {
         self.active = active;
         self.width = width;
         if all || removed || !changed.is_empty() {
-            crate::components::region::invalidate(cx, &["chats"]);
+            // The device dock in the footer shows names and reachability too.
+            crate::components::region::invalidate(cx, &["chats", "footer"]);
         }
         if all || removed {
             crate::components::region::invalidate_all(cx);
@@ -280,12 +281,13 @@ impl Navigation {
     fn day_header(&self, label: String) -> impl IntoElement {
         div()
             .id(format!("chat-day-{label}"))
-            .px(px(8.))
-            .pt(px(12.))
-            .pb(px(2.))
+            .px(px(12.))
+            .pt(px(14.))
+            .pb(px(4.))
             .text_size(px(12.))
-            .line_height(px(16.))
-            .text_color(rgb(ZORK_UI.palette.muted))
+            .line_height(px(18.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(rgb(ZORK_UI.palette.subtle))
             .child(label.clone())
             .automation(AutomationRole::Status, label)
     }
@@ -422,8 +424,8 @@ impl Navigation {
         let archive_action = div()
             .id(format!("hover-shell-{action_id}"))
             .absolute()
-            .right(px(6.))
-            .top(px(5.))
+            .right(px(8.))
+            .top(px(6.))
             .size(px(20.))
             .on_hover(cx.listener(move |v, hovered: &bool, _, cx| {
                 let next = (*hovered).then(|| action_hover_id.clone());
@@ -444,11 +446,12 @@ impl Navigation {
             .tab_stop(true)
             .relative()
             .w_full()
-            .px(px(12.))
-            .py(px(6.))
+            .h(px(crate::controls::CONTROL_HEIGHT))
+            .pl(px(10.))
+            .pr(px(12.))
             .flex()
-            .flex_col()
-            .gap(px(1.))
+            .items_center()
+            .gap(px(8.))
             .cursor_pointer()
             .rounded(px(radius))
             .when(!selected, |row| {
@@ -463,34 +466,30 @@ impl Navigation {
                     .hover(|row| row.bg(rgb(crate::design::INTERACTION.selected_hover)))
                     .focus_visible(|row| row.shadow(crate::controls::focus_ring()))
             })
+            // One capsule line: the execution device's mark, then the title. The
+            // device's reachability lives in the device dock and the details tooltip.
+            .child(crate::device_name::mark(&device.name, 18.))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .line_height(px(18.))
-                    .text_ellipsis()
-                    .pr(px(24.))
-                    .child(title.clone()),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
+                    .flex_1()
                     .min_w_0()
-                    .text_size(px(11.))
-                    .line_height(px(16.))
-                    .text_color(rgb(ZORK_UI.palette.muted))
-                    .child(ui::icon("icons/node.svg", 12.))
-                    .child(crate::device_name::label(
-                        "chat-device-name",
-                        device.name.clone(),
-                        &device.status,
-                        Some(&self.locale),
-                    )),
+                    .text_size(px(13.))
+                    .line_height(px(20.))
+                    .text_ellipsis()
+                    .pr(px(20.))
+                    .child(title.clone()),
             )
             .child(archive_action)
             .when_some(chat.archive_error.clone(), |row, error| {
-                row.child(div().pr(px(24.)).text_size(px(11.)).child(error))
+                row.child(
+                    div()
+                        .absolute()
+                        .left(px(36.))
+                        .bottom(px(-14.))
+                        .text_size(px(12.))
+                        .text_color(rgb(ZORK_UI.palette.danger))
+                        .child(error),
+                )
             })
             .when(chat.unread, |row| {
                 row.child(
@@ -498,8 +497,8 @@ impl Navigation {
                         .id(format!("chat-unread-{}-{}", device.id, chat.chat_id))
                         .opacity(if show_icon { 0. } else { 1. })
                         .absolute()
-                        .right(px(8.))
-                        .top(px(10.))
+                        .right(px(14.))
+                        .top(px(13.))
                         .size(px(6.))
                         .rounded_full()
                         .bg(rgb(ZORK_UI.palette.text)),
@@ -695,20 +694,75 @@ impl Render for Navigation {
 }
 
 impl Navigation {
+    /// The device dock keeps the Mesh visible: each device with its mark and
+    /// reachability, the connect action in the section header, then settings.
     fn render_footer(&self, cx: &mut Context<Self>) -> Div {
-        let add_device = self
-            .tabs
-            .tab("device-add".into(), false)
-            .child(ui::icon("icons/plus.svg", 20.))
-            .child(self.locale.text("device_add"))
-            .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)));
-        let add_device = add_device
-            .automation(AutomationRole::Button, self.locale.text("device_add"))
-            .into_any_element();
-        self.tabs.column().py_2().child(add_device).child(
+        let add_label = self.locale.text("device_add");
+        let add_device = crate::controls::icon_button_sized(
+            "device-add",
+            true,
+            crate::controls::IconButtonSize::Small,
+        )
+        .child(ui::icon("icons/plus.svg", 14.))
+        .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)));
+        let add_device = crate::components::tooltip::hint(
+            add_device.automation(AutomationRole::Button, add_label.clone()),
+            "device-add",
+            add_label,
+        );
+        let header = div()
+            .id("device-dock-header")
+            .h(px(28.))
+            .pl(px(12.))
+            .pr(px(4.))
+            .flex()
+            .items_center()
+            .text_size(px(12.))
+            .line_height(px(18.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(rgb(ZORK_UI.palette.subtle))
+            .child(div().flex_1().child(self.locale.text("navigation_device")))
+            .child(add_device);
+        let devices = self.devices.iter().map(|device| {
+            let node = device.id.clone();
+            self.tabs
+                .tab(format!("device-dock-{}", device.id), false)
+                .pl(px(10.))
+                .child(crate::device_name::label(
+                    format!("device-dock-name-{}", device.id),
+                    device.name.clone(),
+                    &device.status,
+                    Some(&self.locale),
+                ))
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    v.go(Some(node.clone()), Destination::Manage(3), cx)
+                }))
+                .automation(
+                    AutomationRole::Button,
+                    crate::device_name::accessible_summary(
+                        &device.name,
+                        &device.status,
+                        Some(&self.locale),
+                    ),
+                )
+        });
+        self.tabs
+            .column()
+            .pt_2()
+            .pb_2()
+            .child(header)
+            .children(devices)
+            .child(
+                div()
+                    .h(px(crate::design::BORDER_WIDTH))
+                    .mx(px(12.))
+                    .my(px(6.))
+                    .bg(rgb(ZORK_UI.palette.border)),
+            )
+            .child(
             self.tabs
                 .tab("desktop-manage".into(), false)
-                .child(ui::icon("icons/settings.svg", 20.))
+                .child(ui::icon("icons/settings.svg", 16.))
                 .child(self.locale.text("nav_settings"))
                 .on_click(
                     cx.listener(|v, _, _, cx| v.go(v.active.clone(), Destination::Manage(4), cx)),

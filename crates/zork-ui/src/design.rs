@@ -60,6 +60,7 @@ pub fn apply_theme(theme: Theme, cx: &mut gpui::App) {
     }
     set_theme(theme);
     init_component_theme(cx);
+    crate::components::region::invalidate_every(cx);
     cx.refresh_windows();
 }
 /// Keeps a window's theme in step with the system appearance, unless pinned.
@@ -612,8 +613,8 @@ pub const LIGHT_UI: ZorkUiSpec = ZorkUiSpec {
         user_line_height: 20.0,
         user_max_width: 500.0,
         user_left_clearance: 42.0,
-        user_padding_x: 16.0,
-        user_padding_y: 10.0,
+        user_padding_x: 18.0,
+        user_padding_y: 11.0,
         user_radius: RADIUS.bubble,
         user_fill: 0xF1EEE8,
     },

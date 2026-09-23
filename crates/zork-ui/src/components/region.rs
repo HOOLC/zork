@@ -36,6 +36,27 @@ pub fn invalidate<T: 'static>(cx: &mut Context<T>, names: &[&str]) {
 pub fn invalidate_all<T: 'static>(cx: &mut Context<T>) {
     invalidate(cx, &[]);
 }
+/// Marks every retained region in the app dirty, for changes such as the theme
+/// that affect all of them at once.
+pub fn invalidate_every(cx: &mut App) {
+    let ids = cx
+        .try_global::<Registry>()
+        .map(|registry| {
+            registry
+                .0
+                .values()
+                .flat_map(|regions| regions.values())
+                .map(|(id, dirty)| {
+                    dirty.set(true);
+                    *id
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    for id in ids {
+        cx.notify(id);
+    }
+}
 
 type Renderer<T> = Box<dyn Fn(&mut T, &mut Window, &mut Context<T>) -> gpui::AnyElement>;
 struct Region<T: 'static> {

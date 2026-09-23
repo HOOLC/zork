@@ -34,109 +34,126 @@ pub fn render_session(
     let p = ZORK_UI.palette;
     let count = if expanded { 3 } else { 1 };
     let shown = rows.iter().rev().take(count).cloned().collect::<Vec<_>>();
+    let working = !stopped && rows.iter().any(|row| row.running);
     let view = div()
         .id("session-activity-compact")
         .w_full()
         .h(px(110.))
         .min_w_0()
         .flex()
-        .gap(px(8.))
+        .flex_col()
+        .px(px(6.))
+        .py(px(4.))
+        .rounded(px(crate::design::RADIUS.container))
+        .bg(rgb(p.prompt))
         .child(
             div()
-                .min_w_0()
-                .flex_1()
-                .h(px(110.))
+                .h(px(30.))
+                .flex_shrink_0()
+                .pl(px(6.))
                 .flex()
-                .flex_col()
+                .items_center()
+                .gap(px(8.))
+                // Persimmon means work in progress; it disappears when the round ends.
+                .when(working, |v| {
+                    v.child(
+                        div()
+                            .size(px(8.))
+                            .rounded_full()
+                            .flex_shrink_0()
+                            .bg(rgb(crate::design::INTERACTION.accent)),
+                    )
+                })
+                .child(crate::device_name::mark(name, 18.))
                 .child(
                     div()
-                        .h(px(32.))
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.text))
-                                .child(name.to_owned()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(rgb(p.subtle))
-                                .child(status.to_owned()),
-                        )
-                        .child(
-                            div()
-                                .id("session-activity-expand")
-                                .tab_stop(true)
-                                .cursor_pointer()
-                                .text_size(px(10.))
-                                .text_color(rgb(p.subtle))
-                                .child(if expanded { less } else { more }.to_owned())
-                                .on_click(move |_, _, cx| on_expand(cx))
-                                .automation(
-                                    AutomationRole::Button,
-                                    if expanded { less } else { more },
-                                ),
-                        ),
+                        .text_size(px(12.5))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(rgb(p.text))
+                        .child(name.to_owned()),
                 )
                 .child(
                     div()
-                        .h(px(78.))
-                        .overflow_hidden()
-                        .flex()
-                        .flex_col()
-                        .children(shown.into_iter().rev().map(move |row| {
-                            let id = row.id.clone();
-                            let open = on_open.clone();
-                            let accessible = format!("{} {}", row.label, row.summary);
-                            div()
-                                .id(format!("session-activity-{}", row.id))
-                                .tab_stop(true)
-                                .h(px(26.))
-                                .flex_shrink_0()
-                                .min_w_0()
-                                .flex()
-                                .items_center()
-                                .gap(px(7.))
-                                .cursor_pointer()
-                                .on_click(move |_, _, cx| open(id.clone(), cx))
-                                .child(
-                                    crate::controls::icon(row.icon, 14.)
-                                        .text_color(rgb(if row.failed {
-                                            p.danger
-                                        } else {
-                                            p.subtle
-                                        }))
-                                        .flex_shrink_0(),
-                                )
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .flex_shrink_0()
-                                        .text_size(px(11.))
-                                        .text_color(rgb(if row.failed { p.danger } else { p.text }))
-                                        .child(row.label),
-                                )
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .truncate()
-                                        .text_size(px(11.))
-                                        .text_color(rgb(p.subtle))
-                                        .child(row.summary),
-                                )
-                                .when(row.running && !stopped, |v| {
-                                    v.child(crate::components::loading::activity(
-                                        format!("session-activity-loading-{}", row.id),
-                                        animate,
-                                    ))
-                                })
-                                .automation(AutomationRole::Button, accessible)
-                        })),
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(rgb(p.subtle))
+                        .child(status.to_owned()),
+                )
+                .child(
+                    crate::controls::quiet_button(
+                        "session-activity-expand",
+                        if expanded { less } else { more }.to_owned(),
+                        true,
+                        crate::controls::IconButtonSize::Compact,
+                    )
+                    .child(
+                        crate::controls::icon("icons/chevron-down.svg", 12.)
+                            .when(expanded, |icon| {
+                                icon.with_transformation(gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI)))
+                            }),
+                    )
+                    .on_click(move |_, _, cx| on_expand(cx))
+                    .automation(AutomationRole::Button, if expanded { less } else { more }),
                 ),
+        )
+        .child(
+            div()
+                .h(px(72.))
+                .overflow_hidden()
+                .flex()
+                .flex_col()
+                .children(shown.into_iter().rev().map(move |row| {
+                    let id = row.id.clone();
+                    let open = on_open.clone();
+                    let accessible = format!("{} {}", row.label, row.summary);
+                    div()
+                        .id(format!("session-activity-{}", row.id))
+                        .tab_stop(true)
+                        .h(px(24.))
+                        .flex_shrink_0()
+                        .min_w_0()
+                        .px(px(10.))
+                        .rounded(px(crate::design::RADIUS.control))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .cursor_pointer()
+                        .hover(|v| v.bg(rgb(crate::design::INTERACTION.neutral_hover)))
+                        .focus_visible(|v| {
+                            v.bg(rgb(p.prompt)).shadow(crate::controls::focus_ring())
+                        })
+                        .on_click(move |_, _, cx| open(id.clone(), cx))
+                        .child(
+                            crate::controls::icon(row.icon, 14.)
+                                .text_color(rgb(if row.failed { p.danger } else { p.muted }))
+                                .flex_shrink_0(),
+                        )
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex_shrink_0()
+                                .text_size(px(12.5))
+                                .text_color(rgb(if row.failed { p.danger } else { p.text }))
+                                .child(row.label),
+                        )
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(12.))
+                                .text_color(rgb(p.subtle))
+                                .child(row.summary),
+                        )
+                        .when(row.running && !stopped, |v| {
+                            v.child(crate::components::loading::activity(
+                                format!("session-activity-loading-{}", row.id),
+                                animate,
+                            ))
+                        })
+                        .automation(AutomationRole::Button, accessible)
+                })),
         );
     if leaving && animate {
         view.with_animation(
@@ -202,7 +219,7 @@ pub fn render_with_id(id: String, items: &[Presentation], animate: bool) -> Div 
                     .min_w_0()
                     .flex_1()
                     .truncate()
-                    .text_size(px(10.))
+                    .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(rgb(if items.iter().any(|item| item.failed) {
                         p.danger

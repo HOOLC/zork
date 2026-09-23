@@ -118,7 +118,70 @@ impl Page {
         self.focus_pending = true;
         cx.notify();
     }
+    /// Up to four targets show as tabs: every device's mark, name and
+    /// reachability stay visible, and one click chooses it.
+    fn device_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+        let choice = &self.data.device;
+        let editable = self.data.editable;
+        div()
+            .id("new-chat-device-tabs")
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .min_w_0()
+            .overflow_hidden()
+            .children(choice.options.iter().enumerate().map(|(i, option)| {
+                let selected = option.value == choice.value;
+                let value = option.value.clone();
+                let content = match &option.status {
+                    Some(status) => crate::device_name::label(
+                        format!("new-chat-device-name-{i}"),
+                        option.label.clone(),
+                        status,
+                        Some(&self.text),
+                    )
+                    .into_any_element(),
+                    None => div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(crate::device_name::mark(&option.label, 18.))
+                        .child(option.label.clone())
+                        .into_any_element(),
+                };
+                crate::components::widgets::controls::adaptive_action(
+                    format!("new-chat-device-{i}"),
+                    "",
+                    crate::components::widgets::controls::ActionStyle {
+                        quiet: true,
+                        icon_only: Some(false),
+                        selected,
+                        disabled: !editable,
+                        ..Default::default()
+                    },
+                    ZORK_UI.palette.sidebar_hover,
+                )
+                .h(px(28.))
+                .min_h(px(28.))
+                .pl(px(6.))
+                .pr(px(12.))
+                .font_weight(FontWeight::NORMAL)
+                .child(content)
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    if view.data.editable {
+                        cx.emit(Event::SelectDevice(value.clone()));
+                        view.device_menu = false;
+                        cx.notify();
+                    }
+                }))
+                .automation_enabled(editable, AutomationRole::Button, option.label.clone())
+            }))
+            .into_any_element()
+    }
     fn device_selector(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.data.device.options.len() <= 4 {
+            return self.device_tabs(cx);
+        }
         let choice = &self.data.device;
         let current = choice
             .options
@@ -309,7 +372,9 @@ impl Render for Page {
                         .flex()
                         .items_center()
                         .gap_1()
-                        .child(ui::icon("icons/node.svg", 14.))
+                        .when(self.data.device.options.len() > 4, |v| {
+                            v.child(ui::icon("icons/node.svg", 14.))
+                        })
                         .child(device),
                 )
                 .automation(AutomationRole::Status, "设备选择栏")

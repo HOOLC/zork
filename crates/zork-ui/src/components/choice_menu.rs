@@ -76,7 +76,7 @@ impl ListDelegate for Options {
             item: ListItem::new(row.id.clone())
                 .disabled(!self.enabled)
                 .h(px(32.))
-                .px(px(10.))
+                .px(px(14.))
                 .py_0()
                 .rounded(px(crate::design::RADIUS.control))
                 .text_size(px(12.))

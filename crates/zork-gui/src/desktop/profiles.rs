@@ -1237,11 +1237,13 @@ impl Render for ProfilesView {
         let rows = if self.dialog_only {
             vec![]
         } else {
+            // Rows keep their intrinsic height: quota rings may wrap in narrow windows.
+            let row_width = window.viewport_size().width.as_f32();
             ids.into_iter()
                 .map(|id| {
-                    self.regions.element(
+                    self.regions.auto_height(
                         &format!("profile/{id}"),
-                        gpui::StyleRefinement::default().w_full().h(px(80.)),
+                        row_width,
                         cx,
                         move |v, _, cx| {
                             v.profiles

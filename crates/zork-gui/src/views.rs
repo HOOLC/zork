@@ -1122,21 +1122,23 @@ impl Render for RootView {
                                                     )
                                                     .px_4()
                                                     .py_2()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(12.))
                                                     .text_color(rgb(DIM()))
                                                     .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
                                                     .border_color(rgb(BORDER()))
                                                     .child(self.connection_hint())
                                                     .when(self.access_revoked, |v| {
                                                         v.child(
-                                                            div()
-                                                                .id("device-reconnect")
-                                                                .px_2()
-                                                                .cursor_pointer()
-                                                                .child(
-                                                                    self.locale
-                                                                        .text("device_reconnect"),
-                                                                )
+                                                            zork_ui::controls::button(
+                                                                "device-reconnect",
+                                                                self.locale
+                                                                    .text("device_reconnect")
+                                                                    .to_string(),
+                                                                false,
+                                                                true,
+                                                            )
+                                                            .h(px(28.))
+                                                            .min_h(px(28.))
                                                                 .on_click(cx.listener(
                                                                     |v, _, _, cx| {
                                                                         v.access_revoked = false;
@@ -1467,19 +1469,19 @@ impl RootView {
                                             )
                                             .into_any_element()
                                         } else {
-                                            div()
-                                                .id("load-older")
-                                                .px_3()
-                                                .py_1()
-                                                .rounded(px(zork_ui::design::RADIUS.control))
-                                                .cursor_pointer()
-                                                .hover(|style| style.bg(rgb(PROMPT())))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::button(
+                                                "load-older",
+                                                locale.text("load_earlier").to_string(),
+                                                false,
+                                                true,
+                                            )
+                                            .h(px(28.))
+                                            .min_h(px(28.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = older_root.update(cx, |v, cx| {
                                                         v.load_older(cx);
                                                     });
                                                 })
-                                                .child(locale.text("load_earlier"))
                                                 .automation(
                                                     AutomationRole::Button,
                                                     locale.text("load_earlier"),
@@ -1533,10 +1535,21 @@ impl RootView {
                                     .w(px(content_width))
                                     .mx_auto()
                                     .flex()
+                                    .items_center()
                                     .justify_end()
                                     .gap_2()
-                                    .text_size(px(11.))
-                                    .text_color(rgb(DIM()))
+                                    .text_size(px(12.))
+                                    .text_color(rgb(if message.status == "failed" {
+                                        ZORK_UI.palette.danger
+                                    } else {
+                                        DIM()
+                                    }))
+                                    .when(message.status == "failed", |row| {
+                                        row.child(
+                                            zork_ui::controls::icon("icons/attention.svg", 14.)
+                                                .text_color(rgb(ZORK_UI.palette.danger)),
+                                        )
+                                    })
                                     .child(
                                         match message.status.as_str() {
                                             "failed" => delivery_locale.text("delivery_failed"),
@@ -1546,11 +1559,15 @@ impl RootView {
                                     )
                                     .when(message.status == "failed", |row| {
                                         row.child(
-                                            div()
-                                                .id(format!("retry-queued-{retry_id}"))
-                                                .cursor_pointer()
-                                                .child(delivery_locale.text("delivery_resend"))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::button(
+                                                format!("retry-queued-{retry_id}"),
+                                                delivery_locale.text("delivery_resend").to_string(),
+                                                false,
+                                                true,
+                                            )
+                                            .h(px(28.))
+                                            .min_h(px(28.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = retry_root.update(cx, |v, cx| {
                                                         v.resend_queued(&retry_id, cx)
                                                     });
@@ -1561,11 +1578,14 @@ impl RootView {
                                                 ),
                                         )
                                         .child(
-                                            div()
-                                                .id(format!("delete-queued-{delete_id}"))
-                                                .cursor_pointer()
-                                                .child(delivery_locale.text("delivery_delete"))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::quiet_button(
+                                                format!("delete-queued-{delete_id}"),
+                                                delivery_locale.text("delivery_delete").to_string(),
+                                                true,
+                                                zork_ui::controls::IconButtonSize::Compact,
+                                            )
+                                            .px(px(12.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = delete_root.update(cx, |v, cx| {
                                                         v.delete_failed_queued(&delete_id, cx)
                                                     });
