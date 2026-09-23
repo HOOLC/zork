@@ -32,36 +32,36 @@ impl Gallery {
 
 impl Render for Gallery {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows = (0..80).map(|index| {
-            ui::quiet_button(
-                format!("component-gallery-row-{index}"),
-                format!("组件示例 {index}"),
-                true,
-                ui::IconButtonSize::Small,
-            )
-            .w_full()
-            .justify_start()
-            .into_any_element()
-        });
-        let directory = (0..80).map(|index| {
-            ui::quiet_button(
-                format!("component-gallery-directory-row-{index}"),
-                format!("控件 {index}"),
-                true,
-                ui::IconButtonSize::Small,
-            )
-            .w_full()
-            .justify_start()
-            .into_any_element()
-        });
+        let directory = gpui::uniform_list(
+            "component-gallery-directory",
+            80,
+            cx.processor(|_, range: std::ops::Range<usize>, _, _| {
+                range
+                    .map(|index| {
+                        let label = format!("控件 {index}");
+                        div().h(px(40.)).pb_1().child(
+                            ui::quiet_button(
+                                format!("component-gallery-directory-row-{index}"),
+                                label.clone(),
+                                true,
+                                ui::IconButtonSize::Small,
+                            )
+                            .w_full()
+                            .justify_start()
+                            .automation(AutomationRole::Button, label),
+                        )
+                    })
+                    .collect()
+            }),
+        )
+        .h(px(480.))
+        .min_h_0();
         let dialog = self.dialog.render(
             "component-gallery-dialog",
             "组件目录",
             div()
-                .id("component-gallery-directory")
-                .flex()
-                .flex_col()
-                .children(directory),
+                .id("component-gallery-directory-body")
+                .child(directory),
             None,
             self.open,
             window,
@@ -96,16 +96,31 @@ impl Render for Gallery {
                     ),
             )
             .child(
-                div()
-                    .id("component-gallery-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p_4()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .children(rows),
+                gpui::uniform_list(
+                    "component-gallery-scroll",
+                    80,
+                    cx.processor(|_, range: std::ops::Range<usize>, _, _| {
+                        range
+                            .map(|index| {
+                                let label = format!("组件示例 {index}");
+                                div().h(px(40.)).pb_1().child(
+                                    ui::quiet_button(
+                                        format!("component-gallery-row-{index}"),
+                                        label.clone(),
+                                        true,
+                                        ui::IconButtonSize::Small,
+                                    )
+                                    .w_full()
+                                    .justify_start()
+                                    .automation(AutomationRole::Button, label),
+                                )
+                            })
+                            .collect()
+                    }),
+                )
+                .flex_1()
+                .min_h_0()
+                .p_4(),
             )
             .children(dialog)
     }
