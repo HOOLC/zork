@@ -579,10 +579,9 @@ fn menu_dropdown<V: 'static>(
         Trigger::Field
     };
     let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
-    let control_width = state
-        .borrow_mut()
-        .trigger_width(&label, trigger, window)
-        .min(max_width.unwrap_or(f32::MAX).max(48.));
+    let control_width = state.borrow_mut().trigger_width(&label, trigger, window)
+        + if leading.is_some() { 18. + 8. } else { 0. };
+    let control_width = control_width.min(max_width.unwrap_or(f32::MAX).max(48.));
     let popover = state.borrow_mut().render_with_icons(
         id,
         label,
