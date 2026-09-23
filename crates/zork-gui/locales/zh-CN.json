@@ -19,6 +19,7 @@
   "new_chat_device": "设备",
   "new_chat_choose_model": "选择模型",
   "new_chat_thinking": "思考深度",
+  "new_chat_thinking_short": "思考",
   "new_chat_profile_auto": "Profile · 自动",
   "new_chat_retry": "重试创建",
   "new_chat_creating": "正在创建 Chat…",

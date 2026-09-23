@@ -33,7 +33,7 @@ impl OnboardingStory {
                 assert!(view.begin_onboarding("mini1", cx));
             });
         }
-        let chat = new_chat_story("draft", width, cx);
+        let chat = new_chat_story("first-chat", width, cx);
         if state == "ready" {
             chat.update(cx, |view, cx| view.set_welcome(true, cx));
         }
