@@ -122,7 +122,7 @@ private fun fixture(route: String): WorkbenchState {
             deliveryError="目标设备版本过旧，不支持当前客户端发送消息，请先更新目标设备。")))
     return WorkbenchState(peers=peers, activePeer=peers[0], sessions=tasks.values.flatten(), connected=true,
         deviceTrees=mapOf("mini1" to DeviceTree(emptyList(),tasks.values.flatten(),emptyMap(),true), "mini2" to DeviceTree(emptyList(),listOf(task("mobile","移动端交互调研")),emptyMap(),true)),
-        conversation=if(route=="navigation") null else Conversation("brand","品牌资源接入",avatar="fox"), participants=members,
+        conversation=if(route=="navigation") null else Conversation("brand","品牌资源接入"), participants=members,
         messages=listOf(
             ChatMessage("own","","移动端也沿用这套品牌，\n阅读和回复要轻一点。",true,createdAt="2026-09-07T10:24:00+08:00"),
             ChatMessage("product","产品 Leader","收到。导航和群聊分开，\n手机上一次专注一件事。",false,createdAt="2026-09-07T10:25:00+08:00",device="mini1",model="gpt-6"),

@@ -345,7 +345,6 @@ impl Navigation {
             key: format!("task-{}-{}", device.id, chat.chat_id),
             title: title.clone(),
             kind: "Chat".into(),
-            avatar: None,
             description: chat.description.clone(),
             rows,
         };

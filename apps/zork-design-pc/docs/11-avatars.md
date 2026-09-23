@@ -1,8 +1,10 @@
 # 动物头像生成规范
 
-这份文档用于持续新增同一系列的 Zork Agent 头像。**现有 12 个 SVG 是风格基准；生成的新图先作为候选，再经过小尺寸检查进入素材库。**
+历史设计资料；当前客户端不展示或编辑 Agent 头像，也不继续扩充此系列。
 
-现有头像可在原生 `zork-design-pc` 的“设计素材”目录查看。[头像配色与结构数据](../tokens/avatar-system.json) · [可复用提示词](../avatars/generation-brief.md)
+这份文档记录曾用于 Zork Agent 头像系列的画法。原有 12 个 SVG 保留为历史素材。
+
+原始 SVG 位于 `apps/zork-design-pc/assets/avatars/`。[头像配色与结构数据](../tokens/avatar-system.json) · [历史生成简报](../avatars/generation-brief.md)
 
 ## 核心风格
 

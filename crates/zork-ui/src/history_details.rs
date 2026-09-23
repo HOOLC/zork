@@ -13,7 +13,6 @@ pub enum Presentation {
     Agent {
         id: String,
         name: String,
-        avatar: Option<String>,
         role: Option<String>,
     },
     Entry(Entry),
@@ -90,19 +89,13 @@ impl Render for Details {
             return gpui::Empty.into_any_element();
         };
         let body = match &data.presentation {
-            Presentation::Agent {
-                id,
-                name,
-                avatar,
-                role,
-            } => div()
+            Presentation::Agent { id, name, role } => div()
                 .p_3()
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap_3()
-                        .child(ui::agent_avatar(avatar.as_deref(), 32.))
                         .child(div().text_size(px(16.)).child(name.clone())),
                 )
                 .child(

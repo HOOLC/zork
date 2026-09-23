@@ -267,10 +267,6 @@ impl RootView {
                     .or_else(|| participant.map(|p| p.name.as_str()))
                     .unwrap_or(id)
                     .to_owned(),
-                avatar: agent
-                    .and_then(|a| a["avatar"].as_str())
-                    .or_else(|| participant.and_then(|p| p.avatar.as_deref()))
-                    .map(str::to_owned),
                 role: agent.and_then(|a| a["role"].as_str()).map(str::to_owned),
             })
         } else {

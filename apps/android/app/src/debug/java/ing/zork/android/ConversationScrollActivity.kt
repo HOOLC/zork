@@ -48,7 +48,7 @@ class ConversationScrollActivity : ComponentActivity() {
             CompositionLocalProvider(LocalDensity provides Density(1f,1f)) {
                 ZorkTheme {
                     scroll = rememberLazyListState()
-                    val state = WorkbenchState(conversation=Conversation("scroll","滚动验证",avatar="cat"),messages=rows,participants=members,historyLoading=loading,older=older)
+                    val state = WorkbenchState(conversation=Conversation("scroll","滚动验证"),messages=rows,participants=members,historyLoading=loading,older=older)
                     val actions = WorkbenchActions(older = { olderLoads++; older = false; load(1) })
                     Column(Modifier.requiredSize(390.dp,844.dp)) {
                         if (intent.getBooleanExtra("header",false)) ConversationHeader(state,WorkbenchActions(),true)

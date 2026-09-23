@@ -265,7 +265,7 @@ impl RootView {
             "png" => ("image/png", png.to_vec()),
             "svg" => (
                 "image/svg+xml",
-                include_bytes!("../../../zork-ui/assets/avatars/portraits/fox.svg").to_vec(),
+                include_bytes!("../../../zork-ui/tests/fixtures/image-file.svg").to_vec(),
             ),
             "jpeg" => {
                 let mut bytes = std::io::Cursor::new(Vec::new());

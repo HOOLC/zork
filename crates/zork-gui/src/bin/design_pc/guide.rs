@@ -19,7 +19,6 @@ pub fn category_label(category: &str) -> &str {
     match category {
         "brand" => "品牌标志",
         "wordmark" => "字标",
-        "svg/avatars" => "动物头像",
         "svg/icons" => "产品图标",
         "gui/glyphs" => "界面图标",
         "gui/provider-icons" => "供应商图标",
@@ -62,6 +61,9 @@ pub fn images() -> Vec<DesignImage> {
         .flatten()
         .filter_map(|item| {
             let path = item["path"].as_str()?;
+            if item["category"] == "svg/avatars" {
+                return None;
+            }
             if !path.ends_with(".svg") && !path.ends_with(".png") {
                 return None;
             }
@@ -119,14 +121,12 @@ pub fn catalog() -> Vec<Guide> {
         source!("docs/08-decisions.md"),
         source!("docs/09-handoff.md"),
         source!("docs/10-mobile.md"),
-        source!("docs/11-avatars.md"),
         source!("docs/12-icons-and-scenes.md"),
         source!("docs/14-controls-revision.md"),
         source!("docs/gui-approved-design.md"),
         source!("mobile/README.md"),
         source!("mobile/concept-v1.md"),
         source!("mobile/design-spec.md"),
-        source!("avatars/generation-brief.md"),
         source!("implementation/README.md"),
     ];
     sources

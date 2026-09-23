@@ -12,7 +12,6 @@ impl Story {
             Presentation::Agent {
                 id: "leader".into(),
                 name: "产品领队".into(),
-                avatar: Some("fox".into()),
                 role: Some("整理产品需求与研究资料".into()),
             }
         } else {

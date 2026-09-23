@@ -11,7 +11,9 @@ manifest = json.loads((DESIGN / "assets/manifest.json").read_text())
 paths = {
     item["path"]
     for item in manifest["items"]
-    if item["path"].endswith((".svg", ".png")) and (DESIGN / item["path"]).is_file()
+    if item["category"] != "svg/avatars"
+    and item["path"].endswith((".svg", ".png"))
+    and (DESIGN / item["path"]).is_file()
 }
 for group in ("previews", "motion", "wordmark", "archive/reference-captures"):
     paths.update(

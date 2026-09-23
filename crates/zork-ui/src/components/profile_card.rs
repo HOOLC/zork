@@ -70,7 +70,7 @@ pub fn render(
     .gap_3()
     .child(
         div()
-            .id(format!("profile-avatar-{}", card.key))
+            .id(format!("profile-provider-mark-{}", card.key))
             .size(px(40.))
             .flex_shrink_0()
             .rounded(px(controls::FIELD_RADIUS))

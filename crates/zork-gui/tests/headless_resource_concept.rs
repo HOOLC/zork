@@ -267,10 +267,7 @@ impl Render for Concept {
                         .flex()
                         .items_center()
                         .gap_3()
-                        .child(ui::agent_avatar(
-                            Some(if id == 0 { "fox" } else { "panda" }),
-                            32.,
-                        ))
+                        .child(ui::icon("icons/sparkles.svg", 20.))
                         .child(
                             div()
                                 .flex()
@@ -356,7 +353,7 @@ impl Render for Concept {
                 name,
                 body,
                 None,
-                &self.modal.focus,
+                &self.modal,
                 w,
                 cx,
                 true,

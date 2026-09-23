@@ -42,24 +42,24 @@ fn main() -> anyhow::Result<()> {
         })?;
         let view = view.unwrap();
         let core = view.update(&mut cx, |v, _| v.benchmark_core_device());
-        let fox = core.attach_file(
+        let image_file = core.attach_file(
             "render-fixture",
-            "狐狸.svg",
-            include_bytes!("../../zork-ui/assets/avatars/portraits/fox.svg"),
+            "文件.svg",
+            include_bytes!("../../zork-ui/tests/fixtures/image-file.svg"),
         )?;
-        let cat = core.attach_file(
+        let image_node = core.attach_file(
             "render-fixture",
-            "猫.svg",
-            include_bytes!("../../zork-ui/assets/avatars/portraits/cat.svg"),
+            "设备.svg",
+            include_bytes!("../../zork-ui/tests/fixtures/image-node.svg"),
         )?;
-        let markdown=core.attach_file("render-fixture","使用说明.md","# 头像使用说明\n\n狐狸与猫 · SVG 原始文件\n\n## 保持原始比例\n\n缩放时保持宽高一致，避免拉伸角色轮廓。\n\n## 选择背景\n\n在浅色、深色和透明背景下检查边缘。".as_bytes())?;
-        let files = vec![fox.clone(), cat.clone(), markdown.clone()];
+        let markdown=core.attach_file("render-fixture","使用说明.md","# 图像使用说明\n\n文件与设备 · SVG 原始文件\n\n## 保持原始比例\n\n缩放时保持宽高一致，避免拉伸图形轮廓。\n\n## 选择背景\n\n在浅色、深色和透明背景下检查边缘。".as_bytes())?;
+        let files = vec![image_file.clone(), image_node.clone(), markdown.clone()];
         for file in &files {
             core.remove_file("render-fixture", &file.id)?;
         }
         core.edit_draft("render-fixture", "保留这段草稿".into())?;
         view.update(&mut cx,|v,cx|{v.benchmark_replace_messages(vec![
-            TranscriptLine::Message{role:Role::Assistant,content:zork_client_core::files::compose("两个头像和使用说明都在这里。SVG 保留透明背景，可以直接用于界面。",&files),metadata:serde_json::from_value(json!({"id":"attachment-message","author_name":"产品领队","author_agent_id":"leader-local"})).unwrap()},
+            TranscriptLine::Message{role:Role::Assistant,content:zork_client_core::files::compose("两张图像和使用说明都在这里。SVG 保留透明背景，可以直接用于界面。",&files),metadata:serde_json::from_value(json!({"id":"attachment-message","author_name":"产品领队","author_agent_id":"leader-local"})).unwrap()},
         ],cx);v.benchmark_restore_draft(cx);});
         let pump = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
             for _ in 0..12 {
@@ -109,7 +109,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         };
         pump(&mut cx)?;
-        let id = format!("message-file-0-{}", fox.id);
+        let id = format!("message-file-0-{}", image_file.id);
         let before = driver
             .snapshot(false)
             .elements

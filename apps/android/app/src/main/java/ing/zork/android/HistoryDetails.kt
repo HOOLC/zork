@@ -131,7 +131,6 @@ internal fun HistoryDetailSheet(state: SessionHistoryState, actions: HistoryActi
 internal fun HistoryIdentitySheet(identity: HistoryIdentity, dismiss: () -> Unit, open: Boolean, closed: () -> Unit) {
     HistorySheet(identity.name, dismiss, open, closed) {
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Avatar(identity.avatar, 44.dp, identity.name) }
             items(listOf("身份" to identity.id,
                 "模型" to identity.model, "模型连接" to identity.profile, "思考深度" to identity.thinking).filter { it.second.isNotBlank() }) { (label, text) ->
                 Column { Text(label, fontSize = 12.sp, color = ZorkColors.Muted); SelectionContainer { Text(text, fontSize = 14.sp) } }

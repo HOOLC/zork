@@ -13,7 +13,6 @@ pub struct DetailsTooltip {
     pub key: String,
     pub title: String,
     pub kind: String,
-    pub avatar: Option<String>,
     pub description: String,
     pub rows: Vec<(String, String)>,
 }
@@ -52,9 +51,8 @@ impl DetailsTooltip {
                     .flex()
                     .items_center()
                     .gap(px(10.))
-                    .child(match &self.avatar {
-                        Some(avatar) => ui::agent_avatar(Some(avatar), 32.).into_any_element(),
-                        None => div()
+                    .child(
+                        div()
                             .size(px(32.))
                             .flex_shrink_0()
                             .flex()
@@ -62,9 +60,8 @@ impl DetailsTooltip {
                             .justify_center()
                             .rounded(px(12.))
                             .bg(rgb(p.prompt))
-                            .child(ui::icon("icons/checklist.svg", 18.))
-                            .into_any_element(),
-                    })
+                            .child(ui::icon("icons/checklist.svg", 18.)),
+                    )
                     .child(
                         div()
                             .flex_1()

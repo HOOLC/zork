@@ -58,7 +58,6 @@ def main():
             export(ROOT / f"crates/zork-ui/assets/icons/{name}.svg", "ic_" + name.replace("-", "_"))
         return
     MOBILE = ROOT / 'apps/zork-design-pc/archive/mobile-prototype/assets'
-    for source in (MOBILE/'avatars').glob('*.svg'): export(source,'avatar_'+source.stem)
     for name in ['node','arrow-left','arrow-up','plus','settings','paperclip','chevron-down','mesh','x','result','download']:
         export(MOBILE/f'icons/{name}.svg','ic_'+name.replace('-','_'))
     export(ROOT/'crates/zork-ui/assets/icons/phosphor-stop-fill.svg','ic_phosphor_stop_fill')
@@ -70,10 +69,6 @@ def main():
         export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-","_"))
     for source in (ROOT/"crates/zork-ui/assets/providers").glob("*.svg"):
         export(source,"provider_"+source.stem)
-
-    # Composer portraits share the desktop silhouettes without the original avatar disc.
-    for source in (ROOT/"crates/zork-ui/assets/avatars/portraits").glob("*.svg"):
-        export(source,"portrait_"+source.stem)
 
     # Execution history uses the same semantic paths as the native history reader.
     for source in (ROOT/"crates/zork-ui/assets/history").glob("*.svg"):

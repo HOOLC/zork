@@ -1,53 +1,9 @@
-use super::{feedback, surface};
+use super::surface;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
-
-pub enum AvatarSource {
-    Portrait(&'static str),
-    Image(ImageSource),
-    Loading,
-    Fallback,
-}
-/// Asset/image resolution is supplied by the host. An unavailable or failed
-/// image renders initials; animal portraits sit directly on the parent surface.
-pub fn avatar(
-    id: impl Into<SharedString>,
-    name: impl Into<SharedString>,
-    source: AvatarSource,
-    size: f32,
-) -> AnyElement {
-    let id = id.into();
-    let name = name.into();
-    let fallback_id = id.to_string();
-    let fallback_name = name.to_string();
-    let child = match source {
-        AvatarSource::Portrait(key) => {
-            crate::controls::agent_portrait(Some(key), size).into_any_element()
-        }
-        AvatarSource::Image(source) => img(source)
-            .size(px(size))
-            .object_fit(ObjectFit::Contain)
-            .with_fallback(move || {
-                crate::controls::avatar(&fallback_id, &fallback_name, size).into_any_element()
-            })
-            .with_loading(move || feedback::skeleton("avatar-loading", size, size, true))
-            .into_any_element(),
-        AvatarSource::Loading => feedback::skeleton(format!("{id}-loading"), size, size, true),
-        AvatarSource::Fallback => crate::controls::avatar(&id, &name, size).into_any_element(),
-    };
-    div()
-        .id(id)
-        .size(px(size))
-        .flex_shrink_0()
-        .role(Role::Image)
-        .aria_label(name.clone())
-        .child(child)
-        .automation(AutomationRole::Status, name)
-        .into_any_element()
-}
 
 pub fn data_list(
     id: impl Into<SharedString>,

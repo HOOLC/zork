@@ -211,7 +211,7 @@ impl RootView {
         view.active_leader = Some("leader".into());
         // Channel membership is supplied by core now; the production UI no
         // longer invents a participant from the selected execution session.
-        // Keep the same named/avatar participant used by the earlier fixture.
+        // Keep the same named participant used by the earlier fixture.
         view.participants = vec![crate::api::ParticipantStatus {
             id: "leader".into(),
             name: "产品 Leader".into(),

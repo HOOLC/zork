@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal data class HistoryDestination(val id: String, val title: String, val canSend: Boolean, val canStop: Boolean)
-internal data class HistoryIdentity(val id: String, val name: String, val avatar: String, val role: String,
+internal data class HistoryIdentity(val id: String, val name: String, val role: String,
     val model: String, val profile: String, val thinking: String)
 internal data class HistorySubject(val label: String, val agent: HistoryIdentity? = null, val conversation: HistoryDestination? = null) {
     val actionable: Boolean get() = agent != null || conversation != null
@@ -128,7 +128,7 @@ private fun historyRow(value: JSONObject): HistoryRow = HistoryRow(value.text("i
     value.text("preview"), value.text("kind"), value.optInt("lane", 2), value.optBoolean("visible", true),
     value.longOrNull("start"), value.longOrNull("end"), value.text("state"), value.optJSONObject("subject")?.let { subject ->
         HistorySubject(subject.text("label"), subject.optJSONObject("agent")?.let { a ->
-            HistoryIdentity(a.text("id"), a.text("name"), a.text("avatar"), a.text("role"), a.text("model"), a.text("profile"), a.text("thinking"))
+            HistoryIdentity(a.text("id"), a.text("name"), a.text("role"), a.text("model"), a.text("profile"), a.text("thinking"))
         }, subject.optJSONObject("conversation")?.let { c -> HistoryDestination(c.text("id"), c.text("title"), c.optBoolean("can_send"), c.optBoolean("can_stop")) })
     }, value.text("model"), value.longOrNull("requested_wait_ms"))
 

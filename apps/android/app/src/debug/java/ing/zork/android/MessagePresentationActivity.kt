@@ -35,7 +35,7 @@ class MessagePresentationActivity : ComponentActivity() {
         setContent { ZorkTheme {
             var full by remember { mutableStateOf<ChatMessage?>(null) }
             scroll = rememberLazyListState()
-            val state = WorkbenchState(conversation = Conversation("presentation", "产品 Leader", avatar = "fox"), messages = rows, connected = true, messageActivity = messageActivity)
+            val state = WorkbenchState(conversation = Conversation("presentation", "产品 Leader"), messages = rows, connected = true, messageActivity = messageActivity)
             CompositionLocalProvider(LocalMessagePreviewHeight provides previewHeight) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(bottom = keyboardInset.dp)) {
                 PageSlide(full, full?.id ?: "chat", if (full == null) 0 else 1, ZorkColors.Canvas) { shown, active ->

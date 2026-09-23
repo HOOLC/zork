@@ -7,7 +7,7 @@
 | 目录 | 数量 | 用途与状态 |
 | --- | --- | --- |
 | `assets/brand` | 6 SVG | 主标志及变体 4 个；当前字标与组合标志各 1 个 |
-| `assets/avatars` | 12 SVG | Agent 个体头像，当前方向 |
+| `assets/avatars` | 12 SVG | 历史头像素材，当前界面不使用 |
 | `assets/icons/product` | 18 SVG | 设备、角色、任务、交付与状态图标 |
 | `assets/icons/interface` | 34 SVG | 添加、关闭、发送、搜索、提及等通用控件 |
 | `assets/providers` | 8 SVG | 7 个外部品牌图标与 1 个原创兼容接口符号 |
@@ -23,9 +23,10 @@
 
 ## 动物头像
 
-猫、兔、熊、狐狸、熊猫、小鸡、狗、猫头鹰、考拉、企鹅、鹿、章鱼。前六个保留既有 ID，新增六个扩展选择。头像采用浅色底、少量层次和简明轮廓。
+历史系列包含猫、兔、熊、狐狸、熊猫、小鸡、狗、猫头鹰、考拉、企鹅、鹿、章鱼。素材保留原有 ID、浅色底和简明轮廓，供追溯旧设计。
 
-同一 Agent 的头像应稳定保存。角色切换、运行、离线和未读都不应导致头像随机更换。角色与状态用独立标签/图形表达。
+历史头像仅供回看原设计；当前角色与状态用名称和独立标签/图形表达。
+这 12 个原创 SVG 来自早期品牌评审原型 `artifacts/brand-review-site/src/svg/avatars`，原有 ID 保留在历史 Agent 数据中。桌面 Composer 曾使用去掉背景板的透明肖像，当前客户端不再打包这些副本。
 
 ## 功能图标
 
@@ -45,4 +46,4 @@ SVG 为母稿，预览 PNG 为检视图。后续修改应先改 SVG，再重建�
 
 桌面 App 实际使用的图标资源位于 `crates/zork-ui/assets/app/`：正式版沿用橙底的 `icon.png`，Dev 为深灰底终端徽记，Design 为浅紫底设计闪光徽记。macOS 的 ICNS 由 `scripts/build/macos-icon.py` 生成；本目录的 `assets/concepts/app-icon` 保留原提案供对照。
 
-头像新增与生成规则单独维护在 [头像生成规范](11-avatars.md)，场景与图标规范见 [图标与 SVG 状态](12-icons-and-scenes.md)。
+历史头像的原始生成规则保存在 [头像设计资料](11-avatars.md)，当前场景与图标规范见 [图标与 SVG 状态](12-icons-and-scenes.md)。

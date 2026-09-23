@@ -178,13 +178,6 @@ pub fn catalog() -> Vec<Story> {
             "attachment",
         ),
         (
-            "avatar",
-            "历史作者头像",
-            &["24", "32", "40"][..],
-            "crates/zork-ui/src/controls.rs::agent_avatar",
-            "avatar",
-        ),
-        (
             "providers",
             "供应商图标",
             &["all"][..],
@@ -835,7 +828,6 @@ impl Render for PrimitiveStory {
                     key: self.id("leader-detail"),
                     title: "产品 Leader".into(),
                     kind: "Leader".into(),
-                    avatar: Some("fox".into()),
                     description: "梳理产品需求，协调任务并检查交付结果。".into(),
                     rows: vec![
                         ("设备".into(), "mini1".into()),
@@ -846,7 +838,6 @@ impl Render for PrimitiveStory {
                     key: self.id("task-detail"),
                     title: "完善导航交互".into(),
                     kind: "Task".into(),
-                    avatar: None,
                     description: "统一导航层级与交互反馈，并验证窄窗口下的显示。".into(),
                     rows: vec![
                         ("Leader".into(), "产品 Leader".into()),
@@ -864,7 +855,6 @@ impl Render for PrimitiveStory {
                             .w(px(240.))
                             .child(
                                 tabs.tab(self.id("tooltip-leader-trigger"), false)
-                                    .child(ui::agent_avatar(Some("fox"), 20.))
                                     .child("产品 Leader")
                                     .automation(AutomationRole::Button, "产品 Leader")
                                     .map(|row| {
@@ -905,17 +895,6 @@ impl Render for PrimitiveStory {
                     }
                     .into_any_element()
                 }
-            }
-            "avatar" => {
-                div()
-                    .max_w(px(state.parse::<f32>().unwrap_or(32.) * 6. + 80.))
-                    .flex()
-                    .flex_wrap()
-                    .gap_4()
-                    .children(ui::AGENT_AVATARS.into_iter().map(|(key, _, _)| {
-                        ui::agent_avatar(Some(key), state.parse().unwrap_or(26.))
-                    }))
-                    .into_any_element()
             }
             "providers" => div()
                 .flex()
@@ -1079,7 +1058,6 @@ impl Render for PrimitiveStory {
                 let open = root.clone();
                 let preview = activity::render_session(
                     "产品 Leader",
-                    Some("fox"),
                     stopped,
                     stopped,
                     live && !cx.reduce_motion(),
@@ -1170,7 +1148,6 @@ impl Render for PrimitiveStory {
                 &[activity::Presentation {
                     id: self.id("story"),
                     name: "产品 Leader".into(),
-                    avatar: Some("fox".into()),
                     label: match state {
                         "failed" => "执行失败",
                         "done" => "已完成",
@@ -1311,7 +1288,7 @@ impl Render for FamilyStories {
             "dropdown" => 246.,
             "icons" => 580.,
             "markdown" => 232.,
-            "avatar" | "brand" | "profile-card" => 140.,
+            "brand" | "profile-card" => 140.,
             _ => 112.,
         };
         div()

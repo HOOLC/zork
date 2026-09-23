@@ -132,7 +132,6 @@ impl Host for Story {
                 self.presentation = Some(Presentation::Agent {
                     id,
                     name: "产品领队".into(),
-                    avatar: Some("fox".into()),
                     role: Some("整理产品需求与研究资料".into()),
                 })
             }
@@ -150,7 +149,6 @@ impl Host for Story {
             models: self.state.models.clone(),
             runtime: Runtime {
                 name: "产品领队".into(),
-                avatar: Some("fox".into()),
                 role: Some("领队".into()),
                 environment: Some("Studio Mac".into()),
                 provider: Some("Codex".into()),

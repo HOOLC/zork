@@ -82,7 +82,6 @@ impl PreviewWindow {
 pub(super) struct SessionActivityPreview {
     pub session: String,
     pub name: String,
-    pub avatar: Option<String>,
     pub rows: Vec<zork_ui::components::activity::SessionRow>,
     pub expanded: bool,
     pub stopped: bool,
@@ -204,7 +203,6 @@ impl RootView {
                 .filter(|preview| preview.session == member.session_id)
             {
                 preview.name = member.name.clone();
-                preview.avatar = member.avatar.clone();
                 let restart = preview.stopped;
                 preview.stopped = false;
                 preview.leaving = false;
@@ -216,12 +214,10 @@ impl RootView {
             }
             let session = member.session_id.clone();
             let name = member.name.clone();
-            let avatar = member.avatar.clone();
             let source = self.core_device.conversation(&session);
             self.session_activity_preview = Some(SessionActivityPreview {
                 session,
                 name,
-                avatar,
                 rows: Vec::new(),
                 expanded: false,
                 stopped: false,
