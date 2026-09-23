@@ -159,6 +159,22 @@ def competing_processes():
             (line.split()[-1].rsplit("/", 1)[-1] in ("cargo", "rustc") or line.endswith("Chrome for Testing"))]
 
 
+def stop_native_process(process):
+    if process.poll() is not None:
+        return
+    # This process group contains only this invocation's native fixture and
+    # caffeinate; preserve all other client instances.
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -189,17 +205,7 @@ def main():
             try:
                 process.wait(timeout=180)
             finally:
-                # This process group contains only this invocation's native
-                # fixture and caffeinate; preserve all other client instances.
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=5)
+                stop_native_process(process)
         report["exitCode"] = process.returncode
         report["competingProcessesAfter"] = competing_processes()
         report["binarySha256"] = digest(binary)

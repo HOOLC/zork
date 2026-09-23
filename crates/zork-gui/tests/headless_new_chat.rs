@@ -61,6 +61,39 @@ fn main() -> anyhow::Result<()> {
             );
         }
         anyhow::ensure!(
+            snapshot
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label == "Demo model · 高"),
+            "the model picker trigger must identify the selected model at {width}"
+        );
+        let bounds = |id| {
+            snapshot
+                .elements
+                .iter()
+                .find(|element| element.id == id)
+                .unwrap()
+                .bounds
+                .clone()
+        };
+        let surface = bounds("new-chat-composer-surface");
+        let rail = bounds("new-chat-device-rail");
+        let device = bounds("new-chat-device");
+        anyhow::ensure!(
+            rail.x > surface.x
+                && rail.x + rail.width < surface.x + surface.width
+                && rail.y < surface.y
+                && rail.y + rail.height > surface.y
+                && device.y >= rail.y
+                && device.y + device.height <= surface.y,
+            "device rail must be narrower than and overlap behind the composer at {width}"
+        );
+        anyhow::ensure!(
+            (bounds("new-chat-options").height - bounds("new-chat-send").height).abs() < 0.1,
+            "picker and send control heights differ at {width}"
+        );
+        anyhow::ensure!(
             !snapshot
                 .elements
                 .iter()
@@ -77,8 +110,43 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|e| e.label.contains('●') && !e.label.contains("直连")),
             "selected device must show a compact Mesh status icon"
         );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-{width}.png")))?;
+        let screenshot = cx.capture_screenshot(window.into())?;
+        let scale = screenshot.width() as f32 / width;
+        let sample = |x: f32, y: f32| {
+            screenshot
+                .get_pixel((x * scale) as u32, (y * scale) as u32)
+                .0
+        };
+        let middle = surface.x + surface.width / 2.;
+        let header = sample(middle, rail.y + 4.);
+        let editor = sample(middle, surface.y + 12.);
+        anyhow::ensure!(
+            u16::from(header[0]) + 4 < u16::from(editor[0])
+                && u16::from(header[1]) + 4 < u16::from(editor[1]),
+            "device rail lost its gray section at {width}: {header:?} / {editor:?}"
+        );
+        anyhow::ensure!(
+            sample(surface.x + 4., rail.y + 10.)[..3]
+                .iter()
+                .all(|channel| *channel >= 250),
+            "device rail unexpectedly fills the composer width at {width}"
+        );
+        for fraction in [0.15, 0.5, 0.85] {
+            let x = surface.x + surface.width * fraction;
+            for offset in [-1., 0., 1.] {
+                let pixel = sample(x, surface.y + offset);
+                anyhow::ensure!(
+                    pixel[..3].iter().all(|channel| *channel < 250),
+                    "canvas-colored seam between rail and composer at {width}: {pixel:?}"
+                );
+            }
+        }
+        let shoulder = sample(rail.x + 2., surface.y + 2.);
+        anyhow::ensure!(
+            shoulder[..3].iter().all(|channel| *channel < 250),
+            "the rail was erased behind the composer corner at {width}: {shoulder:?}"
+        );
+        screenshot.save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
             cx.update_window(window.into(), |_, w, cx| {
                 driver.dispatch(serde_json::from_value(value)?, w, cx)
@@ -154,6 +222,15 @@ fn main() -> anyhow::Result<()> {
                 && state["profile"]["value"] == "personal",
             "selection did not reach core fixture: {state}"
         );
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label == "Demo fast · 低"),
+            "the model picker trigger did not follow the selection at {width}"
+        );
         action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         anyhow::ensure!(
             !driver
@@ -211,6 +288,24 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_vec_pretty(&snapshot)?,
         )?;
         println!("PASS new Chat at {width}px: real selectors, Unicode/Shift+Enter, submit, busy and bounds");
+        if width == 900. {
+            let mut closeup = Story::new("new-chat", "新建 Chat", "draft", "", "new-chat");
+            closeup.width = width;
+            closeup.height = 180.;
+            let closeup_window = cx.open_window(size(px(width), px(180.)), |_, cx| {
+                let view = cx.new(|cx| StoryHost::new(closeup, cx));
+                cx.new(|_| AutomationRoot::new(view))
+            })?;
+            for _ in 0..4 {
+                cx.run_until_parked();
+                cx.advance_clock(Duration::from_millis(16));
+                cx.update_window(closeup_window.into(), |_, window, cx| {
+                    window.draw(cx).clear(cx)
+                })?;
+            }
+            cx.capture_screenshot(closeup_window.into())?
+                .save(output.join("new-chat-closeup.png"))?;
+        }
     }
     Ok(())
 }

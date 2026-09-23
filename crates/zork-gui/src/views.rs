@@ -33,6 +33,7 @@ mod agents;
 pub mod benchmark;
 mod cache;
 mod comments;
+mod composer_surface;
 mod drive;
 mod files;
 mod history;
@@ -40,7 +41,7 @@ mod interactions;
 mod message_presentation;
 mod new_chat;
 mod panel_layout;
-mod presence;
+mod session_activity;
 
 pub(crate) fn shared_file_image(
     bytes: &[u8],
@@ -99,6 +100,7 @@ pub struct RootView {
     active_leader: Option<String>,
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
+    session_activity_preview: Option<session_activity::SessionActivityPreview>,
     client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
@@ -137,7 +139,7 @@ pub struct RootView {
     messages_request: u64,
     activity: Option<AgentStatus>,
     participants: Vec<crate::api::ParticipantStatus>,
-    presence: presence::Presence,
+    composer_surface: composer_surface::ComposerSurface,
     activity_revision: u64,
 
     // Conversation composer
@@ -406,6 +408,7 @@ impl RootView {
             active_leader: None,
             history: history::HistoryState::default(),
             chat_histories: HashMap::new(),
+            session_activity_preview: None,
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
                 let device =
@@ -447,7 +450,7 @@ impl RootView {
             messages_request: 0,
             activity: None,
             participants: vec![],
-            presence: presence::Presence::default(),
+            composer_surface: composer_surface::ComposerSurface::default(),
             activity_revision: 0,
             composer_input,
             preparing_files: 0,
@@ -658,6 +661,7 @@ impl RootView {
             self.conversation_updates = Some(updates);
         }
         self.deliver_history_updates(cx);
+        self.deliver_session_activity_updates(cx);
     }
     fn apply_conversation_update(
         &mut self,
@@ -711,6 +715,7 @@ impl RootView {
             self.stop_pending = state.stop_pending;
             self.canceling = state.canceling;
             self.activity_revision = self.activity_revision.wrapping_add(1);
+            self.sync_session_activity(cx);
             self.transcript_list
                 .remeasure_items(self.lines.len()..self.lines.len() + 1);
             regions.extend(["transcript", "header", "composer"]);
@@ -780,7 +785,8 @@ impl RootView {
         self.loading_older = false;
         self.activity = None;
         self.participants.clear();
-        self.presence = presence::Presence::default();
+        self.session_activity_preview = None;
+        self.composer_surface = composer_surface::ComposerSurface::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
 
@@ -836,7 +842,8 @@ impl RootView {
         self.loading_older = false;
         self.activity = None;
         self.participants.clear();
-        self.presence = presence::Presence::default();
+        self.session_activity_preview = None;
+        self.composer_surface = composer_surface::ComposerSurface::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
         self.error = None;
@@ -952,7 +959,7 @@ impl Render for RootView {
             self.start_background(cx);
         }
         self.measure_composer_geometry(window, cx);
-        self.prepare_presence_frame(window, cx);
+        self.prepare_composer_frame(window, cx);
         if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();
@@ -1297,18 +1304,15 @@ impl RootView {
 
     fn render_panel_tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
         self.configure_conversation_files(cx);
-        let members = if self.can_send_selected() {
-            vec![]
-        } else {
-            self.conversation_members()
-                .into_iter()
-                .map(|member| zork_ui::conversation_toolbar::Member {
-                    id: member.id,
-                    name: member.name,
-                    avatar: member.avatar,
-                })
-                .collect()
-        };
+        let members = self
+            .conversation_members()
+            .into_iter()
+            .map(|member| zork_ui::conversation_toolbar::Member {
+                id: member.id,
+                name: member.name,
+                avatar: member.avatar,
+            })
+            .collect();
         zork_ui::conversation_toolbar::render(
             members,
             self.files_menu.clone(),
@@ -1339,9 +1343,23 @@ impl RootView {
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
         let activity = self.activity_presentations();
-        let animate_activity = !self.scroll_active;
-        let activity_in_transcript = !self.can_send_selected();
-        let has_activity = !activity.is_empty();
+        let animate_activity = !self.scroll_active && !cx.reduce_motion();
+        let session_activity = self.session_activity_preview.as_ref().and_then(|preview| {
+            (!preview.rows.is_empty() && !activity.iter().any(|item| item.failed)).then(|| {
+                (
+                    preview.session.clone(),
+                    preview.name.clone(),
+                    preview.avatar.clone(),
+                    preview.stopped,
+                    preview.leaving,
+                    preview.expanded,
+                    preview.rows.clone(),
+                )
+            })
+        });
+        let activity_in_transcript = !activity.is_empty() || session_activity.is_some();
+        let has_activity = activity_in_transcript;
+        let activity_root = cx.entity().downgrade();
 
         self.transcript_selection.borrow_mut().begin_frame();
         let selection_state = self.transcript_selection.clone();
@@ -1383,7 +1401,7 @@ impl RootView {
         let loading_older = self.loading_older;
         let older_root = cx.entity().downgrade();
         let bottom_inset = if self.can_send_selected() {
-            self.composer_overlay_height + self.presence.extent + 8.
+            self.composer_overlay_height + self.file_fan_dimensions().1 + 8.
         } else {
             0.
         };
@@ -1598,13 +1616,56 @@ impl RootView {
                         }
                     })
             } else if activity_in_transcript {
+                let compact = session_activity.as_ref().map(
+                    |(session, name, avatar, stopped, leaving, expanded, rows)| {
+                        let expand_root = activity_root.clone();
+                        let open_root = activity_root.clone();
+                        let session = session.clone();
+                        zork_ui::components::activity::render_session(
+                            name,
+                            avatar.as_deref(),
+                            *stopped,
+                            *leaving,
+                            animate_activity,
+                            *expanded,
+                            rows,
+                            locale.text("session_activity_more"),
+                            locale.text("session_activity_less"),
+                            locale.text(if *stopped {
+                                "session_activity_stopped"
+                            } else {
+                                "history_running"
+                            }),
+                            Rc::new(move |cx| {
+                                let _ = expand_root.update(cx, |view, cx| {
+                                    if let Some(preview) = view.session_activity_preview.as_mut() {
+                                        preview.expanded = !preview.expanded;
+                                        view.transcript_list.remeasure_items(
+                                            view.lines.len()..view.lines.len() + 1,
+                                        );
+                                        zork_ui::components::region::invalidate(
+                                            cx,
+                                            &["transcript"],
+                                        );
+                                    }
+                                });
+                            }),
+                            Rc::new(move |id, cx| {
+                                let _ = open_root.update(cx, |view, cx| {
+                                    view.open_history_entry(&session, id, cx);
+                                });
+                            }),
+                        )
+                    },
+                );
                 div()
                     .w(px(content_width))
                     .mx_auto()
-                    .child(crate::components::activity::render(
-                        &activity,
-                        animate_activity,
-                    ))
+                    .child(match compact {
+                        Some(compact) => compact.into_any_element(),
+                        None => crate::components::activity::render(&activity, animate_activity)
+                            .into_any_element(),
+                    })
                     .into_any()
             } else {
                 div().h_0().into_any()
@@ -1670,7 +1731,7 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
-        let presence_extent = self.presence.extent;
+        let fan_extent = self.file_fan_dimensions().1;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
             .relative()
@@ -1710,8 +1771,8 @@ impl RootView {
                 gpui::canvas(
                     move |bounds, _, cx| {
                         // Retain only the static editor/extras measurement.
-                        // Presence contributes its current spring sample directly.
-                        let height = bounds.size.height.as_f32() - presence_extent;
+                        // The attachment fan contributes its measured height.
+                        let height = bounds.size.height.as_f32() - fan_extent;
                         let root = root.clone();
                         cx.defer(move |cx| {
                             let _ = root.update(cx, |view, cx| {

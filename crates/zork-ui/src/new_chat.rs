@@ -17,6 +17,12 @@ mod picker;
 use crate::components::liquid::panel::PopoverPanel;
 use picker::PickerMode;
 
+const RAIL_INSET: f32 = 13.;
+const RAIL_CONTENT_INSET: f32 = 12.;
+const RAIL_VISIBLE_HEIGHT: f32 = 40.;
+const RAIL_OVERLAP: f32 = 16.;
+const RAIL_RADIUS: f32 = 16.;
+
 pub enum Event {
     Intent(Action),
     ConfigureModels,
@@ -150,7 +156,7 @@ impl Page {
             options,
             self.device_menu,
             self.data.editable && !values.is_empty(),
-            (self.width - 70.).max(48.),
+            (self.width - 2. * (RAIL_INSET + RAIL_CONTENT_INSET) - 18.).max(48.),
             window,
             cx,
             |view, open, cx| {
@@ -176,7 +182,8 @@ impl Render for Page {
             self.focus_pending = false;
             window.focus(&self.input.read(cx).focus_handle(), cx);
         }
-        let height = self
+        let has_device_selector = self.data.device.options.len() > 1;
+        let body_height = self
             .input
             .read(cx)
             .content_height()
@@ -184,6 +191,12 @@ impl Render for Page {
             .clamp(48., composer::EDITOR_MAX)
             + crate::components::liquid_composer::TOP_EXTENSION
             + crate::components::liquid_composer::COMPOSER_CHROME;
+        let rail_offset = if has_device_selector {
+            RAIL_VISIBLE_HEIGHT
+        } else {
+            0.
+        };
+        let height = body_height + rail_offset;
         let now = cx.background_executor().now();
         let elapsed = self.previous.replace(now).map_or(0., |before| {
             now.saturating_duration_since(before).as_secs_f64()
@@ -192,7 +205,7 @@ impl Render for Page {
             0.,
             0.,
             self.width as f64,
-            height as f64,
+            body_height as f64,
             crate::components::liquid_composer::SURFACE_RADIUS as f64,
         );
         let moving = self
@@ -229,18 +242,23 @@ impl Render for Page {
             },
             ..Default::default()
         };
-        let selected_thinking = match self.data.thinking.value.as_str() {
-            "off" | "low" | "medium" | "high" | "minimal" | "xhigh" | "max" => Some(format!(
-                "{} · {}",
-                self.text.text("new_chat_thinking_short"),
-                self.thinking_label(&self.data.thinking.value)
-            )),
-            _ => None,
-        };
+        let trigger_label = self.selected_model_label().map_or_else(
+            || self.text.text("new_chat_choose_model"),
+            |model| {
+                if self.data.thinking.value.is_empty() {
+                    model
+                } else {
+                    format!(
+                        "{model} · {}",
+                        self.thinking_label(&self.data.thinking.value)
+                    )
+                }
+            },
+        );
         let trigger = self.picker.trigger(
             "new-chat-options",
-            selected_thinking.unwrap_or_else(|| self.text.text("new_chat_choose_intensity")),
-            152.,
+            trigger_label,
+            (self.width - 88.).clamp(120., 180.),
             self.picker_open,
             self.data.editable,
             cx,
@@ -251,18 +269,44 @@ impl Render for Page {
                 cx.notify();
             },
         );
+        let rail = has_device_selector.then(|| {
+            let device = self.device_selector(window, cx);
+            div()
+                .id("new-chat-device-rail")
+                .absolute()
+                .left(px(RAIL_INSET))
+                .top(px(0.))
+                .w(px(self.width - 2. * RAIL_INSET))
+                .h(px(RAIL_VISIBLE_HEIGHT + RAIL_OVERLAP))
+                .rounded_tl(px(RAIL_RADIUS))
+                .rounded_tr(px(RAIL_RADIUS))
+                .bg(rgb(ZORK_UI.palette.sidebar_hover))
+                .child(
+                    div()
+                        .h(px(RAIL_VISIBLE_HEIGHT))
+                        .px(px(RAIL_CONTENT_INSET))
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(ui::icon("icons/node.svg", 14.))
+                        .child(device),
+                )
+                .automation(AutomationRole::Status, "设备选择栏")
+        });
         let composer = composer::render(
             composer::Props {
                 id: "new-chat-composer",
                 surface: self.scene.surface.as_ref().expect("composer surface"),
                 width: self.width,
-                height,
+                height: body_height,
                 editor: &self.input,
                 snapshot: &snapshot,
                 fan_progress: 0.,
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
+                transparent_exterior: has_device_selector,
+                action_size: 28.,
                 accessory_band: 0.,
                 accessories: vec![div()
                     .w_full()
@@ -295,8 +339,6 @@ impl Render for Page {
             window,
             cx,
         );
-        let has_device_selector = self.data.device.options.len() > 1;
-        let device = has_device_selector.then(|| self.device_selector(window, cx));
         let popup_width = 272_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let content = if self.picker_open || self.picker.alive() {
             self.picker_content(popup_width, window, cx)
@@ -307,7 +349,7 @@ impl Render for Page {
             "new-chat-options-panel",
             self.picker_open,
             popup_width,
-            ZORK_UI.composer.action_size,
+            28.,
             content,
             window,
             cx,
@@ -408,32 +450,21 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .when_some(device, |v, device| {
-                v.child(
-                    crate::components::liquid::primitives::surface(
-                        "new-chat-context",
-                        16.,
-                        ZORK_UI.palette.sidebar_hover,
-                        false,
-                    )
-                    .w(px((self.width - 24.).max(196.)))
-                    .px_3()
-                    .font_weight(FontWeight::NORMAL)
-                    .pt_2()
-                    .pb(px(16.))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(ui::icon("icons/node.svg", 14.))
-                    .child(device),
-                )
-            })
             .child(
                 div()
-                    .mt(px(if has_device_selector { -8. } else { 0. }))
+                    .relative()
                     .w(px(self.width))
                     .h(px(height))
-                    .child(composer),
+                    .when_some(rail, |wrapper, rail| wrapper.child(rail))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(0.))
+                            .top(px(rail_offset))
+                            .w(px(self.width))
+                            .h(px(body_height))
+                            .child(composer),
+                    ),
             )
             .children(popup)
             .automation(AutomationRole::Status, self.text.text("new_chat"))

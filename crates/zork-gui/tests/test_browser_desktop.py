@@ -403,8 +403,8 @@ class DesktopBrowserTest(BrowserTest, unittest.TestCase):
         if element_id in ('browser-agent-grant', 'browser-inspect', 'browser-handoff') and not cls.element(element_id):
             cls.click('browser-more')
         cls.wait_until(lambda: cls.element(element_id, enabled=True), element_id + ' enabled')
-        # Resolve at dispatch time: presence entries can move between an HTTP
-        # geometry read and the click while an Agent finishes its turn.
+        # Resolve at dispatch time: toolbar entries can move between an HTTP
+        # geometry read and the click while the conversation updates.
         cls.ui('/v1/actions', {'type': 'click', 'target': {'element_id': element_id}})
 
     def exercise_page_workspace(self, tab):
@@ -415,7 +415,7 @@ class DesktopBrowserTest(BrowserTest, unittest.TestCase):
         self.wait_until(lambda: bool(self.messages(self.session)), 'history fixture input delivered')
         self.ui('/v1/screenshot')
         members = [e for e in json.loads(self.ui('/v1/elements'))['elements']
-                   if e['id'].startswith('composer-member-') and e['visible']]
+                   if e['id'].startswith('header-member-') and e['visible']]
         self.assertTrue(members, 'conversation participant entry')
         self.click(members[0]['id'])
         self.wait_until(lambda: self.element('page-tab-history') and self.element('history-page'), 'history in shared page workspace')

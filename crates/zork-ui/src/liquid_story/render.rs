@@ -890,6 +890,8 @@ impl Card {
                 bubbles: &bubbles,
                 presentation: None,
                 handler,
+                transparent_exterior: false,
+                action_size: 24.,
                 accessory_band: 0.,
                 accessories: vec![],
             },

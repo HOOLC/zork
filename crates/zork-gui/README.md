@@ -140,6 +140,9 @@ change the task status label/footer but never add chat rows. Successful
 Agent commentary, final transcript text, streaming deltas, tool results, and waits are internal.
 A visible assistant reply exists only after the Agent explicitly invokes
 `chat.post_message`.
+While a member works, the transcript can show a bounded, read-only preview of
+that member's Session activity. Its rows open Session history and never become
+Chat messages.
 
 ## Native component layer
 
@@ -222,7 +225,7 @@ A CPU blur reference is available in headless builds for comparisons.
 The original GPUI editor handles input, IME and sending on every
 platform. Stable geometry is cached and does not schedule animation frames.
 
-`cargo test --locked -p zork-gui --features headless-bench --test headless_presence`
+`cargo test --locked -p zork-gui --features headless-bench --test headless_chat_activity`
 checks native offscreen motion, geometry, idle scheduling and frame cost at wide
 and compact window sizes.
 

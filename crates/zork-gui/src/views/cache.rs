@@ -103,7 +103,7 @@ impl RootView {
         self.comment_popover = None;
         self.comment_editor
             .update(cx, |editor, cx| editor.reset(cx));
-        self.presence.scene = Default::default();
+        self.composer_surface.scene = Default::default();
         self.close_conversation_artifact();
         self.transcript_selection.borrow_mut().clear();
         self.draft_task = None;
@@ -159,7 +159,7 @@ impl RootView {
     ) {
         match self.core_device.submit_draft(&session_id, &text) {
             Ok(_) => {
-                self.presence.scene.accepted(origin, &text);
+                self.composer_surface.scene.accepted(origin, &text);
                 // The core draft subscription publishes the cleared text and
                 // attachments together. Do not race it with a second UI write.
                 self.refresh_queued();

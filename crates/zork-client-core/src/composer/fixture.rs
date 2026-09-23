@@ -1,7 +1,7 @@
 //! In-memory story host using the production desktop composer capabilities.
 //! Events model accepted intents only; no message is delivered or file uploaded.
 use super::*;
-use zork_client_types::composer::{Capabilities, Controller, File, Intent, Member, Snapshot};
+use zork_client_types::composer::{Capabilities, Controller, File, Intent, Snapshot};
 
 pub struct Fixture {
     session: DesktopSession,
@@ -18,15 +18,7 @@ impl Default for Fixture {
                 can_stop: true,
                 running: false,
             },
-            state: Snapshot {
-                members: vec![Member {
-                    id: "fox".into(),
-                    avatar: "fox".into(),
-                    label: "准备就绪".into(),
-                    active: false,
-                }],
-                ..Default::default()
-            },
+            state: Snapshot::default(),
             stopping: false,
             preparing: 0,
             next_file: 0,
@@ -81,10 +73,6 @@ impl Controller for Fixture {
                         self.state.events.push("stop".into());
                         self.session.running = false;
                         self.stopping = false;
-                        for member in &mut self.state.members {
-                            member.active = false;
-                            member.label = "准备就绪".into();
-                        }
                     } else {
                         self.submit();
                     }
@@ -106,30 +94,16 @@ impl Controller for Fixture {
                 *self = Self::default();
                 match index {
                     1 => self.state.text = "把这些组件整理成可复用的 Rust 实现。".into(),
-                    2 | 3 | 6 => {
+                    2 | 3 => {
                         self.session.running = true;
-                        self.state.members[0].active = true;
-                        self.state.members[0].label = "正在检查共享组件".into();
                         self.stopping = index == 3;
-                        if index == 6 {
-                            for (id, label) in
-                                [("panda", "正在整理验证结果"), ("octopus", "正在审阅交互")]
-                            {
-                                self.state.members.push(Member {
-                                    id: id.into(),
-                                    avatar: id.into(),
-                                    label: label.into(),
-                                    active: true,
-                                });
-                            }
-                        }
                     }
                     4 => self.session.editable = false,
                     5 => {
                         self.preparing = 1;
                         self.state.text = "附件准备中…".into();
                     }
-                    7 => {
+                    6 => {
                         self.session.running = true;
                         self.session.can_stop = false;
                         self.state.text = "补充任务评论".into();
@@ -163,7 +137,7 @@ mod tests {
         assert!(!f.apply(Intent::Scenario(3)).capabilities.enabled);
         assert!(!f.apply(Intent::Scenario(4)).capabilities.editable);
         assert!(!f.apply(Intent::Scenario(5)).capabilities.enabled);
-        let task = f.apply(Intent::Scenario(7));
+        let task = f.apply(Intent::Scenario(6));
         assert!(!task.capabilities.stop && task.capabilities.enabled);
     }
 }

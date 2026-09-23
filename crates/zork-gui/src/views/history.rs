@@ -21,6 +21,7 @@ pub(super) struct HistoryState {
     runtime: Option<zork_client_core::state::HistoryRuntime>,
     pub(super) detail: Option<String>,
     pub(super) agent_detail: Option<String>,
+    pending_entry: Option<String>,
     source: Option<Arc<zork_client_core::state::Conversation>>,
     sources: HashMap<String, (String, Option<String>)>,
     wanted_sources: std::collections::HashSet<String>,
@@ -45,6 +46,7 @@ impl Default for HistoryState {
             runtime: None,
             detail: None,
             agent_detail: None,
+            pending_entry: None,
             source: None,
             sources: HashMap::new(),
             wanted_sources: Default::default(),
@@ -168,6 +170,7 @@ impl RootView {
         self.history.source = None;
         self.history.detail = None;
         self.history.agent_detail = None;
+        self.history.pending_entry = None;
     }
     pub(super) fn toggle_history(&mut self, session: &str, cx: &mut Context<Self>) {
         if session.is_empty() {
@@ -194,6 +197,33 @@ impl RootView {
             self.history.scroll.scroll_to_end();
         }
         zork_ui::components::region::invalidate(cx, &["history", "header"]);
+    }
+    pub(super) fn open_history_entry(
+        &mut self,
+        session: &str,
+        entry: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_history(session, cx);
+        self.history.pending_entry = Some(entry);
+        self.reveal_history_entry();
+        zork_ui::components::region::invalidate(cx, &["history"]);
+    }
+    fn reveal_history_entry(&mut self) {
+        let Some(index) = self
+            .history
+            .pending_entry
+            .as_deref()
+            .and_then(|id| self.history.row_for_id(id))
+        else {
+            return;
+        };
+        self.history.scroll.scroll_to(ListOffset {
+            item_ix: index + 1,
+            offset_in_item: px(0.),
+        });
+        self.history.following_latest = false;
+        self.history.pending_entry = None;
     }
     pub(super) fn open_history_tab(&mut self, cx: &mut Context<Self>) {
         let page = crate::browser::NativePage {
@@ -370,6 +400,7 @@ impl RootView {
         if update.reset || update.entries.is_some() {
             self.refresh_history_sources();
         }
+        self.reveal_history_entry();
         cx.emit(changed);
         zork_ui::components::region::invalidate(cx, &["history", "header"]);
     }

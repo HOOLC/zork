@@ -8,7 +8,7 @@ pub const NOW: i64 = 1_800_000_600_000;
 
 impl RootView {
     pub fn benchmark_composer_material(&self) -> serde_json::Value {
-        self.presence.scene.inspect()
+        self.composer_surface.scene.inspect()
     }
     pub fn benchmark_history_modal(
         &self,

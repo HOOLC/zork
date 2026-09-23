@@ -1,5 +1,4 @@
 {
-  "new_chat_choose_intensity": "Choose effort",
   "new_chat_reset_thinking": "Reset effort",
   "new_chat_fixed_thinking": "This model uses fixed effort",
   "thinking_minimal": "Minimal",
@@ -19,7 +18,6 @@
   "new_chat_device": "Device",
   "new_chat_choose_model": "Choose model",
   "new_chat_thinking": "Thinking depth",
-  "new_chat_thinking_short": "Thinking",
   "new_chat_profile_auto": "Profile · Automatic",
   "new_chat_retry": "Retry creation",
   "new_chat_creating": "Creating Chat…",
@@ -253,6 +251,9 @@
   "history_model": "Model",
   "history_tool": "Tools",
   "history_running": "In progress",
+  "session_activity_more": "More",
+  "session_activity_less": "Less",
+  "session_activity_stopped": "Stopped",
   "history_open": "View timeline",
   "history_loading": "Loading records…",
   "history_failed": "Could not load session history.",
