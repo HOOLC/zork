@@ -239,7 +239,7 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                             onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
                             Text(session.text("title", "对话"), fontSize = 15.sp,
                                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            LiquidIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
+                            ZorkIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
                                 enabled = !session.optBoolean("archive_pending"),
                                 onClick = { actions.archiveChat(peer.id, session.text("chat_id"), !session.optBoolean("archived"), session.optLong("message_count")) }) {
                                 Glyph(if (session.optBoolean("archived")) R.drawable.ic_archive_restore else R.drawable.ic_archive,
