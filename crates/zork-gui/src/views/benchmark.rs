@@ -138,6 +138,12 @@ impl RootView {
     pub fn benchmark_panel_width(&self, cx: &gpui::App) -> f32 {
         self.browser.read(cx).panel_width()
     }
+    pub fn benchmark_preview_session(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
+        self.preview_session(id, false, cx)
+    }
+    pub fn benchmark_restore_preview(&mut self, cx: &mut Context<Self>) {
+        self.restore_preview(cx);
+    }
     pub fn render_benchmark_fixture(
         history: bool,
         store: Arc<crate::desktop::store::ClientStore>,

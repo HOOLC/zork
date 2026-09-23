@@ -398,7 +398,7 @@ impl RootView {
             cx.subscribe(
                 &browser,
                 |view, _, selection: &crate::browser::BrowserSelection, cx| {
-                    if selection.host != view.browser_host() {
+                    if view.preview_original.is_some() || selection.host != view.browser_host() {
                         return;
                     }
                     let context = selection.inspection.context();
@@ -1321,7 +1321,7 @@ impl RootView {
                     |v, window, cx| v.render_transcript(window, cx).into_any_element(),
                 ))
                 .when(
-                    self.preview_original.is_none() && self.can_send_selected(),
+                    self.preview_original.is_some() || self.can_send_selected(),
                     |pane| {
                         pane.child(div().absolute().bottom_0().left_0().w_full().child(
                             self.regions.auto_height(
@@ -1752,6 +1752,7 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
+        let previewing = self.preview_original.is_some();
         let presence_extent = self.presence.extent;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
@@ -1784,9 +1785,13 @@ impl RootView {
                 )
             })
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
-                v.attach_paths(paths.paths().to_vec(), cx)
+                if v.preview_original.is_none() {
+                    v.attach_paths(paths.paths().to_vec(), cx);
+                }
             }))
-            .child(self.render_composer_extras(window, cx))
+            .when(!previewing, |frame| {
+                frame.child(self.render_composer_extras(window, cx))
+            })
             .child(composer)
             .child(
                 gpui::canvas(

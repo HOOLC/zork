@@ -63,7 +63,12 @@ impl RootView {
             self.save_reading_position();
             self.save_chat_history();
             self.preview_original = Some(self.navigation_selection().0);
+            self.composer_input
+                .update(cx, |input, cx| input.set_editable(false, true, cx));
         }
+        let text = self.core_device.draft(id).text.clone();
+        self.composer_input
+            .update(cx, |input, cx| input.reset_value(text, cx));
         if self.selected_session.as_deref() != Some(id) {
             self.select_session(id, cx);
         }
@@ -78,12 +83,17 @@ impl RootView {
         self.navigate_shell(original.route.unwrap_or(ShellRoute::Home), cx);
         self.preview_original = None;
         self.preview_overlay = false;
+        self.restore_draft(cx);
+        self.composer_input
+            .update(cx, |input, cx| input.set_editable(false, false, cx));
         self.notify_navigation(cx);
         zork_ui::components::region::invalidate_all(cx);
     }
     pub(crate) fn commit_preview(&mut self, cx: &mut Context<Self>) {
         if self.preview_original.take().is_some() {
             self.preview_overlay = false;
+            self.composer_input
+                .update(cx, |input, cx| input.set_editable(false, false, cx));
             if let Some(id) = &self.selected_session {
                 self.persist_cache(zork_client_core::preferences::ViewState::LastSession, id);
             }
@@ -183,14 +193,21 @@ mod tests {
         view.update(cx, |view, cx| {
             view.selected_session = Some("original".into());
             view.shell.navigate(ShellRoute::Task("original".into()));
+            view.composer_input
+                .update(cx, |input, cx| input.reset_value("original draft", cx));
+            view.core_device
+                .edit_draft("hovered", "hovered draft".into())
+                .unwrap();
             assert!(view.preview_session("hovered", false, cx));
             assert_eq!(view.selected_session.as_deref(), Some("hovered"));
+            assert_eq!(view.composer_input.read(cx).value(), "hovered draft");
             assert_eq!(
                 view.navigation_selection().0.selected_session.as_deref(),
                 Some("original")
             );
             view.restore_preview(cx);
             assert_eq!(view.selected_session.as_deref(), Some("original"));
+            assert_eq!(view.composer_input.read(cx).value(), "original draft");
             assert_eq!(view.shell.route(), &ShellRoute::Task("original".into()));
 
             assert!(view.preview_session("original", true, cx));
@@ -201,6 +218,7 @@ mod tests {
             assert!(view.preview_session("hovered", false, cx));
             view.commit_preview(cx);
             assert_eq!(view.selected_session.as_deref(), Some("hovered"));
+            assert_eq!(view.composer_input.read(cx).value(), "hovered draft");
             assert_eq!(
                 view.navigation_selection().0.selected_session.as_deref(),
                 Some("hovered")

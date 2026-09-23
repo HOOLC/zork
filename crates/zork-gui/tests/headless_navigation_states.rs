@@ -41,7 +41,8 @@ fn main() -> anyhow::Result<()> {
         return collapse::run(&output);
     }
     if std::env::args().any(|arg| arg == "--chat-hover") {
-        return chat_hover_checks();
+        chat_hover_checks()?;
+        return composer_preview_checks();
     }
     let mut reports = Vec::new();
     for width in [400., 800.] {
@@ -270,6 +271,7 @@ fn main() -> anyhow::Result<()> {
     gap_surface_checks(&output)?;
     settings_sidebar_process(&output)?;
     chat_hover_checks()?;
+    composer_preview_checks()?;
     println!("PASS navigation input, sliding hover, geometry and CPU draw budget");
     Ok(())
 }
@@ -389,6 +391,78 @@ fn chat_hover_checks() -> anyhow::Result<()> {
         events.borrow()
     );
     println!("PASS Chat sidebar hover enters and leaves the preview target");
+    Ok(())
+}
+
+fn composer_preview_checks() -> anyhow::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let store = Arc::new(zork_gui::desktop::store::ClientStore::open(
+        directory.path(),
+    )?);
+    let mut cx = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = cx.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let mut root = None;
+    let window = cx.open_window(gpui::size(px(1000.), px(700.)), |_, cx| {
+        let view =
+            cx.new(|cx| zork_gui::views::RootView::render_benchmark_fixture(false, store, cx));
+        root = Some(view.clone());
+        cx.new(|_| AutomationRoot::new(view))
+    })?;
+    let pump = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        for _ in 0..4 {
+            cx.advance_clock(Duration::from_millis(16));
+            cx.run_until_parked();
+            cx.update_window(window.into(), |_, window, cx| {
+                window.simulate_next_frame(cx)
+            })?;
+        }
+        Ok(())
+    };
+    let composer = |phase: &str| -> anyhow::Result<_> {
+        let elements = driver.snapshot(false).elements;
+        let input = elements
+            .iter()
+            .find(|element| element.id == "composer-input" && element.visible)
+            .with_context(|| format!("{phase}: composer input disappeared"))?;
+        let send = elements
+            .iter()
+            .find(|element| element.id == "send-button" && element.visible)
+            .with_context(|| format!("{phase}: send button disappeared"))?;
+        Ok((input.bounds, send.enabled))
+    };
+    pump(&mut cx)?;
+    let (original, _) = composer("original")?;
+    let root = root.unwrap();
+    root.update(&mut cx, |view, cx| {
+        assert!(view.benchmark_preview_session("hovered", cx));
+    });
+    pump(&mut cx)?;
+    let (preview, enabled) = composer("hovered")?;
+    anyhow::ensure!(!enabled, "preview send button remained enabled");
+    anyhow::ensure!(
+        (preview.y - original.y).abs() < 1. && (preview.height - original.height).abs() < 1.,
+        "preview composer jumped: {original:?} -> {preview:?}"
+    );
+    root.update(&mut cx, |view, cx| {
+        assert!(view.benchmark_preview_session("another", cx));
+    });
+    pump(&mut cx)?;
+    composer("second preview")?;
+    root.update(&mut cx, |view, cx| view.benchmark_restore_preview(cx));
+    pump(&mut cx)?;
+    composer("restored")?;
+    println!(
+        "PASS preview keeps the composer visible and disables sending until navigation commits"
+    );
     Ok(())
 }
 
