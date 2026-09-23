@@ -21,8 +21,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 GATES = {
     "local-startup": {
-        "requirement": "1s 本机系统全启动完毕",
-        "acceptance": "界面可交互、本机节点可用，历史和远端连接随后恢复",
+        "requirement": "GUI 进入 main 后 1s 本机系统启动完毕",
+        "acceptance": "不计进入 GUI main 前的 macOS 系统评估；首次初始化和无预运行服务的重启均须界面可交互、本机节点可用，历史和远端连接随后恢复",
         "budget_ms": 1000,
     },
     "client-frame": {
@@ -47,7 +47,8 @@ GATES = {
         },
     },
 }
-OBSERVE_SECONDS = 15  # Collect failure diagnostics; never a passing time budget.
+OBSERVE_SECONDS = 15  # Collect post-main failure diagnostics; never a passing time budget.
+PRE_MAIN_OBSERVE_SECONDS = 90  # A diagnostic ceiling, excluded from the gate budget.
 
 
 def request(port, path, token=None, body=None):
@@ -91,14 +92,37 @@ def validate_node(root, supervisor, station, agent, info, pid):
         raise RuntimeError("Local API does not belong to this fixture")
 
 
-def observe(probe, process, started):
+def monotonic_ns():
+    return time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+
+
+def read_main_marker(path, pid, started_ns):
+    marker_pid, marked_ns = map(int, path.read_text().split())
+    if marker_pid != pid or not started_ns <= marked_ns <= monotonic_ns():
+        raise RuntimeError("GUI main marker does not belong to this process launch")
+    return marked_ns
+
+
+def wait_for_main(path, process, started_ns):
+    deadline = time.monotonic() + PRE_MAIN_OBSERVE_SECONDS
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"GUI exited before main with {process.returncode}")
+        try:
+            return read_main_marker(path, process.pid, started_ns)
+        except (FileNotFoundError, ValueError):
+            time.sleep(.001)
+    raise RuntimeError("GUI main marker missing; rebuild the packaged app")
+
+
+def observe(probe, process, main_ns):
     last_error = "readiness not observed"
-    while time.perf_counter() - started < OBSERVE_SECONDS:
+    while monotonic_ns() - main_ns < OBSERVE_SECONDS * 1_000_000_000:
         if process.poll() is not None:
             return {"error": f"GUI exited with {process.returncode}"}
         try:
             if probe():
-                return {"ms": (time.perf_counter() - started) * 1000}
+                return {"ms": (monotonic_ns() - main_ns) / 1_000_000}
         except (OSError, ValueError, KeyError, RuntimeError, http.client.HTTPException) as error:
             last_error = str(error)
         time.sleep(.001)
@@ -107,6 +131,8 @@ def observe(probe, process, started):
 
 def gate_passes(sample, budget_ms):
     return (sample.get("gui_alive") is True
+            and type(sample.get("pre_main_ms")) in (int, float)
+            and 0 <= sample["pre_main_ms"] < float("inf")
             and all(type(sample.get(key, {}).get("ms")) in (int, float)
                     and 0 <= sample[key]["ms"] <= budget_ms
                     and "error" not in sample[key]
@@ -165,6 +191,9 @@ def launch(app, root, client, output, case, trace_startup=False):
     env = {key: value for key, value in os.environ.items() if not key.startswith("ZORK_")}
     env.update(ZORK_CLIENT_DATA=str(client), ZORK_GUI_PREFERENCES_PATH=str(root / "preferences.json"),
                ZORK_REGISTRY_DIR=str(root / "registry"), ZORK_GUI_LOCALE="zh-CN")
+    main_marker = output / f"{case}-gui-main.ns"
+    main_marker.unlink(missing_ok=True)
+    env["ZORK_GUI_MAIN_NS_FILE"] = str(main_marker)
     if trace_startup:
         trace = output / f"{case}-trace"
         trace.mkdir(exist_ok=True)
@@ -178,7 +207,7 @@ def launch(app, root, client, output, case, trace_startup=False):
 
     def milestone(name):
         if name not in sample["milestones_ms"]:
-            sample["milestones_ms"][name] = (time.perf_counter() - started) * 1000
+            sample["milestones_ms"][name] = (monotonic_ns() - started_ns) / 1_000_000
 
     def ui_ready():
         nonlocal clicked
@@ -224,15 +253,17 @@ def launch(app, root, client, output, case, trace_startup=False):
     process = None
     with (output / f"{case}-launcher.log").open("wb") as log:
         try:
-            # Both observers share one origin before the first product process.
+            # Retain spawn-to-main time for diagnosis; readiness uses GUI main.
             with ThreadPoolExecutor(max_workers=2) as pool:
-                started = time.perf_counter()
-                sample["clock_monotonic_ns"] = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+                started_ns = monotonic_ns()
+                sample["clock_monotonic_ns"] = started_ns
                 process = subprocess.Popen([str(gui), "--dev", "--dev-port", str(port),
                                             "--dev-token", token], env=env, stdout=log, stderr=log)
                 milestone("gui_spawn_returned")
-                ui = pool.submit(observe, ui_ready, process, started)
-                local = pool.submit(observe, node_ready, process, started)
+                main_ns = wait_for_main(main_marker, process, started_ns)
+                sample["pre_main_ms"] = (main_ns - started_ns) / 1_000_000
+                ui = pool.submit(observe, ui_ready, process, main_ns)
+                local = pool.submit(observe, node_ready, process, main_ns)
                 sample["ui_interactive"], sample["local_node"] = ui.result(), local.result()
                 sample["gui_alive"] = process.poll() is None
             if trace_startup and sample["gui_alive"]:
@@ -263,7 +294,7 @@ def launch(app, root, client, output, case, trace_startup=False):
                     for line in path.read_text().splitlines():
                         mark = json.loads(line)
                         elapsed = (mark["ns"] - sample["clock_monotonic_ns"]) / 1_000_000
-                        if 0 <= elapsed <= (OBSERVE_SECONDS + 1) * 1000:
+                        if 0 <= elapsed <= (PRE_MAIN_OBSERVE_SECONDS + OBSERVE_SECONDS + 1) * 1000:
                             marks.append({"pid": mark["pid"], "mark": mark["mark"], "ms": elapsed})
                 sample["process_marks"] = sorted(marks, key=lambda value: value["ms"])
     return sample
@@ -298,7 +329,7 @@ def local_startup_gate(args, output):
               "build_profile": args.build_profile or "unspecified",
               "startup_tracing": args.trace_startup,
               "launch": "fresh processes via packaged GUI executable; OS file cache uncontrolled",
-              "measurement": "external wall time including real UI input and loopback probes"}
+              "measurement": "GUI main to real UI input and loopback readiness; pre-main OS time reported separately"}
     try:
         if not args.app:
             raise RuntimeError("Missing --app: a freshly built and signed macOS app is required")

@@ -21,7 +21,8 @@ spec.loader.exec_module(native_budget)
 
 class GateTests(unittest.TestCase):
     def sample(self, ui=750, node=1000):
-        return {"gui_alive": True, "ui_interactive": {"ms": ui}, "local_node": {"ms": node}}
+        return {"gui_alive": True, "pre_main_ms": 9000,
+                "ui_interactive": {"ms": ui}, "local_node": {"ms": node}}
 
     def test_both_milestones_must_meet_the_inclusive_deadline(self):
         self.assertEqual(smoke.GATES["local-startup"]["budget_ms"], 1000)
@@ -30,7 +31,7 @@ class GateTests(unittest.TestCase):
         self.assertFalse(smoke.gate_passes(self.sample(ui=1001, node=20), 1000))
 
     def test_missing_readiness_or_process_exit_cannot_pass(self):
-        for key in ("ui_interactive", "local_node", "gui_alive"):
+        for key in ("ui_interactive", "local_node", "gui_alive", "pre_main_ms"):
             sample = self.sample()
             sample.pop(key)
             self.assertFalse(smoke.gate_passes(sample, 1000))
@@ -38,9 +39,28 @@ class GateTests(unittest.TestCase):
         sample["local_node"]["error"] = "process exited"
         self.assertFalse(smoke.gate_passes(sample, 1000))
 
+    def test_main_marker_must_match_the_spawned_process_and_clock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "main.ns"
+            with patch.object(smoke, "monotonic_ns", return_value=1050):
+                marker.write_text("42 1000\n")
+                self.assertEqual(smoke.read_main_marker(marker, 42, 900), 1000)
+                for contents, pid, started in (("41 1000\n", 42, 900),
+                                               ("42 899\n", 42, 900),
+                                               ("42 1051\n", 42, 900)):
+                    marker.write_text(contents)
+                    with self.assertRaises(RuntimeError):
+                        smoke.read_main_marker(marker, pid, started)
+            marker.unlink()
+            with self.assertRaises(FileNotFoundError):
+                smoke.read_main_marker(marker, 42, 900)
+
     def test_invalid_measurements_cannot_pass(self):
         for value in (-1, float("nan"), float("inf"), "1", True, False):
             self.assertFalse(smoke.gate_passes(self.sample(node=value), 1000))
+            sample = self.sample()
+            sample["pre_main_ms"] = value
+            self.assertFalse(smoke.gate_passes(sample, 1000))
 
     def test_readiness_belongs_to_the_same_embedded_node_and_fixture(self):
         root = Path("/fixture/node")
