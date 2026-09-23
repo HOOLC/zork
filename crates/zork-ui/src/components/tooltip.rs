@@ -8,10 +8,7 @@ use gpui::{div, prelude::*, px, rgb, Context, FontWeight, Window};
 
 use super::liquid::panel::{Content, FloatingPanel, FloatingStyle, Side};
 const CONTENT_SECONDS: f32 = 0.14;
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone)]
 pub struct DetailsTooltip {

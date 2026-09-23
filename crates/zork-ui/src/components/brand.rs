@@ -3,7 +3,6 @@
 use crate::automation::{AutomationElementExt, AutomationRole};
 use gpui::{div, prelude::*, px, rgb, Animation, AnimationExt, Context, Window};
 use serde::Deserialize;
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{
     cell::{Cell, RefCell},
@@ -11,8 +10,6 @@ use std::{
     sync::OnceLock,
     time::Duration,
 };
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone, Copy)]
 pub enum BrandMotion {

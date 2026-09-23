@@ -69,7 +69,7 @@ pub fn label(
         DeviceStatus::MeshPreparing | DeviceStatus::MeshStopping | DeviceStatus::Connecting
     );
     let indicator = if busy {
-        loading::indicator("device-status-loading", 12.)
+        loading::indicator(format!("device-status-loading-{id:?}"), 12.)
             .without_delay()
             .into_any_element()
     } else {
@@ -84,7 +84,7 @@ pub fn label(
         _ => text.clone(),
     };
     let badge = div()
-        .id("device-status")
+        .id(format!("device-status-{id:?}"))
         .flex_shrink_0()
         .flex()
         .items_center()

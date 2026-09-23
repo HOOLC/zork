@@ -19,7 +19,7 @@ fn kernel(table: &[f32; 4097], dx: f64, dy: f64, inverse: f64) -> f64 {
     }
     // Nonnegative and bounded by the support check above. Truncation plus the
     // fractional comparison is the same tie-away rounding without libm's
-    // software round call in the WASM inner loop.
+    // software round call in the inner loop.
     let index = (x * x + y * y) * 256.;
     let whole = index as usize;
     let i = whole + usize::from(index - whole as f64 >= 0.5);

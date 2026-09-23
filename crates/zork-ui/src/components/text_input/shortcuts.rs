@@ -5,21 +5,7 @@ use gpui_base::input;
 actions!(composer_input, [PastePlain, FocusNext, FocusPrevious]);
 
 fn mac_keyboard() -> bool {
-    #[cfg(not(target_family = "wasm"))]
-    {
-        cfg!(target_os = "macos")
-    }
-    #[cfg(target_family = "wasm")]
-    {
-        js_sys::Reflect::get(&js_sys::global(), &"navigator".into())
-            .ok()
-            .is_some_and(|navigator| {
-                js_sys::Reflect::get(&navigator, &"platform".into())
-                    .ok()
-                    .and_then(|v| v.as_string())
-                    .is_some_and(|p| ["Mac", "iPhone", "iPad"].iter().any(|os| p.contains(os)))
-            })
-    }
+    cfg!(target_os = "macos")
 }
 
 pub fn init(cx: &mut App) {
@@ -47,23 +33,10 @@ pub(super) fn bind_keys(cx: &mut App, mac: bool) {
             scope,
         ),
     ]);
-    #[cfg(not(target_family = "wasm"))]
     cx.bind_keys([
         KeyBinding::new(&format!("{command}-v"), input::Paste, scope),
         KeyBinding::new(&format!("{command}-shift-v"), PastePlain, scope),
     ]);
-    // The browser owns the paste gesture and delivers its payload to the input
-    // handler. The library's synchronous clipboard binding would swallow it.
-    #[cfg(target_family = "wasm")]
-    for key in [
-        "cmd-v",
-        "ctrl-v",
-        "cmd-shift-v",
-        "ctrl-shift-v",
-        "cmd-alt-shift-v",
-    ] {
-        cx.bind_keys([KeyBinding::new(key, gpui::NoAction, scope)]);
-    }
     if mac {
         cx.bind_keys([
             KeyBinding::new("ctrl-cmd-space", input::ShowCharacterPalette, scope),
@@ -106,7 +79,6 @@ pub(super) fn bind_keys(cx: &mut App, mac: bool) {
                 scope,
             ),
         ]);
-        #[cfg(not(target_family = "wasm"))]
         cx.bind_keys([KeyBinding::new("cmd-alt-shift-v", PastePlain, scope)]);
     } else {
         cx.bind_keys([
@@ -124,7 +96,6 @@ pub(super) fn bind_keys(cx: &mut App, mac: bool) {
             KeyBinding::new("ctrl-delete", input::DeleteToNextWordEnd, scope),
             KeyBinding::new("ctrl-y", input::Redo, scope),
         ]);
-        #[cfg(not(target_family = "wasm"))]
         cx.bind_keys([KeyBinding::new("shift-insert", input::Paste, scope)]);
     }
     use input::PlatformCommand::*;

@@ -11,18 +11,12 @@ pub fn duration(ms: i64) -> String {
         format!("{}m {}s", ms / 60_000, (ms % 60_000) / 1000)
     }
 }
-#[cfg(target_arch = "wasm32")]
-pub fn now() -> i64 {
-    js_sys::Date::now() as i64
-}
-#[cfg(not(target_arch = "wasm32"))]
 pub fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
 }
-#[cfg(not(target_family = "wasm"))]
 pub fn clock(ms: Option<i64>) -> String {
     let Some(ms) = ms else { return "—".into() };
     // Local wall time without adding a timezone dependency.
@@ -32,17 +26,6 @@ pub fn clock(ms: Option<i64>) -> String {
         return "—".into();
     }
     format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-}
-#[cfg(target_family = "wasm")]
-pub fn clock(ms: Option<i64>) -> String {
-    let Some(ms) = ms else { return "—".into() };
-    let date = js_sys::Date::new(&(ms as f64).into());
-    format!(
-        "{:02}:{:02}:{:02}",
-        date.get_hours(),
-        date.get_minutes(),
-        date.get_seconds()
-    )
 }
 #[cfg(test)]
 mod tests {

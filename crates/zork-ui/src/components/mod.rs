@@ -37,3 +37,4 @@ pub mod json_tree;
 pub mod message_row;
 
 pub mod message_placeholder;
+pub mod profile_card;

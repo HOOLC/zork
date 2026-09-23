@@ -6,15 +6,12 @@ use crate::{
         text_input::{ComposerEdited, ComposerInput, ComposerLayoutChanged, ComposerSubmit},
     },
     controls as ui,
-    design::ZORK_UI,
+    design::{TextRole, ZORK_UI},
     resources::Text,
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 use zork_client_types::new_chat::{Action, Snapshot};
 mod picker;
 use crate::components::liquid::panel::PopoverPanel;
@@ -39,6 +36,7 @@ pub struct Page {
     previous: Option<Instant>,
     scheduled: bool,
     focus_pending: bool,
+    welcome: bool,
 }
 impl EventEmitter<Event> for Page {}
 impl Page {
@@ -78,6 +76,13 @@ impl Page {
             previous: None,
             scheduled: false,
             focus_pending: true,
+            welcome: false,
+        }
+    }
+    pub fn set_welcome(&mut self, welcome: bool, cx: &mut Context<Self>) {
+        if self.welcome != welcome {
+            self.welcome = welcome;
+            cx.notify();
         }
     }
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
@@ -87,6 +92,9 @@ impl Page {
         }
         if !data.editable {
             self.picker_open = false;
+            self.device_menu = false;
+        }
+        if data.device.options.len() <= 1 {
             self.device_menu = false;
         }
         self.input.update(cx, |input, cx| {
@@ -221,10 +229,18 @@ impl Render for Page {
             },
             ..Default::default()
         };
+        let selected_thinking = match self.data.thinking.value.as_str() {
+            "off" | "low" | "medium" | "high" | "minimal" | "xhigh" | "max" => Some(format!(
+                "{} · {}",
+                self.text.text("new_chat_thinking_short"),
+                self.thinking_label(&self.data.thinking.value)
+            )),
+            _ => None,
+        };
         let trigger = self.picker.trigger(
             "new-chat-options",
-            self.text.text("new_chat_choose_intensity"),
-            130.,
+            selected_thinking.unwrap_or_else(|| self.text.text("new_chat_choose_intensity")),
+            152.,
             self.picker_open,
             self.data.editable,
             cx,
@@ -279,7 +295,8 @@ impl Render for Page {
             window,
             cx,
         );
-        let device = self.device_selector(window, cx);
+        let has_device_selector = self.data.device.options.len() > 1;
+        let device = has_device_selector.then(|| self.device_selector(window, cx));
         let popup_width = 272_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let content = if self.picker_open || self.picker.alive() {
             self.picker_content(popup_width, window, cx)
@@ -317,6 +334,34 @@ impl Render for Page {
             .justify_end()
             .px_6()
             .pb(px(ZORK_UI.layout.composer_bottom_inset))
+            .when(self.welcome, |v| {
+                v.child(
+                    div()
+                        .id("new-chat-welcome")
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .pb_6()
+                        .child(
+                            div()
+                                .max_w(px(600.))
+                                .px_4()
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .text_center()
+                                .child(ui::page_title(self.text.text("onboarding_ready")))
+                                .child(div().mt_3().child(ui::text_role(
+                                    self.text.text("onboarding_ready_description"),
+                                    TextRole::Description,
+                                ))),
+                        )
+                        .automation(AutomationRole::Status, self.text.text("onboarding_ready")),
+                )
+            })
             .when(self.data.loading, |v| {
                 v.child(
                     div()
@@ -363,27 +408,29 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .child(
-                crate::components::liquid::primitives::surface(
-                    "new-chat-context",
-                    16.,
-                    ZORK_UI.palette.sidebar_hover,
-                    false,
+            .when_some(device, |v, device| {
+                v.child(
+                    crate::components::liquid::primitives::surface(
+                        "new-chat-context",
+                        16.,
+                        ZORK_UI.palette.sidebar_hover,
+                        false,
+                    )
+                    .w(px((self.width - 24.).max(196.)))
+                    .px_3()
+                    .font_weight(FontWeight::NORMAL)
+                    .pt_2()
+                    .pb(px(16.))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(ui::icon("icons/node.svg", 14.))
+                    .child(device),
                 )
-                .w(px((self.width - 24.).max(196.)))
-                .px_3()
-                .font_weight(FontWeight::NORMAL)
-                .pt_2()
-                .pb(px(16.))
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(ui::icon("icons/node.svg", 14.))
-                .child(device),
-            )
+            })
             .child(
                 div()
-                    .mt(px(-8.))
+                    .mt(px(if has_device_selector { -8. } else { 0. }))
                     .w(px(self.width))
                     .h(px(height))
                     .child(composer),

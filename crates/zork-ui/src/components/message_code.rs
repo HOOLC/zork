@@ -1,4 +1,4 @@
-//! Cached, pure-Rust syntax highlighting shared by native and WASM messages.
+//! Cached, pure-Rust syntax highlighting for messages.
 use gpui::{rgb, HighlightStyle};
 use std::{cell::RefCell, collections::VecDeque, ops::Range};
 use syntect::{

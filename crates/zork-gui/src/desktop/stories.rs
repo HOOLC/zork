@@ -97,7 +97,7 @@ pub fn catalog() -> Vec<Story> {
                 "failure" => "desktop-startup-retry",
                 "models" => "onboarding-add-model",
                 "model-form" => "profile-create-dialog",
-                _ => "onboarding-finish",
+                _ => "new-chat-welcome",
             }
             .into();
             items.push(story);
@@ -519,7 +519,6 @@ pub fn catalog() -> Vec<Story> {
 pub struct StoryHost {
     inner: AnyView,
     settings: bool,
-    #[cfg(not(target_family = "wasm"))]
     _directory: tempfile::TempDir,
 }
 impl StoryHost {
@@ -622,7 +621,6 @@ impl StoryHost {
 
     pub fn new(story: Story, cx: &mut Context<Self>) -> Self {
         install(cx);
-        #[cfg(not(target_family = "wasm"))]
         let directory = tempfile::tempdir().expect("isolated story directory");
         let settings = matches!(
             story.family.as_str(),
@@ -834,7 +832,6 @@ impl StoryHost {
         Self {
             inner,
             settings,
-            #[cfg(not(target_family = "wasm"))]
             _directory: directory,
         }
     }

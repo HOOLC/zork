@@ -121,6 +121,7 @@ pub struct Fixture {
     selection: (String, String, String),
     scenario: String,
     device: String,
+    local_only: bool,
 }
 impl Fixture {
     pub fn new(scenario: &str) -> Self {
@@ -147,6 +148,7 @@ impl Fixture {
             selection: ("Demo model".into(), "high".into(), "auto".into()),
             scenario: scenario.into(),
             device: "local".into(),
+            local_only: scenario == "first-chat",
         }
     }
     pub fn snapshot(&self) -> Snapshot {
@@ -161,6 +163,7 @@ impl Fixture {
             value: self.device.clone(),
             options: [("local", "本机"), ("remote", "远程设备")]
                 .into_iter()
+                .filter(|(value, _)| !self.local_only || *value == "local")
                 .map(|(value, label)| OptionItem {
                     value: value.into(),
                     label: label.into(),

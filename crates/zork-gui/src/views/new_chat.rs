@@ -1,6 +1,13 @@
 use super::*;
 
 impl RootView {
+    pub(crate) fn set_first_chat_welcome(&mut self, welcome: bool, cx: &mut Context<Self>) {
+        if self.first_chat_welcome != welcome {
+            self.first_chat_welcome = welcome;
+            cx.notify();
+        }
+    }
+
     pub(crate) fn set_new_chat_devices(
         &mut self,
         choice: zork_client_core::new_chat::Choice,
@@ -91,6 +98,7 @@ impl RootView {
         data.device = self.new_chat_devices.clone();
         data.error = data.error.or_else(|| self.error.clone());
         page.update(cx, |v, cx| {
+            v.set_welcome(self.first_chat_welcome, cx);
             v.configure(data, self.composer_surface_width, text, cx)
         });
         page

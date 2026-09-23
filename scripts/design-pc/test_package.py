@@ -49,8 +49,4 @@ for image in (design/'archive/reference-captures').glob('*.png'):
 guides = (ROOT/'crates/zork-gui/src/bin/design_pc/guide.rs').read_text()
 for document in (design/'docs').glob('*.md'):
  assert 'docs/'+document.name in guides,document
-assert not (ROOT/'crates/zork-gui-web').exists()
-assert not (ROOT/'apps/zork-design').exists()
-assert not (ROOT/'scripts/storybook').exists()
-assert not (ROOT/'vendor/gpui-web-gpui-unofficial').exists()
-print('PASS native design package: shared controls, embedded design sources, no Web app')
+print('PASS native design package: shared controls and embedded design sources')

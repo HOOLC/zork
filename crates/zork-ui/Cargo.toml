@@ -21,10 +21,7 @@ lyon = "=1.0.19"
 markdown.workspace = true
 syntect = { version = "=5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-web-time = "1"
-js-sys = "0.3"
+libc = "0.2"
 
 [features]
 native-screenshots = ["gpui/test-support"]
@@ -32,10 +29,7 @@ stories = []
 headless-bench = []
 frame-profiler = ["gpui/profiler"]
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-libc = "0.2"
-
-[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+[dev-dependencies]
 zork-client-core = { path = "../zork-client-core" }
 gpui-platform = { package = "gpui-platform-gpui-unofficial", version = "=1.17.0-pre", features = ["font-kit", "test-support", "wayland", "x11"] }
 

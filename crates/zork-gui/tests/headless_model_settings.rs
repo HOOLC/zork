@@ -1,4 +1,4 @@
-//! Cross-device model navigation uses the real settings and profile editor views.
+//! Cross-device provider and profile navigation uses the real settings and editor views.
 use gpui::{
     div, prelude::*, px, rgb, size, AppContext, Context, Entity, HeadlessAppContext, Window,
 };
@@ -25,11 +25,7 @@ impl Render for SettingsShell {
     }
 }
 fn main() -> anyhow::Result<()> {
-    for icon in [
-        "icons/models.svg",
-        "icons/group-by-provider.svg",
-        "icons/group-by-model.svg",
-    ] {
+    for icon in ["icons/models.svg"] {
         anyhow::ensure!(
             gpui::AssetSource::load(&EmbeddedAssets, icon)?.is_some(),
             "{icon} is not embedded"
@@ -58,6 +54,10 @@ fn main() -> anyhow::Result<()> {
             "id": "shared-model", "enabled": true, "api": "openai-responses",
             "limits": {"context_window_tokens": 128000, "max_output_tokens": 8192}, "thinking": ["low"], "default_thinking": "low"
         }, {"id": "old-model", "enabled": false, "api": "openai-responses"}]);
+        let now = chrono::Utc::now().timestamp();
+        fixture["profile"]["rateLimits"]["rateLimits"]["primary"]["resetsAt"] = json!(now + 3600);
+        fixture["profile"]["rateLimits"]["rateLimits"]["secondary"]["resetsAt"] =
+            json!(now + 3 * 86400);
         let client = Arc::new(StationClient::fixture(fixture, provider_catalog.clone()));
         let profiles = Profiles::new(client);
         profiles.seed(ProfileData {
@@ -68,7 +68,11 @@ fn main() -> anyhow::Result<()> {
             id.into(),
             id.into(),
             profiles,
-            zork_ui::device_name::DeviceStatus::Connected,
+            if id == "laptop" {
+                zork_ui::device_name::DeviceStatus::Offline
+            } else {
+                zork_ui::device_name::DeviceStatus::Connected
+            },
         ));
     }
     let mut view = None;
@@ -102,32 +106,50 @@ fn main() -> anyhow::Result<()> {
         })??;
         draw(cx)
     };
-    let rows = || {
-        driver
-            .snapshot(false)
-            .elements
-            .into_iter()
-            .filter(|e| e.id.starts_with("model-entry-"))
-            .collect::<Vec<_>>()
-    };
-    let all_rows = || {
-        driver
-            .snapshot(true)
-            .elements
-            .into_iter()
-            .filter(|e| e.id.starts_with("model-entry-"))
-            .collect::<Vec<_>>()
-    };
     let snapshot = driver.snapshot(false);
+    anyhow::ensure!(
+        snapshot.elements.iter().any(|e| {
+            e.id == "model-provider-openai" && e.visible && e.label == "OpenAI · 2 个 Profile"
+        }),
+        "OpenAI provider group is missing"
+    );
+    anyhow::ensure!(
+        !snapshot.elements.iter().any(|e| {
+            e.id.starts_with("model-entry-")
+                || e.id == "model-disabled-toggle"
+                || e.id == "model-grouping-toggle"
+        }),
+        "A separate model list or grouping switch is still present"
+    );
     for device in ["desktop", "laptop"] {
         let connection = snapshot
             .elements
             .iter()
             .find(|e| e.id == format!("profile-detail-{device}-fixture") && e.visible)
-            .ok_or_else(|| anyhow::anyhow!("Missing {device} connection overview"))?;
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} Profile card"))?;
         anyhow::ensure!(
             connection.label.contains(device),
-            "Connection overview lost its device identity"
+            "Profile card lost its device identity"
+        );
+        let device_name = snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == format!("profile-device-{device}-fixture") && e.visible)
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} label inside Profile card"))?;
+        anyhow::ensure!(
+            device_name.label.contains(device)
+                && device_name.label.contains(if device == "laptop" {
+                    "离线"
+                } else {
+                    "已连接"
+                })
+                && device_name.bounds.x >= connection.bounds.x
+                && device_name.bounds.y >= connection.bounds.y
+                && device_name.bounds.x + device_name.bounds.width
+                    <= connection.bounds.x + connection.bounds.width
+                && device_name.bounds.y + device_name.bounds.height
+                    <= connection.bounds.y + connection.bounds.height,
+            "Device label is outside its Profile card: {device_name:?}"
         );
         let billing = snapshot
             .elements
@@ -151,6 +173,14 @@ fn main() -> anyhow::Result<()> {
             "Connection quota disappeared: {}",
             quota.label
         );
+        for index in 0..2 {
+            anyhow::ensure!(
+                snapshot.elements.iter().any(|e| {
+                    e.id == format!("profile-quota-window-{device}-fixture-{index}") && e.visible
+                }),
+                "{device} circular quota {index} is missing"
+            );
+        }
         anyhow::ensure!(
             snapshot.elements.iter().any(|e| {
                 e.id == format!("profile-model-count-{device}-fixture") && e.label == "2 个模型"
@@ -164,11 +194,45 @@ fn main() -> anyhow::Result<()> {
             "Connection verification disappeared"
         );
     }
+    cx.capture_screenshot(window.into())?
+        .save(output.join("provider-profiles.png"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        driver.dispatch(
+            serde_json::from_value(json!({
+                "type":"move","target":{"element_id":"profile-quota-window-desktop-fixture-0"}
+            }))?,
+            w,
+            cx,
+        )
+    })??;
+    draw(&mut cx)?;
+    let hover = driver.snapshot(false);
     anyhow::ensure!(
-        rows().len() == 2,
-        "Expected models from both devices: {:?}",
-        rows().iter().map(|e| &e.label).collect::<Vec<_>>()
+        hover.elements.iter().any(|e| {
+            e.id == "control-hint-profile-quota-reset-desktop-fixture-0"
+                && e.visible
+                && e.label.contains("后重置")
+        }),
+        "5H quota hover did not show the reset time: {:?}",
+        hover
+            .elements
+            .iter()
+            .filter(|e| e.id.contains("quota") || e.id.contains("hint"))
+            .map(|e| (&e.id, &e.label, e.visible))
+            .collect::<Vec<_>>()
     );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("provider-quota-tooltip.png"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        driver.dispatch(
+            serde_json::from_value(json!({
+                "type":"move","target":{"element_id":"model-provider-openai"}
+            }))?,
+            w,
+            cx,
+        )
+    })??;
+    draw(&mut cx)?;
     click("profile-detail-desktop-fixture", &mut cx)?;
     anyhow::ensure!(
         driver
@@ -176,22 +240,27 @@ fn main() -> anyhow::Result<()> {
             .elements
             .iter()
             .any(|e| e.id == "profile-detail-dialog-close" && e.visible),
-        "Connection overview did not open the existing detail dialog"
+        "Profile card did not open its detail dialog"
+    );
+    let selected = view.read_with(&cx, |v, cx| v.headless_selection(cx));
+    anyhow::ensure!(
+        selected["device"] == "desktop" && selected["editor"]["detail"] == "fixture",
+        "Wrong Profile detail/source: {selected}"
     );
     click("profile-detail-dialog-close", &mut cx)?;
+
     view.update(&mut cx, |v, cx| {
         anyhow::ensure!(v.begin_onboarding("desktop", cx), "Local editor missing");
         Ok::<_, anyhow::Error>(())
     })?;
     draw(&mut cx)?;
-    anyhow::ensure!(rows().len() == 1, "Onboarding showed another device");
     anyhow::ensure!(
         !driver
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "profile-detail-laptop-fixture" && e.visible),
-        "Onboarding showed another device's connection"
+            .any(|e| { e.id == "profile-detail-laptop-fixture" && e.visible }),
+        "Onboarding showed another device's Profile"
     );
     anyhow::ensure!(
         driver
@@ -199,50 +268,12 @@ fn main() -> anyhow::Result<()> {
             .elements
             .iter()
             .any(|e| e.id == "profile-close-form" && e.visible),
-        "Onboarding did not open the real connection editor"
-    );
-    anyhow::ensure!(
-        !driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .any(|e| e.id.starts_with("model-add-device-")),
-        "Onboarding offered a device chooser"
+        "Onboarding did not open the connection editor"
     );
     click("profile-close-form", &mut cx)?;
-    anyhow::ensure!(
-        !driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .any(|e| e.id == "profile-close-form" && e.visible),
-        "Connection editor remained visible after cancel"
-    );
     view.update(&mut cx, |v, cx| v.set_onboarding_local(None, cx));
     draw(&mut cx)?;
-    anyhow::ensure!(rows().len() == 2, "Normal settings lost a device");
-    anyhow::ensure!(
-        driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .any(|e| e.id == "model-disabled-toggle"),
-        "Disabled models need a collapsed entry"
-    );
-    cx.capture_screenshot(window.into())?
-        .save(output.join("by-provider.png"))?;
-    click("model-disabled-toggle", &mut cx)?;
-    anyhow::ensure!(
-        all_rows().len() == 4,
-        "Disabled models did not expand: {} rows",
-        all_rows().len()
-    );
-    click("model-disabled-toggle", &mut cx)?;
-    anyhow::ensure!(
-        all_rows().len() == 2,
-        "Disabled models did not collapse: {} rows",
-        all_rows().len()
-    );
+
     click("models-add", &mut cx)?;
     anyhow::ensure!(
         driver
@@ -250,7 +281,7 @@ fn main() -> anyhow::Result<()> {
             .elements
             .iter()
             .any(|e| e.id == "model-add-device-laptop" && e.visible),
-        "Adding a connection did not open the device dialog"
+        "Adding a connection did not open the device chooser"
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("add-device.png"))?;
@@ -264,84 +295,21 @@ fn main() -> anyhow::Result<()> {
         "Selecting a device did not open the connection dialog"
     );
     click("profile-close-form", &mut cx)?;
-    for label in [
-        "按供应商分组 · 点击切换为按模型分组",
-        "按模型分组 · 点击切换为按供应商分组",
-    ] {
-        cx.update_window(window.into(), |_, w, cx| {
-            driver.dispatch(
-                serde_json::from_value(
-                    json!({"type":"move", "target":{"element_id":"model-grouping-toggle"}}),
-                )?,
-                w,
-                cx,
-            )
-        })??;
-        draw(&mut cx)?;
-        cx.advance_clock(Duration::from_millis(300));
-        draw(&mut cx)?;
-        let snapshot = driver.snapshot(false);
-        let hint = snapshot
-            .elements
-            .iter()
-            .find(|e| e.id == "control-hint-model-grouping-toggle" && e.visible)
-            .ok_or_else(|| anyhow::anyhow!("Missing grouping tooltip: {label}"))?;
-        anyhow::ensure!(hint.label == label, "Tooltip did not follow grouping state");
-        anyhow::ensure!(
-            hint.bounds.height <= 30.1 && hint.bounds == hint.visible_bounds,
-            "Grouping tooltip must fit one line without clipping: {label}, {:?}",
-            hint.bounds
-        );
-        anyhow::ensure!(
-            snapshot
-                .elements
-                .iter()
-                .filter(|e| e.id == "model-grouping-toggle")
-                .count()
-                == 1,
-            "Grouping must use one control"
-        );
-        click("model-grouping-toggle", &mut cx)?;
-    }
-    // The two clicks above return to provider grouping; a third selects models.
-    click("model-grouping-toggle", &mut cx)?;
-    cx.capture_screenshot(window.into())?
-        .save(output.join("grouping-tooltip.png"))?;
-    anyhow::ensure!(rows().len() == 2, "Grouping merged distinct model sources");
-    cx.capture_screenshot(window.into())?
-        .save(output.join("by-model.png"))?;
+
     cx.update_window(window.into(), |_, w, cx| {
         w.resize(size(px(600.), px(760.)));
         w.bounds_changed(cx);
     })?;
     draw(&mut cx)?;
-    anyhow::ensure!(rows().len() == 2, "Narrow layout lost a model source");
-    for device in ["desktop", "laptop"] {
-        let connection = driver
-            .snapshot(false)
-            .elements
-            .into_iter()
-            .find(|e| e.id == format!("profile-detail-{device}-fixture"))
-            .ok_or_else(|| anyhow::anyhow!("Narrow layout lost {device} connection"))?;
-        anyhow::ensure!(
-            connection.visible
-                && connection.bounds.x >= 0.
-                && connection.bounds.x + connection.bounds.width <= 600.,
-            "Narrow layout clipped {device} connection: {:?}",
-            connection.bounds
-        );
-    }
-    for row in rows() {
-        anyhow::ensure!(
-            row.visible && row.bounds.x >= 0. && row.bounds.x + row.bounds.width <= 600.,
-            "Narrow layout clipped a model row: {:?}",
-            row.bounds
-        );
-    }
     for id in [
         "models-add",
-        "model-grouping-toggle",
-        "model-disabled-toggle",
+        "model-provider-openai",
+        "profile-detail-desktop-fixture",
+        "profile-detail-laptop-fixture",
+        "profile-device-desktop-fixture",
+        "profile-device-laptop-fixture",
+        "profile-quota-window-desktop-fixture-0",
+        "profile-quota-window-laptop-fixture-1",
     ] {
         let element = driver
             .snapshot(false)
@@ -358,29 +326,25 @@ fn main() -> anyhow::Result<()> {
         );
     }
     cx.capture_screenshot(window.into())?
-        .save(output.join("by-model-narrow.png"))?;
-    let laptop = rows()
-        .into_iter()
-        .find(|e| e.label.contains("laptop"))
-        .unwrap();
-    click(&laptop.id, &mut cx)?;
-    let selected = view.read_with(&cx, |v, cx| v.headless_selection(cx));
-    anyhow::ensure!(
-        selected["device"] == "laptop"
-            && selected["editor"]["model_id"] == "shared-model"
-            && selected["editor"]["model_form"] == true,
-        "Wrong model editor/source: {selected}"
-    );
-    cx.capture_screenshot(window.into())?
-        .save(output.join("edit-model.png"))?;
-    // Removing a source must remove its rows and an editor opened against it.
+        .save(output.join("provider-profiles-narrow.png"))?;
+
     view.update(&mut cx, |v, cx| v.set_sources(vec![sources[0].clone()], cx));
     draw(&mut cx)?;
-    anyhow::ensure!(rows().len() == 1, "Removed source remains listed");
     anyhow::ensure!(
-        view.read_with(&cx, |v, cx| v.headless_selection(cx))
-            .is_null(),
-        "Removed source retained its editor"
+        !driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| { e.id == "profile-detail-laptop-fixture" && e.visible }),
+        "Removed device's Profile remains listed"
+    );
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 1 个 Profile" }),
+        "Provider count did not follow source removal"
     );
     click("models-add", &mut cx)?;
     anyhow::ensure!(
@@ -391,14 +355,40 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.id == "profile-close-form" && e.visible),
         "Single-device add did not open the connection dialog"
     );
+    click("profile-close-form", &mut cx)?;
+
+    let mut state = (*sources[0].2.snapshot()).clone();
+    let mut second = state.profiles[0].clone();
+    second.profile_id = "team".into();
+    second.name = Some("Team Profile".into());
+    second.models.clear();
+    Arc::make_mut(&mut state.profiles).push(second);
+    sources[0].2.seed(state);
+    draw(&mut cx)?;
+    let snapshot = driver.snapshot(true);
     anyhow::ensure!(
-        !driver
-            .snapshot(false)
+        snapshot
             .elements
             .iter()
-            .any(|e| e.id.starts_with("model-add-device-") && e.visible),
-        "Single-device add showed an unnecessary chooser"
+            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 2 个 Profile" })
+            && snapshot
+                .elements
+                .iter()
+                .any(|e| { e.id == "profile-detail-desktop-team" && e.visible })
+            && snapshot.elements.iter().any(|e| {
+                e.id == "profile-model-count-desktop-team" && e.label == "待配置模型"
+            }),
+        "Same-provider or unconfigured Profile is missing"
     );
-    println!("PASS model settings: add dialog, disabled disclosure, icon tooltips, both grouping modes, same model on two devices, matching editor, source removal");
+    anyhow::ensure!(
+        !snapshot
+            .elements
+            .iter()
+            .any(|e| e.id.starts_with("model-entry-")),
+        "A separate model list reappeared"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("provider-multiple-profiles.png"))?;
+    println!("PASS model settings: provider → Profile cards, quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal");
     Ok(())
 }

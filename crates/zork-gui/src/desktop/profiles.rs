@@ -18,7 +18,6 @@ use zork_ui::controls::{provider_icon, provider_path};
 pub struct ProfilesView {
     source: Arc<crate::api::Profiles>,
     dialog_only: bool,
-    show_connection_rows: bool,
     row_scope: Option<String>,
     detail_request: u64,
     source_updates: Option<Task<()>>,
@@ -93,7 +92,6 @@ impl ProfilesView {
     ) -> Self {
         let mut view = Self::new_source(source, cx);
         view.dialog_only = true;
-        view.show_connection_rows = true;
         view.row_scope = Some(device_id);
         view.device_name = name;
         view.set_visible(true, cx);
@@ -156,7 +154,6 @@ impl ProfilesView {
             modal: ui::ModalState::new(cx),
             source,
             dialog_only: false,
-            show_connection_rows: false,
             row_scope: None,
             detail_request: 0,
             source_updates: None,
@@ -217,14 +214,11 @@ impl ProfilesView {
     #[cfg(feature = "headless-bench")]
     fn fixture(detail: bool, cx: &mut Context<Self>) -> Self {
         let fixture = zork_ui::stories::page_fixture();
-        #[cfg(not(target_family = "wasm"))]
         let client = Arc::new(StationClient::fixture(
             fixture.clone(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
                 .expect("provider fixture"),
         ));
-        #[cfg(target_family = "wasm")]
-        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new_source(crate::api::Profiles::new(client), cx);
         view.seed_fixture_catalog();
         view.device_name = fixture["device"]["name"].as_str().unwrap().into();
@@ -1251,23 +1245,26 @@ impl Render for ProfilesView {
             "feedback".into(),
         ]);
         self.regions.retain(|key| keep.contains(key));
-        let rows = ids
-            .into_iter()
-            .map(|id| {
-                self.regions.element(
-                    &format!("profile/{id}"),
-                    gpui::StyleRefinement::default().w_full().h(px(80.)),
-                    cx,
-                    move |v, _, cx| {
-                        v.profiles
-                            .iter()
-                            .find(|p| p.profile_id == id)
-                            .map(|p| v.render_profile_row(p, cx))
-                            .unwrap_or_else(|| gpui::Empty.into_any_element())
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
+        let rows = if self.dialog_only {
+            vec![]
+        } else {
+            ids.into_iter()
+                .map(|id| {
+                    self.regions.element(
+                        &format!("profile/{id}"),
+                        gpui::StyleRefinement::default().w_full().h(px(80.)),
+                        cx,
+                        move |v, _, cx| {
+                            v.profiles
+                                .iter()
+                                .find(|p| p.profile_id == id)
+                                .map(|p| v.render_profile_row(p, cx))
+                                .unwrap_or_else(|| gpui::Empty.into_any_element())
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
         let header = self
             .regions
             .auto_height("header", width, cx, |v, _, cx| v.render_header(cx));
@@ -1276,10 +1273,9 @@ impl Render for ProfilesView {
             .flex_col()
             .gap_0()
             .when(!self.dialog_only, |v| v.child(header))
-            .when(
-                (!self.dialog_only || self.show_connection_rows) && !self.profiles.is_empty(),
-                |v| v.child(div().flex().flex_col().mx(px(-12.)).children(rows)),
-            )
+            .when(!self.dialog_only && !self.profiles.is_empty(), |v| {
+                v.child(div().flex().flex_col().mx(px(-12.)).children(rows))
+            })
             .when(
                 !self.dialog_only
                     && self.profiles.is_empty()
@@ -2042,7 +2038,29 @@ impl ProfilesView {
         profile: &ProfileInfo,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
-        let p = ZORK_UI.palette;
+        let id = profile.profile_id.clone();
+        self.render_profile_row_with_click(
+            profile,
+            &self.catalog,
+            self.quota_failures.contains(&profile.profile_id),
+            None,
+            None,
+            cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
+        )
+    }
+
+    pub(super) fn render_profile_row_with_click(
+        &self,
+        profile: &ProfileInfo,
+        catalog: &[Value],
+        quota_failed: bool,
+        device_label: Option<&str>,
+        device_status: Option<&zork_ui::device_name::DeviceStatus>,
+        on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+    ) -> gpui::AnyElement {
+        use zork_ui::components::profile_card::{
+            self, DeviceIdentity, ProfileCard, Quota, QuotaWindow,
+        };
 
         let id = profile.profile_id.clone();
         let row_key = self
@@ -2050,7 +2068,7 @@ impl ProfilesView {
             .as_ref()
             .map(|scope| format!("{scope}-{id}"))
             .unwrap_or_else(|| id.clone());
-        let provider = self.catalog.iter().find(|p| p["id"] == profile.provider);
+        let provider = catalog.iter().find(|p| p["id"] == profile.provider);
         let provider_name = provider
             .and_then(|p| p["label"].as_str())
             .unwrap_or(&profile.provider);
@@ -2069,101 +2087,68 @@ impl ProfilesView {
             if billing.is_empty() { "" } else { " · " },
             billing
         );
-        let model_count = if profile.models.is_empty() {
-            "待配置模型".to_owned()
-        } else {
-            format!("{} 个模型", profile.models.len())
-        };
         let verified = profile.is_verified();
-        let verification = self
-            .locale
-            .text(if verified {
-                "profile_verified"
-            } else {
-                "profile_unverified"
+        let quota = if quota_failed {
+            QuotaPresentation::failure(self.locale)
+        } else {
+            QuotaPresentation::new(profile, self.locale)
+        };
+        let quota = quota.visible().then(|| Quota {
+            summary: quota.summary,
+            failed: quota.failed,
+            windows: quota
+                .windows
+                .into_iter()
+                .map(|window| QuotaWindow {
+                    label: window.label,
+                    short_label: window.short_label,
+                    remaining: window.remaining,
+                    center_value: window.center_value,
+                    value: window.value,
+                    reset: window.reset,
+                })
+                .collect(),
+            balance: quota.balance,
+        });
+        let accessible = device_label
+            .zip(device_status)
+            .map(|(device, status)| {
+                format!(
+                    "{} · {}",
+                    profile.display_name(),
+                    zork_ui::device_name::accessible_summary(device, status, None)
+                )
             })
-            .to_owned();
-
-        ui::quiet_button(
-            format!("profile-detail-{row_key}"),
-            "",
-            true,
-            ui::IconButtonSize::Standard,
-        )
-        .radius(ui::FIELD_RADIUS)
-        .font_weight(gpui::FontWeight::NORMAL)
-        .justify_start()
-        .w_full()
-        .on_click(cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)))
-        .h(px(80.))
-        .px(px(12.))
-        .rounded(px(ui::FIELD_RADIUS))
-        .flex()
-        .items_center()
-        .gap_3()
-        .child(
-            div()
-                .id(format!("profile-avatar-{row_key}"))
-                .size(px(40.))
-                .flex_shrink_0()
-                .rounded(px(ui::FIELD_RADIUS))
-                .bg(rgb(p.sidebar))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(provider_icon(&profile.provider, 24.))
-                .automation(AutomationRole::Status, profile.provider.clone()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .gap_0()
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(13.))
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(profile.display_name().to_owned()),
-                )
-                .child(
-                    div()
-                        .id(format!("profile-billing-{row_key}"))
-                        .truncate()
-                        .text_size(px(11.))
-                        .line_height(px(16.))
-                        .text_color(rgb(p.muted))
-                        .child(billing_summary.clone())
-                        .automation(AutomationRole::Status, billing_summary),
-                )
-                .when_some(
-                    self.quota.get(&profile.profile_id).filter(|q| q.visible()),
-                    |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
-                ),
-        )
-        .child(
-            div()
-                .id(format!("profile-model-count-{row_key}"))
-                .text_size(px(11.))
-                .text_color(rgb(p.muted))
-                .child(model_count.clone())
-                .automation(AutomationRole::Status, model_count),
-        )
-        .child(
-            div()
-                .id(format!("profile-verification-{row_key}"))
-                .px_2()
-                .py_1()
-                .rounded_full()
-                .text_size(px(11.))
-                .bg(gpui::rgba(
-                    ((if verified { p.success } else { p.warning }) << 8) | 0x12,
-                ))
-                .text_color(rgb(if verified { p.success } else { p.warning }))
-                .child(verification.clone())
-                .automation(AutomationRole::Status, verification),
+            .unwrap_or_else(|| profile.display_name().to_owned());
+        profile_card::render(
+            ProfileCard {
+                key: row_key,
+                provider: profile.provider.clone(),
+                name: profile.display_name().to_owned(),
+                device: device_label
+                    .zip(device_status)
+                    .map(|(name, status)| DeviceIdentity {
+                        name: name.to_owned(),
+                        status: status.clone(),
+                    }),
+                billing: billing_summary,
+                model_count: if profile.models.is_empty() {
+                    "待配置模型".to_owned()
+                } else {
+                    format!("{} 个模型", profile.models.len())
+                },
+                verified,
+                verification: self
+                    .locale
+                    .text(if verified {
+                        "profile_verified"
+                    } else {
+                        "profile_unverified"
+                    })
+                    .to_owned(),
+                quota,
+            },
+            on_click,
         )
         .map(|row| {
             self.modal.source("profile-detail-dialog").bind(
@@ -2175,84 +2160,7 @@ impl ProfilesView {
                 },
             )
         })
-        .automation(
-            AutomationRole::Button,
-            if self.row_scope.is_some() {
-                format!("{} · {}", profile.display_name(), self.device_name)
-            } else {
-                profile.display_name().to_owned()
-            },
-        )
+        .automation(AutomationRole::Button, accessible)
         .into_any_element()
-    }
-
-    fn render_quota_summary(&self, id: &str, quota: &QuotaPresentation) -> gpui::AnyElement {
-        let p = ZORK_UI.palette;
-        let row_key = self
-            .row_scope
-            .as_ref()
-            .map(|scope| format!("{scope}-{id}"))
-            .unwrap_or_else(|| id.to_owned());
-        div()
-            .id(format!("profile-quota-summary-{row_key}"))
-            .flex()
-            .items_center()
-            .gap(px(16.))
-            .min_w_0()
-            .overflow_hidden()
-            .mt_1()
-            .text_size(px(11.))
-            .line_height(px(16.))
-            .when(quota.failed, |v| {
-                v.text_color(rgb(p.warning)).child(quota.summary.clone())
-            })
-            .when(!quota.failed, |v| {
-                v.children(quota.windows.iter().take(2).map(|window| {
-                    let color = if window.remaining == 0. {
-                        p.danger
-                    } else if window.remaining < 20. {
-                        p.warning
-                    } else {
-                        p.success
-                    };
-                    div()
-                        .flex()
-                        .flex_shrink_0()
-                        .items_center()
-                        .gap_2()
-                        .child(div().text_color(rgb(p.muted)).child(window.label.clone()))
-                        .child(
-                            div()
-                                .w(px(32.))
-                                .h(px(4.))
-                                .rounded_full()
-                                .bg(gpui::rgba((p.muted << 8) | 0x30))
-                                .child(
-                                    div()
-                                        .h_full()
-                                        .w(gpui::relative(window.remaining / 100.))
-                                        .rounded_full()
-                                        .bg(rgb(color)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(rgb(color))
-                                .child(window.value.clone()),
-                        )
-                }))
-                .when_some(quota.balance.clone(), |v, balance| {
-                    v.child(
-                        div()
-                            .flex_shrink_0()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(rgb(p.text))
-                            .child(balance),
-                    )
-                })
-            })
-            .automation(AutomationRole::Status, quota.summary.clone())
-            .into_any_element()
     }
 }

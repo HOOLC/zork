@@ -1,10 +1,7 @@
 //! Input-driven pressure using the shared material solver, with stable layout.
 use super::{Material, Options, Pose, Simulation, Surface, SurfaceColors};
 use gpui::{prelude::*, *};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 struct PlaybackRate(f64);
 impl Global for PlaybackRate {}

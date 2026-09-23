@@ -7,7 +7,6 @@ pub(super) const ADAPTER: Adapter = Adapter {
     accepts: |request| matches!(request, Request::OAuth { .. }),
     project,
     resolve,
-    #[cfg(not(target_family = "wasm"))]
     execute: |conversation, command| conversation.login_action(command),
 };
 fn resolve(command: Command) -> anyhow::Result<Command> {
@@ -171,7 +170,6 @@ impl LoginView {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn decorate(metadata: &mut crate::api::MessageMetadata, view: &LoginView) {
     if !matches!(super::request(metadata), Some(Request::OAuth { .. })) {
         return;
@@ -189,7 +187,7 @@ pub(crate) fn decorate(metadata: &mut crate::api::MessageMetadata, view: &LoginV
     }
 }
 
-#[cfg(all(test, not(target_family = "wasm")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]

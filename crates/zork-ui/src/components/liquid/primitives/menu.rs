@@ -9,15 +9,12 @@ use crate::{
     design::ZORK_UI,
 };
 use gpui::{prelude::*, *};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
     time::Duration,
 };
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ItemKind {

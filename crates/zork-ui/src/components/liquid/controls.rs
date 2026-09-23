@@ -43,10 +43,7 @@ impl ControlElement for Action {
         self.overlay(overlay)
     }
 }
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 const SEGMENT_INSET: f32 = zork_liquid::recipes::SEGMENT_INSET as f32;
 const SEGMENT_GAP: f32 = zork_liquid::recipes::SEGMENT_GAP as f32;
