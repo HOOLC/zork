@@ -227,12 +227,6 @@ impl AssetSource for EmbeddedAssets {
             "icons/edit.svg" => Some(include_bytes!("../assets/icons/edit.svg")),
             "icons/download.svg" => Some(include_bytes!("../assets/icons/download.svg")),
             "icons/grouping.svg" => Some(include_bytes!("../assets/icons/grouping.svg")),
-            "icons/group-by-provider.svg" => {
-                Some(include_bytes!("../assets/icons/group-by-provider.svg"))
-            }
-            "icons/group-by-model.svg" => {
-                Some(include_bytes!("../assets/icons/group-by-model.svg"))
-            }
             "icons/shapes.svg" => Some(include_bytes!("../assets/icons/shapes.svg")),
             "icons/stop.svg" => Some(include_bytes!("../assets/icons/stop.svg")),
             "icons/cube.svg" => Some(include_bytes!("../assets/icons/cube.svg")),
@@ -356,8 +350,6 @@ impl AssetSource for EmbeddedAssets {
                 "edit.svg".into(),
                 "file.svg".into(),
                 "filter.svg".into(),
-                "group-by-model.svg".into(),
-                "group-by-provider.svg".into(),
                 "handoff.svg".into(),
                 "history.svg".into(),
                 "home.svg".into(),
