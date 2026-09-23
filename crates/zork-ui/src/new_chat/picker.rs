@@ -281,12 +281,7 @@ impl Page {
             .flex()
             .items_center()
             .justify_between()
-            .child(
-                div()
-                    .w(px(24.))
-                    .text_color(rgb(ZORK_UI.palette.muted))
-                    .child(ui::icon("icons/phosphor-brain.svg", 16.)),
-            )
+            .child(div().w(px(24.)))
             .child(
                 div()
                     .id("new-chat-thinking-label")
