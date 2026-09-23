@@ -12,6 +12,104 @@ use zork_ui::{
     navigation::TabGroup,
 };
 
+pub(super) type DirectoryGroup = (&'static str, &'static [&'static str]);
+pub(super) type DirectorySection = (&'static str, &'static [DirectoryGroup]);
+
+// Directory placement describes what a specimen is for. Business fixture
+// routing is deliberately separate: a full page must not become a primitive
+// just because its family is absent from the fixture registry.
+pub(super) const DIRECTORY: &[DirectorySection] = &[
+    (
+        "基础组件",
+        &[
+            (
+                "操作与输入",
+                &[
+                    "button",
+                    "field",
+                    "choice",
+                    "switch",
+                    "dropdown",
+                    "modal",
+                    "avatar-picker",
+                ],
+            ),
+            (
+                "状态与导航",
+                &["interaction", "loading", "feedback", "navigation"],
+            ),
+            ("身份与图形", &["avatar", "providers", "icons", "brand"]),
+        ],
+    ),
+    (
+        "业务组件",
+        &[
+            (
+                "消息与输入",
+                &[
+                    "composer",
+                    "markdown",
+                    "comments",
+                    "message-interaction",
+                    "message-reader",
+                ],
+            ),
+            (
+                "活动与记录",
+                &[
+                    "activity",
+                    "history",
+                    "history-details",
+                    "member-activity",
+                    "tooltip",
+                ],
+            ),
+            (
+                "文件与附件",
+                &["attachment", "attachment-viewer", "conversation-files"],
+            ),
+            ("设备呈现", &["device-name", "chat-navigation"]),
+        ],
+    ),
+    (
+        "页面与流程",
+        &[
+            (
+                "工作区",
+                &[
+                    "new-chat",
+                    "conversation",
+                    "browser",
+                    "shared-files",
+                    "resources",
+                ],
+            ),
+            (
+                "设备与模型",
+                &[
+                    "node-directory",
+                    "connection",
+                    "model",
+                    "device",
+                    "mesh",
+                    "enrollment",
+                ],
+            ),
+            (
+                "客户端",
+                &[
+                    "onboarding",
+                    "client",
+                    "appearance",
+                    "data-settings",
+                    "notifications",
+                ],
+            ),
+        ],
+    ),
+    ("交互实验", &[("", &["liquid"])]),
+];
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CanvasSize {
     Fit,
@@ -244,49 +342,71 @@ impl Gallery {
     }
 
     fn category(story: &Story) -> &'static str {
-        if story.family == "liquid" {
-            "交互实验"
-        } else if story.family == "onboarding" || business::is_business(&story.family) {
-            "业务组件"
-        } else {
-            "基础组件"
-        }
+        DIRECTORY
+            .iter()
+            .find(|(_, groups)| {
+                groups
+                    .iter()
+                    .any(|(_, families)| families.contains(&story.family.as_str()))
+            })
+            .map(|(category, _)| *category)
+            .unwrap_or("未分类")
     }
 
     fn directory(&self, cx: &mut Context<Self>) -> AnyElement {
         let mut content = self.navigation.column();
-        for category in ["基础组件", "业务组件", "交互实验"] {
-            let indices: Vec<_> = self
-                .families
-                .iter()
-                .copied()
-                .filter(|&i| Self::category(&self.catalog[i]) == category)
-                .collect();
-            if indices.is_empty() {
-                continue;
+        let mut placed = std::collections::HashSet::new();
+        for (section_index, (category, groups)) in DIRECTORY.iter().enumerate() {
+            let mut section = self.navigation.section(*category, *category).mt_4();
+            let mut present = false;
+            for (group_index, (group, families)) in groups.iter().enumerate() {
+                let indices: Vec<_> = families
+                    .iter()
+                    .filter_map(|family| {
+                        self.families
+                            .iter()
+                            .copied()
+                            .find(|&i| self.catalog[i].family == *family)
+                    })
+                    .collect();
+                if indices.is_empty() {
+                    continue;
+                }
+                present = true;
+                if !group.is_empty() {
+                    section = section.child(
+                        div()
+                            .id(format!("story-subgroup-{section_index}-{group_index}"))
+                            .h(px(20.))
+                            .mt_2()
+                            .pl(px(15.))
+                            .flex()
+                            .items_center()
+                            .text_size(px(10.))
+                            .text_color(rgb(ZORK_UI.palette.muted))
+                            .child(*group)
+                            .automation(AutomationRole::Status, *group),
+                    );
+                }
+                for i in indices {
+                    placed.insert(self.catalog[i].family.as_str());
+                    section = section.child(self.story_tab(i, cx));
+                }
             }
-            let mut section = self.navigation.section(category, category).mt_4();
-            for i in indices {
-                let story = &self.catalog[i];
-                section = section.child(
-                    self.navigation
-                        .tab(
-                            format!("story-family-{}", story.family),
-                            self.selected_guide.is_none()
-                                && self.selected_image_category.is_none()
-                                && story.family == self.catalog[self.selected].family,
-                        )
-                        .aria_label(story.title.clone())
-                        .when(
-                            self.selected_guide.is_none()
-                                && self.selected_image_category.is_none()
-                                && story.family == self.catalog[self.selected].family,
-                            |v| v.anchor_scroll(Some(self.directory_anchor.clone())),
-                        )
-                        .child(story.title.clone())
-                        .on_click(cx.listener(move |v, _, _, cx| v.select_family(i, cx)))
-                        .automation(AutomationRole::Button, story.title.clone()),
-                );
+            if present {
+                content = content.child(section);
+            }
+        }
+        let uncategorized: Vec<_> = self
+            .families
+            .iter()
+            .copied()
+            .filter(|&i| !placed.contains(self.catalog[i].family.as_str()))
+            .collect();
+        if !uncategorized.is_empty() {
+            let mut section = self.navigation.section("未分类", "未分类").mt_4();
+            for i in uncategorized {
+                section = section.child(self.story_tab(i, cx));
             }
             content = content.child(section);
         }
@@ -330,6 +450,29 @@ impl Gallery {
         }
         content = content.child(assets);
         self.navigation.surface(content).into_any_element()
+    }
+
+    fn story_tab(&self, i: usize, cx: &mut Context<Self>) -> AnyElement {
+        let story = &self.catalog[i];
+        self.navigation
+            .tab(
+                format!("story-family-{}", story.family),
+                self.selected_guide.is_none()
+                    && self.selected_image_category.is_none()
+                    && story.family == self.catalog[self.selected].family,
+            )
+            .pl(px(15.))
+            .aria_label(story.title.clone())
+            .when(
+                self.selected_guide.is_none()
+                    && self.selected_image_category.is_none()
+                    && story.family == self.catalog[self.selected].family,
+                |v| v.anchor_scroll(Some(self.directory_anchor.clone())),
+            )
+            .child(story.title.clone())
+            .on_click(cx.listener(move |v, _, _, cx| v.select_family(i, cx)))
+            .automation(AutomationRole::Button, story.title.clone())
+            .into_any_element()
     }
 
     fn toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
