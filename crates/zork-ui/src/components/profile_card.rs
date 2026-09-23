@@ -208,7 +208,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                             .gap(px(4.))
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(12.))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(rgb(p.muted))
                                     .child(window.short_label.clone()),
@@ -246,7 +246,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(9.))
+                                            .text_size(px(12.))
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
                                             .text_color(rgb(color))
                                             .child(window.center_value.clone()),

@@ -426,7 +426,7 @@ impl ProfilesView {
             .when(quota.failed, |v| {
                 v.child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(px(12.))
                         .text_color(rgb(p.warning))
                         .child(self.locale.text("quota_query_failed")),
                 )
@@ -477,7 +477,7 @@ impl ProfilesView {
                     .when_some(window.reset.clone(), |v, reset| {
                         v.child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .child(reset),
                         )
@@ -828,7 +828,7 @@ impl ProfilesView {
                         div()
                             .id(format!("model-limits-{id}"))
                             .truncate()
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .line_height(px(16.))
                             .text_color(rgb(p.muted))
                             .child(note.clone())
@@ -839,7 +839,7 @@ impl ProfilesView {
                 ui::button(format!("model-remove-{id}"), "移除", false, !self.busy)
                     .h(px(ui::CONTROL_HEIGHT))
                     .px(px(ui::BUTTON_PADDING_X))
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .opacity(0.)
                     .group_hover("profile-model-row", |v| v.opacity(1.))
                     .on_click(cx.listener(move |v, _, _, cx| {
@@ -1307,7 +1307,7 @@ impl Render for ProfilesView {
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .child(ui::icon("icons/node.svg", 14.))
                                 .child(format!(
@@ -1530,7 +1530,7 @@ impl Render for ProfilesView {
                                     .flex()
                                     .items_center()
                                     .gap_2()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(rgb(p.muted))
                                     .child(provider_icon(
                                         detail["provider"].as_str().unwrap_or_default(),
@@ -1553,7 +1553,7 @@ impl Render for ProfilesView {
                                         div()
                                             .id("profile-quota-updated")
                                             .flex_shrink_0()
-                                            .text_size(px(11.))
+                                            .text_size(px(12.))
                                             .text_color(rgb(p.muted))
                                             .child(checked.clone())
                                             .automation(AutomationRole::Status, checked),
@@ -1610,7 +1610,7 @@ impl Render for ProfilesView {
                                             v.child(
                                                 div()
                                                     .id("profile-model-update-result")
-                                                    .text_size(px(11.))
+                                                    .text_size(px(12.))
                                                     .text_color(rgb(p.muted))
                                                     .child(message.clone())
                                                     .automation(AutomationRole::Status, message),
@@ -1630,7 +1630,7 @@ impl Render for ProfilesView {
                                             !self.busy,
                                             self.discovering,
                                         )
-                                        .text_size(px(11.))
+                                        .text_size(px(12.))
                                         .px(px(ui::BUTTON_PADDING_X))
                                         .gap_1()
                                         .on_click(cx.listener(|v, _, _, cx| v.discover_models(cx)))
@@ -1641,7 +1641,7 @@ impl Render for ProfilesView {
                                     )
                                     .child(
                                         ui::button("profile-model-add", "", false, !self.busy)
-                                            .text_size(px(11.))
+                                            .text_size(px(12.))
                                             .px(px(ui::BUTTON_PADDING_X))
                                             .gap_1()
                                             .child(ui::icon("icons/plus.svg", 13.))
@@ -1863,7 +1863,7 @@ impl Render for ProfilesView {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(rgb(p.muted))
                                     .child("填写该模型实际支持的容量和推理级别。"),
                             )
@@ -1988,7 +1988,7 @@ impl ProfilesView {
                     .child(ui::page_title("大模型"))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .text_color(rgb(p.muted))
                             .child(format!(
                                 "{} · {} 个连接",

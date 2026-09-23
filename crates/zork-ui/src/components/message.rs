@@ -1076,7 +1076,7 @@ fn render_code_ready(
                     .py_1()
                     .border_b(gpui::px(crate::design::BORDER_WIDTH))
                     .border_color(rgb(BORDER()))
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(18.))
                     .text_color(rgb(MUTED()))
                     .child(language.to_owned()),

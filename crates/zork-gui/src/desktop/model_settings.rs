@@ -188,7 +188,7 @@ impl ModelSettings {
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .text_color(rgb(palette.muted))
                             .child(format!("{profile_count} 个 Profile")),
                     )

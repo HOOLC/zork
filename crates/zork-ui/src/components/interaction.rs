@@ -455,7 +455,7 @@ impl Render for InteractionCard {
                                 .gap_1()
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(px(12.))
                                         .text_color(rgb(p.muted))
                                         .child(label.clone()),
                                 )

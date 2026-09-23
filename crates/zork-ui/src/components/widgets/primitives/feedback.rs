@@ -93,7 +93,7 @@ pub fn badge(
         .aria_label(text.clone())
         .px(px(7.))
         .py(px(2.))
-        .text_size(px(11.))
+        .text_size(px(12.))
         .line_height(px(16.))
         .text_color(rgb(ink))
         .child(text)

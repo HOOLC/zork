@@ -61,7 +61,7 @@ pub fn network<V: 'static>(
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .text_color(rgb(ZORK_UI.palette.muted))
                 .child("管理已配对设备及其访问权限。"),
         )
@@ -195,7 +195,7 @@ pub fn enrollment<V: 'static>(
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .text_color(rgb(ZORK_UI.palette.muted))
                 .child("连接其它设备：生成安装链接，并在目标设备打开链接完成安装。"),
         )
@@ -256,7 +256,7 @@ pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl In
         .rounded(px(ui::FIELD_RADIUS))
         .overflow_x_scroll()
         .font_family("Menlo")
-        .text_size(px(11.))
+        .text_size(px(12.))
         .line_height(px(18.))
         .child(command.clone())
         .automation(AutomationRole::Status, command)

@@ -76,7 +76,7 @@ impl DetailsTooltip {
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(12.))
                                     .line_height(px(16.))
                                     .text_color(rgb(p.muted))
                                     .child(self.kind.clone()),
@@ -102,7 +102,7 @@ impl DetailsTooltip {
                                 .flex()
                                 .items_start()
                                 .gap(px(8.))
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .line_height(px(17.))
                                 .child(
                                     div()

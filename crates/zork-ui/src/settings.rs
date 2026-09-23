@@ -73,7 +73,7 @@ pub fn account<V: 'static>(
         .child(header("账号"))
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .text_color(rgb(ZORK_UI.palette.muted))
                 .child("云端账号为可选项；Mesh 连接无需登录。"),
         )
@@ -314,7 +314,7 @@ pub fn device<V: 'static>(
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .when(data.local, |v| {
                                     v.child("·").child(if data.busy {
@@ -451,7 +451,7 @@ pub fn device<V: 'static>(
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.warning))
                                 .child(format!(
                                     "可升级至 {} · 将重启设备",

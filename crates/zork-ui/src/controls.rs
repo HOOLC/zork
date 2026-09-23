@@ -135,7 +135,7 @@ pub fn page_action(id: impl Into<gpui::ElementId>, text: impl Into<gpui::SharedS
         ZORK_UI.palette.canvas,
     )
     .h(px(BUTTON_HEIGHT))
-    .text_size(px(11.))
+    .text_size(px(12.))
 }
 
 pub fn heading(
@@ -351,7 +351,7 @@ pub fn field_with_error(
                     .flex()
                     .items_start()
                     .gap(px(5.))
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(17.))
                     .text_color(rgb(ZORK_UI.palette.danger))
                     .child(

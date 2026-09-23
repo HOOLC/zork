@@ -91,7 +91,7 @@ impl Row<'_> {
                                 )
                                 .when_some(time, |v, time| {
                                     v.child(
-                                        div().text_size(px(10.)).text_color(rgb(DIM())).child(time),
+                                        div().text_size(px(12.)).text_color(rgb(DIM())).child(time),
                                     )
                                 }),
                         ),

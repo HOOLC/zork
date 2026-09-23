@@ -217,7 +217,7 @@ pub fn row<V: 'static>(
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(12.))
                         .line_height(px(14.))
                         .text_color(rgb(p.muted))
                         .child(meta),
@@ -322,7 +322,7 @@ pub fn card<V: 'static>(
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(12.))
                         .line_height(px(14.))
                         .text_color(rgb(p.muted))
                         .truncate()
