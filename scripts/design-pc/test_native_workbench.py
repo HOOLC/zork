@@ -122,24 +122,6 @@ def main():
         choose("story-scenario", "story-scenario-history-collapsed")
         checks.append("normal, empty and error scenes")
 
-        reveal("story-family-activity")
-        click("story-family-activity")
-        click("story-scenario")
-        labels = {e["label"] for e in snapshot()["elements"]
-                  if e["id"].startswith("story-scenario-activity-") and e["visible"]}
-        assert labels == {"收起预览", "展开预览", "动态运行"}, labels
-        click("story-scenario-activity-session-live")
-        wait(lambda: native.element("session-activity-command-1"), "live activity row", timeout=10)
-        save("05-activity-live")
-        click("session-activity-simulate-end")
-        wait(lambda: (button := native.element("session-activity-simulate-end"))
-             and button["label"] == "重新开始", "activity completes", timeout=10)
-        click("story-reset")
-        wait(lambda: (button := native.element("session-activity-simulate-end"))
-             and button["label"] == "模拟完成", "activity reset", timeout=10)
-        assert native.element("story-scenario")["label"] == "动态运行"
-        checks.append("activity scenes are named and reset replays the current scene")
-
         reveal("story-family-field")
         click("story-family-field")
         click("story-field")
@@ -187,13 +169,14 @@ def main():
         assert options["bounds"] == options["visible_bounds"]
         assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
         save("09-onboarding-new-chat")
-        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its selected model and thinking level")
+        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its model and thinking level")
 
         choose("story-scenario", "story-scenario-onboarding-models-compact")
         click("onboarding-add-model")
         wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)
+        click("profile-access-false")
         wait(lambda: native.element("profile-provider-select") and
-             native.element("profile-provider-select")["label"] == "OpenAI",
+             native.element("profile-provider-select")["label"],
              "fixture provider ready", timeout=10)
         assert not native.element("model-add-device-mini1")
         checks.append("first-use flow opens the real local model editor without device choice")

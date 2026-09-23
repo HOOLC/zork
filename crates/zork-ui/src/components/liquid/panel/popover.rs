@@ -1,5 +1,5 @@
 //! Plain anchored content with the same focus scope as the richer picker.
-use super::super::controls::{adaptive_action, ActionStyle, ButtonVariant, ControlElement};
+use super::super::controls::{adaptive_action, ActionStyle, ControlElement};
 use super::ContentSize;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
@@ -23,6 +23,7 @@ pub struct PopoverPanel {
     focus: modal::FocusScope,
     trigger_focus: FocusHandle,
     label: RefCell<SharedString>,
+    radius: f32,
     was_open: bool,
 }
 
@@ -36,15 +37,24 @@ impl PopoverPanel {
             focus: modal::FocusScope::new(cx),
             trigger_focus: cx.focus_handle(),
             label: RefCell::new(SharedString::default()),
+            radius: controls::PLAIN_POPOVER_RADIUS,
             was_open: false,
         }
+    }
+
+    pub(crate) fn with_radius(mut self, radius: f32) -> Self {
+        self.radius = if radius.is_finite() {
+            radius.max(0.)
+        } else {
+            controls::PLAIN_POPOVER_RADIUS
+        };
+        self
     }
 
     pub fn trigger<V: 'static>(
         &self,
         id: &'static str,
         label: String,
-        width: f32,
         open: bool,
         enabled: bool,
         cx: &Context<V>,
@@ -55,20 +65,19 @@ impl PopoverPanel {
             id,
             label.clone(),
             ActionStyle {
-                variant: Some(ButtonVariant::Ghost),
+                quiet: true,
+                bare: true,
+                trailing: Some("icons/chevron-down.svg"),
+                expanded: open,
                 disabled: !enabled,
                 ..Default::default()
             },
             ZORK_UI.palette.canvas,
         )
         .track_focus(&self.trigger_focus.clone().tab_stop(enabled))
-        .w(px(width))
         .h(px(28.))
         .font_weight(FontWeight::NORMAL)
-        .radius(14.)
-        .px_3()
-        .gap_2()
-        .child(controls::icon("icons/chevron-down.svg", 12.))
+        .px_2()
         .control_overlay(self.anchor.measure(open, cx).into_any_element())
         .aria_expanded(open)
         .on_click(cx.listener(move |view, _, _, cx| {
@@ -178,7 +187,7 @@ impl PopoverPanel {
             .top(px(y - source.top().as_f32()))
             .w(px(width))
             .h(px(height))
-            .rounded(px(controls::PLAIN_POPOVER_RADIUS))
+            .rounded(px(self.radius.min(width / 2.).min(height / 2.)))
             .shadow_sm()
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))

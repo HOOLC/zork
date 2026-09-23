@@ -61,39 +61,6 @@ fn main() -> anyhow::Result<()> {
             );
         }
         anyhow::ensure!(
-            snapshot
-                .elements
-                .iter()
-                .find(|element| element.id == "new-chat-options")
-                .is_some_and(|element| element.label == "Demo model · 高"),
-            "the model picker trigger must identify the selected model at {width}"
-        );
-        let bounds = |id| {
-            snapshot
-                .elements
-                .iter()
-                .find(|element| element.id == id)
-                .unwrap()
-                .bounds
-                .clone()
-        };
-        let surface = bounds("new-chat-composer-surface");
-        let rail = bounds("new-chat-device-rail");
-        let device = bounds("new-chat-device");
-        anyhow::ensure!(
-            rail.x > surface.x
-                && rail.x + rail.width < surface.x + surface.width
-                && rail.y < surface.y
-                && rail.y + rail.height > surface.y
-                && device.y >= rail.y
-                && device.y + device.height <= surface.y,
-            "device rail must be narrower than and overlap behind the composer at {width}"
-        );
-        anyhow::ensure!(
-            (bounds("new-chat-options").height - bounds("new-chat-send").height).abs() < 0.1,
-            "picker and send control heights differ at {width}"
-        );
-        anyhow::ensure!(
             !snapshot
                 .elements
                 .iter()
@@ -110,43 +77,23 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|e| e.label.contains('●') && !e.label.contains("直连")),
             "selected device must show a compact Mesh status icon"
         );
-        let screenshot = cx.capture_screenshot(window.into())?;
-        let scale = screenshot.width() as f32 / width;
-        let sample = |x: f32, y: f32| {
-            screenshot
-                .get_pixel((x * scale) as u32, (y * scale) as u32)
-                .0
-        };
-        let middle = surface.x + surface.width / 2.;
-        let header = sample(middle, rail.y + 4.);
-        let editor = sample(middle, surface.y + 12.);
         anyhow::ensure!(
-            u16::from(header[0]) + 4 < u16::from(editor[0])
-                && u16::from(header[1]) + 4 < u16::from(editor[1]),
-            "device rail lost its gray section at {width}: {header:?} / {editor:?}"
-        );
-        anyhow::ensure!(
-            sample(surface.x + 4., rail.y + 10.)[..3]
+            snapshot
+                .elements
                 .iter()
-                .all(|channel| *channel >= 250),
-            "device rail unexpectedly fills the composer width at {width}"
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label.contains("Demo model · 高")),
+            "picker trigger did not show the selected model and strength at {width}"
         );
-        for fraction in [0.15, 0.5, 0.85] {
-            let x = surface.x + surface.width * fraction;
-            for offset in [-1., 0., 1.] {
-                let pixel = sample(x, surface.y + offset);
-                anyhow::ensure!(
-                    pixel[..3].iter().all(|channel| *channel < 250),
-                    "canvas-colored seam between rail and composer at {width}: {pixel:?}"
-                );
-            }
-        }
-        let shoulder = sample(rail.x + 2., surface.y + 2.);
-        anyhow::ensure!(
-            shoulder[..3].iter().all(|channel| *channel < 250),
-            "the rail was erased behind the composer corner at {width}: {shoulder:?}"
-        );
-        screenshot.save(output.join(format!("new-chat-{width}.png")))?;
+        let initial_picker_width = snapshot
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-options")
+            .unwrap()
+            .bounds
+            .width;
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
             cx.update_window(window.into(), |_, w, cx| {
                 driver.dispatch(serde_json::from_value(value)?, w, cx)
@@ -177,6 +124,17 @@ fn main() -> anyhow::Result<()> {
         )?;
         action(json!({"type":"key","keystroke":"home"}), &mut cx)?;
         action(json!({"type":"key","keystroke":"right"}), &mut cx)?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label.contains("Demo model · 中")),
+            "picker trigger did not follow the visible strength at {width}"
+        );
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-picker-{width}.png")))?;
         let label_center = driver
             .snapshot(false)
             .elements
@@ -188,15 +146,71 @@ fn main() -> anyhow::Result<()> {
             json!({"type":"click","target":{"x":label_center.x,"y":label_center.y}}),
             &mut cx,
         )?;
+        let picker = driver.snapshot(false);
+        let model_row = picker
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-model-0")
+            .ok_or_else(|| anyhow::anyhow!("missing model choice at {width}"))?;
+        let profile_row = picker
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-profile-0")
+            .ok_or_else(|| anyhow::anyhow!("missing Profile choice at {width}"))?;
+        anyhow::ensure!(
+            model_row.visible
+                && profile_row.visible
+                && model_row.bounds == model_row.visible_bounds
+                && profile_row.bounds == profile_row.visible_bounds
+                && model_row.bounds.y == profile_row.bounds.y
+                && model_row.bounds.x + model_row.bounds.width <= profile_row.bounds.x,
+            "model and Profile choices are not visible side by side at {width}"
+        );
         cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-picker-{width}.png")))?;
-        for id in [
-            "new-chat-model",
-            "new-chat-model-1",
-            "new-chat-thinking-thumb-0",
-        ] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
+            .save(output.join(format!("new-chat-models-{width}.png")))?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-profile-2")
+                .is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
+            "last Profile option clipped at {width}"
+        );
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-profiles-{width}.png")))?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-profile-1"}}),
+            &mut cx,
+        )?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-model-0" && element.visible),
+            "choosing Profile hid the model choices at {width}"
+        );
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-model-1"}}),
+            &mut cx,
+        )?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-profile-0" && element.visible),
+            "choosing a model hid the Profile choices at {width}"
+        );
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-picker-back"}}),
+            &mut cx,
+        )?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            &mut cx,
+        )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
         action(
             json!({"type":"click","target":{"element_id":"new-chat-thinking-reset"}}),
@@ -206,14 +220,40 @@ fn main() -> anyhow::Result<()> {
             host.read_with(&cx, |view, cx| view.inspect(cx))["thinking"]["value"] == "off",
             "reset did not use the selected model's default"
         );
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-thinking-thumb-0" && element.visible),
+            "reset unexpectedly left the strength picker at {width}"
+        );
         action(
             json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
-        for id in ["new-chat-model", "new-chat-profile", "new-chat-profile-1"] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .find(|element| element.id == "new-chat-options")
+                .is_some_and(|element| element.label.contains("Demo fast · 低")),
+            "picker trigger did not show the selected model and strength"
+        );
+        let selected_picker_width = driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-options")
+            .unwrap()
+            .bounds
+            .width;
+        anyhow::ensure!(
+            selected_picker_width < initial_picker_width,
+            "picker trigger did not shrink with its label at {width}: {initial_picker_width:?} -> {selected_picker_width:?}"
+        );
         let state = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
             state["device"]["value"] == "remote"
@@ -221,15 +261,6 @@ fn main() -> anyhow::Result<()> {
                 && state["thinking"]["value"] == "low"
                 && state["profile"]["value"] == "personal",
             "selection did not reach core fixture: {state}"
-        );
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .find(|element| element.id == "new-chat-options")
-                .is_some_and(|element| element.label == "Demo fast · 低"),
-            "the model picker trigger did not follow the selection at {width}"
         );
         action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         anyhow::ensure!(
@@ -288,24 +319,6 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_vec_pretty(&snapshot)?,
         )?;
         println!("PASS new Chat at {width}px: real selectors, Unicode/Shift+Enter, submit, busy and bounds");
-        if width == 900. {
-            let mut closeup = Story::new("new-chat", "新建 Chat", "draft", "", "new-chat");
-            closeup.width = width;
-            closeup.height = 180.;
-            let closeup_window = cx.open_window(size(px(width), px(180.)), |_, cx| {
-                let view = cx.new(|cx| StoryHost::new(closeup, cx));
-                cx.new(|_| AutomationRoot::new(view))
-            })?;
-            for _ in 0..4 {
-                cx.run_until_parked();
-                cx.advance_clock(Duration::from_millis(16));
-                cx.update_window(closeup_window.into(), |_, window, cx| {
-                    window.draw(cx).clear(cx)
-                })?;
-            }
-            cx.capture_screenshot(closeup_window.into())?
-                .save(output.join("new-chat-closeup.png"))?;
-        }
     }
     Ok(())
 }

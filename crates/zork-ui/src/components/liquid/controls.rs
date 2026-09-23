@@ -867,6 +867,8 @@ pub struct ActionStyle {
     pub radius: Option<f32>,
     /// Navigation paints one travelling hover; this control keeps pressure/focus.
     pub hover_group: bool,
+    /// A bare trigger keeps hover and press feedback transparent.
+    pub bare: bool,
 }
 
 impl ActionStyle {
@@ -943,8 +945,12 @@ fn render_action_content(
     let icon_only = style.icon_only.unwrap_or(label.is_empty() && !style.field);
     let primary_icon = icon_only && style.primary;
     let solid = style.primary && !style.field;
-    let background_feedback =
-        solid || soft || style.quiet || (icon_only && !style.opens_panel) || style.radio.is_some();
+    let background_feedback = !style.bare
+        && (solid
+            || soft
+            || style.quiet
+            || (icon_only && !style.opens_panel)
+            || style.radio.is_some());
     let hover = window.use_keyed_state(format!("liquid-action-hover-{id:?}"), cx, |_, _| false);
     let hovered = enabled && *hover.read(cx);
     let color = action_ink(&label, style);
@@ -1071,7 +1077,8 @@ fn render_action_content(
         } else {
             parent
         },
-        border: if soft
+        border: if style.bare
+            || soft
             || solid
             || style.quiet
             || style.radio.is_some()
@@ -1095,7 +1102,8 @@ fn render_action_content(
         radius,
         0.6,
         colors,
-        !soft && ((icon_only && !primary_icon) || style.quiet || style.radio.is_some()),
+        style.bare
+            || (!soft && ((icon_only && !primary_icon) || style.quiet || style.radio.is_some())),
         build,
         enabled,
         source,

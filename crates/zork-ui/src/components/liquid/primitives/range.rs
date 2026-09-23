@@ -80,13 +80,13 @@ impl Scale {
             fraction
         }
     }
-    fn point(self, position: Point<Pixels>, bounds: Bounds<Pixels>) -> f64 {
+    fn point(self, position: Point<Pixels>, bounds: Bounds<Pixels>, end_inset: f32) -> f64 {
         let fraction = if self.vertical {
-            (position.y - bounds.top() - px(10.)).as_f32()
-                / (bounds.size.height.as_f32() - 20.).max(1.)
+            (position.y - bounds.top() - px(end_inset)).as_f32()
+                / (bounds.size.height.as_f32() - end_inset * 2.).max(1.)
         } else {
-            (position.x - bounds.left() - px(10.)).as_f32()
-                / (bounds.size.width.as_f32() - 20.).max(1.)
+            (position.x - bounds.left() - px(end_inset)).as_f32()
+                / (bounds.size.width.as_f32() - end_inset * 2.).max(1.)
         };
         let fraction = if self.reversed ^ self.vertical {
             1. - fraction
@@ -177,7 +177,9 @@ fn render_slider<V: 'static>(
         .role(Role::Group)
         .aria_label(label.clone())
         .when(disabled, |v| v.opacity(0.4));
-    let span = (length - 20.).max(1.);
+    let diameter = if capsule { 28. } else { 20. };
+    let end_inset = diameter / 2.;
+    let span = (length - diameter).max(1.);
     let bounds = Pose::rect(0., 0., width as f64, height as f64, 0.);
     let rail_pose = if capsule && !scale.vertical {
         Pose::rect(0., 2., width as f64, 24., 12.)
@@ -226,18 +228,23 @@ fn render_slider<V: 'static>(
             active,
         );
         let target = if capsule {
+            let visual_width = target.w * 1.4;
             Pose {
-                w: target.w * 1.4,
+                w: visual_width,
                 h: target.h * 1.4,
                 r: target.r * 1.4,
+                cx: if scale.vertical {
+                    target.cx
+                } else {
+                    visual_width / 2.
+                        + scale.fraction(value) as f64 * (width as f64 - visual_width).max(1.)
+                },
                 ..target
             }
         } else {
             target
         };
-        let diameter = if capsule { 28. } else { 20. };
         let inset = ((if scale.vertical { width } else { height }) - diameter) / 2.;
-        let offset = (20. - diameter) / 2.;
         let material_id = format!("{id}-material-{i}");
         layers.push(
             controls::with_control_surface(
@@ -276,12 +283,10 @@ fn render_slider<V: 'static>(
             .absolute()
             .size(px(diameter))
             .when(scale.vertical, |v| {
-                v.left(px(inset))
-                    .top(px(scale.fraction(value) * span + offset))
+                v.left(px(inset)).top(px(scale.fraction(value) * span))
             })
             .when(!scale.vertical, |v| {
-                v.top(px(inset))
-                    .left(px(scale.fraction(value) * span + offset))
+                v.top(px(inset)).left(px(scale.fraction(value) * span))
             })
             .role(Role::Slider)
             .aria_label(format!("{label} {}", i + 1))
@@ -359,9 +364,9 @@ fn render_slider<V: 'static>(
         layers.push(thumb.into_any_element());
     }
     let low = if values.len() == 1 {
-        10. + scale.fraction(scale.min) * span
+        end_inset + scale.fraction(scale.min) * span
     } else {
-        presented.first().copied().unwrap_or(10.)
+        presented.first().copied().unwrap_or(end_inset)
     };
     let high = presented.last().copied().unwrap_or(low);
     let fill_pose = if capsule && !scale.vertical {
@@ -385,7 +390,7 @@ fn render_slider<V: 'static>(
         let count = (((scale.max - scale.min) / scale.step).round() as usize + 1).min(32);
         for index in 0..count {
             let value = scale.min + index as f64 * scale.step;
-            let x = 10. + scale.fraction(value) * span;
+            let x = end_inset + scale.fraction(value) * span;
             track = track.child(
                 surface(
                     format!("{id}-tick-{index}"),
@@ -414,7 +419,7 @@ fn render_slider<V: 'static>(
             if disabled {
                 return;
             }
-            let raw = scale.point(e.position, down.bounds.get());
+            let raw = scale.point(e.position, down.bounds.get(), end_inset);
             let index = down
                 .values
                 .borrow()
@@ -447,7 +452,7 @@ fn render_slider<V: 'static>(
                             let next = scale.set(
                                 &move_state.values.borrow(),
                                 i,
-                                scale.point(e.position, move_state.bounds.get()),
+                                scale.point(e.position, move_state.bounds.get(), end_inset),
                             );
                             *move_state.values.borrow_mut() = next.clone();
                             move_callback(&next, false, w, cx);
