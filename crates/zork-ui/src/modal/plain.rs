@@ -11,7 +11,6 @@ use gpui::{
     anchored, deferred, div, point, prelude::*, px, rgb, AnyElement, App, Context, FocusHandle,
     MouseButton, SharedString, Window,
 };
-use std::{cell::Cell, rc::Rc};
 
 #[derive(Default)]
 struct Fade {
@@ -47,7 +46,6 @@ pub struct PlainDialog {
     initial_focus: Option<FocusHandle>,
     focus_pending: bool,
     alert: bool,
-    scheduled: Rc<Cell<bool>>,
     content_transition_frames: u64,
     backdrop_transition_frames: u64,
 }
@@ -64,7 +62,6 @@ impl PlainDialog {
             initial_focus: None,
             focus_pending: false,
             alert: false,
-            scheduled: Rc::new(Cell::new(false)),
             content_transition_frames: 0,
             backdrop_transition_frames: 0,
         }
@@ -161,7 +158,6 @@ impl PlainDialog {
         let id = id.into();
         let title = title.into();
         let close = bind_close(cx, close);
-        let owner = cx.entity().into_any().downgrade();
 
         if open && !self.seen_open {
             self.focus_pending = true;
@@ -184,17 +180,10 @@ impl PlainDialog {
         let content_moving = self.reveal.advance(open, dt, reduced);
         let backdrop_moving = self.backdrop.advance(open, dt, reduced);
         let moving = content_moving || backdrop_moving;
-        // Retained modal payloads are released by their owner on its next
-        // render. Schedule one final frame after both reveals snap to zero.
-        if (moving || (was_alive && !self.alive())) && !self.scheduled.replace(true) {
-            let scheduled = self.scheduled.clone();
-            let owner = owner.clone();
-            window.on_next_frame(move |_, cx| {
-                scheduled.set(false);
-                if let Some(owner) = owner.upgrade() {
-                    cx.notify(owner.entity_id());
-                }
-            });
+        // Redraw until the fade reaches its endpoint, including the final
+        // frame that releases a retained dialog payload.
+        if moving || (was_alive && !self.alive()) {
+            window.request_animation_frame();
         }
 
         let alpha = self.reveal.opacity();
