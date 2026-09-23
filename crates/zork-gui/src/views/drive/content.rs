@@ -152,7 +152,6 @@ impl RootView {
         let locale = self.locale;
         let owner = cx.entity().downgrade();
         let session = self.selected_session.clone();
-        let source = self.drive.viewer.source.clone();
         #[cfg(feature = "headless-bench")]
         let indices = self.benchmark_artifact_indices.clone();
         #[cfg(feature = "headless-bench")]
@@ -191,7 +190,6 @@ impl RootView {
                             icon: "icons/file.svg",
                             title: artifact.name.clone(),
                             detail,
-                            source: Some(source.clone()),
                             open: Rc::new(move |cx| {
                                 let _ = owner.update(cx, |v, cx| {
                                     if v.selected_session == session {
@@ -219,7 +217,6 @@ impl RootView {
                             icon: "browser/globe.svg",
                             title: page.title.clone(),
                             detail,
-                            source: None,
                             open: Rc::new(move |cx| {
                                 let _ = owner.update(cx, |v, cx| {
                                     if v.selected_session == session {

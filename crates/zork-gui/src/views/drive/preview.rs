@@ -5,7 +5,6 @@ use super::*;
 use crate::components::message::MessageDocument;
 #[derive(Default)]
 pub(super) struct PreviewState {
-    pub(in crate::views) source: zork_ui::components::liquid::overlay::SourceBinding,
     group: Arc<Vec<Artifact>>,
     index: usize,
     image: Option<DecodedImage>,
@@ -291,10 +290,8 @@ impl RootView {
             text_truncated: self.drive.viewer.text_truncated,
         };
         let focus = self.drive.viewer.return_focus.take();
-        let source = self.drive.viewer.source.clone();
         let locale = self.locale;
         component.update(cx, |view, cx| {
-            view.bind_source(source);
             if focus.is_some() {
                 view.remember_source(focus);
             }

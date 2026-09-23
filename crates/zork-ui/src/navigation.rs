@@ -1,6 +1,6 @@
 use gpui::{App, Window};
 
-pub use crate::components::liquid::navigation::{Group as TabGroup, GroupSurface as TabSurface};
+pub use crate::components::widgets::navigation::{Group as TabGroup, GroupSurface as TabSurface};
 pub const TAB_GAP: f32 = 2.;
 
 gpui::actions!(focus_scope, [Next, Previous]);

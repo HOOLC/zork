@@ -199,7 +199,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
     fn history_text(&self) -> Text;
     fn history_subject(&self, activity: &Activity, entry: &Entry)
         -> (Option<String>, Option<Jump>);
-    fn history_source(&self, cx: &App) -> crate::components::liquid::overlay::SourceBinding;
     fn history_action(&mut self, action: Action, cx: &mut Context<Self>);
     fn history_paging(&self) -> Paging;
     fn history_statistics(&mut self) -> Statistics;
@@ -757,7 +756,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         .when(last == Some(a_index), |v| v.pb(px(4.)))
                 },
             )
-            .child(crate::components::history::activity_header_sources(
+            .child(crate::components::history::activity_header(
                 ("history-record", index),
                 ActivityHeader {
                     focus,
@@ -801,11 +800,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         expanded
                     },
                 },
-                (
-                    None,
-                    matches!(jump, Some(Jump::Agent(_) | Jump::File(_)))
-                        .then(|| self.history_source(cx)),
-                ),
                 window,
                 cx,
                 move |v, _, cx| {

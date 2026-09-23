@@ -45,8 +45,8 @@ internal suspend fun decodeFileImage(bytes: ByteArray): ImageBitmap? = withConte
 
 @Composable
 internal fun DeliveredFileCard(file: ChatFileUi, open: () -> Unit) {
-    LiquidCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).liquidPressable(onClick = open)
+    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).zorkPressable(onClick = open)
             .padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Glyph(R.drawable.ic_result, 22.dp)
@@ -70,7 +70,7 @@ internal fun ChatFilePreview(file: ChatFilePreviewUi, image: ImageBitmap?, close
             else if (file.text != null) SelectionContainer { Text(file.text, fontSize = 14.sp, lineHeight = 23.sp) }
             else if (!file.loading && file.error == null) Text("保存副本后，可使用本机应用打开此文件", color = ZorkColors.Muted)
             if (file.truncated) Text("预览已截取，保存副本可查看完整内容", color = ZorkColors.Muted)
-            LiquidButton(if (file.saving) "正在保存…" else "保存副本", primary = true,
+            ZorkButton(if (file.saving) "正在保存…" else "保存副本", primary = true,
                 onClick = save, enabled = !file.saving, modifier = Modifier.fillMaxWidth())
             if (file.saved) Text("副本已保存", color = ZorkColors.Muted)
         }

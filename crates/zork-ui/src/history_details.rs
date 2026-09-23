@@ -1,7 +1,6 @@
 //! Complete history entry/agent dialog. The host supplies projected data and actions.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    components::liquid::overlay::SourceBinding,
     controls as ui,
     design::ZORK_UI,
     history::Entry,
@@ -22,7 +21,6 @@ pub enum Presentation {
 #[derive(Clone)]
 pub struct Resource {
     pub label: String,
-    pub source: SourceBinding,
     pub open: Rc<dyn Fn(&mut App)>,
 }
 #[derive(Clone)]
@@ -47,9 +45,6 @@ impl Details {
             modal,
             text,
         }
-    }
-    pub fn source(&self) -> SourceBinding {
-        self.modal.source("history-detail-dialog")
     }
     pub fn configure(
         &mut self,
@@ -172,20 +167,14 @@ impl Render for Details {
                     .when_some(data.resource.clone(), |body, resource| {
                         let open = resource.open;
                         body.child(
-                            resource
-                                .source
-                                .bind(
-                                    ui::button(
-                                        "history-resource-details",
-                                        resource.label.clone(),
-                                        false,
-                                        true,
-                                    )
-                                    .on_click(cx.listener(move |_, _, _, cx| open(cx))),
-                                    resource.label.clone(),
-                                    ui::ActionStyle::default(),
-                                )
-                                .automation(AutomationRole::Button, resource.label),
+                            ui::button(
+                                "history-resource-details",
+                                resource.label.clone(),
+                                false,
+                                true,
+                            )
+                            .on_click(cx.listener(move |_, _, _, cx| open(cx)))
+                            .automation(AutomationRole::Button, resource.label),
                         )
                     })
                     .into_any_element()

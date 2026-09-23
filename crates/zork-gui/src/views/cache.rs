@@ -154,12 +154,10 @@ impl RootView {
         &mut self,
         session_id: String,
         text: String,
-        origin: zork_ui::components::liquid::departure::Origin,
         cx: &mut Context<Self>,
     ) {
         match self.core_device.submit_draft(&session_id, &text) {
             Ok(_) => {
-                self.composer_surface.scene.accepted(origin, &text);
                 // The core draft subscription publishes the cleared text and
                 // attachments together. Do not race it with a second UI write.
                 self.refresh_queued();

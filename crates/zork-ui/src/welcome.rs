@@ -89,7 +89,7 @@ impl Render for Welcome {
 }
 #[cfg(feature = "stories")]
 pub fn story(state: &str, text: crate::resources::Text, cx: &mut App) -> Entity<Welcome> {
-    let empty = state == "first-agent";
+    let empty = state == "first-chat";
     let brand = cx.new(|_| {
         Brand::new(
             if empty {
@@ -104,15 +104,15 @@ pub fn story(state: &str, text: crate::resources::Text, cx: &mut App) -> Entity<
         Welcome::new(
             Data {
                 title: if empty {
-                    "创建你的第一位 领队"
+                    "开始你的第一段对话"
                 } else {
                     "从一段对话开始"
                 }
                 .into(),
                 description: if empty {
-                    "在设备设置中添加模型连接，再创建 领队。".into()
+                    "选择执行设备与模型，然后发送第一条消息。".into()
                 } else {
-                    text.text("device_choose_leader")
+                    text.text("device_choose_chat")
                 },
             },
             brand,

@@ -56,19 +56,17 @@ def validate_dialog_case(case, opened):
         raise Unverified("Actual native PlainDialog fade, input tree, or terminal state is missing")
 
 
-def playground_cases(report, fixture):
-    if not fixture.get("playground"):
+def gallery_cases(report, fixture):
+    if not fixture.get("gallery"):
         return []
-    playground = report.get("playground", {})
-    cases = playground.get("cases", [])
+    gallery = report.get("gallery", {})
+    cases = gallery.get("cases", [])
     expected = ["page-scroll", "directory-scroll"]
-    expected += [name for _ in range(fixture["panel_pairs"]) for name in ("dialog-open", "dialog-close")]
-    if (playground.get("status") != "measured" or playground.get("viewport") != fixture["liquid_viewport"]
-            or playground.get("component") != "zork-ui::modal::PlainDialog"
-            or playground.get("control") != "liquid-dialog-panel"
+    if (gallery.get("status") != "measured" or gallery.get("viewport") != fixture["component_viewport"]
+            or gallery.get("component") != "zork-ui::component_story::Gallery"
             or [case.get("name") for case in cases] != expected):
-        raise Unverified("Missing native page/directory scrolling or complete dialog operation cycle")
-    scroll = fixture["playground_scroll"]
+        raise Unverified("Missing native component gallery page or directory scrolling")
+    scroll = fixture["gallery_scroll"]
     for case in cases[:2]:
         positions = [case.get(key, {}).get("y") for key in ("before", "after")]
         if (case.get("scrollSpeed") != scroll["px_per_second"]
@@ -77,10 +75,6 @@ def playground_cases(report, fixture):
                 or not all(type(value) in (int, float) and math.isfinite(value) for value in positions)
                 or abs(positions[1] - positions[0]) <= scroll["min_displacement_px"]):
             raise Unverified("Scroll workload did not move real visible content with the approved input")
-    for case in cases[2:]:
-        opened = case["name"] == "dialog-open"
-        after = case.get("after", {})
-        validate_dialog_case(case, opened)
     return cases
 
 
@@ -106,18 +100,18 @@ def evaluate(report, definition):
     if (not kinds or set(coverage.get("measured_kinds", [])) != set(kinds)
             or coverage.get("both_roles_measured") is not True or len(cold) < 2 * len(kinds)):
         raise Unverified("Cold entry or mixed message/role coverage is incomplete")
-    liquid = report.get("liquid", {})
-    liquid_cases = liquid.get("cases", [])
-    if (liquid.get("status") != "measured" or liquid.get("viewport") != fixture["liquid_viewport"]
-            or liquid.get("component") != "zork-ui::modal::PlainDialog"
-            or liquid.get("control") != "liquid-library-dialog"
-            or liquid.get("recipe") != "plain-panel-opacity-backdrop"
-            or [case.get("name") for case in liquid_cases] != [name for _ in range(fixture["panel_pairs"]) for name in ("liquid-open", "liquid-close")]):
+    components = report.get("components", {})
+    components_cases = components.get("cases", [])
+    if (components.get("status") != "measured" or components.get("viewport") != fixture["component_viewport"]
+            or components.get("component") != "zork-ui::modal::PlainDialog"
+            or components.get("control") != "component-gallery-dialog"
+            or components.get("recipe") != "plain-panel-opacity-backdrop"
+            or [case.get("name") for case in components_cases] != [name for _ in range(fixture["panel_pairs"]) for name in ("component-open", "component-close")]):
         raise Unverified("The requested native PlainDialog component/recipe was not measured")
-    for case in liquid_cases:
-        validate_dialog_case(case, case["name"] == "liquid-open")
-    cases = [{"name": "message-entry", "frames": cold}, *cases, *liquid_cases,
-             *playground_cases(report, fixture)]
+    for case in components_cases:
+        validate_dialog_case(case, case["name"] == "component-open")
+    cases = [{"name": "message-entry", "frames": cold}, *cases, *components_cases,
+             *gallery_cases(report, fixture)]
     results = []
     for index, case in enumerate(cases):
         rows = case.get("frames", [])

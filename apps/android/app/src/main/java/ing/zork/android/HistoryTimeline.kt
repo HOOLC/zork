@@ -319,17 +319,17 @@ internal fun HistoryTimeline(entries: List<HistoryRow>, revision: Long, now: Lon
             }) {
                 HistoryIconAction(R.drawable.ic_settings_three, "时间轴操作") { menu = true }
                 PlainMenu("时间轴操作", menu, { menu = false }, 200.dp, menuAnchor) {
-                    LiquidMenuItem("缩小时间轴", false, enabled = view.zoom > 1, onClick = { view.transform(.5); menu = false })
-                    LiquidMenuItem("放大时间轴", false, enabled = view.zoom < 64, onClick = { view.transform(2.0); menu = false })
-                    LiquidMenuItem("选择时间范围", view.selecting, onClick = { view.selecting = !view.selecting; view.range = null; menu = false })
-                    LiquidMenuItem("适配全部时间", false, onClick = { view.fit(); menu = false })
-                    if (view.range != null) LiquidMenuItem("放大选区", false, enabled = view.range?.let { it.first != it.second } == true,
+                    ZorkMenuItem("缩小时间轴", false, enabled = view.zoom > 1, onClick = { view.transform(.5); menu = false })
+                    ZorkMenuItem("放大时间轴", false, enabled = view.zoom < 64, onClick = { view.transform(2.0); menu = false })
+                    ZorkMenuItem("选择时间范围", view.selecting, onClick = { view.selecting = !view.selecting; view.range = null; menu = false })
+                    ZorkMenuItem("适配全部时间", false, onClick = { view.fit(); menu = false })
+                    if (view.range != null) ZorkMenuItem("放大选区", false, enabled = view.range?.let { it.first != it.second } == true,
                         onClick = { view.fitRange(axis); menu = false })
                 }
             }
         }
     }
-    LiquidRetained(entries.takeIf { choosing }) { shown, open, closed ->
+    ZorkRetained(entries.takeIf { choosing }) { shown, open, closed ->
         HistoryTimelineSelectionSheet(shown, select, { choosing = false }, open, closed)
     }
 }

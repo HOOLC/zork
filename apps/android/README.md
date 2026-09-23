@@ -34,7 +34,7 @@ Compose 负责原生输入、呈现和系统生命周期，协议、业务规则
 
 - 扫码或粘贴桌面邀请，桌面确认后自动连接。
 - 查看领队和已有任务，打开对话；任务直接显示，不再提供独立展开箭头，长按查看详情。
-- Composer 与桌面采用同款暖白液态轮廓、细描边与伙伴活动胶囊；最多三行，更多内容在输入区内部滚动。伙伴展开时消息同步避让，浏览历史保持位置。
+- Composer 与桌面采用暖白静态圆角、细描边与 Session 活动胶囊；最多三行，更多内容在输入区内部滚动。活动状态展开时消息同步避让，浏览历史保持位置。
 - 查看分页消息与实时活动，发送消息和请求停止。用户消息按原文显示，助手回复支持 Markdown；两者都保留文字选择和片段评论。
 - 点击顶部成员头像或输入框上方的成员活动胶囊查看该成员的 Session 执行历史；支持常规操作分组、时间轴缩放与选区、对象跳转、翻页、重试、用量／额度概览及完整记录复制、原始 JSON 详情。执行历史只由 Rust core 按需读入内存，与聊天消息的持久缓存分开。
 - 系统文字选择中的“评论”可累积、编辑、移除，和正文一次发送。
@@ -158,15 +158,7 @@ python3 scripts/android/test_mesh.py --serial emulator-5554
 输出日志和验证记录在 `artifacts/android`。界面截图使用隔离测试对话，部分
 可读文案由测试夹具通过真实 Station 显式投递，不是实际用户任务结果。
 
-液态控件通过 debug 的 `LiquidGalleryActivity` 检查完整控件与原生输入。
-定向 instrumentation 使用 `LiquidControlsTest`，覆盖原生输入、来源绘制交接、退场时禁用输入、快速反向与停帧；输入区回归使用
-`ComposerPresentationTest`；`LiquidPerformanceTest` 检查控件组持续切换时的
-JNI/路径解码、绘制阶段与静止停帧，`ComposerPerformanceTest` 记录实际显示的
-FrameMetrics，`require120=true` 要求真实 120 Hz 呈现及对应 CPU 预算。
-性能测量用上述 profile 构建和编译流程，固定 APK 摘要后安装，预热后单独采样。
-共享 Rust 的 `frame_budget` example 只测物理、轮廓、描边和编码，
-不能代替 JNI、Canvas/GPU 或手机功耗；持续活动与静止/后台应分别测量，
-热状态、刷新率和设备耗电比较保留在对应运行产物中。
+界面控件使用 Compose Material3 的按钮、输入框、选择、菜单、Dialog 与 ModalBottomSheet；定向 instrumentation 使用 `ComposerPresentationTest` 检查输入区、执行状态位置与阅读锚点，`ComposerPerformanceTest` 记录实际状态切换的 FrameMetrics。性能测量用上述 profile 构建和编译流程，固定 APK 摘要后安装，预热后单独采样。真机 120 Hz 呈现与 CPU 预算使用 `require120=true` 检查；模拟器结果不代替手机功耗或实际呈现帧率。
 
 ## 代码边界
 
@@ -180,10 +172,6 @@ FrameMetrics，`require120=true` 要求真实 120 Hz 呈现及对应 CPU 预算�
   滚动位置、选择和渲染；这些 UI 行为没有移入 Rust core。
 - `crates/zork-android`：JNI、TLS 初始化和应用进程持有的 Rust runtime；网络
   命令与本地操作不共用等待锁。
-- `crates/zork-liquid`：GPUI 与 Android 共享的物理、几何、描边、视觉状态和配方。
-  可见宿主批量传入变化目标，读取同进程数值缓冲区；平台负责显示时钟、
-  生命周期、路径绘制、原生输入和焦点。液态帧不走业务 JSON 通道，
-  静止与后台停止调度，恢复不补算后台时间。
 - `crates/zork-mesh`：`start_client` 关闭 socket 执行池和本地工作区后台循环；
   默认 `server` feature 保留 Station 行为，Android 不启用桥接编译器依赖。
 - `apps/android/app`：界面、生命周期、输入、导航和安全的显式链接打开。

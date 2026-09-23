@@ -79,7 +79,6 @@ pub struct Navigation {
     brand: Option<gpui::Entity<crate::components::brand::Brand>>,
     shared_files: bool,
     tabs: TabGroup,
-    add_device_source: Option<crate::components::liquid::overlay::SourceBinding>,
     details_overlay: Option<gpui::Entity<crate::components::tooltip::DetailsOverlay>>,
 }
 impl gpui::EventEmitter<Action> for Navigation {}
@@ -101,7 +100,6 @@ impl Navigation {
             brand: None,
             shared_files: false,
             tabs: TabGroup::new(cx),
-            add_device_source: None,
             details_overlay: None,
         }
     }
@@ -169,14 +167,6 @@ impl Navigation {
     pub fn set_text(&mut self, locale: Text, cx: &mut Context<Self>) {
         self.locale = locale;
         crate::components::region::invalidate_all(cx);
-    }
-    pub fn bind_add_device_source(
-        &mut self,
-        source: crate::components::liquid::overlay::SourceBinding,
-        cx: &mut Context<Self>,
-    ) {
-        self.add_device_source = Some(source);
-        crate::components::region::invalidate(cx, &["footer"]);
     }
     #[cfg(feature = "headless-bench")]
     pub fn counters(&self, cx: &gpui::App) -> std::collections::HashMap<String, [usize; 4]> {
@@ -500,9 +490,9 @@ impl Navigation {
         let row_id = format!("chat-{}-{}", device.id, chat.chat_id);
         let action_id = format!("archive-{row_id}");
         let row_focus =
-            crate::components::liquid::controls::action_focus(row_id.clone(), window, cx);
+            crate::components::widgets::controls::action_focus(row_id.clone(), window, cx);
         let action_focus =
-            crate::components::liquid::controls::action_focus(action_id.clone(), window, cx);
+            crate::components::widgets::controls::action_focus(action_id.clone(), window, cx);
         {
             let mut subscriptions = self.focus_subscriptions.borrow_mut();
             subscriptions.entry(row_id.clone()).or_insert_with(|| {
@@ -601,29 +591,11 @@ impl Navigation {
             .flex_col()
             .gap(px(1.))
             .cursor_pointer()
+            .rounded(px(radius))
             .when(!selected, |row| {
-                row.child(crate::components::motion::HoverFill {
-                    id: format!("chat-hover-{}-{}", device.id, chat.chat_id).into(),
-                    color: crate::design::INTERACTION.neutral_hover,
-                    radius,
-                    pressed: None,
-                })
+                row.hover(|row| row.bg(rgb(crate::design::INTERACTION.neutral_hover)))
             })
-            .when(selected, |row| {
-                row.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .text_color(rgb(ZORK_UI.palette.selected))
-                        .child(
-                            crate::components::smooth::fill(
-                                format!("chat-active-{}-{}", device.id, chat.chat_id),
-                                radius,
-                            )
-                            .current_color(),
-                        ),
-                )
-            })
+            .when(selected, |row| row.bg(rgb(ZORK_UI.palette.selected)))
             .child(
                 div()
                     .text_size(px(13.))
@@ -876,23 +848,9 @@ impl Navigation {
             .child(ui::icon("icons/plus.svg", 20.))
             .child(self.locale.text("device_add"))
             .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)));
-        let add_device = match &self.add_device_source {
-            Some(source) => source
-                .bind(
-                    add_device,
-                    self.locale.text("device_add"),
-                    ui::ActionStyle {
-                        quiet: true,
-                        icon: Some("icons/plus.svg"),
-                        ..Default::default()
-                    },
-                )
-                .automation(AutomationRole::Button, self.locale.text("device_add"))
-                .into_any_element(),
-            None => add_device
-                .automation(AutomationRole::Button, self.locale.text("device_add"))
-                .into_any_element(),
-        };
+        let add_device = add_device
+            .automation(AutomationRole::Button, self.locale.text("device_add"))
+            .into_any_element();
         self.tabs.column().py_2().child(add_device).child(
             self.tabs
                 .tab("desktop-manage".into(), false)

@@ -362,16 +362,6 @@ impl Render for ModelSettings {
                                 }
                                 cx.notify();
                             }))
-                            .map(|button| {
-                                self.modal.source("model-device-dialog").bind(
-                                    button,
-                                    "添加连接",
-                                    ui::ActionStyle {
-                                        icon: Some("icons/plus.svg"),
-                                        ..Default::default()
-                                    },
-                                )
-                            })
                             .automation(AutomationRole::Button, "添加连接"),
                     ),
             )

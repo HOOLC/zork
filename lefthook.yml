@@ -47,7 +47,7 @@ pre-push:
       run: bash scripts/check-runtime.sh
     desktop-tests:
       glob:
-        - "crates/{agent-api,zork-gui,zork-ui,zork-liquid,zork-client-core,zork-client-types,zork-config,zork-mesh,zork-notify,zork-observe,zork-browser,zork-browser-runtime}/**"
+        - "crates/{agent-api,zork-gui,zork-ui,zork-client-core,zork-client-types,zork-config,zork-mesh,zork-notify,zork-observe,zork-browser,zork-browser-runtime}/**"
         - "vendor/**"
         - "{Cargo.toml,Cargo.lock,lefthook.yml}"
         - "scripts/lib/build_env.py"

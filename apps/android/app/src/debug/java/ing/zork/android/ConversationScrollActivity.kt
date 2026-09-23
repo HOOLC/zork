@@ -29,14 +29,14 @@ class ConversationScrollActivity : ComponentActivity() {
         private set
     private var members by mutableStateOf(emptyList<org.json.JSONObject>())
     fun completeMembers() { members = listOf(org.json.JSONObject().put("id","leader").put("name","滚动验证").put("avatar","cat")) }
-    fun completeMetadata() { rows = rows.map { it.copy(author="同一个小伙伴",createdAt="2026-09-07T18:00:00+08:00") } }
+    fun completeMetadata() { rows = rows.map { it.copy(author="同一个助手",createdAt="2026-09-07T18:00:00+08:00") } }
     val initialFrames = mutableListOf<Double>()
     lateinit var scroll: LazyListState
     private var rows by mutableStateOf(emptyList<ChatMessage>())
     fun load(count: Int) { rows = (0 until count).map(::message); loading = false }
     fun append() { rows = rows + message(rows.size) }
     fun growTail() { rows = rows.dropLast(1) + rows.last().copy(content = rows.last().content + "\n\n" + "新增内容\n\n".repeat(45)) }
-    private fun message(index: Int) = ChatMessage("row-$index", "小伙伴", "消息 $index\n\n这是一段用于验证滚动的内容。\n\n```kotlin\nval item$index = $index\nprintln(item$index)\n```\n\n消息 $index 结束。", false)
+    private fun message(index: Int) = ChatMessage("row-$index", "助手", "消息 $index\n\n这是一段用于验证滚动的内容。\n\n```kotlin\nval item$index = $index\nprintln(item$index)\n```\n\n消息 $index 结束。", false)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

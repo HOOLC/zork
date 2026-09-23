@@ -1,5 +1,5 @@
 //! Quoted comment presentation. Hosts decide when to persist or send a batch.
-use super::liquid::controls::ControlElement;
+use super::widgets::controls::ControlElement;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     comments::DraftComment,
@@ -48,16 +48,16 @@ pub fn queue<V: 'static>(
             let edit = edit.clone();
             let remove = remove.clone();
             let edit_id = id(prefix, &format!("comment-edit-{}", comment.id));
-            let focus = super::liquid::controls::action_focus(edit_id.clone(), window, cx);
+            let focus = super::widgets::controls::action_focus(edit_id.clone(), window, cx);
             let bounds = Rc::new(Cell::new(gpui::Bounds::default()));
             let measured = bounds.clone();
-            super::liquid::panel::inline(id(prefix, &format!("queued-comment-{}", comment.id)))
+            super::widgets::panel::inline(id(prefix, &format!("queued-comment-{}", comment.id)))
                 .flex()
                 .items_center()
                 .gap_2()
                 .px_2()
                 .py_2()
-                .radius(6.)
+                .rounded(px(6.))
                 .child(
                     div()
                         .flex_1()

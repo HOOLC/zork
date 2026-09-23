@@ -5,8 +5,27 @@
 //! geometry live here so regressions do not silently turn the app back into a
 //! generic dashboard.
 
-pub use zork_liquid::tokens::{
-    InteractionPalette, BORDER_WIDTH, BRAND_ACCENT, INTERACTION, LIQUID_OUTLINE,
+pub const BRAND_ACCENT: u32 = 0xE9643B;
+pub const UI_OUTLINE: u32 = 0xB6BABD;
+pub const BORDER_WIDTH: f32 = 0.5;
+
+pub struct InteractionPalette {
+    pub neutral_hover: u32,
+    pub neutral_pressed: u32,
+    pub primary_hover: u32,
+    pub primary_pressed: u32,
+    pub accent_hover: u32,
+    pub accent_pressed: u32,
+    pub focus_border: u32,
+}
+pub const INTERACTION: InteractionPalette = InteractionPalette {
+    neutral_hover: 0xEFEEEA,
+    neutral_pressed: 0xEAE7E1,
+    primary_hover: 0x41464C,
+    primary_pressed: 0x1B1E21,
+    accent_hover: 0xDB572F,
+    accent_pressed: 0xC84A27,
+    focus_border: 0x646970,
 };
 
 /// Form and feedback colors extend the existing approved warm-white palette.
@@ -317,7 +336,7 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
     },
     composer: ComposerSpec {
         surface_radius: crate::controls::IconButtonSize::Small.extent() / 2.0
-            + crate::components::liquid_composer::ACTION_INSET,
+            + crate::components::composer_layout::ACTION_INSET,
         minimum_editor_height: 40.0,
         home_max_editor_height: 120.0,
         thread_max_editor_height: 60.0,

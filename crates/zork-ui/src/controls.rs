@@ -23,9 +23,11 @@ pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
-pub use zork_liquid::tokens::{
-    BUTTON_RADIUS, CARD_RADIUS, COMPACT_CARD_RADIUS, FIELD_RADIUS, ICON_BUTTON_RADIUS,
-};
+pub const BUTTON_RADIUS: f32 = 999.;
+pub const CARD_RADIUS: f32 = 12.;
+pub const COMPACT_CARD_RADIUS: f32 = 12.;
+pub const FIELD_RADIUS: f32 = 10.;
+pub const ICON_BUTTON_RADIUS: f32 = 10.;
 pub const BUTTON_PADDING_X: f32 = 16.;
 pub const MODAL_RADIUS: f32 = CARD_RADIUS;
 pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
@@ -36,6 +38,13 @@ pub const MENU_GAP: f32 = 6.;
 pub const MENU_PADDING: f32 = 8.;
 pub const FIELD_HOVER_BORDER: u32 = FORM.hover_border;
 pub const FIELD_FOCUS_BORDER: u32 = FORM.focus_border;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Selection {
+    Single,
+    Multiple,
+    Actions,
+}
 
 pub fn settings_content(content: impl IntoElement) -> impl IntoElement {
     div()
@@ -151,9 +160,9 @@ pub fn section() -> Div {
         .border_t(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(ZORK_UI.palette.border))
 }
-use crate::components::liquid::controls::adaptive_action;
+use crate::components::widgets::controls::adaptive_action;
 /// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
-pub use crate::components::liquid::controls::{Action, ActionStyle};
+pub use crate::components::widgets::controls::{Action, ActionStyle};
 
 pub fn button(
     id: impl Into<gpui::ElementId>,
@@ -269,7 +278,7 @@ pub fn choice(
     selected: bool,
     enabled: bool,
 ) -> Action {
-    use crate::components::liquid::controls::ButtonVariant;
+    use crate::components::widgets::controls::ButtonVariant;
     adaptive_action(
         id,
         text,
@@ -307,8 +316,8 @@ pub fn input_control(
     input: &Entity<ComposerInput>,
     invalid: bool,
     _cx: &gpui::App,
-) -> crate::components::liquid::controls::Field {
-    crate::components::liquid::controls::adaptive_input(id, input, invalid, ZORK_UI.palette.canvas)
+) -> crate::components::widgets::controls::Field {
+    crate::components::widgets::controls::adaptive_input(id, input, invalid, ZORK_UI.palette.canvas)
 }
 
 pub fn field_with_error(
@@ -465,7 +474,7 @@ pub fn dropdown_with_icons<V: 'static>(
         options,
         open,
         enabled,
-        crate::components::liquid::overlay::Selection::Single,
+        crate::controls::Selection::Single,
         false,
         None,
         leading,
@@ -495,7 +504,7 @@ pub fn quiet_dropdown<V: 'static>(
         options,
         open,
         enabled,
-        crate::components::liquid::overlay::Selection::Single,
+        crate::controls::Selection::Single,
         true,
         Some(max_width),
         None,
@@ -513,7 +522,7 @@ pub fn dropdown_with_selection<V: 'static>(
     options: Vec<(String, String, bool)>,
     open: bool,
     enabled: bool,
-    selection: crate::components::liquid::overlay::Selection,
+    selection: crate::controls::Selection,
     window: &mut gpui::Window,
     cx: &mut gpui::Context<V>,
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
@@ -542,7 +551,7 @@ fn menu_dropdown<V: 'static>(
     options: Vec<(String, String, bool)>,
     open: bool,
     enabled: bool,
-    selection: crate::components::liquid::overlay::Selection,
+    selection: crate::controls::Selection,
     quiet: bool,
     max_width: Option<f32>,
     leading: Option<&'static str>,
@@ -552,62 +561,248 @@ fn menu_dropdown<V: 'static>(
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
-    use crate::components::liquid::{
-        overlay::{Choice, Placement, Popover, Trigger},
-        Material,
-    };
-    use std::{cell::RefCell, rc::Rc};
-    let id = id.into();
-    let state = window
-        .use_keyed_state(format!("{id}-popover"), cx, |_, cx| {
-            Rc::new(RefCell::new(Popover::new(cx)))
-        })
-        .read(cx)
-        .clone();
-    let choices = options
-        .into_iter()
-        .map(|(id, label, checked)| Choice {
-            id,
-            label: label.into(),
-            checked: Some(checked),
-            disabled: !enabled,
+    use crate::components::widgets::controls::{adaptive_action, ActionStyle};
+    use gpui::{KeyDownEvent, Role};
+    use std::rc::Rc;
+
+    let id: gpui::SharedString = id.into();
+    let measured = window.use_keyed_state(format!("{id}-bounds"), cx, |_, _| {
+        gpui::Bounds::<gpui::Pixels>::default()
+    });
+    let bounds = *measured.read(cx);
+    let width = bounds.size.width.as_f32();
+    let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
+    let control_width = if quiet {
+        crate::components::widgets::overlay::measure_label(&label, 12., window) + 28.
+    } else {
+        width.max(32.)
+    }
+    .min(max_width.unwrap_or(f32::MAX).max(48.));
+    let owner = cx.entity().downgrade();
+    let choose = Rc::new(choose);
+    let set_open = Rc::new(set_open);
+    let handles: Vec<_> = options
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            crate::components::widgets::controls::action_focus(
+                format!("{id}-option-{index}"),
+                window,
+                cx,
+            )
         })
         .collect();
-    let trigger = if quiet {
-        Trigger::Quiet
-    } else {
-        Trigger::Field
-    };
-    let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
-    let control_width = state
-        .borrow_mut()
-        .trigger_width(&label, trigger, window)
-        .min(max_width.unwrap_or(f32::MAX).max(48.));
-    let popover = state.borrow_mut().render_with_icons(
-        id,
-        label,
-        choices,
-        selection,
-        trigger,
-        open,
-        enabled,
-        Placement::Window {
-            width: control_width.max(2.),
+    let active: Vec<usize> = (0..options.len()).collect();
+    let entry = options
+        .iter()
+        .position(|(_, _, checked)| *checked)
+        .unwrap_or(0);
+    let focus = handles.get(entry).cloned().unwrap_or_else(|| {
+        crate::components::widgets::controls::action_focus(format!("{id}-menu"), window, cx)
+    });
+    let trigger_focus =
+        crate::components::widgets::controls::action_focus(format!("{id}-trigger"), window, cx);
+    if open
+        && !trigger_focus.is_focused(window)
+        && !handles.iter().any(|handle| handle.is_focused(window))
+    {
+        let blur_owner = owner.clone();
+        let blur_close = set_open.clone();
+        cx.defer(move |app| {
+            let action = blur_close.clone();
+            let _ = blur_owner.update(app, |view, cx| action(view, false, cx));
+        });
+    }
+    let pointer_owner = owner.clone();
+    let pointer_open = set_open.clone();
+    let pointer_focus = focus.clone();
+    let pointer_trigger_focus = trigger_focus.clone();
+    let trigger = adaptive_action(
+        id.clone(),
+        label.clone(),
+        ActionStyle {
+            field: !quiet,
+            quiet,
+            opens_panel: true,
+            disabled: !enabled || options.is_empty(),
+            icon: leading,
+            trailing: Some("icons/chevron-down.svg"),
+            ..Default::default()
         },
-        Material::ordinary(),
-        leading,
-        option_icons,
-        window,
-        cx,
-        move |v, open, _, cx| set_open(v, open, cx),
-        move |v, index, _, cx| choose(v, index, cx),
+        ZORK_UI.palette.canvas,
+    )
+    .w(px(control_width))
+    .h(px(control_height))
+    .track_focus(&trigger_focus)
+    .on_click(move |event, window, app| {
+        if !matches!(event, gpui::ClickEvent::Keyboard(_)) && enabled {
+            let action = pointer_open.clone();
+            let _ = pointer_owner.update(app, |view, cx| action(view, !open, cx));
+            window.focus(
+                if open {
+                    &pointer_trigger_focus
+                } else {
+                    &pointer_focus
+                },
+                app,
+            );
+        }
+    })
+    .automation_enabled(
+        enabled && !options.is_empty(),
+        AutomationRole::Button,
+        label.clone(),
     );
+    let choice_focus = trigger_focus.clone();
+    let panel_id = id.clone();
+    let mut panel = div()
+        .id(format!("{panel_id}-menu"))
+        .occlude()
+        .w(px(control_width.max(160.)))
+        .max_h(px(320.))
+        .overflow_y_scroll()
+        .rounded(px(PLAIN_POPOVER_RADIUS))
+        .bg(rgb(ZORK_UI.palette.canvas))
+        .border(px(crate::design::BORDER_WIDTH))
+        .border_color(rgb(crate::design::UI_OUTLINE))
+        .p(px(6.))
+        .flex()
+        .flex_col();
+    for (index, (key, text, checked)) in options.iter().enumerate() {
+        let callback = choose.clone();
+        let close = set_open.clone();
+        let owner = owner.clone();
+        let focus = handles[index].clone();
+        let trigger_focus = choice_focus.clone();
+        let text: gpui::SharedString = text.clone().into();
+        let automation_label = text.to_string();
+        let checked = *checked;
+        let icon = option_icons.get(index).copied().flatten();
+        let role = match selection {
+            crate::controls::Selection::Single => Role::RadioButton,
+            crate::controls::Selection::Multiple => Role::CheckBox,
+            crate::controls::Selection::Actions => Role::Button,
+        };
+        let item = gpui_base::Button::new(format!("{key}-control"))
+            .disabled(!enabled)
+            .selected(checked)
+            .track_focus(&focus)
+            .tab_stop(enabled && index == entry)
+            .role(role)
+            .accessibility_label(text.clone())
+            .on_click(move |_, window, app| {
+                let callback = callback.clone();
+                let close = close.clone();
+                let _ = owner.update(app, |view, cx| {
+                    callback(view, index, cx);
+                    if selection == crate::controls::Selection::Single {
+                        close(view, false, cx);
+                    }
+                });
+                if selection == crate::controls::Selection::Single {
+                    window.focus(&trigger_focus, app);
+                }
+            })
+            .w_full()
+            .min_h(px(32.))
+            .rounded(px(10.))
+            .when(checked, |v| v.bg(rgb(ZORK_UI.palette.selected)))
+            .hover(|v| v.bg(rgb(INTERACTION.neutral_hover)))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(10.))
+            .text_size(px(12.))
+            .when_some(icon, |v, path| v.child(self::icon(path, 14.)))
+            .child(div().flex_1().min_w_0().child(text))
+            .when(checked, |v| v.child(self::icon("icons/check.svg", 12.)));
+        panel = panel.child(
+            div()
+                .id(key.clone())
+                .w_full()
+                .child(item)
+                .automation_enabled(enabled, AutomationRole::Option, automation_label),
+        );
+    }
+    let focus_for_keys = handles.clone();
+    let outside_owner = owner.clone();
+    let outside_close = set_open.clone();
+    let outside_focus = trigger_focus.clone();
+    panel = panel
+        .on_key_down(move |event: &KeyDownEvent, window, cx| {
+            if active.is_empty() {
+                return;
+            }
+            let current = active
+                .iter()
+                .position(|index| focus_for_keys[*index].is_focused(window))
+                .unwrap_or(0);
+            let next = match event.keystroke.key.as_str() {
+                "up" => (current + active.len() - 1) % active.len(),
+                "down" => (current + 1) % active.len(),
+                "home" => 0,
+                "end" => active.len() - 1,
+                _ => return,
+            };
+            window.focus(&focus_for_keys[active[next]], cx);
+            window.prevent_default();
+            cx.stop_propagation();
+        })
+        .on_mouse_down_out(move |_, window, app| {
+            let action = outside_close.clone();
+            let _ = outside_owner.update(app, |view, cx| action(view, false, cx));
+            window.focus(&outside_focus, app);
+        });
+    let open_owner = owner.clone();
+    let open_action = set_open.clone();
+    let mut select = gpui_base::Select::new(format!("{id}-select"))
+        .open(open)
+        .disabled(!enabled || options.is_empty())
+        .focus_handle(&trigger_focus)
+        .content_focus_handle(&focus)
+        .accessibility_label(label.clone())
+        .on_open_change(move |next, _, app| {
+            let action = open_action.clone();
+            let _ = open_owner.update(app, |view, cx| action(view, next, cx));
+        })
+        .w_full()
+        .h_full()
+        .child(trigger);
+    if open {
+        select = select.child(
+            gpui::deferred(
+                gpui_base::Positioner::side(bounds)
+                    .placement(gpui_base::Placement::Bottom)
+                    .align(gpui_base::Align::Start)
+                    .offset(px(MENU_GAP))
+                    .margin(px(8.))
+                    .child(panel.automation(AutomationRole::ScrollArea, label.clone())),
+            )
+            .with_priority(350),
+        );
+    }
     div()
         .relative()
-        .w(px(control_width))
+        .w(px(if quiet { control_width } else { width.max(32.) }))
+        .when(!quiet, |v| v.w_full())
         .flex_shrink_0()
         .h(px(control_height))
-        .child(popover)
+        .child(
+            gpui::canvas(
+                move |bounds, _, cx| {
+                    measured.update(cx, |current, cx| {
+                        if *current != bounds {
+                            *current = bounds;
+                            cx.notify();
+                        }
+                    });
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
+        .child(select)
         .into_any_element()
 }
 
@@ -631,10 +826,6 @@ pub fn provider_icon(provider: &str, size: f32) -> gpui::Div {
         .child(gpui::img(path).size(px(size)))
 }
 
-#[derive(Clone)]
-pub struct OpenAgent {
-    pub id: String,
-}
 /// Controlled switch with the same compact geometry in native and Web renderers.
 pub fn switch<V: 'static>(
     id: impl Into<gpui::SharedString>,
@@ -646,7 +837,7 @@ pub fn switch<V: 'static>(
     on_change: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
 ) -> impl IntoElement {
     let label = label.into();
-    crate::components::liquid::controls::deferred_toggle(
+    crate::components::widgets::controls::deferred_toggle(
         id,
         checked,
         enabled,
@@ -661,43 +852,6 @@ pub fn switch<V: 'static>(
     )
 }
 
-pub fn avatar_picker<V: 'static>(
-    prefix: impl Into<gpui::SharedString>,
-    selected: &str,
-    enabled: bool,
-    cx: &gpui::Context<V>,
-    choose: impl Fn(&mut V, &'static str, &mut gpui::Context<V>) + 'static,
-) -> Div {
-    use crate::components::liquid::primitives::data::{portrait_choices, PortraitOption};
-    let prefix = prefix.into();
-    let selected = AGENT_AVATARS
-        .iter()
-        .position(|(key, _, _)| *key == selected)
-        .unwrap_or(0);
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(label("头像"))
-        .child(portrait_choices(
-            prefix.clone(),
-            AGENT_AVATARS
-                .iter()
-                .map(|(key, title, _)| PortraitOption {
-                    id: format!("{prefix}-{key}"),
-                    portrait: key,
-                    label: (*title).into(),
-                })
-                .collect(),
-            selected,
-            enabled,
-            6,
-            32.,
-            24.,
-            cx.listener(move |v, index: &usize, _, cx| choose(v, AGENT_AVATARS[*index].0, cx)),
-        ))
-}
-
 #[derive(Clone, Copy)]
 pub enum NoticeKind {
     Info,
@@ -707,7 +861,7 @@ pub enum NoticeKind {
     Loading,
 }
 pub fn status_notice(message: String, kind: NoticeKind) -> Div {
-    use crate::components::liquid::primitives::{feedback, surface};
+    use crate::components::widgets::primitives::{feedback, surface};
     let (_, fill) = feedback::colors(kind);
     div().w_full().child(
         surface("status-notice-surface", FIELD_RADIUS, fill, false)

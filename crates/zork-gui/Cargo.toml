@@ -226,12 +226,6 @@ path = "tests/headless_shared_files.rs"
 harness = false
 required-features = ["headless-bench"]
 
-[[example]]
-name = "liquid-gallery"
-path = "examples/liquid_gallery.rs"
-required-features = ["headless-bench"]
-
-
 [[test]]
 name = "transcript_scroll_simple"
 path = "tests/transcript_scroll_simple.rs"

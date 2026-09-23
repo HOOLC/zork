@@ -54,7 +54,17 @@ fn main() -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .find(|e| e.id == id)
-                .ok_or_else(|| anyhow::anyhow!("missing {id}"))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "missing {id}: {:?}",
+                        snapshot
+                            .elements
+                            .iter()
+                            .filter(|e| e.id.starts_with("new-chat-"))
+                            .map(|e| e.id.as_str())
+                            .collect::<Vec<_>>()
+                    )
+                })?;
             anyhow::ensure!(
                 element.visible && element.bounds == element.visible_bounds,
                 "clipped {id} at {width}"
@@ -113,13 +123,28 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|e| e.label.contains('◌') && !e.label.contains("Mesh 准备中")),
             "remote device option must show a compact Mesh status icon"
         );
-        for id in ["new-chat-device-1", "new-chat-options"] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-device-1"}}),
+            &mut cx,
+        )?;
+        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|e| e.id == "new-chat-device-1" && e.visible),
+            "device dropdown did not reopen from the keyboard"
+        );
+        action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-options"}}),
+            &mut cx,
+        )?;
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-picker-max-{width}.png")))?;
         action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"home"}), &mut cx)?;
@@ -229,7 +254,7 @@ fn main() -> anyhow::Result<()> {
             "reset unexpectedly left the strength picker at {width}"
         );
         action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;

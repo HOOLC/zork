@@ -147,8 +147,8 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     }
                 }
                 if (state.profilesReady && state.profiles.isEmpty()) item {
-                    Text("连接小伙伴使用的模型", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("添加订阅账号或 API 连接，再为小伙伴选择模型。", fontSize = 13.sp, color = ZorkColors.Muted)
+                    Text("连接对话使用的模型", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text("添加订阅账号或 API 连接，供新对话选择模型。", fontSize = 13.sp, color = ZorkColors.Muted)
                 }
             } else if (profile == null) {
                 item { Text(if (state.loading) "正在读取连接…" else "此连接已不可用，返回大模型列表查看。", fontSize = 14.sp, color = ZorkColors.Muted) }
@@ -197,7 +197,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     SettingsListGroup {
                         SettingsListRow(model.text("id"), subtext = label, action = { editModel(model) },
                             trailing = {
-                                LiquidSwitch(active, { on -> perform("enabled") {
+                                ZorkSwitch(active, { on -> perform("enabled") {
                                     actions.perform("enable_model", JSONObject().put("profile", profileId).put("model", model.text("id")).put("enabled", on))
                                 } }, enabled = enabled && (active || configured),
                                     modifier = Modifier.semantics { contentDescription = "模型启用 ${model.text("id")}" })
@@ -208,7 +208,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             }
         }
     }
-    LiquidRetained(editor?.let { it to editing }) { (kind, source), open, closed ->
+    ZorkRetained(editor?.let { it to editing }) { (kind, source), open, closed ->
         key(kind, source?.text("id")) {
             SettingsEditor(kind, source, state, actions, "", { editor = null }, { editor = null; actions.refresh() }, open = open, onClosed = closed)
         }

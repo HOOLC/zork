@@ -21,8 +21,8 @@ pub struct SharedFilesView {
     search: Entity<ComposerInput>,
     search_open: bool,
     details_open: bool,
-    more_menu: crate::components::liquid::primitives::menu::Menu,
-    version_menu: crate::components::liquid::primitives::menu::Menu,
+    more_menu: crate::components::standard_menu::Menu,
+    version_menu: crate::components::standard_menu::Menu,
     scroll: gpui::UniformListScrollHandle,
     document: Option<(String, MessageDocument)>,
     image: Option<(String, Arc<gpui::RenderImage>)>,
@@ -238,7 +238,7 @@ impl SharedFilesView {
         };
         let version = preview.versions.iter().find(|v| v.root == preview.selected);
         let version_focus =
-            crate::components::liquid::controls::action_focus("shared-version", window, cx);
+            crate::components::widgets::controls::action_focus("shared-version", window, cx);
         div()
             .size_full()
             .flex()
@@ -387,7 +387,7 @@ impl SharedFilesView {
             )
     }
     fn menus(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        use crate::components::liquid::primitives::menu::Item;
+        use crate::components::standard_menu::Item;
         let actions = std::collections::HashMap::from([
             ("shared-refresh".to_owned(), Action::Refresh),
             (
@@ -502,7 +502,7 @@ impl SharedFilesView {
 impl Render for SharedFilesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let more_focus =
-            crate::components::liquid::controls::action_focus("shared-more", window, cx);
+            crate::components::widgets::controls::action_focus("shared-more", window, cx);
         let p = crate::design::ZORK_UI.palette;
         let available = self
             .available_width

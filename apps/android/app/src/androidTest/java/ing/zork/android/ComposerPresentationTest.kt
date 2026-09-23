@@ -37,7 +37,7 @@ class ComposerPresentationTest {
             return android.graphics.Rect().also { (find(automation.rootInActiveWindow) ?: error("Missing $prefix")).getBoundsInScreen(it) }
         }
         fun assertTailVisible() {
-            assertTrue("Last message overlaps raised presence", textBounds("消息 19").bottom <= textBounds("设计伙伴 ·").top)
+            assertTrue("Last message overlaps presence", textBounds("消息 19").bottom <= textBounds("产品会话 ·").top)
         }
         fun height() = android.graphics.Rect().also { editor().getBoundsInScreen(it) }.height()
         fun settle() { Thread.sleep(750); instrumentation.waitForIdleSync() }
@@ -54,23 +54,7 @@ class ComposerPresentationTest {
             assertTrue("Draft was truncated", editor().text.toString().contains("第六行"))
             capture("three-lines.png")
             scenario.onActivity { it.frames.clear(); it.active = true }
-            // Track actual screen coordinates: layer motion intentionally keeps
-            // the LazyColumn scroll offset constant between retargets. Start
-            // sampling promptly: accessibility queries add their own latency,
-            // so a 70 ms initial sleep can miss most of the spring transition.
-            val messageBottoms = mutableListOf<Int>()
-            val sampleTimes = mutableListOf<Long>()
-            val started = SystemClock.uptimeMillis()
-            repeat(20) {
-                Thread.sleep(10)
-                messageBottoms.add(textBounds("消息 19").bottom)
-                sampleTimes.add(SystemClock.uptimeMillis() - started)
-            }
-            File(instrumentation.targetContext.getExternalFilesDir(null), "composer-presentation/message-motion.json")
-                .writeText(org.json.JSONObject().put("bottoms", org.json.JSONArray(messageBottoms))
-                    .put("elapsed_ms", org.json.JSONArray(sampleTimes)).toString())
             settle()
-            assertTrue("Messages jumped instead of following the animation: $messageBottoms", messageBottoms.distinct().size > 2)
             scenario.onActivity {
                 assertFalse("Tail hidden by presence", it.scroll.canScrollForward)
                 val samples = synchronized(it.frames) { it.frames.sorted() }

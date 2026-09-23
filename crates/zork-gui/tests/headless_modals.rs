@@ -11,7 +11,7 @@ use zork_gui::{
         protocol::{ElementInfo, UserAction},
         AutomationRoot, HeadlessAutomation,
     },
-    desktop::{HeadlessAgentsView, HeadlessProfilesView},
+    desktop::HeadlessProfilesView,
 };
 
 struct SettingsFrame<V: Render + 'static> {
@@ -106,20 +106,6 @@ impl<V: Render + 'static> Fixture<V> {
     }
     fn key(&mut self, key: &str) -> anyhow::Result<()> {
         self.action(json!({"type":"key","keystroke":key}))
-    }
-    fn reveal(&mut self, id: &str, dialog: &str) -> anyhow::Result<()> {
-        for _ in 0..5 {
-            if self
-                .element(id)
-                .is_some_and(|element| element.bounds == element.visible_bounds)
-            {
-                return Ok(());
-            }
-            let card = self.element(dialog).expect("dialog is open");
-            self.action(json!({"type":"scroll", "target":{"x":card.center.x,"y":card.bounds.y+140.},"delta_y":-100.}))?;
-        }
-        self.screenshot(&format!("{dialog}-missing-{id}.png"))?;
-        anyhow::bail!("{id} could not be reached by scrolling {dialog}")
     }
     fn modal(&mut self, id: &str, width: f32, height: f32) -> anyhow::Result<()> {
         let card = self
@@ -346,108 +332,6 @@ fn main() -> anyhow::Result<()> {
         f.click("model-edit-fixture-model")?;
         f.modal("model-editor-dialog", width, height)?;
         f.key("escape")?;
-        let mut f = Fixture::new(width, height, HeadlessAgentsView::headless_fixture)?;
-        f.click("agent-add")?;
-        f.modal("agent-create-dialog", width, height)?;
-        f.reveal("agent-profile-select", "agent-create-dialog")?;
-        anyhow::ensure!(
-            f.element("agent-profile-select").unwrap().label == "自动分配",
-            "new agents must default to the pool"
-        );
-        f.reveal("agent-avatar-cat", "agent-create-dialog")?;
-        f.screenshot(&format!("agent-create-{width}.png"))?;
-        anyhow::ensure!(
-            f.element("agent-create")
-                .is_some_and(|e| e.visible_bounds == e.bounds),
-            "create action hidden below scroll area"
-        );
-        f.key("escape")?;
-        anyhow::ensure!(
-            f.element("agent-create-dialog").is_none(),
-            "Escape did not dismiss Agent creator"
-        );
-        f.click("agent-settings-leader")?;
-        f.modal("agent-editor-dialog", width, height)?;
-        let model_before = f.element("agent-edit-model-select").unwrap().bounds;
-        let effort = f.element("agent-edit-thinking-select").unwrap();
-        let profile = f.element("agent-edit-profile-select").unwrap();
-        anyhow::ensure!(
-            model_before.y < effort.bounds.y && effort.bounds.y < profile.bounds.y,
-            "model and effort must precede optional connection"
-        );
-        let model_label = f.element("agent-edit-model-select").unwrap().label.clone();
-        let effort_label = effort.label.clone();
-        f.click("agent-edit-profile-select")?;
-        f.key("tab")?;
-        anyhow::ensure!(
-            f.element("agent-edit-profile-select-menu")
-                .is_none_or(|menu| !menu.enabled),
-            "Tab left the dropdown open after focus moved away"
-        );
-        f.click("agent-edit-profile-select")?;
-        let option = f
-            .element("agent-edit-profile-0")
-            .expect("dropdown options must be visible");
-        anyhow::ensure!(
-            option.label == "自动分配",
-            "automatic account option missing"
-        );
-        anyhow::ensure!(option.visible_bounds == option.bounds, "dropdown clipped");
-        anyhow::ensure!(
-            f.element("agent-edit-model-select").unwrap().bounds == model_before,
-            "dropdown reflowed form"
-        );
-        let select = f.element("agent-edit-profile-select").unwrap().bounds;
-        let menu = f.element("agent-edit-profile-select-menu").unwrap().bounds;
-        anyhow::ensure!(
-            (menu.y >= select.y + select.height + 6.
-                || menu.y + menu.height <= select.y - 6.)
-                && menu.width >= select.width
-                && menu.x >= 0. && menu.x + menu.width <= width as f32
-                && menu.y >= 0. && menu.y + menu.height <= height as f32,
-            "shared dropdown overlaps its source or leaves the viewport: select={select:?}, menu={menu:?}"
-        );
-        anyhow::ensure!(
-            option.bounds.y >= menu.y + 4.
-                && option.bounds.x >= menu.x + 4.
-                && option.bounds.x + option.bounds.width <= menu.x + menu.width - 4.,
-            "dropdown option enters the rounded panel edge"
-        );
-        f.screenshot(&format!("agent-dropdown-{width}.png"))?;
-        let scale = f.driver.snapshot(false).scale_factor;
-        let pixels = f.cx.capture_screenshot(f.window.into())?;
-        let x0 = ((option.bounds.x + 8.) * scale) as u32;
-        let x1 = ((option.bounds.x + 180.) * scale) as u32;
-        let y0 = ((option.bounds.y + 6.) * scale) as u32;
-        let y1 = ((option.bounds.y + 26.) * scale) as u32;
-        let ink = (y0..y1)
-            .step_by(2)
-            .flat_map(|y| (x0..x1).step_by(2).map(move |x| (x, y)))
-            .filter(|&(x, y)| {
-                let pixel = pixels.get_pixel(x, y).0;
-                pixel[0] < 150 && pixel[1] < 150 && pixel[2] < 150
-            })
-            .count();
-        anyhow::ensure!(
-            ink > 20,
-            "dropdown option ink painted behind its dialog: {ink} dark pixels"
-        );
-        f.click("agent-edit-profile-0")?;
-        anyhow::ensure!(
-            f.element("agent-edit-model-select").unwrap().label == model_label
-                && f.element("agent-edit-thinking-select").unwrap().label == effort_label,
-            "connection change reset model or effort"
-        );
-        f.click("agent-edit-thinking-select")?;
-        f.click("agent-edit-thinking-0")?;
-        f.click("agent-edit-model-select")?;
-        f.click("agent-edit-model-0")?;
-        f.screenshot(&format!("agent-edit-{width}.png"))?;
-        f.click("agent-editor-dialog-close")?;
-        anyhow::ensure!(
-            f.element("agent-editor-dialog").is_none(),
-            "Agent editor did not close"
-        );
     }
     paint_node_checks()?;
     enrollment_checks()?;
@@ -787,15 +671,13 @@ fn enrollment_checks() -> anyhow::Result<()> {
             let mut modal = zork_ui::modal::ModalState::new(cx);
             modal.retain("add-device-dialog", None::<()>, cx);
             let navigation = cx.new(|cx| {
-                let mut navigation = zork_ui::chat_navigation::Navigation::new(
+                zork_ui::chat_navigation::Navigation::new(
                     Default::default(),
                     zork_ui::resources::Text(std::rc::Rc::new(|key| {
                         zork_gui::i18n::Locale::ZhCn.text(key).into()
                     })),
                     cx,
-                );
-                navigation.bind_add_device_source(modal.source("add-device-dialog"), cx);
-                navigation
+                )
             });
             cx.subscribe(&navigation, |view: &mut EnrollmentFrame, _, action, cx| {
                 if matches!(
@@ -833,7 +715,7 @@ fn enrollment_checks() -> anyhow::Result<()> {
             .element("add-device-dialog")
             .context("enrollment dialog missing")?;
         // Plain dialogs are centered on the window; they no longer expose a
-        // liquid source anchor or a simulated material pose.
+        // source anchor or a simulated panel position.
         anyhow::ensure!(
             (card.bounds.x + card.bounds.width / 2. - width / 2.).abs() < 1.
                 && (card.bounds.y + card.bounds.height / 2. - height / 2.).abs() < 1.

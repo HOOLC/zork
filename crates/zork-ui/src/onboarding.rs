@@ -1,7 +1,7 @@
 //! Native first-use composition shared by the product and the design browser.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    components::liquid::primitives::{feedback, surface},
+    components::widgets::primitives::{feedback, surface},
     controls::{self as ui, NoticeKind},
     design::TextRole,
 };

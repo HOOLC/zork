@@ -86,21 +86,21 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
         Row(Modifier.fillMaxWidth().height(56.dp).zIndex(1f).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             SharedIcon("返回", R.drawable.ic_arrow_left, actions.back)
             if (searching && preview == null) {
-                LiquidTextField("", query, { query = it }, modifier = Modifier.weight(1f).semantics { contentDescription = "搜索当前目录" }, placeholder = { Text("搜索当前目录", fontSize = 13.sp) },
+                ZorkTextField("", query, { query = it }, modifier = Modifier.weight(1f).semantics { contentDescription = "搜索当前目录" }, placeholder = { Text("搜索当前目录", fontSize = 13.sp) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { actions.search(query) }))
             } else Text(title, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             if (preview == null) {
                 SharedIcon(if (searching) "完成搜索" else "搜索", R.drawable.ic_search) {
                     if (searching) { actions.search(query); searching = false } else searching = true
                 }
-                LiquidIconButton("更多", opensPanel = true, onClick = { sheet = "more" }) { Glyph(R.drawable.ic_settings_three, 20.dp, ZorkColors.Muted) }
+                ZorkIconButton("更多", opensPanel = true, onClick = { sheet = "more" }) { Glyph(R.drawable.ic_settings_three, 20.dp, ZorkColors.Muted) }
             }
         }
         if (preview != null) {
             val selected = preview.versions.find { it.root == preview.selected }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                LiquidButton(selected?.let { sharedSize(it.size) }.orEmpty(), quiet = true, onClick = { sheet = "versions" })
-                LiquidButton("详细信息", quiet = true, onClick = { detailsOpen = !detailsOpen })
+                ZorkButton(selected?.let { sharedSize(it.size) }.orEmpty(), quiet = true, onClick = { sheet = "versions" })
+                ZorkButton("详细信息", quiet = true, onClick = { detailsOpen = !detailsOpen })
                 if (detailsOpen) Text(selected?.sources?.joinToString(" · ") { compactDeviceName(it.name, it.status) }.orEmpty(), fontSize = 12.sp, color = ZorkColors.Muted)
                 if (preview.loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 preview.error?.let { Text(it, color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp) }
@@ -112,7 +112,7 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
                 Spacer(Modifier.height(20.dp))
             }
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LiquidButton(if (data.save.busy) "正在保存…" else "保存副本", primary = true,
+                ZorkButton(if (data.save.busy) "正在保存…" else "保存副本", primary = true,
                     onClick = actions.save, enabled = preview.canSave && !data.save.busy, modifier = Modifier.fillMaxWidth())
                 data.save.error?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Danger) }
                 if (data.save.completed) Text("副本已保存", fontSize = 12.sp, color = ZorkColors.Muted)
@@ -138,10 +138,10 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
                 if (data.space == null) items(data.spaces, key = { it.id }) { space -> SharedFileRow(space.name, true, space.sources, 0, false) { actions.space(space.id) } }
                 else items(data.entries, key = { it.id }) { entry -> SharedFileRow(entry.name, entry.directory, entry.sources, entry.versions.size, false) { actions.entry(entry.id) } }
             }
-            if (data.more) LiquidButton(if (data.loading) "正在载入…" else "载入更多", quiet = true, onClick = actions.more, enabled = !data.loading, modifier = Modifier.fillMaxWidth())
+            if (data.more) ZorkButton(if (data.loading) "正在载入…" else "载入更多", quiet = true, onClick = actions.more, enabled = !data.loading, modifier = Modifier.fillMaxWidth())
         }
     }
-    LiquidRetained(sheet) { shown, open, closed -> when (shown) {
+    ZorkRetained(sheet) { shown, open, closed -> when (shown) {
         "sources", "settings" -> SettingsSheet(if (shown == "sources") "文件来源" else "共享来源", dismiss = { sheet = null }, open = open, onClosed = closed) {
             SharedChoice("所有设备", data.source == null) { actions.source(null); sheet = null }
             data.devices.forEach { source -> SharedChoice(compactDeviceName(source.name, source.status), data.source == source.id) { actions.source(source.id); sheet = null } }
@@ -162,17 +162,20 @@ internal fun SharedFilesPage(data: SharedFilesUi, image: ImageBitmap?, actions: 
 }
 
 @Composable private fun SharedIcon(label: String, icon: Int, click: () -> Unit) {
-    LiquidIconButton(label, onClick = click) { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = ZorkColors.Muted) }
+    ZorkIconButton(label, onClick = click) { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = ZorkColors.Muted) }
 }
 @Composable private fun SharedChoice(text: String, selected: Boolean, click: () -> Unit) {
-    LiquidListRow(onClick = click) {
+    ZorkListRow(onClick = click) {
         Text(text, modifier = Modifier.weight(1f), fontSize = 14.sp, lineHeight = 23.sp)
-        if (selected) Glyph(R.drawable.ic_check, 16.dp, LiquidTokens.Accent)
+        if (selected) Glyph(R.drawable.ic_check, 16.dp, UiTokens.Accent)
     }
 }
 @Composable private fun SharedFileRow(name: String, directory: Boolean, sources: List<SharedSourceUi>, versions: Int, grid: Boolean, click: () -> Unit) {
     val hint = if (versions > 1) "$versions 个版本" else if (sources.isNotEmpty() && sources.all { it.online == false }) "来源离线" else null
-    LiquidAction(Modifier.fillMaxWidth().heightIn(min = if (grid) 136.dp else 68.dp), false, true, true, false, LiquidTokens.FieldRadius, click) {
+    Surface(onClick = click,
+        modifier = Modifier.fillMaxWidth().heightIn(min = if (grid) 136.dp else 68.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.FieldRadius),
+        color = androidx.compose.ui.graphics.Color.Transparent) {
         if (grid) Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Glyph(if (directory) R.drawable.ic_folder else R.drawable.ic_file, 28.dp)
             Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = FontWeight.Medium)

@@ -56,7 +56,6 @@ pub struct Row {
     pub icon: &'static str,
     pub title: String,
     pub detail: String,
-    pub source: Option<crate::components::liquid::overlay::SourceBinding>,
     pub open: Rc<dyn Fn(&mut App)>,
 }
 impl Row {
@@ -64,18 +63,6 @@ impl Row {
         self.render_enabled(true, cx)
     }
     pub fn render_enabled<V: 'static>(self, enabled: bool, cx: &mut Context<V>) -> AnyElement {
-        if enabled && self.source.is_some() {
-            return crate::components::attachments::content_row_source(
-                self.id,
-                self.icon,
-                self.title,
-                self.detail,
-                self.source,
-                cx,
-                move |_, cx| (self.open)(cx),
-            )
-            .into_any_element();
-        }
         crate::components::attachments::content_row_enabled(
             self.id,
             self.icon,
@@ -221,7 +208,7 @@ pub struct Menu {
     retired: Option<Groups>,
     text: Text,
     width: f32,
-    flyout: crate::components::liquid::primitives::dialog::Flyout,
+    flyout: crate::components::flyout::Flyout,
     focus: FocusHandle,
     was_open: bool,
 }
@@ -237,7 +224,7 @@ impl Menu {
             retired: None,
             text,
             width: 384.,
-            flyout: crate::components::liquid::primitives::dialog::Flyout::new(cx),
+            flyout: crate::components::flyout::Flyout::new(cx),
             focus: cx.focus_handle().tab_stop(true),
             was_open: false,
         }

@@ -62,7 +62,7 @@ class MarkdownStressActivity : ComponentActivity() {
         messages = List(records - 3) { index ->
             val (kind, body) = markdownStressCases[index % markdownStressCases.size]
             val user = (index / markdownStressCases.size) % 2 == 1
-            ChatMessage("stress-$index", if (user) "你" else "小伙伴", if (body.isEmpty()) "" else "消息 $index\n\n" + body.replace("__INDEX__", index.toString()), user,
+            ChatMessage("stress-$index", if (user) "你" else "助手", if (body.isEmpty()) "" else "消息 $index\n\n" + body.replace("__INDEX__", index.toString()), user,
                 device = if (user) "" else "studio-dev", model = if (user) "" else models[index % models.size],
                 files = if (kind == "text_attachment") listOf(TextAttachmentUi("file-$index", "notes-$index.md", "# 文本附件", "Markdown")) else emptyList())
         }

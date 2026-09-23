@@ -6,7 +6,7 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, FontWeight, Window};
 
-use super::liquid::panel::{Content, FloatingPanel, FloatingStyle, Side};
+use super::widgets::panel::{Content, FloatingPanel, FloatingStyle, Side};
 const CONTENT_SECONDS: f32 = 0.14;
 use std::time::Instant;
 
@@ -23,7 +23,7 @@ impl DetailsTooltip {
     fn content_width(&self, window: &mut Window) -> f32 {
         let measure = |text: &str, size, window: &mut Window| {
             text.lines()
-                .map(|line| super::liquid::overlay::measure_label(line, size, window))
+                .map(|line| super::widgets::overlay::measure_label(line, size, window))
                 .fold(0., f32::max)
         };
         let header = 42. + measure(&self.title, 13., window).max(measure(&self.kind, 10., window));
@@ -135,7 +135,7 @@ impl DetailsTooltip {
             )
     }
     fn surface(id: String) -> gpui::Stateful<gpui::Div> {
-        crate::components::liquid::primitives::surface(
+        crate::components::widgets::primitives::surface(
             id,
             ui::CARD_RADIUS,
             ZORK_UI.palette.canvas,
@@ -462,7 +462,7 @@ fn hint_surface(
     text: gpui::SharedString,
 ) -> crate::automation::element::AutomationElement<gpui::Stateful<gpui::Div>> {
     let id: gpui::SharedString = id.into();
-    crate::components::liquid::primitives::surface(id, 9., ZORK_UI.palette.canvas, true)
+    crate::components::widgets::primitives::surface(id, 9., ZORK_UI.palette.canvas, true)
         .role(gpui::Role::Tooltip)
         .aria_label(text.clone())
         .px(px(8.))
@@ -502,7 +502,7 @@ impl gpui::Render for Hint {
     }
 }
 
-use crate::components::liquid::controls::ControlElement;
+use crate::components::widgets::controls::ControlElement;
 
 /// A short control hint, centred below its trigger and flipped above near the edge.
 #[derive(gpui::IntoElement)]
@@ -551,7 +551,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
         });
         let focus = self.focus.clone().or_else(|| {
             gpui::Element::id(&self.row)
-                .map(|id| crate::components::liquid::controls::action_focus(id, window, cx))
+                .map(|id| crate::components::widgets::controls::action_focus(id, window, cx))
         });
         state.update(cx, |v, _| v.window_state = Some(window_state.clone()));
         if let Some(focus) = focus.clone() {
@@ -597,7 +597,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
             // Avoid measuring and building every hidden hint in long control lists.
             // Round glyph widths outwards so short labels do not wrap at the edge.
             let natural_width =
-                crate::components::liquid::overlay::measure_label(&self.text, 12., window).ceil()
+                crate::components::widgets::overlay::measure_label(&self.text, 12., window).ceil()
                     + 18.;
             let available_width = (window.viewport_size().width.as_f32() - 24.)
                 .max(2.)

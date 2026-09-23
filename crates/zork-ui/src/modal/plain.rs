@@ -1,12 +1,9 @@
 //! Plain window dialog: backdrop + smooth rounded panel + opacity fade.
-//! No liquid pair morph / source ink transfer.
+//! Window dialog uses ordinary panel opacity.
 use super::{bind_close, panel_contents_with_title_action, FocusScope, TitleAction};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
-    components::{
-        liquid::overlay::{DialogOptions, Placement, SourceBinding},
-        smooth,
-    },
+    components::{smooth, widgets::overlay::DialogOptions},
     controls as ui,
     design::ZORK_UI,
 };
@@ -15,20 +12,41 @@ use gpui::{
     MouseButton, SharedString, Window,
 };
 use std::{cell::Cell, rc::Rc};
-use zork_liquid::motion::Reveal;
+
+#[derive(Default)]
+struct Fade {
+    alpha: f32,
+}
+impl Fade {
+    fn opacity(&self) -> f32 {
+        self.alpha
+    }
+    fn advance(&mut self, open: bool, dt: f64, reduced: bool) -> bool {
+        let target = if open { 1. } else { 0. };
+        if reduced {
+            self.alpha = target;
+        } else {
+            let step = (dt as f32 / 0.16).clamp(0., 1.);
+            self.alpha = if open {
+                (self.alpha + step).min(1.)
+            } else {
+                (self.alpha - step).max(0.)
+            };
+        }
+        self.alpha != target
+    }
+}
 
 pub struct PlainDialog {
     focus: FocusScope,
     content_id: Option<SharedString>,
     open: bool,
-    reveal: Reveal,
-    backdrop: Reveal,
+    reveal: Fade,
+    backdrop: Fade,
     seen_open: bool,
     initial_focus: Option<FocusHandle>,
     focus_pending: bool,
     alert: bool,
-    /// Kept for API compatibility with product trigger bindings.
-    source: SourceBinding,
     scheduled: Rc<Cell<bool>>,
     content_transition_frames: u64,
     backdrop_transition_frames: u64,
@@ -46,7 +64,6 @@ impl PlainDialog {
             initial_focus: None,
             focus_pending: false,
             alert: false,
-            source: SourceBinding::default(),
             scheduled: Rc::new(Cell::new(false)),
             content_transition_frames: 0,
             backdrop_transition_frames: 0,
@@ -66,17 +83,8 @@ impl PlainDialog {
         self.focus.focus.clone()
     }
 
-    pub fn source_binding(&self) -> SourceBinding {
-        self.source.clone()
-    }
-
-    pub fn bind_source(&mut self, source: SourceBinding) {
-        self.source = source;
-    }
-
     pub fn alive(&self) -> bool {
-        // Retain the host until Reveal snaps both springs to zero. Dropping at
-        // the paint threshold would leave a nonzero tail that can never settle.
+        // Retain the host until both ordinary opacity fades reach zero.
         self.reveal.opacity() > 0. || self.backdrop.opacity() > 0. || self.open
     }
 
@@ -96,16 +104,6 @@ impl PlainDialog {
         self.alive()
     }
 
-    pub fn pose(&self) -> Option<zork_liquid::Pose> {
-        None
-    }
-
-    pub fn samples(&self) -> Vec<crate::components::liquid::motion::FrameSample> {
-        Vec::new()
-    }
-
-    pub fn reset_samples(&mut self) {}
-
     pub fn render<V: 'static>(
         &mut self,
         id: impl Into<SharedString>,
@@ -113,8 +111,6 @@ impl PlainDialog {
         body: impl IntoElement,
         footer: Option<AnyElement>,
         open: bool,
-        placement: Placement,
-        material: crate::components::liquid::Material,
         window: &mut Window,
         cx: &mut Context<V>,
         close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
@@ -125,8 +121,6 @@ impl PlainDialog {
             body,
             footer,
             open,
-            placement,
-            material,
             DialogOptions::default(),
             window,
             cx,
@@ -134,21 +128,21 @@ impl PlainDialog {
         )
     }
 
-    /// Plain trigger button — opens via host callback, no liquid source morph.
+    /// Plain trigger button that opens via the host callback.
     pub fn trigger<V: 'static>(
         &self,
         id: impl Into<SharedString>,
         label: impl Into<SharedString>,
         width: f32,
-        style: crate::components::liquid::controls::ActionStyle,
+        style: crate::components::widgets::controls::ActionStyle,
         fill: u32,
         window: &mut Window,
         cx: &mut Context<V>,
         open: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
-    ) -> gpui::Stateful<gpui::Div> {
+    ) -> crate::components::widgets::controls::Action {
         let id = id.into();
         let label = label.into();
-        crate::components::liquid::controls::action(id, label, width, 32., style, fill, window, cx)
+        crate::components::widgets::controls::action(id, label, width, 32., style, fill, window, cx)
             .on_click(cx.listener(move |v, _, w, cx| open(v, w, cx)))
     }
 
@@ -159,8 +153,6 @@ impl PlainDialog {
         body: impl IntoElement,
         footer: Option<AnyElement>,
         open: bool,
-        _placement: Placement,
-        _material: crate::components::liquid::Material,
         options: DialogOptions,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -242,7 +234,6 @@ impl PlainDialog {
             options.notice,
             &self.focus.focus,
             px(max_height),
-            None,
             window,
             cx,
             open && options.dismissible,
@@ -257,7 +248,7 @@ impl PlainDialog {
             .flex_col()
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::design::LIQUID_OUTLINE))
+            .border_color(rgb(crate::design::UI_OUTLINE))
             .opacity(alpha)
             .child(contents)
             .automation(AutomationRole::Status, title.to_string());

@@ -35,7 +35,7 @@ pub fn render<V: 'static>(
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(ZORK_UI.palette.muted))
-                    .child("连接此设备的小伙伴都会看到新名称。"),
+                    .child("连接到此设备的客户端会看到新名称。"),
             ),
         div()
             .flex()

@@ -162,35 +162,26 @@ class ClientBudgetTests(unittest.TestCase):
                 "cases": [{"name": name, "frames": [
                     {"at": frame * interval_ms, "completedAt": frame * interval_ms + whole_ms,
                     "cpuMs": 1, "continuing": True} for frame in range(4)]} for name in names]}
-        report["liquid"] = {"status": "measured", "viewport": fixture["liquid_viewport"],
-            "component": "zork-ui::modal::PlainDialog", "control": "liquid-library-dialog",
+        report["components"] = {"status": "measured", "viewport": fixture["component_viewport"],
+            "component": "zork-ui::modal::PlainDialog", "control": "component-gallery-dialog",
             "recipe": "plain-panel-opacity-backdrop", "cases": []}
         for _ in range(fixture["panel_pairs"]):
-            for name in ("liquid-open", "liquid-close"):
+            for name in ("component-open", "component-close"):
                 frames = copy.deepcopy(report["cases"][0]["frames"])
-                opened = name == "liquid-open"
-                report["liquid"]["cases"].append({"name": name, "frames": frames,
+                opened = name == "component-open"
+                report["components"]["cases"].append({"name": name, "frames": frames,
                     "contentTransitionFrames": 4, "backdropTransitionFrames": 4,
                     "mounted": opened,
                     "after": {"engine": "plain", "open": opened, "contentAlpha": 1 if opened else 0,
                               "backdropAlpha": 1 if opened else 0}})
-        scroll = fixture["playground_scroll"]
-        report["playground"] = {"status": "measured", "viewport": fixture["liquid_viewport"],
-            "component": "zork-ui::modal::PlainDialog", "control": "liquid-dialog-panel", "cases": []}
+        scroll = fixture["gallery_scroll"]
+        report["gallery"] = {"status": "measured", "viewport": fixture["component_viewport"],
+            "component": "zork-ui::component_story::Gallery", "cases": []}
         for name in ("page-scroll", "directory-scroll"):
-            report["playground"]["cases"].append({"name": name,
+            report["gallery"]["cases"].append({"name": name,
                 "frames": copy.deepcopy(report["cases"][0]["frames"]),
                 "marker": name + "-visible-row", "before": {"y": 200}, "after": {"y": 80},
                 "scrollSpeed": scroll["px_per_second"], "directionChanges": scroll["legs"] - 1})
-        for _ in range(fixture["panel_pairs"]):
-            for name in ("dialog-open", "dialog-close"):
-                opened = name == "dialog-open"
-                report["playground"]["cases"].append({"name": name,
-                    "frames": copy.deepcopy(report["liquid"]["cases"][0]["frames"]),
-                    "contentTransitionFrames": 4, "backdropTransitionFrames": 4,
-                    "after": {"engine": "plain", "open": opened, "mounted": opened,
-                              "contentAlpha": 1 if opened else 0,
-                              "backdropAlpha": 1 if opened else 0}})
         report["coldEntries"] = copy.deepcopy(report["cases"][0]["frames"])
         report["coverage"] = {"message_kinds": {"plain": fixture["messages"]},
                               "measured_kinds": ["plain"], "both_roles_measured": True}
@@ -204,8 +195,8 @@ class ClientBudgetTests(unittest.TestCase):
 
     def test_fast_cpu_and_high_average_fps_do_not_hide_a_slow_completion_gap(self):
         report = self.report(1, 2)
-        for case in [{"frames": report["coldEntries"]}, *report["cases"], *report["liquid"]["cases"],
-                     *report["playground"]["cases"]]:
+        for case in [{"frames": report["coldEntries"]}, *report["cases"], *report["components"]["cases"],
+                     *report["gallery"]["cases"]]:
             for row in case["frames"][2:]:
                 row["at"] += 7
                 row["completedAt"] += 7
@@ -231,17 +222,17 @@ class ClientBudgetTests(unittest.TestCase):
                 native_budget.evaluate(report, self.definition)
 
     def test_approved_scroll_and_dialog_workloads_are_in_the_full_gate(self):
-        self.assertTrue(self.definition["fixture"]["playground"])
+        self.assertTrue(self.definition["fixture"]["gallery"])
         rows = native_budget.evaluate(self.report(), self.definition)
         names = [row["name"] for row in rows]
         for name in ("page-scroll", "directory-scroll"):
             self.assertEqual(names.count(name), 1)
-        for name in ("liquid-open", "liquid-close", "dialog-open", "dialog-close"):
+        for name in ("component-open", "component-close"):
             self.assertEqual(names.count(name), self.definition["fixture"]["panel_pairs"])
 
     def test_first_long_frame_fails_each_new_workload_even_with_a_fast_p95(self):
-        for section, name in [("liquid", "liquid-open"), *[("playground", name) for name in
-                ("page-scroll", "directory-scroll", "dialog-open", "dialog-close")]]:
+        for section, name in [("components", "component-open"), *[("gallery", name) for name in
+                ("page-scroll", "directory-scroll")]]:
             with self.subTest(workload=name):
                 report = self.report()
                 case = next(case for case in report[section]["cases"] if case["name"] == name)
@@ -255,17 +246,13 @@ class ClientBudgetTests(unittest.TestCase):
 
     def test_missing_movement_or_incomplete_dialog_evidence_is_unverified(self):
         for change in (
-            lambda r: r.pop("playground"),
-            lambda r: r["playground"].update(status="incomplete"),
-            lambda r: r["playground"].update(control="other-dialog"),
-            lambda r: r["playground"]["cases"].pop(),
-            lambda r: r["playground"]["cases"][0].update(after={"y": 200}),
-            lambda r: r["playground"]["cases"][0].update(scrollSpeed=1),
-            lambda r: r["playground"]["cases"][1].update(directionChanges=0),
-            lambda r: r["playground"]["cases"][2]["after"].update(contentAlpha=0),
-            lambda r: r["playground"]["cases"][2]["after"].update(mounted=False),
-            lambda r: r["playground"]["cases"][2].update(contentTransitionFrames=0),
-            lambda r: r["playground"]["cases"][2].update(backdropTransitionFrames=0),
+            lambda r: r.pop("gallery"),
+            lambda r: r["gallery"].update(status="incomplete"),
+            lambda r: r["gallery"].update(component="other-gallery"),
+            lambda r: r["gallery"]["cases"].pop(),
+            lambda r: r["gallery"]["cases"][0].update(after={"y": 200}),
+            lambda r: r["gallery"]["cases"][0].update(scrollSpeed=1),
+            lambda r: r["gallery"]["cases"][1].update(directionChanges=0),
         ):
             report = self.report()
             change(report)
@@ -288,14 +275,14 @@ class ClientBudgetTests(unittest.TestCase):
 
     def test_other_component_or_missing_plain_fade_cannot_validate_dialog(self):
         for change in (
-            lambda r: r.pop("liquid"),
-            lambda r: r["liquid"].update(control="conversation-browser"),
-            lambda r: r["liquid"].update(recipe="ordinary-layout"),
-            lambda r: r["liquid"]["cases"][0].update(contentTransitionFrames=0),
-            lambda r: r["liquid"]["cases"][0].update(backdropTransitionFrames=0),
-            lambda r: r["liquid"]["cases"][0]["after"].update(backdropAlpha=0),
-            lambda r: r["liquid"]["cases"][0].update(mounted=False),
-            lambda r: r["liquid"]["cases"][0]["after"].update(engine="liquid"),
+            lambda r: r.pop("components"),
+            lambda r: r["components"].update(control="conversation-browser"),
+            lambda r: r["components"].update(recipe="ordinary-layout"),
+            lambda r: r["components"]["cases"][0].update(contentTransitionFrames=0),
+            lambda r: r["components"]["cases"][0].update(backdropTransitionFrames=0),
+            lambda r: r["components"]["cases"][0]["after"].update(backdropAlpha=0),
+            lambda r: r["components"]["cases"][0].update(mounted=False),
+            lambda r: r["components"]["cases"][0]["after"].update(engine="components"),
         ):
             report = self.report()
             change(report)

@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use zork_gui::design::ZORK_UI;
 use zork_ui::{
     automation::{AutomationElementExt, AutomationRole},
+    component_story::business,
     components::message::render_document,
     components::workbench as wb,
     controls as ui,
-    liquid_story::business,
     navigation::TabGroup,
 };
 
@@ -247,8 +247,8 @@ impl Gallery {
     }
 
     fn category(story: &Story) -> &'static str {
-        if story.family == "liquid" {
-            "交互实验"
+        if story.family == "components" {
+            "基础组件"
         } else if story.family == "onboarding" || business::is_business(&story.family) {
             "业务组件"
         } else {

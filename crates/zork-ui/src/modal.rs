@@ -303,7 +303,6 @@ fn modal_preview_with_title_action<V: 'static>(
         notice,
         focus,
         max_height,
-        None,
         window,
         cx,
         dismissible,
@@ -318,45 +317,12 @@ fn modal_preview_with_title_action<V: 'static>(
         .flex_col()
         .bg(rgb(ZORK_UI.palette.canvas))
         .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::LIQUID_OUTLINE))
+        .border_color(rgb(crate::design::UI_OUTLINE))
         .child(contents)
         .automation(AutomationRole::Status, title.to_string())
         .into_any_element()
 }
 
-/// A modal embedded in an existing material surface uses the same header, body,
-/// footer, close action and focus scope as a window-level dialog.
-pub fn panel_contents<V: 'static>(
-    id: impl Into<gpui::SharedString>,
-    title: impl Into<gpui::SharedString>,
-    body: impl IntoElement,
-    footer: Option<gpui::AnyElement>,
-    notice: Option<String>,
-    focus: &FocusHandle,
-    max_height: gpui::Pixels,
-    clip: Option<crate::components::liquid::ContentClipBinding>,
-    window: &mut Window,
-    cx: &mut Context<V>,
-    dismissible: bool,
-    close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
-) -> gpui::AnyElement {
-    let close = bind_close(cx, close);
-    panel_contents_with_title_action(
-        id.into(),
-        title.into(),
-        None,
-        body.into_any_element(),
-        footer,
-        notice,
-        focus,
-        max_height,
-        clip,
-        window,
-        cx,
-        dismissible,
-        close,
-    )
-}
 pub(crate) type CloseAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 pub(crate) fn bind_close<V: 'static>(
@@ -378,7 +344,6 @@ pub(crate) fn panel_contents_with_title_action(
     notice: Option<String>,
     focus: &FocusHandle,
     max_height: gpui::Pixels,
-    clip: Option<crate::components::liquid::ContentClipBinding>,
     window: &mut Window,
     cx: &mut App,
     dismissible: bool,
@@ -388,8 +353,64 @@ pub(crate) fn panel_contents_with_title_action(
         .map(|item| (item.editor, Some(item.action)))
         .unwrap_or((None, None));
     let has_footer = footer.is_some();
-    let p = ZORK_UI.palette;
-    let escape_close = close.clone();
+    let close_key = close.clone();
+    let header = div()
+        .h(px(76.))
+        .flex_shrink_0()
+        .px(px(24.))
+        .flex()
+        .items_center()
+        .justify_between()
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .mr_2()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(title_editor.unwrap_or_else(|| {
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(20.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title.clone())
+                        .into_any_element()
+                }))
+                .when_some(title_action, |v, action| v.child(action)),
+        )
+        .child(
+            crate::components::widgets::controls::action(
+                format!("{id}-close"),
+                "",
+                32.,
+                32.,
+                crate::components::widgets::controls::ActionStyle {
+                    quiet: true,
+                    icon: Some("icons/x.svg"),
+                    disabled: !dismissible,
+                    ..Default::default()
+                },
+                ZORK_UI.palette.canvas,
+                window,
+                cx,
+            )
+            .w(px(ui::CONTROL_HEIGHT))
+            .h(px(ui::CONTROL_HEIGHT))
+            .px_0()
+            .border_0()
+            .on_click(move |_, window, cx| {
+                if dismissible {
+                    close(window, cx);
+                }
+            })
+            .automation_enabled(
+                dismissible,
+                AutomationRole::Button,
+                format!("关闭{title}"),
+            ),
+        );
     div()
         .id(format!("{id}-content"))
         .map(|panel| trap_focus(panel, focus))
@@ -401,83 +422,16 @@ pub(crate) fn panel_contents_with_title_action(
         .on_key_down(move |event: &gpui::KeyDownEvent, window, cx| {
             if event.keystroke.key == "escape" {
                 if dismissible {
-                    escape_close(window, cx);
+                    close_key(window, cx);
                 }
                 cx.stop_propagation();
             }
         })
-        .child(clip_section(
-            &clip,
-            div()
-                .h(px(76.))
-                .flex_shrink_0()
-                .px(px(24.))
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .mr_2()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(title_editor.unwrap_or_else(|| {
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(px(20.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(title.clone())
-                                .into_any_element()
-                        }))
-                        .when_some(title_action, |v, action| v.child(action)),
-                )
-                .child(
-                    crate::components::liquid::controls::action(
-                        format!("{id}-close"),
-                        "",
-                        32.,
-                        32.,
-                        crate::components::liquid::controls::ActionStyle {
-                            quiet: true,
-                            icon: Some("icons/x.svg"),
-                            disabled: !dismissible,
-                            ..Default::default()
-                        },
-                        p.canvas,
-                        window,
-                        cx,
-                    )
-                    .w(px(ui::CONTROL_HEIGHT))
-                    .h(px(ui::CONTROL_HEIGHT))
-                    .px_0()
-                    .border_0()
-                    .on_click(move |_, window, cx| {
-                        if dismissible {
-                            close(window, cx);
-                        }
-                    })
-                    .automation_enabled(
-                        dismissible,
-                        AutomationRole::Button,
-                        format!("关闭{title}"),
-                    ),
-                ),
-            22.,
-            22.,
-        ))
+        .child(header)
         .when_some(notice, |v, notice| {
-            v.child(clip_section(
-                &clip,
-                div().px(px(24.)).pb_3().child(ui::feedback(notice)),
-                0.,
-                12.,
-            ))
+            v.child(div().px(px(24.)).pb_3().child(ui::feedback(notice)))
         })
-        .child(clip_section(
-            &clip,
+        .child(
             div()
                 .id(format!("{id}-body"))
                 .min_h_0()
@@ -487,12 +441,9 @@ pub(crate) fn panel_contents_with_title_action(
                 .pt_1()
                 .pb(px(if has_footer { 12. } else { 24. }))
                 .child(body),
-            4.,
-            if has_footer { 12. } else { 24. },
-        ))
+        )
         .when_some(footer, |v, footer| {
-            v.child(clip_section(
-                &clip,
+            v.child(
                 div().flex_shrink_0().px(px(24.)).pt_5().pb_6().child(
                     div()
                         .id(format!("{id}-footer"))
@@ -500,23 +451,9 @@ pub(crate) fn panel_contents_with_title_action(
                         .child(footer)
                         .automation(AutomationRole::Status, "弹窗操作区"),
                 ),
-                20.,
-                24.,
-            ))
+            )
         })
         .into_any_element()
-}
-
-fn clip_section(
-    clip: &Option<crate::components::liquid::ContentClipBinding>,
-    content: impl IntoElement,
-    top: f32,
-    bottom: f32,
-) -> gpui::AnyElement {
-    match clip {
-        Some(clip) => clip.region(content, top, bottom).into_any_element(),
-        None => content.into_any_element(),
-    }
 }
 
 fn modal_surface<V: 'static>(

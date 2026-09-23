@@ -5,11 +5,9 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     comments::CommentSource,
     components::{
-        liquid::{
-            controls::{self, ActionStyle},
-            primitives::dialog::Flyout,
-        },
+        flyout::Flyout,
         text_input::{ComposerEdited, ComposerInput, ComposerSubmit},
+        widgets::controls::{self, ActionStyle},
     },
     controls as ui,
     design::{TextRole, ZORK_UI},
@@ -66,12 +64,6 @@ impl Editor {
     }
     pub fn inspect(&self) -> serde_json::Value {
         self.flyout.inspect()
-    }
-    pub fn samples(&self) -> Vec<crate::components::liquid::overlay::FrameSample> {
-        self.flyout.samples()
-    }
-    pub fn reset_samples(&self) {
-        self.flyout.reset_samples();
     }
     pub fn visible(&self) -> bool {
         self.flyout.visible()
@@ -224,7 +216,7 @@ impl Editor {
             .into_any_element()
     }
 
-    // Extracted from the liquid gallery's comment panel: header, quote, editor,
+    // Shared comment panel: header, quote, editor,
     // primary action. There is no fixture-specific content or rendering branch.
     fn body(
         &self,

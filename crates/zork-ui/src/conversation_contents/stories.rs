@@ -60,7 +60,6 @@ impl Story {
                     (Kind::Page, false) => "conversation-page",
                 };
                 Row {
-                    source: None,
                     id: format!("{prefix}-demo-{index}"),
                     icon: if kind == Kind::File {
                         "icons/file.svg"
