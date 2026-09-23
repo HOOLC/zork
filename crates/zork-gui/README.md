@@ -225,7 +225,7 @@ A CPU blur reference is available in headless builds for comparisons.
 The original GPUI editor handles input, IME and sending on every
 platform. Stable geometry is cached and does not schedule animation frames.
 
-`cargo test --locked -p zork-gui --features headless-bench --test headless_presence`
+`cargo test --locked -p zork-gui --features headless-bench --test headless_chat_activity`
 checks native offscreen motion, geometry, idle scheduling and frame cost at wide
 and compact window sizes.
 

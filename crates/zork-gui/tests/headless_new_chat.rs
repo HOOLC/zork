@@ -60,6 +60,25 @@ fn main() -> anyhow::Result<()> {
                 "clipped {id} at {width}"
             );
         }
+        let bounds = |id| {
+            snapshot
+                .elements
+                .iter()
+                .find(|element| element.id == id)
+                .unwrap()
+                .bounds
+                .clone()
+        };
+        let surface = bounds("new-chat-composer-surface");
+        let device = bounds("new-chat-device");
+        anyhow::ensure!(
+            device.y >= surface.y && device.y + device.height <= surface.y + surface.height,
+            "device selector escaped the unified composer surface at {width}"
+        );
+        anyhow::ensure!(
+            (bounds("new-chat-options").height - bounds("new-chat-send").height).abs() < 0.1,
+            "picker and send control heights differ at {width}"
+        );
         anyhow::ensure!(
             !snapshot
                 .elements

@@ -55,7 +55,7 @@ impl PopoverPanel {
             id,
             label.clone(),
             ActionStyle {
-                variant: Some(ButtonVariant::Soft),
+                variant: Some(ButtonVariant::Ghost),
                 disabled: !enabled,
                 ..Default::default()
             },

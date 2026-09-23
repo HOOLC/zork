@@ -1,10 +1,7 @@
 //! Mock input/event adapter for the production composer scene and renderers.
 use super::*;
-use crate::{
-    attachment_viewer as preview, components::tooltip::DetailsTooltip, design::ZORK_UI,
-    member_activity, resources::Text,
-};
-use std::{collections::HashMap, sync::Arc};
+use crate::{attachment_viewer as preview, resources::Text};
+use std::sync::Arc;
 const VARIANTS: &[&str] = &[
     "空白",
     "可发送",
@@ -12,7 +9,6 @@ const VARIANTS: &[&str] = &[
     "停止中",
     "只读",
     "附件准备中",
-    "多人活动",
     "任务评论",
 ];
 pub struct Example {
@@ -27,14 +23,9 @@ pub struct Example {
     variant: usize,
     variants_open: bool,
     selector: liquid::overlay::Popover,
-    details: Entity<member_activity::Overlay>,
-    anchors: HashMap<String, Bounds<Pixels>>,
-    hovered: Option<String>,
     viewer: Entity<preview::Viewer>,
     preview_id: Option<u64>,
     text: Text,
-    labels: Vec<(String, f32)>,
-    last_action: String,
     available_width: f32,
 }
 impl Example {
@@ -60,7 +51,6 @@ impl Example {
         .detach();
         cx.subscribe(&input, |_, _, _: &ComposerLayoutChanged, cx| cx.notify())
             .detach();
-        let details = cx.new(|_| member_activity::Overlay::default());
         let viewer = cx.new(|cx| preview::Viewer::new(text.clone(), cx));
         cx.subscribe(&viewer, |v, _, action: &preview::Action, cx| {
             match action {
@@ -93,14 +83,9 @@ impl Example {
             variant: 0,
             variants_open: false,
             selector: liquid::overlay::Popover::new(cx),
-            details,
-            anchors: Default::default(),
-            hovered: None,
             viewer,
             preview_id: None,
             text,
-            labels: vec![],
-            last_action: String::new(),
             available_width: 240.,
         }
     }
@@ -121,14 +106,6 @@ impl Example {
             input.set_value(self.snapshot.text.clone(), cx);
             input.set_editable(!self.snapshot.capabilities.editable, false, cx);
         });
-        let ids = self
-            .snapshot
-            .members
-            .iter()
-            .map(|m| m.id.clone())
-            .collect::<Vec<_>>();
-        self.anchors.retain(|id, _| ids.contains(id));
-        self.details.update(cx, |v, cx| v.retain(&ids, cx));
         if self.snapshot.files.is_empty() {
             self.pinned = false;
             self.fan.target = 0.;
@@ -197,43 +174,9 @@ impl Example {
                 self.pinned = !self.pinned;
                 self.fan.target = if self.pinned { 1. } else { 0. };
             }
-            view::Action::MemberAnchor(id, anchor) => {
-                if self.anchors.insert(id.clone(), anchor) == Some(anchor) {
-                    return;
-                }
-                self.details.update(cx, |v, cx| v.anchor(&id, anchor, cx));
-            }
-            view::Action::MemberHover(Some(id)) => {
-                self.hovered = Some(id.clone());
-                if let (Some(member), Some(anchor)) = (
-                    self.snapshot.members.iter().find(|m| m.id == id),
-                    self.anchors.get(&id).copied(),
-                ) {
-                    let details = DetailsTooltip {
-                        key: format!("presence-{id}"),
-                        title: member.label.clone(),
-                        kind: self.text.text("presence_member"),
-                        avatar: Some(member.avatar.clone()),
-                        description: member.label.clone(),
-                        rows: vec![(self.text.text("model"), "演示模型".into())],
-                    };
-                    self.details.update(cx, |v, cx| {
-                        v.show(
-                            id,
-                            details,
-                            self.text.text("presence_history_hint"),
-                            anchor,
-                            cx,
-                        )
-                    });
-                }
-            }
-            view::Action::MemberHover(None) => {
-                if let Some(id) = self.hovered.take() {
-                    self.details.update(cx, |v, cx| v.leave(&id, cx));
-                }
-            }
-            view::Action::Member(id) => self.last_action = format!("查看成员历史：{id}"),
+            view::Action::MemberAnchor(_, _)
+            | view::Action::MemberHover(_)
+            | view::Action::Member(_) => {}
         }
         cx.notify();
     }
@@ -267,44 +210,9 @@ impl Render for Example {
             .unwrap_or(view::EDITOR_MIN)
             .clamp(view::EDITOR_MIN, view::EDITOR_MAX);
         let body = view::body(width, height);
-        if self.labels.iter().map(|(label, _)| label).ne(self
-            .snapshot
-            .members
-            .iter()
-            .map(|member| &member.label))
-        {
-            self.labels = self
-                .snapshot
-                .members
-                .iter()
-                .map(|member| {
-                    let run = TextRun {
-                        len: member.label.len(),
-                        font: font("Inter Variable"),
-                        color: rgb(ZORK_UI.palette.text).into(),
-                        background_color: None,
-                        underline: None,
-                        strikethrough: None,
-                    };
-                    let size = window
-                        .text_system()
-                        .shape_line(member.label.clone().into(), px(12.), &[run], None)
-                        .width
-                        .as_f32();
-                    (member.label.clone(), size)
-                })
-                .collect();
-        }
-        let widths: Vec<_> = self.labels.iter().map(|(_, width)| *width).collect();
-        let targets = view::poses(body, &self.snapshot, &widths)
-            .into_iter()
-            .skip(1)
-            .zip(&self.snapshot.members)
-            .map(|(pose, member)| (member.id.clone(), pose))
-            .collect::<Vec<_>>();
         let moving = self.scene.frame(
             body,
-            &targets,
+            &[],
             view::opening(body, self.snapshot.files.len(), self.fan.position as f32),
             elapsed,
             cx.reduce_motion(),
@@ -336,6 +244,9 @@ impl Render for Example {
                 fan_pinned: self.pinned,
                 bubbles: &bubbles,
                 handler,
+                header: None,
+                header_height: 0.,
+                action_size: 24.,
                 accessory_band: 0.,
                 accessories: vec![],
                 presentation: Some(view::Presentation {
@@ -343,11 +254,9 @@ impl Render for Example {
                     attach_id: "liquid-composer-attach".into(),
                     show_attach: true,
                     primary_id: "liquid-composer-send".into(),
-                    member_groups: self
-                        .scene
-                        .indices(self.snapshot.members.iter().map(|m| &m.id)),
-                    member_colors: vec![ZORK_UI.palette.text; self.snapshot.members.len()],
-                    member_names: self.snapshot.members.iter().map(|m| m.id.clone()).collect(),
+                    member_groups: vec![],
+                    member_colors: vec![],
+                    member_names: vec![],
                     fan: None,
                     busy: self.variant == 3,
                     editor_label: self.text.text("composer_placeholder").into(),
@@ -428,12 +337,6 @@ impl Render for Example {
             )
             .child(variants)
             .child(composer)
-            .when(!self.last_action.is_empty(), |v| {
-                v.child(crate::components::workbench::description(
-                    self.last_action.clone(),
-                ))
-            })
-            .child(self.details.clone())
             .child(self.viewer.clone())
     }
 }

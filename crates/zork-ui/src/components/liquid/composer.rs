@@ -93,6 +93,7 @@ fn positioned(x: f64, y: f64, w: f64, h: f64) -> Div {
 fn action(
     id: String,
     attach: bool,
+    size: f32,
     enabled: bool,
     stop: bool,
     busy: bool,
@@ -103,8 +104,8 @@ fn action(
     super::controls::action(
         id,
         "",
-        24.,
-        24.,
+        size,
+        size,
         super::controls::ActionStyle {
             primary: !attach,
             icon: Some(if attach {
@@ -163,6 +164,10 @@ pub struct Props<'a> {
     pub fan_pinned: bool,
     pub bubbles: &'a [super::departure::Bubble<'a>],
     pub handler: Handler,
+    /// Optional content at the top of the same composer material.
+    pub header: Option<AnyElement>,
+    pub header_height: f32,
+    pub action_size: f32,
     pub presentation: Option<Presentation>,
     /// Extra space kept above the action row so accessories do not cover the editor.
     pub accessory_band: f32,
@@ -182,6 +187,9 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         fan_pinned,
         bubbles,
         handler,
+        header,
+        header_height,
+        action_size,
         mut presentation,
         accessory_band,
         accessories,
@@ -189,16 +197,22 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     surface.set_border_width(spec::BORDER_WIDTH);
     let p = surface.simulation.pose();
     let c = snapshot.capabilities;
-    let editor_height =
-        (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME - accessory_band.max(0.))
-            .clamp(0., EDITOR_MAX);
+    let editor_height = (p.h as f32
+        - spec::TOP_EXTENSION
+        - spec::COMPOSER_CHROME
+        - header_height.max(0.)
+        - accessory_band.max(0.))
+    .clamp(0., EDITOR_MAX);
     let input = editor.clone();
     let editor_id = presentation
         .as_ref()
         .map_or_else(|| format!("{id}-editor"), |p| p.editor_id.clone());
     let editor_view = positioned(
         p.left() + TEXT_INSET as f64,
-        p.top() + spec::TOP_EXTENSION as f64 + spec::EDITOR_TOP_INSET as f64,
+        p.top()
+            + header_height.max(0.) as f64
+            + spec::TOP_EXTENSION as f64
+            + spec::EDITOR_TOP_INSET as f64,
         p.w - 2. * TEXT_INSET as f64,
         editor_height as f64,
     )
@@ -235,6 +249,19 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                 .guard(plate)
                 .automation(AutomationRole::Status, "消息输入区"),
         )
+        .when_some(header, |content, header| {
+            content.child(
+                positioned(
+                    p.left() + TEXT_INSET as f64,
+                    p.top() + 6.,
+                    p.w - 2. * TEXT_INSET as f64,
+                    header_height.max(0.) as f64,
+                )
+                .flex()
+                .items_center()
+                .child(header),
+            )
+        })
         .child(surface.guard(editor_view).automation_enabled(
             c.editable,
             AutomationRole::TextInput,
@@ -243,15 +270,23 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                 |p| p.editor_label.clone(),
             ),
         ));
+    let action_size = action_size.max(2.) as f64;
+    let inset = spec::ACTION_INSET as f64;
     for (key, attach, x) in [
-        ("attach", true, p.left() + 6.),
-        ("send", false, p.left() + p.w - 30.),
+        ("attach", true, p.left() + inset),
+        ("send", false, p.left() + p.w - inset - action_size),
     ] {
         if attach && presentation.as_ref().is_some_and(|p| !p.show_attach) {
             continue;
         }
         content = content.child(
-            positioned(x, p.top() + p.h - 30., 24., 24.).child(
+            positioned(
+                x,
+                p.top() + p.h - inset - action_size,
+                action_size,
+                action_size,
+            )
+            .child(
                 surface
                     .guard(action(
                         presentation.as_ref().map_or_else(
@@ -265,6 +300,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                             },
                         ),
                         attach,
+                        action_size as f32,
                         if attach { c.editable } else { c.enabled },
                         c.stop,
                         presentation.as_ref().is_some_and(|p| p.busy),
@@ -298,7 +334,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         );
     }
     if !accessories.is_empty() {
-        let action = 24.;
+        let action = action_size;
         let inset = spec::ACTION_INSET as f64;
         let show_attach = presentation.as_ref().is_none_or(|item| item.show_attach);
         let left = if show_attach {

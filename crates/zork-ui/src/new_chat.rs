@@ -150,7 +150,7 @@ impl Page {
             options,
             self.device_menu,
             self.data.editable && !values.is_empty(),
-            (self.width - 70.).max(48.),
+            (self.width - 58.).max(48.),
             window,
             cx,
             |view, open, cx| {
@@ -176,6 +176,7 @@ impl Render for Page {
             self.focus_pending = false;
             window.focus(&self.input.read(cx).focus_handle(), cx);
         }
+        const HEADER_HEIGHT: f32 = 40.;
         let height = self
             .input
             .read(cx)
@@ -183,7 +184,8 @@ impl Render for Page {
             .unwrap_or(composer::EDITOR_MIN)
             .clamp(48., composer::EDITOR_MAX)
             + crate::components::liquid_composer::TOP_EXTENSION
-            + crate::components::liquid_composer::COMPOSER_CHROME;
+            + crate::components::liquid_composer::COMPOSER_CHROME
+            + HEADER_HEIGHT;
         let now = cx.background_executor().now();
         let elapsed = self.previous.replace(now).map_or(0., |before| {
             now.saturating_duration_since(before).as_secs_f64()
@@ -251,6 +253,7 @@ impl Render for Page {
                 cx.notify();
             },
         );
+        let device = self.device_selector(window, cx);
         let composer = composer::render(
             composer::Props {
                 id: "new-chat-composer",
@@ -263,6 +266,18 @@ impl Render for Page {
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
+                header: Some(
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(ui::icon("icons/node.svg", 14.))
+                        .child(device)
+                        .into_any_element(),
+                ),
+                header_height: HEADER_HEIGHT,
+                action_size: 28.,
                 accessory_band: 0.,
                 accessories: vec![div()
                     .w_full()
@@ -295,8 +310,6 @@ impl Render for Page {
             window,
             cx,
         );
-        let has_device_selector = self.data.device.options.len() > 1;
-        let device = has_device_selector.then(|| self.device_selector(window, cx));
         let popup_width = 272_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let content = if self.picker_open || self.picker.alive() {
             self.picker_content(popup_width, window, cx)
@@ -307,7 +320,7 @@ impl Render for Page {
             "new-chat-options-panel",
             self.picker_open,
             popup_width,
-            ZORK_UI.composer.action_size,
+            28.,
             content,
             window,
             cx,
@@ -408,33 +421,7 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .when_some(device, |v, device| {
-                v.child(
-                    crate::components::liquid::primitives::surface(
-                        "new-chat-context",
-                        16.,
-                        ZORK_UI.palette.sidebar_hover,
-                        false,
-                    )
-                    .w(px((self.width - 24.).max(196.)))
-                    .px_3()
-                    .font_weight(FontWeight::NORMAL)
-                    .pt_2()
-                    .pb(px(16.))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(ui::icon("icons/node.svg", 14.))
-                    .child(device),
-                )
-            })
-            .child(
-                div()
-                    .mt(px(if has_device_selector { -8. } else { 0. }))
-                    .w(px(self.width))
-                    .h(px(height))
-                    .child(composer),
-            )
+            .child(div().w(px(self.width)).h(px(height)).child(composer))
             .children(popup)
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }

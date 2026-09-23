@@ -33,6 +33,7 @@ mod agents;
 pub mod benchmark;
 mod cache;
 mod comments;
+mod composer_surface;
 mod drive;
 mod files;
 mod history;
@@ -40,7 +41,6 @@ mod interactions;
 mod message_presentation;
 mod new_chat;
 mod panel_layout;
-mod presence;
 mod session_activity;
 
 pub(crate) fn shared_file_image(
@@ -139,7 +139,7 @@ pub struct RootView {
     messages_request: u64,
     activity: Option<AgentStatus>,
     participants: Vec<crate::api::ParticipantStatus>,
-    presence: presence::Presence,
+    composer_surface: composer_surface::ComposerSurface,
     activity_revision: u64,
 
     // Conversation composer
@@ -450,7 +450,7 @@ impl RootView {
             messages_request: 0,
             activity: None,
             participants: vec![],
-            presence: presence::Presence::default(),
+            composer_surface: composer_surface::ComposerSurface::default(),
             activity_revision: 0,
             composer_input,
             preparing_files: 0,
@@ -786,7 +786,7 @@ impl RootView {
         self.activity = None;
         self.participants.clear();
         self.session_activity_preview = None;
-        self.presence = presence::Presence::default();
+        self.composer_surface = composer_surface::ComposerSurface::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
 
@@ -843,7 +843,7 @@ impl RootView {
         self.activity = None;
         self.participants.clear();
         self.session_activity_preview = None;
-        self.presence = presence::Presence::default();
+        self.composer_surface = composer_surface::ComposerSurface::default();
         self.activity_revision = self.activity_revision.wrapping_add(1);
         self.canceling = false;
         self.error = None;
@@ -959,7 +959,7 @@ impl Render for RootView {
             self.start_background(cx);
         }
         self.measure_composer_geometry(window, cx);
-        self.prepare_presence_frame(window, cx);
+        self.prepare_composer_frame(window, cx);
         if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();
@@ -1304,18 +1304,15 @@ impl RootView {
 
     fn render_panel_tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
         self.configure_conversation_files(cx);
-        let members = if self.can_send_selected() {
-            vec![]
-        } else {
-            self.conversation_members()
-                .into_iter()
-                .map(|member| zork_ui::conversation_toolbar::Member {
-                    id: member.id,
-                    name: member.name,
-                    avatar: member.avatar,
-                })
-                .collect()
-        };
+        let members = self
+            .conversation_members()
+            .into_iter()
+            .map(|member| zork_ui::conversation_toolbar::Member {
+                id: member.id,
+                name: member.name,
+                avatar: member.avatar,
+            })
+            .collect();
         zork_ui::conversation_toolbar::render(
             members,
             self.files_menu.clone(),
@@ -1360,9 +1357,8 @@ impl RootView {
                 )
             })
         });
-        let activity_in_transcript = !self.can_send_selected() || session_activity.is_some();
-        let has_activity =
-            !activity.is_empty() || (activity_in_transcript && session_activity.is_some());
+        let activity_in_transcript = !activity.is_empty() || session_activity.is_some();
+        let has_activity = activity_in_transcript;
         let activity_root = cx.entity().downgrade();
 
         self.transcript_selection.borrow_mut().begin_frame();
@@ -1405,7 +1401,7 @@ impl RootView {
         let loading_older = self.loading_older;
         let older_root = cx.entity().downgrade();
         let bottom_inset = if self.can_send_selected() {
-            self.composer_overlay_height + self.presence.extent + 8.
+            self.composer_overlay_height + self.file_fan_dimensions().1 + 8.
         } else {
             0.
         };
@@ -1735,7 +1731,7 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
-        let presence_extent = self.presence.extent;
+        let fan_extent = self.file_fan_dimensions().1;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
             .relative()
@@ -1775,8 +1771,8 @@ impl RootView {
                 gpui::canvas(
                     move |bounds, _, cx| {
                         // Retain only the static editor/extras measurement.
-                        // Presence contributes its current spring sample directly.
-                        let height = bounds.size.height.as_f32() - presence_extent;
+                        // The attachment fan contributes its measured height.
+                        let height = bounds.size.height.as_f32() - fan_extent;
                         let root = root.clone();
                         cx.defer(move |cx| {
                             let _ = root.update(cx, |view, cx| {
