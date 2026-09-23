@@ -343,10 +343,11 @@ fn uninstall_platform(_: &Path) -> Result<()> {
 
 /// These are the supported data roots the one-command installer can discover.
 pub fn known_roots() -> Vec<PathBuf> {
+    let channel = crate::channel::current().expect("valid installed channel");
     let mut roots = vec![crate::default_data_root()];
     let client = std::env::var_os("ZORK_CLIENT_DATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| crate::home_dir().join("Library/Application Support/Zork/client"));
+        .unwrap_or_else(|| crate::channel::paths(channel).client);
     roots.push(client.join("node"));
     if let Ok(entries) = fs::read_dir(registry_dir()) {
         for entry in entries.flatten() {
@@ -359,6 +360,7 @@ pub fn known_roots() -> Vec<PathBuf> {
             }
         }
     }
+    roots.retain(|root| crate::channel::validate_path(root, channel).is_ok());
     roots.sort();
     roots.dedup();
     roots
@@ -367,7 +369,10 @@ pub fn known_roots() -> Vec<PathBuf> {
 fn registry_dir() -> PathBuf {
     std::env::var_os("ZORK_REGISTRY_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| crate::home_dir().join(".local/state/zork/nodes"))
+        .unwrap_or_else(|| {
+            crate::channel::paths(crate::channel::current().expect("valid installed channel"))
+                .registry
+        })
 }
 
 pub fn register(root: &Path) -> Result<()> {

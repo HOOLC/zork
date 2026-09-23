@@ -522,10 +522,11 @@ mod android {
                 )?
                 .l()?;
             let package = JString::cast_local(env, package)?.to_string();
-            let channel = if package.ends_with(".debug") {
-                zork_client_core::channel::Channel::Dev
-            } else {
-                zork_client_core::channel::Channel::Release
+            let channel = match package.as_str() {
+                "ing.zork.android" => zork_client_core::channel::Channel::Release,
+                "ing.zork.android.dev" => zork_client_core::channel::Channel::Dev,
+                "ing.zork.android.test" => zork_client_core::channel::Channel::Test,
+                _ => panic!("unrecognized application channel: {package}"),
             };
             zork_client_core::channel::set_host_channel(channel)
                 .expect("consistent application channel");

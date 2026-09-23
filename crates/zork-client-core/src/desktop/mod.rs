@@ -19,28 +19,14 @@ use std::path::PathBuf;
 
 /// The signed bundle selects its channel even when launched without Launch Services.
 /// An absent marker is the legacy release app; a corrupt marker must never open it.
-pub fn development_channel() -> bool {
+fn app_channel() -> zork_config::channel::Channel {
     zork_config::channel::current().expect("valid signed client channel")
-        == zork_config::channel::Channel::Dev
-}
-
-fn default_client_root(home: PathBuf, development: bool) -> PathBuf {
-    home.join(if development {
-        "Zork/client-dev"
-    } else {
-        "Library/Application Support/Zork/client"
-    })
 }
 
 pub fn client_root() -> PathBuf {
     std::env::var_os("ZORK_CLIENT_DATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            default_client_root(
-                PathBuf::from(std::env::var_os("HOME").unwrap_or_default()),
-                development_channel(),
-            )
-        })
+        .unwrap_or_else(|| zork_config::channel::paths(app_channel()).client)
 }
 
 /// Prepare the installed app's existing state paths before any threads start.
@@ -49,7 +35,14 @@ pub fn client_root() -> PathBuf {
 pub fn prepare_app_environment() -> anyhow::Result<std::fs::File> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
-    let isolated = development_channel() || std::env::var_os("ZORK_CLIENT_DATA").is_some();
+    for name in ["ZORK_GUI_PREFERENCES_PATH", "ZORK_REGISTRY_DIR"] {
+        if let Some(path) = std::env::var_os(name) {
+            zork_config::channel::validate_path(&PathBuf::from(path), app_channel())?;
+        }
+    }
+    zork_config::channel::claim(&client_root(), app_channel())?;
+    let isolated = app_channel() != zork_config::channel::Channel::Release
+        || std::env::var_os("ZORK_CLIENT_DATA").is_some();
     let root = if isolated {
         client_root()
     } else {
@@ -69,22 +62,6 @@ pub fn prepare_app_environment() -> anyhow::Result<std::fs::File> {
         .append(true)
         .mode(0o600)
         .open(root.join("logs/client.log"))?)
-}
-
-#[cfg(test)]
-mod channel_tests {
-    #[test]
-    fn release_and_dev_keep_existing_distinct_roots() {
-        let home = std::path::PathBuf::from("/home/test");
-        assert_eq!(
-            super::default_client_root(home.clone(), false),
-            home.join("Library/Application Support/Zork/client")
-        );
-        assert_eq!(
-            super::default_client_root(home.clone(), true),
-            home.join("Zork/client-dev")
-        );
-    }
 }
 
 pub fn load_services() -> anyhow::Result<zork_config::services::ServicesConfig> {

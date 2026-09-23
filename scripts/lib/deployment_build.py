@@ -13,6 +13,7 @@ import time
 import uuid
 
 from build_env import build_environment, clean_git_environment
+from channels import app_name, id_prefix
 from deployment import atomic_json, clone_file, copy_tree, digest, exclusive, manifest, verify_manifest
 from cua_build import ensure_runtime, verify_runtime
 
@@ -61,7 +62,7 @@ def prepare_target(repo, target, env):
     atomic_json(owner, expected)
 
 
-def build(repo, store, kind='node', profile='dev', services=None):
+def build(repo, store, kind='node', profile='dev', services=None, channel='test'):
     repo = Path(repo).resolve()
     env = build_environment(repo)
     if kind == 'app' and not env.get('CEF_PATH'):
@@ -86,10 +87,10 @@ def build(repo, store, kind='node', profile='dev', services=None):
     env['CARGO_TARGET_DIR'] = str(target.resolve())
     with exclusive(target.parent / 'deployment-capture.lock'):
         prepare_target(repo, target, env)
-        return _build(repo, store, kind, profile, services, env)
+        return _build(repo, store, kind, profile, services, env, channel)
 
 
-def _build(repo, store, kind, profile, services, env):
+def _build(repo, store, kind, profile, services, env, channel):
     repo, store = Path(repo).resolve(), Path(store).resolve()
     store.mkdir(parents=True, exist_ok=True, mode=0o700)
     stage = store / ('.build-' + uuid.uuid4().hex)
@@ -154,7 +155,7 @@ def _build(repo, store, kind, profile, services, env):
         if kind == 'app':
             packager = load_packager(repo)
             args = type('Options', (), {'bin_dir': raw, 'browser_bin_dir': raw,
-                'id_prefix': 'ing.zork-dev', 'channel': 'dev', 'services_config': services,
+                'id_prefix': id_prefix(channel), 'channel': channel, 'services_config': services,
                 'build_record': stage / 'build.json', 'cua_runtime': cua_runtime})()
             # Personal builds deliberately use the same ad-hoc signing policy throughout.
             overrides = {'ZORK_CODESIGN_IDENTITY': '-'}
@@ -165,7 +166,7 @@ def _build(repo, store, kind, profile, services, env):
             try:
                 packager.build_app(args, repo, payload)
                 from deployment_macos import validate_app
-                validate_app(payload, 'dev')
+                validate_app(payload, channel)
                 if json.loads((payload / 'Contents/Resources/build.json').read_text()) != record:
                     raise RuntimeError('Packager did not preserve the captured build provenance')
             finally:
@@ -176,9 +177,10 @@ def _build(repo, store, kind, profile, services, env):
                         os.environ[name] = value
         else:
             copy_tree(raw, payload)
+            (payload / "channel").write_text(channel + "\n")
         if source_stamp(repo) != source:
             raise RuntimeError('Source changed during packaging; candidate rejected')
-        candidate = manifest(payload, record, 'dev', kind)
+        candidate = manifest(payload, record, channel, kind)
         atomic_json(stage / 'deployment.json', candidate)
         final = store / candidate['id']
         if final.exists():
@@ -198,7 +200,7 @@ def _build(repo, store, kind, profile, services, env):
 def promote_app(repo, source, target, *, channel='release', prefix=None):
     """Change only bundle identity/signing; never rebuild code after its soak period."""
     packager = load_packager(repo)
-    prefix = prefix or ('ing.zork-dev' if channel == 'dev' else 'ing.zork')
+    prefix = prefix or id_prefix(channel)
     packager.verify_app(source)
     copy_tree(source, target)
     old_prefix = plistlib.loads((source / 'Contents/Info.plist').read_bytes())['CFBundleIdentifier'].removesuffix('.desktop')
@@ -208,9 +210,13 @@ def promote_app(repo, source, target, *, channel='release', prefix=None):
             if isinstance(value, str) and value.startswith(old_prefix):
                 info[key] = prefix + value[len(old_prefix):]
         if path == target / 'Contents/Info.plist':
-            info['CFBundleName'] = info['CFBundleDisplayName'] = 'Zork Dev' if channel == 'dev' else 'Zork'
+            info['CFBundleName'] = info['CFBundleDisplayName'] = app_name(channel)
+            icon = packager.app_info(info['CFBundleVersion'], prefix, channel)['CFBundleIconFile']
+            info['CFBundleIconFile'] = icon
+            shutil.copy2(Path(repo) / 'crates/zork-ui/assets/app' / icon, target / 'Contents/Resources' / icon)
         path.write_bytes(plistlib.dumps(info))
     (target / 'Contents/Resources/channel').write_text(channel + '\n')
+    (target / 'Contents/Resources/test-instance').unlink(missing_ok=True)
     bundles = [p for p in target.rglob('*') if p.suffix in ('.app', '.framework') and not p.is_symlink()]
     for bundle in sorted(bundles, key=lambda p: len(p.parts), reverse=True):
         subprocess.run(['codesign', '--force', '--sign', '-', str(bundle)], check=True, capture_output=True)

@@ -427,6 +427,50 @@ class RecoveryTests(unittest.TestCase):
         deployment.extract_candidate(archive, extracted)
         self.assertEqual((extracted / 'candidate/Versions/Current/binary').read_bytes(), b'code')
 
+    def test_build_defaults_to_test_channel_with_dev_cargo_profile(self):
+        with patch.object(recovery, 'build', return_value=self.root / 'candidate') as build:
+            recovery.main(['--root', str(self.root), 'build', '--repo', str(ROOT)])
+        self.assertEqual(build.call_args.args[3], 'dev')
+        self.assertEqual(build.call_args.kwargs['channel'], 'test')
+
+    def test_test_storage_cannot_overlap_either_daily_channel(self):
+        for owner in ('release', 'dev'):
+            settings = self.deployment_config()
+            settings['channels']['test'] = {'node': {
+                'data': settings['channels'][owner]['node']['data'] + '/fixture',
+                'payload': str(self.root / 'test-bin')}}
+            atomic_json(self.root / 'deployment-config.json', settings)
+            with self.assertRaisesRegex(RuntimeError, 'storage overlaps'):
+                recovery.channel_config(self.root, 'test', 'node')
+
+    def test_install_tools_adds_test_without_overwriting_daily_config(self):
+        settings = self.deployment_config()
+        recovery.install_tools(self.root, ROOT)
+        updated = json.loads((self.root / 'deployment-config.json').read_text())
+        for channel in ('dev', 'release'):
+            self.assertEqual(updated['channels'][channel], settings['channels'][channel])
+        self.assertIn('test', updated['channels'])
+        self.assertTrue((self.root / 'bin/zork-test-build').is_file())
+
+    def test_accept_test_keeps_build_and_changes_only_node_channel(self):
+        candidate = self.root / 'test-candidate'
+        payload = candidate / 'payload'
+        payload.mkdir(parents=True)
+        (payload / 'zork').write_bytes(b'tested code')
+        (payload / 'channel').write_text('test\n')
+        source = {'commit': 'tested', 'binaries': {'zork': 'digest'}}
+        record = manifest(payload, source, 'test', 'node')
+        atomic_json(candidate / 'deployment.json', record)
+        selected = recovery.prepare_dev_candidate(candidate, self.root / 'candidates', ROOT)
+        accepted, code = recovery.load_candidate(selected)
+        self.assertEqual(accepted['source'], source)
+        self.assertEqual(accepted['channel'], 'dev')
+        self.assertEqual((code / 'channel').read_text(), 'dev\n')
+        self.assertEqual((code / 'zork').read_bytes(), b'tested code')
+        self.assertEqual((payload / 'channel').read_text(), 'test\n')
+        with self.assertRaisesRegex(RuntimeError, 'Only a test'):
+            recovery.prepare_dev_candidate(selected, self.root / 'candidates', ROOT)
+
     def deployment_config(self):
         settings = {'repo': str(ROOT), 'channels': {
             'dev': {'node': {'data': str(self.data), 'payload': str(self.binary),

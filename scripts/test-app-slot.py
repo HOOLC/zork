@@ -99,7 +99,11 @@ class PackagerTest(unittest.TestCase):
         packager=importlib.util.module_from_spec(spec);spec.loader.exec_module(packager)
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);real_slot=slot.app_slot
-            def build(args,repo,app):app.mkdir();(app/'version').write_text('new')
+            def build(args,repo,app):
+                self.assertEqual(args.channel, 'test')
+                self.assertTrue(args.id_prefix.startswith('ing.zork-test.'))
+                self.assertTrue(args.test_instance)
+                app.mkdir();(app/'version').write_text('new')
             with patch.object(packager,'app_slot',side_effect=lambda repo:real_slot(root)),patch.object(packager,'build_app',side_effect=build),patch.object(slot,'stop_app',return_value=False),patch.object(slot,'unregister_app'),patch.object(slot,'remove_app',side_effect=lambda p:shutil.rmtree(p) if p.exists() else None):
                 with patch('sys.argv',['package']):packager.main()
                 self.assertTrue((root/'.tmp/macos-app.noindex/Zork.app/version').exists())

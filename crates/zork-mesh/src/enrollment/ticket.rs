@@ -91,13 +91,13 @@ impl Ticket {
         if self.bootstrap.offline
             || self.bootstrap.address.is_some()
             || self.bootstrap.discovery_url.is_some()
-            || self.bootstrap.channel == zork_config::channel::Channel::Dev
+            || self.bootstrap.channel != zork_config::channel::Channel::Release
         {
             let flags = u8::from(self.bootstrap.offline)
-                | if self.bootstrap.channel == zork_config::channel::Channel::Dev {
-                    16
-                } else {
-                    0
+                | match self.bootstrap.channel {
+                    zork_config::channel::Channel::Dev => 16,
+                    zork_config::channel::Channel::Test => 64,
+                    zork_config::channel::Channel::Release => 0,
                 }
                 | self
                     .bootstrap
@@ -177,11 +177,13 @@ impl Ticket {
         if bytes.len() > 48 {
             let flags = bytes[48];
             ensure!(
-                flags != 0 && flags & !63 == 0 && flags & 6 != 6,
+                flags != 0 && flags & !127 == 0 && flags & 6 != 6 && flags & 80 != 80,
                 "invalid_bootstrap_flags"
             );
             bootstrap.offline = flags & 1 != 0;
-            bootstrap.channel = if flags & 16 != 0 {
+            bootstrap.channel = if flags & 64 != 0 {
+                zork_config::channel::Channel::Test
+            } else if flags & 16 != 0 {
                 zork_config::channel::Channel::Dev
             } else {
                 zork_config::channel::Channel::Release
@@ -293,7 +295,7 @@ impl Ticket {
     pub fn network_config(&self) -> Result<MeshConfig> {
         ensure!(
             self.bootstrap.channel == zork_config::channel::current()?,
-            "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+            "邀请属于另一环境，请使用对应的 Zork、Zork Dev 或 Zork Test"
         );
         Ok(MeshConfig {
             offline: self.bootstrap.offline,
@@ -372,7 +374,7 @@ async fn resolve_owned(
     ensure!(invite.kind == expected, "invite_kind_mismatch");
     ensure!(
         invite.channel == zork_config::channel::current()?,
-        "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+        "邀请属于另一环境，请使用对应的 Zork、Zork Dev 或 Zork Test"
     );
     Ok(invite)
 }
@@ -380,6 +382,29 @@ async fn resolve_owned(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn all_channels_roundtrip_and_conflicting_flags_are_rejected() {
+        use zork_config::channel::Channel;
+        for channel in [Channel::Release, Channel::Dev, Channel::Test] {
+            let config = MeshConfig {
+                channel: Some(channel),
+                ..Default::default()
+            };
+            let ticket = Ticket::new(
+                InviteKind::Station,
+                EndpointAddr::new(SecretKey::generate().public()),
+                &config,
+            )
+            .unwrap();
+            let encoded = ticket.encode().unwrap();
+            assert_eq!(Ticket::decode(&encoded).unwrap().bootstrap.channel, channel);
+            if channel == Channel::Test {
+                let mut bytes = URL_SAFE_NO_PAD.decode(&encoded[4..]).unwrap();
+                bytes[48] |= 16;
+                assert!(Ticket::decode(&format!("zj1_{}", URL_SAFE_NO_PAD.encode(bytes))).is_err());
+            }
+        }
+    }
     #[test]
     fn short_ticket_is_68_chars_and_preserves_bootstrap() {
         for kind in [InviteKind::Client, InviteKind::Station] {

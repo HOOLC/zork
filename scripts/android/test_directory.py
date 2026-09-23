@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Android JNI and ViewModel observe an entire real Mesh and recover after restart."""
+from test_apks import require_test_apks
 import argparse
 import importlib.util
 import json
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('directory_fixture', ROOT / 'scripts/test-mobile-mesh-directory.py')
 d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(d)
-PACKAGE = 'ing.zork.android.debug'
+PACKAGE = 'ing.zork.android.test'
 CLASS = 'ing.zork.android.MeshDirectoryTest'
 RUNNER = PACKAGE + '.test/androidx.test.runner.AndroidJUnitRunner'
 
@@ -24,6 +25,7 @@ def main():
     parser.add_argument('--test-apk', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    require_test_apks(args.apk, args.test_apk)
     assert args.serial.startswith('emulator-'), 'This fixture is only for an isolated emulator'
     adb = [str(Path(os.environ.get('ANDROID_HOME', Path.home() / 'Library/Android/sdk')) / 'platform-tools/adb'), '-s', args.serial]
     args.output.mkdir(parents=True, exist_ok=True)
@@ -31,7 +33,7 @@ def main():
         subprocess.run([*adb, 'install', '-r', str(apk.resolve())], check=True)
     root = Path(tempfile.mkdtemp(prefix='zad-', dir='/tmp'))
     os.environ['ZORK_REGISTRY_DIR'] = str(root / 'registry')
-    os.environ['ZORK_CHANNEL'] = 'dev'
+    os.environ['ZORK_CHANNEL'] = 'test'
     nodes, running, relay, relay_port = [], None, None, None
     def report():
         result = subprocess.run([*adb, 'exec-out', 'run-as', PACKAGE, 'cat', 'files/mesh-directory-report.json'], capture_output=True)
@@ -93,7 +95,7 @@ def main():
         running = instrument('reopenAfterProcessRestart', a=a.origin, b=b.origin)
         finished(running); running = None
         assert report()['stage'] == 'reopened'
-        (args.output / 'result.json').write_text(json.dumps({'fixture': str(root), 'serial': args.serial, 'channel': 'dev',
+        (args.output / 'result.json').write_text(json.dumps({'fixture': str(root), 'serial': args.serial, 'channel': 'test',
             'transport_fixture': 'real loopback relay exposed to emulator NAT through a task-owned ADB TCP reverse',
             'checks': ['approved whole Mesh', 'JNI directory subscription', 'ViewModel member add/remove', 'inviter offline',
                 'changed endpoint port', 'foreground and process recovery', 'channel rejection before IO']}, indent=2))

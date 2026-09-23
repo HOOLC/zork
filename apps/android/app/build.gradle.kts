@@ -8,6 +8,8 @@ dependencyLocking {
     lockMode.set(LockMode.STRICT)
 }
 
+val developmentChannel = providers.gradleProperty("zorkChannel").getOrElse("test")
+require(developmentChannel in listOf("dev", "test")) { "zorkChannel must be dev or test" }
 val profileBuild = providers.gradleProperty("zorkProfile").map(String::toBoolean).getOrElse(false)
 val productVersion = (groovy.json.JsonSlurper().parse(rootProject.file("../../package.json")) as Map<*, *>)["version"] as String
 
@@ -27,7 +29,7 @@ android {
         manifestPlaceholders["zorkProfileable"] = profileBuild.toString()
         ndk { abiFilters += "arm64-v8a" }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; resValues = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -40,7 +42,8 @@ android {
     }
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = ".$developmentChannel"
+            resValue("string", "app_name", if (developmentChannel == "test") "Zork Test" else "Zork Dev")
             if (profileBuild) {
                 isDebuggable = false
             }

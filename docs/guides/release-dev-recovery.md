@@ -1,12 +1,41 @@
-# release/dev 开发与自救
+# release/dev/test 开发与自救
 
-日常使用 dev，release 保留为独立救援入口。两套客户端分别使用自己的名称、
+日常使用 dev，release 保留为独立救援入口，Agent 开发和回归使用 test。三套客户端分别使用自己的名称、
 bundle 身份、数据、偏好、节点身份和 Mesh；不要用复制整份 release 数据的方法
-初始化 dev，也不要让两个通道加入同一个日常 Mesh。
+初始化 dev，也不要让不同通道加入同一个日常 Mesh。
 
 这是本机开发候选的事务流程。公开的四平台节点发行另见
 [原生发布](native-releases.md)。`zork update` / `zork upgrade` 不替代这里的完整
 数据快照和恢复验收。
+
+## Agent 测试与日常 dev 的边界
+
+工作树打包、候选构建和 Android 开发构建默认选择 test。工作树 macOS App
+使用独立的签名身份与实例数据，Finder 启动也不会打开日常 dev；`pnpm dev`
+与 `pnpm dev:station` 使用该 checkout 的 `.tmp/test-node`。测试只停止自身路径
+下的进程，不按共享进程名或 bundle ID 退出客户端。并行任务使用独立工作树，
+Android 使用独立模拟器；测试结束按验证规则回收自己的数据与实例。
+
+`--profile dev/release` 只决定 Cargo 优化配置，与产品通道无关。构建测试候选：
+
+```sh
+python3 scripts/dev/recovery.py --root /path/to/task-deployment install-tools --repo "$PWD"
+python3 scripts/dev/recovery.py --root /path/to/task-deployment build --repo "$PWD" --kind app
+```
+
+用户要求更新日常 dev 时，显式将已验证 test 候选转为 dev 身份，再走原有安装事务：
+
+```sh
+python3 scripts/dev/recovery.py --root /path/to/deployment accept-test /path/to/test-candidate --repo "$PWD"
+```
+
+此步骤复用代码和构建记录，不复制测试数据；加 `--switch` 才切换该部署根下的 dev。
+远端安装指定 `update-macos-client.py --channel dev --candidate /path/to/dev-candidate`。
+直接构建日常 dev 也必须显式 `--channel dev`；Android 使用
+`scripts/android/build.py --channel dev`。Android 应用 ID 按 release（无后缀）、
+`.dev`、`.test` 对齐。
+release 的观察期与提升要求保持不变。旧部署配置再次 `install-tools` 时只补缺少的
+通道，不覆盖既有配置、身份或健康检查设置。
 
 ## 建立独立入口
 
@@ -68,7 +97,7 @@ python3 scripts/update-macos-client.py --host "$DESTINATION_MAC" \
   --channel dev --profile "$HEALTH_PROFILE" --model "$HEALTH_MODEL" --thinking off
 ```
 
-默认更新 dev。打包时就写入通道和完整构建记录，再逐层签名；不在签名后修改
+默认更新 test；更新日常 dev 显式指定 `--channel dev`。打包时就写入通道和完整构建记录，再逐层签名；不在签名后修改
 plist。dev 的显示名为 `Zork Dev`，身份为 `ing.zork-dev.desktop`，默认数据为
 `~/Zork/client-dev`；release 保持 `Zork`、`ing.zork.desktop` 和原有
 `~/Library/Application Support/Zork/client`。通道标记也对直接启动 GUI 可执行
@@ -149,9 +178,9 @@ HTTP fixture 模型演练构建失败、备份失败、启动失败、换包失�
 退出；独立 release Agent 通过真实 shell 工具救回 dev。可用 `--live-profile`、
 `--live-model` 和 `--live-thinking` 增加真实供应商的隔离聊天与配置重启验收。
 
-双 GUI 与安装事务使用 `scripts/test-macos-channel-recovery.py --candidate /path/to/app-candidate --output /path/to/report`，
+三通道 GUI 与安装事务使用 `scripts/test-macos-channel-recovery.py --candidate /path/to/app-candidate --output /path/to/report`，
 从校验过的 Cargo 输入用当前打包器生成两份独立身份，核对内嵌 build_record 后运行正式安装器。
-也可提供同一构建的 `--dev-app` / `--release-app`；只接受
+也可提供同一构建的 `--dev-app` / `--release-app` / `--test-app`；只接受
 `ing.zork.recovery-fixture.*` 的独立签名包，拒绝拿用户的正式 bundle 身份演练。
 桌面实际输入到客户端收到回复另用 `scripts/test-desktop-startup.py`。
 按[验证 skill](../../.agents/skills/zork-validation/SKILL.md)运行已批准关键门禁，

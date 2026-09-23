@@ -48,10 +48,11 @@ def verify_jni(library, llvm, env):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--channel", choices=("test", "dev"), default="test")
     parser.add_argument("--skip-native", action="store_true")
     parser.add_argument("--native-only", action="store_true")
     parser.add_argument("--tests", action="store_true", help="also package instrumentation tests")
-    parser.add_argument("--profile", action="store_true", help="build a non-debuggable APK with profiling enabled, retaining the debug app ID/signature")
+    parser.add_argument("--profile", action="store_true", help="build a non-debuggable APK with profiling enabled, retaining the selected channel app ID/signature")
     args = parser.parse_args()
     env = build_environment(variant='android')
     sdk = Path(env.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
@@ -110,7 +111,7 @@ def main():
     if versions != {"rustls-platform-verifier": "0.7.0", "rustls-platform-verifier-android": "0.1.1"}:
         raise SystemExit("Review the vendored Android certificate verifier before changing its JNI ABI")
     if not args.native_only:
-        tasks = ["assembleDebug"] + (["assembleDebugAndroidTest"] if args.tests else [])
+        tasks = ["-PzorkChannel=" + args.channel, "assembleDebug"] + (["assembleDebugAndroidTest"] if args.tests else [])
         if args.profile:
             tasks.append("-PzorkProfile=true")
         run([str(APP / "gradlew"), "-p", str(APP), "--no-daemon", *tasks], env)

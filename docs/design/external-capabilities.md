@@ -48,7 +48,7 @@ Agent 先发现目标并检查可用能力，再准备依赖、安装和验证�
 
 每次独立调用在发送业务动作前重新发现或启动同一签名宿主，并校验当前进程代次；宿主正常重启无需重启 Station。握手与业务动作保持同一连接，动作发送后丢失回复只返回结果不明，不自动连接新代次重放；后续独立调用可恢复。驱动版本或身份不匹配时明确失败，不回落到其它设备或借用其它宿主的授权。Station 使用带版本与进程代次检查的本机 IPC，不安装或调用 MCP。截图在有界内存中经本机 HTTP JSON 交给 Agent，验证后移入既有工具图片通路并从文本数据中移除，不写临时文件；请求取消或连接断开直接释放未消费载荷，转交失败必须作为工具失败返回。工具与参数清单由运行时契约维护，本文不重复。
 
-macOS 打包可通过 `scripts/build-cua-driver.py` 从固定源码修订与锁文件生成运行产物，再交给 `scripts/package-macos-client.py --cua-runtime`。签名的 `ZorkDesktopControl.app` 与桌面主应用、Station 使用独立 bundle 身份；dev/release 前缀分开。宿主遵循候选 App 的最低系统要求与 GUI 架构，打包前检查 driver 的实际 Mach-O slices 和部署目标，不静默提高或降低候选平台要求。用户在需要时运行 `open -a /path/to/ZorkDesktopControl.app --args --request-permissions` 并在系统设置中授权该宿主；不授权 Terminal 或 Station 来代替。无宿主的 headless 安装仍可运行，桌面工具明确报告不可用。
+macOS 打包可通过 `scripts/build-cua-driver.py` 从固定源码修订与锁文件生成运行产物，再交给 `scripts/package-macos-client.py --cua-runtime`。签名的 `ZorkDesktopControl.app` 与桌面主应用、Station 使用独立 bundle 身份；release/dev/test 前缀分开。宿主遵循候选 App 的最低系统要求与 GUI 架构，打包前检查 driver 的实际 Mach-O slices 和部署目标，不静默提高或降低候选平台要求。用户在需要时运行 `open -a /path/to/ZorkDesktopControl.app --args --request-permissions` 并在系统设置中授权该宿主；不授权 Terminal 或 Station 来代替。无宿主的 headless 安装仍可运行，桌面工具明确报告不可用。
 
 <a id="services"></a>
 

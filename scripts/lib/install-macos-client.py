@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 
+from channels import CHANNELS, app_name, client_root
 from deployment import atomic_json, digest, exclusive, extract_candidate
 from deployment_macos import validate_app
 
@@ -22,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('stage', type=Path)
     parser.add_argument('sha256')
-    parser.add_argument('--channel', choices=('dev', 'release'), required=True)
+    parser.add_argument('--channel', choices=CHANNELS, required=True)
     parser.add_argument('--root', type=Path, default=Path.home() / 'Zork')
     parser.add_argument('--profile', required=True)
     parser.add_argument('--model', required=True)
@@ -46,15 +47,15 @@ def main():
         if settings_path.exists():
             settings = json.loads(settings_path.read_text())
         else:
-            settings = {'repo': '', 'channels': {name: {} for name in ('release', 'dev')}}
-        for channel in ('release', 'dev'):
-            data = (Path.home() / 'Zork/client-dev' if channel == 'dev' else
-                    Path.home() / 'Library/Application Support/Zork/client')
+            settings = {'repo': '', 'channels': {name: {} for name in CHANNELS}}
+        for channel in CHANNELS:
+            settings['channels'].setdefault(channel, {})
+            data = client_root(channel)
             settings['channels'][channel].setdefault('app', {
                 'data': str(data),
-                'preferences': str((data if channel == 'dev' else data.parent) / 'preferences.json'),
-                'ancillary': [] if channel == 'dev' else [str(data.parent / 'preferences.json'), str(data.parent / 'logs/client.log')],
-                'payload': str(Path.home() / 'Applications' / ('Zork Dev.app' if channel == 'dev' else 'Zork.app'))})
+                'preferences': str((data if channel != 'release' else data.parent) / 'preferences.json'),
+                'ancillary': [] if channel != 'release' else [str(data.parent / 'preferences.json'), str(data.parent / 'logs/client.log')],
+                'payload': str(Path.home() / 'Applications' / (app_name(channel) + '.app'))})
         selected = settings['channels'][args.channel]['app']
         selected.setdefault('health', {}).update(profile=args.profile, model=args.model, thinking=args.thinking)
         validate_app(app, args.channel, selected.get('id_prefix'))
