@@ -166,6 +166,7 @@ pub struct Props<'a> {
     pub handler: Handler,
     /// Optional content at the top of the same composer material.
     pub header: Option<AnyElement>,
+    pub header_fill: Option<u32>,
     pub header_height: f32,
     pub action_size: f32,
     pub presentation: Option<Presentation>,
@@ -188,6 +189,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         bubbles,
         handler,
         header,
+        header_fill,
         header_height,
         action_size,
         mut presentation,
@@ -249,6 +251,11 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                 .guard(plate)
                 .automation(AutomationRole::Status, "消息输入区"),
         )
+        .when_some(header_fill, |content, fill| {
+            content.child(
+                positioned(p.left(), p.top(), p.w, header_height.max(0.) as f64).bg(rgb(fill)),
+            )
+        })
         .when_some(header, |content, header| {
             content.child(
                 positioned(

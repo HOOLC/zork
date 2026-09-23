@@ -276,6 +276,7 @@ impl Render for Page {
                         .child(device)
                         .into_any_element(),
                 ),
+                header_fill: Some(ZORK_UI.palette.sidebar_hover),
                 header_height: HEADER_HEIGHT,
                 action_size: 28.,
                 accessory_band: 0.,

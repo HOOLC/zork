@@ -245,6 +245,7 @@ impl Render for Example {
                 bubbles: &bubbles,
                 handler,
                 header: None,
+                header_fill: None,
                 header_height: 0.,
                 action_size: 24.,
                 accessory_band: 0.,

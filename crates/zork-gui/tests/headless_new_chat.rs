@@ -96,8 +96,32 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|e| e.label.contains('●') && !e.label.contains("直连")),
             "selected device must show a compact Mesh status icon"
         );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-{width}.png")))?;
+        let screenshot = cx.capture_screenshot(window.into())?;
+        let scale = screenshot.width() as f32 / width;
+        let sample = |x: f32, y: f32| {
+            screenshot
+                .get_pixel((x * scale) as u32, (y * scale) as u32)
+                .0
+        };
+        let middle = surface.x + surface.width / 2.;
+        let header = sample(middle, surface.y + 4.);
+        let editor = sample(middle, surface.y + 52.);
+        anyhow::ensure!(
+            u16::from(header[0]) + 4 < u16::from(editor[0])
+                && u16::from(header[1]) + 4 < u16::from(editor[1]),
+            "device header lost its gray section at {width}: {header:?} / {editor:?}"
+        );
+        for fraction in [0.15, 0.5, 0.85] {
+            let x = surface.x + surface.width * fraction;
+            for offset in [39., 40., 41.] {
+                let pixel = sample(x, surface.y + offset);
+                anyhow::ensure!(
+                    pixel[..3].iter().all(|channel| *channel < 250),
+                    "canvas-colored seam in the shared surface at {width}: {pixel:?}"
+                );
+            }
+        }
+        screenshot.save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
             cx.update_window(window.into(), |_, w, cx| {
                 driver.dispatch(serde_json::from_value(value)?, w, cx)
@@ -230,6 +254,24 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_vec_pretty(&snapshot)?,
         )?;
         println!("PASS new Chat at {width}px: real selectors, Unicode/Shift+Enter, submit, busy and bounds");
+        if width == 900. {
+            let mut closeup = Story::new("new-chat", "新建 Chat", "draft", "", "new-chat");
+            closeup.width = width;
+            closeup.height = 180.;
+            let closeup_window = cx.open_window(size(px(width), px(180.)), |_, cx| {
+                let view = cx.new(|cx| StoryHost::new(closeup, cx));
+                cx.new(|_| AutomationRoot::new(view))
+            })?;
+            for _ in 0..4 {
+                cx.run_until_parked();
+                cx.advance_clock(Duration::from_millis(16));
+                cx.update_window(closeup_window.into(), |_, window, cx| {
+                    window.draw(cx).clear(cx)
+                })?;
+            }
+            cx.capture_screenshot(closeup_window.into())?
+                .save(output.join("new-chat-closeup.png"))?;
+        }
     }
     Ok(())
 }
