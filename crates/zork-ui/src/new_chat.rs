@@ -69,7 +69,7 @@ impl Page {
             device_menu: false,
             picker_open: false,
             picker_mode: PickerMode::Strength,
-            picker: PopoverPanel::new(cx),
+            picker: PopoverPanel::new(cx).with_radius(24.),
             thinking_preview: None,
             width: 480.,
             scene: Default::default(),

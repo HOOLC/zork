@@ -23,6 +23,7 @@ pub struct PopoverPanel {
     focus: modal::FocusScope,
     trigger_focus: FocusHandle,
     label: RefCell<SharedString>,
+    radius: f32,
     was_open: bool,
 }
 
@@ -36,8 +37,18 @@ impl PopoverPanel {
             focus: modal::FocusScope::new(cx),
             trigger_focus: cx.focus_handle(),
             label: RefCell::new(SharedString::default()),
+            radius: controls::PLAIN_POPOVER_RADIUS,
             was_open: false,
         }
+    }
+
+    pub(crate) fn with_radius(mut self, radius: f32) -> Self {
+        self.radius = if radius.is_finite() {
+            radius.max(0.)
+        } else {
+            controls::PLAIN_POPOVER_RADIUS
+        };
+        self
     }
 
     pub fn trigger<V: 'static>(
@@ -176,7 +187,7 @@ impl PopoverPanel {
             .top(px(y - source.top().as_f32()))
             .w(px(width))
             .h(px(height))
-            .rounded(px(controls::PLAIN_POPOVER_RADIUS))
+            .rounded(px(self.radius.min(width / 2.).min(height / 2.)))
             .shadow_sm()
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))
