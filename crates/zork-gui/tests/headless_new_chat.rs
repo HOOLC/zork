@@ -195,41 +195,27 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         let picker = driver.snapshot(false);
-        let model_tab = picker
+        let model_row = picker
             .elements
             .iter()
-            .find(|element| element.id == "new-chat-model-tab")
-            .ok_or_else(|| anyhow::anyhow!("missing model tab at {width}"))?;
-        let profile_tab = picker
-            .elements
-            .iter()
-            .find(|element| element.id == "new-chat-profile-tab")
-            .ok_or_else(|| anyhow::anyhow!("missing Profile tab at {width}"))?;
-        anyhow::ensure!(
-            model_tab.visible
-                && profile_tab.visible
-                && model_tab.bounds == model_tab.visible_bounds
-                && profile_tab.bounds == profile_tab.visible_bounds
-                && model_tab.bounds.y == profile_tab.bounds.y
-                && model_tab.bounds.x + model_tab.bounds.width <= profile_tab.bounds.x,
-            "model and Profile tabs are not visible side by side at {width}"
-        );
-        let model_row = driver
-            .snapshot(false)
-            .elements
-            .into_iter()
             .find(|element| element.id == "new-chat-model-0")
-            .ok_or_else(|| anyhow::anyhow!("missing model row at {width}"))?;
+            .ok_or_else(|| anyhow::anyhow!("missing model choice at {width}"))?;
+        let profile_row = picker
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-profile-0")
+            .ok_or_else(|| anyhow::anyhow!("missing Profile choice at {width}"))?;
         anyhow::ensure!(
-            model_row.visible && model_row.bounds == model_row.visible_bounds,
-            "model row clipped at {width}"
+            model_row.visible
+                && profile_row.visible
+                && model_row.bounds == model_row.visible_bounds
+                && profile_row.bounds == profile_row.visible_bounds
+                && model_row.bounds.y == profile_row.bounds.y
+                && model_row.bounds.x + model_row.bounds.width <= profile_row.bounds.x,
+            "model and Profile choices are not visible side by side at {width}"
         );
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-models-{width}.png")))?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-profile-tab"}}),
-            &mut cx,
-        )?;
         anyhow::ensure!(
             driver
                 .snapshot(false)
@@ -242,7 +228,7 @@ fn main() -> anyhow::Result<()> {
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-profiles-{width}.png")))?;
         action(
-            json!({"type":"click","target":{"element_id":"new-chat-model-tab"}}),
+            json!({"type":"click","target":{"element_id":"new-chat-profile-1"}}),
             &mut cx,
         )?;
         anyhow::ensure!(
@@ -251,19 +237,28 @@ fn main() -> anyhow::Result<()> {
                 .elements
                 .iter()
                 .any(|element| element.id == "new-chat-model-0" && element.visible),
-            "model tab did not restore model choices at {width}"
+            "choosing Profile hid the model choices at {width}"
+        );
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-model-1"}}),
+            &mut cx,
+        )?;
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-profile-0" && element.visible),
+            "choosing a model hid the Profile choices at {width}"
         );
         action(
             json!({"type":"click","target":{"element_id":"new-chat-picker-back"}}),
             &mut cx,
         )?;
-        for id in [
-            "new-chat-model",
-            "new-chat-model-1",
-            "new-chat-thinking-thumb-0",
-        ] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            &mut cx,
+        )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
         action(
             json!({"type":"click","target":{"element_id":"new-chat-thinking-reset"}}),
@@ -278,13 +273,6 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
-        for id in [
-            "new-chat-model",
-            "new-chat-profile-tab",
-            "new-chat-profile-1",
-        ] {
-            action(json!({"type":"click","target":{"element_id":id}}), &mut cx)?;
-        }
         anyhow::ensure!(
             driver
                 .snapshot(false)

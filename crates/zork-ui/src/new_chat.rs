@@ -308,7 +308,12 @@ impl Render for Page {
         );
         let has_device_selector = self.data.device.options.len() > 1;
         let device = has_device_selector.then(|| self.device_selector(window, cx));
-        let popup_width = 284_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
+        let popup_width = (if self.picker_mode == PickerMode::Models {
+            480_f32
+        } else {
+            284_f32
+        })
+        .min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let content = if self.picker_open || self.picker.alive() {
             self.picker_content(popup_width, window, cx)
         } else {

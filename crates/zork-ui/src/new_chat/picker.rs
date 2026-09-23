@@ -9,7 +9,6 @@ use crate::components::liquid::{
 pub(super) enum PickerMode {
     Strength,
     Models,
-    Profiles,
 }
 
 impl Page {
@@ -21,22 +20,8 @@ impl Page {
             _ => value.to_owned(),
         }
     }
-    fn picker_button(
-        &self,
-        id: &'static str,
-        label: String,
-        mode: PickerMode,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let accessible_label = format!(
-            "{}: {}",
-            self.text.text(if mode == PickerMode::Models {
-                "new_chat_choose_model"
-            } else {
-                "new_chat_choose_profile"
-            }),
-            label
-        );
+    fn picker_button(&self, id: &'static str, label: String, cx: &Context<Self>) -> AnyElement {
+        let accessible_label = format!("{}: {}", self.text.text("new_chat_choose_model"), label);
         adaptive_action(
             id,
             label.clone(),
@@ -56,7 +41,7 @@ impl Page {
         .font_weight(FontWeight::MEDIUM)
         .aria_label(accessible_label.clone())
         .on_click(cx.listener(move |view, _, window, cx| {
-            view.picker_mode = mode;
+            view.picker_mode = PickerMode::Models;
             view.picker.focus(window, cx);
             cx.notify();
         }))
@@ -65,46 +50,6 @@ impl Page {
             AutomationRole::Button,
             accessible_label,
         )
-        .into_any_element()
-    }
-    fn picker_tab(
-        &self,
-        id: &'static str,
-        label: String,
-        mode: PickerMode,
-        width: f32,
-        enabled: bool,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let selected = self.picker_mode == mode;
-        adaptive_action(
-            id,
-            label.clone(),
-            ActionStyle {
-                quiet: true,
-                selected,
-                radius: Some(8.),
-                disabled: !enabled,
-                ..Default::default()
-            },
-            ZORK_UI.palette.canvas,
-        )
-        .role(Role::Tab)
-        .selected(selected)
-        .w(px(width))
-        .h(px(28.))
-        .px_0()
-        .font_weight(if selected {
-            FontWeight::MEDIUM
-        } else {
-            FontWeight::NORMAL
-        })
-        .on_click(cx.listener(move |view, _, window, cx| {
-            view.picker_mode = mode;
-            view.picker.focus(window, cx);
-            cx.notify();
-        }))
-        .automation_enabled(enabled, AutomationRole::Button, label)
         .into_any_element()
     }
     fn picker_option(
@@ -156,7 +101,6 @@ impl Page {
                 }
             }));
             view.thinking_preview = None;
-            view.picker_mode = PickerMode::Strength;
             cx.notify();
         }))
         .automation_enabled(enabled, AutomationRole::Button, label)
@@ -177,15 +121,8 @@ impl Page {
             .find(|o| o.value == self.data.model.value)
             .map(|o| o.label.clone())
             .unwrap_or_else(|| self.text.text("new_chat_choose_model"));
-        if self.picker_mode != PickerMode::Strength {
-            let models = self.picker_mode == PickerMode::Models;
-            let choice = if models {
-                &self.data.model
-            } else {
-                &self.data.profile
-            };
+        if self.picker_mode == PickerMode::Models {
             let back_label = self.text.text("back");
-            let tab_width = ((width - 24. - 28. - 8. - 4.) / 2.).max(2.);
             let header = div()
                 .h(px(30.))
                 .mb_2()
@@ -220,64 +157,105 @@ impl Page {
                 )
                 .child(
                     div()
-                        .id("new-chat-picker-tabs")
-                        .ml_2()
                         .flex_1()
-                        .flex()
-                        .gap_1()
-                        .role(Role::TabList)
-                        .child(self.picker_tab(
-                            "new-chat-model-tab",
-                            self.text.text("new_chat_choose_model"),
-                            PickerMode::Models,
-                            tab_width,
-                            enabled,
-                            cx,
-                        ))
-                        .child(self.picker_tab(
-                            "new-chat-profile-tab",
-                            self.text.text("new_chat_choose_profile"),
-                            PickerMode::Profiles,
-                            tab_width,
-                            enabled,
-                            cx,
-                        )),
-                );
-            let mut rows = div()
-                .id(if models {
-                    "new-chat-model-list"
-                } else {
-                    "new-chat-profile-list"
-                })
-                .h(px((choice.options.len() as f32 * 40. - 4.).clamp(0., 280.)))
+                        .text_center()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(ZORK_UI.palette.text))
+                        .child(self.text.text("new_chat_model_profile")),
+                )
+                .child(div().w(px(28.)));
+            let available_width = (width - 24. - 12.).max(4.);
+            let model_width = (available_width * 0.6).max(2.);
+            let profile_width = (available_width - model_width).max(2.);
+            let mut model_rows = div()
+                .id("new-chat-model-list")
+                .h(px(
+                    (self.data.model.options.len() as f32 * 40. - 4.).clamp(0., 280.)
+                ))
                 .min_h_0()
                 .overflow_y_scroll()
                 .flex()
                 .flex_col()
                 .gap_1();
-            for (index, option) in choice.options.iter().enumerate() {
-                rows = rows.child(self.picker_option(
-                    format!(
-                        "new-chat-{}-{index}",
-                        if models { "model" } else { "profile" }
-                    ),
-                    if !models && option.value == "auto" {
+            for (index, option) in self.data.model.options.iter().enumerate() {
+                model_rows = model_rows.child(self.picker_option(
+                    format!("new-chat-model-{index}"),
+                    option.label.clone(),
+                    option.value.clone(),
+                    option.value == self.data.model.value,
+                    true,
+                    enabled,
+                    cx,
+                ));
+            }
+            let mut profile_rows = div()
+                .id("new-chat-profile-list")
+                .h(px(
+                    (self.data.profile.options.len() as f32 * 40. - 4.).clamp(0., 280.)
+                ))
+                .min_h_0()
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .gap_1();
+            for (index, option) in self.data.profile.options.iter().enumerate() {
+                profile_rows = profile_rows.child(self.picker_option(
+                    format!("new-chat-profile-{index}"),
+                    if option.value == "auto" {
                         self.text.text("new_chat_profile_automatic")
                     } else {
                         option.label.clone()
                     },
                     option.value.clone(),
-                    option.value == choice.value,
-                    models,
+                    option.value == self.data.profile.value,
+                    false,
                     enabled,
                     cx,
                 ));
             }
+            let columns = div()
+                .flex()
+                .gap(px(12.))
+                .child(
+                    div()
+                        .w(px(model_width))
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .px_3()
+                                .pb_2()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(ZORK_UI.palette.muted))
+                                .child(self.text.text("new_chat_choose_model")),
+                        )
+                        .child(model_rows),
+                )
+                .child(
+                    div()
+                        .w(px(profile_width))
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .px_3()
+                                .pb_2()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(ZORK_UI.palette.muted))
+                                .child(self.text.text("new_chat_choose_profile")),
+                        )
+                        .child(profile_rows),
+                );
             return div()
                 .flex()
                 .flex_col()
                 .child(header)
-                .child(rows)
+                .child(columns)
                 .into_any_element();
         }
         let levels = &self.data.thinking.options;
@@ -336,12 +314,10 @@ impl Page {
                 ),
             );
         let mut content = div().flex().flex_col().child(header).child(
-            div().flex().justify_center().child(self.picker_button(
-                "new-chat-model",
-                model,
-                PickerMode::Models,
-                cx,
-            )),
+            div()
+                .flex()
+                .justify_center()
+                .child(self.picker_button("new-chat-model", model, cx)),
         );
         if levels.len() > 1 {
             let values: Vec<String> = levels.iter().map(|o| o.value.clone()).collect();
