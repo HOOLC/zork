@@ -264,6 +264,9 @@ pub fn adaptive_action(
         .icon_only
         .unwrap_or(label.is_empty() && !appearance.select_trigger);
     let danger = appearance.variant == Some(ButtonVariant::Danger);
+    // Quiet and icon actions are transparent at rest, so they sit on any surface
+    // (sidebar, composer, strips) without painting a guessed parent color.
+    let transparent = (appearance.quiet || icon_only) && !soft && !solid && !danger;
     let fill = if appearance.disabled {
         ZORK_UI.palette.prompt
     } else if danger {
@@ -328,7 +331,7 @@ pub fn adaptive_action(
         .whitespace_nowrap()
         .rounded(px(radius.max(0.)))
         .overflow_hidden()
-        .bg(rgb(fill))
+        .bg(if transparent { rgba(0) } else { rgb(fill) })
         .border(px(crate::design::BORDER_WIDTH))
         .border_color(rgba(0))
         .styles(|styles| styles.selected(|state| state.bg(rgb(selected_color))));
@@ -343,8 +346,7 @@ pub fn adaptive_action(
     }
     // Hover and pressed feedback is set once in `request_layout`, after callers
     // may have changed selection; GPUI rejects a second hover style.
-    // Keyboard focus is its own ring, so it stays visible over hover, selection and errors.
-    button = button.focus_visible(|v| v.shadow(crate::controls::focus_ring()));
+    // Keyboard focus is set once in `request_layout`, with the final selection.
     Action {
         inner: Some(button),
         rendered: None,
@@ -448,6 +450,19 @@ impl Element for Action {
             });
         }
         let style = self.appearance;
+        let quiet_face = (style.quiet || style.icon_only.unwrap_or(self.label.is_empty()))
+            && style.variant != Some(ButtonVariant::Soft)
+            && !style.primary;
+        // Keyboard focus is its own ring outside the outline. A transparent action
+        // gains a quiet fill under it; a selected one keeps its selection fill.
+        button = if quiet_face && !style.selected {
+            button.focus_visible(|v| {
+                v.bg(rgb(INTERACTION.neutral_hover))
+                    .shadow(crate::controls::focus_ring())
+            })
+        } else {
+            button.focus_visible(|v| v.shadow(crate::controls::focus_ring()))
+        };
         if !style.disabled && !style.busy && !style.select_trigger {
             let danger = style.variant == Some(ButtonVariant::Danger);
             let solid = style.primary;

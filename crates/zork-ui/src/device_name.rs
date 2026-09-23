@@ -147,22 +147,16 @@ fn indicator(id: &gpui::ElementId, status: &DeviceStatus) -> gpui::AnyElement {
             .rounded_full()
             .bg(rgb(p.success))
             .into_any_element(),
+        // A ring with a center dot (◉): readable at 9 px, unlike a half fill.
         DeviceStatus::Relay => div()
-            .relative()
-            .size(px(8.))
+            .size(px(9.))
             .rounded_full()
             .border(px(1.5))
             .border_color(rgb(p.warning))
-            .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .top_0()
-                    .w(px(4.))
-                    .h(px(8.))
-                    .rounded_l(px(4.))
-                    .bg(rgb(p.warning)),
-            )
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(div().size(px(3.)).rounded_full().bg(rgb(p.warning)))
             .into_any_element(),
         DeviceStatus::MeshFailed(_) | DeviceStatus::Revoked => gpui::svg()
             .path("icons/x.svg")

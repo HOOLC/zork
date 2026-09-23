@@ -316,7 +316,6 @@ impl Render for Page {
                 .h(px(28.))
                 .font_weight(FontWeight::NORMAL)
                 .radius(14.)
-                .bg(rgb(ZORK_UI.palette.canvas))
                 .track_focus(&self.picker_trigger_focus)
                 .child(ui::icon("icons/chevron-down.svg", 12.))
                 .on_click(cx.listener(|view, event: &ClickEvent, window, cx| {
