@@ -27,6 +27,7 @@ struct Device {
 struct ConnectionRow {
     device_id: String,
     device_name: String,
+    device_status: zork_ui::device_name::DeviceStatus,
     provider_label: String,
     profile: ProfileInfo,
     providers: Arc<Vec<serde_json::Value>>,
@@ -37,6 +38,7 @@ fn append_groups(
     groups: &mut Groups,
     device_id: &str,
     device_name: &str,
+    device_status: &zork_ui::device_name::DeviceStatus,
     state: &crate::api::ProfileData,
 ) {
     for profile in state.profiles.iter() {
@@ -52,6 +54,7 @@ fn append_groups(
             .push(ConnectionRow {
                 device_id: device_id.to_owned(),
                 device_name: device_name.to_owned(),
+                device_status: device_status.clone(),
                 provider_label: provider.to_owned(),
                 profile: profile.clone(),
                 providers: state.providers.clone(),
@@ -215,6 +218,7 @@ impl ModelSettings {
                         &row.providers,
                         row.quota_failed,
                         Some(&row.device_name),
+                        Some(&row.device_status),
                         on_click,
                     )
                 });
@@ -325,16 +329,13 @@ impl Render for ModelSettings {
             } else if let Some(error) = &state.error {
                 notices.push(format!("{name} · {error}"));
             }
-            let row_device = if matches!(
-                device.status,
-                zork_ui::device_name::DeviceStatus::Connected
-                    | zork_ui::device_name::DeviceStatus::Direct
-            ) {
-                &device.name
-            } else {
-                &name
-            };
-            append_groups(&mut groups, &device.id, row_device, &state);
+            append_groups(
+                &mut groups,
+                &device.id,
+                &device.name,
+                &device.status,
+                &state,
+            );
         }
         let has_notices = !notices.is_empty();
         div()
@@ -454,6 +455,7 @@ impl Render for ModelSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+    use zork_ui::device_name::DeviceStatus;
 
     #[test]
     fn provider_groups_keep_profiles_and_sources_distinct() {
@@ -474,7 +476,7 @@ mod tests {
         };
         let mut providers = Groups::new();
         for id in ["desktop", "laptop"] {
-            append_groups(&mut providers, id, id, &state);
+            append_groups(&mut providers, id, id, &DeviceStatus::Connected, &state);
         }
         assert_eq!(providers.len(), 1);
         assert_eq!(providers["openai"].len(), 4);
@@ -504,9 +506,16 @@ mod tests {
             ..Default::default()
         };
         let mut groups = Groups::new();
-        append_groups(&mut groups, "node", "My device", &state);
+        append_groups(
+            &mut groups,
+            "node",
+            "My device",
+            &DeviceStatus::Offline,
+            &state,
+        );
         assert_eq!(groups["custom"][0].profile.profile_id, "new");
         assert_eq!(groups["custom"][0].device_name, "My device");
+        assert_eq!(groups["custom"][0].device_status, DeviceStatus::Offline);
         assert_eq!(groups["custom"][0].provider_label, "custom");
     }
 }
