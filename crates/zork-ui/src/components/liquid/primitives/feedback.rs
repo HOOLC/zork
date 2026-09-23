@@ -292,12 +292,15 @@ impl Render for Toasts {
                 let _ = weak.update(cx, |_, cx| cx.notify());
             }));
         }
-        let width = (window.viewport_size().width.as_f32() - 32.).clamp(100., 360.);
+        let max_width = (window.viewport_size().width.as_f32() - 32.)
+            .max(2.)
+            .min(360.);
         let mut stack = div()
             .id("toast-viewport")
-            .w(px(width))
+            .max_w(px(max_width))
             .flex()
             .flex_col()
+            .items_end()
             .gap(px(8.))
             .role(Role::Region)
             .aria_label("通知（F8 聚焦）")
@@ -305,6 +308,25 @@ impl Render for Toasts {
             .tab_stop(false);
         for toast in &self.entries {
             let id = toast.id;
+            let measure = |text: &str, size, window: &mut Window| {
+                text.lines()
+                    .map(|line| super::super::overlay::measure_label(line, size, window))
+                    .fold(0., f32::max)
+            };
+            let content_width = (measure(&toast.message, 13., window) + 60.)
+                .max(
+                    toast
+                        .description
+                        .as_ref()
+                        .map_or(0., |description| measure(description, 12., window) + 28.),
+                )
+                .max(
+                    toast
+                        .action
+                        .as_ref()
+                        .map_or(0., |action| measure(&action.label, 12., window) + 32.),
+                );
+            let width = (content_width.ceil() + 40.).min(max_width);
             let live = toast.closing.is_none();
             let alpha = toast.closing.map_or(1., |at| {
                 1. - (at.elapsed().as_secs_f32() / 0.16).clamp(0., 1.)
@@ -349,18 +371,14 @@ impl Render for Toasts {
                 });
             if let Some(action) = action {
                 body = body.child(
-                    controls::action(
+                    controls::adaptive_action(
                         format!("toast-{id}-action"),
                         action.label.clone(),
-                        90.,
-                        28.,
                         ActionStyle {
                             disabled: !live,
                             ..Default::default()
                         },
                         ZORK_UI.palette.canvas,
-                        window,
-                        cx,
                     )
                     .on_click(cx.listener(move |v, _, w, cx| {
                         if live {
@@ -385,7 +403,7 @@ impl Render for Toasts {
                     true,
                 )
                 .occlude()
-                .w_full()
+                .w(px(width))
                 .p(px(20.))
                 .opacity(alpha)
                 .on_hover(cx.listener(move |v, inside: &bool, _, cx| {

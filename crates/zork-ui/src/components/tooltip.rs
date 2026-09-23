@@ -20,6 +20,28 @@ pub struct DetailsTooltip {
     pub rows: Vec<(String, String)>,
 }
 impl DetailsTooltip {
+    fn content_width(&self, window: &mut Window) -> f32 {
+        let measure = |text: &str, size, window: &mut Window| {
+            text.lines()
+                .map(|line| super::liquid::overlay::measure_label(line, size, window))
+                .fold(0., f32::max)
+        };
+        let header = 42. + measure(&self.title, 13., window).max(measure(&self.kind, 10., window));
+        let description: String = self.description.trim().chars().take(320).collect();
+        let mut content = header.max(measure(&description, 12., window));
+        for (label, value) in self
+            .rows
+            .iter()
+            .filter(|(_, value)| !value.trim().is_empty())
+        {
+            content = content.max(60. + 8. + measure(value, 11., window));
+            content = content.max(measure(label, 11., window) + 8. + measure(value, 11., window));
+        }
+        (content.ceil() + 32.)
+            .min(320.)
+            .min((window.viewport_size().width.as_f32() - 24.).max(2.))
+    }
+
     pub fn content(&self) -> gpui::Div {
         let p = ZORK_UI.palette;
         let description: String = self.description.trim().chars().take(320).collect();
@@ -99,8 +121,12 @@ impl DetailsTooltip {
                 ),
             )
     }
-    pub fn card(&self) -> crate::automation::element::AutomationElement<gpui::Stateful<gpui::Div>> {
+    pub fn card(
+        &self,
+        window: &mut Window,
+    ) -> crate::automation::element::AutomationElement<gpui::Stateful<gpui::Div>> {
         Self::surface(format!("detail-tooltip-{}", self.key))
+            .w(px(self.content_width(window)))
             .p(px(16.))
             .child(self.content())
             .automation(
@@ -116,8 +142,7 @@ impl DetailsTooltip {
             true,
         )
         .occlude()
-        .w(px(320.))
-        .max_w_full()
+        .max_w(px(320.))
         .flex()
         .flex_col()
     }
@@ -125,13 +150,14 @@ impl DetailsTooltip {
 
 impl gpui::Render for DetailsTooltip {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let viewport = window.viewport_size();
         div()
             .id(format!("detail-tooltip-scroll-{}", self.key))
-            .max_w(window.viewport_size().width - px(24.))
-            .child(self.card().map_inner(|card| {
-                card.max_h(window.viewport_size().height - px(24.))
-                    .overflow_y_scroll()
-            }))
+            .max_w(viewport.width - px(24.))
+            .child(
+                self.card(window)
+                    .map_inner(|card| card.max_h(viewport.height - px(24.)).overflow_y_scroll()),
+            )
     }
 }
 
@@ -340,11 +366,12 @@ impl gpui::Render for DetailsOverlay {
             v.panel_hover = *inside;
             v.schedule_close(cx);
         }));
+        let width = details.content_width(window);
         let panel = self.panel.render(
             "detail-tooltip-shared",
             self.bounds,
             !self.dismissing,
-            FloatingStyle::details(320., Side::Beside),
+            FloatingStyle::details(width, Side::Beside),
             Content::new(vec![content.into_any_element()]),
             Some(hover),
             window,

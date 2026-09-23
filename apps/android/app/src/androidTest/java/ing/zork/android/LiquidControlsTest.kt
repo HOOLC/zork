@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -27,6 +29,28 @@ import java.io.File
 class LiquidControlsTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val automation get() = instrumentation.uiAutomation
+
+    @Test fun selectionTriggerWidthFollowsItsText() {
+        var label by mutableStateOf("短")
+        var width = 0
+        ActivityScenario.launch<LiquidGalleryActivity>(Intent(instrumentation.targetContext, LiquidGalleryActivity::class.java)).use { scenario ->
+            scenario.onActivity { activity -> activity.setContent { ZorkTheme {
+                Box(Modifier.width(320.dp)) {
+                    LiquidSelectTrigger(label, "选择", Modifier.onSizeChanged { width = it.width }, onClick = {})
+                }
+            } } }
+            instrumentation.waitForIdleSync()
+            val shortWidth = width
+            scenario.onActivity { label = "较长的模型供应商名称" }
+            for (attempt in 0 until 40) {
+                instrumentation.waitForIdleSync()
+                if (width > shortWidth) break
+                Thread.sleep(50)
+            }
+            assertTrue("short trigger filled its parent", shortWidth < 320 * instrumentation.targetContext.resources.displayMetrics.density)
+            assertTrue("trigger width did not follow its text: $shortWidth -> $width", width > shortWidth)
+        }
+    }
 
     @Test fun businessDismissalRetainsPaintAndCanReverseFromTheOriginalSource() {
         var scene: LiquidSceneHost? = null
@@ -156,7 +180,7 @@ class LiquidControlsTest {
         ActivityScenario.launch<LiquidGalleryActivity>(Intent(instrumentation.targetContext, LiquidGalleryActivity::class.java)).use { scenario ->
             settle(scenario)
             click("浮层与展开"); waitFor("同步范围"); settle(scenario)
-            click("同步范围"); waitFor("所有设备"); settle(scenario)
+            click("同步范围：当前设备"); waitFor("所有设备"); settle(scenario)
             screenshot("menu")
             click("所有设备"); settle(scenario)
             click("打开对话框"); waitFor("弹窗名称"); settle(scenario)
