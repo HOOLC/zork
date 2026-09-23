@@ -555,6 +555,8 @@ pub struct ActionStyle {
     pub icon_only: Option<bool>,
     /// Rich rows can retain their own corner family at any measured height.
     pub radius: Option<f32>,
+    /// A primary action that starts work (sending) keeps the persimmon accent.
+    pub accent: bool,
 }
 
 impl ActionStyle {

@@ -58,6 +58,7 @@ fn action(
         size,
         super::controls::ActionStyle {
             primary: !attach,
+            accent: !attach && !stop,
             icon: Some(if attach {
                 "icons/paperclip.svg"
             } else if stop {
@@ -73,12 +74,6 @@ fn action(
         window,
         cx,
     )
-    // Sending starts work, the one action that keeps the persimmon accent.
-    .when(!attach && !stop && enabled && !busy, |send| {
-        send.bg(rgb(crate::design::INTERACTION.accent))
-            .hover(|v| v.bg(rgb(crate::design::INTERACTION.accent_hover)))
-            .active(|v| v.bg(rgb(crate::design::INTERACTION.accent_pressed)))
-    })
     .on_click(move |_, w, cx| {
         if enabled {
             handler(

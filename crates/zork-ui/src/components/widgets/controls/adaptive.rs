@@ -268,6 +268,8 @@ pub fn adaptive_action(
         ZORK_UI.palette.prompt
     } else if danger {
         ZORK_UI.palette.danger
+    } else if solid && appearance.accent {
+        INTERACTION.accent
     } else if solid {
         // Primary actions are ink; persimmon is reserved for work in progress and sending.
         ZORK_UI.palette.text
@@ -339,31 +341,8 @@ pub fn adaptive_action(
                 FORM.outline
             }));
     }
-    if enabled && !appearance.select_trigger {
-        button = button
-            .hover(|v| {
-                v.bg(rgb(if danger {
-                    INTERACTION.danger_hover
-                } else if solid {
-                    INTERACTION.primary_hover
-                } else if appearance.selected {
-                    crate::design::INTERACTION.selected_hover
-                } else {
-                    INTERACTION.neutral_hover
-                }))
-            })
-            .active(|v| {
-                v.bg(rgb(if danger {
-                    INTERACTION.danger_pressed
-                } else if solid {
-                    INTERACTION.primary_pressed
-                } else if appearance.selected {
-                    crate::design::INTERACTION.selected_hover
-                } else {
-                    INTERACTION.neutral_pressed
-                }))
-            });
-    }
+    // Hover and pressed feedback is set once in `request_layout`, after callers
+    // may have changed selection; GPUI rejects a second hover style.
     // Keyboard focus is its own ring, so it stays visible over hover, selection and errors.
     button = button.focus_visible(|v| v.shadow(crate::controls::focus_ring()));
     Action {
@@ -468,15 +447,25 @@ impl Element for Action {
                 }
             });
         }
-        if self.appearance.selected
-            && !self.appearance.disabled
-            && !self.appearance.busy
-            && !self.appearance.select_trigger
-        {
-            // Selection may be set after construction; keep it distinguishable under the pointer.
+        let style = self.appearance;
+        if !style.disabled && !style.busy && !style.select_trigger {
+            let danger = style.variant == Some(ButtonVariant::Danger);
+            let solid = style.primary;
+            let (hover, pressed) = if danger {
+                (INTERACTION.danger_hover, INTERACTION.danger_pressed)
+            } else if solid && style.accent {
+                (INTERACTION.accent_hover, INTERACTION.accent_pressed)
+            } else if solid {
+                (INTERACTION.primary_hover, INTERACTION.primary_pressed)
+            } else if style.selected {
+                // A selected action deepens under the pointer instead of losing its fill.
+                (INTERACTION.selected_hover, INTERACTION.selected_hover)
+            } else {
+                (INTERACTION.neutral_hover, INTERACTION.neutral_pressed)
+            };
             button = button
-                .hover(|v| v.bg(rgb(crate::design::INTERACTION.selected_hover)))
-                .active(|v| v.bg(rgb(crate::design::INTERACTION.selected_hover)));
+                .hover(move |v| v.bg(rgb(hover)))
+                .active(move |v| v.bg(rgb(pressed)));
         }
         if self.appearance.select_trigger && !self.appearance.disabled && !self.appearance.busy {
             button = button.hover(|v| v.border_color(rgb(crate::design::FORM.hover_border)));
