@@ -9,6 +9,7 @@ use zork_gui::{
 };
 
 fn main() -> anyhow::Result<()> {
+    long_model_selection()?;
     let output =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/chat-first/native");
     std::fs::create_dir_all(&output)?;
@@ -345,5 +346,118 @@ fn main() -> anyhow::Result<()> {
         )?;
         println!("PASS new Chat at {width}px: real selectors, Unicode/Shift+Enter, submit, busy and bounds");
     }
+    Ok(())
+}
+
+fn long_model_selection() -> anyhow::Result<()> {
+    use std::{cell::RefCell, rc::Rc};
+    use zork_ui::{
+        new_chat::{Event, Page},
+        resources::Text,
+    };
+    let mut cx = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = cx.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let text = Text(Rc::new(|key| key.into()));
+    let mut data = zork_client_core::new_chat::Fixture::new("draft").snapshot();
+    let option = data.model.options[0].clone();
+    data.model.options = (0..40)
+        .map(|i| {
+            let mut option = option.clone();
+            option.value = format!("model-{i}");
+            option.label = format!("Model {i}");
+            option
+        })
+        .collect();
+    data.model.value = "model-39".into();
+    let mut page = None;
+    let choices = Rc::new(RefCell::new(Vec::new()));
+    let window = cx.open_window(size(px(900.), px(800.)), |_, cx| {
+        let view = cx.new(|cx| {
+            let mut view = Page::new(text.clone(), cx);
+            view.configure(data.clone(), 600., text.clone(), cx);
+            view
+        });
+        page = Some(view.clone());
+        let choices = choices.clone();
+        cx.subscribe(&view, move |_, event: &Event, _| {
+            if let Event::Intent(zork_client_core::new_chat::Action::Model { value }) = event {
+                choices.borrow_mut().push(value.clone());
+            }
+        })
+        .detach();
+        cx.new(|_| AutomationRoot::new(view))
+    })?;
+    let page = page.unwrap();
+    let draw = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        for _ in 0..4 {
+            cx.run_until_parked();
+            cx.advance_clock(Duration::from_millis(16));
+            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
+        }
+        Ok(())
+    };
+    let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        cx.update_window(window.into(), |_, w, cx| {
+            driver.dispatch(serde_json::from_value(value)?, w, cx)
+        })??;
+        draw(cx)
+    };
+    draw(&mut cx)?;
+    action(
+        json!({"type":"click","target":{"element_id":"new-chat-options"}}),
+        &mut cx,
+    )?;
+    let center = driver
+        .snapshot(false)
+        .elements
+        .iter()
+        .find(|e| e.id == "new-chat-thinking-label")
+        .unwrap()
+        .center;
+    action(
+        json!({"type":"click","target":{"x":center.x,"y":center.y}}),
+        &mut cx,
+    )?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "new-chat-model-39" && e.visible && e.bounds == e.visible_bounds),
+        "opening a long model list did not reveal the current choice"
+    );
+    action(
+        json!({"type":"click","target":{"element_id":"new-chat-model-39"}}),
+        &mut cx,
+    )?;
+    for (value, count) in [("model-10", 40), ("model-1", 2)] {
+        data.model.options.truncate(count);
+        data.model.value = value.into();
+        cx.update(|cx| {
+            page.update(cx, |page, cx| {
+                page.configure(data.clone(), 600., text.clone(), cx)
+            })
+        });
+        draw(&mut cx)?;
+        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
+        anyhow::ensure!(
+            choices
+                .borrow()
+                .last()
+                .is_some_and(|choice| choice == value),
+            "Enter used stale selection after model projection changed to {value}: {:?}",
+            choices.borrow()
+        );
+    }
+    println!("PASS long model selector: current item visible, external selection and shrinking options reconcile keyboard focus");
     Ok(())
 }

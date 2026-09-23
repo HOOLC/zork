@@ -410,17 +410,26 @@ pub(crate) fn inline_list<V: 'static>(
                 w,
                 cx,
             );
-            list.set_selected_index(Some(IndexPath::new(entry)), w, cx);
+            list.set_selected_index((!rows.is_empty()).then(|| IndexPath::new(entry)), w, cx);
+            list.scroll_to_selected_item(w, cx);
             list
         })
     });
     let list = state.read(cx).clone();
     list.update(cx, |s, cx| {
-        let changed = s.delegate().rows != rows || s.delegate().enabled != enabled;
+        let rows_changed = s.delegate().rows != rows;
+        let changed = rows_changed || s.delegate().enabled != enabled;
+        let selected = (!rows.is_empty()).then(|| IndexPath::new(entry));
         let d = s.delegate_mut();
         d.rows = rows;
         d.enabled = enabled;
         d.choose = choose;
+        // A new projection can change the current choice or remove/reorder rows.
+        // Reconcile the library cursor as well as the visible check marks.
+        if rows_changed {
+            s.set_selected_index(selected, window, cx);
+            s.scroll_to_selected_item(window, cx);
+        }
         if changed {
             cx.notify();
         }
