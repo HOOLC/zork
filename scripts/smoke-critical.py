@@ -2,7 +2,7 @@
 """Run all user-approved critical gates against freshly built product artifacts."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, ExitStack
 import hashlib
 import http.client
 import ipaddress
@@ -393,7 +393,7 @@ def digest(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def local_startup(app, mesh_image, output, trace_startup=False):
+def local_startup(app, mesh_image, output, trace_startup=False, mesh_binaries=None):
     # Short Unix socket paths are part of the fixture, independent of checkout location.
     root = Path(tempfile.mkdtemp(prefix="zg-", dir="/tmp")).resolve()
     samples = []
@@ -426,7 +426,7 @@ def local_startup(app, mesh_image, output, trace_startup=False):
                             trace_startup, mesh=True)
         record(first_mesh)
 
-        remote = RemoteStation(mesh_image, root, output, config)
+        remote = RemoteStation(mesh_image, root, output, config, mesh_binaries)
         remote.start("bootstrap")
         remote.stop()
         mesh_port = int(remote.config["mesh"]["bind"].rsplit(":", 1)[1])
@@ -471,28 +471,41 @@ def local_startup_gate(args, output):
               "startup_tracing": args.trace_startup,
               "launch": "fresh processes via packaged GUI executable; OS file cache uncontrolled",
               "measurement": "GUI main to real UI input, local runtime/Mesh, connected independent Station and new remote source message in client cache; pre-main OS time reported separately"}
+    locks = ExitStack()
     try:
         if not args.app:
             raise RuntimeError("Missing --app: a freshly built and signed macOS app is required")
-        if not args.mesh_image:
-            raise RuntimeError("Missing --mesh-image: current-source Linux Station image is required")
+        binaries = getattr(args, "mesh_bin_dir", None)
+        reference = args.mesh_image
+        if binaries:
+            from smoke_mesh_artifact import exclusive, lock_path, validate
+            binaries = binaries.resolve(strict=True)
+            locks.enter_context(exclusive(lock_path(binaries)))
+            record = validate(ROOT, binaries)
+            reference = reference or record["runtime_image"]
+            report["mesh_binaries"] = record
+        if not reference:
+            raise RuntimeError("Missing --mesh-bin-dir (or legacy --mesh-image)")
         if sys.platform != "darwin":
             raise RuntimeError("Native macOS display session required")
-        image = json.loads(subprocess.run(["docker", "image", "inspect", args.mesh_image],
+        image = json.loads(subprocess.run(["docker", "image", "inspect", reference],
                                           check=True, capture_output=True, text=True).stdout)[0]
         if image["Os"] != "linux" or image["Architecture"] != "arm64":
             raise RuntimeError("Remote Station image must be Linux arm64 for this Studio")
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         labels = image["Config"]["Labels"] or {}
-        if labels.get("org.opencontainers.image.revision") != revision:
+        if not binaries and labels.get("org.opencontainers.image.revision") != revision:
             raise RuntimeError("Remote Station image must be built from this checkout revision")
-        report["mesh_image"] = {"reference": args.mesh_image, "id": image["Id"],
-                                "revision": revision}
+        report["mesh_image"] = {"reference": reference, "id": image["Id"]}
+        if not binaries:
+            report["mesh_image"]["revision"] = revision
         app = args.app.resolve(strict=True)
         paths = ("Contents/MacOS/zork-gui", "Contents/Helpers/ZorkSupervisor.app/Contents/MacOS/zork",
                  "Contents/Helpers/ZorkStation.app/Contents/MacOS/zork-station")
         stamps = {path: (app / path).stat() for path in paths}
-        report["samples"] = local_startup(app, args.mesh_image, output, args.trace_startup)
+        report["samples"] = local_startup(app, image["Id"], output, args.trace_startup, binaries)
+        if binaries:
+            validate(ROOT, binaries)
         # Do not read every executable into the file cache before measuring.
         for path, before in stamps.items():
             after = (app / path).stat()
@@ -507,6 +520,8 @@ def local_startup_gate(args, output):
         evidence = output / "samples.jsonl"
         if evidence.exists():
             report["samples"] = [json.loads(line) for line in evidence.read_text().splitlines()]
+    finally:
+        locks.close()
     return report
 
 
@@ -560,6 +575,8 @@ def main():
     parser.add_argument("--frame-binary", type=Path, help="Fresh release zork-gui-render-bench with native-blur-bench")
     parser.add_argument("--frame-host", help="Run the unchanged native frame gate on a separate macOS SSH host")
     parser.add_argument("--mesh-image", help="Current-source Linux arm64 Station image on a bridge network")
+    parser.add_argument("--mesh-bin-dir", type=Path,
+                        help="Verified Linux Station/Agent from scripts/build/critical-mesh.py; mounted read-only")
     parser.add_argument("--build-profile", choices=("dev", "release"),
                         help="Profile used to build the supplied app; never changes the gate budget")
     parser.add_argument("--trace-startup", action="store_true",

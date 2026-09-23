@@ -54,7 +54,7 @@ def save_remote_node(client, origin, address):
 
 
 class RemoteStation:
-    def __init__(self, image, root, output, local_config):
+    def __init__(self, image, root, output, local_config, binaries=None):
         self.image = image
         self.root = root / "remote"
         self.root.mkdir()
@@ -81,9 +81,11 @@ class RemoteStation:
         self.model_thread = None
         self.docker("network", "create", "--driver", "bridge", self.network)
         try:
+            mounted = (["--mount", f"type=bind,source={binaries.resolve()},target=/opt/zork-smoke,readonly",
+                        "--entrypoint", "/opt/zork-smoke/zork-station"] if binaries else [])
             self.docker("create", "--name", self.container, "--network", self.network,
                         "--mount", f"type=bind,source={self.root},target=/data",
-                        "--env", "ZORK_REGISTRY_DIR=/data/registry", image,
+                        "--env", "ZORK_REGISTRY_DIR=/data/registry", *mounted, image,
                         "--data", "/data")
             details = self.inspect()
             network = json.loads(self.docker("network", "inspect", self.network))[0]

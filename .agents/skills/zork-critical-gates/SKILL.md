@@ -22,16 +22,18 @@ description: 管理用户明确批准的 zork 关键门禁，将要求落实为 
 
 ```sh
 python3 scripts/smoke-critical.py --list
-docker build -f scripts/build/critical-mesh.Dockerfile --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" -t zork-critical-mesh:current .
-python3 scripts/package-macos-client.py --run python3 scripts/smoke-critical.py --app '{app}' --mesh-image zork-critical-mesh:current --frame-binary /path/to/release/zork-gui-render-bench
+python3 scripts/build/critical-mesh.py
+python3 scripts/package-macos-client.py --run python3 scripts/smoke-critical.py --app '{app}' --mesh-bin-dir .tmp/critical-mesh --frame-binary /path/to/release/zork-gui-render-bench
 ```
 
 已由当前任务重建并打包时，可以直接传该 app，避免重复打包。构建配置、系统和输入随报告记录；开发构建、release、进程冷启动与重启系统后的磁盘冷启动证据分别说明。
+
+远端 fixture 复用本机已有的 Linux Rust 镜像，以只读挂载的 Station/Agent 启动，不因 UI 改动重建镜像。准备入口按后端依赖源码与锁文件校验二进制，只在相关输入变化时在现有容器中编译；运行前后核对产物摘要。首次缺少镜像时拉取一次，也可指定已有兼容镜像。已有当前修订的 Station 镜像可用 `--from-image` 一次性导入；旧 `--mesh-image` 入口保留兼容。
 
 帧门禁使用原生完整组件与 Metal 完成时间。先核对被测完整组件、视觉配方及实际启用的渲染路径是否对应已批准要求；同一仓库的新构建或普通客户端场景不能代替新动效路径的覆盖。按构建环境指南用锁文件构建 release `zork-gui-render-bench`（features `native-blur-bench,frame-profiler`），独立于构建及其他性能测试运行。`--frame-host` 可把同一二进制与判定脚本送到独立 macOS SSH 主机运行，校验传输摘要并取回报告；目标主机须有桌面会话且无竞争构建，报告记录目标硬件。完整帧以输入/动画更新开始至 CPU 与 GPU 均完成计时，连续完成间隔判断吞吐和稳定性，不能用 CPU/GPU 分项或 P95 掩盖长帧。包含首次操作与首帧；主动空闲不算掉帧，不挑选最好一轮。先用空场景校准取显示缓冲的限速；同一客户端场景与 Metal 渲染器的离屏目标测原生绘制能力，窗口呈现结果另记，不能相互冒充。阈值与固定负载只维护在 `GATES`。
 
 分析启动失败时可加 `--trace-startup`，按同一单调时钟关联 GUI、helper 和 Station 的阶段；结合系统日志区分进入程序前的系统评估与业务初始化。探针包含额外 IO，诊断后用同一产物关闭探针复测，保留各自报告。
 
-启动门禁从 GUI 进入 `main` 计时，直到真实窗口交互、本机 Station/内嵌 Agent、本机与客户端 Mesh 就绪，以及已配对独立 Station 直连和新增远端源消息同步到客户端缓存。进入 `main` 前的系统评估单独记录，不计入门禁。首次初始化、Station 与客户端 Mesh 首次初始化和无预运行本机服务的已配对重启分别验收；对端在计时前运行，计时前已有的客户端缓存不能充当同步证据。远端 Station 用本次源码构建的 Linux 镜像在独立容器网桥运行，客户端通过非 loopback 容器 IP 连接；不能用主机网络或同机 loopback 冒充跨网络。使用隔离数据和真实运行时，不使用假 Agent、强制离线或人工驱动帧来缩短启动。测试的诊断等待上限不改变已批准门槛。
+启动门禁从 GUI 进入 `main` 计时，直到真实窗口交互、本机 Station/内嵌 Agent、本机与客户端 Mesh 就绪，以及已配对独立 Station 直连和新增远端源消息同步到客户端缓存。进入 `main` 前的系统评估单独记录，不计入门禁。首次初始化、Station 与客户端 Mesh 首次初始化和无预运行本机服务的已配对重启分别验收；对端在计时前运行，计时前已有的客户端缓存不能充当同步证据。远端 Station 使用与当前后端源码及依赖匹配的 Linux 二进制，在固定镜像的独立容器网桥运行，客户端通过非 loopback 容器 IP 连接；不能用主机网络或同机 loopback 冒充跨网络。使用隔离数据和真实运行时，不使用假 Agent、强制离线或人工驱动帧来缩短启动。测试的诊断等待上限不改变已批准门槛。
 
 报告与日志留在忽略的本地产物目录；结束后确认只回收本次进程和 fixture。技能只维护批准规则与执行入口，不记录历次通过状态。交付前按 [skill 维护](../zork-skill-maintenance/SKILL.md) 核对一致性。
