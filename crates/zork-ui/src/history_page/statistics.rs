@@ -69,13 +69,13 @@ impl Statistics {
             .mt(px(10.))
             .text_size(px(11.))
             .line_height(px(16.5))
-            .text_color(rgb(SUBTLE))
+            .text_color(rgb(SUBTLE()))
             .child(
                 div()
                     .max_w(px((width - 56.).max(1.)))
                     .truncate()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(DIM))
+                    .text_color(rgb(DIM()))
                     .child(name.clone()),
             )
             .when_some(
@@ -94,8 +94,8 @@ impl Statistics {
                     .ml(px(4.))
                     .pl(px(10.))
                     .border_l_1()
-                    .border_color(rgb(BORDER))
-                    .text_color(rgb(DIM))
+                    .border_color(rgb(BORDER()))
+                    .text_color(rgb(DIM()))
                     .child(
                         runtime
                             .environment
@@ -124,7 +124,7 @@ impl Statistics {
                     div()
                         .text_size(px(10.))
                         .line_height(px(15.))
-                        .text_color(rgb(SUBTLE))
+                        .text_color(rgb(SUBTLE()))
                         .child(label),
                 )
                 .child(
@@ -133,7 +133,7 @@ impl Statistics {
                         .text_size(px(if compact { 13. } else { 17. }))
                         .line_height(px(if compact { 18.2 } else { 23.8 }))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(TEXT()))
                         .font_features(crate::components::history::tabular_nums())
                         .when(compact, |v| v.line_clamp(2))
                         .child(value.clone()),
@@ -143,7 +143,7 @@ impl Statistics {
                         div()
                             .text_size(px(9.))
                             .line_height(px(24.))
-                            .text_color(rgb(SUBTLE))
+                            .text_color(rgb(SUBTLE()))
                             .child(note),
                     )
                 })
@@ -209,7 +209,7 @@ impl Statistics {
                     .mt(px(12.))
                     .text_size(px(9.))
                     .line_height(px(13.5))
-                    .text_color(rgb(SUBTLE))
+                    .text_color(rgb(SUBTLE()))
                     .child(
                         text.text("history_usage_scope")
                             .replace("{reported}", &usage.reported_steps.to_string())

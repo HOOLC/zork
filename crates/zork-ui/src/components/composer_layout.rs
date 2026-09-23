@@ -15,7 +15,7 @@ pub const SURFACE_RADIUS: f32 = crate::design::LIGHT_UI.composer.surface_radius;
 pub const EDITOR_ACTION_GAP: f32 = 2.;
 pub const COMPOSER_CHROME: f32 = EDITOR_TOP_INSET
     + EDITOR_ACTION_GAP
-    + crate::design::ZORK_UI.composer.action_size
+    + crate::design::LIGHT_UI.composer.action_size
     + ACTION_INSET;
 pub const DEFAULT_HEIGHT: f32 = 24. + TOP_EXTENSION + COMPOSER_CHROME;
 #[allow(non_snake_case)]
