@@ -655,17 +655,15 @@ fn menu_dropdown<V: 'static>(
     );
     let choice_focus = trigger_focus.clone();
     let panel_id = id.clone();
-    let mut panel = div()
-        .id(format!("{panel_id}-menu"))
-        .occlude()
-        .w(px(control_width.max(160.)))
-        .max_h(px(320.))
+    let panel_padding = 6.;
+    let panel_height = 320.;
+    let mut rows = div()
+        .id(format!("{panel_id}-rows"))
+        .w_full()
+        .max_h(px(
+            panel_height - 2. * (panel_padding + crate::design::BORDER_WIDTH)
+        ))
         .overflow_y_scroll()
-        .rounded(px(PLAIN_POPOVER_RADIUS))
-        .bg(rgb(ZORK_UI.palette.canvas))
-        .border(px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
-        .p(px(6.))
         .flex()
         .flex_col();
     for (index, (key, text, checked)) in options.iter().enumerate() {
@@ -716,7 +714,7 @@ fn menu_dropdown<V: 'static>(
             .when_some(icon, |v, path| v.child(self::icon(path, 14.)))
             .child(div().flex_1().min_w_0().child(text))
             .when(checked, |v| v.child(self::icon("icons/check.svg", 12.)));
-        panel = panel.child(
+        rows = rows.child(
             div()
                 .id(key.clone())
                 .w_full()
@@ -724,6 +722,23 @@ fn menu_dropdown<V: 'static>(
                 .automation_enabled(enabled, AutomationRole::Option, automation_label),
         );
     }
+    let mut panel = div()
+        .id(format!("{panel_id}-menu"))
+        .occlude()
+        .w(px(control_width.max(160.)))
+        .max_h(px(panel_height))
+        .rounded(px(PLAIN_POPOVER_RADIUS))
+        .bg(rgb(ZORK_UI.palette.canvas))
+        .border(px(crate::design::BORDER_WIDTH))
+        .border_color(rgb(crate::design::UI_OUTLINE))
+        .p(px(panel_padding))
+        .flex()
+        .flex_col()
+        .child(crate::components::smooth::rounded_viewport(
+            format!("{panel_id}-viewport"),
+            PLAIN_POPOVER_RADIUS - panel_padding,
+            rows,
+        ));
     let focus_for_keys = handles.clone();
     let outside_owner = owner.clone();
     let outside_close = set_open.clone();
