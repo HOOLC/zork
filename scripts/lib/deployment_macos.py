@@ -8,6 +8,7 @@ import signal
 import sqlite3
 import subprocess
 
+from channels import app_name, id_prefix
 from deployment import digest
 from deployment_health import NodeRuntime, process_path, running_image, wait, pause_service
 
@@ -17,9 +18,9 @@ LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 def validate_app(app, channel, prefix=None):
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True, capture_output=True)
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-    prefix = prefix or ('ing.zork-dev' if channel == 'dev' else 'ing.zork')
+    prefix = prefix or id_prefix(channel)
     if (info.get('CFBundleIdentifier') != prefix + '.desktop'
-            or info.get('CFBundleName') != ('Zork Dev' if channel == 'dev' else 'Zork')
+            or info.get('CFBundleName') != app_name(channel)
             or info.get('CFBundleExecutable') != 'zork-gui'
             or info.get('LSEnvironment')
             or (app / 'Contents/Resources/channel').read_text().strip() != channel):
@@ -29,7 +30,7 @@ def validate_app(app, channel, prefix=None):
             continue
         helper = plistlib.loads(path.read_bytes()).get('CFBundleIdentifier')
         if helper and not helper.startswith(prefix + '.'):
-            raise RuntimeError('Nested helper belongs to another release/dev identity: ' + helper)
+            raise RuntimeError('Nested helper belongs to another release/dev/test identity: ' + helper)
     signature = subprocess.run(['codesign', '-dvv', str(app / 'Contents/MacOS/zork-gui')],
                                check=True, capture_output=True, text=True).stderr
     if ('Identifier=' + info['CFBundleIdentifier']) not in signature.splitlines() or 'Info.plist=not bound' in signature:

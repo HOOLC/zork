@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise two signed clients and the real installer using only isolated data/apps."""
+"""Exercise three signed clients and the real installer using only isolated data/apps."""
 import argparse
 from contextlib import ExitStack, closing
 import hashlib
@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
+from channels import CHANNELS, app_name
 from deployment import atomic_json, copy_tree, digest, manifest
 from deployment_macos import AppRuntime, LSREGISTER, validate_app
 from deployment_build import load_packager, source_stamp
@@ -37,20 +38,21 @@ recovery = drill.recovery
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--candidate', type=Path, help='Captured app candidate; package both isolated identities from its verified Cargo inputs')
+    parser.add_argument('--candidate', type=Path, help='Captured app candidate; package three isolated identities from its verified Cargo inputs')
     parser.add_argument('--dev-app', type=Path)
     parser.add_argument('--release-app', type=Path)
+    parser.add_argument('--test-app', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if bool(args.candidate) == bool(args.dev_app or args.release_app) or (not args.candidate and not (args.dev_app and args.release_app)):
-        parser.error('provide --candidate or both --dev-app and --release-app')
+    if bool(args.candidate) == bool(args.dev_app or args.release_app or args.test_app) or (not args.candidate and not (args.dev_app and args.release_app and args.test_app)):
+        parser.error('provide --candidate or --dev-app, --release-app and --test-app')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='zarc-', dir='/tmp')).resolve()
     runtimes = {}
     report = {'passed': False, 'host': subprocess.check_output(['hostname'], text=True).strip(), 'checks': [],
               'scripts_source': source_stamp(ROOT),
-              'scope': 'two signed fixture app identities, isolated local data and Mesh; real installer, Agent and chat tools; deterministic external model'}
+              'scope': 'three signed fixture app identities, isolated local data and Mesh; real installer, Agent and chat tools; deterministic external model'}
     def passed(name, evidence):
         report['checks'].append({'name': name, 'evidence': evidence})
         atomic_json(output / 'result.json', report)
@@ -68,7 +70,7 @@ def main():
                 if digest(raw / name) != expected:
                     raise RuntimeError('Captured fixture input differs: ' + name)
             packager = load_packager(ROOT)
-            for channel in ('dev', 'release'):
+            for channel in CHANNELS:
                 app = root / 'prepared' / (channel + '.app')
                 options = SimpleNamespace(bin_dir=raw, browser_bin_dir=raw,
                     id_prefix='ing.zork.recovery-fixture.' + channel, channel=channel,
@@ -81,15 +83,16 @@ def main():
                 setattr(args, channel + '_app', app)
             report['input_candidate'] = record['id']
         build_records = [json.loads((app.resolve() / 'Contents/Resources/build.json').read_text())
-                         for app in (args.dev_app, args.release_app)]
-        if build_records[0] != build_records[1]:
-            raise RuntimeError('Both fixture channels must use the same captured build')
+                         for app in (args.dev_app, args.release_app, args.test_app)]
+        if any(record != build_records[0] for record in build_records):
+            raise RuntimeError('All fixture channels must use the same captured build')
         report['build_record'] = build_records[0]
         report['fixture_manifests'] = {channel: manifest(app.resolve(), build_records[0], channel, 'app')
-            for channel, app in (('dev', args.dev_app), ('release', args.release_app))}
+            for channel, app in ((channel, getattr(args, channel + '_app')) for channel in CHANNELS)}
         with ExitStack() as stack:
             config = {'repo': str(ROOT), 'channels': {}}
-            for channel, source in [('release', args.release_app.resolve()), ('dev', args.dev_app.resolve())]:
+            for channel in CHANNELS:
+                source = getattr(args, channel + '_app').resolve()
                 app = root / (channel + '.app')
                 copy_tree(source, app)
                 data = root / channel / 'client'
@@ -116,24 +119,38 @@ def main():
                 runtime.start(runtime.capture(), candidate=True)
             atomic_json(root / 'deployment-config.json', config)
             baseline = {channel: runtime.health() for channel, runtime in runtimes.items()}
-            assert baseline['release']['node']['origin'] != baseline['dev']['node']['origin']
+            assert len({item['node']['origin'] for item in baseline.values()}) == 3
             groups = {}
             for channel, runtime in runtimes.items():
                 runtime.node.request('/v1/node/mesh/invites', {})
                 group = json.loads((runtime.data / 'node/config.json').read_text())['mesh']['group']
                 assert group is not None
                 groups[channel] = hashlib.sha256(json.dumps(group, sort_keys=True).encode()).hexdigest()
-            assert groups['release'] != groups['dev']
+            assert len(set(groups.values())) == 3
             names = {}
-            for channel in ('release', 'dev'):
+            for channel in CHANNELS:
                 pid = baseline[channel]['gui']['pid']
                 script = ('ObjC.import("AppKit"); var a=$.NSRunningApplication.runningApplicationWithProcessIdentifier(' + str(pid) + '); '
                           'JSON.stringify({name:ObjC.unwrap(a.localizedName),bundle:ObjC.unwrap(a.bundleIdentifier)})')
                 names[channel] = json.loads(subprocess.check_output(['osascript', '-l', 'JavaScript', '-e', script], text=True))
-                assert names[channel]['name'] == ('Zork Dev' if channel == 'dev' else 'Zork'), names
+                assert names[channel]['name'] == app_name(channel), names
                 assert names[channel]['bundle'] == config['channels'][channel]['app']['id_prefix'] + '.desktop'
-            passed('signed release/dev GUIs coexist with distinct names, identities, data, Mesh and chat replies',
+            passed('signed release/dev/test GUIs coexist with distinct names, identities, data, Mesh and chat replies',
                    {'processes': baseline, 'names': names, 'mesh_group_digests': groups})
+
+            test_candidate = root / 'test-incoming'
+            test_candidate.mkdir()
+            copy_tree(args.test_app.resolve(), test_candidate / 'Zork.app')
+            atomic_json(test_candidate / 'deployment.json', manifest(
+                test_candidate / 'Zork.app', build_records[0], 'test', 'app'))
+            recovery.apply_candidate(root, 'test', test_candidate)
+            runtimes['test'].stop()
+            for channel in ('release', 'dev'):
+                now = runtimes[channel].health()
+                assert now['gui']['pid'] == baseline[channel]['gui']['pid']
+                assert now['node']['station']['pid'] == baseline[channel]['node']['station']['pid']
+                assert now['node']['origin'] == baseline[channel]['node']['origin']
+            passed('test reinstall and shutdown preserve both daily clients and their chat replies', baseline)
 
             candidate = root / 'incoming'
             candidate.mkdir()

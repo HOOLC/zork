@@ -65,7 +65,7 @@ class MeshDirectoryTest {
         stage("awaiting_approval", identity)
         invitation { it.optBoolean("done") && it.isNull("invitation") }
         directory(a, b); read(a); read(b)
-        assertEquals("dev", root.resolve("channel").readText().trim())
+        assertEquals("test", root.resolve("channel").readText().trim())
 
         val store = ViewModelStore()
         lateinit var model: ClientViewModel

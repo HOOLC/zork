@@ -4,6 +4,7 @@
 Requires an already running arm64 emulator (default emulator-5554), debug APK
 and instrumentation APK. No user node, model account or workspace is accessed.
 """
+from test_apks import require_test_apks
 import argparse
 import importlib.util
 import json
@@ -14,12 +15,13 @@ import tempfile
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE = "ing.zork.android.debug"
+PACKAGE = "ing.zork.android.test"
 RUNNER = PACKAGE + ".test/androidx.test.runner.AndroidJUnitRunner"
 CLASS = "ing.zork.android.MeshIntegrationTest"
 
 
 def main():
+    os.environ['ZORK_CHANNEL'] = 'test'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", default="emulator-5554")
     parser.add_argument("--host-ip", help="Development host LAN IP for a physical Android device")
@@ -29,6 +31,7 @@ def main():
     parser.add_argument("--test-apk", type=Path, default=ROOT / "apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/android")
     args = parser.parse_args()
+    require_test_apks(args.apk, args.test_apk)
     sdk = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
     adb = [str(sdk / "platform-tools/adb"), "-s", args.serial]
     artifacts = args.output

@@ -4,6 +4,7 @@
 Use freshly rebuilt binaries and APKs on a task-owned emulator. The fake model
 executes the real chat.post_file tool; source files are outside its workspace.
 """
+from test_apks import require_test_apks
 import argparse
 import hashlib
 import importlib.util
@@ -21,7 +22,7 @@ spec = importlib.util.spec_from_file_location("channels", ROOT / "scripts/test-c
 channels = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(channels)
 fixture = channels.fixture
-PACKAGE = "ing.zork.android.debug"
+PACKAGE = "ing.zork.android.test"
 CLASS = "ing.zork.android.ChatFileDeliveryTest"
 
 
@@ -59,12 +60,14 @@ def tool(node, chat, session, name, args):
 
 
 def main():
+    os.environ['ZORK_CHANNEL'] = 'test'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--apk", type=Path, default=ROOT / "apps/android/app/build/outputs/apk/debug/app-debug.apk")
     parser.add_argument("--test-apk", type=Path, default=ROOT / "apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")
     args = parser.parse_args()
+    require_test_apks(args.apk, args.test_apk)
     assert args.serial.startswith("emulator-"), "requires a task-owned emulator"
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, observe, promote and recover separate local release/dev deployments."""
+"""Build, observe, promote and recover separate local release/dev/test deployments."""
 import argparse
 import json
 import os
@@ -12,6 +12,7 @@ import uuid
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS / 'lib'))
+from channels import CHANNELS, app_name
 from deployment import (Transaction, atomic_json, check_links, copy_tree, digest, exclusive,
                         manifest, replace_directory, verify_manifest)
 from deployment_build import build, promote_app, stability
@@ -30,13 +31,13 @@ def channel_config(root, channel, kind):
     def paths(value):
         return [Path(p).resolve() for p in (value['data'], value['payload'],
                 *value.get('ancillary', []), *([value['preferences']] if value.get('preferences') else []))]
-    for other in settings['release' if channel == 'dev' else 'dev'].values():
+    for other in (value for name, entries in settings.items() if name != channel for value in entries.values()):
         if host(chosen) != host(other):
             continue
         for left in paths(chosen):
             for right in paths(other):
                 if left.is_relative_to(right) or right.is_relative_to(left):
-                    raise RuntimeError(f'release/dev storage overlaps: {left} and {right}')
+                    raise RuntimeError(f'release/dev/test storage overlaps: {left} and {right}')
     return chosen
 
 
@@ -95,7 +96,7 @@ def apply_candidate(root, channel, candidate_dir):
     kind = record['kind']
     require_no_pending(root, channel, kind)
     if record['channel'] != channel:
-        raise RuntimeError('Candidate belongs to another release/dev channel')
+        raise RuntimeError('Candidate belongs to another release/dev/test channel')
     settings = channel_config(root, channel, kind)
     if not settings.get('health', {}).get('profile') or not settings['health'].get('model'):
         raise RuntimeError('Configure an explicit health profile/model before switching')
@@ -215,10 +216,35 @@ def prepare_promotion(candidate, store, repo, observations):
         promote_app(repo, source, payload)
     else:
         copy_tree(source, payload)
+        (payload / 'channel').write_text('release\n')
     # Same captured Cargo build; no --release rebuild can silently change the tested code.
     record = manifest(payload, source_record['source'], 'release', kind)
     atomic_json(stage / 'deployment.json', record)
     atomic_json(stage / 'promotion.json', {'promoted_from': source_record['id'], 'stability': accepted})
+    final = stage.with_name(record['id'])
+    if final.exists():
+        load_candidate(final)
+        shutil.rmtree(stage)
+    else:
+        stage.rename(final)
+    return final
+
+
+def prepare_dev_candidate(candidate, store, repo):
+    """Explicitly select tested code for daily dev; never copy test data."""
+    source_record, source = load_candidate(candidate)
+    if source_record['channel'] != 'test':
+        raise RuntimeError('Only a test candidate can be accepted into dev')
+    stage = store / ('.accept-' + uuid.uuid4().hex)
+    stage.mkdir(parents=True, mode=0o700)
+    payload = stage / source.name
+    if source_record['kind'] == 'app':
+        promote_app(repo, source, payload, channel='dev')
+    else:
+        copy_tree(source, payload)
+        (payload / 'channel').write_text('dev\n')
+    record = manifest(payload, source_record['source'], 'dev', source_record['kind'])
+    atomic_json(stage / 'deployment.json', record)
     final = stage.with_name(record['id'])
     if final.exists():
         load_candidate(final)
@@ -263,11 +289,11 @@ def install_tools(root, repo):
         shutil.copy2(SCRIPTS / name, installed / name)
     binaries = root / 'bin'
     binaries.mkdir(exist_ok=True)
-    for name, prefix in {'zork-node': ['node'], 'zork-dev-build': ['build'],
+    for name, prefix in {'zork-node': ['node'], 'zork-dev-build': ['build', '--channel', 'dev'], 'zork-test-build': ['build'],
                          'zork-promote': ['promote'], 'zork-app-build': ['build', '--kind', 'app']}.items():
         wrapper = '#!/usr/bin/env python3\nimport os, sys\n'
         wrapper += f'args = sys.argv[1:]\nbase = {prefix!r}\n'
-        if name in ('zork-dev-build', 'zork-app-build', 'zork-promote'):
+        if name in ('zork-dev-build', 'zork-test-build', 'zork-app-build', 'zork-promote'):
             wrapper += "if args and not args[0].startswith('-'):\n    base += ['--repo', args.pop(0)]\n"
             wrapper += "args = ['--switch' if a == '--yes' else a for a in args]\n"
         wrapper += f"os.execv(sys.executable, [sys.executable, {str(installed / 'dev/recovery.py')!r}, '--root', {str(root)!r}, *base, *args])\n"
@@ -277,13 +303,19 @@ def install_tools(root, repo):
         temporary.replace(binaries / name)
     path = root / 'deployment-config.json'
     if not path.exists():
-        channels = {}
-        for channel in ('release', 'dev'):
+        settings = {'repo': str(repo), 'channels': {}}
+    else:
+        settings = json.loads(path.read_text())
+    channels = settings['channels']
+    if any(channel not in channels for channel in CHANNELS):
+        for channel in CHANNELS:
+            if channel in channels:
+                continue
             channels[channel] = {
                 'node': {'data': str(root / channel / 'data'), 'payload': str(root / channel / 'bin'), 'health': {}},
-                'app': {'data': str(root / ('client-dev' if channel == 'dev' else 'client-release')),
-                        'payload': str(root / 'apps' / ('Zork Dev.app' if channel == 'dev' else 'Zork.app')), 'health': {}}}
-        atomic_json(path, {'repo': str(repo), 'channels': channels})
+                'app': {'data': str(root / ('client-' + channel)),
+                        'payload': str(root / 'apps' / (app_name(channel) + '.app')), 'health': {}}}
+        atomic_json(path, settings)
     return {'tools': str(installed), 'config': str(path)}
 
 
@@ -301,11 +333,16 @@ def main(argv=None):
         if action == 'build':
             command.add_argument('--profile', choices=('dev', 'release'), default='dev')
             command.add_argument('--services-config', type=Path)
+            command.add_argument('--channel', choices=('test', 'dev'), default='test')
+    accept = commands.add_parser('accept-test')
+    accept.add_argument('candidate', type=Path)
+    accept.add_argument('--repo', type=Path, default=SCRIPTS.parent)
+    accept.add_argument('--switch', action='store_true')
     apply = commands.add_parser('apply')
-    apply.add_argument('channel', choices=('release', 'dev'))
+    apply.add_argument('channel', choices=CHANNELS)
     apply.add_argument('candidate', type=Path)
     node = commands.add_parser('node')
-    node.add_argument('channel', choices=('release', 'dev'))
+    node.add_argument('channel', choices=CHANNELS)
     node.add_argument('action', choices=('start', 'stop', 'status', 'health', 'logs'))
     node.add_argument('--kind', choices=('node', 'app'), default='node')
     node.add_argument('--profile', help='Health Profile override for this check')
@@ -325,11 +362,14 @@ def main(argv=None):
             result = install_tools(root, args.repo.resolve())
         elif args.command in ('build', 'promote'):
             repo = (args.repo or Path(config(root)['repo'])).resolve()
-            channel = 'dev' if args.command == 'build' else 'release'
+            channel = args.channel if args.command == 'build' else 'release'
             require_no_pending(root, channel, args.kind)
-            candidate = (build(repo, root / 'candidates', args.kind, args.profile, args.services_config)
+            candidate = (build(repo, root / 'candidates', args.kind, args.profile, args.services_config, channel=channel)
                          if args.command == 'build' else promote(root, args.kind, repo))
             result = apply_candidate(root, channel, candidate) if args.switch else {'candidate': str(candidate)}
+        elif args.command == 'accept-test':
+            candidate = prepare_dev_candidate(args.candidate, root / 'candidates', args.repo)
+            result = apply_candidate(root, 'dev', candidate) if args.switch else {'candidate': str(candidate)}
         elif args.command == 'apply':
             record, _ = load_candidate(args.candidate)
             require_no_pending(root, args.channel, record['kind'])

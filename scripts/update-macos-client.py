@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build on this checkout and install a release/dev candidate on a Mac over SSH."""
+"""Build on this checkout and install a release/dev/test candidate on a Mac over SSH."""
 import argparse
 import importlib.util
 import json
@@ -12,6 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts/lib'))
+from channels import CHANNELS, app_name
 from deployment import atomic_json, digest, exclusive, TOOL_FILES
 from deployment_build import build, stability
 
@@ -27,7 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', required=True)
     parser.add_argument('--control', help='Existing authenticated SSH control socket')
-    parser.add_argument('--channel', choices=('dev', 'release'), default='dev')
+    parser.add_argument('--channel', choices=CHANNELS, default='test')
     parser.add_argument('--candidate', type=Path, help='Immutable candidate directory from recovery.py build/promote')
     parser.add_argument('--expected-build-id', help='Require exactly this whole candidate, including all helpers')
     mode = parser.add_mutually_exclusive_group()
@@ -84,7 +85,7 @@ def main():
             if args.candidate:
                 candidate = args.candidate.resolve()
             else:
-                installed = 'Zork Dev.app' if args.channel == 'dev' else 'Zork.app'
+                installed = app_name(args.channel) + '.app'
                 command = ('p="$HOME/Applications/' + installed + '/Contents/Resources/services.json"; '
                            'if test -f "$p"; then cat "$p"; fi')
                 services = subprocess.check_output(ssh + [command])
@@ -92,7 +93,7 @@ def main():
                 if services:
                     path = scratch / 'services.json'
                     path.write_bytes(services)
-                candidate = build(ROOT, root / 'candidates', 'app', services=path)
+                candidate = build(ROOT, root / 'candidates', 'app', services=path, channel=args.channel)
             record, app = recovery.load_candidate(candidate)
             if record['kind'] != 'app' or record['channel'] != args.channel:
                 raise RuntimeError('Candidate channel/kind does not match the installation request')

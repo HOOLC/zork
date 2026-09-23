@@ -65,7 +65,7 @@ pub async fn resolve_invitation(
     ensure!(invite.kind == expected, "invite_kind_mismatch");
     ensure!(
         invite.channel == zork_config::channel::current()?,
-        "邀请属于另一环境，请使用对应的 Zork 或 Zork Dev"
+        "邀请属于另一环境，请使用对应的 Zork、Zork Dev 或 Zork Test"
     );
     Ok(invite)
 }

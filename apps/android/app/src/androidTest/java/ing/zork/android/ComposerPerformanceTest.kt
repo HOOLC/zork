@@ -56,7 +56,7 @@ class ComposerPerformanceTest {
             pause(600)
             scenario.onActivity { active = false }; pause(2000)
             synchronized(samples) { samples.clear() }
-            instrumentation.uiAutomation.executeShellCommand("dumpsys gfxinfo ing.zork.android.debug reset").close()
+            instrumentation.uiAutomation.executeShellCommand("dumpsys gfxinfo ${instrumentation.targetContext.packageName} reset").close()
             repeat(4) {
                 scenario.onActivity { active = true }; pause(800)
                 scenario.onActivity { active = false }; pause(2000)

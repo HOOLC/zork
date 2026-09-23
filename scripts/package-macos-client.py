@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from channels import CHANNELS, app_name, id_prefix
 from test_app_slot import app_slot, run_test
 from build_env import build_environment
 from cua_build import ensure_runtime, verify_runtime
@@ -38,8 +39,8 @@ def copy_binary(source, destination):
 
 
 def app_info(version, prefix='ing.zork', channel='release'):
-    name = 'Zork Dev' if channel == 'dev' else 'Zork'
-    icon = 'ZorkDev.icns' if channel == 'dev' else 'Zork.icns'
+    name = app_name(channel)
+    icon = CHANNELS[channel].icon
     return {'CFBundleIdentifier': prefix + '.desktop', 'CFBundleName': name,
             'CFBundleDisplayName': name, 'CFBundleIconFile': icon,
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
@@ -116,7 +117,7 @@ def stage_binaries(app, binaries, assets, version, launcher, prefix='ing.zork'):
 def build_app(args, repo, app):
     prefix = args.id_prefix
     channel = getattr(args, 'channel', 'release')
-    if (prefix == 'ing.zork-dev' and channel != 'dev') or (prefix == 'ing.zork' and channel != 'release'):
+    if any(prefix == id_prefix(other) and channel != other for other in CHANNELS):
         raise RuntimeError('Bundle identity and data channel must match; set --channel explicitly')
     version=json.loads((repo/'packages/zork/package.json').read_text())['version']
     mac=app/'Contents/MacOS';resources=app/'Contents/Resources'
@@ -160,6 +161,9 @@ def build_app(args, repo, app):
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix, channel), f)
     (resources/'channel').write_text(channel+'\n')
+    instance = getattr(args, 'test_instance', None)
+    if channel == 'test' and instance:
+        (resources/'test-instance').write_text(instance + '\n')
     if build is not None:
         for name, expected in build['binaries'].items():
             if digest(binaries/name) != expected:
@@ -176,7 +180,7 @@ def build_app(args, repo, app):
 def main():
     parser=argparse.ArgumentParser(description='Update the one persistent app for this worktree')
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
-    parser.add_argument('--channel',choices=['release','dev'],default='release',help='Signed data and identity channel')
+    parser.add_argument('--channel',choices=CHANNELS,default='test',help='Signed data and identity channel')
     parser.add_argument('--id-prefix',help='Override bundle prefix for isolated test identities')
     parser.add_argument('--build-record',type=Path,help='Captured Cargo and native desktop runtime provenance and input digests')
     parser.add_argument('--bin-dir',type=Path)
@@ -186,7 +190,9 @@ def main():
     parser.add_argument('--launch',action='store_true',help='Launch after update even if not previously running')
     parser.add_argument('--run',nargs=argparse.REMAINDER,help='Run tests against the updated {app}; retain the app afterward')
     args=parser.parse_args()
-    args.id_prefix = args.id_prefix or ('ing.zork-dev' if args.channel == 'dev' else 'ing.zork')
+    repo = Path(__file__).resolve().parents[1]
+    args.test_instance = hashlib.sha256(str(repo).encode()).hexdigest()[:16] if args.channel == 'test' else None
+    args.id_prefix = args.id_prefix or (id_prefix(args.channel) + ('.' + args.test_instance if args.test_instance else ''))
     if args.channel == 'dev' and args.id_prefix == 'ing.zork':
         parser.error('dev cannot use the release bundle identity')
     if args.run == []:

@@ -25,7 +25,7 @@ Usage:
   zork update [--data DIR]
   zork upgrade --version X.Y.Z [--data DIR]
   zork account login|status|logout [--data DIR]
-  zork mesh invite|join|switch|leave|status [--data DIR] [--channel dev|release] [--yes]
+  zork mesh invite|join|switch|leave|status [--data DIR] [--channel test|dev|release] [--yes]
   zork mcp list|add FILE|get ID|probe ID|enable ID|disable ID|remove ID [--data DIR]
   zork mcp update ID FILE [--data DIR]
   zork service install|uninstall|status [--data DIR] [--at-login]
