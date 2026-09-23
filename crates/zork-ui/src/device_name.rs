@@ -60,44 +60,53 @@ pub fn monogram(name: &str) -> String {
 }
 
 /// The device's identity mark: a stable hue with the brand's folded corner.
-/// `parent` is the surface behind the mark, shown through the fold's cut.
-pub fn mark(name: &str, size: f32, parent: u32) -> impl IntoElement {
-    let fold = (size / 3.).round();
-    let text_size = (size * 0.56).round();
+/// It is one path with its top-right corner cut, so it sits on any surface,
+/// including rows whose hover and selection change the fill behind it.
+pub fn mark(name: &str, size: f32) -> impl IntoElement {
+    let hue = crate::design::device_hue(name);
     div()
         .relative()
         .flex_shrink_0()
         .size(px(size))
-        .rounded(px((size * 0.3).round()))
-        .overflow_hidden()
-        .bg(rgb(crate::design::device_hue(name)))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(text_size))
-        .line_height(px(size))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(rgb(0xFFFFFF))
-        .child(monogram(name))
         .child(
             gpui::canvas(
                 |_, _, _| {},
                 move |bounds, _, window, _| {
-                    let right = bounds.origin.x + bounds.size.width;
-                    let top = bounds.origin.y;
-                    let f = px(fold);
-                    let mut cut = PathBuilder::fill();
-                    cut.move_to(point(right - f, top));
-                    cut.line_to(point(right, top));
-                    cut.line_to(point(right, top + f));
-                    cut.close();
-                    if let Ok(path) = cut.build() {
-                        window.paint_path(path, Hsla::from(rgb(parent)));
+                    let (x, y) = (bounds.origin.x, bounds.origin.y);
+                    let (w, h) = (bounds.size.width, bounds.size.height);
+                    let (radius, handle) = crate::components::smooth::smooth_corner(
+                        (size * 0.3).round(),
+                        size / 2.,
+                    );
+                    let r = px(radius);
+                    let k = px(radius * handle);
+                    let f = px((size / 3.).round());
+                    let mut body = PathBuilder::fill();
+                    body.move_to(point(x + r, y));
+                    body.line_to(point(x + w - f, y));
+                    body.line_to(point(x + w, y + f));
+                    body.line_to(point(x + w, y + h - r));
+                    body.cubic_bezier_to(
+                        point(x + w - r, y + h),
+                        point(x + w, y + h - r + k),
+                        point(x + w - r + k, y + h),
+                    );
+                    body.line_to(point(x + r, y + h));
+                    body.cubic_bezier_to(
+                        point(x, y + h - r),
+                        point(x + r - k, y + h),
+                        point(x, y + h - r + k),
+                    );
+                    body.line_to(point(x, y + r));
+                    body.cubic_bezier_to(point(x + r, y), point(x, y + r - k), point(x + r - k, y));
+                    body.close();
+                    if let Ok(path) = body.build() {
+                        window.paint_path(path, Hsla::from(rgb(hue)));
                     }
                     let mut flap = PathBuilder::fill();
-                    flap.move_to(point(right - f, top));
-                    flap.line_to(point(right, top + f));
-                    flap.line_to(point(right - f, top + f));
+                    flap.move_to(point(x + w - f, y));
+                    flap.line_to(point(x + w, y + f));
+                    flap.line_to(point(x + w - f, y + f));
                     flap.close();
                     if let Ok(path) = flap.build() {
                         window.paint_path(path, gpui::hsla(0., 0., 1., 0.45));
@@ -106,6 +115,19 @@ pub fn mark(name: &str, size: f32, parent: u32) -> impl IntoElement {
             )
             .absolute()
             .inset_0(),
+        )
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px((size * 0.56).round()))
+                .line_height(px(size))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(rgb(0xFFFFFF))
+                .child(monogram(name)),
         )
 }
 
@@ -202,7 +224,7 @@ pub fn label(
         .flex()
         .items_center()
         .gap_2()
-        .child(mark(&name, 18., p.canvas))
+        .child(mark(&name, 18.))
         .child(div().min_w_0().text_ellipsis().child(name.clone()))
         .child(badge)
         .automation(AutomationRole::Status, format!("{name} · {detail}"))

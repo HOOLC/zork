@@ -357,7 +357,7 @@ pub(crate) fn panel_contents_with_title_action(
     let header = div()
         .h(px(76.))
         .flex_shrink_0()
-        .px(px(24.))
+        .px(px(28.))
         .flex()
         .items_center()
         .justify_between()
@@ -429,7 +429,7 @@ pub(crate) fn panel_contents_with_title_action(
         })
         .child(header)
         .when_some(notice, |v, notice| {
-            v.child(div().px(px(24.)).pb_3().child(ui::feedback(notice)))
+            v.child(div().px(px(28.)).pb_3().child(ui::feedback(notice)))
         })
         .child(
             div()
@@ -437,14 +437,14 @@ pub(crate) fn panel_contents_with_title_action(
                 .min_h_0()
                 .max_h(max_height - px(if has_footer { 160. } else { 90. }))
                 .overflow_y_scroll()
-                .px(px(24.))
+                .px(px(28.))
                 .pt_1()
                 .pb(px(if has_footer { 12. } else { 24. }))
                 .child(body),
         )
         .when_some(footer, |v, footer| {
             v.child(
-                div().flex_shrink_0().px(px(24.)).pt_5().pb_6().child(
+                div().flex_shrink_0().px(px(28.)).pt_5().pb_6().child(
                     div()
                         .id(format!("{id}-footer"))
                         .w_full()

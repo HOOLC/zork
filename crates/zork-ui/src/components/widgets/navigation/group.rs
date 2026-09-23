@@ -44,10 +44,10 @@ impl Group {
                 .id(id)
                 .h(px(20.))
                 .flex_shrink_0()
-                .px(px(8.))
+                .px(px(12.))
                 .flex()
                 .items_center()
-                .text_size(px(11.))
+                .text_size(px(12.))
                 .line_height(px(16.))
                 .text_color(rgb(ZORK_UI.palette.muted))
                 .child(title.clone())
@@ -81,17 +81,16 @@ impl Group {
         .group(format!("navigation-{id}"))
         .w_full()
         .h(px(crate::controls::CONTROL_HEIGHT))
-        .px(px(7.))
+        .px(px(12.))
         .gap_2()
         .justify_start()
         .font_weight(FontWeight::NORMAL)
         .when(style.kind == Kind::Tabs, |row| {
             row.role(Role::Tab).justify_center()
         })
-        .when(selected, |row| {
-            row.bg(rgb(ZORK_UI.palette.selected))
-                .text_color(rgb(ZORK_UI.palette.text))
-        })
+        // The component's own selected state keeps the fill under hover and focus.
+        .selected(selected)
+        .when(selected, |row| row.text_color(rgb(ZORK_UI.palette.text)))
     }
 
     pub fn surface(&self, content: impl IntoElement) -> GroupSurface {
