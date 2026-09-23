@@ -899,7 +899,7 @@ impl RootView {
         origin: zork_ui::components::liquid::departure::Origin,
         cx: &mut Context<Self>,
     ) {
-        if self.preview_original.is_some() || self.preparing_files > 0 {
+        if self.preparing_files > 0 {
             return;
         }
         let Some(id) = self.selected_session.clone() else {
@@ -916,9 +916,6 @@ impl RootView {
     }
 
     fn cancel_session(&mut self, _cx: &mut Context<Self>) {
-        if self.preview_original.is_some() {
-            return;
-        }
         if let Some(conversation) = &self.core_conversation {
             conversation.stop();
         }
@@ -1752,7 +1749,6 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
-        let previewing = self.preview_original.is_some();
         let presence_extent = self.presence.extent;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
@@ -1785,13 +1781,9 @@ impl RootView {
                 )
             })
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
-                if v.preview_original.is_none() {
-                    v.attach_paths(paths.paths().to_vec(), cx);
-                }
+                v.attach_paths(paths.paths().to_vec(), cx);
             }))
-            .when(!previewing, |frame| {
-                frame.child(self.render_composer_extras(window, cx))
-            })
+            .child(self.render_composer_extras(window, cx))
             .child(composer)
             .child(
                 gpui::canvas(

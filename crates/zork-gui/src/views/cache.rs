@@ -88,9 +88,6 @@ impl RootView {
             .and_then(|(store, node)| read_view_state(store, node, key).ok().flatten())
     }
     pub(super) fn save_draft(&self, cx: &Context<Self>) {
-        if self.preview_original.is_some() {
-            return;
-        }
         if let Some(id) = &self.selected_session {
             if let Err(error) = self
                 .core_device

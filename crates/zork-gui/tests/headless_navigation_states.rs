@@ -412,8 +412,9 @@ fn composer_preview_checks() -> anyhow::Result<()> {
     });
     let mut root = None;
     let window = cx.open_window(gpui::size(px(1000.), px(700.)), |_, cx| {
-        let view =
-            cx.new(|cx| zork_gui::views::RootView::render_benchmark_fixture(false, store, cx));
+        let view = cx.new(|cx| {
+            zork_gui::views::RootView::render_benchmark_fixture(false, store.clone(), cx)
+        });
         root = Some(view.clone());
         cx.new(|_| AutomationRoot::new(view))
     })?;
@@ -427,6 +428,12 @@ fn composer_preview_checks() -> anyhow::Result<()> {
         }
         Ok(())
     };
+    let act = |cx: &mut HeadlessAppContext, value| -> anyhow::Result<()> {
+        cx.update_window(window.into(), |_, window, cx| {
+            driver.dispatch(serde_json::from_value(value).unwrap(), window, cx)
+        })??;
+        pump(cx)
+    };
     let composer = |phase: &str| -> anyhow::Result<_> {
         let elements = driver.snapshot(false).elements;
         let input = elements
@@ -437,31 +444,90 @@ fn composer_preview_checks() -> anyhow::Result<()> {
             .iter()
             .find(|element| element.id == "send-button" && element.visible)
             .with_context(|| format!("{phase}: send button disappeared"))?;
-        Ok((input.bounds, send.enabled))
+        Ok((input.bounds, input.enabled, send.enabled))
     };
-    pump(&mut cx)?;
-    let (original, _) = composer("original")?;
+    cx.update_window(window.into(), |_, window, _| window.activate_window())?;
     let root = root.unwrap();
+    let core = root.update(&mut cx, |view, cx| {
+        let core = view.benchmark_core_device();
+        core.edit_draft("render-fixture", "original draft".into())
+            .unwrap();
+        core.edit_draft("hovered", "hovered draft".into()).unwrap();
+        core.edit_draft("another", "another draft".into()).unwrap();
+        view.benchmark_restore_draft(cx);
+        core
+    });
+    pump(&mut cx)?;
+    let (original, _, _) = composer("original")?;
+    act(
+        &mut cx,
+        json!({"type":"click","target":{"element_id":"composer-input"}}),
+    )?;
     root.update(&mut cx, |view, cx| {
         assert!(view.benchmark_preview_session("hovered", cx));
     });
     pump(&mut cx)?;
-    let (preview, enabled) = composer("hovered")?;
-    anyhow::ensure!(!enabled, "preview send button remained enabled");
+    let (preview, editable, enabled) = composer("hovered")?;
+    anyhow::ensure!(editable && enabled, "hovered Chat composer is not editable");
     anyhow::ensure!(
         (preview.y - original.y).abs() < 1. && (preview.height - original.height).abs() < 1.,
         "preview composer jumped: {original:?} -> {preview:?}"
+    );
+    let select_all = if cfg!(target_os = "macos") {
+        "cmd-a"
+    } else {
+        "ctrl-a"
+    };
+    act(&mut cx, json!({"type":"key","keystroke":select_all}))?;
+    act(&mut cx, json!({"type":"type_text","text":"edited hovered"}))?;
+    anyhow::ensure!(
+        core.draft("hovered").text == "edited hovered"
+            && core.draft("render-fixture").text == "original draft",
+        "preview input was saved to the wrong Chat"
     );
     root.update(&mut cx, |view, cx| {
         assert!(view.benchmark_preview_session("another", cx));
     });
     pump(&mut cx)?;
-    composer("second preview")?;
+    let (_, editable, _) = composer("second preview")?;
+    anyhow::ensure!(editable, "second Chat composer is not editable");
+    act(&mut cx, json!({"type":"key","keystroke":select_all}))?;
+    act(&mut cx, json!({"type":"type_text","text":"edited another"}))?;
+    anyhow::ensure!(
+        core.draft("another").text == "edited another"
+            && core.draft("hovered").text == "edited hovered",
+        "switching previews mixed two Chat drafts"
+    );
     root.update(&mut cx, |view, cx| view.benchmark_restore_preview(cx));
     pump(&mut cx)?;
     composer("restored")?;
+    anyhow::ensure!(
+        core.draft("render-fixture").text == "original draft"
+            && core.draft("hovered").text == "edited hovered"
+            && core.draft("another").text == "edited another",
+        "leaving preview changed a Chat draft"
+    );
+    root.update(&mut cx, |view, cx| {
+        assert!(view.benchmark_preview_session("hovered", cx));
+    });
+    pump(&mut cx)?;
+    act(&mut cx, json!({"type":"key","keystroke":"enter"}))?;
+    anyhow::ensure!(
+        store
+            .outbox("mini1")?
+            .iter()
+            .any(|message| message.session_id == "hovered" && message.content == "edited hovered"),
+        "sending from preview did not target the visible Chat"
+    );
+    root.update(&mut cx, |view, cx| view.benchmark_restore_preview(cx));
+    pump(&mut cx)?;
+    composer("restored after send")?;
+    anyhow::ensure!(
+        core.draft("render-fixture").text == "original draft",
+        "sending from preview changed the original Chat draft"
+    );
     println!(
-        "PASS preview keeps the composer visible and disables sending until navigation commits"
+        "PASS preview keeps the composer visible and routes edits and send to the visible Chat"
     );
     Ok(())
 }

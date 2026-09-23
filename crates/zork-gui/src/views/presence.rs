@@ -330,7 +330,6 @@ impl RootView {
     ) -> gpui::AnyElement {
         use component::{Capabilities, Member as MemberView, Snapshot};
         use zork_ui::components::liquid::{composer as component, Pose};
-        let previewing = self.preview_original.is_some();
         let now = self
             .presence
             .frame_time
@@ -352,11 +351,7 @@ impl RootView {
         self.presence
             .anchors
             .retain(|id, _| self.presence.members.iter().any(|m| &m.info.id == id));
-        let extent = if previewing {
-            self.presence.extent
-        } else {
-            self.presence.extent.max(self.file_fan_dimensions().1)
-        };
+        let extent = self.presence.extent.max(self.file_fan_dimensions().1);
         let height = self.composer_editor_height
             + zork_ui::components::liquid_composer::TOP_EXTENSION
             + zork_ui::components::liquid_composer::COMPOSER_CHROME;
@@ -404,9 +399,9 @@ impl RootView {
             .collect();
         let snapshot = Snapshot {
             capabilities: Capabilities {
-                editable: !previewing && state.editable,
-                stop: !previewing && state.stop,
-                enabled: !previewing && state.enabled,
+                editable: state.editable,
+                stop: state.stop,
+                enabled: state.enabled,
             },
             text: self.composer_input.read(cx).value().to_owned(),
             members: targets
@@ -435,11 +430,7 @@ impl RootView {
             .into_iter()
             .map(|(member, pose)| (member.info.id.clone(), pose))
             .collect();
-        let opening = if previewing {
-            None
-        } else {
-            self.draft_opening()
-        };
+        let opening = self.draft_opening();
         let fan = opening.map(|_| {
             div()
                 .absolute()
@@ -541,12 +532,8 @@ impl RootView {
                 height: extent + height,
                 editor: &self.composer_input,
                 snapshot: &snapshot,
-                fan_progress: if previewing {
-                    0.
-                } else {
-                    self.file_ui.draft.progress
-                },
-                fan_pinned: !previewing && self.file_ui.draft.pinned,
+                fan_progress: self.file_ui.draft.progress,
+                fan_pinned: self.file_ui.draft.pinned,
                 bubbles: &bubbles,
                 handler,
                 accessory_band: 0.,
@@ -591,9 +578,6 @@ impl RootView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.preview_original.is_some() {
-            return;
-        }
         use zork_ui::components::liquid::{composer::Action, departure::Origin};
         match action {
             Action::FocusEditor => self.focus_composer(window, cx),
