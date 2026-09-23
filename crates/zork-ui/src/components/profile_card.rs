@@ -167,7 +167,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
         .flex()
         .flex_wrap()
         .items_center()
-        .gap(px(12.))
+        .gap(px(10.))
         .min_w_0()
         .mt(px(3.))
         .text_size(px(11.))
@@ -189,7 +189,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                         } else {
                             p.success
                         };
-                        let size = 24.;
+                        let size = 20.;
                         let track = ring_path(size, 1.);
                         let progress = ring_path(size, window.remaining / 100.);
                         let label = format!("{} · {}", window.label, window.value);
@@ -203,7 +203,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                             .flex()
                             .flex_shrink_0()
                             .items_center()
-                            .gap(px(5.))
+                            .gap(px(4.))
                             .child(
                                 div()
                                     .text_size(px(10.))
@@ -244,7 +244,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.))
+                                            .text_size(px(9.))
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
                                             .text_color(rgb(color))
                                             .child(window.center_value.clone()),
@@ -273,7 +273,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
 }
 
 fn ring_path(size: f32, fraction: f32) -> Option<gpui::Path<gpui::Pixels>> {
-    const STROKE: f32 = 2.25;
+    const STROKE: f32 = 2.;
     if !size.is_finite() || size <= STROKE || !fraction.is_finite() {
         return None;
     }
