@@ -235,6 +235,9 @@ impl Gallery {
                 _ => {}
             }
         }
+        if story.family == "activity" {
+            return business::state_label(&story.state);
+        }
         business::state_label(
             story
                 .state
@@ -366,6 +369,16 @@ impl Gallery {
                 )),
             ));
         }
+        toolbar = toolbar.child(
+            ui::icon_button("story-reset", true)
+                .child(ui::icon("icons/reload.svg", 16.))
+                .aria_label("重置当前场景")
+                .on_click(cx.listener(|v, _, _, cx| {
+                    v.create_session(v.selected, cx);
+                    cx.notify();
+                }))
+                .automation(AutomationRole::Button, "重置当前场景"),
+        );
         toolbar = toolbar.child(
             wb::row(8.).child(ui::label("画布")).child(
                 wb::slot(172.).child(ui::dropdown(
@@ -636,12 +649,7 @@ impl Render for Gallery {
                     story.title.clone(),
                     Some(Self::category(&story)),
                     20.,
-                    ui::button("story-reset", "重置当前示例", false, true)
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.create_session(v.selected, cx);
-                            cx.notify();
-                        }))
-                        .automation(AutomationRole::Button, "重置当前示例"),
+                    gpui::Empty,
                 ))
                 .child(toolbar)
                 .child(

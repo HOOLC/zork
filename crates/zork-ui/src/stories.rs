@@ -260,14 +260,19 @@ pub fn catalog() -> Vec<Story> {
             "markdown",
         ),
         (
+            "member-status",
+            "成员状态",
+            &["running", "failed", "done"][..],
+            "crates/zork-ui/src/components/activity.rs",
+            "missing",
+        ),
+        (
             "activity",
-            "执行状态",
+            "会话动态",
             &[
-                "running",
-                "failed",
-                "done",
                 "session-compact",
                 "session-compact-expanded",
+                "session-live",
             ][..],
             "crates/zork-ui/src/components/activity.rs",
             "missing",
@@ -316,7 +321,7 @@ pub fn catalog() -> Vec<Story> {
                 story.height = if *state == "hover-5h" { 220. } else { 160. };
                 story.target = "profile-detail-story-card".into();
             }
-            if family == "activity" && state.starts_with("session-compact") {
+            if family == "activity" {
                 story.height = 200.;
             }
             match (family, *state) {
@@ -1152,15 +1157,17 @@ impl Render for PrimitiveStory {
                     }
                 },
             ),
-            "activity" if state.starts_with("session-compact") => {
+            "activity" => {
+                let live = state == "session-live";
+                let stopped = live && self.open;
                 let root = cx.entity().downgrade();
                 let open = root.clone();
-                activity::render_session(
+                let preview = activity::render_session(
                     "产品 Leader",
                     Some("fox"),
-                    false,
-                    false,
-                    false,
+                    stopped,
+                    stopped,
+                    live && !cx.reduce_motion(),
                     self.selected == 1,
                     &[
                         activity::SessionRow {
@@ -1179,18 +1186,29 @@ impl Render for PrimitiveStory {
                             failed: false,
                             running: false,
                         },
-                        activity::SessionRow {
-                            id: "thinking-1".into(),
-                            icon: "interface/sparkles.svg",
-                            label: "正在思考".into(),
-                            summary: String::new(),
-                            failed: false,
-                            running: true,
+                        if live {
+                            activity::SessionRow {
+                                id: "command-1".into(),
+                                icon: "history/terminal.svg",
+                                label: "运行命令".into(),
+                                summary: "cargo test --locked".into(),
+                                failed: false,
+                                running: true,
+                            }
+                        } else {
+                            activity::SessionRow {
+                                id: "thinking-1".into(),
+                                icon: "interface/sparkles.svg",
+                                label: "正在思考".into(),
+                                summary: String::new(),
+                                failed: false,
+                                running: true,
+                            }
                         },
                     ],
                     "更多",
                     "收起",
-                    "执行中",
+                    if stopped { "已完成" } else { "执行中" },
                     std::rc::Rc::new(move |cx| {
                         let _ = root.update(cx, |view, cx| {
                             view.selected = 1 - view.selected;
@@ -1203,10 +1221,36 @@ impl Render for PrimitiveStory {
                             cx.notify();
                         });
                     }),
-                )
-                .into_any_element()
+                );
+                if live {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(preview)
+                        .child(div().flex().justify_start().child(
+                            ui::quiet_button(
+                                self.id("session-activity-simulate-end"),
+                                if stopped { "重新开始" } else { "模拟完成" },
+                                true,
+                                ui::IconButtonSize::Compact,
+                            )
+                            .w(px(88.))
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.open = !view.open;
+                                cx.notify();
+                            }))
+                            .automation(
+                                AutomationRole::Button,
+                                if stopped { "重新开始" } else { "模拟完成" },
+                            ),
+                        ))
+                        .into_any_element()
+                } else {
+                    preview.into_any_element()
+                }
             }
-            "activity" => activity::render_with_id(
+            "member-status" => activity::render_with_id(
                 self.id("participant-activity"),
                 &[activity::Presentation {
                     id: self.id("story"),

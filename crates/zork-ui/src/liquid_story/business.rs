@@ -61,6 +61,7 @@ pub fn is_business(family: &str) -> bool {
             | "tooltip"
             | "markdown"
             | "activity"
+            | "member-status"
             | "composer"
             | "resources"
             | "shared-files"
@@ -301,6 +302,12 @@ impl Render for Example {
 }
 
 pub fn state_label(state: &str) -> String {
+    match state {
+        "session-compact" => return "收起预览".into(),
+        "session-compact-expanded" => return "展开预览".into(),
+        "session-live" => return "动态运行".into(),
+        _ => {}
+    }
     let state = state.trim_end_matches("-compact");
     match state {
         "primary" => "主要操作",
