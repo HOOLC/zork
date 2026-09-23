@@ -5,6 +5,8 @@
 //! reaches the UI separately through station-projected status events.
 
 pub mod api;
+#[cfg(target_os = "macos")]
+pub mod app_menu;
 pub mod assets;
 pub mod automation;
 pub mod browser;

@@ -9,6 +9,18 @@ impl DesktopRoot {
             self.startup_state.selection_generation != state.selection_generation;
         let entered_first_chat = state.first_chat_welcome && !self.startup_state.first_chat_welcome;
         self.startup_state = state.clone();
+        #[cfg(target_os = "macos")]
+        if !self.settings_action_registered && state.onboarding.is_none() {
+            let view = cx.weak_entity();
+            gpui::App::on_action(cx, move |_: &crate::app_menu::OpenSettings, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    if view.startup_state.onboarding.is_none() {
+                        view.apply_navigation(navigation::Destination::Manage(4), cx);
+                    }
+                });
+            });
+            self.settings_action_registered = true;
+        }
         if selection_changed && self.active.is_none() {
             if let Some(node) = state
                 .selected

@@ -33,6 +33,7 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSEvent", "NSResponder"] }
 markdown = "1.0.0"
 rusqlite = { version = "0.31", features = ["bundled", "hooks", "functions"] }
 imbl = "=7.0.1"
