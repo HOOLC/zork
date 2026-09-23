@@ -18,7 +18,6 @@ pub(super) struct Host {
     pub hovered_member: Option<String>,
     pub member_leave: Option<Instant>,
     pub file: Option<u64>,
-    pub choosing: bool,
     pub departures: liquid::departure::Departures,
     pub departure_origin: liquid::departure::Origin,
 }
@@ -43,7 +42,6 @@ impl Host {
             hovered_member: None,
             member_leave: None,
             file: None,
-            choosing: false,
             departures: Default::default(),
             departure_origin: Default::default(),
         }
@@ -179,37 +177,24 @@ impl Card {
         if !self.composer.snapshot.capabilities.editable {
             return;
         }
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let paths = cx.prompt_for_paths(PathPromptOptions {
-                files: true,
-                directories: false,
-                multiple: true,
-                prompt: None,
-            });
-            cx.spawn(async move |this, cx| {
-                if let Ok(Ok(Some(paths))) = paths.await {
-                    let names = paths
-                        .into_iter()
-                        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-                        .collect();
-                    let _ = this.update(cx, |v, cx| v.composer_intent(Intent::Files(names), cx));
-                }
-            })
-            .detach();
-        }
-        #[cfg(target_family = "wasm")]
-        {
-            // Browser capability adapter only: selected names enter the core
-            // fixture. No file bytes leave the machine and no upload is modeled.
-            let script=js_sys::Function::new_no_args("globalThis.__zorkLiquidPicked=null; const input=document.createElement('input'); input.type='file'; input.multiple=true; input.hidden=true; input.setAttribute('data-liquid-picker',''); const done=()=>{globalThis.__zorkLiquidPicked=JSON.stringify(Array.from(input.files||[],f=>f.name)); input.remove();}; input.addEventListener('change',done,{once:true}); input.addEventListener('cancel',done,{once:true}); document.body.append(input); input.click();");
-            if script.call0(&js_sys::global()).is_ok() {
-                self.composer.choosing = true;
-                cx.notify();
+        let paths = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: None,
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = paths.await {
+                let names = paths
+                    .into_iter()
+                    .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                    .collect();
+                let _ = this.update(cx, |v, cx| v.composer_intent(Intent::Files(names), cx));
             }
-        }
+        })
+        .detach();
     }
-    pub(super) fn poll_composer_files(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn poll_member_leave(&mut self) {
         if self
             .composer
             .member_leave
@@ -218,20 +203,6 @@ impl Card {
             self.composer.member_leave = None;
             self.composer.hovered_member = None;
         }
-        #[cfg(target_family = "wasm")]
-        if self.composer.choosing {
-            if let Ok(result) =
-                js_sys::Reflect::get(&js_sys::global(), &"__zorkLiquidPicked".into())
-            {
-                if let Some(result) = result.as_string() {
-                    self.composer.choosing = false;
-                    if let Ok(names) = serde_json::from_str(&result) {
-                        self.composer_intent(Intent::Files(names), cx);
-                    }
-                }
-            }
-        }
-        let _ = cx;
     }
 }
 

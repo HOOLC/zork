@@ -1,11 +1,8 @@
 //! GPUI clock and scheduling adapter for shared numerical motion.
 use super::{Material, Pose, Surface};
 use gpui::*;
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{cell::Cell, rc::Rc};
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

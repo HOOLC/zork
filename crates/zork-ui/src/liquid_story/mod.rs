@@ -18,11 +18,8 @@ pub use catalog::{Kind, Section};
 use gpui::{prelude::*, *};
 pub use primitives::Example as Primitive;
 use serde_json::{json, Value};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 #[derive(Clone)]
 struct Config {
@@ -750,7 +747,7 @@ impl Card {
             return;
         }
         if self.kind == Kind::Composer {
-            self.poll_composer_files(cx);
+            self.poll_member_leave();
         }
         if self
             .pending
@@ -957,7 +954,6 @@ impl Card {
 
         if (((moving || cfg.cycle) && !cx.reduce_motion())
             || self.pending.is_some()
-            || self.composer.choosing
             || self.composer.member_leave.is_some())
             && !self.pending_frame
         {

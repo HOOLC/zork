@@ -15,12 +15,10 @@ pub fn preferences_path() -> PathBuf {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub fn read_locale(path: &Path) -> Option<String> {
     let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     value["locale"].as_str().map(str::to_owned)
 }
-#[cfg(not(target_family = "wasm"))]
 pub fn save_locale(path: &Path, locale: &str) -> std::io::Result<()> {
     let mut value: serde_json::Value = match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(std::io::Error::other)?,
@@ -48,16 +46,4 @@ pub fn save_locale(path: &Path, locale: &str) -> std::io::Result<()> {
         let _ = std::fs::remove_file(temp);
     }
     result
-}
-
-#[cfg(target_family = "wasm")]
-thread_local! {static LOCALES: std::cell::RefCell<std::collections::HashMap<PathBuf,String>> = std::cell::RefCell::new(Default::default());}
-#[cfg(target_family = "wasm")]
-pub fn read_locale(path: &Path) -> Option<String> {
-    LOCALES.with(|s| s.borrow().get(path).cloned())
-}
-#[cfg(target_family = "wasm")]
-pub fn save_locale(path: &Path, locale: &str) -> std::io::Result<()> {
-    LOCALES.with(|s| s.borrow_mut().insert(path.into(), locale.into()));
-    Ok(())
 }

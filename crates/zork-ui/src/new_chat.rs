@@ -11,10 +11,7 @@ use crate::{
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 use zork_client_types::new_chat::{Action, Snapshot};
 mod picker;
 use crate::components::liquid::panel::PopoverPanel;

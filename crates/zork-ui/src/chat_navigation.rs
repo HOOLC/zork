@@ -557,7 +557,6 @@ fn ymd_from_epoch(days: i64) -> (i32, u32, u32) {
     (year as i32, month as u32, day as u32)
 }
 fn local_today() -> (i32, u32, u32) {
-    #[cfg(not(target_family = "wasm"))]
     {
         #[repr(C)]
         struct Tm {

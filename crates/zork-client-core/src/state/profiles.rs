@@ -162,7 +162,6 @@ struct Owned {
     authorization_epoch: u64,
 }
 pub struct Profiles {
-    #[cfg(not(target_family = "wasm"))]
     device: std::sync::OnceLock<std::sync::Weak<super::Device>>,
     client: Arc<StationClient>,
     owned: Mutex<Owned>,
@@ -170,7 +169,6 @@ pub struct Profiles {
     authorization_task: Mutex<Option<crate::api::ClientTask>>,
 }
 impl Profiles {
-    #[cfg(not(target_family = "wasm"))]
     fn save_authorization_record(&self, record: &Value) -> anyhow::Result<()> {
         if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
             if let Some((store, peer)) = &device.cache {
@@ -179,11 +177,6 @@ impl Profiles {
         }
         Ok(())
     }
-    #[cfg(target_family = "wasm")]
-    fn save_authorization_record(&self, _: &Value) -> anyhow::Result<()> {
-        Ok(())
-    }
-
     /// Suspend only the local monitor when the host releases its connection.
     /// The remote authorization is resumed using its public attempt metadata.
     pub(crate) fn suspend_authorization(&self) {
@@ -195,7 +188,6 @@ impl Profiles {
         owned.state.authorization_busy = false;
         self.state.publish(owned.state.clone());
     }
-    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn restore_authorization(self: &Arc<Self>) -> anyhow::Result<()> {
         if self.snapshot().authorization.is_none() {
             let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) else {
@@ -609,7 +601,6 @@ impl Profiles {
     }
     pub fn new(client: Arc<StationClient>) -> Arc<Self> {
         Arc::new(Self {
-            #[cfg(not(target_family = "wasm"))]
             device: Default::default(),
             client,
             owned: Mutex::new(Owned {
@@ -623,7 +614,6 @@ impl Profiles {
             authorization_task: Mutex::new(None),
         })
     }
-    #[cfg(not(target_family = "wasm"))]
     pub(super) fn bind_device(&self, device: std::sync::Weak<super::Device>) {
         let _ = self.device.set(device);
     }
@@ -646,17 +636,10 @@ impl Profiles {
         self.state.publish(owned.state.clone());
     }
     async fn refresh_replica(&self) -> Option<anyhow::Result<()>> {
-        #[cfg(target_family = "wasm")]
-        {
-            None
-        }
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let device = self.device.get()?.upgrade()?;
-            match device.refresh_replica_catalog().await {
-                Ok(false) => None,
-                result => Some(result.map(|_| ())),
-            }
+        let device = self.device.get()?.upgrade()?;
+        match device.refresh_replica_catalog().await {
+            Ok(false) => None,
+            result => Some(result.map(|_| ())),
         }
     }
     fn replica_error(&self, error: anyhow::Error) {

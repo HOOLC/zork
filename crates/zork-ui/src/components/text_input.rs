@@ -26,7 +26,7 @@ macro_rules! edit {
 
 mod bridge;
 mod shortcuts;
-#[cfg(all(test, feature = "headless-bench", not(target_family = "wasm")))]
+#[cfg(all(test, feature = "headless-bench"))]
 mod tests;
 
 pub use shortcuts::init;

@@ -164,7 +164,7 @@ impl Fixture {
     }
 }
 
-#[cfg(all(test, not(target_family = "wasm")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;

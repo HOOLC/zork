@@ -1,5 +1,4 @@
 //! Composer actions are product policy. Views render these capabilities.
-#[cfg(not(target_family = "wasm"))]
 use crate::api::{SessionStatus, SessionSummary};
 
 #[derive(Clone, Copy, Default, serde::Serialize)]
@@ -13,14 +12,12 @@ pub fn has_content(text: &str, attachments: usize) -> bool {
     !text.trim().is_empty() || attachments > 0
 }
 
-#[cfg(not(target_family = "wasm"))]
 pub fn can_stop(session: &SessionSummary) -> bool {
     crate::conversation::can_send(session) && session.task.is_none()
 }
 
 /// The desktop's primary action interrupts a running direct conversation.
 /// Task composers submit comments to their owning Leader instead.
-#[cfg(not(target_family = "wasm"))]
 pub fn interrupting(
     session: Option<&SessionSummary>,
     text: &str,

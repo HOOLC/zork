@@ -1,9 +1,6 @@
 //! Intrinsic-height disclosure. Content keeps its layout while its aperture moves.
 use gpui::{prelude::*, px, App, ElementId, Entity, FocusHandle, Window};
-#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
-#[cfg(target_family = "wasm")]
-use web_time::Instant;
 
 const SPEED: f32 = 1200.;
 const ACCELERATION: f32 = 16000.;

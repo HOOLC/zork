@@ -103,7 +103,6 @@ impl AgentSubscription {
     }
 }
 pub struct Agents {
-    #[cfg(not(target_family = "wasm"))]
     device: std::sync::OnceLock<std::sync::Weak<super::Device>>,
     client: Arc<StationClient>,
     profiles: Arc<Profiles>,
@@ -142,7 +141,6 @@ impl Agents {
     }
     pub fn new(client: Arc<StationClient>, profiles: Arc<Profiles>) -> Arc<Self> {
         Arc::new(Self {
-            #[cfg(not(target_family = "wasm"))]
             device: Default::default(),
             client,
             profiles,
@@ -151,7 +149,6 @@ impl Agents {
             refresh_gate: tokio::sync::Mutex::new(()),
         })
     }
-    #[cfg(not(target_family = "wasm"))]
     pub(super) fn bind_device(&self, device: std::sync::Weak<super::Device>) {
         let _ = self.device.set(device);
     }
@@ -185,7 +182,6 @@ impl Agents {
     }
     pub async fn refresh_agents(&self) -> anyhow::Result<()> {
         let _serial = self.refresh_gate.lock().await;
-        #[cfg(not(target_family = "wasm"))]
         if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
             match device.refresh_replica_catalog().await {
                 Ok(true) => {
@@ -274,9 +270,6 @@ impl Agents {
                 }
             }
             if agent["avatar"] != avatar {
-                #[cfg(target_family = "wasm")]
-                let synced = false;
-                #[cfg(not(target_family = "wasm"))]
                 let synced =
                     if let Some(device) = self.device.get().and_then(std::sync::Weak::upgrade) {
                         device

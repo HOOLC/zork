@@ -80,14 +80,11 @@ impl ModelSettings {
     pub fn onboarding_fixture(cx: &mut Context<Self>) -> Self {
         let mut fixture = zork_ui::stories::page_fixture();
         fixture["profile"] = serde_json::Value::Null;
-        #[cfg(not(target_family = "wasm"))]
         let client = Arc::new(StationClient::fixture(
             fixture,
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
                 .expect("provider fixture"),
         ));
-        #[cfg(target_family = "wasm")]
-        let client = Arc::new(StationClient::new("http://127.0.0.1:9", None));
         let mut view = Self::new(cx);
         view.set_sources(
             vec![(
