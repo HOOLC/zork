@@ -55,6 +55,7 @@ impl PopoverPanel {
             label.clone(),
             ActionStyle {
                 quiet: true,
+                bare: true,
                 trailing: Some("icons/chevron-down.svg"),
                 expanded: open,
                 disabled: !enabled,
