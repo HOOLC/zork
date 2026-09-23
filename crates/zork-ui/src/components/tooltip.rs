@@ -7,8 +7,6 @@ use crate::{
 use gpui::{div, prelude::*, px, rgb, Context, FontWeight, Window};
 
 use super::liquid::panel::{Content, FloatingPanel, FloatingStyle, Side};
-const CONTENT_SECONDS: f32 = 0.14;
-use std::time::Instant;
 
 #[derive(Clone)]
 pub struct DetailsTooltip {
@@ -247,10 +245,6 @@ impl HintWindowState {
 #[derive(Default)]
 pub struct DetailsOverlay {
     active: Option<DetailsTooltip>,
-    outgoing: Vec<(DetailsTooltip, f32)>,
-    painted_opacities: Vec<f32>,
-    active_opacity: f32,
-    content_started: Option<Instant>,
     panel: FloatingPanel,
     dismissing: bool,
     bounds: gpui::Bounds<gpui::Pixels>,
@@ -273,25 +267,6 @@ impl DetailsOverlay {
     ) {
         self.timer.take();
         self.dismissing = false;
-        let now = Instant::now();
-        if self.active.as_ref().is_some_and(|v| v.key != details.key) {
-            for (layer, opacity) in self.outgoing.iter_mut().zip(&self.painted_opacities) {
-                layer.1 = *opacity;
-            }
-            self.outgoing
-                .push((self.active.as_ref().unwrap().clone(), self.active_opacity));
-            self.outgoing.retain(|(_, opacity)| *opacity > 0.01);
-            self.outgoing.sort_by(|a, b| b.1.total_cmp(&a.1));
-            self.outgoing.truncate(4);
-            self.painted_opacities = self.outgoing.iter().map(|(_, opacity)| *opacity).collect();
-            self.active_opacity = 0.;
-            self.content_started = Some(now);
-        } else if self.active.is_none() {
-            self.outgoing.clear();
-            self.painted_opacities.clear();
-            self.active_opacity = 1.;
-            self.content_started = None;
-        }
         self.active = Some(details);
         self.bounds = bounds;
         self.trigger_hover = true;
@@ -330,38 +305,7 @@ impl gpui::Render for DetailsOverlay {
         let Some(details) = self.active.as_ref() else {
             return gpui::Empty.into_any_element();
         };
-        let progress = if cx.reduce_motion() {
-            1.
-        } else {
-            self.content_started.map_or(1., |start| {
-                (start.elapsed().as_secs_f32() / CONTENT_SECONDS).min(1.)
-            })
-        };
-        let fade = 1. - (1. - progress).powi(3);
-        self.active_opacity = fade;
-        self.painted_opacities = self
-            .outgoing
-            .iter()
-            .map(|(_, opacity)| opacity * (1. - fade))
-            .collect();
-        if progress >= 1. {
-            self.outgoing.clear();
-            self.painted_opacities.clear();
-        } else {
-            window.request_animation_frame();
-        }
-        let content = div()
-            .relative()
-            .child(details.content().opacity(fade))
-            .children(self.outgoing.iter().zip(&self.painted_opacities).map(
-                |((details, _), opacity)| {
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .opacity(*opacity)
-                        .child(details.content())
-                },
-            ));
+        let content = details.content();
         let hover = std::rc::Rc::new(cx.listener(|v, inside: &bool, _, cx| {
             v.panel_hover = *inside;
             v.schedule_close(cx);
@@ -379,8 +323,6 @@ impl gpui::Render for DetailsOverlay {
         );
         if self.dismissing && !self.panel.alive() {
             self.active = None;
-            self.outgoing.clear();
-            self.painted_opacities.clear();
         }
         panel.unwrap_or_else(|| gpui::Empty.into_any_element())
     }

@@ -1,4 +1,4 @@
-//! Measured floating content with one material across anchors. Interactive hosts own focus and dismissal.
+//! Content-sized, stationary hover surfaces. Interactive hosts own focus and dismissal.
 use super::*;
 
 #[derive(Clone, Copy)]
@@ -15,7 +15,7 @@ pub struct FloatingStyle {
     pub radius: f32,
     pub priority: usize,
     pub role: Role,
-    /// Minimum height used to choose a side before the content is measured.
+    /// Minimum height used to choose a side before the content is laid out.
     pub placement_min_height: f32,
 }
 impl FloatingStyle {
@@ -35,15 +35,14 @@ pub type Hover = Rc<dyn Fn(&bool, &mut Window, &mut App)>;
 
 #[derive(Default)]
 pub struct FloatingPanel {
-    panel: ContentPanel,
     visible: bool,
 }
 impl FloatingPanel {
     pub fn alive(&self) -> bool {
-        self.panel.alive()
+        self.visible
     }
     pub fn inspect(&self) -> serde_json::Value {
-        self.panel.inspect()
+        serde_json::json!({ "visible": self.visible })
     }
     pub fn render<V: 'static>(
         &mut self,
@@ -54,30 +53,36 @@ impl FloatingPanel {
         content: Content,
         hover: Option<Hover>,
         window: &mut Window,
-        cx: &mut Context<V>,
+        _: &mut Context<V>,
     ) -> Option<AnyElement> {
-        if !open && !self.alive() {
+        self.visible = false;
+        if !open {
             return None;
         }
-        let id = id.into();
         let viewport = window.viewport_size();
+        let viewport_bounds = Bounds::new(point(px(0.), px(0.)), viewport);
+        let intersection = anchor
+            .intersect(&viewport_bounds)
+            .intersect(&window.content_mask().bounds);
+        if intersection.size.width <= px(0.) || intersection.size.height <= px(0.) {
+            return None;
+        }
+        self.visible = true;
+
+        let id = id.into();
         let width = style.width.min((viewport.width.as_f32() - 24.).max(2.));
         let max_height = (viewport.height.as_f32() - 24.).max(2.);
-        let height = self
-            .panel
-            .content_height()
-            .unwrap_or(style.placement_min_height)
-            .max(style.placement_min_height)
-            .min(max_height);
         let clamp_x = |x: f32| x.clamp(12., (viewport.width.as_f32() - width - 12.).max(12.));
-        let clamp_y = |y: f32| y.clamp(12., (viewport.height.as_f32() - height - 12.).max(12.));
-        let (x, y, available) = match style.side {
+        let (x, y, available, corner) = match style.side {
             Side::Above | Side::AboveEnd(_) | Side::Below => {
                 let above = (anchor.top().as_f32() - 20.).max(2.);
                 let below = (viewport.height.as_f32() - anchor.bottom().as_f32() - 20.).max(2.);
                 let on_top = match style.side {
-                    Side::Above | Side::AboveEnd(_) => above >= height || above >= below,
-                    _ => below < height && above > below,
+                    Side::Above | Side::AboveEnd(_) => {
+                        above >= style.placement_min_height || above >= below
+                    }
+                    Side::Below => below < style.placement_min_height && above > below,
+                    Side::Beside => unreachable!(),
                 };
                 (
                     clamp_x(match style.side {
@@ -85,11 +90,16 @@ impl FloatingPanel {
                         _ => anchor.center().x.as_f32() - width / 2.,
                     }),
                     if on_top {
-                        (anchor.top().as_f32() - height.min(above) - 8.).max(12.)
+                        anchor.top().as_f32() - 8.
                     } else {
                         anchor.bottom().as_f32() + 8.
                     },
                     if on_top { above } else { below },
+                    if on_top {
+                        Anchor::BottomLeft
+                    } else {
+                        Anchor::TopLeft
+                    },
                 )
             }
             Side::Beside => {
@@ -99,66 +109,53 @@ impl FloatingPanel {
                 } else {
                     anchor.left().as_f32() - width - 4.
                 };
-                (clamp_x(x), clamp_y(anchor.top().as_f32()), max_height)
+                (
+                    clamp_x(x),
+                    anchor.top().as_f32(),
+                    max_height,
+                    Anchor::TopLeft,
+                )
             }
         };
+
         let padding = content.padding;
         let mut body = div()
-            .id(format!("{id}-body"))
+            .id(format!("{id}-content"))
             .role(style.role)
-            .w(px((width - 2. * padding).max(2.)))
+            .w_full()
             .max_h(px((available.min(max_height) - 2. * padding).max(2.)))
             .overflow_y_scroll()
             .flex()
             .flex_col()
             .gap(px(content.gap))
-            .children(content.sections)
-            .capture_any_mouse_down(move |_, _, cx| {
-                if !open {
-                    cx.stop_propagation();
-                }
-            });
+            .children(content.sections);
         if let Some(hover) = hover {
             body = body.on_hover(move |inside, w, cx| hover(inside, w, cx));
         }
-        let viewport_bounds = Bounds::new(point(px(0.), px(0.)), viewport);
-        let intersection = anchor
-            .intersect(&viewport_bounds)
-            .intersect(&window.content_mask().bounds);
-        self.visible = intersection.size.width > px(0.) && intersection.size.height > px(0.);
-        if !self.visible {
-            self.panel = ContentPanel::default();
-            return None;
-        }
-        // ContentPanel owns natural height, contour clips, retargeting and retirement.
-        let panel = self.panel.render_with_visibility(
+        let body = body.automation(AutomationRole::Status, "内容面板");
+        let surface = crate::components::liquid::primitives::surface(
             id,
-            viewport.width.as_f32(),
-            Placement {
-                x,
-                y,
-                width,
-                radius: style.radius,
-            },
-            Content {
-                sections: vec![body.into_any_element()],
-                padding,
-                gap: 0.,
-            },
-            None,
-            SurfaceColors::outlined(
-                crate::design::LIQUID_OUTLINE,
-                crate::design::ZORK_UI.palette.canvas,
-            ),
-            Material::ordinary(),
-            Some(open && self.visible),
-            window,
-            cx,
-        );
+            style.radius,
+            crate::design::ZORK_UI.palette.canvas,
+            true,
+        )
+        .occlude()
+        .w(px(width))
+        .max_h(px(available.min(max_height)))
+        .p(px(padding))
+        .flex()
+        .flex_col()
+        .child(body);
         Some(
-            deferred(anchored().position(point(px(0.), px(0.))).child(panel))
-                .with_priority(style.priority)
-                .into_any_element(),
+            deferred(
+                anchored()
+                    .position(point(px(x), px(y)))
+                    .anchor(corner)
+                    .snap_to_window_with_margin(px(12.))
+                    .child(surface),
+            )
+            .with_priority(style.priority)
+            .into_any_element(),
         )
     }
 }
