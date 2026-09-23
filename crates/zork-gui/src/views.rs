@@ -164,7 +164,6 @@ pub struct RootView {
 
     message_motion: message_presentation::MessageMotion,
     history_details: Entity<zork_ui::history_details::Details>,
-    resource_source: zork_ui::components::liquid::overlay::SourceBinding,
     files_menu: Entity<zork_ui::conversation_contents::Menu>,
     transcript_list: ListState,
     updates_task: Option<Task<()>>,
@@ -176,7 +175,6 @@ pub struct RootView {
 #[derive(Clone)]
 pub struct InspectResource {
     pub target: zork_client_core::resources::InspectionTarget,
-    pub source: zork_ui::components::liquid::overlay::SourceBinding,
 }
 impl gpui::EventEmitter<InspectResource> for RootView {}
 
@@ -247,10 +245,7 @@ impl RootView {
             &composer_input,
             |view, _input, _event: &ComposerSubmit, cx| {
                 if view.selected_session.is_some() {
-                    view.send_composer(
-                        zork_ui::components::liquid::departure::Origin::Composer,
-                        cx,
-                    );
+                    view.send_composer(cx);
                 }
             },
         )
@@ -466,7 +461,6 @@ impl RootView {
             error: None,
             message_motion: Default::default(),
             history_details,
-            resource_source: Default::default(),
             files_menu,
             transcript_list: ListState::new(1, ListAlignment::Top, px(500.)),
             updates_task: None,
@@ -863,11 +857,7 @@ impl RootView {
             .find(|s| Some(&s.session_id) == self.selected_session.as_ref())
             .is_some_and(zork_client_core::conversation::can_send)
     }
-    fn send_composer(
-        &mut self,
-        origin: zork_ui::components::liquid::departure::Origin,
-        cx: &mut Context<Self>,
-    ) {
+    fn send_composer(&mut self, cx: &mut Context<Self>) {
         if self.preparing_files > 0 {
             return;
         }
@@ -881,7 +871,7 @@ impl RootView {
         // Submit the core's current draft, not a display snapshot that may
         // still show the previous text until its subscription update arrives.
         let text = self.core_device.draft(&id).text.clone();
-        self.queue_message(id, text, origin, cx);
+        self.queue_message(id, text, cx);
     }
 
     fn cancel_session(&mut self, _cx: &mut Context<Self>) {
@@ -1339,7 +1329,6 @@ impl RootView {
         let lines = self.lines.clone();
         let documents = self.transcript_render_cache.prepare(&lines);
         let file_previews = self.file_ui.message_previews.clone();
-        let file_source = self.attachment_source();
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
         let activity = self.activity_presentations();
@@ -1517,7 +1506,6 @@ impl RootView {
                             content_width,
                             *role == Role::User,
                             reader_root.clone(),
-                            file_source.clone(),
                             ix,
                             file_previews.clone(),
                             cx,

@@ -27,10 +27,6 @@ pub(super) struct DriveState {
 }
 
 impl RootView {
-    pub(super) fn attachment_source(&self) -> zork_ui::components::liquid::overlay::SourceBinding {
-        self.drive.viewer.source.clone()
-    }
-
     pub(super) fn select_artifact(&mut self, artifact: Artifact, cx: &mut Context<Self>) {
         self.reset_preview_group(artifact.clone());
         self.load_artifact_preview(artifact, cx);

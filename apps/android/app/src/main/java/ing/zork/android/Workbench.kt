@@ -239,7 +239,7 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                             onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
                             Text(session.text("title", "对话"), fontSize = 15.sp,
                                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            LiquidIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
+                            ZorkIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
                                 enabled = !session.optBoolean("archive_pending"),
                                 onClick = { actions.archiveChat(peer.id, session.text("chat_id"), !session.optBoolean("archived"), session.optLong("message_count")) }) {
                                 Glyph(if (session.optBoolean("archived")) R.drawable.ic_archive_restore else R.drawable.ic_archive,
@@ -266,14 +266,14 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
             FooterAction("设置", R.drawable.ic_settings, Modifier.weight(1f), true, actions.settings)
         }
     }
-    LiquidRetained(details) { (title,rows), open, closed -> SettingsSheet(title,dismiss={details=null}, open=open, onClosed=closed) {
+    ZorkRetained(details) { (title,rows), open, closed -> SettingsSheet(title,dismiss={details=null}, open=open, onClosed=closed) {
         rows.filter{it.second.isNotBlank()}.forEach{(label,value)->Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,fontSize=12.sp,color=ZorkColors.Muted);Text(value,fontSize=14.sp,lineHeight=22.sp)}}
     }}
 }
 
 @Composable
 private fun FooterAction(label: String, icon: Int, modifier: Modifier, enabled: Boolean, action: () -> Unit) {
-    Row(modifier.height(48.dp).liquidPressable(enabled = enabled, onClick = action),
+    Row(modifier.height(48.dp).zorkPressable(enabled = enabled, onClick = action),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         Glyph(icon, 22.dp); Text(label, fontSize = 14.sp)
     }
@@ -285,7 +285,7 @@ private fun NavRow(indent: Dp = 14.dp, enabled: Boolean = true,
     interactions: MutableInteractionSource = remember { MutableInteractionSource() },
     onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable RowScope.() -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 2.dp).height(48.dp)
-        .liquidPressable(enabled = enabled, interactionSource = interactions, onClick = onClick, onLongClick = onLongClick)
+        .zorkPressable(enabled = enabled, interactionSource = interactions, onClick = onClick, onLongClick = onLongClick)
         .padding(start = indent, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         content()
@@ -533,7 +533,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Text(messageDate(firstDate), color = ZorkColors.Muted, fontSize = 12.sp)
                         HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
                     }
-                    if (messageState.older) LiquidButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
+                    if (messageState.older) ZorkButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
                 }
                 items(rows, key = { it.id }) { row ->
                     Column {
@@ -552,7 +552,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 // Padding is a list measure input, so animated clearance is applied
                 // immediately rather than waiting for a lazy spacer to recompose.
                 item(key = "conversation-bottom") {
-                    if (messageState.newer) LiquidButton("加载更新消息", quiet = true, onClick = messageActions.newer, enabled = !messageState.busy)
+                    if (messageState.newer) ZorkButton("加载更新消息", quiet = true, onClick = messageActions.newer, enabled = !messageState.busy)
                     else Spacer(Modifier.height(0.dp))
                 }
             }
@@ -583,7 +583,7 @@ private class ConversationBodySlot {
 }
 
 @Composable
-private fun ConversationViewport(listState: LazyListState, presence: ComposerMotion, trackTail: Boolean, follow: Boolean, tailIndex: Int, previewHeight: Int,
+private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int, previewHeight: Int,
     overlay: @Composable () -> Unit, content: @Composable (Dp) -> Unit) {
     val geometry = remember { intArrayOf(-1, -1, -1, -1) }
     val slot = remember { ConversationBodySlot() }
@@ -625,7 +625,7 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
             if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
-                LiquidCard(color = ZorkColors.Bubble, radius = 20.dp) {
+                ZorkCard(color = ZorkColors.Bubble, radius = 20.dp) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                         if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
@@ -642,12 +642,12 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
                         Text(row.deliveryError, fontSize = 10.sp, color = ZorkColors.Muted)
                 }
                 if (row.deliveryStatus == "failed") {
-                    LiquidButton("重发", quiet = true, onClick = { resend(row.requestId.ifBlank { row.id }) },
+                    ZorkButton("重发", quiet = true, onClick = { resend(row.requestId.ifBlank { row.id }) },
                         modifier = Modifier.clearAndSetSemantics {
                             contentDescription = "重发失败消息"
                             onClick { resend(row.requestId.ifBlank { row.id }); true }
                         })
-                    LiquidButton("删除", quiet = true, onClick = { deleteFailed(row.requestId.ifBlank { row.id }) },
+                    ZorkButton("删除", quiet = true, onClick = { deleteFailed(row.requestId.ifBlank { row.id }) },
                         modifier = Modifier.clearAndSetSemantics {
                             contentDescription = "删除失败消息"
                             onClick { deleteFailed(row.requestId.ifBlank { row.id }); true }
@@ -671,7 +671,7 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
 }
 
 @Composable
-private fun ComposerPlate(presence: ComposerMotion, modifier: Modifier, history: (String, String) -> Unit, body: @Composable () -> Unit) {
+private fun ComposerPlate(presence: ComposerPresence, modifier: Modifier, history: (String, String) -> Unit, body: @Composable () -> Unit) {
     // The editor receives constant constraints during presence motion. In a
     // Column, the changing header consumed its max height and remeasured the
     // text editor on every frame despite its unchanged three-line viewport.
@@ -686,7 +686,7 @@ private fun ComposerPlate(presence: ComposerMotion, modifier: Modifier, history:
 }
 
 @Composable
-private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence: ComposerMotion, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
+private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
     val command = remember(state.draft, state.comments.size, state.attachments.size, state.running, state.connected, state.busy, state.conversation) {
         JSONObject(NativeBridge.composerState(JSONObject().put("text", state.draft)
             .put("attachments", state.comments.size + state.attachments.size).put("can_send", state.conversation?.canSend != false)
@@ -709,9 +709,9 @@ private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence:
 
 @Composable
 internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
-    stop: Boolean, enabled: Boolean, presence: ComposerMotion, modifier: Modifier, heightLimit: Dp,
+    stop: Boolean, enabled: Boolean, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp,
     actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true) {
-    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f).liquidComposer(presence), history) {
+    ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f), history) {
         ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach)
     }
 }
@@ -763,7 +763,7 @@ internal fun Glyph(resource: Int, size: Dp, tint: Color = ZorkColors.Ink) {
 }
 @Composable
 internal fun IconAction(resource: Int, description: String, enabled: Boolean = true, glyphSize: Dp = 22.dp, onClick: () -> Unit) {
-    LiquidIconButton(description, enabled = enabled, onClick = onClick) {
+    ZorkIconButton(description, enabled = enabled, onClick = onClick) {
         Glyph(resource, glyphSize, if (enabled) ZorkColors.Ink else ZorkColors.Ink.copy(alpha = 0.35f))
     }
 }
@@ -783,7 +783,7 @@ internal fun Avatar(name: String?, size: Dp, description: String? = null) {
 private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(ZorkColors.Paper).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(message, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        LiquidButton("重试", quiet = true, onClick = retry, enabled = !busy)
+        ZorkButton("重试", quiet = true, onClick = retry, enabled = !busy)
     }
 }
 private fun messageTime(value: String): String = runCatching {
@@ -797,7 +797,7 @@ private fun messageDate(value: String): String = runCatching {
 
 @Composable
 private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchActions, heightLimit: Dp) {
-    LiquidCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
+    ZorkCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("待发送评论 · ${comments.size}", fontSize = 11.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
@@ -805,7 +805,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
             comments.forEach { comment ->
                 HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
                 Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).liquidPressable(opensPanel = true) { actions.editComment(comment) }) {
+                    Column(Modifier.weight(1f).zorkPressable(opensPanel = true) { actions.editComment(comment) }) {
                         Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))
                             Text(comment.quote, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted, maxLines = 1,
@@ -823,8 +823,8 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
 
 @Composable
 private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
-    LiquidCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
-        Row(Modifier.heightIn(min = 64.dp).liquidPressable(onClick = save).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+        Row(Modifier.heightIn(min = 64.dp).zorkPressable(onClick = save).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Glyph(R.drawable.ic_result, 22.dp)
             Column(Modifier.weight(1f)) {

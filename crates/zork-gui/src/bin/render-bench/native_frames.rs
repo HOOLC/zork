@@ -14,21 +14,21 @@ use zork_gui::{
     automation::{protocol::UserAction, AutomationRoot, HeadlessAutomation},
     views::RootView,
 };
-#[path = "native_frames/playground.rs"]
-mod playground;
+#[path = "native_frames/gallery.rs"]
+mod gallery;
 
 #[derive(Clone, Deserialize, Serialize)]
 struct Config {
     viewport: [f32; 2],
-    liquid_viewport: [f32; 2],
+    component_viewport: [f32; 2],
     #[serde(default)]
     offscreen: bool,
     #[serde(default, skip_serializing_if = "is_false")]
-    liquid_only: bool,
+    components_only: bool,
     #[serde(default, skip_serializing_if = "is_false")]
-    playground: bool,
+    gallery: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    playground_scroll: Option<PlaygroundScroll>,
+    gallery_scroll: Option<GalleryScroll>,
     messages: usize,
     panel_pairs: usize,
     phase_ms: u64,
@@ -36,7 +36,7 @@ struct Config {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-struct PlaygroundScroll {
+struct GalleryScroll {
     px_per_second: f32,
     legs: u32,
     min_displacement_px: f32,
@@ -179,9 +179,9 @@ async fn measure(
     output: std::path::PathBuf,
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
-    if config.liquid_only {
+    if config.components_only {
         window.update(cx, |_, window, _| window.remove_window())?;
-        return measure_liquid(&driver, &config, &report, &output, cx).await;
+        return measure_components(&driver, &config, &report, &output, cx).await;
     }
     let origin = Instant::now();
     // Initialize the ordinary client view before the first measured interaction.
@@ -341,28 +341,28 @@ async fn measure(
     report.borrow_mut()["coverage"] =
         window.update(cx, |_, _, cx| root.read(cx).benchmark_message_coverage())?;
     window.update(cx, |_, window, _| window.remove_window())?;
-    measure_liquid(&driver, &config, &report, &output, cx).await
+    measure_components(&driver, &config, &report, &output, cx).await
 }
 
-async fn measure_liquid(
+async fn measure_components(
     driver: &HeadlessAutomation,
     config: &Config,
     report: &Rc<RefCell<Value>>,
     output: &Path,
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
-    use zork_ui::liquid_story::Gallery;
+    use zork_ui::component_story::Gallery;
     let (window, gallery) = cx.update(|cx| -> anyhow::Result<_> {
         zork_gui::desktop::stories::install(cx);
-        zork_ui::liquid_story::install_composer_fixture(cx, || {
-            Box::new(zork_client_core::composer::fixture::Fixture::default())
-        });
         let mut gallery = None;
         let window = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,
-                    size(px(config.liquid_viewport[0]), px(config.liquid_viewport[1])),
+                    size(
+                        px(config.component_viewport[0]),
+                        px(config.component_viewport[1]),
+                    ),
                     cx,
                 ))),
                 titlebar: Some(zork_gui::window_chrome::native_titlebar_options()),
@@ -399,18 +399,18 @@ async fn measure_liquid(
             window.viewport_size().height.as_f32(),
         ]
     })?;
-    report.borrow_mut()["liquid"] = json!({"viewport":viewport,
-        "component":"zork-ui::modal::PlainDialog", "control":"liquid-library-dialog",
+    report.borrow_mut()["components"] = json!({"viewport":viewport,
+        "component":"zork-ui::modal::PlainDialog", "control":"component-gallery-dialog",
         "recipe":"plain-panel-opacity-backdrop", "cases":[], "status":"unverified"});
     anyhow::ensure!(
-        viewport == config.liquid_viewport,
-        "liquid viewport mismatch: {viewport:?} != {:?}",
-        config.liquid_viewport
+        viewport == config.component_viewport,
+        "component viewport mismatch: {viewport:?} != {:?}",
+        config.component_viewport
     );
     for index in 0..config.panel_pairs * 2 {
         let opening = index % 2 == 0;
         let action: UserAction = serde_json::from_value(if opening {
-            json!({"type":"click","target":{"element_id":"liquid-library-toggle"}})
+            json!({"type":"click","target":{"element_id":"component-gallery-toggle"}})
         } else {
             json!({"type":"key","keystroke":"escape"})
         })?;
@@ -462,7 +462,7 @@ async fn measure_liquid(
             } else {
                 after["panel"].is_null()
             },
-            "liquid directory input did not change its open state: {after}"
+            "component directory input did not change its open state: {after}"
         );
         let fade_frames = ["contentTransitionFrames", "backdropTransitionFrames"].map(|key| {
             after["dialog"][key]
@@ -481,7 +481,7 @@ async fn measure_liquid(
             .snapshot(false)
             .elements
             .iter()
-            .any(|element| element.id == "liquid-library-dialog");
+            .any(|element| element.id == "component-gallery-dialog");
         anyhow::ensure!(
             mounted == opening,
             "plain dialog input tree did not match its open state"
@@ -490,28 +490,28 @@ async fn measure_liquid(
             window
                 .update(cx, |_, window, _| window.render_to_image())??
                 .save(output.join(if opening {
-                    "liquid-open.png"
+                    "component-open.png"
                 } else {
-                    "liquid-closed.png"
+                    "component-closed.png"
                 }))?;
         }
-        report.borrow_mut()["liquid"]["cases"]
+        report.borrow_mut()["components"]["cases"]
             .as_array_mut()
             .unwrap()
             .push(json!({
-            "name":if opening {"liquid-open"} else {"liquid-close"}, "frames":frames,
+            "name":if opening {"component-open"} else {"component-close"}, "frames":frames,
             "contentTransitionFrames":fade_frames[0],
             "backdropTransitionFrames":fade_frames[1],
             "mounted":mounted,
             "before":before["dialog"], "after":after["dialog"]}));
     }
-    report.borrow_mut()["liquid"]["status"] = "measured".into();
+    report.borrow_mut()["components"]["status"] = "measured".into();
     // Readbacks and deliberately paced reversal gestures are correctness
     // evidence, outside every measured performance case above.
     let mut visual_frames = Vec::new();
     window
         .update(cx, |_, window, _| window.render_to_image())??
-        .save(output.join("liquid-reference.png"))?;
+        .save(output.join("component-reference.png"))?;
     for (phase, opening, count) in [
         ("opening", true, 6),
         ("closing", false, 3),
@@ -541,9 +541,9 @@ async fn measure_liquid(
         }
         window
             .update(cx, |_, window, _| window.render_to_image())??
-            .save(output.join(format!("liquid-{phase}-before-transfer.png")))?;
+            .save(output.join(format!("component-{phase}-before-transfer.png")))?;
         let action = serde_json::from_value(if opening {
-            json!({"type":"click","target":{"element_id":"liquid-library-toggle"}})
+            json!({"type":"click","target":{"element_id":"component-gallery-toggle"}})
         } else {
             json!({"type":"key","keystroke":"escape"})
         })?;
@@ -558,7 +558,7 @@ async fn measure_liquid(
         .await?;
         window
             .update(cx, |_, window, _| window.render_to_image())??
-            .save(output.join(format!("liquid-{phase}-after-transfer.png")))?;
+            .save(output.join(format!("component-{phase}-after-transfer.png")))?;
         let destination = window.update(cx, |_, _, cx| gallery.read(cx).inspect(cx))?;
         anyhow::ensure!(
             destination["dialog"]["open"] == opening,
@@ -587,12 +587,12 @@ async fn measure_liquid(
                     .snapshot(false)
                     .elements
                     .iter()
-                    .filter(|element| element.id == "liquid-library-toggle")
+                    .filter(|element| element.id == "component-gallery-toggle")
                     .count()
                     == 1,
-                "liquid source must keep one input identity"
+                "component source must keep one input identity"
             );
-            let file = format!("liquid-{phase}-{index:02}.png");
+            let file = format!("component-{phase}-{index:02}.png");
             window
                 .update(cx, |_, window, _| window.render_to_image())??
                 .save(output.join(&file))?;
@@ -601,12 +601,12 @@ async fn measure_liquid(
         }
     }
     std::fs::write(
-        output.join("liquid-visual.json"),
+        output.join("component-visual.json"),
         serde_json::to_vec_pretty(&visual_frames)?,
     )?;
-    if config.playground {
-        report.borrow_mut()["playground"] =
-            playground::measure(window, gallery, driver, config, &output, cx).await?;
+    if config.gallery {
+        report.borrow_mut()["gallery"] =
+            gallery::measure(window, gallery, driver, config, &output, cx).await?;
     }
     window.update(cx, |_, window, _| window.remove_window())?;
     Ok(())

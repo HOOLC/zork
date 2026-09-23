@@ -188,17 +188,6 @@ pub fn row<V: 'static>(
     meta: String,
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
-) -> impl IntoElement {
-    row_source(id, name, meta, None, cx, open)
-}
-
-pub fn row_source<V: 'static>(
-    id: impl Into<gpui::ElementId>,
-    name: String,
-    meta: String,
-    source: Option<crate::components::liquid::overlay::SourceBinding>,
-    cx: &Context<V>,
-    open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     let label = format!("{name}, {meta}");
     let p = ZORK_UI.palette;
@@ -235,22 +224,8 @@ pub fn row_source<V: 'static>(
                 ),
         )
         .on_click(cx.listener(move |v, _, _, cx| open(v, cx)))
-        .map(|control| match source {
-            Some(source) => source
-                .bind(
-                    control,
-                    label.clone(),
-                    ui::ActionStyle {
-                        quiet: true,
-                        ..Default::default()
-                    },
-                )
-                .automation(AutomationRole::Button, label)
-                .into_any_element(),
-            None => control
-                .automation(AutomationRole::Button, label)
-                .into_any_element(),
-        })
+        .automation(AutomationRole::Button, label)
+        .into_any_element()
 }
 
 /// A compact content-menu row shared by conversation files and delivered pages.
@@ -262,19 +237,7 @@ pub fn content_row<V: 'static>(
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    content_row_source(id, icon_path, name, meta, None, cx, open)
-}
-
-pub fn content_row_source<V: 'static>(
-    id: impl Into<gpui::ElementId>,
-    icon_path: &'static str,
-    name: String,
-    meta: String,
-    source: Option<crate::components::liquid::overlay::SourceBinding>,
-    cx: &Context<V>,
-    open: impl Fn(&mut V, &mut Context<V>) + 'static,
-) -> impl IntoElement {
-    content_row_control(id, icon_path, name, meta, source, true, cx, open)
+    content_row_control(id, icon_path, name, meta, true, cx, open)
 }
 
 pub fn content_row_enabled<V: 'static>(
@@ -286,7 +249,7 @@ pub fn content_row_enabled<V: 'static>(
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    content_row_control(id, icon_path, name, meta, None, enabled, cx, open)
+    content_row_control(id, icon_path, name, meta, enabled, cx, open)
 }
 
 fn content_row_control<V: 'static>(
@@ -294,7 +257,6 @@ fn content_row_control<V: 'static>(
     icon_path: &'static str,
     name: String,
     meta: String,
-    source: Option<crate::components::liquid::overlay::SourceBinding>,
     enabled: bool,
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
@@ -321,23 +283,7 @@ fn content_row_control<V: 'static>(
                 open(view, cx);
             }
         }))
-        .map(|row| match source {
-            Some(source) => source
-                .bind(
-                    row,
-                    name.clone(),
-                    ui::ActionStyle {
-                        quiet: true,
-                        icon: Some(icon_path),
-                        ..Default::default()
-                    },
-                )
-                .automation_enabled(enabled, AutomationRole::Button, name)
-                .into_any_element(),
-            None => row
-                .automation_enabled(enabled, AutomationRole::Button, name)
-                .into_any_element(),
-        })
+        .automation_enabled(enabled, AutomationRole::Button, name)
 }
 
 pub fn card<V: 'static>(
@@ -345,18 +291,6 @@ pub fn card<V: 'static>(
     name: String,
     meta: String,
     enabled: bool,
-    cx: &Context<V>,
-    open: impl Fn(&mut V, &mut Context<V>) + 'static,
-) -> impl IntoElement {
-    card_source(id, name, meta, enabled, None, cx, open)
-}
-
-pub fn card_source<V: 'static>(
-    id: impl Into<gpui::ElementId>,
-    name: String,
-    meta: String,
-    enabled: bool,
-    source: Option<crate::components::liquid::overlay::SourceBinding>,
     cx: &Context<V>,
     open: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
@@ -400,20 +334,6 @@ pub fn card_source<V: 'static>(
                 open(v, cx);
             }
         }))
-        .map(|control| match source {
-            Some(source) => source
-                .bind(
-                    control,
-                    label.clone(),
-                    ui::ActionStyle {
-                        disabled: !enabled,
-                        ..Default::default()
-                    },
-                )
-                .automation_enabled(enabled, AutomationRole::Button, label)
-                .into_any_element(),
-            None => control
-                .automation_enabled(enabled, AutomationRole::Button, label)
-                .into_any_element(),
-        })
+        .automation_enabled(enabled, AutomationRole::Button, label)
+        .into_any_element()
 }

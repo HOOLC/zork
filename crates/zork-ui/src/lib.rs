@@ -14,11 +14,11 @@ pub mod onboarding;
 pub mod settings;
 
 #[cfg(feature = "stories")]
+pub mod component_story;
+#[cfg(feature = "stories")]
 mod form_story;
 #[cfg(feature = "stories")]
 mod interaction_story;
-#[cfg(feature = "stories")]
-pub mod liquid_story;
 #[cfg(feature = "stories")]
 pub mod stories;
 
@@ -35,8 +35,6 @@ pub mod attachment_viewer;
 pub mod browser_chrome;
 
 pub mod history_details;
-
-pub mod member_activity;
 
 pub mod history_page;
 

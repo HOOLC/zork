@@ -268,7 +268,6 @@ impl Render for MeshSettings {
                 data,
                 invitation: self.enrollment_data(),
                 focus: &self.switch_focus[0],
-                source: self.modal.source("mesh-peer-dialog"),
                 modal: &self.modal,
                 peer: peer_visible.then(|| zork_ui::network::peer::Fields {
                     name: &self.name,

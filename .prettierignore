@@ -1,0 +1,2 @@
+# Fixed comparison corpus; preserve its original bytes and hash.
+tests/fixtures/geometry/reference12.json

@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 import tempfile
 import time
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 spec = importlib.util.spec_from_file_location('ui', Path(__file__).parent / 'lib/native_gui_fixture.py')
 ui = importlib.util.module_from_spec(spec)
@@ -39,11 +39,6 @@ def main():
         native.screenshot(art / f'{name}-{size}.png')
         (art / f'{name}-{size}.json').write_bytes(native.ui('/v1/elements?include_hidden=true'))
 
-    def request(method, path, body=None, extra=None):
-        return json.load(urlopen(Request(nodes[0].url + path, method=method,
-            data=None if body is None else json.dumps(body).encode(),
-            headers={'Content-Type': 'application/json', 'Authorization': 'Bearer settings-fixture-secret', **(extra or {})})))
-
     try:
         for node in nodes:
             node.config['mesh']['enabled'] = False
@@ -52,17 +47,10 @@ def main():
             node.start()
             f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'fixture ready')
             f.wait(lambda: urlopen(node.agent_url + '/readyz', timeout=2).status == 200, 'fixture Agent ready')
-        selection = dict(profile_id='fixture', model='fixture-model', thinking='off')
-        leader = request('POST', '/v1/node/agents', dict(selection, id='leader', name='产品领队', role='leader', avatar='fox'))
-        request('POST', '/v1/node/agents/leader/open', {})
-        request('POST', '/v1/node/agents', dict(selection, id='worker', name='测试队员', role='worker', avatar='dog', allowed_leaders=['leader']))
-        task = request('POST', '/v1/agent/tasks', dict(worker_id='worker', request_id='settings-arrow-fixture',
-            goal='检查设置页面'), {'x-zork-session-key': leader['session_key']})['task']
         with sqlite3.connect(client / 'client.db') as db:
             db.executescript('CREATE TABLE nodes(id TEXT PRIMARY KEY,value TEXT NOT NULL);'
                 'CREATE TABLE cache(node TEXT,key TEXT,value TEXT,PRIMARY KEY(node,key));')
             db.execute('INSERT INTO cache VALUES (?,?,?)', ('device', 'local-node-enabled', 'false'))
-            db.execute('INSERT INTO cache VALUES (?,?,?)', ('device', 'navigation-collapsed', json.dumps(['node-0/leader'])))
             for i, node in enumerate(nodes):
                 saved = dict(id=f'node-{i}', name=node.root.name, url=node.url,
                              token='settings-fixture-secret', local=False)
@@ -82,28 +70,16 @@ def main():
             assert not native.element(removed), f'removed client setting remains: {removed}'
         capture('client-settings')
         click('settings-device-node-0')
-        click('settings-node-0-1')
-        ready('agent-settings-leader')
-        capture('agents-no-arrows')
-        click('agent-settings-leader')
-        ready('agent-editor-dialog')
-        time.sleep(0.3)  # Wait for the native compositor's entry animation.
-        capture('agent-modal')
-        if tool := os.environ.get('ZORK_COMPOSITOR_CAPTURE'):
-            result = subprocess.run([tool, str(native.process.pid), str(art / f'agent-modal-composited-{size}.png')], capture_output=True, text=True)
-            print(f'Native compositor capture: {result.returncode}', flush=True)
-        native.ui('/v1/actions', {'type': 'key', 'keystroke': 'escape'})
-        click('settings-node-0-0')
-        ready('profile-detail-fixture')
-        capture('models-no-arrows')
+        ready('device-refresh')
+        capture('device-settings')
+        click('settings-models')
+        ready('models-add')
+        capture('model-connections')
         click('desktop-return')
-        ready('leader-node-0-leader')
-        ready(f"leader-task-node-0-{task['task_id']}")
-        assert not native.element('leader-toggle-node-0/leader')
-        capture('tasks-no-arrows')
+        assert not native.element('agent-editor-dialog'), 'obsolete Agent editor is visible'
         (art / f'verification-{size}.json').write_text(json.dumps(dict(passed=True, size=size,
-            checks=['client settings sidebar tabs', 'diagnostics and About removed',
-                    'arrowless agent/model lists', 'tasks visible without fold arrow']), indent=2) + '\n')
+            checks=['appearance sidebar tab', 'diagnostics and About removed',
+                    'device settings', 'model connections', 'obsolete editor absent']), indent=2) + '\n')
         print(f'PASS native client settings at {size}: {art}', flush=True)
     finally:
         native.stop()

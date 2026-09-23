@@ -34,7 +34,6 @@ pub enum NetworkAction {
 pub fn network<V: 'static>(
     data: NetworkData,
     focus: &FocusHandle,
-    source: crate::components::liquid::overlay::SourceBinding,
     cx: &Context<V>,
     action: impl Fn(&mut V, NetworkAction, &mut Context<V>) + 'static,
 ) -> Div {
@@ -57,16 +56,6 @@ pub fn network<V: 'static>(
                 .child(
                     ui::page_action("mesh-new-peer", "手动连接")
                         .on_click(cx.listener(move |v, _, _, cx| add(v, NetworkAction::Add, cx)))
-                        .map(|button| {
-                            source.bind(
-                                button,
-                                "手动连接",
-                                ui::ActionStyle {
-                                    icon: Some("icons/plus.svg"),
-                                    ..Default::default()
-                                },
-                            )
-                        })
                         .automation(AutomationRole::Button, "手动连接设备"),
                 ),
         )
@@ -208,22 +197,24 @@ pub fn enrollment<V: 'static>(
         .flex()
         .flex_col()
         .gap_4()
-        .child(crate::components::liquid::controls::deferred_segmented(
+        .child(crate::components::widgets::controls::deferred_segmented(
             "mesh-connect-mode",
             [
                 ("mesh-connect-phone-tab", "连接手机"),
                 ("mesh-connect-device-tab", "连接其它设备"),
             ]
             .into_iter()
-            .map(|(id, label)| crate::components::liquid::controls::Segment {
-                id: id.into(),
-                label: label.into(),
-                disabled: false,
-            })
+            .map(
+                |(id, label)| crate::components::widgets::controls::Segment {
+                    id: id.into(),
+                    label: label.into(),
+                    disabled: false,
+                },
+            )
             .collect(),
             vec![],
             Some(usize::from(!data.client)),
-            crate::components::liquid::controls::SegmentKind::Choice,
+            crate::components::widgets::controls::SegmentKind::Choice,
             !data.busy,
             ZORK_UI.palette.canvas,
             cx.listener(move |v, index: &usize, _, cx| {
@@ -575,19 +566,14 @@ impl gpui::Render for NetworkStory {
             .is_some();
         if enrollment_only {
             return div()
-                .child(self.modal.source("add-device-dialog").bind(
+                .child(
                     ui::page_action("design-pc-add-device", "连接设备").on_click(cx.listener(
                         |v, _, _, cx| {
                             v.open = true;
                             cx.notify();
                         },
                     )),
-                    "连接设备",
-                    ui::ActionStyle {
-                        icon: Some("icons/plus.svg"),
-                        ..Default::default()
-                    },
-                ))
+                )
                 .when(visible, |v| {
                     v.child(enrollment_dialog(
                         self.enrollment.clone(),
@@ -608,7 +594,6 @@ impl gpui::Render for NetworkStory {
                 data: self.data.clone(),
                 invitation: self.enrollment.clone(),
                 focus: &self.focus[0],
-                source: self.modal.source("mesh-peer-dialog"),
                 modal: &self.modal,
                 peer: visible.then(|| peer::Fields {
                     name: &self.name,
@@ -659,7 +644,7 @@ impl gpui::Render for NetworkStory {
                                     permission: if v.grant {
                                         "客户端 · 可管理此设备"
                                     } else {
-                                        "设备 · 按小伙伴授权协作"
+                                        "设备 · 通过 Mesh 授权协作"
                                     }
                                     .into(),
                                 });
@@ -682,7 +667,6 @@ pub struct Page<'a> {
     pub data: NetworkData,
     pub invitation: EnrollmentData,
     pub focus: &'a FocusHandle,
-    pub source: crate::components::liquid::overlay::SourceBinding,
     pub peer: Option<peer::Fields<'a>>,
     pub modal: &'a crate::modal::ModalState,
 }
@@ -703,13 +687,9 @@ pub fn page<V: 'static>(
     div()
         .flex()
         .flex_col()
-        .child(network(
-            props.data,
-            props.focus,
-            props.source,
-            cx,
-            move |v, event, cx| network_action(v, PageAction::Network(event), cx),
-        ))
+        .child(network(props.data, props.focus, cx, move |v, event, cx| {
+            network_action(v, PageAction::Network(event), cx)
+        }))
         .child(
             div()
                 .mt_6()

@@ -202,10 +202,10 @@ internal fun ClientScreen(model: ClientViewModel) {
             newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
     ) }
     }
-    LiquidRetained(editingComment) { comment, open, closed ->
+    ZorkRetained(editingComment) { comment, open, closed ->
         CommentDialog(comment, open, closed, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
     }
-    LiquidRetained(Unit.takeIf { addDevice }) { _, open, closed ->
+    ZorkRetained(Unit.takeIf { addDevice }) { _, open, closed ->
         SettingsSheet("连接设备", dismiss = { addDevice = false }, open = open, onClosed = closed) {
             if (model.invitation != null) PhoneInvitationStatus(model) else PhoneConnectActions(model)
         }
@@ -265,7 +265,7 @@ private fun CommentDialog(comment: DraftCommentUi, open: Boolean, closed: () -> 
         Text("你的评论", fontSize = 12.sp, color = ZorkColors.Muted)
         FormField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3,
             placeholder = { Text("对这段内容有什么想法？", fontSize = 16.sp) })
-        LiquidButton("加入待发送评论", primary = true, onClick = { save(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth())
+        ZorkButton("加入待发送评论", primary = true, onClick = { save(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth())
         Text("可以继续添加其他评论，最后和消息一起发送。", color = ZorkColors.Muted, fontSize = 12.sp)
     }
 }

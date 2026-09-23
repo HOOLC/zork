@@ -1,9 +1,6 @@
 //! Model and reasoning controls share one compact, anchored panel.
 use super::*;
-use crate::components::liquid::{
-    controls::{adaptive_action, ActionStyle},
-    primitives::range::{self, Scale},
-};
+use gpui_component::slider::{Slider, SliderEvent, SliderState};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum PickerMode {
@@ -50,81 +47,6 @@ impl Page {
                 .min(levels.len() - 1)
         })
     }
-    fn picker_button(
-        &self,
-        id: &'static str,
-        effort: String,
-        model: String,
-        max_width: f32,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let accessible_label = format!(
-            "{}: {}; {}: {}",
-            self.text.text("new_chat_choose_model"),
-            model,
-            self.text.text("new_chat_thinking"),
-            effort
-        );
-        adaptive_action(
-            id,
-            "",
-            ActionStyle {
-                quiet: true,
-                bare: true,
-                icon_only: Some(false),
-                radius: Some(8.),
-                disabled: !(self.picker_open && self.data.editable),
-                ..Default::default()
-            },
-            ZORK_UI.palette.canvas,
-        )
-        .max_w(px(max_width))
-        .h(px(28.))
-        .px_0()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .child(
-                    div()
-                        .min_w_0()
-                        .truncate()
-                        .text_color(rgb(ZORK_UI.palette.text))
-                        .child(model),
-                )
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(rgb(ZORK_UI.palette.muted))
-                        .child("·"),
-                )
-                .child(
-                    div()
-                        .id("new-chat-thinking-label")
-                        .flex_shrink_0()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(crate::design::BRAND_ACCENT))
-                        .child(effort.clone())
-                        .automation(AutomationRole::Status, effort),
-                ),
-        )
-        .text_size(px(13.))
-        .font_weight(FontWeight::MEDIUM)
-        .aria_label(accessible_label.clone())
-        .on_click(cx.listener(move |view, _, window, cx| {
-            view.picker_mode = PickerMode::Models;
-            view.picker.focus(window, cx);
-            cx.notify();
-        }))
-        .automation_enabled(
-            self.picker_open && self.data.editable,
-            AutomationRole::Button,
-            accessible_label,
-        )
-        .into_any_element()
-    }
     fn picker_option(
         &self,
         id: String,
@@ -135,49 +57,26 @@ impl Page {
         enabled: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
-        adaptive_action(
-            id,
-            label.clone(),
-            ActionStyle {
-                quiet: true,
-                selected,
-                leading: true,
-                trailing: selected.then_some("icons/check.svg"),
-                radius: Some(8.),
-                disabled: !enabled,
-                ..Default::default()
-            },
-            ZORK_UI.palette.canvas,
-        )
-        .w_full()
-        .h(px(36.))
-        .px_0()
-        .font_weight(if selected {
-            FontWeight::MEDIUM
-        } else {
-            FontWeight::NORMAL
-        })
-        .aria_toggled(if selected {
-            Toggled::True
-        } else {
-            Toggled::False
-        })
-        .on_click(cx.listener(move |view, _, window, cx| {
-            view.picker.focus(window, cx);
-            cx.emit(Event::Intent(if model {
-                Action::Model {
-                    value: value.clone(),
-                }
-            } else {
-                Action::Profile {
-                    value: value.clone(),
-                }
-            }));
-            view.thinking_preview = None;
-            cx.notify();
-        }))
-        .automation_enabled(enabled, AutomationRole::Button, label)
-        .into_any_element()
+        ui::choice(id, label.clone(), selected, enabled)
+            .w_full()
+            .h(px(36.))
+            .justify_start()
+            .on_click(cx.listener(move |view, _, window, cx| {
+                window.focus(&view.picker_focus, cx);
+                cx.emit(Event::Intent(if model {
+                    Action::Model {
+                        value: value.clone(),
+                    }
+                } else {
+                    Action::Profile {
+                        value: value.clone(),
+                    }
+                }));
+                view.thinking_preview = None;
+                cx.notify();
+            }))
+            .automation_enabled(enabled, AutomationRole::Button, label)
+            .into_any_element()
     }
     pub(super) fn picker_content(
         &self,
@@ -197,24 +96,19 @@ impl Page {
                 .flex()
                 .items_center()
                 .child(
-                    adaptive_action(
+                    ui::quiet_button(
                         "new-chat-picker-back",
                         "",
-                        ActionStyle {
-                            quiet: true,
-                            icon_only: Some(true),
-                            icon: Some("icons/arrow-left.svg"),
-                            disabled: !enabled,
-                            ..Default::default()
-                        },
-                        ZORK_UI.palette.canvas,
+                        enabled,
+                        ui::IconButtonSize::Small,
                     )
                     .size(px(28.))
                     .px_0()
+                    .child(ui::icon("icons/arrow-left.svg", 14.))
                     .aria_label(back_label.clone())
-                    .on_click(cx.listener(move |view, _, window, cx| {
+                    .on_click(cx.listener(|view, _, window, cx| {
                         view.picker_mode = PickerMode::Strength;
-                        view.picker.focus(window, cx);
+                        window.focus(&view.picker_focus, cx);
                         cx.notify();
                     }))
                     .automation_enabled(
@@ -320,6 +214,8 @@ impl Page {
                         .child(profile_rows),
                 );
             return div()
+                .id("new-chat-picker-content")
+                .track_focus(&self.picker_focus)
                 .flex()
                 .flex_col()
                 .child(header)
@@ -330,20 +226,62 @@ impl Page {
         let selected = self.selected_thinking_index().unwrap_or(0);
         let label = levels
             .get(selected)
-            .map(|o| self.thinking_label(&o.value))
+            .map(|option| self.thinking_label(&option.value))
             .unwrap_or_else(|| self.text.text("new_chat_thinking"));
+        let accessible_label = format!(
+            "{}: {}; {}: {}",
+            self.text.text("new_chat_choose_model"),
+            model,
+            self.text.text("new_chat_thinking"),
+            label,
+        );
         let header = div()
             .flex()
             .items_center()
             .justify_between()
             .gap(px(8.))
-            .child(self.picker_button(
-                "new-chat-model",
-                label.clone(),
-                model,
-                (width - 56.).max(24.),
-                cx,
-            ))
+            .child(
+                ui::quiet_button("new-chat-model", "", enabled, ui::IconButtonSize::Small)
+                    .max_w(px((width - 56.).max(24.)))
+                    .h(px(28.))
+                    .px_0()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(rgb(ZORK_UI.palette.text))
+                                    .child(model),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_color(rgb(ZORK_UI.palette.muted))
+                                    .child("·"),
+                            )
+                            .child(
+                                div()
+                                    .id("new-chat-thinking-label")
+                                    .flex_shrink_0()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(crate::design::BRAND_ACCENT))
+                                    .child(label.clone())
+                                    .automation(AutomationRole::Status, label.clone()),
+                            ),
+                    )
+                    .aria_label(accessible_label.clone())
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        view.picker_mode = PickerMode::Models;
+                        window.focus(&view.picker_focus, cx);
+                        cx.notify();
+                    }))
+                    .automation_enabled(enabled, AutomationRole::Button, accessible_label),
+            )
             .child(
                 ui::quiet_button(
                     "new-chat-thinking-reset",
@@ -369,35 +307,92 @@ impl Page {
             );
         let mut content = div().flex().flex_col().child(header);
         if levels.len() > 1 {
-            let values: Vec<String> = levels.iter().map(|o| o.value.clone()).collect();
-            let slider = range::step_slider(
-                "new-chat-thinking",
-                label,
-                vec![selected as f64],
-                Scale {
-                    min: 0.,
-                    max: (values.len() - 1) as f64,
-                    step: 1.,
-                    ..Default::default()
-                },
-                width - 24.,
-                !enabled,
-                window,
-                cx,
-                move |view, next, commit, cx| {
-                    let index = next[0].round() as usize;
-                    if let Some(value) = values.get(index) {
-                        view.thinking_preview = Some(index);
-                        if commit {
-                            cx.emit(Event::Intent(Action::Thinking {
-                                value: value.clone(),
-                            }));
+            let owner = cx.entity().downgrade();
+            let count = levels.len();
+            let keyed =
+                window.use_keyed_state(format!("new-chat-thinking-{count}"), cx, |window, app| {
+                    let slider = app.new(|_| {
+                        SliderState::new()
+                            .min(0.)
+                            .max((count - 1) as f32)
+                            .step(1.)
+                            .default_value(selected as f32)
+                    });
+                    let subscription =
+                        window.subscribe(&slider, app, move |_, event: &SliderEvent, _, app| {
+                            let (value, commit) = match event {
+                                SliderEvent::Change(value) => (value.end(), false),
+                                SliderEvent::Release(value) => (value.end(), true),
+                            };
+                            let _ = owner.update(app, |view, cx| {
+                                let index = (value.round() as usize)
+                                    .min(view.data.thinking.options.len().saturating_sub(1));
+                                if let Some(option) = view.data.thinking.options.get(index) {
+                                    view.thinking_preview = Some(index);
+                                    if commit {
+                                        cx.emit(Event::Intent(Action::Thinking {
+                                            value: option.value.clone(),
+                                        }));
+                                    }
+                                    cx.notify();
+                                }
+                            });
+                        });
+                    (slider, subscription)
+                });
+            let slider = keyed.read(cx).0.clone();
+            if slider.read(cx).value().end() != selected as f32 {
+                slider.update(cx, |state, cx| state.set_value(selected as f32, window, cx));
+            }
+            let keyboard_slider = slider.clone();
+            content = content.child(
+                div()
+                    .id("new-chat-thinking-keyboard")
+                    .mt_1()
+                    .w(px(width - 24.))
+                    .focusable()
+                    .tab_stop(enabled)
+                    .aria_label(label.clone())
+                    .on_key_down(cx.listener(move |view, event: &KeyDownEvent, window, cx| {
+                        if !enabled {
+                            return;
                         }
-                        cx.notify();
-                    }
-                },
+                        let current = view.thinking_preview.unwrap_or_else(|| {
+                            view.data
+                                .thinking
+                                .options
+                                .iter()
+                                .position(|option| option.value == view.data.thinking.value)
+                                .unwrap_or(0)
+                        });
+                        let last = view.data.thinking.options.len().saturating_sub(1);
+                        let next = match event.keystroke.key.as_str() {
+                            "left" | "down" => current.saturating_sub(1),
+                            "right" | "up" => (current + 1).min(last),
+                            "home" => 0,
+                            "end" => last,
+                            _ => return,
+                        };
+                        if let Some(option) = view.data.thinking.options.get(next) {
+                            keyboard_slider
+                                .update(cx, |state, cx| state.set_value(next as f32, window, cx));
+                            view.thinking_preview = Some(next);
+                            cx.emit(Event::Intent(Action::Thinking {
+                                value: option.value.clone(),
+                            }));
+                            cx.notify();
+                            window.prevent_default();
+                            cx.stop_propagation();
+                        }
+                    }))
+                    .child(
+                        Slider::new(&slider)
+                            .disabled(!enabled)
+                            .w_full()
+                            .bg(rgb(crate::design::BRAND_ACCENT)),
+                    )
+                    .automation_enabled(enabled, AutomationRole::Option, label),
             );
-            content = content.child(div().mt_1().child(slider));
         } else {
             content = content.child(
                 div()
@@ -410,6 +405,9 @@ impl Page {
                     .child(self.text.text("new_chat_fixed_thinking")),
             );
         }
-        content.into_any_element()
+        content
+            .id("new-chat-picker-content")
+            .track_focus(&self.picker_focus)
+            .into_any_element()
     }
 }

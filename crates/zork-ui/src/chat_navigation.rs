@@ -5,7 +5,7 @@ use crate::{
     design::ZORK_UI,
     resources::Text,
 };
-use gpui::{div, prelude::*, px, rgb, Context, Div, FontWeight, Window};
+use gpui::{div, prelude::*, px, rgb, Context, Div, Window};
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -30,7 +30,6 @@ pub enum Action {
         node: Option<String>,
         destination: Destination,
     },
-    Collapsed(HashSet<String>),
     BeginResize,
     Preview {
         node: String,
@@ -67,8 +66,6 @@ pub struct Navigation {
     regions: crate::components::region::Regions<Self>,
     devices: Vec<Device>,
     active: Option<String>,
-    collapsed: HashSet<String>,
-    show_all: HashSet<String>,
     show_archived: bool,
     hovered_row: Option<String>,
     hovered_action: Option<String>,
@@ -79,18 +76,15 @@ pub struct Navigation {
     brand: Option<gpui::Entity<crate::components::brand::Brand>>,
     shared_files: bool,
     tabs: TabGroup,
-    add_device_source: Option<crate::components::liquid::overlay::SourceBinding>,
     details_overlay: Option<gpui::Entity<crate::components::tooltip::DetailsOverlay>>,
 }
 impl gpui::EventEmitter<Action> for Navigation {}
 impl Navigation {
-    pub fn new(collapsed: HashSet<String>, locale: Text, cx: &mut Context<Self>) -> Self {
+    pub fn new(locale: Text, cx: &mut Context<Self>) -> Self {
         Self {
             regions: Default::default(),
             devices: vec![],
             active: None,
-            collapsed,
-            show_all: Default::default(),
             show_archived: false,
             hovered_row: None,
             hovered_action: None,
@@ -101,7 +95,6 @@ impl Navigation {
             brand: None,
             shared_files: false,
             tabs: TabGroup::new(cx),
-            add_device_source: None,
             details_overlay: None,
         }
     }
@@ -170,27 +163,12 @@ impl Navigation {
         self.locale = locale;
         crate::components::region::invalidate_all(cx);
     }
-    pub fn bind_add_device_source(
-        &mut self,
-        source: crate::components::liquid::overlay::SourceBinding,
-        cx: &mut Context<Self>,
-    ) {
-        self.add_device_source = Some(source);
-        crate::components::region::invalidate(cx, &["footer"]);
-    }
     #[cfg(feature = "headless-bench")]
     pub fn counters(&self, cx: &gpui::App) -> std::collections::HashMap<String, [usize; 4]> {
         self.regions.counters(cx)
     }
     fn width(&self, available: f32) -> f32 {
         self.width.min((available - 360.).max(200.))
-    }
-    fn toggle(&mut self, key: String, cx: &mut Context<Self>) {
-        if !self.collapsed.remove(&key) {
-            self.collapsed.insert(key);
-        }
-        cx.emit(Action::Collapsed(self.collapsed.clone()));
-        crate::components::region::invalidate_all(cx);
     }
     fn go(&self, node: Option<String>, destination: Destination, cx: &mut Context<Self>) {
         cx.emit(Action::Navigate { node, destination });
@@ -218,81 +196,6 @@ impl Navigation {
             .child(brand)
             .automation(AutomationRole::Status, "Zork")
             .into_any_element()
-    }
-    fn device(&self, device: &Device, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let node = &device;
-        let expanded = !self.collapsed.contains(&node.id);
-        let fold = crate::components::collapse::Collapse::new(
-            format!("device-fold-{}", node.id),
-            expanded,
-            self.width(window.viewport_size().width.as_f32()) - 16.,
-            window,
-            cx,
-        );
-        let header_focus = fold.header_focus(cx);
-        let interactive = fold.interactive(cx);
-        let key = node.id.clone();
-        let state = crate::device_name::status_text(&device.status, Some(&self.locale));
-        self.tabs
-            .column()
-            .gap_0()
-            .pb(px(2.))
-            .child(
-                self.tabs
-                    .tab(format!("device-{}", node.id), false)
-                    .track_focus(&header_focus)
-                    .child(ui::icon("icons/node.svg", 20.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(crate::device_name::label(
-                                "device-header-name",
-                                node.name.clone(),
-                                &device.status,
-                                Some(&self.locale),
-                            )),
-                    )
-                    .on_click(cx.listener(move |v, _, _, cx| v.toggle(key.clone(), cx)))
-                    .automation(AutomationRole::Button, format!("{} · {state}", node.name)),
-            )
-            .child({
-                let content = fold.mounted(cx).then(|| {
-                    self.tabs
-                        .column()
-                        .child({
-                            let node = device.id.clone();
-                            self.tabs
-                                .tab(
-                                    format!("new-chat-{}", device.id),
-                                    self.active.as_deref() == Some(&device.id)
-                                        && device.selected_session.is_none()
-                                        && !self.shared_files,
-                                )
-                                .tab_stop(interactive)
-                                .pl(px(36.))
-                                .child(self.locale.text("new_chat"))
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    v.go(Some(node.clone()), Destination::NewChat, cx)
-                                }))
-                                .automation(AutomationRole::Button, self.locale.text("new_chat"))
-                        })
-                        .child(self.chat_group(device, &device.chats, interactive, window, cx))
-                        .into_any_element()
-                });
-                let owner = cx.entity().downgrade();
-                let region = format!("device/{}", node.id);
-                fold.element(
-                    content,
-                    move |_, cx| {
-                        let _ = owner.update(cx, |_, cx| {
-                            crate::components::region::invalidate(cx, &[&region]);
-                        });
-                    },
-                    cx,
-                )
-            })
     }
     fn new_chat_target(&self) -> Option<String> {
         if let Some(id) = &self.active {
@@ -409,51 +312,6 @@ impl Navigation {
             format!("{:02}-{:02}", day.1, day.2)
         }
     }
-    fn chat_group(
-        &self,
-        device: &Device,
-        chats: &[NavigationChat],
-        interactive: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let key = device.id.clone();
-        let all = self.show_all.contains(&key);
-        let visible: Vec<_> = chats
-            .iter()
-            .filter(|chat| {
-                all || chat.in_preview || device.selected_session.as_deref() == Some(&chat.chat_id)
-            })
-            .collect();
-        self.tabs
-            .column()
-            .children(
-                visible
-                    .iter()
-                    .map(|chat| self.chat_row(device, chat, window, cx)),
-            )
-            .when(chats.len() > visible.len() || all, |panel| {
-                panel.child(
-                    self.tabs
-                        .tab(format!("chats-more-{key}"), false)
-                        .tab_stop(interactive)
-                        .pl(px(36.))
-                        .text_color(rgb(ZORK_UI.palette.muted))
-                        .child(self.locale.text(if all {
-                            "device_fewer_tasks"
-                        } else {
-                            "device_more_tasks"
-                        }))
-                        .on_click(cx.listener(move |v, _, _, cx| {
-                            if !v.show_all.remove(&key) {
-                                v.show_all.insert(key.clone());
-                            }
-                            crate::components::region::invalidate_all(cx);
-                        })),
-                )
-            })
-    }
-
     fn chat_row(
         &self,
         device: &Device,
@@ -500,9 +358,9 @@ impl Navigation {
         let row_id = format!("chat-{}-{}", device.id, chat.chat_id);
         let action_id = format!("archive-{row_id}");
         let row_focus =
-            crate::components::liquid::controls::action_focus(row_id.clone(), window, cx);
+            crate::components::widgets::controls::action_focus(row_id.clone(), window, cx);
         let action_focus =
-            crate::components::liquid::controls::action_focus(action_id.clone(), window, cx);
+            crate::components::widgets::controls::action_focus(action_id.clone(), window, cx);
         {
             let mut subscriptions = self.focus_subscriptions.borrow_mut();
             subscriptions.entry(row_id.clone()).or_insert_with(|| {
@@ -601,29 +459,11 @@ impl Navigation {
             .flex_col()
             .gap(px(1.))
             .cursor_pointer()
+            .rounded(px(radius))
             .when(!selected, |row| {
-                row.child(crate::components::motion::HoverFill {
-                    id: format!("chat-hover-{}-{}", device.id, chat.chat_id).into(),
-                    color: crate::design::INTERACTION.neutral_hover,
-                    radius,
-                    pressed: None,
-                })
+                row.hover(|row| row.bg(rgb(crate::design::INTERACTION.neutral_hover)))
             })
-            .when(selected, |row| {
-                row.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .text_color(rgb(ZORK_UI.palette.selected))
-                        .child(
-                            crate::components::smooth::fill(
-                                format!("chat-active-{}-{}", device.id, chat.chat_id),
-                                radius,
-                            )
-                            .current_color(),
-                        ),
-                )
-            })
+            .when(selected, |row| row.bg(rgb(ZORK_UI.palette.selected)))
             .child(
                 div()
                     .text_size(px(13.))
@@ -876,23 +716,9 @@ impl Navigation {
             .child(ui::icon("icons/plus.svg", 20.))
             .child(self.locale.text("device_add"))
             .on_click(cx.listener(|v, _, _, cx| v.go(None, Destination::Manage(3), cx)));
-        let add_device = match &self.add_device_source {
-            Some(source) => source
-                .bind(
-                    add_device,
-                    self.locale.text("device_add"),
-                    ui::ActionStyle {
-                        quiet: true,
-                        icon: Some("icons/plus.svg"),
-                        ..Default::default()
-                    },
-                )
-                .automation(AutomationRole::Button, self.locale.text("device_add"))
-                .into_any_element(),
-            None => add_device
-                .automation(AutomationRole::Button, self.locale.text("device_add"))
-                .into_any_element(),
-        };
+        let add_device = add_device
+            .automation(AutomationRole::Button, self.locale.text("device_add"))
+            .into_any_element();
         self.tabs.column().py_2().child(add_device).child(
             self.tabs
                 .tab("desktop-manage".into(), false)

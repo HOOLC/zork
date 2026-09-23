@@ -72,13 +72,6 @@ impl ResourcesView {
         view.project();
         view
     }
-    pub fn bind_source(
-        &mut self,
-        source: crate::components::liquid::overlay::SourceBinding,
-        cx: &mut Context<Self>,
-    ) {
-        self.modal.bind_source("resource-detail-modal", source, cx);
-    }
     pub fn set_data(&mut self, data: Arc<ResourcesData>, cx: &mut Context<Self>) {
         self.data = data;
         self.project();
@@ -348,7 +341,6 @@ impl ResourcesView {
                 TextRole::Description,
             ));
         }
-        let source = self.modal.source("resource-detail-modal");
         let rows = self.rows.clone();
         let data = self.data.clone();
         let locale = self.locale.clone();
@@ -394,7 +386,7 @@ impl ResourcesView {
                                 )
                             };
                             div().h(px(56.)).pb_2().child(
-                                crate::components::attachments::content_row_source(
+                                crate::components::attachments::content_row(
                                     format!("resource-row-{index}"),
                                     if item.kind == ResourceKind::Mcp {
                                         "icons/mesh.svg"
@@ -403,7 +395,6 @@ impl ResourcesView {
                                     },
                                     item.name.clone(),
                                     meta,
-                                    Some(source.clone()),
                                     cx,
                                     move |view, cx| view.select(node.clone(), query.clone(), cx),
                                 ),

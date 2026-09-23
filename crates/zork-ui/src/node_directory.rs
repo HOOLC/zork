@@ -54,7 +54,7 @@ pub trait Host: Sized + 'static {
                 if data.nodes.is_empty() {
                     "开启本机设备，或连接一台已有设备。"
                 } else {
-                    "选择运行小伙伴的设备。"
+                    "选择运行对话的设备。"
                 },
             ))
             .child(

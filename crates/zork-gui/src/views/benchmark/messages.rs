@@ -180,7 +180,7 @@ pub fn line(index: usize) -> TranscriptLine {
             id: Some(format!("stress-{index}")),
             created_at: Some("2026-09-07T08:00:00Z".into()),
             author_agent_id: Some(format!("leader-{}", index % 4)),
-            author_name: Some(format!("伙伴 {}", index % 4)),
+            author_name: Some(format!("助手 {}", index % 4)),
             author_avatar: Some(zork_ui::controls::AGENT_AVATARS[index % 12].0.into()),
             device: Some(format!("fixture-device-{}", index % 3)),
             ..Default::default()

@@ -58,14 +58,6 @@ impl ResourcesView {
         view.view.update(cx, |v, cx| v.unavailable(error, cx));
         view
     }
-    pub fn from_source(
-        self,
-        source: zork_ui::components::liquid::overlay::SourceBinding,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        self.view.update(cx, |v, cx| v.bind_source(source, cx));
-        self
-    }
     #[cfg(feature = "headless-bench")]
     pub fn fixture(data: ResourcesData, locale: Locale, cx: &mut Context<Self>) -> Self {
         Self::new(Resources::fixture(data), locale, cx)

@@ -19,7 +19,6 @@ members = [
   "crates/zork-notify",
   "crates/zork-observe",
   "crates/zork-ui",
-  "crates/zork-liquid",
   "crates/zork-client-core",
   "crates/zork-client-types",
   "crates/zork-android",
@@ -70,9 +69,6 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.zork-ui]
-opt-level = 3
-
-[profile.dev.package.zork-liquid]
 opt-level = 3
 
 [profile.dev.package.gpui-base-uo]

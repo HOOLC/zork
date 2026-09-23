@@ -3,7 +3,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::{TextRole, LIQUID_OUTLINE, ZORK_UI},
+    design::{TextRole, UI_OUTLINE, ZORK_UI},
 };
 use gpui::{
     div, prelude::*, px, rgb, Context, Div, ElementId, Font, SharedString, Stateful, Window,
@@ -166,12 +166,12 @@ pub fn stepper<V: 'static>(
         let label = format!("{}{label}", if direction < 0 { "减少" } else { "增加" });
         let change = change.clone();
         content = content.child(
-            super::liquid::controls::action(
+            super::widgets::controls::action(
                 format!("{id}-{suffix}"),
                 "",
                 32.,
                 32.,
-                super::liquid::controls::ActionStyle {
+                super::widgets::controls::ActionStyle {
                     quiet: true,
                     disabled: !enabled,
                     icon: Some(if direction < 0 {
@@ -193,13 +193,12 @@ pub fn stepper<V: 'static>(
             .automation_enabled(enabled, AutomationRole::Button, label),
         );
     }
-    super::liquid::skin(
+    super::widgets::skin(
         format!("{id}-stepper"),
         100.,
         32.,
         ui::FIELD_RADIUS,
-        super::liquid::Material::ordinary().smoothing,
-        super::liquid::SurfaceColors::outlined(LIQUID_OUTLINE, ZORK_UI.palette.canvas),
+        super::widgets::SurfaceColors::outlined(UI_OUTLINE, ZORK_UI.palette.canvas),
         content,
         window,
         cx,

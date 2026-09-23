@@ -124,7 +124,7 @@ impl Agents {
             let name = crate::model_edit::valid_name(&input.name, 64)?;
             anyhow::ensure!(
                 matches!(input.role.as_str(), "leader" | "worker"),
-                "请选择小伙伴角色"
+                "请选择 Agent 角色"
             );
             self.create_agent(json!({"id":input.id,"name":name,"role":input.role,"avatar":input.avatar,
                 "profile_id":input.profile,"model":input.model,"thinking":input.thinking,"instructions":input.instructions,
