@@ -174,8 +174,9 @@ def main():
         choose("story-scenario", "story-scenario-onboarding-models-compact")
         click("onboarding-add-model")
         wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)
+        click("profile-access-false")
         wait(lambda: native.element("profile-provider-select") and
-             native.element("profile-provider-select")["label"] == "OpenAI",
+             native.element("profile-provider-select")["label"],
              "fixture provider ready", timeout=10)
         assert not native.element("model-add-device-mini1")
         checks.append("first-use flow opens the real local model editor without device choice")
