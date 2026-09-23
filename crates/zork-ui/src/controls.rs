@@ -241,6 +241,7 @@ pub fn icon_button_sized(
         "",
         ActionStyle {
             icon_only: Some(true),
+            radius: Some(size.radius()),
             disabled: !enabled,
             ..Default::default()
         },
@@ -609,6 +610,9 @@ fn menu_dropdown<V: 'static>(
     let panel_id = id.clone();
     let panel_padding = 6.;
     let panel_height = 320.;
+    let scroll =
+        window.use_keyed_state(format!("{id}-scroll"), cx, |_, _| gpui::ScrollHandle::new());
+    let scroll = scroll.read(cx).clone();
     let mut rows = div()
         .id(format!("{panel_id}-rows"))
         .w_full()
@@ -616,6 +620,7 @@ fn menu_dropdown<V: 'static>(
             panel_height - 2. * (panel_padding + crate::design::BORDER_WIDTH)
         ))
         .overflow_y_scroll()
+        .track_scroll(&scroll)
         .flex()
         .flex_col();
     for (index, (key, text, checked)) in options.iter().enumerate() {
@@ -656,6 +661,16 @@ fn menu_dropdown<V: 'static>(
             .w_full()
             .min_h(px(32.))
             .rounded(px(10.))
+            .border(px(crate::design::BORDER_WIDTH))
+            .border_color(gpui::rgba(0))
+            .focus_visible(|v| v.border_color(rgb(crate::design::FORM.focus_border)))
+            .when(selection != Selection::Actions, |v| {
+                v.aria_toggled(if checked {
+                    gpui::Toggled::True
+                } else {
+                    gpui::Toggled::False
+                })
+            })
             .when(checked, |v| v.bg(rgb(ZORK_UI.palette.selected)))
             .hover(|v| v.bg(rgb(INTERACTION.neutral_hover)))
             .flex()
@@ -691,6 +706,52 @@ fn menu_dropdown<V: 'static>(
             PLAIN_POPOVER_RADIUS - panel_padding,
             rows,
         ));
+    // Select binds arrows and Enter to actions; handle them inside the popup
+    // before the root's opening/focus-transfer handlers see them.
+    let move_focus = Rc::new({
+        let handles = handles.clone();
+        let scroll = scroll.clone();
+        move |delta: isize, window: &mut gpui::Window, app: &mut gpui::App| {
+            if handles.is_empty() {
+                return;
+            }
+            let current = handles
+                .iter()
+                .position(|h| h.is_focused(window))
+                .unwrap_or(entry);
+            let next = (current as isize + delta).rem_euclid(handles.len() as isize) as usize;
+            scroll.scroll_to_item(next);
+            window.focus(&handles[next], app);
+            app.stop_propagation();
+        }
+    });
+    let up = move_focus.clone();
+    let confirm_handles = handles.clone();
+    let confirm_owner = owner.clone();
+    let confirm_choose = choose.clone();
+    let confirm_close = set_open.clone();
+    let confirm_trigger = trigger_focus.clone();
+    panel = panel
+        .on_action(move |_: &gpui_base::actions::SelectUp, w, app| up(-1, w, app))
+        .on_action(move |_: &gpui_base::actions::SelectDown, w, app| move_focus(1, w, app))
+        .on_action(move |_: &gpui_base::actions::Confirm, window, app| {
+            app.stop_propagation();
+            if !enabled {
+                return;
+            }
+            let Some(index) = confirm_handles.iter().position(|h| h.is_focused(window)) else {
+                return;
+            };
+            let _ = confirm_owner.update(app, |view, cx| {
+                confirm_choose(view, index, cx);
+                if selection == Selection::Single {
+                    confirm_close(view, false, cx);
+                }
+            });
+            if selection == Selection::Single {
+                window.focus(&confirm_trigger, app);
+            }
+        });
     let focus_for_keys = handles.clone();
     let outside_owner = owner.clone();
     let outside_close = set_open.clone();
@@ -711,6 +772,7 @@ fn menu_dropdown<V: 'static>(
                 "end" => active.len() - 1,
                 _ => return,
             };
+            scroll.scroll_to_item(active[next]);
             window.focus(&focus_for_keys[active[next]], cx);
             window.prevent_default();
             cx.stop_propagation();

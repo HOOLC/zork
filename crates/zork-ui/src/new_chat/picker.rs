@@ -385,12 +385,7 @@ impl Page {
                             cx.stop_propagation();
                         }
                     }))
-                    .child(
-                        Slider::new(&slider)
-                            .disabled(!enabled)
-                            .w_full()
-                            .bg(rgb(crate::design::BRAND_ACCENT)),
-                    )
+                    .child(Slider::new(&slider).disabled(!enabled).w_full())
                     .automation_enabled(enabled, AutomationRole::Option, label),
             );
         } else {

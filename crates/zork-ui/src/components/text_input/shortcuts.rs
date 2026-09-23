@@ -10,6 +10,7 @@ fn mac_keyboard() -> bool {
 
 pub fn init(cx: &mut App) {
     gpui_component::init(cx);
+    crate::design::init_component_theme(cx);
     bind_keys(cx, mac_keyboard());
 }
 

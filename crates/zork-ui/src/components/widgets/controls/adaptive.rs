@@ -87,6 +87,7 @@ pub struct Action {
     handlers: Vec<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     input: Option<Entity<ComposerInput>>,
     editor_slot: Option<AnyElement>,
+    invalid: bool,
 }
 
 pub type Field = Action;
@@ -127,6 +128,7 @@ pub fn adaptive_input(
             }))
             .border_color(rgb(if invalid { 0xC9837E } else { UI_OUTLINE }))
     });
+    field.invalid = invalid;
     field.input = Some(input.clone());
     field.on_click(move |_, window, cx| {
         window.focus(&target.read(cx).focus_handle(), cx);
@@ -162,7 +164,7 @@ pub fn adaptive_action(
         if appearance.field {
             crate::controls::FIELD_RADIUS
         } else {
-            CONTROL_HEIGHT / 2.
+            crate::controls::BUTTON_RADIUS
         }
     });
     let outlined = !(soft
@@ -178,12 +180,20 @@ pub fn adaptive_action(
         .accessibility_label(label.clone())
         .h(px(CONTROL_HEIGHT))
         .flex_shrink_0()
-        .px(px(crate::controls::BUTTON_PADDING_X))
+        .px(px(if appearance.field || appearance.leading {
+            0.
+        } else {
+            crate::controls::BUTTON_PADDING_X
+        }))
         .flex()
         .items_center()
         .justify_center()
         .gap(px(7.))
-        .text_size(px(12.))
+        .text_size(px(if appearance.field || appearance.leading {
+            13.
+        } else {
+            12.
+        }))
         .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(ink))
         .whitespace_nowrap()
@@ -200,7 +210,7 @@ pub fn adaptive_action(
                 UI_OUTLINE
             }));
     }
-    if enabled {
+    if enabled && !appearance.field {
         button = button
             .hover(|v| {
                 v.bg(rgb(if solid {
@@ -232,6 +242,7 @@ pub fn adaptive_action(
         handlers: Vec::new(),
         input: None,
         editor_slot: None,
+        invalid: false,
     }
 }
 
@@ -330,16 +341,43 @@ impl Element for Action {
             });
         }
         if let Some(input) = &self.input {
+            let focus = input.read(cx).focus_handle();
+            let form = &crate::design::FORM;
+            let border = match (self.invalid, focus.contains_focused(window, cx)) {
+                (true, true) => form.error_focus_border,
+                (true, false) => form.error_border,
+                (false, true) => form.focus_border,
+                (false, false) => UI_OUTLINE,
+            };
+            button = button.border_color(rgb(border)).hover(|v| {
+                v.border_color(rgb(if self.invalid {
+                    border
+                } else if focus.contains_focused(window, cx) {
+                    form.focus_border
+                } else {
+                    form.hover_border
+                }))
+            });
             button = button.child(
                 self.editor_slot
                     .take()
                     .unwrap_or_else(|| input.clone().into_any_element()),
             );
         } else {
+            if self.appearance.field && !self.appearance.disabled && !self.appearance.busy {
+                button = button.hover(|v| v.border_color(rgb(crate::design::FORM.hover_border)));
+            }
+            // Respect the caller's final size, including compact actions.
+            let height = match button.style().size.height {
+                Some(Length::Definite(DefiniteLength::Absolute(length))) => {
+                    length.to_pixels(window.rem_size()).as_f32()
+                }
+                _ => CONTROL_HEIGHT,
+            };
             button = button.child(action_content(
                 &self.id,
                 self.label.clone(),
-                CONTROL_HEIGHT,
+                height,
                 self.appearance,
             ));
         }

@@ -670,11 +670,6 @@ pub(crate) fn action_content(
                 icon.into_any_element()
             })
         })
-        .text_size(px(if style.field || style.leading {
-            13.
-        } else {
-            12.
-        }))
         .text_color(rgb(color))
         .whitespace_nowrap()
         .when(style.busy, |v| v.opacity(0.));
@@ -699,7 +694,7 @@ pub(crate) fn action_content(
         })
 }
 
-/// Shared native text field with an optional content slot.
+/// Fixed layout slots use the same field as content-sized production forms.
 pub fn input(
     id: impl Into<ElementId>,
     input: &Entity<ComposerInput>,
@@ -707,65 +702,12 @@ pub fn input(
     height: f32,
     invalid: bool,
     parent: u32,
-    window: &mut Window,
-    cx: &mut App,
+    _window: &mut Window,
+    _cx: &mut App,
 ) -> Stateful<Div> {
-    input_content(
-        id.into(),
-        input,
-        width,
-        height,
-        invalid,
-        parent,
-        None,
-        window,
-        cx,
-    )
-}
-
-fn input_content(
-    id: ElementId,
-    input: &Entity<ComposerInput>,
-    width: f32,
-    height: f32,
-    invalid: bool,
-    parent: u32,
-    content: Option<AnyElement>,
-    window: &mut Window,
-    cx: &mut App,
-) -> Stateful<Div> {
-    let focus = input.read(cx).focus_handle();
-    let target = input.clone();
-    skin(
-        id,
-        width,
-        height,
-        crate::controls::FIELD_RADIUS,
-        SurfaceColors {
-            fill: if invalid {
-                crate::design::FORM.error_surface
-            } else {
-                parent
-            },
-            border: Some(if invalid { 0xC9837E } else { UI_OUTLINE }),
-            parent,
-            focused: focus.is_focused(window),
-        },
-        content.unwrap_or_else(|| {
-            div()
-                .absolute()
-                .left(px(12.))
-                .top(px(5.))
-                .w(px((width - 24.).max(2.)))
-                .h(px((height - 10.).max(2.)))
-                .line_height(px(20.))
-                .text_size(px(13.))
-                .child(input.clone())
-                .into_any_element()
-        }),
-        window,
-        cx,
-    )
-    .track_focus(&focus)
-    .on_click(move |_, w, cx| w.focus(&target.read(cx).focus_handle(), cx))
+    let id = id.into();
+    let field = adaptive_input(id.clone(), input, invalid, parent)
+        .w(px(width))
+        .h(px(height));
+    div().id(id).w(px(width)).h(px(height)).child(field)
 }

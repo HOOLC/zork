@@ -136,7 +136,7 @@ pub fn catalog() -> Vec<Story> {
         (
             "dropdown",
             "下拉菜单",
-            &["closed", "open", "empty", "disabled"][..],
+            &["closed", "open", "long-list", "empty", "disabled"][..],
             "crates/zork-ui/src/controls.rs::dropdown",
             "dropdown",
         ),
@@ -689,11 +689,19 @@ impl Render for PrimitiveStory {
                 self.id("story-select"),
                 if state == "empty" {
                     "此连接尚未添加模型".into()
+                } else if state == "long-list" {
+                    format!("模型连接 {}", self.selected + 1)
                 } else {
                     ["OpenAI", "Anthropic", "OpenAI Compatible"][self.selected].into()
                 },
                 if state == "empty" {
                     vec![]
+                } else if state == "long-list" {
+                    (0..40).map(|i| (
+                        self.id(&format!("story-option-{i}")),
+                        format!("模型连接 {}", i + 1),
+                        i == self.selected,
+                    )).collect()
                 } else {
                     ["OpenAI", "Anthropic", "OpenAI Compatible"]
                         .into_iter()
@@ -709,7 +717,7 @@ impl Render for PrimitiveStory {
                 },
                 self.open,
                 !matches!(state, "disabled" | "empty"),
-                if state == "empty" {
+                if matches!(state, "empty" | "long-list") {
                     None
                 } else {
                     Some(ui::provider_path(
