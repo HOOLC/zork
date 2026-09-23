@@ -242,19 +242,6 @@ pub fn catalog() -> Vec<Story> {
         story.height = 760.;
         items.push(story);
     }
-    for state in ["markdown", "literal", "long"] {
-        let mut story = Story::new(
-            "message-reader",
-            "全文阅读",
-            state,
-            "crates/zork-ui/src/components/message_reader.rs",
-            "message-reader",
-        );
-        story.width = 900.;
-        story.height = 760.;
-        story.actions = vec![click("message-reader-open")];
-        items.push(story);
-    }
     for state in ["list", "grid", "preview", "empty", "loading", "error"] {
         let mut story = Story::new(
             "shared-files",
@@ -723,17 +710,6 @@ impl StoryHost {
                 cx,
             )
             .into(),
-            "message-reader" => cx
-                .new(|cx| {
-                    zork_ui::components::message_reader::stories::Story::new(
-                        &story.state,
-                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                            crate::i18n::Locale::ZhCn.text(key).into()
-                        })),
-                        cx,
-                    )
-                })
-                .into(),
             "shared-files" => zork_ui::shared_files::stories::create(
                 &story.state,
                 zork_ui::resources::Text(std::rc::Rc::new(|key| {

@@ -1,5 +1,4 @@
-//! Per-conversation presentation: one-shot arrivals, interruptible tail motion,
-//! and full messages hosted in a centered reading dialog.
+//! Per-conversation presentation: one-shot arrivals and interruptible tail motion.
 use super::*;
 use std::time::Instant;
 
@@ -153,36 +152,5 @@ impl RootView {
                 }
             });
         });
-    }
-
-    pub(super) fn open_message_reader(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(TranscriptLine::Message {
-            role,
-            content,
-            metadata,
-        }) = self.lines.get(index)
-        else {
-            return;
-        };
-        let text = crate::comments::display_text(content);
-        let document = crate::components::message::message_document(role, content);
-        let source = crate::comments::CommentSource {
-            session_id: self.selected_session.clone().unwrap_or_default(),
-            message_id: metadata.id.clone(),
-            author: metadata.author_name.clone(),
-            author_agent_id: metadata.author_agent_id.clone(),
-            quote: String::new(),
-        };
-        let links = self.message_link_handler(cx);
-        let title = self.locale.text("message_full_title").into();
-        let copy = self.locale.text("message_copy_full").into();
-        self.message_reader.update(cx, |reader, cx| {
-            reader.configure(title, copy, links);
-            reader.open(
-                zork_ui::components::message_reader::Content::new(source, text, document),
-                cx,
-            );
-        });
-        zork_ui::components::region::invalidate_all(cx);
     }
 }

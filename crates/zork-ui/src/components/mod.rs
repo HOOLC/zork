@@ -30,8 +30,6 @@ pub mod collapse;
 pub mod smooth;
 pub mod workbench;
 
-pub mod message_reader;
-
 pub mod json_tree;
 
 pub mod message_row;

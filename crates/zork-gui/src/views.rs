@@ -161,12 +161,6 @@ pub struct RootView {
     error: Option<String>,
 
     message_motion: message_presentation::MessageMotion,
-    message_reader: Entity<zork_ui::components::message_reader::Reader>,
-    pending_reader_selection: Option<(
-        crate::comments::CommentSource,
-        gpui::Bounds<gpui::Pixels>,
-        gpui::FocusHandle,
-    )>,
     history_details: Entity<zork_ui::history_details::Details>,
     resource_source: zork_ui::components::liquid::overlay::SourceBinding,
     files_menu: Entity<zork_ui::conversation_contents::Menu>,
@@ -334,19 +328,6 @@ impl RootView {
             },
         )
         .detach();
-        let message_reader = cx.new(zork_ui::components::message_reader::Reader::new);
-        cx.subscribe(
-            &message_reader,
-            |view, _, event: &zork_ui::components::message_reader::Selected, cx| {
-                if Some(&event.source.session_id) != view.selected_session.as_ref() {
-                    return;
-                }
-                view.pending_reader_selection =
-                    Some((event.source.clone(), event.bounds, event.focus.clone()));
-                cx.notify();
-            },
-        )
-        .detach();
         let browser = {
             let browser = cx.new(crate::browser::BrowserPanel::new);
             cx.subscribe(
@@ -366,11 +347,6 @@ impl RootView {
                 &browser,
                 |view, _, closed: &crate::browser::NativePageClosed, cx| {
                     view.close_content_tab(&closed.0);
-                    if closed.0 == "message" {
-                        view.message_reader
-                            .update(cx, |reader, cx| reader.dismiss(cx));
-                        view.regions.retain(|key| key != "message-reader");
-                    }
                     if closed.0 == "history" {
                         view.close_history();
                     }
@@ -486,8 +462,6 @@ impl RootView {
             connection_error: None,
             error: None,
             message_motion: Default::default(),
-            message_reader,
-            pending_reader_selection: None,
             history_details,
             resource_source: Default::default(),
             files_menu,
@@ -774,12 +748,6 @@ impl RootView {
             self.save_chat_history();
         }
         self.message_motion = Default::default();
-        if self.preview_original.is_none() {
-            self.message_reader
-                .update(cx, |reader, cx| reader.dismiss(cx));
-            self.browser
-                .update(cx, |panel, cx| panel.close_native_page("message", cx));
-        }
         self.selected_session = Some(id.to_owned());
         if self.preview_original.is_none() {
             self.persist_cache(zork_client_core::preferences::ViewState::LastSession, &id);
@@ -991,27 +959,6 @@ impl Render for RootView {
             window.focus(&focus_handle, cx);
         }
 
-        if let Some((source, bounds, focus)) = self
-            .pending_reader_selection
-            .take()
-            .filter(|(source, _, _)| Some(&source.session_id) == self.selected_session.as_ref())
-        {
-            self.comment_editor.update(cx, |editor, cx| {
-                editor.open_at(
-                    zork_ui::components::comments::EditorRequest {
-                        source: source.clone(),
-                        editing: None,
-                        text: String::new(),
-                        toolbar: true,
-                    },
-                    bounds,
-                    Some(focus),
-                    window,
-                    cx,
-                )
-            });
-            self.comment_popover = Some(comments::CommentPopover { source });
-        }
         self.focus_artifact_preview(window, cx);
         self.sync_history_details(cx);
         div()
@@ -1078,14 +1025,6 @@ impl Render for RootView {
                 }
                 if event.keystroke.key == "escape" && view.comment_popover.is_some() {
                     view.dismiss_selection(cx);
-                    zork_ui::components::region::invalidate_all(cx);
-                    cx.stop_propagation();
-                    return;
-                }
-                if event.keystroke.key == "escape" && view.message_reader.read(cx).is_open() {
-                    view.message_reader.update(cx, |reader, cx| reader.dismiss(cx));
-                    view.regions.retain(|key| key != "message-reader");
-
                     zork_ui::components::region::invalidate_all(cx);
                     cx.stop_propagation();
                     return;
@@ -1253,7 +1192,6 @@ impl Render for RootView {
             )
             .when(self.preview_original.is_none(), |view| {
                 view.child(self.history_details.clone())
-                    .child(self.message_reader.clone())
                     .child(self.render_comment_popover(window, cx))
                     .child(self.render_conversation_artifact_preview(window, cx))
             })
@@ -1440,7 +1378,6 @@ impl RootView {
         let benchmark_message_kinds = self.benchmark_message_kinds.clone();
         let arrivals = self.message_motion.arrivals.clone();
         let reader_root = cx.entity().downgrade();
-        let reader_source = self.message_reader.read(cx).source();
         let locale = self.locale;
         let has_older = self.has_older;
         let loading_older = self.loading_older;
@@ -1545,9 +1482,6 @@ impl RootView {
                         content_width,
                         Some(&selection),
                         window,
-                        locale,
-                        reader_root.clone(),
-                        reader_source.clone(),
                         crate::transcript::message_device_label(
                             metadata,
                             &local_agents,
@@ -1949,9 +1883,6 @@ fn render_line(
     content_width: f32,
     selection: Option<&crate::components::selection::SelectionContext>,
     window: &mut Window,
-    locale: Locale,
-    reader_root: gpui::WeakEntity<RootView>,
-    reader_source: zork_ui::components::liquid::overlay::SourceBinding,
     device: Option<String>,
 ) -> gpui::AnyElement {
     let TranscriptLine::Message {
@@ -1970,8 +1901,6 @@ fn render_line(
         document,
         content_width,
         selection,
-        text: zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
-        reader_source,
         author_name: metadata.author_name.clone(),
         device,
         model: metadata.model.clone(),
@@ -1981,9 +1910,7 @@ fn render_line(
                 .unwrap_or_else(|_| time.clone())
         }),
     }
-    .render(window, move |_, cx| {
-        let _ = reader_root.update(cx, |v, cx| v.open_message_reader(index, cx));
-    })
+    .render(window)
 }
 
 fn agent_status_label(status: &AgentStatus, locale: Locale) -> String {

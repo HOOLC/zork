@@ -1,4 +1,4 @@
-//! Full transcript messages, the optional reader, and new-message positioning.
+//! Full transcript messages and new-message positioning.
 use gpui::{px, AppContext, HeadlessAppContext};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -70,67 +70,28 @@ fn main() -> anyhow::Result<()> {
     };
     pump(&mut cx)?;
     let snapshot = driver.snapshot(false);
-    cx.capture_screenshot(window.into())?
-        .save(output.join("full-message.png"))?;
     anyhow::ensure!(
         !snapshot.elements.iter().any(|e| e.id == "message-expand-0"),
         "Transcript still offers message folding"
     );
-    view.update(&mut cx, |v, cx| v.benchmark_follow_messages(cx));
-    pump(&mut cx)?;
-    let before = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
-    let snapshot = driver.snapshot(false);
     anyhow::ensure!(
-        snapshot.elements.iter().any(|e| e.id == "message-full-0"),
-        "Long message has no optional reader link: {:?}",
-        snapshot
-            .elements
-            .iter()
-            .map(|e| e.id.as_str())
-            .collect::<Vec<_>>()
-    );
-    anyhow::ensure!(
-        !snapshot.elements.iter().any(|e| e.id == "message-full-1"),
-        "Short message must not acquire a reader link"
-    );
-    for id in ["message-full-0", "message-copy-full"] {
-        let action = serde_json::from_value(json!({"type":"click","target":{"element_id":id}}))?;
-        cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(
-        driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .any(|e| e.id == "message-reader-dialog"),
-        "Full message did not open the reading dialog"
-    );
-    let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
-    anyhow::ensure!(
-        copied.as_deref() == Some(source.as_str()),
-        "Copy full message lost source text"
+        !snapshot.elements.iter().any(|e| e.id == "message-full-0"),
+        "Transcript still offers the full-message dialog"
     );
     cx.capture_screenshot(window.into())?
-        .save(output.join("reader-dialog.png"))?;
-    let action = serde_json::from_value(
-        json!({"type":"click","target":{"element_id":"message-reader-dialog-close"}}),
-    )?;
-    cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
+        .save(output.join("full-message.png"))?;
+    view.update(&mut cx, |v, cx| v.benchmark_follow_messages(cx));
     pump(&mut cx)?;
+    let tail = driver.snapshot(false);
     anyhow::ensure!(
-        !driver
-            .snapshot(false)
+        !tail
             .elements
             .iter()
-            .any(|e| e.id == "message-copy-full"),
-        "Reader remains after closing its dialog"
+            .any(|e| e.id == "message-full-0" || e.id == "message-reader-dialog"),
+        "Long message still has a reader footer or dialog"
     );
-    let after = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
-    anyhow::ensure!(
-        before.1 == after.1,
-        "Closing reader changed message reading anchor"
-    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("full-message-end.png"))?;
     cx.update_window(window.into(), |_, w, cx| {
         w.resize(gpui::size(px(900.), px(600.)));
         w.bounds_changed(cx);
@@ -138,7 +99,7 @@ fn main() -> anyhow::Result<()> {
     pump(&mut cx)?;
     cx.capture_screenshot(window.into())?
         .save(output.join("compact.png"))?;
-    println!("PASS full message, optional reader, full copy and return anchor");
+    println!("PASS full inline message without a reader footer at wide and compact sizes");
     // Exercise real incoming events and real wheel interruption through the
     // production observer, using wall-clock frames for the 200ms motion.
     view.update(&mut cx, |v, cx| {
