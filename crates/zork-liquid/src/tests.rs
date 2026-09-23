@@ -146,6 +146,7 @@ fn pixel_rebound_limits_panel_motion_and_keeps_sparse_contours() {
     let end = Pose::rect(129., 88.5, 540., 660., 24.);
     for material in [
         Material::default(),
+        Material::ordinary(),
         Material {
             flow: 0.4,
             damping: 0.4,
@@ -270,6 +271,39 @@ fn gallery_parameters_keep_sparse_contours_equivalent_to_dense() {
                         dense.contains(probe),
                         "boundary: {material:?}, tick={tick}, probe={probe:?}"
                     );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn ordinary_navigation_travel_keeps_sparse_boundary_equivalent_to_dense() {
+    for width in [240., 492.] {
+        let start = Pose::rect(0., 0., width, 32., 14.);
+        let mut sim = Simulation::new(start, Material::ordinary(), Options::default());
+        sim.finish();
+        for y in [160., -64., 96.] {
+            sim.set_travel_target(Pose::rect(0., y, width, 32., 14.));
+            for tick in 0..96 {
+                sim.tick();
+                if ![0, 12, 36, 72].contains(&tick) {
+                    continue;
+                }
+                let sparse = trace(&sim).unwrap();
+                let dense = trace_dense(&sim).unwrap();
+                assert!(!sparse.used_fallback, "width={width}, tick={tick}");
+                assert!(sparse.sampled_points < dense.sampled_points / 4);
+                assert_eq!(sparse.loops.len(), dense.loops.len());
+                for curve in dense.loops.iter().flatten().step_by(2) {
+                    let p = curve.at(0.5);
+                    let a = curve.at(0.49);
+                    let b = curve.at(0.51);
+                    let normal = super::geometry::unit([a[1] - b[1], b[0] - a[0]]);
+                    for offset in [-1., 1.] {
+                        let probe = [p[0] + normal[0] * offset, p[1] + normal[1] * offset];
+                        assert_eq!(sparse.contains(probe), dense.contains(probe));
+                    }
                 }
             }
         }

@@ -114,6 +114,9 @@ impl Material {
             && self.layout_response <= 1.
     }
     pub(crate) fn verified_sparse(self) -> bool {
+        if self == Self::ordinary() {
+            return true;
+        }
         if !(0. ..=0.4).contains(&self.flow)
             || !(0.4..=2.).contains(&self.damping)
             || !(0. ..=1.2).contains(&self.adhesion)
