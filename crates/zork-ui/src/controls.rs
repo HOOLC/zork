@@ -570,12 +570,21 @@ fn menu_dropdown<V: 'static>(
         gpui::Bounds::<gpui::Pixels>::default()
     });
     let bounds = *measured.read(cx);
-    let width = bounds.size.width.as_f32();
     let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
     let control_width = if quiet {
         crate::components::widgets::overlay::measure_label(&label, 12., window) + 28.
     } else {
-        width.max(32.)
+        crate::components::widgets::overlay::measure_label_with_weight(
+            &label,
+            13.,
+            gpui::FontWeight::MEDIUM,
+            window,
+        )
+        .ceil()
+            + 24. // Horizontal padding.
+            + 7. + 12. // Gap and trailing chevron.
+            + if leading.is_some() { 7. + 15. } else { 0. }
+            + 2. // Border on both sides.
     }
     .min(max_width.unwrap_or(f32::MAX).max(48.));
     let owner = cx.entity().downgrade();
@@ -631,6 +640,7 @@ fn menu_dropdown<V: 'static>(
         },
         ZORK_UI.palette.canvas,
     )
+    .px_0()
     .w(px(control_width))
     .h(px(control_height))
     .track_focus(&trigger_focus)
@@ -798,8 +808,7 @@ fn menu_dropdown<V: 'static>(
     }
     div()
         .relative()
-        .w(px(if quiet { control_width } else { width.max(32.) }))
-        .when(!quiet, |v| v.w_full())
+        .w(px(control_width))
         .flex_shrink_0()
         .h(px(control_height))
         .child(

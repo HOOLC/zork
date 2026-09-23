@@ -19,7 +19,18 @@ impl Default for DialogOptions {
 }
 
 pub(crate) fn measure_label(label: &str, size: f32, window: &mut Window) -> f32 {
+    measure_label_with_weight(label, size, window.text_style().font().weight, window)
+}
+
+pub(crate) fn measure_label_with_weight(
+    label: &str,
+    size: f32,
+    weight: FontWeight,
+    window: &mut Window,
+) -> f32 {
     let style = window.text_style();
+    let mut font = style.font();
+    font.weight = weight;
     window
         .text_system()
         .shape_line(
@@ -27,7 +38,7 @@ pub(crate) fn measure_label(label: &str, size: f32, window: &mut Window) -> f32 
             px(size),
             &[TextRun {
                 len: label.len(),
-                font: style.font(),
+                font,
                 color: style.color,
                 background_color: None,
                 underline: None,
