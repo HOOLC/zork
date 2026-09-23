@@ -28,8 +28,11 @@ class Unverified(RuntimeError):
 
 
 def digest(path):
+    value = hashlib.sha256()
     with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            value.update(block)
+    return value.hexdigest()
 
 
 def distribution(values):
@@ -165,6 +168,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     definition = contract()
     report = {"gate": GATE_ID, "contract": definition, "platform": platform.platform(),
+              "hostname": platform.node(),
               "machine": platform.machine(), "status": "unverified", "passed": False,
               "measurement": "Production client view, actual native Metal commands. Complete frame includes input, animation, UI rendering, submission and observed GPU completion. The same native Metal renderer targets a reused private texture to remove drawable-supply pacing; native window/input/layout are real, screen presentation FPS is not claimed."}
     try:

@@ -22,6 +22,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from smoke_mesh_fixture import RemoteStation, cached_message, save_remote_node, unused_port
+from smoke_remote_frame import run as run_remote_frame
 
 GATES = {
     "local-startup": {
@@ -512,6 +513,8 @@ def local_startup_gate(args, output):
 def client_frame_gate(args, output):
     if not args.frame_binary:
         raise RuntimeError("Missing --frame-binary: freshly built release native client frame benchmark required")
+    if args.frame_host:
+        return run_remote_frame(args.frame_host, args.frame_binary.resolve(strict=True), output, ROOT)
     result_path = output / "result.json"
     result_path.unlink(missing_ok=True)
     with (output / "runner.log").open("w") as log:
@@ -555,6 +558,7 @@ def main():
     parser.add_argument("--list", action="store_true", help="Show the user-approved gate definitions")
     parser.add_argument("--app", type=Path, help="App freshly built and packaged by this task")
     parser.add_argument("--frame-binary", type=Path, help="Fresh release zork-gui-render-bench with native-blur-bench")
+    parser.add_argument("--frame-host", help="Run the unchanged native frame gate on a separate macOS SSH host")
     parser.add_argument("--mesh-image", help="Current-source Linux arm64 Station image on a bridge network")
     parser.add_argument("--build-profile", choices=("dev", "release"),
                         help="Profile used to build the supplied app; never changes the gate budget")

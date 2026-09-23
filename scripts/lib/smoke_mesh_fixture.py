@@ -138,7 +138,9 @@ class RemoteStation:
         self.docker("start", self.container)
         self.process = self
         try:
-            address = self.inspect()["NetworkSettings"]["Networks"][self.network]["IPAddress"]
+            address = wait_for(
+                lambda: self.inspect()["NetworkSettings"]["Networks"][self.network]["IPAddress"],
+                self, "remote Station bridge address", seconds=5)
             if ipaddress.ip_address(address).is_loopback or (self.address and self.address != address):
                 raise RuntimeError("Remote Station lost its separate network address")
             self.address = address
