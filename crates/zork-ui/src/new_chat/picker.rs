@@ -12,6 +12,23 @@ pub(super) enum PickerMode {
 }
 
 impl Page {
+    pub(super) fn selected_model_label(&self) -> Option<String> {
+        let value = self.data.model.value.trim();
+        if value.is_empty() {
+            return None;
+        }
+        Some(
+            self.data
+                .model
+                .options
+                .iter()
+                .find(|option| option.value == value)
+                .map(|option| option.label.as_str())
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or(value)
+                .to_owned(),
+        )
+    }
     pub(super) fn thinking_label(&self, value: &str) -> String {
         match value {
             "off" | "low" | "medium" | "high" | "minimal" | "xhigh" | "max" => {
@@ -170,12 +187,7 @@ impl Page {
     ) -> AnyElement {
         let enabled = self.picker_open && self.data.editable;
         let model = self
-            .data
-            .model
-            .options
-            .iter()
-            .find(|o| o.value == self.data.model.value)
-            .map(|o| o.label.clone())
+            .selected_model_label()
             .unwrap_or_else(|| self.text.text("new_chat_choose_model"));
         if self.picker_mode == PickerMode::Models {
             let back_label = self.text.text("back");
