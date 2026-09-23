@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Preview or clean inactive Cargo targets under ZORK_BUILD_ROOT."""
 import argparse
+from datetime import datetime, timezone
 import fcntl
 import json
 import math
@@ -102,18 +103,36 @@ def plan(root, total, high, low, min_age_hours, automatic):
     return chosen
 
 
+def released_targets(root):
+    isolated = root / 'isolated'
+    return [(path, size(path)) for path in candidates(root)
+            if path.is_relative_to(isolated) and cargo_tag(path) and released(path)]
+
+
+def record_cleanup(root, result):
+    line = (json.dumps(result, sort_keys=True) + '\n').encode()
+    fd = os.open(root / '.zork-cache-cleanups.jsonl', os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        os.write(fd, line)
+    finally:
+        os.close(fd)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--auto', action='store_true',
-                        help='Clean released, old, inactive isolated targets; suitable for unattended runs')
-    parser.add_argument('--dry-run', action='store_true', help='Preview --auto without cleaning')
+        help='Clean released, old, inactive isolated targets; suitable for unattended runs')
+    parser.add_argument('--reclaim-released', action='store_true',
+        help='Clean released isolated targets immediately, independent of budget and age')
+    parser.add_argument('--dry-run', action='store_true', help='Preview an automatic cleanup without cleaning')
     parser.add_argument('--min-age-hours', type=float, default=24)
     args = parser.parse_args()
-    if args.apply and args.auto:
-        parser.error('choose --apply or --auto')
-    if args.dry_run and not args.auto:
-        parser.error('--dry-run requires --auto')
+    if sum((args.apply, args.auto, args.reclaim_released)) > 1:
+        parser.error('choose one cleanup mode')
+    if args.dry_run and not (args.auto or args.reclaim_released):
+        parser.error('--dry-run requires --auto or --reclaim-released')
     if not math.isfinite(args.min_age_hours) or args.min_age_hours < 0:
         parser.error('min age must be finite and nonnegative')
     env = build_environment()
@@ -128,37 +147,64 @@ def main():
         print(json.dumps({'root': str(root), 'bytes': 0, 'candidates': []})); return
     with (root / '.zork-cache-gc.lock').open('a+') as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | (fcntl.LOCK_NB if args.auto else 0))
+            fcntl.flock(lock, fcntl.LOCK_EX | (fcntl.LOCK_NB if args.auto or args.reclaim_released else 0))
         except BlockingIOError:
             print(json.dumps({'root': str(root), 'status': 'another cleanup is running'}))
             return
+        if args.reclaim_released:
+            chosen = released_targets(root)
+            if not chosen:
+                print(json.dumps({'root': str(root), 'observed_at': datetime.now(timezone.utc).isoformat(),
+                                  'mode': 'reclaim-preview' if args.dry_run else 'reclaim',
+                                  'free_bytes': shutil.disk_usage(root).free, 'candidates': []}, indent=2))
+                return
         total = size(root)
-        chosen = plan(root, total, high, low, args.min_age_hours, args.auto)
+        free_before = shutil.disk_usage(root).free
+        if not args.reclaim_released:
+            chosen = plan(root, total, high, low, args.min_age_hours, args.auto)
         untagged = [str(path) for path in candidates(root)
-                    if (not args.auto or path.is_relative_to(root / 'isolated'))
+                    if (not (args.auto or args.reclaim_released) or path.is_relative_to(root / 'isolated'))
                     and not cargo_tag(path)]
-        print(json.dumps({'root': str(root), 'bytes': total, 'budget_bytes': high,
-                          'low_water_bytes': low, 'mode': 'auto-preview' if args.dry_run else 'auto' if args.auto else 'apply' if args.apply else 'preview',
+        mode = ('reclaim-preview' if args.dry_run else 'reclaim') if args.reclaim_released else \
+            'auto-preview' if args.dry_run else 'auto' if args.auto else 'apply' if args.apply else 'preview'
+        observed_at = datetime.now(timezone.utc).isoformat()
+        print(json.dumps({'root': str(root), 'observed_at': observed_at,
+                          'bytes': total, 'free_bytes': free_before, 'budget_bytes': high,
+                          'low_water_bytes': low, 'mode': mode,
                           'untagged_targets': untagged,
                           'candidates': [{'path': str(p), 'bytes': n} for p, n in chosen]}, indent=2), flush=True)
-        if args.dry_run or not (args.apply or args.auto):
+        if args.dry_run or not (args.apply or args.auto or args.reclaim_released):
             return
         failed = False
+        cleaned = []
         for path, _ in chosen:
-            if size(root) <= low:
+            if not args.reclaim_released and size(root) <= low:
                 break
             if path.is_symlink() or not path.resolve().is_relative_to(root):
                 raise RuntimeError('Candidate changed; refusing cleanup')
-            if not cargo_tag(path) or (args.auto and not released(path)) or \
+            if not cargo_tag(path) or ((args.auto or args.reclaim_released) and not released(path)) or \
                     (path / '.zork-cache-keep').exists() or \
-                    time.time() - latest_write(path) < args.min_age_hours * 3600 or not idle(path):
+                    (not args.reclaim_released and time.time() - latest_write(path) < args.min_age_hours * 3600) or \
+                    not idle(path):
                 print('Skipped active/recent target:', path); continue
             try:
                 subprocess.run(['cargo', 'clean', '--target-dir', str(path)], cwd=ROOT, env=env, check=True)
+                cleaned.append(str(path))
             except subprocess.CalledProcessError as error:
                 failed = True
                 print(f'Skipped target rejected by Cargo: {path}: {error}', file=sys.stderr)
-        print('Remaining bytes:', size(root))
+        remaining = size(root)
+        print('Remaining bytes:', remaining)
+        free_after = shutil.disk_usage(root).free
+        result = {'started_at': observed_at, 'finished_at': datetime.now(timezone.utc).isoformat(),
+                  'mode': mode, 'bytes_before': total, 'bytes_after': remaining,
+                  'free_before_bytes': free_before, 'free_after_bytes': free_after,
+                  'cleaned': cleaned, 'failed': failed}
+        try:
+            record_cleanup(root, result)
+        except OSError as error:
+            print(f'Cache cleanup record unavailable: {error}', file=sys.stderr)
+        print(json.dumps(result))
         if failed:
             raise SystemExit(1)
 

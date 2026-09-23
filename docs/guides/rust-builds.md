@@ -77,6 +77,8 @@ Cargo 前同样使用上面的 `--shell` 入口，使清理作用于后续子进
 ```sh
 pnpm cache:status          # 只预览
 pnpm cache:prune           # 显式执行回收
+python3 scripts/build/cache_budget.py --reclaim-released --dry-run  # 预览已结束工作树
+pnpm cache:reclaim-completed  # 回收已结束工作树的隔离 target
 python3 scripts/build/cache_budget.py --auto --dry-run  # 预览自动策略
 python3 scripts/build/cache_budget.py --auto            # 供本机维护任务定期执行
 ```
@@ -100,6 +102,14 @@ Android 产物或源码；适合在个人开发机定期运行。通过 `build_e
 目标使占用仍高于预算，下次运行继续检查。旧目录缺少 `CACHEDIR.TAG` 时需
 人工核对其内容，不能由自动任务补造标记。`--apply` 保留手动
 回收共用目标的能力。
+
+任务结束并移除工作树后，运行 `cache:reclaim-completed` 立即回收其隔离 target；
+此入口不受预算和 24 小时保留期约束，仍检查来源、缓存标记、保留标记和打开文件。
+实际清理会在构建根的忽略日志中记录目标、前后占用及磁盘可用量。
+构建封装以 `build_env.py -- <command>` 执行时，在构建根的忽略日志中记录
+命令耗时与构建前后磁盘可用量，不记录命令参数。并行构建期间的磁盘变化属于
+整个卷；比较某次清理的回收量和重建代价时，先让其他构建结束，再用同一命令
+单独测量。`--shell` 后直接运行的命令不在这份记录中。
 
 手动清理共用 `target` 或 `android` 前，停止使用该目标的构建与运行任务。
 自动模式只处理独立目标；脚本检查修改时间和打开文件，检查失败或目录在用
