@@ -180,7 +180,7 @@ class LiquidControlsTest {
         ActivityScenario.launch<LiquidGalleryActivity>(Intent(instrumentation.targetContext, LiquidGalleryActivity::class.java)).use { scenario ->
             settle(scenario)
             click("浮层与展开"); waitFor("同步范围"); settle(scenario)
-            click("同步范围"); waitFor("所有设备"); settle(scenario)
+            click("同步范围：当前设备"); waitFor("所有设备"); settle(scenario)
             screenshot("menu")
             click("所有设备"); settle(scenario)
             click("打开对话框"); waitFor("弹窗名称"); settle(scenario)
