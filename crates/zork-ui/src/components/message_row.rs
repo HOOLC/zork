@@ -110,6 +110,9 @@ impl Row<'_> {
                                     .flex()
                                     .items_center()
                                     .gap_2()
+                                    .when_some(device.clone(), |v, device| {
+                                        v.child(crate::device_name::mark(&device, 18.))
+                                    })
                                     .when_some(device.or(author_name), |v, device| {
                                         v.child(
                                             div()
@@ -126,7 +129,7 @@ impl Row<'_> {
                                                 div()
                                                     .min_w_0()
                                                     .truncate()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(12.))
                                                     .text_color(rgb(DIM))
                                                     .child(model),
                                             )
@@ -136,7 +139,7 @@ impl Row<'_> {
                                         v.child(
                                             div()
                                                 .flex_shrink_0()
-                                                .text_size(px(10.))
+                                                .text_size(px(12.))
                                                 .text_color(rgb(DIM))
                                                 .child(time),
                                         )

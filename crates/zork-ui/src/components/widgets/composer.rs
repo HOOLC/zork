@@ -73,6 +73,12 @@ fn action(
         window,
         cx,
     )
+    // Sending starts work, the one action that keeps the persimmon accent.
+    .when(!attach && !stop && enabled && !busy, |send| {
+        send.bg(rgb(crate::design::BRAND_ACCENT))
+            .hover(|v| v.bg(rgb(crate::design::INTERACTION.accent_hover)))
+            .active(|v| v.bg(rgb(crate::design::INTERACTION.accent_pressed)))
+    })
     .on_click(move |_, w, cx| {
         if enabled {
             handler(

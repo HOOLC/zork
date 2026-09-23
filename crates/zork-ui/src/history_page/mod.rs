@@ -21,10 +21,10 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-const DIM: u32 = 0x4C4C4C;
-const TEXT: u32 = 0x1B1B1B;
-const SUBTLE: u32 = 0x5E5E5E;
-const BORDER: u32 = 0xF1F1F1;
+const DIM: u32 = crate::design::ZORK_UI.palette.muted;
+const TEXT: u32 = crate::design::ZORK_UI.palette.text;
+const SUBTLE: u32 = crate::design::ZORK_UI.palette.subtle;
+const BORDER: u32 = crate::design::ZORK_UI.palette.border;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;

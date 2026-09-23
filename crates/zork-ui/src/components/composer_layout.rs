@@ -18,11 +18,11 @@ pub const COMPOSER_CHROME: f32 = EDITOR_TOP_INSET
     + crate::design::ZORK_UI.composer.action_size
     + ACTION_INSET;
 pub const DEFAULT_HEIGHT: f32 = 24. + TOP_EXTENSION + COMPOSER_CHROME;
-pub const SURFACE_COLOR: u32 = 0xF6F5F1;
+pub const SURFACE_COLOR: u32 = crate::design::ZORK_UI.palette.window;
 pub const LOWER_COLOR: u32 = SURFACE_COLOR;
-pub const BORDER_COLOR: u32 = 0xDEDFDF;
+pub const BORDER_COLOR: u32 = crate::design::ZORK_UI.palette.border_strong;
 pub const BORDER_WIDTH: f32 = crate::design::BORDER_WIDTH;
 pub const SLOT_BORDER_WIDTH: f32 = crate::design::BORDER_WIDTH;
-pub const TEXT_COLOR: u32 = 0x24272B;
-pub const BUTTON_COLOR: u32 = 0x24282B;
+pub const TEXT_COLOR: u32 = crate::design::ZORK_UI.palette.text;
+pub const BUTTON_COLOR: u32 = crate::design::ZORK_UI.palette.accent;
 pub const GLYPH_COLOR: u32 = 0xFFFFFF;

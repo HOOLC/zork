@@ -17,8 +17,8 @@ pub const MODEL_COLOR: u32 = 0x92969D;
 /// failure utility error. The timeline keeps its own neutral accents.
 pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
 pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
-pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
-pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
+pub const ACTIVITY_WAIT_COLOR: u32 = crate::design::ZORK_UI.palette.warning;
+pub const ACTIVITY_ERROR_COLOR: u32 = crate::design::ZORK_UI.palette.danger;
 
 /// The 12% accent tint behind a row icon fills its 20px box.
 fn accent_chip(color: u32) -> gpui::Rgba {
@@ -100,9 +100,9 @@ pub fn activity_header<V: 'static>(
     let label_color = if header.accent {
         header.color
     } else if !header.tail && !header.group_summary {
-        0x4C4C4C
+        crate::design::ZORK_UI.palette.muted
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     // The row icon is tertiary; an accent row tints it with the action
     // colour, a failed tool paints it error and a live row without an activity
@@ -112,14 +112,14 @@ pub fn activity_header<V: 'static>(
     } else if header.accent {
         header.color
     } else if header.live {
-        0x1B1B1B
+        crate::design::ZORK_UI.palette.text
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     let status_color = if header.failed {
         ACTIVITY_ERROR_COLOR
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     div()
         .id(id)
@@ -136,7 +136,7 @@ pub fn activity_header<V: 'static>(
         }))
         .min_w_0()
         .text_size(px(12.))
-        .text_color(rgb(0x4C4C4C))
+        .text_color(rgb(crate::design::ZORK_UI.palette.muted))
         .cursor_pointer()
         .focus_visible(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
         .on_click(cx.listener(move |v, _, window, cx| {
@@ -211,7 +211,7 @@ pub fn activity_header<V: 'static>(
         .when(header.chevron, |v| {
             v.child(
                 crate::controls::icon("interface/chevron-down.svg", 12.)
-                    .text_color(rgb(0x5E5E5E))
+                    .text_color(rgb(crate::design::ZORK_UI.palette.subtle))
                     .flex_shrink_0(),
             )
         })
@@ -222,9 +222,9 @@ pub fn activity_header<V: 'static>(
                 .min_w_0()
                 .text_size(px(11.))
                 .text_color(rgb(if header.clickable_subject {
-                    0x1B1B1B
+                    crate::design::ZORK_UI.palette.text
                 } else {
-                    0x4C4C4C
+                    crate::design::ZORK_UI.palette.muted
                 }))
                 .truncate()
                 .child(text);
@@ -259,7 +259,7 @@ pub fn activity_header<V: 'static>(
                         .overflow_hidden()
                         .justify_end()
                         .text_size(px(12.))
-                        .text_color(rgb(0x4C4C4C))
+                        .text_color(rgb(crate::design::ZORK_UI.palette.muted))
                         .child(
                             div()
                                 .flex_none()
@@ -281,7 +281,7 @@ pub fn activity_header<V: 'static>(
                 div()
                     .min_w_0()
                     .text_size(px(11.))
-                    .text_color(rgb(0x4C4C4C))
+                    .text_color(rgb(crate::design::ZORK_UI.palette.muted))
                     .truncate()
                     .child(header.summary),
             )
