@@ -40,8 +40,8 @@ impl Page {
             label.clone(),
             ActionStyle {
                 quiet: true,
-                leading: true,
                 trailing: Some("icons/arrow-right.svg"),
+                balance_trailing: true,
                 radius: Some(8.),
                 disabled: !(self.picker_open && self.data.editable),
                 ..Default::default()

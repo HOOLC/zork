@@ -857,6 +857,8 @@ pub struct ActionStyle {
     /// Full-width disclosure actions keep the label leading and the icon trailing.
     pub leading: bool,
     pub trailing: Option<&'static str>,
+    /// Reserve a matching leading slot so the label stays centered beside a trailing icon.
+    pub balance_trailing: bool,
     pub expanded: bool,
     /// Icon triggers reveal an outline when they can separate into a panel.
     pub opens_panel: bool,
@@ -1172,6 +1174,9 @@ pub(crate) fn action_content(
         .gap(px(7.))
         .when(style.field || style.leading, |v| {
             v.w_full().px_3().justify_start()
+        })
+        .when(style.balance_trailing && style.trailing.is_some(), |v| {
+            v.child(div().w(px(12.)).flex_shrink_0())
         })
         .when_some(style.radio, |v, selected| {
             v.child(
