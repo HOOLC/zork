@@ -1209,7 +1209,7 @@ impl Render for DesktopRoot {
                                     .child(
                                         self.settings_tabs
                                             .tab("settings-models".into(), tab == 0)
-                                            .child(ui::icon("icons/mesh.svg", 20.))
+                                            .child(ui::icon("icons/models.svg", 20.))
                                             .child("模型设置")
                                             .on_click(cx.listener(|v, _, _, cx| {
                                                 v.apply_navigation(

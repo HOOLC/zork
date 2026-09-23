@@ -139,6 +139,12 @@
     "filter.svg": [
       "src/views.rs"
     ],
+    "group-by-model.svg": [
+      "src/desktop/model_settings.rs"
+    ],
+    "group-by-provider.svg": [
+      "src/desktop/model_settings.rs"
+    ],
     "handoff.svg": [],
     "history.svg": [],
     "home.svg": [
@@ -153,6 +159,10 @@
     "mention.svg": [],
     "mesh.svg": [
       "src/desktop/mesh_settings.rs"
+    ],
+    "models.svg": [
+      "src/desktop/mod.rs",
+      "src/desktop/model_settings.rs"
     ],
     "microphone.svg": [
       "src/views.rs"
