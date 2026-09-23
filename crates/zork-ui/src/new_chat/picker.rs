@@ -38,6 +38,7 @@ impl Page {
         id: &'static str,
         effort: String,
         model: String,
+        max_width: f32,
         cx: &Context<Self>,
     ) -> AnyElement {
         let accessible_label = format!(
@@ -60,47 +61,40 @@ impl Page {
             },
             ZORK_UI.palette.canvas,
         )
-        .w_full()
-        .h(px(60.))
+        .max_w(px(max_width))
+        .h(px(28.))
         .px_0()
         .child(
             div()
-                .w_full()
                 .flex()
-                .flex_col()
                 .items_center()
-                .justify_center()
-                .gap(px(4.))
+                .gap(px(5.))
                 .child(
                     div()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .gap(px(7.))
-                        .child(div().w(px(12.)).flex_shrink_0())
-                        .child(
-                            div()
-                                .id("new-chat-thinking-label")
-                                .text_size(px(15.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(crate::design::BRAND_ACCENT))
-                                .child(effort.clone())
-                                .automation(AutomationRole::Status, effort),
-                        )
-                        .child(
-                            div()
-                                .text_color(rgb(ZORK_UI.palette.muted))
-                                .child(ui::icon("icons/arrow-right.svg", 12.)),
-                        ),
+                        .min_w_0()
+                        .truncate()
+                        .text_color(rgb(ZORK_UI.palette.text))
+                        .child(model),
                 )
                 .child(
                     div()
+                        .flex_shrink_0()
+                        .text_color(rgb(ZORK_UI.palette.muted))
+                        .child("·"),
+                )
+                .child(
+                    div()
+                        .id("new-chat-thinking-label")
+                        .flex_shrink_0()
                         .text_size(px(13.))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(rgb(ZORK_UI.palette.text))
-                        .child(model),
+                        .text_color(rgb(crate::design::BRAND_ACCENT))
+                        .child(effort.clone())
+                        .automation(AutomationRole::Status, effort),
                 ),
         )
+        .text_size(px(13.))
+        .font_weight(FontWeight::MEDIUM)
         .aria_label(accessible_label.clone())
         .on_click(cx.listener(move |view, _, window, cx| {
             view.picker_mode = PickerMode::Models;
@@ -327,8 +321,17 @@ impl Page {
             .map(|o| self.thinking_label(&o.value))
             .unwrap_or_else(|| self.text.text("new_chat_thinking"));
         let header = div()
-            .relative()
-            .child(self.picker_button("new-chat-model", label.clone(), model, cx))
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(8.))
+            .child(self.picker_button(
+                "new-chat-model",
+                label.clone(),
+                model,
+                (width - 56.).max(24.),
+                cx,
+            ))
             .child(
                 ui::quiet_button(
                     "new-chat-thinking-reset",
@@ -336,9 +339,6 @@ impl Page {
                     enabled && !levels.is_empty(),
                     ui::IconButtonSize::Small,
                 )
-                .absolute()
-                .right_0()
-                .top_0()
                 .w(px(24.))
                 .p_0()
                 .child(ui::icon("icons/reload.svg", 16.))
