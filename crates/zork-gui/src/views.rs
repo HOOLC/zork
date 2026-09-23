@@ -73,7 +73,7 @@ pub struct NavigationChanged {
 impl gpui::EventEmitter<NavigationChanged> for RootView {}
 pub struct RootView {
     browser: Entity<crate::browser::BrowserPanel>,
-    #[cfg(feature = "headless-bench")]
+    #[cfg(any(test, feature = "headless-bench"))]
     benchmark_offline: bool,
     #[cfg(feature = "headless-bench")]
     benchmark_rows: Rc<std::cell::Cell<usize>>,
@@ -118,6 +118,8 @@ pub struct RootView {
     mesh_status: crate::api::MeshStatus,
 
     selected_session: Option<String>,
+    preview_original: Option<crate::desktop::navigation::Selection>,
+    preview_overlay: bool,
     agent_online: bool,
     access_revoked: bool,
     last_confirmed_at: Option<String>,
@@ -396,7 +398,7 @@ impl RootView {
             cx.subscribe(
                 &browser,
                 |view, _, selection: &crate::browser::BrowserSelection, cx| {
-                    if selection.host != view.browser_host() {
+                    if view.preview_original.is_some() || selection.host != view.browser_host() {
                         return;
                     }
                     let context = selection.inspection.context();
@@ -413,7 +415,7 @@ impl RootView {
         zork_client_core::desktop::trace_startup("gui.workspace_inputs_ready");
         Self {
             browser,
-            #[cfg(feature = "headless-bench")]
+            #[cfg(any(test, feature = "headless-bench"))]
             benchmark_offline: false,
             #[cfg(feature = "headless-bench")]
             benchmark_rows: Default::default(),
@@ -468,6 +470,8 @@ impl RootView {
             mesh_status: crate::api::MeshStatus::default(),
 
             selected_session: None,
+            preview_original: None,
+            preview_overlay: false,
             agent_online: false,
             access_revoked: false,
             last_confirmed_at: None,
@@ -650,9 +654,9 @@ impl RootView {
             self.apply_conversation_update(update, cx);
             updates.acknowledge(batch);
         }
-        #[cfg(not(feature = "headless-bench"))]
+        #[cfg(not(any(test, feature = "headless-bench")))]
         conversation.start();
-        #[cfg(feature = "headless-bench")]
+        #[cfg(any(test, feature = "headless-bench"))]
         if !self.benchmark_offline {
             conversation.start();
         }
@@ -770,18 +774,26 @@ impl RootView {
         self.restore_reading_pending = true;
         self.messages_loading = true;
         self.messages_failed = false;
-        self.save_draft(cx);
-        self.save_reading_position();
-        self.save_chat_history();
+        if self.preview_original.is_none() {
+            self.save_draft(cx);
+            self.save_reading_position();
+            self.save_chat_history();
+        }
         self.message_motion = Default::default();
-        self.message_reader
-            .update(cx, |reader, cx| reader.dismiss(cx));
-        self.browser
-            .update(cx, |panel, cx| panel.close_native_page("message", cx));
+        if self.preview_original.is_none() {
+            self.message_reader
+                .update(cx, |reader, cx| reader.dismiss(cx));
+            self.browser
+                .update(cx, |panel, cx| panel.close_native_page("message", cx));
+        }
         self.selected_session = Some(id.to_owned());
-        self.persist_cache(zork_client_core::preferences::ViewState::LastSession, &id);
+        if self.preview_original.is_none() {
+            self.persist_cache(zork_client_core::preferences::ViewState::LastSession, &id);
+        }
         self.stop_pending = false;
-        self.restore_draft(cx);
+        if self.preview_original.is_none() {
+            self.restore_draft(cx);
+        }
         if let Some(leader) = self.selected_leader_id() {
             self.active_leader = Some(leader);
         } else {
@@ -791,7 +803,9 @@ impl RootView {
                 .find(|(_, tasks)| tasks.iter().any(|t| t.session_id.as_deref() == Some(id)))
                 .map(|(leader, _)| leader.clone());
         }
-        self.refresh_agents(cx);
+        if self.preview_original.is_none() {
+            self.refresh_agents(cx);
+        }
         let old = self.lines.len();
         self.lines = Transcript::new();
         self.transcript_lookup = Default::default();
@@ -823,7 +837,9 @@ impl RootView {
 
     fn restore_shell_route(&mut self, route: ShellRoute, cx: &mut Context<Self>) {
         // Apply focus after navigation has restored the destination composer.
-        self.focus_initialized = false;
+        if self.preview_original.is_none() {
+            self.focus_initialized = false;
+        }
         match route {
             ShellRoute::Home => self.reset_session(cx),
             ShellRoute::Task(id) => self.load_session(&id, cx),
@@ -835,10 +851,14 @@ impl RootView {
         self.messages_request = self.messages_request.wrapping_add(1);
         self.messages_loading = false;
         self.messages_failed = false;
-        self.save_draft(cx);
-        self.save_chat_history();
+        if self.preview_original.is_none() {
+            self.save_draft(cx);
+            self.save_chat_history();
+        }
         self.selected_session = None;
-        self.restore_draft(cx);
+        if self.preview_original.is_none() {
+            self.restore_draft(cx);
+        }
 
         self.sse_task = None;
         self.core_conversation = None;
@@ -916,7 +936,12 @@ impl Render for RootView {
         }
         {
             let host = self.browser_host();
-            let rail = if !self.shell.rail_open {
+            let rail = if self.preview_overlay {
+                self.device_navigation
+                    .as_ref()
+                    .map(|nav| nav.read(cx).width(window.viewport_size().width.as_f32()))
+                    .unwrap_or(0.)
+            } else if !self.shell.rail_open {
                 8.
             } else if let Some(nav) = &self.device_navigation {
                 nav.read(cx).width(window.viewport_size().width.as_f32())
@@ -925,12 +950,15 @@ impl Render for RootView {
             };
             let available = window.viewport_size().width.as_f32() - rail;
             let locale = self.locale;
-            let visible =
-                self.comment_popover.is_none() && !self.has_conversation_artifact_preview();
+            let visible = self.preview_original.is_none()
+                && self.comment_popover.is_none()
+                && !self.has_conversation_artifact_preview();
             let moving = self.browser.update(cx, |browser, cx| {
-                browser.set_host(host, cx);
+                if self.preview_original.is_none() {
+                    browser.set_host(host, cx);
+                    browser.set_connection(self.client.clone(), self.selected_session.clone());
+                }
                 browser.set_presentation(available, locale, cx);
-                browser.set_connection(self.client.clone(), self.selected_session.clone());
                 browser.set_visible(visible && browser.is_open());
                 browser.animate_panel(cx)
             });
@@ -963,7 +991,7 @@ impl Render for RootView {
         }
         self.measure_composer_geometry(window, cx);
         self.prepare_presence_frame(window, cx);
-        if !self.focus_initialized {
+        if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();
             window.focus(&focus_handle, cx);
@@ -1098,7 +1126,9 @@ impl Render for RootView {
                     .min_h_0()
                     .flex()
 
-                    .child(if self.shell.rail_open {
+                    .child(if self.preview_overlay {
+                        div()
+                    } else if self.shell.rail_open {
                         if let Some(navigation) = &self.device_navigation {
                             div()
                                 .w(px(navigation
@@ -1191,7 +1221,7 @@ impl Render for RootView {
                                         },
                                     )
                                     .child(self.render_shell_content(window, cx))
-                                    .when(self.selected_session.is_some(), |v| v.child(self.render_panel_tools(cx)))
+                                    .when(self.selected_session.is_some() && self.preview_original.is_none(), |v| v.child(self.render_panel_tools(cx)))
                                     ,
                             )
                             .map(|v| {
@@ -1221,16 +1251,18 @@ impl Render for RootView {
                                 }
                                 v
                             })
-                            .when(self.selected_session.is_some() || self.browser.read(cx).is_present(), |v| {
+                            .when(self.preview_original.is_none() && (self.selected_session.is_some() || self.browser.read(cx).is_present()), |v| {
                                 v.child(div().absolute().top(px(8.)).right(px(10.))
                                     .child(self.render_session_header("", cx)))
                             }),
                     ),
             )
-            .child(self.history_details.clone())
-            .child(self.message_reader.clone())
-            .child(self.render_comment_popover(window, cx))
-            .child(self.render_conversation_artifact_preview(window, cx))
+            .when(self.preview_original.is_none(), |view| {
+                view.child(self.history_details.clone())
+                    .child(self.message_reader.clone())
+                    .child(self.render_comment_popover(window, cx))
+                    .child(self.render_conversation_artifact_preview(window, cx))
+            })
     }
 }
 
@@ -1268,7 +1300,9 @@ impl RootView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        self.sync_conversation_files(cx);
+        if self.preview_original.is_none() {
+            self.sync_conversation_files(cx);
+        }
         match self.selected_session.clone() {
             Some(_) => div()
                 .relative()
@@ -1283,19 +1317,22 @@ impl RootView {
                     cx,
                     |v, window, cx| v.render_transcript(window, cx).into_any_element(),
                 ))
-                .when(self.can_send_selected(), |pane| {
-                    pane.child(div().absolute().bottom_0().left_0().w_full().child(
-                        self.regions.auto_height(
-                            "composer",
-                            self.composer_surface_width,
-                            cx,
-                            |v, window, cx| {
-                                v.measure_composer(window, cx);
-                                v.render_composer(window, cx).into_any_element()
-                            },
-                        ),
-                    ))
-                }),
+                .when(
+                    self.preview_original.is_some() || self.can_send_selected(),
+                    |pane| {
+                        pane.child(div().absolute().bottom_0().left_0().w_full().child(
+                            self.regions.auto_height(
+                                "composer",
+                                self.composer_surface_width,
+                                cx,
+                                |v, window, cx| {
+                                    v.measure_composer(window, cx);
+                                    v.render_composer(window, cx).into_any_element()
+                                },
+                            ),
+                        ))
+                    },
+                ),
             None => div()
                 .flex_1()
                 .min_w_0()
@@ -1742,7 +1779,7 @@ impl RootView {
                 )
             })
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
-                v.attach_paths(paths.paths().to_vec(), cx)
+                v.attach_paths(paths.paths().to_vec(), cx);
             }))
             .child(self.render_composer_extras(window, cx))
             .child(composer)
@@ -1776,7 +1813,12 @@ impl RootView {
 
     /// Measure the current conversation editor with its actual font and available width.
     fn measure_composer_geometry(&mut self, window: &Window, cx: &Context<Self>) {
-        let rail = if !self.shell.rail_open {
+        let rail = if self.preview_overlay {
+            self.device_navigation
+                .as_ref()
+                .map(|nav| nav.read(cx).width(window.viewport_size().width.as_f32()))
+                .unwrap_or(0.)
+        } else if !self.shell.rail_open {
             8.
         } else if let Some(navigation) = &self.device_navigation {
             navigation

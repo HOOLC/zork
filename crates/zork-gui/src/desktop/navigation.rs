@@ -21,6 +21,12 @@ pub struct Navigate {
     pub node: Option<String>,
     pub destination: Destination,
 }
+#[derive(Clone)]
+pub struct Preview {
+    pub node: String,
+    pub session: String,
+    pub hovered: bool,
+}
 #[derive(Clone, Default, PartialEq)]
 pub struct Selection {
     pub selected_leader: Option<String>,
@@ -51,6 +57,7 @@ pub struct DeviceNavigation {
     add_device_source: Option<zork_ui::components::liquid::overlay::SourceBinding>,
 }
 impl gpui::EventEmitter<Navigate> for DeviceNavigation {}
+impl gpui::EventEmitter<Preview> for DeviceNavigation {}
 impl DeviceNavigation {
     pub fn bind_add_device_source(
         &mut self,
@@ -470,6 +477,15 @@ impl Render for DeviceNavigation {
                         eprintln!("Could not save device navigation state: {error}");
                     }
                 }
+                Action::Preview {
+                    node,
+                    session,
+                    hovered,
+                } => cx.emit(Preview {
+                    node: node.clone(),
+                    session: session.clone(),
+                    hovered: *hovered,
+                }),
             })
             .detach();
             self.view_locale = Some(locale);

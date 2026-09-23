@@ -138,6 +138,23 @@ impl RootView {
     pub fn benchmark_panel_width(&self, cx: &gpui::App) -> f32 {
         self.browser.read(cx).panel_width()
     }
+    pub fn benchmark_preview_session(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
+        if !self.sessions.iter().any(|session| session.session_id == id) {
+            let mut session = self
+                .sessions
+                .iter()
+                .find(|session| session.session_id == "render-fixture")
+                .cloned()
+                .expect("render fixture session");
+            session.session_id = id.to_owned();
+            session.title = Some(id.to_owned());
+            Arc::make_mut(&mut self.sessions).push(session);
+        }
+        self.preview_session(id, false, cx)
+    }
+    pub fn benchmark_restore_preview(&mut self, cx: &mut Context<Self>) {
+        self.restore_preview(cx);
+    }
     pub fn render_benchmark_fixture(
         history: bool,
         store: Arc<crate::desktop::store::ClientStore>,

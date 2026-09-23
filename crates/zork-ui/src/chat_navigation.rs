@@ -22,6 +22,11 @@ pub enum Action {
     },
     Collapsed(HashSet<String>),
     BeginResize,
+    Preview {
+        node: String,
+        session: String,
+        hovered: bool,
+    },
 }
 #[derive(Clone)]
 pub struct Device {
@@ -390,6 +395,9 @@ impl Navigation {
         );
         let node = device.id.clone();
         let session = chat.chat_id.clone();
+        let hover_node = node.clone();
+        let hover_session = session.clone();
+        let owner = cx.entity().downgrade();
         let mut rows = vec![(self.locale.text("workspace").into(), chat.workspace.clone())];
         if let Some(executor) = &chat.executor {
             rows.push((self.locale.text("device_executor").into(), executor.clone()));
@@ -483,10 +491,19 @@ impl Navigation {
             }))
             .automation(AutomationRole::Button, label)
             .map(|row| {
-                crate::components::tooltip::trigger(
+                crate::components::tooltip::trigger_with_hover(
                     row,
                     details,
                     self.details_overlay.as_ref().unwrap().clone(),
+                    move |hovered, cx| {
+                        let _ = owner.update(cx, |_, cx| {
+                            cx.emit(Action::Preview {
+                                node: hover_node.clone(),
+                                session: hover_session.clone(),
+                                hovered,
+                            });
+                        });
+                    },
                 )
             })
     }
