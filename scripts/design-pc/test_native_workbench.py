@@ -153,19 +153,6 @@ def main():
         wait(lambda: native.element("onboarding-cancel-login"), "browser wait specimen", timeout=10)
         click("onboarding-cancel-login")
         wait(lambda: native.element("desktop-welcome-login", enabled=True), "cancel returns to login", timeout=10)
-        choose("story-scenario", "story-scenario-onboarding-models-compact")
-        click("onboarding-add-model")
-        wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)
-        wait(lambda: native.element("profile-provider-select") and
-             native.element("profile-provider-select")["label"] == "OpenAI",
-             "fixture provider ready", timeout=10)
-        assert not native.element("model-add-device-mini1")
-        checks.append("first-use flow opens the real local model editor without device choice")
-
-        click("profile-close-form")
-        wait(lambda: not native.element("profile-create-dialog") and
-             not native.element("profile-close-form"), "model form closed", timeout=10)
-        time.sleep(0.35)
         choose("story-scenario", "story-scenario-onboarding-failure-compact")
         notice = wait(lambda: native.element("onboarding-error"), "startup failure notice", timeout=10)
         retry = native.element("desktop-startup-retry")
@@ -178,6 +165,15 @@ def main():
         assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
         save("09-onboarding-new-chat")
         checks.append("failure actions have breathing room and completion enters New Chat without a confirmation button")
+
+        choose("story-scenario", "story-scenario-onboarding-models-compact")
+        click("onboarding-add-model")
+        wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)
+        wait(lambda: native.element("profile-provider-select") and
+             native.element("profile-provider-select")["label"] == "OpenAI",
+             "fixture provider ready", timeout=10)
+        assert not native.element("model-add-device-mini1")
+        checks.append("first-use flow opens the real local model editor without device choice")
 
         print("PASS zork-design-pc: " + "; ".join(checks), flush=True)
         (args.output / "result.json").write_text(json.dumps({
