@@ -673,6 +673,4 @@ impl gpui::Render for SettingsStory {
     }
 }
 
-pub mod appearance;
-
 pub mod rename_device;

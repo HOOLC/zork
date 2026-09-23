@@ -18,8 +18,6 @@ pub struct Row<'a> {
     pub document: &'a MessageDocument,
     pub content_width: f32,
     pub selection: Option<&'a SelectionContext>,
-    pub preview_limit: f32,
-    pub expanded: bool,
     pub text: crate::resources::Text,
     pub reader_source: SourceBinding,
     pub author_name: Option<String>,
@@ -31,7 +29,6 @@ impl Row<'_> {
     pub fn render(
         self,
         window: &mut Window,
-        on_expand: impl Fn(&mut Window, &mut App) + 'static,
         on_read: impl Fn(&mut Window, &mut App) + 'static,
     ) -> AnyElement {
         let Self {
@@ -40,8 +37,6 @@ impl Row<'_> {
             document,
             content_width,
             selection,
-            preview_limit,
-            expanded,
             text,
             reader_source,
             author_name,
@@ -62,8 +57,8 @@ impl Row<'_> {
                 window,
             );
             // Retain rounding slack so fractional glyph advances do not orphan punctuation.
-            let footer_width = if document.is_truncated()
-                || document.shared_plain_text().lines().count() as f32 * 20. > preview_limit
+            let footer_width = if document.shared_plain_text().chars().take(101).count() > 100
+                || document.shared_plain_text().lines().take(13).count() > 12
             {
                 220_f32.min(max_width)
             } else {
@@ -92,11 +87,6 @@ impl Row<'_> {
         } else {
             content_width
         };
-        let expand_label = text.text(if expanded {
-            "message_collapse"
-        } else {
-            "message_expand"
-        });
         let footer = div()
             .w_full()
             .min_h(px(46.))
@@ -104,25 +94,9 @@ impl Row<'_> {
             .border_color(rgb(BORDER))
             .flex()
             .items_center()
-            .justify_between()
+            .justify_end()
             .gap_2()
             .when(width < 190., |v| v.flex_col().items_start())
-            .child(
-                div()
-                    .id(format!("message-expand-{index}"))
-                    .min_h(px(44.))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .cursor_pointer()
-                    .text_size(px(12.))
-                    .text_color(rgb(DIM))
-                    .child(expand_label.clone())
-                    .on_click(move |_, window, cx| {
-                        on_expand(window, cx);
-                    })
-                    .automation(AutomationRole::Button, expand_label),
-            )
             .child(
                 div()
                     .id(format!("message-full-{index}"))
@@ -163,10 +137,10 @@ impl Row<'_> {
             body: prose,
             footer,
             width: width.max(1.),
-            limit: preview_limit,
-            more: document.is_truncated(),
-            expanded,
-            fade: true,
+            limit: 240.,
+            more: false,
+            expanded: true,
+            fade: false,
             background: rgb(if user { ZORK_UI.thread.user_fill } else { BG }).into(),
         };
         match user {

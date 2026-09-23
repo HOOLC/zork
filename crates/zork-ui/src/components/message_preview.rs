@@ -82,7 +82,7 @@ impl Element for MessagePreview {
             AvailableSpace::MinContent,
         );
         let body = self.body.layout_as_root(available, w, cx);
-        let more = self.expanded || self.more || body.height > px(self.limit + 0.5);
+        let more = self.more || body.height > px(self.limit + 0.5);
         let height = if self.expanded {
             body.height
         } else {

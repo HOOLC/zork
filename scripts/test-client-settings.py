@@ -73,12 +73,11 @@ def main():
             native.url.rsplit(':', 1)[1], '--dev-token', 'mesh-native-fixture'], env=env,
             stdout=native.log, stderr=native.log)
         f.wait(lambda: native.ui('/health'), 'native GUI')
-        f.wait(lambda: native.element('client_appearance') or native.element('desktop-manage'), 'navigation')
-        if not native.element('client_appearance'):
+        f.wait(lambda: native.element('client_notifications') or native.element('desktop-manage'), 'navigation')
+        if not native.element('client_notifications'):
             click('desktop-manage')
-        click('client_appearance')
-        ready('message-preview-resize')
-        assert ready('client_appearance')['bounds']['x'] < 240, 'client tabs must be in the sidebar'
+        click('client_notifications')
+        assert ready('client_notifications')['bounds']['x'] < 240, 'client tabs must be in the sidebar'
         for removed in ('client_diagnostics', 'client_about', 'client-check-connections', 'client-copy-diagnostics', 'client-license'):
             assert not native.element(removed), f'removed client setting remains: {removed}'
         capture('client-settings')
@@ -103,7 +102,7 @@ def main():
         assert not native.element('leader-toggle-node-0/leader')
         capture('tasks-no-arrows')
         (art / f'verification-{size}.json').write_text(json.dumps(dict(passed=True, size=size,
-            checks=['appearance sidebar tab', 'diagnostics and About removed',
+            checks=['client settings sidebar tabs', 'diagnostics and About removed',
                     'arrowless agent/model lists', 'tasks visible without fold arrow']), indent=2) + '\n')
         print(f'PASS native client settings at {size}: {art}', flush=True)
     finally:

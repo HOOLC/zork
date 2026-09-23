@@ -7,7 +7,6 @@ pub struct Story {
     reader: Entity<Reader>,
     available_width: f32,
     messages: Vec<(Content, MessageDocument)>,
-    expanded: Vec<bool>,
     text: crate::resources::Text,
     placeholder: Option<String>,
     composer: Option<Entity<crate::liquid_story::ComposerExample>>,
@@ -54,7 +53,6 @@ impl Story {
             })
             .collect::<Vec<_>>();
         Self {
-            expanded: vec![false; messages.len()],
             messages,
             reader,
             available_width: 240.,
@@ -96,7 +94,6 @@ impl Render for Story {
             .iter()
             .enumerate()
             .map(|(index, (content, document))| {
-                let expand = cx.entity().downgrade();
                 let reader = self.reader.clone();
                 let full = content.clone();
                 Row {
@@ -105,8 +102,6 @@ impl Render for Story {
                     document,
                     content_width: width,
                     selection: None,
-                    preview_limit: 240.,
-                    expanded: self.expanded[index],
                     text: self.text.clone(),
                     reader_source: self.reader.read(cx).source(),
                     author_name: (index != 0).then(|| "产品领队".into()),
@@ -114,16 +109,9 @@ impl Render for Story {
                     model: (index != 0).then(|| "gpt-6".into()),
                     time: Some("10:24".into()),
                 }
-                .render(
-                    window,
-                    move |_, cx| {
-                        let _ = expand.update(cx, |v, cx| {
-                            v.expanded[index] = !v.expanded[index];
-                            cx.notify();
-                        });
-                    },
-                    move |_, cx| reader.update(cx, |reader, cx| reader.open(full.clone(), cx)),
-                )
+                .render(window, move |_, cx| {
+                    reader.update(cx, |reader, cx| reader.open(full.clone(), cx))
+                })
             })
             .collect::<Vec<_>>();
         let owner = cx.entity().downgrade();

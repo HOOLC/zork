@@ -163,18 +163,6 @@ pub fn catalog() -> Vec<Story> {
             vec![json!({"type":"move","target":{"element_id":"member-activity-source"}})];
         items.push(story);
     }
-    for state in ["automatic", "minimum", "custom", "maximum"] {
-        let mut story = Story::new(
-            "appearance",
-            "客户端外观",
-            state,
-            "crates/zork-ui/src/settings/appearance.rs",
-            "appearance",
-        );
-        story.width = 640.;
-        story.height = 880.;
-        items.push(story);
-    }
     for state in ["idle", "error"] {
         let mut story = Story::new(
             "data-settings",
@@ -670,17 +658,6 @@ impl StoryHost {
             "member-activity" => cx
                 .new(|cx| {
                     zork_ui::member_activity::stories::Story::new(
-                        &story.state,
-                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                            crate::i18n::Locale::ZhCn.text(key).into()
-                        })),
-                        cx,
-                    )
-                })
-                .into(),
-            "appearance" => cx
-                .new(|cx| {
-                    zork_ui::settings::appearance::Story::new(
                         &story.state,
                         zork_ui::resources::Text(std::rc::Rc::new(|key| {
                             crate::i18n::Locale::ZhCn.text(key).into()

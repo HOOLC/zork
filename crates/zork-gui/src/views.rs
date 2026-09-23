@@ -108,7 +108,6 @@ pub struct RootView {
     regions: zork_ui::components::region::Regions<Self>,
     shell: ShellState,
     locale: Locale,
-    message_preview_height: u32,
 
     // Device sessions
     sessions: Arc<Vec<SessionSummary>>,
@@ -230,19 +229,6 @@ impl RootView {
             self.selected_session.as_deref().unwrap_or("global")
         )
     }
-    pub(crate) fn set_message_preview_height(&mut self, height: u32, cx: &mut Context<Self>) {
-        if self.message_preview_height == height {
-            return;
-        }
-        self.message_preview_height = height;
-        let anchor = self.transcript_list.logical_scroll_top();
-        let count = self.lines.len();
-        self.transcript_list.splice(0..count, count);
-        self.transcript_list.scroll_to(anchor);
-        zork_ui::components::region::invalidate(cx, &["transcript"]);
-        cx.notify();
-    }
-
     pub(crate) fn hide_browser(&mut self, cx: &mut Context<Self>) {
         self.browser
             .update(cx, |browser, _| browser.set_visible(false));
@@ -258,10 +244,6 @@ impl RootView {
         );
         cx.on_release(|view, cx| view.release_file_previews(cx))
             .detach();
-        let message_preview_height = local_cache
-            .as_ref()
-            .map(|(store, _)| crate::desktop::client_settings::load_message_preview_height(store))
-            .unwrap_or(0);
         zork_client_core::desktop::trace_startup("gui.workspace_inputs_begin");
         let composer_input =
             cx.new(|cx| ComposerInput::new(locale.text("composer_placeholder"), cx));
@@ -463,7 +445,6 @@ impl RootView {
             client,
             shell: ShellState::default(),
             locale,
-            message_preview_height,
             sessions: Arc::new(Vec::new()),
             sessions_loaded: false,
 
@@ -712,10 +693,12 @@ impl RootView {
         let state = update.state;
         let mut regions = Vec::new();
         let unread = self.message_motion.unread;
-        self.track_message_arrivals(&update.message_arrivals, cx);
-        if self.message_motion.unread != unread {
-            regions.push("composer");
-        }
+        let scroll_anchor = self.transcript_list.logical_scroll_top();
+        let following = self.transcript_list.is_following_tail()
+            || self.message_motion.scroll.is_some()
+            || self.transcript_list.is_scrolled_to_end().unwrap_or(false)
+            || (!self.lines.is_empty()
+                && scroll_anchor.item_ix == self.lines.len().saturating_sub(1));
         if let Some(edits) = update.messages {
             self.transcript_render_cache
                 .apply(&state.lines, &edits, update.reset);
@@ -739,6 +722,14 @@ impl RootView {
                 self.restore_reading_pending = false;
             }
             regions.push("transcript");
+        }
+        if update.message_arrivals.count > 0 && following {
+            self.transcript_list.set_follow_mode(FollowMode::Normal);
+            self.transcript_list.scroll_to(scroll_anchor);
+        }
+        self.track_message_arrivals(&update.message_arrivals, following, cx);
+        if self.message_motion.unread != unread {
+            regions.push("composer");
         }
         if update.activity_changed || update.participants_changed {
             self.activity = state.activity.clone();
@@ -1398,7 +1389,7 @@ impl RootView {
         )
     }
 
-    fn render_transcript(&mut self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_transcript(&mut self, _window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let link_handler = self.message_link_handler(cx);
         let pending = self.transcript_deliveries.clone();
         let delivery_root = cx.entity().downgrade();
@@ -1454,10 +1445,6 @@ impl RootView {
         let has_older = self.has_older;
         let loading_older = self.loading_older;
         let older_root = cx.entity().downgrade();
-        let preview_limit = crate::desktop::client_settings::message_preview_limit(
-            self.message_preview_height,
-            window.viewport_size().height.as_f32() - self.composer_overlay_height,
-        );
         let bottom_inset = if self.can_send_selected() {
             self.composer_overlay_height + self.presence.extent + 8.
         } else {
@@ -1558,7 +1545,6 @@ impl RootView {
                         content_width,
                         Some(&selection),
                         window,
-                        preview_limit,
                         locale,
                         reader_root.clone(),
                         reader_source.clone(),
@@ -1777,7 +1763,7 @@ impl RootView {
                     .h_auto()
                     .text_size(px(12.))
                     .child(self.locale.text("messages_new"))
-                    .on_click(cx.listener(|v, _, _, cx| v.animate_message_tail(cx)))
+                    .on_click(cx.listener(|v, _, _, cx| v.animate_message_tail(None, cx)))
                     .automation(AutomationRole::Button, self.locale.text("messages_new")),
                 )
             })
@@ -1963,7 +1949,6 @@ fn render_line(
     content_width: f32,
     selection: Option<&crate::components::selection::SelectionContext>,
     window: &mut Window,
-    preview_limit: f32,
     locale: Locale,
     reader_root: gpui::WeakEntity<RootView>,
     reader_source: zork_ui::components::liquid::overlay::SourceBinding,
@@ -1974,22 +1959,17 @@ fn render_line(
         content,
         metadata,
     } = line;
-    let expanded = cached.expanded.get();
     let document = cached.document(role, content);
     if *role == Role::User && document.plain_text().is_empty() && !cached.files(content).is_empty()
     {
         return div().into_any_element();
     }
-    let expand_document = cached.clone();
-    let expand_root = reader_root.clone();
     zork_ui::components::message_row::Row {
         index,
         user: *role == Role::User,
         document,
         content_width,
         selection,
-        preview_limit,
-        expanded,
         text: zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
         reader_source,
         author_name: metadata.author_name.clone(),
@@ -2001,40 +1981,9 @@ fn render_line(
                 .unwrap_or_else(|_| time.clone())
         }),
     }
-    .render(
-        window,
-        move |_, cx| {
-            let cached = expand_document.clone();
-            let root = expand_root.clone();
-            cx.defer(move |cx| {
-                let _ = root.update(cx, |v, cx| {
-                    let was_following = v.transcript_list.is_following_tail();
-                    let mut anchor = v.transcript_list.logical_scroll_top();
-                    let expanded = !cached.expanded.get();
-                    cached.expanded.set(expanded);
-                    v.message_motion.scroll = None;
-                    v.transcript_selection.borrow_mut().clear();
-                    if !expanded && anchor.item_ix == index {
-                        anchor.offset_in_item = px(0.);
-                    }
-                    v.transcript_list.splice(index..index + 1, 1);
-                    if was_following {
-                        // Preserve tail-following across aperture height
-                        // changes instead of freezing with splice+scroll_to
-                        // which stops following via `scroll_to`.
-                        v.transcript_list.set_follow_mode(FollowMode::Tail);
-                        v.transcript_list.scroll_to_end();
-                    } else {
-                        v.transcript_list.scroll_to(anchor);
-                    }
-                    zork_ui::components::region::invalidate(cx, &["transcript"]);
-                });
-            });
-        },
-        move |_, cx| {
-            let _ = reader_root.update(cx, |v, cx| v.open_message_reader(index, cx));
-        },
-    )
+    .render(window, move |_, cx| {
+        let _ = reader_root.update(cx, |v, cx| v.open_message_reader(index, cx));
+    })
 }
 
 fn agent_status_label(status: &AgentStatus, locale: Locale) -> String {
