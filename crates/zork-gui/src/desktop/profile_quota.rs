@@ -14,7 +14,7 @@ pub(crate) struct WindowPresentation {
     pub label: String,
     pub short_label: String,
     pub remaining: f32,
-    pub percent: String,
+    pub center_value: String,
     pub value: String,
     pub reset: Option<String>,
 }
@@ -73,7 +73,11 @@ impl QuotaPresentation {
                     label,
                     short_label,
                     remaining: window.remaining as f32,
-                    percent: format!("{percent}%"),
+                    center_value: if window.remaining >= 100. {
+                        String::new()
+                    } else {
+                        percent.clone()
+                    },
                     value,
                     reset,
                 }
@@ -156,7 +160,7 @@ mod tests {
         let display = QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000);
         assert_eq!(display.windows[0].label, "5小时");
         assert_eq!(display.windows[0].short_label, "5H");
-        assert_eq!(display.windows[0].percent, "72%");
+        assert_eq!(display.windows[0].center_value, "72");
         assert_eq!(display.windows[0].value, "剩余 72%");
         assert_eq!(display.windows[0].reset.as_deref(), Some("1小时后重置"));
         assert_eq!(display.checked.as_deref(), Some("额度更新于 5分钟前"));
@@ -164,6 +168,17 @@ mod tests {
         assert!(!profile.quota_stale_at(1788823500));
         assert!(profile.quota_stale_at(1788823501));
         assert_eq!(display.balance.as_deref(), Some("余额 0.00 USD"));
+        profile.rate_limits =
+            json!({"ok":true,"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":300}}});
+        assert_eq!(
+            QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000).windows[0].center_value,
+            ""
+        );
+        profile.rate_limits["rateLimits"]["primary"]["usedPercent"] = json!(0.01);
+        assert_eq!(
+            QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000).windows[0].center_value,
+            "99"
+        );
         profile.rate_limits = json!({"ok":true,"reported":false});
         assert!(!QuotaPresentation::new(&profile, Locale::En).visible());
         profile.rate_limits = json!({"ok":false,"error":"secret diagnostic"});

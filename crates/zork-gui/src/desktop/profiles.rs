@@ -2103,7 +2103,7 @@ impl ProfilesView {
                     label: window.label,
                     short_label: window.short_label,
                     remaining: window.remaining,
-                    percent: window.percent,
+                    center_value: window.center_value,
                     value: window.value,
                     reset: window.reset,
                 })

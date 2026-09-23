@@ -19,7 +19,7 @@ pub struct QuotaWindow {
     pub label: String,
     pub short_label: String,
     pub remaining: f32,
-    pub percent: String,
+    pub center_value: String,
     pub value: String,
     pub reset: Option<String>,
 }
@@ -189,7 +189,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                         } else {
                             p.success
                         };
-                        let size = 32.;
+                        let size = 24.;
                         let track = ring_path(size, 1.);
                         let progress = ring_path(size, window.remaining / 100.);
                         let label = format!("{} · {}", window.label, window.value);
@@ -204,6 +204,13 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                             .flex_shrink_0()
                             .items_center()
                             .gap(px(5.))
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(rgb(p.muted))
+                                    .child(window.short_label.clone()),
+                            )
                             .child(
                                 div()
                                     .relative()
@@ -239,15 +246,9 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                                         div()
                                             .text_size(px(10.))
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(rgb(p.text))
-                                            .child(window.short_label.clone()),
+                                            .text_color(rgb(color))
+                                            .child(window.center_value.clone()),
                                     ),
-                            )
-                            .child(
-                                div()
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(rgb(color))
-                                    .child(window.percent.clone()),
                             )
                             .automation(AutomationRole::Status, label);
                         tooltip::hint(
@@ -272,7 +273,8 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
 }
 
 fn ring_path(size: f32, fraction: f32) -> Option<gpui::Path<gpui::Pixels>> {
-    if !size.is_finite() || size <= 3. || !fraction.is_finite() {
+    const STROKE: f32 = 2.25;
+    if !size.is_finite() || size <= STROKE || !fraction.is_finite() {
         return None;
     }
     let fraction = fraction.clamp(0., 1.);
@@ -281,11 +283,16 @@ fn ring_path(size: f32, fraction: f32) -> Option<gpui::Path<gpui::Pixels>> {
     }
     let steps = (fraction * 64.).ceil().max(2.) as usize;
     let center = size / 2.;
-    let radius = (size - 3.) / 2.;
-    let mut path = gpui::PathBuilder::stroke(px(3.));
+    let radius = (size - STROKE) / 2.;
+    let mut path = gpui::PathBuilder::stroke(px(STROKE)).with_style(gpui::PathStyle::Stroke(
+        gpui::StrokeOptions::default()
+            .with_line_width(STROKE)
+            .with_line_cap(lyon::path::LineCap::Round)
+            .with_line_join(lyon::path::LineJoin::Round),
+    ));
     for step in 0..=steps {
         let angle = -std::f32::consts::FRAC_PI_2
-            + std::f32::consts::TAU * fraction * step as f32 / steps as f32;
+            - std::f32::consts::TAU * fraction * step as f32 / steps as f32;
         let point = gpui::point(
             px(center + radius * angle.cos()),
             px(center + radius * angle.sin()),

@@ -207,6 +207,7 @@ pub fn catalog() -> Vec<Story> {
                 "offline",
                 "quota-error",
                 "narrow",
+                "full",
                 "hover-5h",
             ][..],
             "crates/zork-ui/src/components/profile_card.rs",
@@ -482,22 +483,27 @@ impl Render for PrimitiveStory {
         let component: gpui::AnyElement = match self.story.family.as_str() {
             "profile-card" => {
                 let quota = match state {
-                    "subscription" | "narrow" | "hover-5h" => Some(Quota {
+                    "subscription" | "narrow" | "full" | "hover-5h" => Some(Quota {
                         summary: "5 小时剩余 72%，7 天剩余 38%".into(),
                         windows: vec![
                             QuotaWindow {
                                 label: "5 小时".into(),
                                 short_label: "5H".into(),
-                                remaining: 72.,
-                                percent: "72%".into(),
-                                value: "剩余 72%".into(),
+                                remaining: if state == "full" { 100. } else { 72. },
+                                center_value: if state == "full" { "" } else { "72" }.into(),
+                                value: if state == "full" {
+                                    "剩余 100%"
+                                } else {
+                                    "剩余 72%"
+                                }
+                                .into(),
                                 reset: Some("1 小时后重置".into()),
                             },
                             QuotaWindow {
                                 label: "7 天".into(),
                                 short_label: "7D".into(),
                                 remaining: 38.,
-                                percent: "38%".into(),
+                                center_value: "38".into(),
                                 value: "剩余 38%".into(),
                                 reset: Some("3 天后重置".into()),
                             },
@@ -1360,6 +1366,7 @@ impl Render for FamilyStories {
                             "quota-error" => "额度获取失败",
                             "narrow" => "窄窗口",
                             "hover-5h" => "悬停显示重置时间",
+                            "full" => "额度满额",
                             "wordmark" => "字标",
                             "icon" => "图标",
                             "morph" => "标志动效",
