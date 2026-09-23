@@ -12,7 +12,9 @@ pub(crate) struct QuotaPresentation {
 #[derive(Clone, Debug)]
 pub(crate) struct WindowPresentation {
     pub label: String,
+    pub short_label: String,
     pub remaining: f32,
+    pub center_value: String,
     pub value: String,
     pub reset: Option<String>,
 }
@@ -44,6 +46,12 @@ impl QuotaPresentation {
                 } else {
                     format!("{} · {duration}", window.name)
                 };
+                let short_label = match window.minutes {
+                    Some(minutes) if minutes % 1440 == 0 => format!("{}D", minutes / 1440),
+                    Some(minutes) if minutes % 60 == 0 => format!("{}H", minutes / 60),
+                    Some(minutes) => format!("{minutes}M"),
+                    None => "—".into(),
+                };
                 // Never round a partially consumed window back up to 100%.
                 let percent = if window.remaining > 0. && window.remaining < 1. {
                     "<1".to_owned()
@@ -63,7 +71,13 @@ impl QuotaPresentation {
                 });
                 WindowPresentation {
                     label,
+                    short_label,
                     remaining: window.remaining as f32,
+                    center_value: if window.remaining >= 100. {
+                        String::new()
+                    } else {
+                        percent.clone()
+                    },
                     value,
                     reset,
                 }
@@ -145,6 +159,8 @@ mod tests {
         let mut profile: ProfileInfo = serde_json::from_value(json!({"profile_id":"p","provider":"test","checkedAt":"2026-09-07T22:55:00Z","rateLimits":{"ok":true,"rateLimits":{"primary":{"usedPercent":28,"windowDurationMins":300,"resetsAt":1788825600},"credits":{"balance":0,"unit":"USD"}}}})).unwrap();
         let display = QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000);
         assert_eq!(display.windows[0].label, "5小时");
+        assert_eq!(display.windows[0].short_label, "5H");
+        assert_eq!(display.windows[0].center_value, "72");
         assert_eq!(display.windows[0].value, "剩余 72%");
         assert_eq!(display.windows[0].reset.as_deref(), Some("1小时后重置"));
         assert_eq!(display.checked.as_deref(), Some("额度更新于 5分钟前"));
@@ -152,6 +168,17 @@ mod tests {
         assert!(!profile.quota_stale_at(1788823500));
         assert!(profile.quota_stale_at(1788823501));
         assert_eq!(display.balance.as_deref(), Some("余额 0.00 USD"));
+        profile.rate_limits =
+            json!({"ok":true,"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":300}}});
+        assert_eq!(
+            QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000).windows[0].center_value,
+            ""
+        );
+        profile.rate_limits["rateLimits"]["primary"]["usedPercent"] = json!(0.01);
+        assert_eq!(
+            QuotaPresentation::new_at(&profile, Locale::ZhCn, 1788822000).windows[0].center_value,
+            "99"
+        );
         profile.rate_limits = json!({"ok":true,"reported":false});
         assert!(!QuotaPresentation::new(&profile, Locale::En).visible());
         profile.rate_limits = json!({"ok":false,"error":"secret diagnostic"});

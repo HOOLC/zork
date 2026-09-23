@@ -54,6 +54,10 @@ fn main() -> anyhow::Result<()> {
             "id": "shared-model", "enabled": true, "api": "openai-responses",
             "limits": {"context_window_tokens": 128000, "max_output_tokens": 8192}, "thinking": ["low"], "default_thinking": "low"
         }, {"id": "old-model", "enabled": false, "api": "openai-responses"}]);
+        let now = chrono::Utc::now().timestamp();
+        fixture["profile"]["rateLimits"]["rateLimits"]["primary"]["resetsAt"] = json!(now + 3600);
+        fixture["profile"]["rateLimits"]["rateLimits"]["secondary"]["resetsAt"] =
+            json!(now + 3 * 86400);
         let client = Arc::new(StationClient::fixture(fixture, provider_catalog.clone()));
         let profiles = Profiles::new(client);
         profiles.seed(ProfileData {
@@ -64,7 +68,11 @@ fn main() -> anyhow::Result<()> {
             id.into(),
             id.into(),
             profiles,
-            zork_ui::device_name::DeviceStatus::Connected,
+            if id == "laptop" {
+                zork_ui::device_name::DeviceStatus::Offline
+            } else {
+                zork_ui::device_name::DeviceStatus::Connected
+            },
         ));
     }
     let mut view = None;
@@ -129,7 +137,12 @@ fn main() -> anyhow::Result<()> {
             .find(|e| e.id == format!("profile-device-{device}-fixture") && e.visible)
             .ok_or_else(|| anyhow::anyhow!("Missing {device} label inside Profile card"))?;
         anyhow::ensure!(
-            device_name.label == device
+            device_name.label.contains(device)
+                && device_name.label.contains(if device == "laptop" {
+                    "离线"
+                } else {
+                    "已连接"
+                })
                 && device_name.bounds.x >= connection.bounds.x
                 && device_name.bounds.y >= connection.bounds.y
                 && device_name.bounds.x + device_name.bounds.width
@@ -160,6 +173,14 @@ fn main() -> anyhow::Result<()> {
             "Connection quota disappeared: {}",
             quota.label
         );
+        for index in 0..2 {
+            anyhow::ensure!(
+                snapshot.elements.iter().any(|e| {
+                    e.id == format!("profile-quota-window-{device}-fixture-{index}") && e.visible
+                }),
+                "{device} circular quota {index} is missing"
+            );
+        }
         anyhow::ensure!(
             snapshot.elements.iter().any(|e| {
                 e.id == format!("profile-model-count-{device}-fixture") && e.label == "2 个模型"
@@ -175,6 +196,43 @@ fn main() -> anyhow::Result<()> {
     }
     cx.capture_screenshot(window.into())?
         .save(output.join("provider-profiles.png"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        driver.dispatch(
+            serde_json::from_value(json!({
+                "type":"move","target":{"element_id":"profile-quota-window-desktop-fixture-0"}
+            }))?,
+            w,
+            cx,
+        )
+    })??;
+    draw(&mut cx)?;
+    let hover = driver.snapshot(false);
+    anyhow::ensure!(
+        hover.elements.iter().any(|e| {
+            e.id == "control-hint-profile-quota-reset-desktop-fixture-0"
+                && e.visible
+                && e.label.contains("后重置")
+        }),
+        "5H quota hover did not show the reset time: {:?}",
+        hover
+            .elements
+            .iter()
+            .filter(|e| e.id.contains("quota") || e.id.contains("hint"))
+            .map(|e| (&e.id, &e.label, e.visible))
+            .collect::<Vec<_>>()
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("provider-quota-tooltip.png"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        driver.dispatch(
+            serde_json::from_value(json!({
+                "type":"move","target":{"element_id":"model-provider-openai"}
+            }))?,
+            w,
+            cx,
+        )
+    })??;
+    draw(&mut cx)?;
     click("profile-detail-desktop-fixture", &mut cx)?;
     anyhow::ensure!(
         driver
@@ -250,6 +308,8 @@ fn main() -> anyhow::Result<()> {
         "profile-detail-laptop-fixture",
         "profile-device-desktop-fixture",
         "profile-device-laptop-fixture",
+        "profile-quota-window-desktop-fixture-0",
+        "profile-quota-window-laptop-fixture-1",
     ] {
         let element = driver
             .snapshot(false)

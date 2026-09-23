@@ -5,6 +5,7 @@ use crate::{
         activity,
         brand::{Brand, BrandMotion},
         message,
+        profile_card::{self, DeviceIdentity, ProfileCard, Quota, QuotaWindow},
         text_input::ComposerInput,
     },
     controls as ui,
@@ -198,6 +199,21 @@ pub fn catalog() -> Vec<Story> {
             "providers",
         ),
         (
+            "profile-card",
+            "模型连接卡片",
+            &[
+                "subscription",
+                "manual",
+                "offline",
+                "quota-error",
+                "narrow",
+                "full",
+                "hover-5h",
+            ][..],
+            "crates/zork-ui/src/components/profile_card.rs",
+            "profile-card",
+        ),
+        (
             "icons",
             "功能图标",
             &["all"][..],
@@ -289,6 +305,11 @@ pub fn catalog() -> Vec<Story> {
                 story.width = if *state == "narrow" { 320. } else { 560. };
                 story.height = 600.;
             }
+            if family == "profile-card" {
+                story.width = if *state == "narrow" { 460. } else { 760. };
+                story.height = if *state == "hover-5h" { 220. } else { 160. };
+                story.target = "profile-detail-story-card".into();
+            }
             match (family, *state) {
                 ("button", "hover") => story
                     .actions
@@ -302,6 +323,9 @@ pub fn catalog() -> Vec<Story> {
                 ("navigation", "hover" | "selected-hover") => story
                     .actions
                     .push(json!({"type":"move","target":{"element_id":"story-nav"}})),
+                ("profile-card", "hover-5h") => story.actions.push(json!({
+                    "type":"move","target":{"element_id":"profile-quota-window-story-card-0"}
+                })),
                 _ => {}
             }
             items.push(story);
@@ -457,6 +481,76 @@ impl Render for PrimitiveStory {
         let state = self.story.state.as_str();
         let p = ZORK_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
+            "profile-card" => {
+                let quota = match state {
+                    "subscription" | "narrow" | "full" | "hover-5h" => Some(Quota {
+                        summary: "5 小时剩余 72%，7 天剩余 38%".into(),
+                        windows: vec![
+                            QuotaWindow {
+                                label: "5 小时".into(),
+                                short_label: "5H".into(),
+                                remaining: if state == "full" { 100. } else { 72. },
+                                center_value: if state == "full" { "" } else { "72" }.into(),
+                                value: if state == "full" {
+                                    "剩余 100%"
+                                } else {
+                                    "剩余 72%"
+                                }
+                                .into(),
+                                reset: Some("1 小时后重置".into()),
+                            },
+                            QuotaWindow {
+                                label: "7 天".into(),
+                                short_label: "7D".into(),
+                                remaining: 38.,
+                                center_value: "38".into(),
+                                value: "剩余 38%".into(),
+                                reset: Some("3 天后重置".into()),
+                            },
+                        ],
+                        ..Default::default()
+                    }),
+                    "quota-error" => Some(Quota {
+                        summary: "暂时无法获取额度".into(),
+                        failed: true,
+                        ..Default::default()
+                    }),
+                    _ => None,
+                };
+                let card = ProfileCard {
+                    key: "story-card".into(),
+                    provider: if state == "manual" { "anthropic" } else { "openai" }.into(),
+                    name: if state == "manual" { "Claude API" } else { "Codex" }.into(),
+                    device: Some(DeviceIdentity {
+                        name: if state == "narrow" {
+                            "设计工作室的 MacBook Air"
+                        } else {
+                            "MacBook Air"
+                        }
+                        .into(),
+                        status: if state == "offline" {
+                            crate::device_name::DeviceStatus::Offline
+                        } else {
+                            crate::device_name::DeviceStatus::Connected
+                        },
+                    }),
+                    billing: if state == "manual" {
+                        "Anthropic · API Key"
+                    } else {
+                        "OpenAI · ChatGPT 订阅"
+                    }.into(),
+                    model_count: if state == "manual" { "2 个模型" } else { "1 个模型" }.into(),
+                    verified: state != "quota-error",
+                    verification: if state == "quota-error" { "未验证" } else { "已验证" }.into(),
+                    quota,
+                };
+                profile_card::render(card, cx.listener(|v, _, _, cx| {
+                    v.clicks += 1;
+                    cx.notify();
+                }))
+                .automation(AutomationRole::Button, "Codex 模型连接")
+                .into_any_element()
+            }
             "device-name" => {
                 use crate::device_name::{label, DeviceStatus};
                 let status = match state {
@@ -1193,7 +1287,7 @@ impl Render for FamilyStories {
             "dropdown" => 246.,
             "icons" => 580.,
             "markdown" => 232.,
-            "avatar" | "brand" => 140.,
+            "avatar" | "brand" | "profile-card" => 140.,
             _ => 112.,
         };
         div()
@@ -1267,6 +1361,12 @@ impl Render for FamilyStories {
                             "all" => "全部",
                             "notice" => "提示",
                             "linked" => "组合标志",
+                            "subscription" => "订阅额度",
+                            "manual" => "手动连接",
+                            "quota-error" => "额度获取失败",
+                            "narrow" => "窄窗口",
+                            "hover-5h" => "悬停显示重置时间",
+                            "full" => "额度满额",
                             "wordmark" => "字标",
                             "icon" => "图标",
                             "morph" => "标志动效",
