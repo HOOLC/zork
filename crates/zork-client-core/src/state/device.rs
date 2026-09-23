@@ -774,7 +774,15 @@ impl Device {
             let mut owned = device.owned.lock().unwrap();
             if owned.data.revoked { owned.archive_operations.clear(); }
             else if let Err(error) = result {
-                owned.archive_operations.insert(chat, (false, Some(error.to_string())));
+                let message = match &error {
+                    crate::api::ApiError::Api { status: 403, message }
+                        if message == "mesh_client_route_not_allowed" =>
+                    {
+                        "设备版本过旧，请更新节点后重试".to_owned()
+                    }
+                    _ => error.to_string(),
+                };
+                owned.archive_operations.insert(chat, (false, Some(message)));
             } else { owned.archive_operations.remove(&chat); }
             device.navigation.publish(Self::project_navigation(&owned));
         });
