@@ -49,7 +49,7 @@ internal object SettingsStyle {
     val visible = open ?: localOpen
     val close = { if (!busy || dismissWhileBusy) { if (open == null) localOpen = false else dismiss() } }
     LaunchedEffect(error) { if(error!=null) scroll.animateScrollTo(0) }
-    ZorkSheet(visible, title, close, onClosed = onClosed) {
+    ZorkSheet(visible, title, close, onClosed = onClosed, canDismiss = !busy || dismissWhileBusy) {
         Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * .86f).dp)
             .then(if (footer == null) Modifier.verticalScroll(scroll) else Modifier), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

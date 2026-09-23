@@ -31,9 +31,9 @@ internal fun ZorkCard(
     color: Color = ZorkColors.Canvas,
     outlined: Boolean = true,
     radius: Dp = UiTokens.CompactRadius,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(radius),
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(radius)
     Surface(modifier, shape = shape, color = color,
         border = if (outlined) androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline) else null) {
         Box(content = content)

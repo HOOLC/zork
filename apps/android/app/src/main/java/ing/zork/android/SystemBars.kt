@@ -14,8 +14,9 @@ import androidx.compose.ui.draw.drawBehind
 
 internal fun ComponentActivity.configureZorkSystemBars() {
     enableEdgeToEdge(
-        statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
-        navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        // Transparent bars whose icons follow the system light/dark theme.
+        statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+        navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
     )
     window.isNavigationBarContrastEnforced = false
 }

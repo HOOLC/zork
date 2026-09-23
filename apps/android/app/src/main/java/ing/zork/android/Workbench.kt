@@ -311,7 +311,7 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
         Spacer(Modifier.weight(1f))
         val deviceInteraction = remember { MutableInteractionSource() }
         val devicePressed by deviceInteraction.collectIsPressedAsState()
-        Row(Modifier.clip(RoundedCornerShape(6.dp)).background(if (devicePressed) ZorkColors.Pressed else Color.Transparent)
+        Row(Modifier.clip(ZorkShapes.Control).background(if (devicePressed) ZorkColors.Pressed else Color.Transparent)
             .clickable(interactionSource = deviceInteraction, indication = null, onClick = actions.deviceSettings).heightIn(min = 44.dp).padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Glyph(R.drawable.ic_node, 17.dp, tint = ZorkColors.Ink)
@@ -470,7 +470,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 Column(Modifier.fillMaxWidth()) {
                     if (unread > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         Text("有新消息", fontSize = 12.sp, color = ZorkColors.Ink,
-                            modifier = Modifier.background(ZorkColors.Canvas, RoundedCornerShape(20.dp))
+                            modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
                                 .clickable { following = true; followTail() }.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
                     if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 10.sp,
@@ -622,8 +622,8 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
             if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
-                ZorkCard(color = ZorkColors.Bubble, radius = 20.dp) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                ZorkCard(color = ZorkColors.Bubble, outlined = false, shape = ZorkShapes.Bubble) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 11.dp)) {
                         if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
             row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
@@ -733,7 +733,7 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
                     }
                 })
             if (attachments.isNotEmpty()) Column(Modifier.weight(1f, fill = false).heightIn(max=120.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                attachments.forEach { file -> Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(ZorkColors.Paper,RoundedCornerShape(20.dp)).padding(start=12.dp,end=4.dp),verticalAlignment=Alignment.CenterVertically) {
+                attachments.forEach { file -> Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(ZorkColors.Paper,ZorkShapes.Block).padding(start=16.dp,end=4.dp),verticalAlignment=Alignment.CenterVertically) {
                     Glyph(R.drawable.ic_result,16.dp,ZorkColors.Muted)
                     Text(file.name,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f).padding(horizontal=8.dp))
                     IconAction(R.drawable.ic_x,"移除 ${file.name}",glyphSize=16.dp,onClick={actions.removeAttachment(file.id)})
@@ -809,7 +809,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
 
 @Composable
 private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
-    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = UiTokens.CompactRadius) {
         Row(Modifier.heightIn(min = 64.dp).zorkPressable(onClick = save).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Glyph(R.drawable.ic_result, 22.dp)

@@ -45,7 +45,7 @@ internal suspend fun decodeFileImage(bytes: ByteArray): ImageBitmap? = withConte
 
 @Composable
 internal fun DeliveredFileCard(file: ChatFileUi, open: () -> Unit) {
-    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = UiTokens.CompactRadius) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).zorkPressable(onClick = open)
             .padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
@@ -39,7 +40,7 @@ internal fun ZorkDialog(
     if (!open) return
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.padding(16.dp).widthIn(max = 640.dp).fillMaxWidth()
-            .semantics { paneTitle = title }, shape = RoundedCornerShape(UiTokens.CardRadius),
+            .semantics { paneTitle = title }, shape = ZorkShapes.Surface,
             color = ZorkColors.Canvas, border = BorderStroke(UiTokens.Border, UiTokens.Outline)) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 content = content)
@@ -51,14 +52,24 @@ internal fun ZorkDialog(
 @Composable
 internal fun ZorkSheet(
     open: Boolean, title: String, dismiss: () -> Unit, onClosed: () -> Unit = {},
+    canDismiss: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val closed by rememberUpdatedState(onClosed)
+    val dismissible by rememberUpdatedState(canDismiss)
     LaunchedEffect(open) { if (!open) closed() }
     if (!open) return
-    ModalBottomSheet(onDismissRequest = dismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        shape = RoundedCornerShape(topStart = UiTokens.CardRadius, topEnd = UiTokens.CardRadius),
+    // A busy sheet refuses to hide at the state level. Otherwise Material3 animates
+    // it away first and asks afterwards, leaving an invisible sheet that still
+    // captures touches.
+    val state = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || dismissible },
+    )
+    ModalBottomSheet(onDismissRequest = { if (dismissible) dismiss() },
+        sheetState = state,
+        sheetGesturesEnabled = canDismiss,
+        shape = ZorkShapes.Sheet,
         containerColor = ZorkColors.Canvas,
         dragHandle = null) {
         Column(Modifier.fillMaxWidth().widthIn(max = 640.dp)
@@ -69,8 +80,9 @@ internal fun ZorkSheet(
 }
 
 internal object PlainMenuStyle {
-    val Radius = 16.dp
-    val RowRadius = Radius - 6.dp
+    /** Menus are containers; rows stay concentric inside the 8 dp inset. */
+    val Radius = UiTokens.CardRadius
+    val RowRadius = Radius - 8.dp
 }
 
 @Composable
@@ -81,7 +93,12 @@ internal fun PlainMenu(
 ) {
     DropdownMenu(expanded, onDismissRequest = dismiss,
         modifier = Modifier.widthIn(min = width.coerceAtLeast(160.dp)).heightIn(max = 320.dp)
-            .semantics { paneTitle = label }, content = content)
+            .semantics { paneTitle = label },
+        shape = RoundedCornerShape(PlainMenuStyle.Radius),
+        containerColor = ZorkColors.Canvas,
+        tonalElevation = 0.dp,
+        border = BorderStroke(UiTokens.Border, UiTokens.Outline),
+        content = content)
 }
 
 @Composable

@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -233,7 +234,7 @@ private fun CommentDialog(comment: DraftCommentUi, open: Boolean, closed: () -> 
     var text by remember(comment.id) { mutableStateOf(comment.text) }
     SettingsSheet(if (comment.text.isBlank()) "评论所选片段" else "编辑评论", dismiss = dismiss, open = open, onClosed = closed) {
         Text(comment.quote, fontSize = 13.sp, lineHeight = 21.sp, modifier = Modifier.fillMaxWidth()
-            .background(ZorkColors.Paper, RoundedCornerShape(8.dp)).padding(12.dp))
+            .background(ZorkColors.Paper, ZorkShapes.Block).padding(horizontal = 16.dp, vertical = 12.dp))
         Text("你的评论", fontSize = 12.sp, color = ZorkColors.Muted)
         FormField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3,
             placeholder = { Text("对这段内容有什么想法？", fontSize = 16.sp) })
@@ -254,9 +255,12 @@ internal fun FormField(value: String, onValueChange: (String) -> Unit, modifier:
             Spacer(Modifier.height(7.dp))
         }
         androidx.compose.foundation.text.BasicTextField(value, onValueChange,
+            // Stable surface; the outline deepens on focus. Single-line fields are capsules.
             modifier = Modifier.fillMaxWidth().heightIn(min = if (minLines > 1) 96.dp else 44.dp)
-                .background(if (focused) androidx.compose.ui.graphics.Color(0xFFEEECE6) else androidx.compose.ui.graphics.Color(0xFFF6F5F1), RoundedCornerShape(9.dp))
-                .onFocusChanged { focused = it.isFocused }.padding(horizontal = 12.dp, vertical = 11.dp),
+                .background(ZorkColors.Canvas, if (singleLine || minLines == 1 && maxLines == 1) ZorkShapes.Control else ZorkShapes.Block)
+                .border(if (focused) 1.5.dp else 1.dp, if (focused) ZorkColors.Ink else ZorkColors.FieldBorder,
+                    if (singleLine || minLines == 1 && maxLines == 1) ZorkShapes.Control else ZorkShapes.Block)
+                .onFocusChanged { focused = it.isFocused }.padding(horizontal = 16.dp, vertical = 11.dp),
             singleLine = singleLine, minLines = minLines, maxLines = maxLines,
             textStyle = androidx.compose.ui.text.TextStyle(fontFamily = ZorkFonts.Body, fontSize = 16.sp, lineHeight = 24.sp, color = ZorkColors.Ink),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(ZorkColors.Ink),
