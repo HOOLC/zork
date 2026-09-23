@@ -70,7 +70,7 @@ All sliding surfaces retain their painted position and velocity when retargeted.
 They accelerate and brake continuously when the target changes; motion and
 settling constraints belong to the shared interface contract.
 
-The gallery has one tab per primitive family and one tab per application page. Primitive tabs render every state in a single GPUI canvas using `FamilyStories`, with separate entities and namespaced control IDs. Scenario and viewport selection stay inside each component tab; design documents and assets have their own native sections.
+The gallery has one tab per story family, grouped as basic components, business components, pages and flows, or interaction experiments. Primitive tabs render every state in a single GPUI canvas using `FamilyStories`, with separate entities and namespaced control IDs. Scenario and viewport selection stay inside each component tab; design documents and assets have their own native sections.
 
 Modal backdrops are rendered by the shared liquid overlay with the foreground
 content, using the same native material geometry.

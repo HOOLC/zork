@@ -3,6 +3,36 @@ use super::*;
 static PLATFORM: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
+fn directory_places_every_story_family_once() {
+    let catalog: std::collections::HashSet<_> = stories::catalog()
+        .into_iter()
+        .map(|story| story.family)
+        .collect();
+    let mut grouped = std::collections::HashSet::new();
+    for (_, groups) in workbench::DIRECTORY {
+        for (_, families) in *groups {
+            for family in *families {
+                assert!(
+                    grouped.insert((*family).to_owned()),
+                    "duplicate family: {family}"
+                );
+            }
+        }
+    }
+    assert_eq!(
+        grouped, catalog,
+        "new stories need an explicit directory home"
+    );
+    assert!(workbench::DIRECTORY
+        .iter()
+        .find(|(section, _)| *section == "页面与流程")
+        .unwrap()
+        .1
+        .iter()
+        .any(|(_, families)| families.contains(&"new-chat")));
+}
+
+#[test]
 fn interactive_selectors_keep_the_catalog_and_batch_exports_filter_it() {
     let all = stories::catalog();
     for (family, story, expected) in [
