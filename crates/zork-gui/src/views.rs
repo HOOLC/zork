@@ -1384,27 +1384,25 @@ impl RootView {
                 zork_ui::components::region::invalidate(cx, &["transcript"])
             });
         });
-        let device = self.core_device.snapshot();
-        let local_name = self
-            .device_name
-            .as_ref()
-            .map(|name| zork_ui::device_name::summary(name, &device.status, None));
+        let local_name = self.device_name.clone();
         let local_agents = self
             .node_agents
             .iter()
             .filter_map(|a| a["id"].as_str().map(str::to_owned))
             .collect::<std::collections::HashSet<_>>();
-        let aliases = self
+        let mut aliases = self
             .mesh_status
             .peers
             .iter()
-            .map(|p| {
-                (
-                    p.origin.clone(),
-                    zork_ui::device_name::summary(&p.name, &device.peer_status(&p.origin), None),
-                )
-            })
+            .map(|p| (p.origin.clone(), p.name.clone()))
             .collect::<HashMap<_, _>>();
+        let device = self.core_device.snapshot();
+        let local_origin = device.info["sync"]["owner"]
+            .as_str()
+            .or(self.mesh_status.origin.as_deref());
+        if let (Some(origin), Some(name)) = (local_origin, &local_name) {
+            aliases.insert(origin.to_owned(), name.clone());
+        }
         #[cfg(feature = "headless-bench")]
         let benchmark_rows = self.benchmark_rows.clone();
         #[cfg(feature = "headless-bench")]
@@ -1532,7 +1530,7 @@ impl RootView {
                         ),
                     ))
                     .when_some(crate::components::interaction::render(lines.shared(ix).unwrap(), &documents[ix], locale, &session_id, reader_root.clone(), cx), |row, card| {
-                        row.child(div().pl(px(34.)).pt_2().pb_2().child(card))
+                        row.child(div().pt_2().pb_2().child(card))
                     })
                     .when(!documents[ix].files(content).is_empty(), |row| {
                         row.child(files::message::render(
@@ -1949,10 +1947,9 @@ fn render_line(
         expanded,
         text: zork_ui::resources::Text(Rc::new(move |key| locale.text(key).into())),
         reader_source,
-        author_is_agent: metadata.author_agent_id.is_some(),
-        avatar: metadata.author_avatar.as_deref(),
         author_name: metadata.author_name.clone(),
         device,
+        model: metadata.model.clone(),
         time: metadata.created_at.as_ref().map(|time| {
             chrono::DateTime::parse_from_rfc3339(time)
                 .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())

@@ -58,12 +58,13 @@ class MarkdownStressActivity : ComponentActivity() {
         val start = System.nanoTime()
         records = intent.getIntExtra("messages", 100000)
         require(records in 100..100000)
-        val avatars = listOf("cat", "dog", "owl", "fox", "panda", "penguin", "koala", "rabbit", "bear", "deer", "chick", "octopus")
+        val models = listOf("gpt-6", "claude-sonnet-4", "long-model-name-for-layout")
         messages = List(records - 3) { index ->
             val (kind, body) = markdownStressCases[index % markdownStressCases.size]
             val user = (index / markdownStressCases.size) % 2 == 1
             ChatMessage("stress-$index", if (user) "你" else "小伙伴", if (body.isEmpty()) "" else "消息 $index\n\n" + body.replace("__INDEX__", index.toString()), user,
-                avatar = avatars[index % avatars.size], files = if (kind == "text_attachment") listOf(TextAttachmentUi("file-$index", "notes-$index.md", "# 文本附件", "Markdown")) else emptyList())
+                device = if (user) "" else "studio-dev", model = if (user) "" else models[index % models.size],
+                files = if (kind == "text_attachment") listOf(TextAttachmentUi("file-$index", "notes-$index.md", "# 文本附件", "Markdown")) else emptyList())
         }
         val pending = listOf("", "sending", "failed").mapIndexed { index, state ->
             ChatMessage("pending-$index", "你", "队列状态 $index", true, pending = true, deliveryStatus = state)

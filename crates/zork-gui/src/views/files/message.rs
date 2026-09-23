@@ -177,7 +177,7 @@ pub(in crate::views) fn render(
     cache: Rc<RefCell<PreviewCache>>,
     cx: &mut gpui::App,
 ) -> Div {
-    let group_width = (width - if user { 0. } else { 36. }).clamp(140., 300.);
+    let group_width = width.clamp(140., 300.);
     if cache.borrow().missing(&files) {
         let (files, root) = (files.clone(), root.clone());
         let session = session.to_owned();
@@ -247,7 +247,6 @@ pub(in crate::views) fn render(
         .flex()
         .pb_2()
         .when(user, |v| v.justify_end())
-        .when(!user, |v| v.pl(px(36.)))
         .child(
             div()
                 .w(px(group_width))

@@ -299,7 +299,10 @@ pub fn message_device_label(
     aliases: &std::collections::HashMap<String, String>,
 ) -> Option<String> {
     if let Some(device) = &metadata.device {
-        return Some(aliases.get(device).unwrap_or(device).clone());
+        return aliases
+            .get(device)
+            .cloned()
+            .or_else(|| (!device.starts_with("key:")).then(|| device.clone()));
     }
     metadata
         .author_agent_id
@@ -335,6 +338,11 @@ mod device_identity_tests {
         assert_eq!(
             message_device_label(&metadata, &local, Some("mini1"), &aliases),
             Some("mini2".into())
+        );
+        metadata.device = Some("key:unknown".into());
+        assert_eq!(
+            message_device_label(&metadata, &local, Some("mini1"), &aliases),
+            None
         );
     }
 }

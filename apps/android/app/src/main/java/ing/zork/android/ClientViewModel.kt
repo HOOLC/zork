@@ -29,11 +29,11 @@ internal data class Conversation(val id: String, val title: String, val leaderId
     val canSend: Boolean = true, val avatar: String? = null, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
     val user: Boolean, val pending: Boolean = false, val attempted: Boolean = false,
-    val avatar: String? = null, val createdAt: String = "", val device: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
+    val createdAt: String = "", val device: String = "", val model: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
 
 internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.text("author_name", if (it.text("role") == "user") "用户" else "小伙伴"),
     it.text("display_content", it.text("content")), it.text("role") == "user", pending = it.optBoolean("pending"), attempted = it.optBoolean("attempted"),
-    avatar = it.text("author_avatar"), createdAt = it.text("created_at"), device = it.text("device"), authorAgentId = it.text("author_agent_id"),
+    createdAt = it.text("created_at"), device = it.text("device"), model = it.text("model"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),
     deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard),
     deliveredFiles = it.optJSONArray("files").objects().map { file -> ChatFileUi(file.getString("id"), file.getString("name"), file.getLong("byte_len")) })
