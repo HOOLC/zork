@@ -97,7 +97,9 @@ try {
   const pid = station.pid;
   await until(async () => {
     try {
-      const response = await fetch("http://" + config.bind.runtime + "/v1/mesh", { headers: { authorization: "Bearer isolated-native-enrollment" } });
+      const response = await fetch("http://" + config.bind.runtime + "/v1/mesh", {
+        headers: { authorization: "Bearer isolated-native-enrollment" },
+      });
       return response.ok && typeof ((await response.json()) as any).origin === "string";
     } catch {
       return false;
@@ -108,18 +110,9 @@ try {
   const budget = budgets.get(budgets.idFromName("primary"));
   await until(async () => Number((await budget.statistics())?.bytes) > 128, "native iroh relay handshakes without credentials");
   pass("Station data and invitation endpoints complete native iroh relay handshakes anonymously");
-  const enrollment = await exec("cargo", ["test", "--locked", "-p", "zork-client-core", "--test", "relay_account_enrollment", "--", "--ignored", "--nocapture"], {
-    cwd: path.resolve("../.."),
-    env: { ...env, ZORK_ENROLLMENT_URL: "http://" + config.bind.runtime, ZORK_ENROLLMENT_TOKEN: "isolated-native-enrollment", ZORK_ENROLLMENT_PUBLIC: "1" },
-    timeout: 180000,
-    maxBuffer: 2 * 1024 * 1024,
-  });
-  await fs.writeFile(path.join(report, "enrollment.log"), enrollment.stdout + enrollment.stderr);
-  assert.match(enrollment.stdout, /PASS: real short invite, approval, Mesh read and restart recovery without Google credentials/);
   assert.equal(station.pid, pid);
   assert.equal(station.exitCode, null);
   await assert.rejects(fs.access(path.join(nodeRoot, "account/relay.json")));
-  pass("real core invitation approval, native business read and client restart work without cloud credentials");
   await log.close();
   success = true;
 } finally {

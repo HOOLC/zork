@@ -24,8 +24,6 @@ pub mod stories;
 
 pub mod resources;
 
-pub mod shared_files;
-
 pub mod chat_navigation;
 
 pub mod conversation_contents;

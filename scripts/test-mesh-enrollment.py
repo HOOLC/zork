@@ -172,14 +172,14 @@ def main():
         time.sleep(.5)
         membership_revision = admin(b, 'GET', '/v1/node/mesh')['config']['group']['revision']
         token = admin(b, 'GET', '/v1/mesh')['change_token']
-        phone_invite = admin(a, 'POST', '/v1/node/mesh/client-invites')
+        extra_invite = admin(a, 'POST', '/v1/node/mesh/invites')
         f.wait(lambda: admin(b, 'GET', '/v1/mesh')['change_token'] != token, 'authority invitation push reaches peer')
         assert admin(b, 'GET', '/v1/node/mesh')['config']['group']['revision'] == membership_revision
-        assert any(i['id'] == phone_invite['id'] for i in admin(b, 'GET', '/v1/node/mesh/invites')['items'])
+        assert any(i['id'] == extra_invite['id'] for i in admin(b, 'GET', '/v1/node/mesh/invites')['items'])
         token = admin(b, 'GET', '/v1/mesh')['change_token']
-        admin(a, 'DELETE', '/v1/node/mesh/invites/' + phone_invite['id'])
+        admin(a, 'DELETE', '/v1/node/mesh/invites/' + extra_invite['id'])
         f.wait(lambda: admin(b, 'GET', '/v1/mesh')['change_token'] != token, 'authority revocation push reaches peer')
-        assert next(i for i in admin(b, 'GET', '/v1/node/mesh/invites')['items'] if i['id'] == phone_invite['id'])['status'] == 'revoked'
+        assert next(i for i in admin(b, 'GET', '/v1/node/mesh/invites')['items'] if i['id'] == extra_invite['id'])['status'] == 'revoked'
         print('PASS: read-only supervisor observation and invitation-only authority changes use push subscriptions', flush=True)
 
         caller, _ = channels.make_caller(a, 'leader')

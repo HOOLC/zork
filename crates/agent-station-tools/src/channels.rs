@@ -83,7 +83,7 @@ pub fn definitions() -> Vec<Definition> {
         ),
         (
             "chat.preferences",
-            "Read this calling Agent's own settings for the specified channel. Settings belong to the Agent/channel pair; they are separate from Agent model and skill configuration.",
+            "Read this calling Agent's own settings for the specified channel. Settings belong to the Agent/channel pair; they are separate from Agent model configuration.",
             json!({"chat_id":string()}),
             vec!["chat_id"],
             false,

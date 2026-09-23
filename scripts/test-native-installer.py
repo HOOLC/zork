@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Offline executable tests for bootstrap integrity, selection and release completeness."""
 import hashlib
+import functools
+import http.server
 import importlib.util
 import io
 import os
@@ -8,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -87,6 +90,24 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual({p.name for p in destination.iterdir()}, set(release.MEMBERS))
         self.assertEqual((destination / 'VERSION').read_text().strip(), self.version)
         self.run_installer(['--download-only', str(destination)], success=False)
+
+    def test_http_source_requires_explicit_test_channel(self):
+        class QuietHandler(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(self.root)))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = ['--base-url', f'http://127.0.0.1:{server.server_port}', '--version', self.version]
+            self.run_installer(base, success=False)
+            self.run_installer([*base, '--allow-http-test', '--', 'install', '--channel', 'release'], success=False)
+            self.run_installer([*base, '--allow-http-test', '--download-only', str(self.root / 'test-bundle'), '--', 'install', '--channel', 'test'])
+            self.assertFalse(self.marker.exists())
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_download_only_rejects_corruption_without_creating_destination(self):
         destination = self.root / 'staged'

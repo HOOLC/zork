@@ -309,7 +309,9 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     let _setup = zork_config::service::exclusive_lock(&root.join("run/mesh-setup.lock"))
         .context("Another Station setup is already running for this device")?;
     let station = LocalStation::new(root.clone())?;
-    let running = station.ready().await;
+    // A fresh root still has default ports. A response there can belong to an
+    // unrelated local Station; allocate this installation's ports first.
+    let running = installed && station.ready().await;
     if running {
         station.verify().await?;
         eprintln!("Using the running Station at {}", root.display());

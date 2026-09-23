@@ -62,11 +62,8 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     private var accountWatch: Job? = null
 
-    var invitation by mutableStateOf<JSONObject?>(null)
         private set
-    private var invitationWatch: Job? = null
     private var directoryWatch: Job? = null
-    var meshSwitch by mutableStateOf<JSONObject?>(null)
         private set
 
     var identity by mutableStateOf("")
@@ -155,10 +152,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     var ready by mutableStateOf(false)
         private set
     private var foreground = false
-    var sharedFiles by mutableStateOf<SharedFilesUi?>(null)
-        private set
-    var sharedFileImage by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
-        private set
     var chatFile by mutableStateOf<ChatFilePreviewUi?>(null)
         private set
     var chatFileImage by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
@@ -166,9 +159,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     private var chatFilesWatch: Job? = null
     private var chatImageJob: Job? = null
     private var chatImageKey: String? = null
-    private var sharedFilesWatch: Job? = null
-    private var sharedImageJob: Job? = null
-    private var sharedImageRoot: String? = null
     private var live: Job? = null
     private var historyWatch: Job? = null
     var sessionHistory by mutableStateOf<SessionHistoryState?>(null)
@@ -218,7 +208,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         foreground = value
         live?.cancel()
         historyWatch?.cancel()
-        invitationWatch?.cancel()
         directoryWatch?.cancel()
         if (value) { watchDataReset(); watchAccount() }
         if (value) action {
@@ -234,14 +223,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             settings?.device?.id?.let { watchSettings(it) }
             newChat?.let { watchNewChat(it.peer, newChatGeneration) }
             settings?.resource?.let { watchResources(it); refreshResources(it) }
-            if (sharedFiles != null) watchSharedFiles()
             if (chatFile != null) watchChatFiles()
-            if (foreground) { if (invitation != null) watchInvitation() else startLive(); startHistory() }
+            if (foreground) { startLive(); startHistory() }
         } else {
             settingsWatch?.cancel()
             newChatWatch?.cancel()
             resourcesWatch?.cancel()
-            sharedFilesWatch?.cancel()
             chatFilesWatch?.cancel()
             notificationsWatch?.cancel()
             adbWatch?.cancel()
@@ -348,7 +335,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (!ready) return
         val peer = activePeer?.id
         val session = conversation?.id
-        val visible = foreground && settings == null && sharedFiles == null && session != null
+        val visible = foreground && settings == null && session != null
         viewModelScope.launch { runCatching { repo.command("report_view", "peer" to peer, "session" to session, "visible" to visible) } }
     }
     fun openNotification(tag: String) {
@@ -394,8 +381,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     private fun applySnapshot(value: JSONObject) {
-        meshSwitch = value.optJSONObject("switch_confirmation")
-        invitation = value.optJSONObject("invitation")
         identity = value.text("identity")
         directOnly = value.optJSONObject("network")?.optBoolean("direct_only") ?: false
         applyDirectory(value)
@@ -454,95 +439,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             try { repo.saveChatFile(uri, ticket) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { notice = e.message; chatFileAction("cancel_save", "ticket" to ticket) }
-        }
-    }
-
-    fun openSharedFiles() {
-        watchSharedFiles()
-        sharedFileAction("activate", "active" to true)
-    }
-    fun sharedFileAction(action: String, vararg fields: Pair<String, Any?>) {
-        val operation = JSONObject().put("action", action)
-        fields.forEach { (key, value) -> operation.put(key, value ?: JSONObject.NULL) }
-        viewModelScope.launch {
-            runCatching { repo.command("shared_files", "operation" to operation) }
-                .onFailure { if (it !is CancellationException) notice = it.message }
-        }
-    }
-    private fun watchSharedFiles() {
-        sharedFilesWatch?.cancel()
-        sharedFilesWatch = viewModelScope.launch {
-            try {
-                repo.sharedFileEvents().collect { frame ->
-                    val next = parseSharedFiles(frame.value.getJSONObject("snapshot"))
-                    val visibilityChanged = (sharedFiles != null) != next.active
-                    sharedFiles = next.takeIf { it.active }
-                    projectSharedImage(next.preview.takeIf { next.active })
-                    if (visibilityChanged) reportVisibleConversation()
-                }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { notice = e.message }
-        }
-    }
-    private fun projectSharedImage(preview: SharedPreviewUi?) {
-        val root = preview?.selected?.takeIf { preview.mime.startsWith("image/") && !preview.loading && preview.error == null }
-        if (sharedImageRoot == root) return
-        sharedImageRoot = root
-        sharedImageJob?.cancel(); sharedFileImage = null
-        if (root == null) return
-        sharedImageJob = viewModelScope.launch {
-            val bytes = repo.sharedPreviewBytes(root)
-            val bitmap = decodeFileImage(bytes)
-            if (sharedImageRoot == root) sharedFileImage = bitmap
-        }
-    }
-    fun saveSharedFile(uri: android.net.Uri?, ticket: String) {
-        if (uri == null) { sharedFileAction("cancel_save", "ticket" to ticket); return }
-        viewModelScope.launch {
-            try { repo.saveSharedFile(uri, ticket) }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { sharedFileAction("save_failed", "ticket" to ticket, "error" to (e.message ?: "保存副本失败")) }
-        }
-    }
-
-    fun beginInvitation(ticket: String) = action {
-        val result = repo.command("begin_invitation", "ticket" to ticket, "name" to android.os.Build.MODEL)
-        result.optJSONObject("switch_confirmation")?.let {
-            meshSwitch = it; return@action
-        }
-        live?.cancel(); invitationWatch?.cancel()
-        applySnapshot(result)
-        watchInvitation()
-    }
-    fun confirmMeshSwitch() = action {
-        val confirmation = meshSwitch ?: return@action
-        val result = repo.command("confirm_invitation_switch", "input_id" to confirmation.getString("input_id"),
-            "expected" to confirmation.getJSONObject("expected"))
-        meshSwitch = null
-        live?.cancel(); invitationWatch?.cancel()
-        applySnapshot(result)
-        watchInvitation()
-    }
-    fun cancelMeshSwitch() = cancelInvitation()
-
-    fun cancelInvitation() = action {
-        invitationWatch?.cancel()
-        applySnapshot(repo.command("cancel_invitation"))
-        meshSwitch = null
-        startLive()
-    }
-
-    private fun watchInvitation() {
-        invitationWatch?.cancel()
-        invitationWatch = viewModelScope.launch {
-            try {
-                repo.invitationEvents().collect { value ->
-                    applySnapshot(value)
-                    notice = value.text("notice").takeIf { it.isNotBlank() }
-                    if (value.has("joined_peer")) peers.find { it.id == value.text("joined_peer") }?.let { selectPeer(it) }
-                }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { notice = error.message }
         }
     }
 
@@ -827,7 +723,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             "models" -> if (settings?.online == true) action { settingsAction("open_models", JSONObject()) }
             "connections", "services" -> {
                 val selection = ResourceSelection(if (page == "services") settings?.device?.id else null,
-                    if (page == "services") "service" else "mcp", title = if (page == "services") "服务" else "工具连接")
+                    "service", title = "服务")
                 showResource(selection)
             }
         }
@@ -860,12 +756,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         settings?.resource?.let { resourceTrail += it }
         showResource(selection)
     }
-    fun agentSkills(agent: JSONObject) {
-        resourceTrail.clear()
-        settings = settings?.copy(page = "skills")
-        showResource(ResourceSelection(settings?.device?.id, "skill",
-            JSONObject().put("agent_skills", agent.text("id")).toString(), "${agent.text("name")} · 技能"))
-    }
+
     fun backSettings() {
         if (settings?.resource != null && resourceTrail.isNotEmpty()) {
             showResource(resourceTrail.removeAt(resourceTrail.lastIndex)); return
@@ -875,7 +766,6 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         settings = when (settings?.page) {
             "home" -> null
             "appearance", "display", "connections", "notifications", "adb" -> MobileSettingsState()
-            "skills" -> settings?.copy(page = "agents")
             "device" -> if (settings?.fromChat == true) null else MobileSettingsState()
             "profile" -> settings?.copy(page = "models")
             else -> settings?.copy(page = "device")

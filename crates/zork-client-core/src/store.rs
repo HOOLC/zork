@@ -241,120 +241,70 @@ impl ClientStore {
         }).collect()
     }
 
-    pub(crate) fn accept_invitation_if(
-        &self,
-        id: &str,
-        nodes: &[SavedNode],
-        network: &crate::Network,
-        group: &zork_config::membership::MeshGroup,
-    ) -> Result<()> {
-        self.commit_invitation(Some(id), nodes, network, Some(group))
-    }
-    fn commit_invitation(
-        &self,
-        expected: Option<&str>,
-        nodes: &[SavedNode],
-        network: &crate::Network,
-        group: Option<&zork_config::membership::MeshGroup>,
-    ) -> Result<()> {
-        let mut conn = self.0.lock().expect("client database");
+    pub(crate) fn replace_account_nodes(&self, candidates: &[SavedNode]) -> Result<Vec<String>> {
+        let mut conn = self.0.lock().unwrap();
         let tx = conn.transaction()?;
-        if let Some(id) = expected {
-            let pending: Option<String> = tx
-                .query_row(
-                    "SELECT value FROM cache WHERE node='device' AND key='invitation'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            let pending: Option<serde_json::Value> = pending
-                .map(|value| serde_json::from_str(&value))
-                .transpose()?;
-            anyhow::ensure!(
-                pending
-                    .as_ref()
-                    .is_some_and(|value| value["invitation"]["id"] == id),
-                "invitation_cancelled"
-            );
+        let previous: Option<String> = tx
+            .query_row(
+                "SELECT value FROM cache WHERE node='device' AND key='account_peers'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let previous: Vec<String> = previous
+            .map(|value| serde_json::from_str(&value))
+            .transpose()?
+            .unwrap_or_default();
+        let old: Vec<SavedNode> = tx
+            .prepare("SELECT value FROM nodes")?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .map(|value| serde_json::from_str(&value))
+            .collect::<serde_json::Result<_>>()?;
+        let removed_groups: Vec<_> = old
+            .iter()
+            .filter(|node| {
+                previous.contains(&node.id) && !candidates.iter().any(|next| next.id == node.id)
+            })
+            .filter_map(|node| node.group.clone())
+            .collect();
+        let removed: Vec<_> = old
+            .iter()
+            .filter(|node| {
+                (previous.contains(&node.id) && !candidates.iter().any(|next| next.id == node.id))
+                    || node
+                        .group
+                        .as_ref()
+                        .is_some_and(|group| removed_groups.contains(group))
+            })
+            .map(|node| node.id.clone())
+            .collect();
+        let mut changed = 0;
+        for id in &removed {
+            changed += tx.execute("DELETE FROM nodes WHERE id=?1", [id])?;
         }
-        if expected.is_some() {
-            let switching: Option<String> = tx.query_row("SELECT json_extract(value,'$.switch_from') FROM cache WHERE node='device' AND key='invitation'", [], |row| row.get(0)).optional()?.flatten();
-            if let Some(switching) = switching {
-                let expected: zork_config::membership::MeshVersion =
-                    serde_json::from_str(&switching)?;
-                let key = format!("mesh-membership:{}", expected.authority);
-                let previous: String = tx.query_row(
-                    "SELECT value FROM cache WHERE node='device' AND key=?1",
-                    [&key],
-                    |row| row.get(0),
-                )?;
-                let previous: zork_config::membership::MeshGroup = serde_json::from_str(&previous)?;
-                anyhow::ensure!(
-                    expected.matches(&previous),
-                    "Mesh 成员已变化，请重新确认切换"
-                );
-                anyhow::ensure!(
-                    group.is_some_and(|next| next.authority != previous.authority),
-                    "invalid_mesh_switch"
-                );
-                tx.execute("INSERT INTO cache(node,key,value) VALUES ('device',?1,?2) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",
-                    params![format!("mesh-detached:{}", previous.authority), serde_json::to_string(&previous)?])?;
-                tx.execute(
-                    "DELETE FROM nodes WHERE json_extract(value,'$.group')=?1",
-                    [&previous.authority],
-                )?;
+        let mut owned = Vec::new();
+        for candidate in candidates {
+            let existing = old.iter().find(|node| node.id == candidate.id);
+            if existing.is_some() && !previous.contains(&candidate.id) {
+                continue;
             }
+            let mut node = candidate.clone();
+            node.group = existing.and_then(|node| node.group.clone());
+            changed += tx.execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(&node)?])?;
+            owned.push(node.id);
         }
-        for node in nodes {
-            tx.execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value",params![node.id,serde_json::to_string(node)?])?;
-        }
-        tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','network',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",[serde_json::to_string(network)?])?;
-        tx.execute(
-            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
-            [],
-        )?;
-        if let Some(group) = group {
-            tx.execute("INSERT INTO cache(node,key,value) VALUES ('device',?1,?2) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value",
-                params![format!("mesh-membership:{}", group.authority), serde_json::to_string(group)?])?;
-        }
+        tx.execute("INSERT INTO cache(node,key,value) VALUES('device','account_peers',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value WHERE cache.value != excluded.value", [serde_json::to_string(&owned)?])?;
         tx.commit()?;
         drop(conn);
-        self.directory_changed();
-        self.notifications_changed();
-        Ok(())
+        if changed > 0 {
+            self.directory_changed();
+            self.notifications_changed();
+        }
+        Ok(removed)
     }
-    pub(crate) fn update_invitation_input_if(
-        &self,
-        id: &str,
-        input: &impl Serialize,
-    ) -> Result<()> {
-        let changed = self.0.lock().expect("client database").execute(
-            "UPDATE cache SET value=?1 WHERE node='device' AND key='invitation_input' AND json_extract(value,'$.id')=?2",
-            params![serde_json::to_string(input)?, id],
-        )?;
-        anyhow::ensure!(changed == 1, "invitation_cancelled");
-        Ok(())
-    }
-    pub(crate) fn resolve_invitation_if(&self, id: &str, pending: &impl Serialize) -> Result<()> {
-        let mut conn = self.0.lock().expect("client database");
-        let tx = conn.transaction()?;
-        let owner: Option<String> = tx.query_row("SELECT json_extract(value,'$.id') FROM cache WHERE node='device' AND key='invitation_input'", [], |row| row.get(0)).optional()?.flatten();
-        anyhow::ensure!(owner.as_deref() == Some(id), "invitation_cancelled");
-        tx.execute("INSERT INTO cache(node,key,value) VALUES ('device','invitation',?1) ON CONFLICT(node,key) DO UPDATE SET value=excluded.value", [serde_json::to_string(pending)?])?;
-        tx.execute(
-            "DELETE FROM cache WHERE node='device' AND key='invitation_input'",
-            [],
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-    pub fn forget_invitation(&self) -> Result<()> {
-        self.0.lock().expect("client database").execute(
-            "DELETE FROM cache WHERE node='device' AND key IN ('invitation','invitation_input')",
-            [],
-        )?;
-        Ok(())
-    }
+
     pub fn save_node(&self, node: &SavedNode) -> Result<()> {
         let changed = self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(node)?])?;
         if changed > 0 {
@@ -405,7 +355,7 @@ impl ClientStore {
     pub(crate) fn notification_events(&self) -> zork_observe::ValueSubscription<()> {
         self.settings_events("\0notifications")
     }
-    /// Fence late authorization/invitation results against a committed revocation.
+    /// Fence late authorization results against a committed revocation.
     pub(crate) fn put_authorized_settings<T: Serialize>(
         &self,
         node: &str,

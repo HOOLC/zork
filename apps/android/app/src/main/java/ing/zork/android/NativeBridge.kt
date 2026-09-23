@@ -31,8 +31,6 @@ internal object NativeBridge {
     external fun observe(root: String, request: String): String
     external fun chatFileBytes(root: String, key: String): ByteArray
     external fun saveChatFile(root: String, ticket: String, descriptor: Int): String
-    external fun sharedFileBytes(root: String, content: String): ByteArray
-    external fun saveSharedFile(root: String, ticket: String, descriptor: Int): String
     external fun watch(root: String, handle: Long, generation: Long, observer: NativeObserver): String
 }
 
@@ -107,14 +105,6 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
             check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
         }
     }
-    fun sharedFileEvents() = observations.sharedFiles()
-    suspend fun sharedPreviewBytes(content: String): ByteArray = withContext(Dispatchers.IO) { NativeBridge.sharedFileBytes(root, content) }
-    suspend fun saveSharedFile(uri: android.net.Uri, ticket: String) = withContext(Dispatchers.IO) {
-        requireNotNull(resolver.openFileDescriptor(uri, "w")).use { destination ->
-            val result = JSONObject(NativeBridge.saveSharedFile(root, ticket, destination.fd))
-            check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
-        }
-    }
     fun directoryEvents() = observations.directory()
     fun historyEvents(peer: String, session: String) = observations.history(peer, session)
     suspend fun historyOlder(peer: String, session: String) = observations.historyChange(peer, session, "older")
@@ -126,13 +116,6 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     suspend fun older(peer: String, session: String) = observations.older(peer, session)
     suspend fun newer(peer: String, session: String) = observations.newer(peer, session)
     suspend fun windowAnchor(peer: String, session: String, anchor: String?) = observations.windowAnchor(peer, session, anchor)
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    fun invitationEvents() = observations.invitation().transformWhile {
-        val value = it.value.getJSONObject("snapshot")
-        emit(value)
-        !value.optBoolean("done")
-    }
-
     // Preserve ordering among local edits/sends, without waiting for a slow
     // network operation. The Rust store also serializes flush vs withdrawal.
     suspend fun command(op: String, vararg fields: Pair<String, Any?>): JSONObject {

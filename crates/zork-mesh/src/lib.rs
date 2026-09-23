@@ -1,17 +1,18 @@
-//! Zork's bounded interface to the pinned, embedded Synchronicity runtime.
+//! Zork's owned iroh transport and immutable attachment transfer.
 //! Product state and command idempotency belong to the Station.
-mod clean_start;
 pub mod control;
 pub mod enrollment;
 pub mod feed;
+mod identity;
 mod lan_discovery;
 mod local_discovery;
 pub mod managed;
+mod network;
 pub mod node;
+mod punch;
 pub mod retry;
 pub mod route;
 
-pub const SYNCH_VERSION: &str = "0.1.8";
 pub const MAX_FRAME: usize = 256 * 1024;
 pub const MAX_ARTIFACT: usize = 300 * 1024 * 1024;
 

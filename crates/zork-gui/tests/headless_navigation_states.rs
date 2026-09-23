@@ -290,7 +290,7 @@ fn chat_hover_checks() -> anyhow::Result<()> {
                 })),
                 cx,
             );
-            view.set_data(vec![initial], Some("device-0".into()), false, 280., cx);
+            view.set_data(vec![initial], Some("device-0".into()), 280., cx);
             view
         });
         navigation_entity = Some(navigation.clone());
@@ -348,7 +348,7 @@ fn chat_hover_checks() -> anyhow::Result<()> {
     navigation_entity
         .unwrap()
         .update(&mut cx, |navigation, cx| {
-            navigation.set_data(vec![refreshed], Some("device-0".into()), false, 280., cx)
+            navigation.set_data(vec![refreshed], Some("device-0".into()), 280., cx)
         });
     pump(&mut cx)?;
     move_to(&mut cx, json!({"x":700,"y":100}))?;

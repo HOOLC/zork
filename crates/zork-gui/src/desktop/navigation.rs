@@ -7,7 +7,6 @@ use zork_client_core::preferences::{read_view_state, save_view_state, ViewState}
 
 #[derive(Clone)]
 pub enum Destination {
-    SharedFiles,
     Home,
     Conversation {
         session: String,
@@ -52,17 +51,10 @@ pub struct DeviceNavigation {
     width: f32,
     pub resizing: bool,
     viewing: bool,
-    shared_files: bool,
 }
 impl gpui::EventEmitter<Navigate> for DeviceNavigation {}
 impl gpui::EventEmitter<Preview> for DeviceNavigation {}
 impl DeviceNavigation {
-    pub fn set_shared_files(&mut self, selected: bool, cx: &mut Context<Self>) {
-        if self.shared_files != selected {
-            self.shared_files = selected;
-            cx.notify();
-        }
-    }
     #[cfg(feature = "headless-bench")]
     pub(crate) fn benchmark_region_counts(
         &self,
@@ -86,7 +78,6 @@ impl DeviceNavigation {
             width,
             resizing: false,
             viewing: true,
-            shared_files: false,
             devices: Vec::new(),
             active: None,
             locale: crate::i18n::load_locale(
@@ -423,7 +414,6 @@ impl Render for DeviceNavigation {
             cx.subscribe(&view, |v, _, event: &Action, cx| match event {
                 Action::Navigate { node, destination } => {
                     let destination = match destination {
-                        Intent::SharedFiles => Destination::SharedFiles,
                         Intent::NewChat => Destination::Home,
                         Intent::Conversation { session } => Destination::Conversation {
                             session: session.clone(),
@@ -489,13 +479,7 @@ impl Render for DeviceNavigation {
             })
             .collect();
         view.update(cx, |v, cx| {
-            v.set_data(
-                devices,
-                self.active.clone(),
-                self.shared_files,
-                self.width,
-                cx,
-            );
+            v.set_data(devices, self.active.clone(), self.width, cx);
             if self.view_locale != Some(self.locale) {
                 let locale = self.locale;
                 v.set_text(

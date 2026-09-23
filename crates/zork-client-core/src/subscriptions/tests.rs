@@ -1,22 +1,5 @@
 use super::*;
 
-#[test]
-fn invitation_replacement_rejects_an_unapplied_old_claim_without_a_device_controller() {
-    let state = crate::enrollment::InvitationState::new(
-        json!({"invitation":{"id":"first","status":"waiting"}}),
-    );
-    let mut observer = WireSubscription::from_invitation(&state.source);
-    let first = observer.prepare().unwrap().unwrap();
-    let batch = first["batch"].as_u64().unwrap();
-    state.replace(json!({"invitation":{"id":"second","status":"waiting"}}));
-    assert!(!observer.valid(batch));
-    assert!(!observer.finish(batch, true));
-    let second = observer.prepare().unwrap().unwrap();
-    assert_eq!(second["snapshot"]["invitation"]["id"], "second");
-    assert_eq!(second["from"], 0);
-    assert!(observer.finish(second["batch"].as_u64().unwrap(), true));
-    assert!(observer.prepare().unwrap().is_none());
-}
 use crate::{
     api::{MessageMetadata, Role, SseEvent, StationClient},
     state::ConversationData,

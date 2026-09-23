@@ -105,7 +105,7 @@ pub(super) async fn execute(
             let agent = state.db.node_agent(id)?.context("agent_not_found")?;
             let mut value = summary(&agent, manageable)?;
             if manageable {
-                value["config"] = json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},"instructions":agent.instructions,"skill_paths":agent.skill_paths,"allowed_leaders":agent.allowed_leaders});
+                value["config"] = json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},"instructions":agent.instructions,"allowed_leaders":agent.allowed_leaders});
                 let mut sessions = Vec::new();
                 for session in state.db.channel_agent_sessions(id)? {
                     if state.agent.service.contains(&session) {
@@ -315,9 +315,7 @@ pub(crate) async fn apply_configuration(
     if let Some(instructions) = fields["instructions"].as_str() {
         agent.instructions = instructions.into();
     }
-    if let Some(paths) = fields.get("skill_paths") {
-        agent.skill_paths = serde_json::from_value(paths.clone())?;
-    }
+
     if let Some(allowed) = fields.get("allowed_leaders") {
         agent.allowed_leaders = serde_json::from_value(allowed.clone())?;
         crate::node::validate_agent_grants(
@@ -348,18 +346,12 @@ pub(crate) async fn apply_configuration(
             .is_none_or(crate::node::valid_avatar),
         "invalid_agent_avatar"
     );
-    zork_config::validate_skill_paths(&agent.skill_paths)?;
-    // Validate source resolution before accepting a configuration that all
-    // of this Agent's existing execution contexts will consume.
-    zork_config::load_config(&state.config.data_root)?
-        .skills
-        .sources(&state.config.data_root, &agent.skill_paths)?;
     Ok(())
 }
 
 fn configuration(agent: &NodeAgent) -> Value {
     json!({"name":agent.name,"avatar":agent.avatar,"selection":{"profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking},
-        "instructions":agent.instructions,"skill_paths":agent.skill_paths,"allowed_leaders":agent.allowed_leaders,"role":agent.role})
+        "instructions":agent.instructions,"allowed_leaders":agent.allowed_leaders,"role":agent.role})
 }
 fn merge_configuration(base: &mut Value, changes: &Value) {
     for (key, value) in changes.as_object().into_iter().flatten() {
@@ -380,7 +372,6 @@ fn empty_agent(id: &str, actor: &str) -> NodeAgent {
         model: String::new(),
         thinking: String::new(),
         instructions: String::new(),
-        skill_paths: vec![],
         allowed_leaders: vec![actor.into()],
         session_key: None,
         session_id: None,
@@ -435,22 +426,6 @@ async fn review_choices(
         choices.leaders.push(Choice {
             value: id.into(),
             label,
-        });
-    }
-    for value in values["skill_paths"].as_array().into_iter().flatten() {
-        let Some(path) = value.as_str() else { continue };
-        let file = std::path::Path::new(path);
-        let name = if file.file_name().is_some_and(|n| n == "SKILL.md") {
-            file.parent().and_then(|p| p.file_name())
-        } else {
-            file.file_name()
-        };
-        choices.skills.push(Choice {
-            value: path.into(),
-            label: name
-                .and_then(|n| n.to_str())
-                .unwrap_or("已配置的技能")
-                .into(),
         });
     }
     Ok(choices)

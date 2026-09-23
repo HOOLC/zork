@@ -209,21 +209,7 @@ pub fn catalog() -> Vec<Story> {
         story.height = 760.;
         items.push(story);
     }
-    for state in ["list", "grid", "preview", "empty", "loading", "error"] {
-        let mut story = Story::new(
-            "shared-files",
-            "共享文件",
-            state,
-            "crates/zork-ui/src/shared_files.rs",
-            "shared-files",
-        );
-        story.width = 900.;
-        story.height = 600.;
-        items.push(story);
-    }
-    for state in [
-        "list", "detail", "services", "skills", "empty", "loading", "error",
-    ] {
+    for state in ["list", "detail", "services", "empty", "loading", "error"] {
         let mut story = Story::new(
             "resources",
             "资源目录与详情",
@@ -663,19 +649,6 @@ impl StoryHost {
                 zork_ui::resources::Text(std::rc::Rc::new(|key| {
                     crate::i18n::Locale::ZhCn.text(key).into()
                 })),
-                cx,
-            )
-            .into(),
-            "shared-files" => zork_ui::shared_files::stories::create(
-                &story.state,
-                zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                    crate::i18n::Locale::ZhCn.text(key).into()
-                })),
-                std::rc::Rc::new(|time| {
-                    chrono::DateTime::from_timestamp_nanos(time)
-                        .format("%Y-%m-%d %H:%M")
-                        .to_string()
-                }),
                 cx,
             )
             .into(),

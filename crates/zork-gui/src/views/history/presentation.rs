@@ -284,19 +284,7 @@ impl RootView {
         let resource = match &presentation {
             Some(DetailPresentation::Entry(entry)) => {
                 zork_client_core::resources::history_target(entry).map(|target| {
-                    let label = self
-                        .locale
-                        .text(
-                            if matches!(
-                                target.query,
-                                zork_client_core::resources::Inspection::Mcp(_)
-                            ) {
-                                "tool_connections"
-                            } else {
-                                "device_services"
-                            },
-                        )
-                        .to_owned();
+                    let label = self.locale.text("device_services").to_owned();
                     let root = cx.entity().downgrade();
                     zork_ui::history_details::Resource {
                         label,

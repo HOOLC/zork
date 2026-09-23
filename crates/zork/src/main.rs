@@ -10,7 +10,6 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 mod account;
-mod mcp;
 mod mesh;
 mod service;
 #[cfg(all(test, unix))]
@@ -26,8 +25,6 @@ Usage:
   zork upgrade --version X.Y.Z [--data DIR]
   zork account login|status|logout [--data DIR]
   zork mesh invite|join|switch|leave|status [--data DIR] [--channel test|dev|release] [--yes]
-  zork mcp list|add FILE|get ID|probe ID|enable ID|disable ID|remove ID [--data DIR]
-  zork mcp update ID FILE [--data DIR]
   zork service install|uninstall|status [--data DIR] [--at-login]
   zork stop [--data DIR]
 
@@ -76,7 +73,6 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
         "upgrade" => upgrade::run(argv).await,
         "account" => account::run(argv).await,
         "mesh" => mesh::run(argv).await,
-        "mcp" => mcp::run(argv).await,
         "service" => service::command(argv).await,
         "service-run" => service::run(argv).await,
         "stop" => service::stop(argv).await,

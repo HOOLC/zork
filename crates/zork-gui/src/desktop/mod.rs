@@ -11,7 +11,6 @@ mod notifications;
 pub(crate) mod profile_quota;
 mod profiles;
 mod resources;
-mod shared_files;
 mod startup;
 pub mod store;
 pub mod transport;
@@ -22,8 +21,6 @@ pub use model_settings::ModelSettings as HeadlessModelSettings;
 pub use profiles::ProfilesView as HeadlessProfilesView;
 #[cfg(feature = "headless-bench")]
 pub use resources::ResourcesView as HeadlessResourcesView;
-#[cfg(feature = "headless-bench")]
-pub use shared_files::SharedFilesView as HeadlessSharedFilesView;
 
 use crate::components::text_input::ComposerInput;
 use crate::{
@@ -72,9 +69,6 @@ pub struct DesktopRoot {
     navigation: Entity<navigation::DeviceNavigation>,
     pending_notification: Option<String>,
     model_settings: Option<Entity<model_settings::ModelSettings>>,
-    resources: Option<Entity<resources::ResourcesView>>,
-    shared_files: Option<Entity<shared_files::SharedFilesView>>,
-    showing_shared_files: bool,
     resource_inspector: Option<Entity<resources::ResourcesView>>,
     service_views: std::collections::HashMap<String, (u64, Entity<resources::ResourcesView>)>,
     applications: Arc<Vec<zork_client_core::pages::ApplicationEntry>>,
@@ -198,9 +192,6 @@ impl DesktopRoot {
             navigation,
             pending_notification: None,
             model_settings: None,
-            resources: None,
-            shared_files: None,
-            showing_shared_files: false,
             resource_inspector: None,
             service_views: Default::default(),
             applications: snapshot.applications.clone(),
@@ -398,7 +389,7 @@ impl DesktopRoot {
             }
             return;
         }
-        if self.busy || self.managing || self.showing_shared_files || self.add_device_open {
+        if self.busy || self.managing || self.add_device_open {
             return;
         }
         if self
@@ -436,50 +427,11 @@ impl DesktopRoot {
     }
     fn apply_navigation(&mut self, destination: navigation::Destination, cx: &mut Context<Self>) {
         self.end_preview(cx);
-        let shared = matches!(destination, navigation::Destination::SharedFiles);
-        if shared {
-            self.managing = false;
-            if let Some(view) = &self.shared_files {
-                view.update(cx, |v, cx| {
-                    v.set_locale(self.client_settings.locale, cx);
-                    v.set_active(true, cx);
-                });
-            } else {
-                let source = self.source.shared_files();
-                let locale = self.client_settings.locale;
-                self.shared_files =
-                    Some(cx.new(|cx| shared_files::SharedFilesView::new(source, locale, cx)));
-            }
-        } else if self.showing_shared_files {
-            if let Some(view) = &self.shared_files {
-                view.update(cx, |v, cx| v.set_active(false, cx));
-            }
-        }
-        self.showing_shared_files = shared;
-        self.navigation
-            .update(cx, |v, cx| v.set_shared_files(shared, cx));
-        if shared {
-            cx.notify();
-            return;
-        }
         if let navigation::Destination::Manage(tab) = destination {
             self.managing = true;
             self.management_tab = if tab == 1 { 0 } else { tab };
             if matches!(tab, 0 | 1) {
                 self.sync_model_settings(cx);
-            }
-            if tab == 5 {
-                let locale = self.client_settings.locale;
-                if let Some(resources) = &self.resources {
-                    resources.update(cx, |view, cx| {
-                        view.set_locale(locale, cx);
-                        view.refresh(cx);
-                    });
-                } else {
-                    let core = self.source.resources();
-                    self.resources =
-                        Some(cx.new(|cx| resources::ResourcesView::new(core, locale, cx)));
-                }
             }
         } else if let Some(active) = &self.active {
             self.managing = false;
@@ -1064,7 +1016,6 @@ impl Render for DesktopRoot {
         self.navigation.update(cx, |nav, cx| {
             nav.set_viewing(
                 !self.managing
-                    && !self.showing_shared_files
                     && self.preview.is_none()
                     && !self.add_device_open
                     && window.is_window_active(),
@@ -1093,13 +1044,6 @@ impl Render for DesktopRoot {
             .navigation
             .read(cx)
             .width(window.viewport_size().width.as_f32());
-        if self.showing_shared_files {
-            if let Some(view) = &self.shared_files {
-                view.update(cx, |v, cx| {
-                    v.set_width(window.viewport_size().width.as_f32() - width, cx)
-                });
-            }
-        }
         if let Some(view) = &self.model_settings {
             let onboarding = matches!(
                 self.startup_state.onboarding,
@@ -1150,18 +1094,6 @@ impl Render for DesktopRoot {
             );
         let content = if self.startup_state.onboarding.is_some() {
             self.render_onboarding(cx)
-        } else if self.showing_shared_files {
-            div()
-                .size_full()
-                .flex()
-                .child(self.navigation.clone())
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .h_full()
-                        .when_some(self.shared_files.clone(), |v, view| v.child(view)),
-                )
         } else if !self.managing {
             if let Some(active) = self.active.clone() {
                 let preview = self
@@ -1247,19 +1179,6 @@ impl Render for DesktopRoot {
                                                 "startup_return_home"
                                             },
                                         ),
-                                    ),
-                            )
-                            .child(
-                                self.settings_tabs
-                                    .tab("settings-tool-connections".into(), tab == 5)
-                                    .child(ui::icon("icons/mesh.svg", 20.))
-                                    .child(self.client_settings.locale.text("tool_connections"))
-                                    .on_click(cx.listener(|v, _, _, cx| {
-                                        v.apply_navigation(navigation::Destination::Manage(5), cx)
-                                    }))
-                                    .automation(
-                                        AutomationRole::Button,
-                                        self.client_settings.locale.text("tool_connections"),
                                     ),
                             )
                             .child(
@@ -1386,11 +1305,6 @@ impl Render for DesktopRoot {
                                     .flex_col()
                                     .when(tab == 3, |v| v.child(self.render_device(cx)))
                                     .when(tab == 4, |v| v.child(self.render_client_settings(cx)))
-                                    .when(tab == 5, |v| {
-                                        v.when_some(self.resources.clone(), |body, view| {
-                                            body.child(view)
-                                        })
-                                    })
                                     .when(tab == 0, |v| {
                                         v.when_some(self.model_settings.clone(), |v, e| v.child(e))
                                     })

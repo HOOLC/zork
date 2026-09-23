@@ -6,7 +6,6 @@ mod provider_login;
 mod work;
 pub(crate) use work::assign_chat;
 mod resources;
-mod shared_files;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -58,17 +57,6 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/sync/receipt", post(sync_receipt))
         .route("/v1/node/info", get(node_info))
         .route("/v1/node/resources", get(node_resources))
-        .route("/v1/node/shared-files", get(shared_files::catalog))
-        .route(
-            "/v1/node/shared-files/directory",
-            post(shared_files::directory),
-        )
-        .route("/v1/node/shared-files/content", post(shared_files::content))
-        .route(
-            "/v1/node/shared-files/events",
-            get(shared_files::events).post(shared_files::events),
-        )
-        .route("/v1/node/resources/mcp/{id}", get(resources::mcp))
         .route("/v1/node/resources/service/{id}", get(resources::service))
         .route("/v1/node/pages", get(node_pages))
         .route(
@@ -91,11 +79,6 @@ pub fn router(app: AppState) -> Router {
             "/v1/node/mesh/invites/{id}",
             axum::routing::delete(revoke_mesh_invite),
         )
-        .route("/v1/node/mesh/client-invites", post(create_client_invite))
-        .route(
-            "/v1/node/mesh/invites/{id}/approve",
-            post(approve_client_invite),
-        )
         .route("/v1/node/mesh/join", post(join_mesh))
         .route("/v1/node/mesh/join/{id}", get(join_mesh_progress))
         .route("/v1/node/mesh/leave", post(leave_mesh))
@@ -105,15 +88,6 @@ pub fn router(app: AppState) -> Router {
         .route("/v1/node/chats", get(node_chats))
         .route("/v1/node/chats/{chat}/archive", post(node_archive_chat))
         .route("/v1/node/agents/{id}/open", post(open_agent))
-        .route(
-            "/v1/node/agents/{id}/skills",
-            get(agent_skills).put(update_agent_skills),
-        )
-        .route(
-            "/v1/node/agents/{id}/skills/catalog",
-            get(resources::skills),
-        )
-        .route("/v1/node/agents/{id}/skills/{skill}", get(resources::skill))
         .route(
             "/v1/node/agents/{id}/avatar",
             axum::routing::put(update_avatar),
@@ -447,14 +421,7 @@ async fn node_resources(State(state): State<NodeState>, headers: HeaderMap) -> R
             .get()
             .ok_or_else(|| anyhow::anyhow!("mesh_not_ready"))
             .and_then(|mesh| mesh.services.client_resources(&origin));
-        for (kind, result) in [
-            (
-                ResourceKind::Skill,
-                crate::node_tools::client_resources(&app),
-            ),
-            (ResourceKind::Mcp, crate::mcp::client_resources(&app)),
-            (ResourceKind::Service, services),
-        ] {
+        for (kind, result) in [(ResourceKind::Service, services)] {
             match result {
                 Ok(mut items) => catalog.items.append(&mut items),
                 Err(error) => catalog.issues.push(ResourceIssue {
@@ -668,51 +635,6 @@ async fn create_mesh_invite(State(state): State<NodeState>, headers: HeaderMap) 
         return error(StatusCode::CONFLICT, "mesh_not_ready");
     };
     mesh_result(service.enrollment.create(&state.app).await)
-}
-async fn create_client_invite(State(state): State<NodeState>, headers: HeaderMap) -> Response {
-    if !authorized(&state, &headers) {
-        return error(
-            StatusCode::UNAUTHORIZED,
-            "Node administrator token required",
-        );
-    }
-    let Some(service) = state.app.mesh.get() else {
-        return error(StatusCode::CONFLICT, "mesh_not_ready");
-    };
-    mesh_result(
-        service
-            .enrollment
-            .create_kind(&state.app, zork_mesh::enrollment::InviteKind::Client)
-            .await,
-    )
-}
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ApproveClientInvite {
-    origin: String,
-    claim_id: String,
-}
-async fn approve_client_invite(
-    State(state): State<NodeState>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<ApproveClientInvite>,
-) -> Response {
-    if !authorized(&state, &headers) {
-        return error(
-            StatusCode::UNAUTHORIZED,
-            "Node administrator token required",
-        );
-    }
-    let Some(service) = state.app.mesh.get() else {
-        return error(StatusCode::CONFLICT, "mesh_not_ready");
-    };
-    mesh_result(
-        service
-            .enrollment
-            .approve_client(&state.app, &id, &body.origin, &body.claim_id)
-            .await,
-    )
 }
 async fn mesh_invites(State(state): State<NodeState>, headers: HeaderMap) -> Response {
     if !authorized(&state, &headers) {
@@ -1298,69 +1220,8 @@ struct CreateAgent {
     #[serde(default)]
     instructions: String,
     #[serde(default)]
-    skill_paths: Vec<std::path::PathBuf>,
-    #[serde(default)]
     allowed_leaders: Vec<String>,
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AgentSkillPaths {
-    paths: Vec<std::path::PathBuf>,
-}
-
-async fn update_agent_skills(
-    State(state): State<NodeState>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    Json(body): Json<AgentSkillPaths>,
-) -> Response {
-    if !authorized(&state, &headers) {
-        return error(
-            StatusCode::UNAUTHORIZED,
-            "Node administrator token required",
-        );
-    }
-    if let Err(e) = zork_config::validate_skill_paths(&body.paths) {
-        return error(StatusCode::BAD_REQUEST, &e.to_string());
-    }
-    if !matches!(state.app.db.node_agent(&id), Ok(Some(_))) {
-        return error(StatusCode::NOT_FOUND, "Agent not found");
-    }
-    match state.app.db.update_agent_skill_paths(&id, body.paths) {
-        Ok(agent) => Json(json!(agent)).into_response(),
-        Err(e) => error(StatusCode::CONFLICT, &e.to_string()),
-    }
-}
-
-async fn agent_skills(
-    State(state): State<NodeState>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Response {
-    if !authorized(&state, &headers) {
-        return error(
-            StatusCode::UNAUTHORIZED,
-            "Node administrator token required",
-        );
-    }
-    let Ok(Some(agent)) = state.app.db.node_agent(&id) else {
-        return error(StatusCode::NOT_FOUND, "Agent not found");
-    };
-    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-        let root = &state.app.config.data_root;
-        let sources = zork_config::load_config(root)?.skills.sources(root, &agent.skill_paths)?;
-        Ok(json!({"paths": agent.skill_paths, "sources": sources, "catalog": state.app.files.catalog_sources(&agent.skill_paths)?}))
-    }).await;
-    match result {
-        Ok(Ok(catalog)) => Json(catalog).into_response(),
-        Ok(Err(e)) => error(StatusCode::BAD_REQUEST, &e.to_string()),
-        Err(_) => error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Skill discovery interrupted",
-        ),
-    }
-}
-
 pub(crate) fn valid_avatar(avatar: &str) -> bool {
     matches!(
         avatar,
@@ -1642,7 +1503,6 @@ async fn create_agent(
         || !valid_id(&body.id)
         || body.name.trim().is_empty()
         || body.name.len() > 160
-        || zork_config::validate_skill_paths(&body.skill_paths).is_err()
         || body.instructions.len() > 32000
         || body.allowed_leaders.len() > 32
     {
@@ -1677,7 +1537,6 @@ async fn create_agent(
                     && existing.profile_id == body.profile_id
                     && existing.model == body.model
                     && existing.thinking == body.thinking
-                    && existing.skill_paths == body.skill_paths
                     && existing.instructions == body.instructions
                     && existing.allowed_leaders == body.allowed_leaders,
                 "Agent ID is already in use"
@@ -1702,7 +1561,6 @@ async fn create_agent(
             model: body.model,
             thinking: body.thinking,
             instructions: body.instructions,
-            skill_paths: body.skill_paths,
             allowed_leaders: body.allowed_leaders,
             session_key: leader.then(|| format!("local_gui:{conversation}:{conversation}")),
             session_id: leader.then(|| ulid::Ulid::new().to_string()),

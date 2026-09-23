@@ -29,15 +29,6 @@ pub trait FileSystem: Send + Sync + 'static {
             ))
         })
     }
-    /// Resolve an immutable shared subtree to a process-lifetime local cache.
-    fn materialize(self: Arc<Self>, _path: PathBuf) -> FileFuture<PathBuf> {
-        Box::pin(async {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Shared file materialization is unavailable",
-            ))
-        })
-    }
     /// Network adapters override this with a cancellable async read. Ordinary
     /// filesystem implementations remain on the blocking executor.
     fn read_page_async(

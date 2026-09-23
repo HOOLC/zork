@@ -98,7 +98,6 @@ pub(super) fn builtin(kind: BuiltinKind, value: &Value) -> Result<(), String> {
             }
             unsigned(o, "limit", 1, 128)?;
         }
-        BuiltinKind::FileMaterialize => text(fields(value, &["path"])?, "path", true)?,
         BuiltinKind::FileWrite => {
             let o = fields(value, &["path", "content"])?;
             text(o, "path", true)?;

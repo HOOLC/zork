@@ -3,7 +3,6 @@ use super::*;
 
 #[derive(Clone)]
 pub struct Ticket {
-    pub kind: InviteKind,
     pub endpoint: EndpointAddr,
     token: [u8; 16],
     bootstrap: Bootstrap,
@@ -42,7 +41,7 @@ fn address_rank(ip: std::net::IpAddr, config: &MeshConfig, lan: &[std::net::Ipv4
     }
 }
 impl Ticket {
-    pub fn new(kind: InviteKind, address: EndpointAddr, config: &MeshConfig) -> Result<Self> {
+    pub fn new(address: EndpointAddr, config: &MeshConfig) -> Result<Self> {
         let bytes = SecretKey::generate().to_bytes();
         let token = bytes[..16].try_into().unwrap();
         let lan = crate::lan_discovery::interfaces();
@@ -64,7 +63,6 @@ impl Ticket {
             endpoint = endpoint.with_ip_addr(addr);
         }
         Ok(Self {
-            kind,
             endpoint,
             token,
             bootstrap: Bootstrap {
@@ -77,7 +75,7 @@ impl Ticket {
         })
     }
     pub fn is_short(value: &str) -> bool {
-        value.starts_with("zj1_") || value.starts_with("zc1_")
+        value.starts_with("zj1_")
     }
     pub fn id(&self) -> String {
         crate::content_root(&self.token)[..32].to_owned()
@@ -148,28 +146,13 @@ impl Ticket {
                 }
             }
         }
-        Ok(format!(
-            "{}{}",
-            if self.kind == InviteKind::Client {
-                "zc1_"
-            } else {
-                "zj1_"
-            },
-            URL_SAFE_NO_PAD.encode(bytes)
-        ))
+        Ok(format!("zj1_{}", URL_SAFE_NO_PAD.encode(bytes)))
     }
     pub fn decode(value: &str) -> Result<Self> {
         ensure!(value.len() <= 4096, "invite_too_large");
-        let (kind, raw) = if let Some(raw) = value.strip_prefix("zc1_") {
-            (InviteKind::Client, raw)
-        } else {
-            (
-                InviteKind::Station,
-                value
-                    .strip_prefix("zj1_")
-                    .context("unsupported_mesh_invite")?,
-            )
-        };
+        let raw = value
+            .strip_prefix("zj1_")
+            .context("unsupported_mesh_invite")?;
         let bytes = URL_SAFE_NO_PAD.decode(raw)?;
         ensure!(bytes.len() >= 48, "invalid_short_invite");
         let id = iroh::EndpointId::from_bytes(bytes[..32].try_into().unwrap())?;
@@ -286,7 +269,6 @@ impl Ticket {
         }
         .validate()?;
         Ok(Self {
-            kind,
             endpoint,
             token: bytes[32..48].try_into().unwrap(),
             bootstrap,
@@ -329,49 +311,44 @@ impl Ticket {
         let result = transport
             .exchange_endpoint(
                 self.endpoint.clone(),
-                &json!({"op":"resolve","id":self.id(),"secret":self.secret(),"kind":self.kind}),
+                &json!({"op":"resolve","id":self.id(),"secret":self.secret()}),
             )
             .await;
         let value = result?;
         let invite: Invitation = serde_json::from_value(value["invitation"].clone())?;
         ensure!(
             invite.channel == self.bootstrap.channel
-                && invite.kind == self.kind
                 && invite.id == self.id()
                 && invite.secret == self.secret()
                 && invite.endpoint.id == self.endpoint.id,
             "invite_metadata_mismatch"
         );
-        // Reuse the full legacy validator, including URL and device checks.
+        // Validate the resolved endpoint and device metadata.
         Invitation::decode(&invite.encode()?)
     }
 }
 
-pub async fn resolve(root: &Path, value: &str, expected: InviteKind) -> Result<Invitation> {
-    resolve_owned(root, value, expected, None).await
+pub async fn resolve(root: &Path, value: &str) -> Result<Invitation> {
+    resolve_owned(root, value, None).await
 }
 pub async fn resolve_on_node(
     root: &Path,
     value: &str,
-    expected: InviteKind,
     owner: &crate::node::MeshNode,
 ) -> Result<Invitation> {
-    resolve_owned(root, value, expected, Some(owner)).await
+    resolve_owned(root, value, Some(owner)).await
 }
 async fn resolve_owned(
     root: &Path,
     value: &str,
-    expected: InviteKind,
     owner: Option<&crate::node::MeshNode>,
 ) -> Result<Invitation> {
     let invite = if Ticket::is_short(value) {
         let ticket = Ticket::decode(value)?;
-        ensure!(ticket.kind == expected, "invite_kind_mismatch");
         ticket.resolve_with_owner(root, owner).await?
     } else {
         Invitation::decode(value)?
     };
-    ensure!(invite.kind == expected, "invite_kind_mismatch");
     ensure!(
         invite.channel == zork_config::channel::current()?,
         "邀请属于另一环境，请使用对应的 Zork、Zork Dev 或 Zork Test"
@@ -390,12 +367,8 @@ mod tests {
                 channel: Some(channel),
                 ..Default::default()
             };
-            let ticket = Ticket::new(
-                InviteKind::Station,
-                EndpointAddr::new(SecretKey::generate().public()),
-                &config,
-            )
-            .unwrap();
+            let ticket =
+                Ticket::new(EndpointAddr::new(SecretKey::generate().public()), &config).unwrap();
             let encoded = ticket.encode().unwrap();
             assert_eq!(Ticket::decode(&encoded).unwrap().bootstrap.channel, channel);
             if channel == Channel::Test {
@@ -407,15 +380,14 @@ mod tests {
     }
     #[test]
     fn short_ticket_is_68_chars_and_preserves_bootstrap() {
-        for kind in [InviteKind::Client, InviteKind::Station] {
+        {
             let addr = EndpointAddr::new(SecretKey::generate().public());
-            let ticket = Ticket::new(kind, addr, &MeshConfig::default()).unwrap();
+            let ticket = Ticket::new(addr, &MeshConfig::default()).unwrap();
             let value = ticket.encode().unwrap();
             assert_eq!(value.len(), 68);
             let decoded = Ticket::decode(&value).unwrap();
             assert_eq!(decoded.id(), ticket.id());
             assert_eq!(decoded.secret(), ticket.secret());
-            assert_eq!(decoded.kind, kind);
             assert!(Ticket::decode(&value[..30]).is_err());
         }
         let config = MeshConfig {
@@ -424,12 +396,12 @@ mod tests {
         };
         let addr = EndpointAddr::new(SecretKey::generate().public())
             .with_ip_addr("127.0.0.1:2345".parse().unwrap());
-        let ticket = Ticket::new(InviteKind::Station, addr, &config).unwrap();
+        let ticket = Ticket::new(addr, &config).unwrap();
         let multi = EndpointAddr::new(SecretKey::generate().public())
             .with_ip_addr("100.67.165.110:2345".parse().unwrap())
             .with_ip_addr("192.168.20.158:2345".parse().unwrap());
         assert_eq!(
-            Ticket::new(InviteKind::Station, multi, &config)
+            Ticket::new(multi, &config)
                 .unwrap()
                 .bootstrap
                 .address
@@ -470,7 +442,7 @@ mod tests {
             EndpointAddr::new(SecretKey::generate().public()),
             |endpoint, address| endpoint.with_ip_addr(address),
         );
-        let ticket = Ticket::new(InviteKind::Station, endpoint, &config).unwrap();
+        let ticket = Ticket::new(endpoint, &config).unwrap();
         let encoded = ticket.encode().unwrap();
         let decoded = Ticket::decode(&encoded).unwrap();
         assert_eq!(decoded.endpoint, ticket.endpoint);

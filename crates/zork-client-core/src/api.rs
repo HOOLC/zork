@@ -711,11 +711,6 @@ impl StationClient {
         self.service_mesh = Some(node);
         self
     }
-    pub(crate) fn file_tree(&self) -> Option<zork_mesh::node::MeshNode> {
-        self.service_mesh
-            .clone()
-            .or_else(|| self.http.mesh.as_ref().map(|(node, _)| node.clone()))
-    }
     pub async fn open_shared_service(
         &self,
         url: &str,

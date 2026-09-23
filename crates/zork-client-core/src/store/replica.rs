@@ -244,7 +244,7 @@ impl ClientStore {
                 [peer],
             )?;
         }
-        tx.execute("DELETE FROM cache WHERE node=?1 AND (key IN ('agents','sessions','inbox','drive','read-markers','public-settings','profile-authorization','mesh-admin-invitations','settings-command','node-update-check','node-operation','notification-ledger-v1') OR key LIKE 'http:%' OR key LIKE 'messages:%' OR key LIKE 'leader-tasks:%' OR key LIKE 'history:%')",[peer])?;
+        tx.execute("DELETE FROM cache WHERE node=?1 AND (key IN ('agents','sessions','inbox','drive','read-markers','public-settings','profile-authorization','mesh-admin-invitation','settings-command','node-update-check','node-operation','notification-ledger-v1') OR key LIKE 'http:%' OR key LIKE 'messages:%' OR key LIKE 'leader-tasks:%' OR key LIKE 'history:%')",[peer])?;
         let uploads = super::message_delivery::upload_keys(&tx, peer)?;
         let blobs = tx
             .prepare("SELECT key FROM blobs WHERE node=?1")?

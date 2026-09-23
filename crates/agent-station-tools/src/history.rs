@@ -26,18 +26,6 @@ impl ToolCompatibility for Results {
 
 pub(super) fn register(registry: &ToolRegistry) {
     for name in [
-        "mcp",
-        "mcp.setup",
-        "mcp.installed",
-        "mcp.configure",
-        "mcp.probe",
-        "mcp.enable",
-        "mcp.disable",
-        "mcp.share",
-        "mcp.status",
-        "mcp.read",
-        "mcp.cancel",
-        "mcp.recover",
         "device.exec",
         "device.agents",
         "device.status",
@@ -64,16 +52,6 @@ pub(super) fn register(registry: &ToolRegistry) {
         "page.publish",
         "page.unpublish",
         "page.deliver",
-        "skill.installed",
-        "skill.install",
-        "skill.import",
-        "skill.export",
-        "skill.share",
-        "skill.reference",
-        "skill.bind",
-        "skill.unbind",
-        "skill.bindings",
-        "skill.uninstall",
     ] {
         registry.register_retired(name, Arc::new(Results));
     }
@@ -94,14 +72,6 @@ mod tests {
             "agent.recover",
             "device.agents",
             "device.exec",
-            "mcp.share",
-            "mcp.installed",
-            "mcp.configure",
-            "mcp.probe",
-            "mcp.enable",
-            "mcp.disable",
-            "skill.import",
-            "skill.bind",
             "service.start",
             "service.share",
             "page.publish",
@@ -117,23 +87,5 @@ mod tests {
             assert!(compatibility.fold(None, &old).unwrap().is_none());
         }
         assert!(registry.current_contract("client.browser").is_some());
-        let mcp: Vec<_> = registry
-            .initial_catalog()
-            .into_iter()
-            .filter(|tool| tool.name.starts_with("mcp."))
-            .map(|tool| tool.name)
-            .collect();
-        assert_eq!(
-            mcp,
-            [
-                "mcp.call",
-                "mcp.inspect",
-                "mcp.install",
-                "mcp.list",
-                "mcp.search",
-                "mcp.uninstall",
-                "mcp.update"
-            ]
-        );
     }
 }

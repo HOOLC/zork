@@ -74,13 +74,11 @@ async fn main() -> Result<()> {
         trust(&a, &b).await?;
         trust(&b, &a).await?;
         trust(&stranger, &b).await?;
-        a.control.add_api_source("zork-lab").await?;
         let bytes = "不可变任务产物\n".repeat(16384).into_bytes();
         let object = a.control.put("zork-lab", "artifacts/example/v1", &bytes).await?;
         ensure!(b.control.read(&object).await? == bytes, "remote bytes mismatch");
         let mut forged = object.clone(); forged.root = "00".repeat(32);
         ensure!(b.control.read(&forged).await.is_err(), "accepted incorrect hash");
-        b.control.pin(&object).await?;
         println!("PASS: verified remote file transfer and incorrect hash rejection");
         let payload = json!({"from_node":"key:forged","padding":"x".repeat(70000)});
         let hello = a.control.exchange(&b.origin, &payload).await?;

@@ -483,7 +483,7 @@ fn paint_node_checks() -> anyhow::Result<()> {
 }
 
 struct EnrollmentOwner {
-    phone: bool,
+    created: bool,
 }
 
 struct EnrollmentFrame {
@@ -514,10 +514,8 @@ impl Render for EnrollmentFrame {
             )
             .when(visible, |frame| {
                 let data = zork_ui::network::EnrollmentData {
-                    client: content.read(cx).phone,
                     available: true,
                     busy: false,
-                    ticket: String::new(),
                     command: String::new(),
                     status: String::new(),
                     status_label: String::new(),
@@ -530,8 +528,8 @@ impl Render for EnrollmentFrame {
                     cx,
                     move |_, action, cx| {
                         content.update(cx, |owner, cx| {
-                            if let zork_ui::network::EnrollmentAction::Select(phone) = action {
-                                owner.phone = phone;
+                            if matches!(action, zork_ui::network::EnrollmentAction::Create) {
+                                owner.created = true;
                             }
                             cx.notify();
                         });
@@ -664,7 +662,7 @@ fn enrollment_checks() -> anyhow::Result<()> {
             })
             .detach();
             EnrollmentFrame {
-                content: cx.new(|_| EnrollmentOwner { phone: true }),
+                content: cx.new(|_| EnrollmentOwner { created: false }),
                 navigation,
                 modal,
                 open: false,
@@ -694,12 +692,7 @@ fn enrollment_checks() -> anyhow::Result<()> {
             "enrollment dialog is not centered and fully visible: {:?}",
             card.bounds
         );
-        for id in [
-            "add-device-dialog-close",
-            "mesh-connect-phone-tab",
-            "mesh-connect-device-tab",
-            "mesh-client-invite-create",
-        ] {
+        for id in ["add-device-dialog-close", "mesh-invite-create"] {
             let control = f.element(id).with_context(|| format!("missing {id}"))?;
             anyhow::ensure!(
                 control.visible && control.bounds == control.visible_bounds,
@@ -727,11 +720,11 @@ fn enrollment_checks() -> anyhow::Result<()> {
             })
             .count();
         anyhow::ensure!(title_ink > 50, "dialog title missing from native pixels");
-        f.click("mesh-connect-device-tab")?;
+        f.click("mesh-invite-create")?;
         anyhow::ensure!(
-            !f.view
-                .read_with(&f.cx, |view, cx| view.content.read(cx).phone),
-            "tab input missed its painted control"
+            f.view
+                .read_with(&f.cx, |view, cx| view.content.read(cx).created),
+            "create input missed its painted control"
         );
         f.click("add-device-dialog-close")?;
         settle_enrollment(&mut f, false)?;

@@ -52,7 +52,6 @@ internal class SettingsActions(
     val messagePreviewHeight: Int = 0,
     val saveMessagePreviewHeight: suspend (Int) -> Unit = {},
     val resource: (ResourceSelection) -> Unit = {},
-    val skills: (JSONObject) -> Unit = {},
     val notifications: JSONObject? = null,
     val notificationError: String? = null,
     val notificationTarget: Pair<String, String>? = null,
@@ -112,7 +111,6 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
             if (state.page in listOf("models","profile")) state.profileMessage?.let { Text(it,color=ZorkColors.Danger,fontSize=13.sp) }
             if (state.page == "home") {
                 SettingsListGroup {
-                    SettingsListRow("工具连接", R.drawable.ic_mesh, subtext = "查看设备上的工具及连接状态", action = { actions.page("connections") })
                 }
                 SectionTitle("客户端")
                 SettingsListGroup {

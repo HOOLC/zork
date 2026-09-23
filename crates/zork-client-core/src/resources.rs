@@ -213,13 +213,9 @@ impl Resources {
                                     && (replaced_origin
                                         || catalog.is_some_and(|catalog| {
                                             let resource = match query {
-                                                Inspection::Mcp(id) => {
-                                                    Some((ResourceKind::Mcp, id))
-                                                }
                                                 Inspection::Service { id, .. } => {
                                                     Some((ResourceKind::Service, id))
                                                 }
-                                                _ => None,
                                             };
                                             resource.is_some_and(|(kind, id)| {
                                                 !catalog
@@ -294,21 +290,6 @@ impl Resources {
             return;
         };
         let key = (node.to_owned(), query.clone());
-        let pinned_skill = if let Inspection::Skill { agent, skill, .. } = &query {
-            let state = self.state.lock().unwrap();
-            state
-                .inspection(node, &Inspection::AgentSkills(agent.clone()))
-                .and_then(|state| state.content.as_deref())
-                .and_then(|content| match content {
-                    InspectionContent::Skills(catalog) => {
-                        catalog.skills.iter().find(|entry| &entry.id == skill)
-                    }
-                    _ => None,
-                })
-                .map(|entry| entry.path.clone())
-        } else {
-            None
-        };
         {
             let mut state = self.state.lock().unwrap();
             if !state.inspections.contains_key(&key) && state.inspections.len() >= 64 {
@@ -332,21 +313,11 @@ impl Resources {
             self.changes.publish(state.clone());
         }
         let result = async {
-            let mut path = inspection_path(&query)?;
-            if let Some(reference) = pinned_skill.filter(|path| path.starts_with("synch://")) {
-                let mut url = reqwest::Url::parse(&format!("http://node.invalid{path}"))?;
-                url.query_pairs_mut().append_pair("reference", &reference);
-                path = format!("{}?{}", url.path(), url.query().unwrap());
-            }
+            let path = inspection_path(&query)?;
             let value = client
                 .node_request(reqwest::Method::GET, path, None)
                 .await?;
-            Ok::<_, anyhow::Error>(match query {
-                Inspection::AgentSkills(_) => {
-                    InspectionContent::Skills(serde_json::from_value(value)?)
-                }
-                _ => InspectionContent::Details(serde_json::from_value(value)?),
-            })
+            Ok::<_, anyhow::Error>(InspectionContent::Details(serde_json::from_value(value)?))
         }
         .await;
         let mut clients = self.clients.lock().unwrap();
@@ -416,9 +387,6 @@ pub fn history_target(entry: &zork_client_types::history::Entry) -> Option<Inspe
     })?;
     let args = &call["arguments"];
     let query = match entry.action.as_str() {
-        "mcp.call" | "mcp.inspect" | "mcp.enable" | "mcp.disable" | "mcp.update" | "mcp.share" => {
-            Inspection::Mcp(args["server_id"].as_str()?.into())
-        }
         "service.inspect" | "service.restart" | "service.stop" | "service.share"
         | "service.unshare" => Inspection::Service {
             id: args["id"].as_str()?.into(),
@@ -436,22 +404,6 @@ pub fn history_target(entry: &zork_client_types::history::Entry) -> Option<Inspe
 fn inspection_path(query: &Inspection) -> anyhow::Result<String> {
     let valid = |id: &str| crate::model_edit::valid_id(id);
     let (path, parameter) = match query {
-        Inspection::AgentSkills(agent) => {
-            valid(agent)?;
-            (format!("/v1/node/agents/{agent}/skills/catalog"), None)
-        }
-        Inspection::Skill { agent, skill, file } => {
-            valid(agent)?;
-            valid(skill)?;
-            (
-                format!("/v1/node/agents/{agent}/skills/{skill}"),
-                file.as_ref().map(|f| ("file", f)),
-            )
-        }
-        Inspection::Mcp(id) => {
-            valid(id)?;
-            (format!("/v1/node/resources/mcp/{id}"), None)
-        }
         Inspection::Service { id, log } => {
             valid(id)?;
             (
@@ -484,7 +436,7 @@ mod tests {
             let mut request = [0; 8192];
             let n = socket.read(&mut request).unwrap();
             assert!(String::from_utf8_lossy(&request[..n])
-                .starts_with("GET /v1/node/resources/mcp/server "));
+                .starts_with("GET /v1/node/resources/service/server "));
             ready.send(()).unwrap();
             wait.recv().unwrap();
             let body = serde_json::to_string(&ResourceDetails {
@@ -502,13 +454,25 @@ mod tests {
         let request = core.clone();
         let task = tokio::spawn(async move {
             request
-                .inspect("node", Inspection::Mcp("server".into()))
+                .inspect(
+                    "node",
+                    Inspection::Service {
+                        id: "server".into(),
+                        log: None,
+                    },
+                )
                 .await
         });
         started.await.unwrap();
         assert!(
             core.snapshot()
-                .inspection("node", &Inspection::Mcp("server".into()))
+                .inspection(
+                    "node",
+                    &Inspection::Service {
+                        id: "server".into(),
+                        log: None
+                    }
+                )
                 .unwrap()
                 .loading
         );
@@ -524,13 +488,13 @@ mod tests {
         let mut entry = zork_client_types::history::Entry {
             id: "call".into(),
             lane: 2,
-            action: "mcp.call".into(),
+            action: "service.inspect".into(),
             summary: "server_id: wrong".into(),
             start: None,
             end: None,
             state: "failed".into(),
             raw: vec![
-                serde_json::json!({"tool":"mcp.call","arguments":{"target":"key:remote","server_id":"server-one"}}),
+                serde_json::json!({"tool":"service.inspect","arguments":{"target":"key:remote","id":"server-one"}}),
             ],
             usage: None,
             model: None,
@@ -540,14 +504,17 @@ mod tests {
             history_target(&entry),
             Some(InspectionTarget {
                 origin: Some("key:remote".into()),
-                query: Inspection::Mcp("server-one".into())
+                query: Inspection::Service {
+                    id: "server-one".into(),
+                    log: None
+                }
             })
         );
         entry.raw.clear();
         assert!(history_target(&entry).is_none());
         entry
             .raw
-            .push(serde_json::json!({"tool":"mcp.call","arguments":{"server_id":"../private"}}));
+            .push(serde_json::json!({"tool":"service.inspect","arguments":{"id":"../private"}}));
         assert!(history_target(&entry).is_none());
     }
     #[tokio::test]
@@ -580,7 +547,13 @@ mod tests {
         assert!(core.snapshot().devices[0].catalog.is_some());
         assert!(core.snapshot().devices[0].error.is_some());
         core.state.lock().unwrap().inspections.insert(
-            ("node".into(), Inspection::Mcp("server".into())),
+            (
+                "node".into(),
+                Inspection::Service {
+                    id: "server".into(),
+                    log: None,
+                },
+            ),
             InspectionState {
                 content: Some(Arc::new(InspectionContent::Details(
                     ResourceDetails::default(),

@@ -1,4 +1,4 @@
-//! Shared identity and node-management boundary for device/MCP/skill tools.
+//! Shared identity and node-management boundary for device tools.
 use crate::state::AppState;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};

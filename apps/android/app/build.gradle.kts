@@ -54,7 +54,6 @@ android {
 }
 
 dependencies {
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation(platform("androidx.compose:compose-bom:2026.01.00"))
     implementation("androidx.activity:activity-compose:1.12.3")
     implementation("androidx.compose.ui:ui")

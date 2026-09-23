@@ -24,8 +24,6 @@ use crate::{
 /// Host-supplied configuration; no CLI parsing, listeners or global environment mutation.
 pub struct AgentOptions {
     /// Optional host resolver; receives a runtime session ID.
-    pub skill_sources: Option<crate::skills::SkillSources>,
-    pub skill_catalog: Option<crate::skills::SkillCatalogSource>,
     pub files: Option<Arc<dyn crate::session::ports::FileSystem>>,
     pub data_root: PathBuf,
     pub fake_agent: bool,
@@ -45,8 +43,6 @@ impl Default for AgentOptions {
     fn default() -> Self {
         Self {
             data_root: PathBuf::new(),
-            skill_sources: None,
-            skill_catalog: None,
             files: None,
             fake_agent: false,
             no_streaming: false,
@@ -109,8 +105,6 @@ impl AgentRuntime {
         anyhow::ensure!(!data_root.as_os_str().is_empty(), "data_root is required");
         let store = Arc::new(StreamStore::open(data_root)?);
         zork_config::startup::mark("agent.store_opened");
-        crate::skills::management::provision_bundled(data_root)?;
-        zork_config::startup::mark("agent.skills_provisioned");
         Ok(PreparedAgent {
             root: data_root.to_owned(),
             store,
@@ -127,34 +121,6 @@ impl AgentRuntime {
         mut options: AgentOptions,
         store: Arc<StreamStore>,
     ) -> anyhow::Result<Self> {
-        let root = options.data_root.clone();
-        let sources = options.skill_sources.unwrap_or_else(|| {
-            Arc::new(move |_| {
-                let config = if zork_config::config_path(&root).try_exists()? {
-                    zork_config::load_config(&root)?.skills
-                } else {
-                    zork_config::SkillsConfig::default()
-                };
-                config.sources(&root, &[])
-            })
-        });
-        for name in [
-            "skill.list",
-            "skill.sources",
-            "skill.validate",
-            "skill.write",
-            "skill.archive",
-            "skill.bundle",
-        ] {
-            options
-                .tools
-                .register_retired(name, Arc::new(crate::session::tools::NoToolState));
-        }
-        let catalog = options
-            .skill_catalog
-            .unwrap_or_else(|| crate::skills::local_catalog(sources.clone()));
-        options.service.runner.skill_sources = Some(sources);
-        options.service.runner.skill_catalog = Some(catalog);
         let query = Arc::new(FileSessionQuery::open(&options.data_root));
         let provider: Arc<dyn ModelExecutor> = if options.fake_agent {
             Arc::new(FakeProvider)

@@ -372,7 +372,6 @@ mod tests {
         );
         zork_config::update_config(root.path(), |config| {
             config.mesh.bind = Some("127.0.0.1:0".into());
-            config.mesh.synch_binary = Some(root.path().join("missing-synch"));
             Ok(())
         })?;
         ensure!(

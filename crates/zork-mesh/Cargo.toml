@@ -6,26 +6,19 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-synch-mpt = { git = "https://github.com/AFK-surf/synchronicity.git", rev = "6d6283f09c32476dc77c09f76a2b2529a42a558d" }
 ulid.workspace = true
-synch-store = { git = "https://github.com/AFK-surf/synchronicity.git", rev = "6d6283f09c32476dc77c09f76a2b2529a42a558d" }
 tempfile = "3"
-synch-core = { git = "https://github.com/AFK-surf/synchronicity.git", rev = "6d6283f09c32476dc77c09f76a2b2529a42a558d" }
-synch-net = { git = "https://github.com/AFK-surf/synchronicity.git", rev = "6d6283f09c32476dc77c09f76a2b2529a42a558d" }
-synch-engine = { git = "https://github.com/AFK-surf/synchronicity.git", rev = "6d6283f09c32476dc77c09f76a2b2529a42a558d" }
 
 anyhow = "1"
 futures-util.workspace = true
 fs2 = "0.4.3"
 base64 = "0.22"
-flate2 = "=1.1.9"
 iroh = { version = "=1.0.3", default-features = false, features = ["tls-aws-lc-rs", "platform-verifier"] }
 swarm-discovery = "=0.6.3"
 data-encoding = "2"
 blake3 = "1.8"
 serde.workspace = true
 serde_json = "1"
-rusqlite.workspace = true
 tokio.workspace = true
 tracing = "0.1"
 url = "2"
@@ -33,7 +26,9 @@ netdev = "=0.46.2"
 zork-config = { path = "../zork-config" }
 zork-notify = { path = "../zork-notify" }
 
-[dev-dependencies]
 iroh-relay = { version = "=1.1.0", default-features = false, features = ["server", "tls-aws-lc-rs"] }
 rustls.workspace = true
+
+[dev-dependencies]
+iroh = { version = "=1.0.3", default-features = false, features = ["unstable-net-report"] }
 rcgen = "=0.14.8"

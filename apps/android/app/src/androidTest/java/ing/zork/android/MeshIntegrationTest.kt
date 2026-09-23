@@ -50,7 +50,7 @@ class MeshIntegrationTest {
         assertTrue(snapshot.getString("identity").startsWith("key:"))
         report.writeText(snapshot.toString())
         call("pause")
-        assertFalse(File(root, "mesh/synch/control.sock").exists())
+        assertFalse(File(root, "mesh/iroh/control.sock").exists())
     }
 
     @Test fun exchangeAndQueueBeforeProcessDeath() = runBlocking<Unit> {

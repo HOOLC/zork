@@ -619,55 +619,6 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_ing_zork_android_NativeBridge_sharedFileBytes<'a>(
-        mut env: EnvUnowned<'a>,
-        _this: JObject<'a>,
-        root: JString<'a>,
-        content: JString<'a>,
-    ) -> jni::objects::JByteArray<'a> {
-        env.with_env(|env| -> Result<_, jni::errors::Error> {
-            let bytes = super::host(std::path::Path::new(&root.to_string()))
-                .ok()
-                .and_then(|host| {
-                    host.local
-                        .shared_files()
-                        .preview_bytes(&content.to_string())
-                });
-            env.byte_array_from_slice(bytes.as_deref().map(Vec::as_slice).unwrap_or_default())
-        })
-        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_ing_zork_android_NativeBridge_saveSharedFile<'a>(
-        mut env: EnvUnowned<'a>,
-        _this: JObject<'a>,
-        root: JString<'a>,
-        ticket: JString<'a>,
-        descriptor: jni::sys::jint,
-    ) -> JString<'a> {
-        env.with_env(|env| -> Result<_, jni::errors::Error> {
-            let result = (|| -> anyhow::Result<()> {
-                use std::os::fd::BorrowedFd;
-                anyhow::ensure!(descriptor >= 0, "无效的保存位置");
-                // Android retains its ParcelFileDescriptor; this adapter owns a
-                // duplicate for the duration of the core-controlled write.
-                let owned = unsafe { BorrowedFd::borrow_raw(descriptor) }.try_clone_to_owned()?;
-                let mut file = std::fs::File::from(owned);
-                super::host(std::path::Path::new(&root.to_string()))?
-                    .local
-                    .shared_files()
-                    .write_copy(&ticket.to_string(), &mut file)
-            })();
-            let reply = match result {
-                Ok(()) => serde_json::json!({"ok":true}),
-                Err(e) => serde_json::json!({"ok":false,"error":e.to_string()}),
-            };
-            JString::from_str(env, reply.to_string())
-        })
-        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-    }
-    #[unsafe(no_mangle)]
     pub extern "system" fn Java_ing_zork_android_NativeBridge_chatFileBytes<'a>(
         mut env: EnvUnowned<'a>,
         _this: JObject<'a>,
