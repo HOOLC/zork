@@ -246,7 +246,6 @@ impl Render for Page {
         let trigger = self.picker.trigger(
             "new-chat-options",
             trigger_label,
-            (self.width - 52.).clamp(130., 200.),
             self.picker_open,
             self.data.editable,
             cx,

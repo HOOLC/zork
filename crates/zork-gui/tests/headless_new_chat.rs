@@ -85,6 +85,13 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|element| element.label.contains("Demo model · 高")),
             "picker trigger did not show the selected model and strength at {width}"
         );
+        let initial_picker_width = snapshot
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-options")
+            .unwrap()
+            .bounds
+            .width;
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
@@ -230,6 +237,18 @@ fn main() -> anyhow::Result<()> {
                 .find(|element| element.id == "new-chat-options")
                 .is_some_and(|element| element.label.contains("Demo fast · 低")),
             "picker trigger did not show the selected model and strength"
+        );
+        let selected_picker_width = driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .find(|element| element.id == "new-chat-options")
+            .unwrap()
+            .bounds
+            .width;
+        anyhow::ensure!(
+            selected_picker_width < initial_picker_width,
+            "picker trigger did not shrink with its label at {width}: {initial_picker_width:?} -> {selected_picker_width:?}"
         );
         let state = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
