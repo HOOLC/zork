@@ -316,6 +316,8 @@ fn main() -> anyhow::Result<()> {
         .run(move |cx| {
             zork_gui::assets::init_fonts(cx);
             zork_gui::components::init(cx);
+            #[cfg(target_os = "macos")]
+            zork_gui::app_menu::install(cx, zork_gui::app_menu::AppKind::Design);
             let driver = if let Some(automation) = &automation {
                 automation.install(cx);
                 automation.in_process_driver()

@@ -29,6 +29,10 @@ mod shortcuts;
 #[cfg(all(test, feature = "headless-bench"))]
 mod tests;
 
+pub use gpui_base::input::{
+    Copy as CopyText, Cut as CutText, Paste as PasteText, Redo as RedoText,
+    SelectAll as SelectAllText, Undo as UndoText,
+};
 pub use shortcuts::init;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

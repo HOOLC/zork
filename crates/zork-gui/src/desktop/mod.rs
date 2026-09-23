@@ -99,6 +99,8 @@ pub struct DesktopRoot {
     notification_switch_focus: [gpui::FocusHandle; 4],
     add_device_modal: ui::ModalState,
     activation_observed: bool,
+    #[cfg(target_os = "macos")]
+    settings_action_registered: bool,
     busy: bool,
     error: Option<String>,
 }
@@ -227,6 +229,8 @@ impl DesktopRoot {
             notification_switch_focus: std::array::from_fn(|_| cx.focus_handle()),
             add_device_modal,
             activation_observed: false,
+            #[cfg(target_os = "macos")]
+            settings_action_registered: false,
             busy: false,
             error: startup_error,
         };

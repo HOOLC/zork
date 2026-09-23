@@ -7,29 +7,9 @@ use zork_gui::window_chrome::native_titlebar_options;
 
 #[cfg(target_os = "macos")]
 use anyhow::Context as _;
+#[cfg(target_os = "macos")]
+use zork_gui::app_menu::{self, AppKind};
 use zork_gui::desktop::DesktopRoot;
-
-#[cfg(target_os = "macos")]
-gpui::actions!(zork_gui, [Quit]);
-
-#[cfg(target_os = "macos")]
-fn install_app_menu(cx: &mut App) {
-    use gpui::{KeyBinding, Menu, MenuItem};
-    use objc2_foundation::{NSBundle, NSString};
-
-    let app_name = NSBundle::mainBundle()
-        .objectForInfoDictionaryKey(&NSString::from_str("CFBundleDisplayName"))
-        .and_then(|value| value.downcast::<NSString>().ok())
-        .map(|value| value.to_string())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Zork".to_owned());
-
-    cx.on_action(|_: &Quit, cx| cx.quit());
-    cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-    cx.set_menus([
-        Menu::new(app_name.clone()).items([MenuItem::action(format!("退出 {app_name}"), Quit)])
-    ]);
-}
 
 #[derive(Debug, PartialEq, Eq)]
 struct CliOptions {
@@ -237,8 +217,6 @@ fn main() {
         });
         DesktopRoot::install_startup(startup, cx);
         #[cfg(target_os = "macos")]
-        install_app_menu(cx);
-        #[cfg(target_os = "macos")]
         cx.spawn(async move |cx| {
             if terminate.await.is_ok() {
                 cx.update(|cx| cx.quit());
@@ -250,6 +228,8 @@ fn main() {
         zork_client_core::desktop::trace_startup("gui.fonts_ready");
         components::init(cx);
         zork_client_core::desktop::trace_startup("gui.components_ready");
+        #[cfg(target_os = "macos")]
+        app_menu::install(cx, AppKind::Client);
         cx.set_window_appearance(Some(WindowAppearance::Light));
         let window_options = gpui::WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
