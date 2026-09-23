@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import hashlib
 import http.client
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -19,11 +20,23 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+from smoke_mesh_fixture import RemoteStation, cached_message, save_remote_node, unused_port
+
 GATES = {
     "local-startup": {
-        "requirement": "GUI 进入 main 后 1s 本机系统启动完毕",
-        "acceptance": "不计进入 GUI main 前的 macOS 系统评估；首次初始化和无预运行服务的重启均须界面可交互、本机节点可用，历史和远端连接随后恢复",
+        "requirement": "GUI 进入 main 后 1s 本机与已配对 Mesh 启动完毕",
+        "acceptance": "不计进入 GUI main 前的 macOS 系统评估；首次初始化、Station 与客户端 Mesh 首次初始化和无预运行本机服务的已配对重启须在预算内达到界面交互、本机 Station/Agent、Mesh 就绪、真实远端直连及新增远端消息同步落盘",
         "budget_ms": 1000,
+        "cases": {
+            "first-initialization": ["ui_interactive", "local_node"],
+            "restart-1": ["ui_interactive", "local_node"],
+            "restart-2": ["ui_interactive", "local_node"],
+            "mesh-first-initialization": ["ui_interactive", "local_node", "station_mesh"],
+            "client-mesh-first-initialization": ["ui_interactive", "local_node", "station_mesh", "client_mesh"],
+            "paired-restart-1": ["ui_interactive", "local_node", "station_mesh", "client_mesh", "remote_connection", "remote_sync"],
+            "paired-restart-2": ["ui_interactive", "local_node", "station_mesh", "client_mesh", "remote_connection", "remote_sync"],
+        },
     },
     "client-frame": {
         "requirement": "原生客户端整帧小于 8ms，持续绘制超过 120fps 且稳定",
@@ -123,20 +136,30 @@ def observe(probe, process, main_ns):
         try:
             if probe():
                 return {"ms": (monotonic_ns() - main_ns) / 1_000_000}
-        except (OSError, ValueError, KeyError, RuntimeError, http.client.HTTPException) as error:
+        except (OSError, ValueError, KeyError, RuntimeError, sqlite3.Error,
+                http.client.HTTPException) as error:
             last_error = str(error)
         time.sleep(.001)
     return {"error": last_error}
 
 
 def gate_passes(sample, budget_ms):
+    required = GATES["local-startup"]["cases"].get(sample.get("case"))
+    if sample.get("case", "").startswith("paired-"):
+        try:
+            address = ipaddress.ip_address(sample["remote_address"])
+            if address.is_loopback or sample.get("remote_network_driver") != "bridge":
+                return False
+        except (KeyError, ValueError):
+            return False
     return (sample.get("gui_alive") is True
+            and required is not None
             and type(sample.get("pre_main_ms")) in (int, float)
             and 0 <= sample["pre_main_ms"] < float("inf")
             and all(type(sample.get(key, {}).get("ms")) in (int, float)
                     and 0 <= sample[key]["ms"] <= budget_ms
                     and "error" not in sample[key]
-                    for key in ("ui_interactive", "local_node")))
+                    for key in required))
 
 
 def fixture(root):
@@ -183,7 +206,8 @@ def cleanup(process, app, root):
         raise RuntimeError(f"Fixture processes survived cleanup; retained data: {root}")
 
 
-def launch(app, root, client, output, case, trace_startup=False):
+def launch(app, root, client, output, case, trace_startup=False, *, mesh=False,
+           client_mesh=False, peer=None, marker=None):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
@@ -215,6 +239,21 @@ def launch(app, root, client, output, case, trace_startup=False):
         milestone("gui_api_answering")
         if snapshot.get("elements"):
             milestone("first_rendered_elements")
+        if peer is not None:
+            if not clicked:
+                entry = next((e for e in snapshot.get("elements", [])
+                              if e["id"].startswith("chat-" + peer.origin + "-")
+                              and "Smoke Leader" in e["label"]
+                              and e["visible"] and e["enabled"]), None)
+                if entry is None:
+                    return False
+                reply = request(port, "/v1/actions", token,
+                                {"type": "click", "target": {"element_id": entry["id"]}})
+                clicked = reply.get("accepted") is True
+                if clicked:
+                    milestone("remote_chat_input_acknowledged")
+                return False
+            return visible(snapshot, "composer-input")
         if not clicked:
             # This control appears in the restored local workspace. A listener
             # or an empty management window is insufficient evidence.
@@ -250,11 +289,46 @@ def launch(app, root, client, output, case, trace_startup=False):
         request(runtime_port, "/v1/tasks", node_token)
         return True
 
+    def station_mesh_ready():
+        config = json.loads((node / "config.json").read_text())
+        pid = int((node / "run/zork-station.pid").read_text())
+        if int((node / "run/zork-mesh.pid").read_text()) != pid:
+            return False
+        runtime_port = int(config["bind"]["runtime"].rsplit(":", 1)[1])
+        node_token = config.get("admin", {}).get("token") or json.loads(
+            (node / "run/node-token.json").read_text())
+        identity = request(runtime_port, "/v1/node/mesh", node_token).get("origin")
+        status = request(runtime_port, "/v1/mesh")
+        if not (isinstance(identity, str) and identity.startswith("key:")
+                and status.get("enabled") is True and status.get("origin") == identity):
+            return False
+        sample["mesh_origin"] = identity
+        return True
+
+    def client_mesh_ready():
+        ready = json.loads((client / "transport/client-mesh-ready.json").read_text())
+        origin = ready.get("origin")
+        if not (ready.get("pid") == process.pid and ready.get("embedded") is True
+                and isinstance(origin, str) and origin.startswith("key:")
+                and (peer is None or origin == peer.client_origin)):
+            return False
+        sample["client_origin"] = origin
+        return True
+
+    def remote_connected():
+        snapshot = request(port, "/v1/elements", token)
+        return any(e["visible"] and "Smoke Remote" in e["label"]
+                   and "直连" in e["label"]
+                   for e in snapshot.get("elements", []))
+
+    def remote_synced():
+        return clicked and cached_message(client, peer.origin, peer.session, marker)
+
     process = None
     with (output / f"{case}-launcher.log").open("wb") as log:
         try:
             # Retain spawn-to-main time for diagnosis; readiness uses GUI main.
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            with ThreadPoolExecutor(max_workers=6) as pool:
                 started_ns = monotonic_ns()
                 sample["clock_monotonic_ns"] = started_ns
                 process = subprocess.Popen([str(gui), "--dev", "--dev-port", str(port),
@@ -264,7 +338,18 @@ def launch(app, root, client, output, case, trace_startup=False):
                 sample["pre_main_ms"] = (main_ns - started_ns) / 1_000_000
                 ui = pool.submit(observe, ui_ready, process, main_ns)
                 local = pool.submit(observe, node_ready, process, main_ns)
+                station_mesh = pool.submit(observe, station_mesh_ready, process, main_ns) if mesh else None
+                client_mesh_result = pool.submit(observe, client_mesh_ready, process, main_ns) if client_mesh or peer else None
+                connection = pool.submit(observe, remote_connected, process, main_ns) if peer else None
+                sync = pool.submit(observe, remote_synced, process, main_ns) if peer else None
                 sample["ui_interactive"], sample["local_node"] = ui.result(), local.result()
+                if station_mesh:
+                    sample["station_mesh"] = station_mesh.result()
+                if client_mesh_result:
+                    sample["client_mesh"] = client_mesh_result.result()
+                if peer:
+                    sample["remote_connection"] = connection.result()
+                    sample["remote_sync"] = sync.result()
                 sample["gui_alive"] = process.poll() is None
             if trace_startup and sample["gui_alive"]:
                 # Diagnostic pixels are collected after both timed observations.
@@ -282,7 +367,9 @@ def launch(app, root, client, output, case, trace_startup=False):
                 except (OSError, RuntimeError, http.client.HTTPException) as error:
                     sample["screenshot_error"] = str(error)
         finally:
-            cleanup(process, app, root)
+            # Preserve the independent remote Station while stopping only this
+            # GUI and its locally owned Station/supervisor generation.
+            cleanup(process, app, node)
             source = node / "desktop-node.log"
             if source.exists():
                 with source.open("rb") as source:
@@ -305,20 +392,73 @@ def digest(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def local_startup(app, output, trace_startup=False):
+def local_startup(app, mesh_image, output, trace_startup=False):
     # Short Unix socket paths are part of the fixture, independent of checkout location.
     root = Path(tempfile.mkdtemp(prefix="zg-", dir="/tmp")).resolve()
     samples = []
+    remote = None
+    evidence = output / "samples.jsonl"
+    evidence.unlink(missing_ok=True)
+
+    def record(sample):
+        sample["passed"] = gate_passes(sample, GATES["local-startup"]["budget_ms"])
+        samples.append(sample)
+        line = json.dumps({key: value for key, value in sample.items() if key != "process_marks"},
+                          ensure_ascii=False)
+        with evidence.open("a") as report:
+            report.write(line + "\n")
+        print(line, flush=True)
+
     try:
         client = fixture(root)
         for case in ("first-initialization", "restart-1", "restart-2"):
-            sample = launch(app, root, client, output, case, trace_startup)
-            sample["passed"] = gate_passes(sample, GATES["local-startup"]["budget_ms"])
-            samples.append(sample)
-            print(json.dumps({key: value for key, value in sample.items() if key != "process_marks"},
-                             ensure_ascii=False), flush=True)
+            record(launch(app, root, client, output, case, trace_startup))
+
+        node = client / "node"
+        config = json.loads((node / "config.json").read_text())
+        if config["mesh"]["offline"]:
+            raise RuntimeError("Critical Mesh fixture must use normal network configuration")
+        config["mesh"].update(enabled=True, name="Smoke Local",
+                              bind=f"127.0.0.1:{unused_port(socket.SOCK_DGRAM)}")
+        (node / "config.json").write_text(json.dumps(config))
+        first_mesh = launch(app, root, client, output, "mesh-first-initialization",
+                            trace_startup, mesh=True)
+        record(first_mesh)
+
+        remote = RemoteStation(mesh_image, root, output, config)
+        remote.start("bootstrap")
+        remote.stop()
+        mesh_port = int(remote.config["mesh"]["bind"].rsplit(":", 1)[1])
+        save_remote_node(client, remote.origin, f"{remote.address}:{mesh_port}")
+        remote.start("unpaired")
+
+        setup = launch(app, root, client, output, "client-mesh-first-initialization",
+                       trace_startup, mesh=True, client_mesh=True)
+        record(setup)
+        (output / "mesh-setup.json").write_text(json.dumps({
+            "local_origin": first_mesh.get("mesh_origin"),
+            "remote_origin": remote.origin,
+            "remote_address": remote.address,
+            "remote_network": remote.network,
+            "client_origin": setup["client_origin"],
+            "offline": False,
+        }, indent=2) + "\n")
+        remote.trust_client(setup["client_origin"])
+        for case in ("paired-restart-1", "paired-restart-2"):
+            marker = remote.post_source_marker()
+            if cached_message(client, remote.origin, remote.session, marker):
+                raise RuntimeError("Remote source marker reached the client before timed launch")
+            sample = launch(app, root, client, output, case, trace_startup,
+                            mesh=True, peer=remote, marker=marker)
+            sample["remote_origin"] = remote.origin
+            sample["remote_address"] = remote.address
+            sample["remote_network_driver"] = "bridge"
+            sample["remote_marker"] = marker
+            record(sample)
         return samples
     finally:
+        if remote is not None:
+            remote.close()
         if owned_processes(app, root):
             raise RuntimeError(f"Fixture still in use; retained: {root}")
         shutil.rmtree(root)
@@ -329,17 +469,29 @@ def local_startup_gate(args, output):
               "build_profile": args.build_profile or "unspecified",
               "startup_tracing": args.trace_startup,
               "launch": "fresh processes via packaged GUI executable; OS file cache uncontrolled",
-              "measurement": "GUI main to real UI input and loopback readiness; pre-main OS time reported separately"}
+              "measurement": "GUI main to real UI input, local runtime/Mesh, connected independent Station and new remote source message in client cache; pre-main OS time reported separately"}
     try:
         if not args.app:
             raise RuntimeError("Missing --app: a freshly built and signed macOS app is required")
+        if not args.mesh_image:
+            raise RuntimeError("Missing --mesh-image: current-source Linux Station image is required")
         if sys.platform != "darwin":
             raise RuntimeError("Native macOS display session required")
+        image = json.loads(subprocess.run(["docker", "image", "inspect", args.mesh_image],
+                                          check=True, capture_output=True, text=True).stdout)[0]
+        if image["Os"] != "linux" or image["Architecture"] != "arm64":
+            raise RuntimeError("Remote Station image must be Linux arm64 for this Studio")
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        labels = image["Config"]["Labels"] or {}
+        if labels.get("org.opencontainers.image.revision") != revision:
+            raise RuntimeError("Remote Station image must be built from this checkout revision")
+        report["mesh_image"] = {"reference": args.mesh_image, "id": image["Id"],
+                                "revision": revision}
         app = args.app.resolve(strict=True)
         paths = ("Contents/MacOS/zork-gui", "Contents/Helpers/ZorkSupervisor.app/Contents/MacOS/zork",
                  "Contents/Helpers/ZorkStation.app/Contents/MacOS/zork-station")
         stamps = {path: (app / path).stat() for path in paths}
-        report["samples"] = local_startup(app, output, args.trace_startup)
+        report["samples"] = local_startup(app, args.mesh_image, output, args.trace_startup)
         # Do not read every executable into the file cache before measuring.
         for path, before in stamps.items():
             after = (app / path).stat()
@@ -351,6 +503,9 @@ def local_startup_gate(args, output):
         report["status"] = "passed" if report["passed"] else "failed"
     except Exception as error:
         report["error"] = str(error)
+        evidence = output / "samples.jsonl"
+        if evidence.exists():
+            report["samples"] = [json.loads(line) for line in evidence.read_text().splitlines()]
     return report
 
 
@@ -400,6 +555,7 @@ def main():
     parser.add_argument("--list", action="store_true", help="Show the user-approved gate definitions")
     parser.add_argument("--app", type=Path, help="App freshly built and packaged by this task")
     parser.add_argument("--frame-binary", type=Path, help="Fresh release zork-gui-render-bench with native-blur-bench")
+    parser.add_argument("--mesh-image", help="Current-source Linux arm64 Station image on a bridge network")
     parser.add_argument("--build-profile", choices=("dev", "release"),
                         help="Profile used to build the supplied app; never changes the gate budget")
     parser.add_argument("--trace-startup", action="store_true",
