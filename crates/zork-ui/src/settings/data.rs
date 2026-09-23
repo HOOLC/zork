@@ -1,9 +1,7 @@
 //! Local-data reset confirmation. Hosts provide read-only progress and handle
 //! Confirmed; the shared component owns only disclosure and focus.
 use crate::{
-    components::liquid::{primitives::dialog::AlertDialog, Material},
-    design::ZORK_UI,
-    resources::Text,
+    components::widgets::primitives::dialog::AlertDialog, design::ZORK_UI, resources::Text,
 };
 use gpui::{prelude::*, *};
 
@@ -83,7 +81,6 @@ impl Render for DataSettings {
             }),
             self.open,
             self.data.busy,
-            Material::ordinary(),
             window,
             cx,
             |view, _, cx| view.cancel(cx),

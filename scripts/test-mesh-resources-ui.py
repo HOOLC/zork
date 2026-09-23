@@ -11,7 +11,6 @@ import sys
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('mcp_fixture', ROOT / 'scripts/test-mcp.py')
@@ -42,12 +41,6 @@ def main():
     def click(identifier):
         f.wait(lambda: native.element(identifier, True), identifier)
         native.click(identifier)
-    def reveal(identifier, container='agent-editor-dialog'):
-        for _ in range(8):
-            if native.element(identifier, True): return click(identifier)
-            bounds = native.element(container)['bounds']
-            native.ui('/v1/actions', {'type':'scroll','target':{'x':bounds['x']+bounds['width']*.6,'y':bounds['y']+bounds['height']*.6},'delta_y':-300})
-        raise AssertionError('Not visible after scrolling: ' + identifier)
     try:
         nodes = [f.Node(root / name) for name in ('studio', 'laptop')]
         nodes[0].pair(nodes[1]); nodes[1].pair(nodes[0])
@@ -109,8 +102,7 @@ def main():
         env = dict(os.environ,ZORK_CLIENT_DATA=str(client),ZORK_GUI_LOCALE='zh-CN',ZORK_GUI_PREFERENCES_PATH=str(root / 'preferences.json'),ZORK_GUI_TEST_WINDOW_SIZE='1280x800')
         native.process = subprocess.Popen([str(f.TARGET / 'zork-gui'),'--dev','--dev-port',native.url.rsplit(':',1)[1],'--dev-token','mesh-native-fixture'],env=env,stdout=native.log,stderr=native.log)
         f.wait(lambda: native.ui('/health'), 'native ready')
-        click('connect-node-node-1')
-        f.wait(lambda: native.element('device-node-1') and '在线' in native.element('device-node-1')['label'],'native Mesh connection ready')
+        f.wait(lambda: native.element('chat-node-1-' + sessions[1], True), 'remote Chat visible over Mesh')
         entry = f.wait(lambda: next((id for id in ('settings-tool-connections','desktop-manage') if native.element(id,True)),None), 'settings entry')
         if entry == 'desktop-manage': click(entry)
         click('settings-tool-connections')
@@ -122,52 +114,12 @@ def main():
         click('resource-tool-echo'); native.screenshot(art / 'mcp-parameters.png')
         native.ui('/v1/actions', {'type':'key','keystroke':'escape'})
         f.wait(lambda: not native.element('resource-detail-modal-close'), 'MCP Escape')
-        click('settings-node-1-1'); click('agent-settings-research')
-        f.wait(lambda: native.element('agent-editor-dialog'), 'existing Agent editor')
-        reveal('agent-skill-' + skills[1])
-        assert not native.element('resource-detail-modal-close')
-        native.screenshot(art / 'agent-skill.png')
-        reveal('resource-file-references/template.md'); native.screenshot(art / 'agent-skill-file.png')
-        click('agent-editor-dialog-close')
         click('settings-device-node-1'); f.wait(lambda: native.element('resource-row-0',True), 'device services')
         native.screenshot(art / 'device-services.png')
-        click('resource-row-0'); f.wait(lambda: native.element('resource-file-stderr.log',True), 'service logs')
-        click('resource-file-stderr.log'); native.screenshot(art / 'service-log.png')
+        click('resource-row-0'); f.wait(lambda: native.element('resource-detail-modal-close',True), 'service detail')
+        native.screenshot(art / 'service-detail.png')
         click('resource-detail-modal-close')
-        checks.append('mesh_client_mcp_skill_service_reads_in_existing_settings')
-        click('desktop-return'); click('leader-node-0-research')
-        f.wait(lambda: native.element('conversation-files-button',True), 'conversation')
-        click('conversation-files-button'); click('conversation-page-' + reference['id'])
-        f.wait(lambda: native.element('browser-page') and any(word in native.element('browser-page')['label'] for word in ('已显示','displayed')), 'embedded report')
-        click('browser-more'); click('browser-agent-grant')
-        def browser(action, strict=True):
-            status,value = m.request(nodes[0], 'POST', '/v1/browser/command', {'session_id':sessions[0],'device_id':None,'command':{'request_id':'resource-browser-' + os.urandom(8).hex(),'action':action}})
-            if strict: assert status == 200, (status,value)
-            return value
-        tabs = f.wait(lambda: browser({'op':'list'},False).get('tabs'), 'browser grant')
-        tab = next(t for t in tabs if t['url'].endswith('/report'))['id']
-        browser({'op':'type','tab_id':tab,'selector':'#note','text':'保留这段输入'})
-        f.wait(lambda: '保留这段输入' in browser({'op':'read','tab_id':tab})['page']['text'], 'report input')
-        click('conversation-files-button'); click('conversation-page-' + reference['id'])
-        assert len(browser({'op':'list'})['tabs']) == len(tabs), 'opening a redirect page duplicated its tab'
-        assert '保留这段输入' in browser({'op':'read','tab_id':tab})['page']['text']
-        click('conversation-browser')
-        f.wait(lambda: not native.element('browser-page'), 'browser hidden with report state retained')
-        link=native.element('message-1-0-selection')['bounds']
-        native.ui('/v1/actions',{'type':'click','target':{'x':link['x']+8,'y':link['y']+link['height']/2}})
-        f.wait(lambda: native.element('browser-page'), 'message link opens embedded browser directly')
-        assert len(browser({'op':'list'})['tabs']) == len(tabs)
-        assert '保留这段输入' in browser({'op':'read','tab_id':tab})['page']['text']
-        checks.append('message_link_opens_existing_page_directly')
-        click('browser-new-tab'); f.wait(lambda: native.element('application-' + app['page']['id'],True), 'global applications')
-        native.screenshot(art / 'applications.png')
-        click('application-' + app['page']['id'])
-        f.wait(lambda: len(browser({'op':'list'})['tabs']) == len(tabs)+1, 'application tab')
-        click('browser-tab-' + tab)
-        assert '保留这段输入' in browser({'op':'read','tab_id':tab})['page']['text']
-        native.screenshot(art / 'retained-report.png')
-        assert len(browser({'op':'list'})['tabs']) == len(tabs)+1
-        checks.append('delivered_link_redirect_reuse_and_tab_input_preservation')
+        checks.append('mesh_client_mcp_and_service_reads_in_current_settings')
         assert 'private-fixture-value' not in native.ui('/v1/elements').decode()
         success = True
         (art / 'report.json').write_text(json.dumps({'outcome':'passed','devices':2,'checks':checks},ensure_ascii=False,indent=2)+'\n')

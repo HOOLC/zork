@@ -31,7 +31,7 @@ internal data class ChatMessage(val id: String, val author: String, val content:
     val user: Boolean, val pending: Boolean = false, val attempted: Boolean = false,
     val createdAt: String = "", val device: String = "", val model: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
 
-internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.text("author_name", if (it.text("role") == "user") "用户" else "小伙伴"),
+internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.text("author_name", if (it.text("role") == "user") "用户" else "助手"),
     it.text("display_content", it.text("content")), it.text("role") == "user", pending = it.optBoolean("pending"), attempted = it.optBoolean("attempted"),
     createdAt = it.text("created_at"), device = it.text("device"), model = it.text("model"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),

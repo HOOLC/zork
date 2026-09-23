@@ -301,17 +301,13 @@ impl RootView {
                             },
                         )
                         .to_owned();
-                    let source = self.resource_source.clone();
-                    let activation = source.clone();
                     let root = cx.entity().downgrade();
                     zork_ui::history_details::Resource {
                         label,
-                        source,
                         open: Rc::new(move |cx| {
                             let _ = root.update(cx, |_, cx| {
                                 cx.emit(crate::views::InspectResource {
                                     target: target.clone(),
-                                    source: activation.clone(),
                                 })
                             });
                         }),

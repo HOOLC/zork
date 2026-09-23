@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-    <activity android:name=".LiquidGalleryActivity" android:exported="false" android:theme="@style/Theme.Zork" />
     <activity android:name=".LocalScriptPreviewActivity" android:exported="false" android:theme="@style/Theme.Zork" />
     <activity android:name=".LocalScriptResultActivity" android:exported="false" android:theme="@style/Theme.Zork">
         <intent-filter><action android:name="ing.zork.android.SCRIPT_RESULT" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>

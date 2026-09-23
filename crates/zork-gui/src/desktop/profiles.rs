@@ -864,16 +864,6 @@ impl ProfilesView {
                     v.edit_model(Some(edit.clone()), cx);
                 }
             }))
-            .map(|row| {
-                self.modal.source("model-editor-dialog").bind(
-                    row,
-                    id.clone(),
-                    ui::ActionStyle {
-                        disabled: self.busy,
-                        ..Default::default()
-                    },
-                )
-            })
             .automation(AutomationRole::Button, format!("编辑 {id}"))
             .into_any_element()
     }
@@ -1178,7 +1168,6 @@ impl ProfilesView {
         ui::field_with_error(id, label, input, error, cx)
     }
 }
-impl gpui::EventEmitter<ui::OpenAgent> for ProfilesView {}
 impl Render for ProfilesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = ZORK_UI.palette;
@@ -1293,13 +1282,13 @@ impl Render for ProfilesView {
                             .child(
                                 div()
                                     .font_weight(gpui::FontWeight::MEDIUM)
-                                    .child("连接小伙伴使用的模型"),
+                                    .child("连接对话使用的模型"),
                             )
                             .child(
                                 div()
                                     .text_size(px(12.))
                                     .text_color(rgb(p.muted))
-                                    .child("添加订阅账号或 API 连接，再为小伙伴选择模型。"),
+                                    .child("添加订阅账号或 API 连接，供新对话选择模型。"),
                             ),
                     )
                 },
@@ -1330,24 +1319,24 @@ impl Render for ProfilesView {
                         )
                         .child(ui::form_field(
                             "接入方式",
-                            zork_ui::components::liquid::controls::deferred_segmented(
+                            zork_ui::components::widgets::controls::deferred_segmented(
                                 "profile-access-active",
                                 [
                                     ("profile-access-true", "订阅账号"),
                                     ("profile-access-false", "API 接入"),
                                 ]
                                 .into_iter()
-                                .map(
-                                    |(id, label)| zork_ui::components::liquid::controls::Segment {
+                                .map(|(id, label)| {
+                                    zork_ui::components::widgets::controls::Segment {
                                         id: id.into(),
                                         label: label.into(),
                                         disabled: false,
-                                    },
-                                )
+                                    }
+                                })
                                 .collect(),
                                 vec![],
                                 Some(usize::from(!self.subscription)),
-                                zork_ui::components::liquid::controls::SegmentKind::Choice,
+                                zork_ui::components::widgets::controls::SegmentKind::Choice,
                                 !self.busy && self.attempt.is_none(),
                                 p.canvas,
                                 cx.listener(|v, index: &usize, _, cx| {
@@ -1660,17 +1649,6 @@ impl Render for ProfilesView {
                                                     v.edit_model(None, cx);
                                                 }
                                             }))
-                                            .map(|button| {
-                                                self.modal.source("model-editor-dialog").bind(
-                                                    button,
-                                                    "手动添加",
-                                                    ui::ActionStyle {
-                                                        icon: Some("icons/plus.svg"),
-                                                        disabled: self.busy,
-                                                        ..Default::default()
-                                                    },
-                                                )
-                                            })
                                             .automation(AutomationRole::Button, "手动添加模型"),
                                     ),
                             ),
@@ -2018,16 +1996,6 @@ impl ProfilesView {
                         .on_click(cx.listener(|v, _, _, cx| {
                             v.add_connection(cx);
                         }))
-                        .map(|button| {
-                            self.modal.source("profile-create-dialog").bind(
-                                button,
-                                "添加连接",
-                                ui::ActionStyle {
-                                    icon: Some("icons/plus.svg"),
-                                    ..Default::default()
-                                },
-                            )
-                        })
                         .automation(AutomationRole::Button, "添加连接"),
                 )
             })
@@ -2150,16 +2118,6 @@ impl ProfilesView {
             },
             on_click,
         )
-        .map(|row| {
-            self.modal.source("profile-detail-dialog").bind(
-                row,
-                profile.display_name().to_owned(),
-                ui::ActionStyle {
-                    image: Some(ui::provider_path(&profile.provider)),
-                    ..Default::default()
-                },
-            )
-        })
         .automation(AutomationRole::Button, accessible)
         .into_any_element()
     }

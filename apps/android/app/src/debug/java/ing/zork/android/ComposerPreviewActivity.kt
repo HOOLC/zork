@@ -31,11 +31,11 @@ class ComposerPreviewActivity : ComponentActivity() {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale)) { ZorkTheme {
                 scroll = rememberLazyListState()
                 val members = listOf("fox", "cat", "panda").mapIndexed { i, avatar ->
-                    JSONObject().put("id", "member-$i").put("name", listOf("产品伙伴", "工程伙伴", "设计伙伴")[i]).put("avatar", avatar)
+                    JSONObject().put("id", "member-$i").put("name", listOf("产品会话", "工程会话", "设计会话")[i]).put("avatar", avatar)
                         .put("activity", if (active) JSONObject().put("state", if (i == 2) "failed" else "thinking").put("reason", "等待重试") else JSONObject.NULL)
                 }
-                val rows = remember { (0 until 20).map { ChatMessage("composer-$it", "伙伴", "消息 $it · 输入框和状态应始终为消息留出空间。", false) } }
-                val state = WorkbenchState(conversation = Conversation("composer-preview", "伙伴"), participants = members, messages = rows, connected = true, draft = draft)
+                val rows = remember { (0 until 20).map { ChatMessage("composer-$it", "助手", "消息 $it · 输入框和状态应始终为消息留出空间。", false) } }
+                val state = WorkbenchState(conversation = Conversation("composer-preview", "助手"), participants = members, messages = rows, connected = true, draft = draft)
                 Box(Modifier.requiredSize(viewportWidth.dp, 720.dp)) { ConversationBody(state, WorkbenchActions(draft = { draft = it }), scroll) }
             } }
         }

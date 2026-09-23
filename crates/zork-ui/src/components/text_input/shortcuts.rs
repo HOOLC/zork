@@ -9,7 +9,7 @@ fn mac_keyboard() -> bool {
 }
 
 pub fn init(cx: &mut App) {
-    gpui_base::init(cx);
+    gpui_component::init(cx);
     bind_keys(cx, mac_keyboard());
 }
 

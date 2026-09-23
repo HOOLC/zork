@@ -45,7 +45,7 @@ pub fn render<V: 'static>(
             ))
             .child(row(
                 "允许作为客户端管理",
-                "可管理此设备的模型连接、小伙伴和任务。",
+                "可管理此设备的模型连接与对话。",
                 ui::switch(
                     "mesh-client-grant",
                     "客户端权限",

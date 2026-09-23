@@ -67,8 +67,8 @@ pub trait Host: Sized + 'static {
     );
 }
 pub struct Chrome {
-    pub menu: crate::components::liquid::primitives::menu::Menu,
-    tab_group: crate::components::liquid::navigation::Group,
+    pub menu: crate::components::standard_menu::Menu,
+    tab_group: crate::components::widgets::navigation::Group,
     address: Entity<ComposerInput>,
     locale: Text,
     data: Data,
@@ -83,8 +83,8 @@ impl Chrome {
     pub fn new(address: Entity<ComposerInput>, locale: Text, cx: &mut gpui::App) -> Self {
         Self {
             menu: Default::default(),
-            tab_group: crate::components::liquid::navigation::Group::new(cx)
-                .kind(crate::components::liquid::navigation::Kind::Tabs),
+            tab_group: crate::components::widgets::navigation::Group::new(cx)
+                .kind(crate::components::widgets::navigation::Kind::Tabs),
             address,
             locale,
             data: Default::default(),
@@ -450,7 +450,7 @@ impl Chrome {
                 true,
             ))
             .child(
-                crate::components::liquid::controls::adaptive_input(
+                crate::components::widgets::controls::adaptive_input(
                     "browser-address",
                     &self.address,
                     invalid,
@@ -497,7 +497,7 @@ impl Chrome {
             ))
             .child({
                 let focus =
-                    crate::components::liquid::controls::action_focus("browser-more", window, cx);
+                    crate::components::widgets::controls::action_focus("browser-more", window, cx);
                 self.menu
                     .trigger_element(
                         icon_button("browser-more", "browser/more.svg", true),
@@ -514,7 +514,7 @@ impl Chrome {
         window: &mut gpui::Window,
         cx: &mut Context<V>,
     ) -> Option<gpui::AnyElement> {
-        use crate::components::liquid::primitives::menu::{Item, ItemKind};
+        use crate::components::standard_menu::{Item, ItemKind};
         let locale = self.locale.clone();
         let granted = self.granted;
         let mut grant = Item::new(

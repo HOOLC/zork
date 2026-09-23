@@ -165,7 +165,7 @@ pub fn account<V: 'static>(
         })
         .child(row(
             "配置归属",
-            "小伙伴 和模型连接分别保存在所属设备中。",
+            "模型连接保存在所属设备中，供对话选择。",
             div(),
         ))
         .when_some(data.notice, |v, text| {
@@ -201,7 +201,6 @@ pub struct DeviceData {
 pub fn device<V: 'static>(
     data: DeviceData,
     focus: &[FocusHandle; 2],
-    rename_source: crate::components::liquid::overlay::SourceBinding,
     cx: &Context<V>,
     action: impl Fn(&mut V, DeviceAction, &mut Context<V>) + 'static,
 ) -> Div {
@@ -304,18 +303,6 @@ pub fn device<V: 'static>(
                                         .on_click(cx.listener(move |v, _, _, cx| {
                                             rename(v, DeviceAction::Rename, cx)
                                         }))
-                                        .map(|button| {
-                                            rename_source.bind(
-                                                button,
-                                                "",
-                                                ui::ActionStyle {
-                                                    quiet: true,
-                                                    icon: Some("icons/edit.svg"),
-                                                    disabled: data.busy,
-                                                    ..Default::default()
-                                                },
-                                            )
-                                        })
                                         .automation_enabled(
                                             !data.busy,
                                             AutomationRole::Button,
@@ -398,25 +385,27 @@ pub fn device<V: 'static>(
                     .font_weight(FontWeight::MEDIUM)
                     .child("运行方式"),
             )
-            .child(crate::components::liquid::controls::deferred_segmented(
+            .child(crate::components::widgets::controls::deferred_segmented(
                 "local-node-mode",
                 [
                     ("local-node-foreground", "随客户端"),
                     ("local-node-background", "后台运行"),
                 ]
                 .into_iter()
-                .map(|(id, label)| crate::components::liquid::controls::Segment {
-                    id: id.into(),
-                    label: label.into(),
-                    disabled: false,
-                })
+                .map(
+                    |(id, label)| crate::components::widgets::controls::Segment {
+                        id: id.into(),
+                        label: label.into(),
+                        disabled: false,
+                    },
+                )
                 .collect(),
                 vec![
                     Some("关闭客户端时，设备一同停止。".into()),
                     Some("退出客户端后，设备继续运行。".into()),
                 ],
                 Some(usize::from(data.background)),
-                crate::components::liquid::controls::SegmentKind::Choice,
+                crate::components::widgets::controls::SegmentKind::Choice,
                 !data.busy,
                 p.canvas,
                 cx.listener(move |v, index: &usize, _, cx| {
@@ -595,54 +584,48 @@ impl gpui::Render for SettingsStory {
                 cx.notify();
             })
         } else {
-            device(
-                self.data.clone(),
-                &self.focus,
-                self.rename_modal.source("device-rename-dialog"),
-                cx,
-                |v, event, cx| {
-                    match event {
-                        DeviceAction::Rename => {
-                            v.rename_input
-                                .update(cx, |i, cx| i.set_value(v.data.name.clone(), cx));
-                            v.rename_open = true;
-                            v.rename_error = None;
-                        }
-                        DeviceAction::CheckUpdate => {
-                            v.data.latest_version = Some("0.1.31".into());
-                        }
-                        DeviceAction::Upgrade => {
-                            v.data.version = v
-                                .data
-                                .latest_version
-                                .take()
-                                .unwrap_or(v.data.version.clone());
-                            v.data.notice = Some("版本升级完成".into());
-                        }
-                        DeviceAction::Refresh => {
-                            v.data.busy = false;
-                            v.data.notice = Some("设备状态已刷新。".into())
-                        }
-                        DeviceAction::ToggleRunning => {
-                            v.data.running = !v.data.running;
-                            v.data.online = Some(v.data.running);
-                            v.data.status = if v.data.running {
-                                crate::device_name::DeviceStatus::Direct
-                            } else {
-                                crate::device_name::DeviceStatus::Offline
-                            }
-                        }
-                        DeviceAction::Background(on) => {
-                            v.data.background = on;
-                            if !on {
-                                v.data.start_at_login = false
-                            }
-                        }
-                        DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
+            device(self.data.clone(), &self.focus, cx, |v, event, cx| {
+                match event {
+                    DeviceAction::Rename => {
+                        v.rename_input
+                            .update(cx, |i, cx| i.set_value(v.data.name.clone(), cx));
+                        v.rename_open = true;
+                        v.rename_error = None;
                     }
-                    cx.notify();
-                },
-            )
+                    DeviceAction::CheckUpdate => {
+                        v.data.latest_version = Some("0.1.31".into());
+                    }
+                    DeviceAction::Upgrade => {
+                        v.data.version = v
+                            .data
+                            .latest_version
+                            .take()
+                            .unwrap_or(v.data.version.clone());
+                        v.data.notice = Some("版本升级完成".into());
+                    }
+                    DeviceAction::Refresh => {
+                        v.data.busy = false;
+                        v.data.notice = Some("设备状态已刷新。".into())
+                    }
+                    DeviceAction::ToggleRunning => {
+                        v.data.running = !v.data.running;
+                        v.data.online = Some(v.data.running);
+                        v.data.status = if v.data.running {
+                            crate::device_name::DeviceStatus::Direct
+                        } else {
+                            crate::device_name::DeviceStatus::Offline
+                        }
+                    }
+                    DeviceAction::Background(on) => {
+                        v.data.background = on;
+                        if !on {
+                            v.data.start_at_login = false
+                        }
+                    }
+                    DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
+                }
+                cx.notify();
+            })
         };
         page.when(rename_visible, |page| {
             page.child(rename_device::render(

@@ -90,9 +90,6 @@ impl Host for Story {
     fn history_text(&self) -> Text {
         self.text.clone()
     }
-    fn history_source(&self, cx: &App) -> crate::components::liquid::overlay::SourceBinding {
-        self.details.read(cx).source()
-    }
     fn history_subject(&self, a: &Activity, _: &Entry) -> (Option<String>, Option<Jump>) {
         use crate::history::activity::Subject;
         match &a.subject {

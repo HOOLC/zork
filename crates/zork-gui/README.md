@@ -1,44 +1,15 @@
 # zork-gui
 
-A GPUI (Zed UI framework) desktop client for zork-station's built-in
-`local_gui` IM entry, with a native light task shell grounded in the current
-approved Zork Fold v2 assets and layout. The station owns conversations and deliberate message
-delivery; `zork-agent` remains an internal execution service.
+GPUI desktop client for Zork. The navigation lists Chat by message time and labels each execution device. Creating a Chat selects a device, model, thinking depth and optional connection; the first send creates its Session. Existing Agent definitions and task records remain readable as history. See [Chat and collaboration](../../docs/design/chat.md#navigation) and [shared interface design](../../docs/design/interface.md).
 
-The default native client follows the approved Zork design: **Device → Leader → Task** in a two-pane conversation workspace. The sidebar starts at 240 px, can be dragged from 200 to 420 px (also constrained by the available content width), and remembers its pixel width. Every navigation row uses the same 32 px geometry and full-width hover/active background; indentation changes only the content position.
+Model connections and device settings live in separate pages. Conversation drafts, comments, history position and file previews remain scoped to their Chat. UI controls use GPUI and the vendored component library; client business operations go through `zork-client-core`.
 
-Device folds are local navigation state; tasks remain directly visible under each Leader. Device folds animate their measured child height, including row gaps, and move following devices with the aperture. Rapid toggles continue from the current height; reduced motion switches immediately. Hidden children leave keyboard traversal and are unmounted after closing. Unread conversation markers come from actual Station message IDs, are ordered first within their scope, and are marked read only for the visible device and conversation while following its tail. Device switches retain drafts, comments, history, sidebar scroll and the existing offline outbox.
-
-The right panel keeps its tabs, active page, open/expanded state, width and address draft per device/conversation during the client session. Switching chats restores that chat’s panel, including its history view and reading position; closing a tab does not affect other chats. Inactive history views suspend subscriptions and clocks until revisited.
-
-Visible history rows observe changes to their own entry IDs. Completed records
-show absolute clocks only inside disclosures; visible thinking and wait labels
-share the session's calibrated clock. Inline disclosures preserve the reading
-anchor until the reader returns to the latest record. Ordinary operations group
-without hiding their failure count or the latest active member.
-Member previews share a floating surface above the avatar group and retain the
-member's own conversation feed while open. Navigation and floating surfaces use
-the shared distance-adaptive slide curve: near targets remain quick, long travel
-accelerates toward a roughly 240 ms settling limit, and reversals retain velocity.
-
-Selecting a passage in rendered Markdown opens a comment popover. Enter adds it to that conversation's structured draft queue; comments can be edited or removed. The main composer grows automatically and sends all comments plus optional prose in one explicit Station request. The compatibility payload retains exact selected text, author identity and source message IDs. The outbox and source-draft clearing commit atomically. Station-provided message metadata supplies sender identity and timestamps; the UI does not invent authors for legacy messages.
-
-Settings use a separate navigation layout with separate Help and diagnostics and About tabs, plus each device's own Station, Agent and model-connection pages. Connection setup starts with Subscription/API access, then a compact icon-bearing provider selector. Authentication, model discovery (where the provider actually supports it), manual model configuration and Agent Profile/model assignment use the selected device's authenticated APIs. Creating a connection does not imply that template models are verified account capabilities. Station version information is real; in-client self-upgrade remains unsupported.
-
-The sidebar and settings navigation also expose **Mesh resources**: a read-only, device-filtered inventory of managed skills, MCP servers and services. Search and type filters lead to binding, ownership, status and access details. Opening or refreshing fetches current records; stale and unavailable devices remain explicit. Wide windows retain a detail column, while compact windows show a returnable detail page. See [the resource contract](../../docs/design/external-capabilities.md#publication).
-
-“Connect device” offers separate phone and other-device panes. Phone access uses a short QR invitation and explicit desktop approval; other devices use the Station join command. Delivered conversation artifacts remain available for native preview, cached offline viewing and saving. Local files, drops and clipboard images become immutable conversation-owned snapshots before delivery.
-
-The native asset family now uses semantic `icons/*.svg` paths, all 12 Agent avatars and the Zork wordmark. Shared interface resources use `interface/*.svg`; Zork account login authorizes the configured Zork relay. [`assets/usage-v2.json`](assets/usage-v2.json) records every mounted icon, scene and motion carrier, including assets with no native carrier.
-
-The sidebar and settings header place the Zork wordmark alongside the native traffic lights, without an extra title row. Hover scrubs the approved 2000 ms contour animation toward the icon; leaving reverses from the currently painted frame, and re-entering continues forward from that point. Other approved carriers retain their linked icon/letters (805 ms), wordmark (675 ms), icon (680 ms), and onboarding contour animation (2000 ms). GPUI timers are capped at 60 fps and stop at the endpoint. The upper half squashes, blinks and jumps down as one group with rounded separation; the lower half crawls left into Z, then the upper-left piece becomes o and the upper-right piece separates into rk with soft edges and a short settling overshoot. Every frame centres the visible body bounds. SVG and GPUI share sampled 128-point contours, with the notch retained on the lower contour. On macOS, the actual `NSWorkspace.accessibilityDisplayShouldReduceMotion` preference selects static endpoints without autoplay or loops.
-
-Run `python3 scripts/test-device-sidebar.py` for the isolated native regression; `CARGO_TARGET_DIR` selects the shared build directory and `ZORK_GUI_TEST_WINDOW_SIZE=900x600` exercises the minimum window. This test uses real isolated Stations/Agents with a fake model runtime, never user devices or model credentials, and never generates an enrollment invitation. Run the same script with `--brand-only` to compare real first/intermediate/final GPU frames; add `ZORK_GUI_TEST_REDUCE_MOTION=1` to verify static endpoints in a debug build without modifying the system setting. Frame hashes and PNGs are saved under `artifacts/gui-approved-design/brand-motion` or `brand-reduced`.
+Run `cargo test --locked -p zork-gui --features headless-bench --test headless_navigation_states --test headless_isolation` for navigation and current brand hover behavior. `python3 scripts/test-chat-navigation.py` verifies first-send Chat behavior across isolated nodes.
 
 ## Running
 
 ```sh
-cargo run --locked -p zork-gui                 # current device/Leader desktop
+cargo run --locked -p zork-gui                 # current desktop client
 ```
 
 ### Update the MBA app
@@ -189,51 +160,20 @@ python3 crates/zork-gui/tests/test_station_entry.py
 
 ## Desktop UI and retained contracts
 
-The current desktop uses Device → Leader → Task navigation, a conversation composer,
-member details with execution history, and conversation file previews. The old
-Home composer, global Inbox/task board/Drive, manual review controls, direct-Station
-CLI mode and SSH app launcher have been retired.
+The current desktop lists Chat by message time, with the execution device on each row. It provides a conversation composer, Session execution history and file previews. Historical Agent definitions and tasks remain readable through their original identities.
 
-Sendable conversations stack idle member avatars immediately above the composer.
-Active members first move upward with a critically damped spring (500 ms settling window), then extend into individual action rows at a fixed width speed; label changes
-do not restart the motion. Idle waits 1200 ms before returning, and resumed work
-cancels that return. Waiting and failed members stay expanded. Motion respects the
-system's reduced-motion preference and stops scheduling frames when settled.
-Motion follows display frame callbacks, including 120 Hz displays; interrupted
-transitions retain their current position and velocity.
-The composer remains bottom-anchored. Transcript bottom spacing and member positions
-use the same spring sample on each display frame, so the latest messages move
-with expanding and returning members. Historical scroll anchors remain stable;
-only visible rows are rendered and settled motion stops requesting frames. Clicking an avatar opens member details and
-execution history; read-only conversations retain their member entries in the right panel.
-Hovering a composer member avatar opens a shared details card with current status,
-two recent completed executions, and available model/context information. History
-is loaded for that member’s session only after the hover delay; leaving the card
-releases its subscriptions. The excerpt is bounded to the latest 100 loaded
-entries and omits successful tool output and internal model text.
-The composer and members use the shared liquid component and renderer.
-Presence transitions update the retained material geometry; settled presentation
-reuses the shared renderer cache.
-The single-line composer is 84 px tall with 24 px corners and 8 px icon insets.
-It grows to three visual lines (60 px editor height), then scrolls internally
-with the wheel/trackpad and follows the cursor while editing.
-The composer matches the sidebar with solid `#F6F5F1`, `#24272B` text and a
-`#24282B` send button with a white glyph. A 0.5 px `#DEDFDF` border follows the
-complete fused contour, keeping its geometric width at necks without internal
-intersection lines. Fill and stroke share contour extraction and cache lifetime.
-A CPU blur reference is available in headless builds for comparisons.
-The original GPUI editor handles input, IME and sending on every
-platform. Stable geometry is cached and does not schedule animation frames.
+Session activity appears in the transcript. The composer remains available while activity changes; opening execution history loads the selected Session on demand.
+
+The composer uses a warm-white GPUI rounded panel, the ordinary `ComposerInput` for IME and selection, and a scrollable attachment preview ribbon. It grows to three editor lines and then scrolls internally. Attachment membership comes from core; previews are cached on demand without contour clipping or per-frame shape updates.
 
 `cargo test --locked -p zork-gui --features headless-bench --test headless_chat_activity`
 checks native offscreen motion, geometry, idle scheduling and frame cost at wide
 and compact window sizes.
 
-Native windows support 900×600 and larger. Cmd+B toggles the device sidebar;
-Escape dismisses the active conversation popover. Model and Agent configuration
-belongs to device settings. The composer accepts local files, file drops and clipboard
-images. Conversation-owned snapshots appear as a fused fan of previews; hover unfolds
-the fan and clicking pins it. See [conversation files](../../docs/design/shared-files.md#attachments).
+Native windows support 900×600 and larger. Cmd+B toggles the sidebar;
+Escape dismisses the active conversation popover. Model connections belong to device settings. The composer accepts local files, file drops and clipboard
+images. Conversation-owned snapshots appear in a scrollable preview ribbon; hover expands
+the previews and clicking pins them. See [conversation files](../../docs/design/shared-files.md#attachments).
 
 Embedded `locales/zh-CN.json` and `locales/en.json` catalogs supply shared labels.
 `ZORK_GUI_LOCALE=zh-CN|en` overrides the saved startup locale, and
@@ -268,8 +208,8 @@ hardware-dependent measurement, separate from deterministic replay assertions.
 Reports and screenshots are in `artifacts/headless-render/latest`.
 
 The same gate replays real mouse and keyboard events through GPUI for Markdown
-selection (including table columns and reverse UTF-8 selection), plus connection,
-model and Agent modals at 900×600 and 1280×800. Modal checks cover opening, input,
+selection (including table columns and reverse UTF-8 selection), plus connection and
+model modals at 900×600 and 1280×800. Modal checks cover opening, input,
 viewport clipping, Escape, close buttons and backdrop click isolation. Screenshots
 are in `artifacts/headless-interactions/modals`. These tests do not contact a live
 backend or open system windows.

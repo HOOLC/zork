@@ -41,15 +41,15 @@ GATES = {
     },
     "client-frame": {
         "requirement": "原生客户端整帧小于 8ms，持续绘制超过 120fps 且稳定",
-        "acceptance": "原生端 Playground 目录与‘打开对话框’实际 PlainDialog 完整组件开合、内容和背景淡入中间帧及最终输入状态，页面滚动和目录内部滚动，并覆盖生产客户端会话面板及十万条混合消息滚动；滚动必须通过真实输入推动可见内容，弹窗必须到达对应的输入与动画终态。使用同一原生 Metal 渲染器与离屏目标隔离显示缓冲供应限速；输入/动画更新开始至 CPU 和 Metal GPU 均完成的全部帧严格小于预算，连续绘制完成吞吐严格超过目标 FPS，最慢连续完成间隔也须小于目标帧时长；包含首次操作与首帧，主动空闲不算掉帧；测原生渲染能力，不冒充显示器实际呈现 FPS",
+        "acceptance": "原生端组件展示目录的实际 PlainDialog 完整组件开合、内容和背景淡入中间帧及最终输入状态，页面滚动和目录内部滚动，并覆盖生产客户端会话面板及十万条混合消息滚动；滚动必须通过真实输入推动可见内容，弹窗必须到达对应的输入与动画终态。使用同一原生 Metal 渲染器与离屏目标隔离显示缓冲供应限速；输入/动画更新开始至 CPU 和 Metal GPU 均完成的全部帧严格小于预算，连续绘制完成吞吐严格超过目标 FPS，最慢连续完成间隔也须小于目标帧时长；包含首次操作与首帧，主动空闲不算掉帧；测原生渲染能力，不冒充显示器实际呈现 FPS",
         "budget_ms": 8,
         "target_fps": 120,
         "fixture": {
             "viewport": [1280, 800],
-            "liquid_viewport": [798, 838],
+            "component_viewport": [798, 838],
             "offscreen": True,
-            "playground": True,
-            "playground_scroll": {
+            "gallery": True,
+            "gallery_scroll": {
                 "px_per_second": 1200,
                 "legs": 5,
                 "min_displacement_px": 20,

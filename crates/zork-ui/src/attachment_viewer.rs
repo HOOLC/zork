@@ -3,12 +3,9 @@ use crate::modal::PlainDialog;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{
-        liquid::{
-            overlay::{DialogOptions, Placement, SourceBinding},
-            Material,
-        },
         loading,
         message::{render_selectable_document, MessageDocument},
+        widgets::overlay::DialogOptions,
     },
     controls as ui,
     design::ZORK_UI,
@@ -96,7 +93,7 @@ struct PreviewState {
     text_truncated: bool,
     selection: Rc<std::cell::RefCell<crate::components::selection::TranscriptSelection>>,
     source: bool,
-    menu: crate::components::liquid::primitives::menu::Menu,
+    menu: crate::components::standard_menu::Menu,
     zoom: Option<f32>,
     scroll: gpui::ScrollHandle,
     drag: Option<(gpui::Point<gpui::Pixels>, gpui::Point<gpui::Pixels>)>,
@@ -182,12 +179,6 @@ impl Viewer {
     }
     pub fn remember_source(&mut self, focus: Option<FocusHandle>) {
         self.viewer.return_focus = focus;
-    }
-    pub fn bind_source(&mut self, source: SourceBinding) {
-        self.dialog.bind_source(source);
-    }
-    pub fn source(&self) -> SourceBinding {
-        self.dialog.source_binding()
     }
     pub fn inspect(&self) -> serde_json::Value {
         self.dialog.inspect()
@@ -315,7 +306,7 @@ impl Viewer {
             .get_or_insert_with(|| cx.focus_handle())
             .clone();
         let menu_focus =
-            crate::components::liquid::controls::action_focus("preview-more", window, cx);
+            crate::components::widgets::controls::action_focus("preview-more", window, cx);
         let key_focus = focus.clone();
         let subtitle = artifact.subtitle.clone();
         let subtitle = if self.data.saving {
@@ -404,8 +395,6 @@ impl Viewer {
                     content,
                     Some(footer.into_any_element()),
                     self.data.info.as_ref().is_some_and(|info| !info.image_view),
-                    Placement::Window { width },
-                    Material::ordinary(),
                     DialogOptions {
                         title_action: Some(title_actions.into_any_element()),
                         notice: self.data.notice.map(|key| self.locale.text(key).to_owned()),
@@ -837,7 +826,7 @@ impl Viewer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<gpui::AnyElement> {
-        use crate::components::liquid::primitives::menu::Item;
+        use crate::components::standard_menu::Item;
         let can_save = self.data.loaded && !self.data.saving && !self.data.choosing_save;
         let save = Item::new("preview-save-copy", self.locale.text("drive_save_copy"))
             .icon("icons/download.svg");

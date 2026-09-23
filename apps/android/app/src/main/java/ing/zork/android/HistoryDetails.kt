@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HistorySheet(title: String, dismiss: () -> Unit, open: Boolean, closed: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    LiquidSheet(open, title, dismiss, onClosed = closed) {
+    ZorkSheet(open, title, dismiss, onClosed = closed) {
         Column(Modifier.fillMaxWidth().heightIn(max = (LocalConfiguration.current.screenHeightDp * .90f).dp).navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 20.dp, end = 10.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f).semantics { heading() }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,

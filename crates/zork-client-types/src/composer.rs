@@ -10,19 +10,11 @@ pub struct File {
     pub id: u64,
     pub name: String,
 }
-#[derive(Clone, Debug, serde::Serialize)]
-pub struct Member {
-    pub id: String,
-    pub avatar: String,
-    pub label: String,
-    pub active: bool,
-}
 #[derive(Clone, Default, Debug, serde::Serialize)]
 pub struct Snapshot {
     pub capabilities: Capabilities,
     pub text: String,
     pub files: Vec<File>,
-    pub members: Vec<Member>,
     pub events: Vec<String>,
 }
 pub enum Intent {

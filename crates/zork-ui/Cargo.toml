@@ -7,11 +7,11 @@ publish = false
 
 [dependencies]
 zork-observe = { path = "../zork-observe" }
-zork-liquid = { path = "../zork-liquid" }
 qrcode = { version = "=0.14.1", default-features = false }
 zork-client-types = { path = "../zork-client-types" }
 gpui = { package = "gpui-unofficial", version = "=1.17.0-pre", default-features = false }
 gpui-base = { package = "gpui-base-uo", version = "=1.17.0-pre" }
+gpui-component = { package = "gpui-component-uo", version = "=1.17.0-pre" }
 serde.workspace = true
 serde_json = "1.0.145"
 tokio = { version = "1.48.0", default-features = false, features = ["sync"] }

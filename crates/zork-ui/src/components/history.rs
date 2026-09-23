@@ -70,19 +70,14 @@ pub struct ActivityHeader {
     pub chevron: bool,
 }
 
-pub fn activity_header_sources<V: 'static>(
+pub fn activity_header<V: 'static>(
     id: impl Into<gpui::ElementId>,
     header: ActivityHeader,
-    sources: (
-        Option<crate::components::liquid::overlay::SourceBinding>,
-        Option<crate::components::liquid::overlay::SourceBinding>,
-    ),
     _window: &mut gpui::Window,
     cx: &mut Context<V>,
     open: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
-    let face = header.action.clone();
     let icon = header.icon;
     // The full chip needs 20px, while the row's text keeps its former start.
     let label_inset = if icon.is_some() { -4. } else { 0. };
@@ -248,22 +243,7 @@ pub fn activity_header_sources<V: 'static>(
                         cx.stop_propagation();
                         navigate(v, window, cx);
                     }))
-                    .map(|subject| match sources.1 {
-                        Some(source) => source
-                            .bind(
-                                subject,
-                                subject_label.clone(),
-                                crate::controls::ActionStyle {
-                                    quiet: true,
-                                    ..Default::default()
-                                },
-                            )
-                            .automation(AutomationRole::Button, subject_label)
-                            .into_any_element(),
-                        None => subject
-                            .automation(AutomationRole::Button, subject_label)
-                            .into_any_element(),
-                    }),
+                    .automation(AutomationRole::Button, subject_label),
             )
         })
         .when(!header.summary.is_empty(), |v| {
@@ -315,23 +295,7 @@ pub fn activity_header_sources<V: 'static>(
                     .child(text),
             )
         })
-        .map(|header| match sources.0 {
-            Some(source) => source
-                .bind(
-                    header,
-                    face,
-                    crate::controls::ActionStyle {
-                        quiet: true,
-                        icon,
-                        ..Default::default()
-                    },
-                )
-                .automation(AutomationRole::Button, accessible)
-                .into_any_element(),
-            None => header
-                .automation(AutomationRole::Button, accessible)
-                .into_any_element(),
-        })
+        .automation(AutomationRole::Button, accessible)
 }
 
 pub fn focus_for(id: String, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::FocusHandle {

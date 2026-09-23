@@ -110,7 +110,6 @@ impl Story {
 }
 impl Render for Story {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let source = self.viewer.read(cx).source();
         let trigger = if let Some(state) = self.thumbnail.as_deref() {
             let name = self.data.info.as_ref().unwrap().name.clone();
             match state {
@@ -120,7 +119,6 @@ impl Render for Story {
                     144.,
                 )
                 .on_click(cx.listener(|v, _, _, cx| v.open(cx)))
-                .map(|trigger| source.bind(trigger, name.clone(), ui::ActionStyle::default()))
                 .automation(AutomationRole::Button, name.clone())
                 .into_any_element(),
                 "message-document" => crate::components::attachments::message_document(
@@ -130,19 +128,17 @@ impl Render for Story {
                     300.,
                 )
                 .on_click(cx.listener(|v, _, _, cx| v.open(cx)))
-                .map(|trigger| source.bind(trigger, name.clone(), ui::ActionStyle::default()))
                 .automation(AutomationRole::Button, name.clone())
                 .into_any_element(),
-                "row" => crate::components::attachments::row_source(
+                "row" => crate::components::attachments::row(
                     "story-attachment",
                     name.clone(),
                     "12 KB · v2".into(),
-                    Some(source.clone()),
                     cx,
                     |v, cx| v.open(cx),
                 )
                 .into_any_element(),
-                _ => crate::components::attachments::card_source(
+                _ => crate::components::attachments::card(
                     "story-attachment",
                     name.clone(),
                     match state {
@@ -153,7 +149,6 @@ impl Render for Story {
                     }
                     .into(),
                     !matches!(state, "loading" | "unavailable"),
-                    Some(source.clone()),
                     cx,
                     |v, cx| v.open(cx),
                 )
@@ -162,7 +157,6 @@ impl Render for Story {
         } else {
             ui::button("attachment-viewer-open", "打开附件预览", false, true)
                 .on_click(cx.listener(|v, _, _, cx| v.open(cx)))
-                .map(|trigger| source.bind(trigger, "打开附件预览", ui::ActionStyle::default()))
                 .automation(AutomationRole::Button, "打开附件预览")
                 .into_any_element()
         };

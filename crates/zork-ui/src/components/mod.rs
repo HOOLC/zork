@@ -3,7 +3,9 @@ pub mod attachment_fan;
 pub mod attachments;
 pub mod brand;
 pub mod comments;
+pub mod flyout;
 pub mod frame_delivery;
+pub mod geometry;
 pub mod history;
 pub mod interaction;
 pub mod loading;
@@ -17,16 +19,14 @@ pub fn init(cx: &mut gpui::App) {
 
 pub mod tooltip;
 
-pub mod motion;
-
 pub mod region;
 
 pub mod message_preview;
 
-pub mod liquid;
-pub mod liquid_composer;
+pub mod composer_layout;
+pub mod standard_menu;
+pub mod widgets;
 
-pub mod collapse;
 pub mod smooth;
 pub mod workbench;
 

@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun Modifier.historyPress(enabled: Boolean = true, selected: Boolean = false,
     radius: androidx.compose.ui.unit.Dp = 6.dp, label: String? = null, onClick: () -> Unit): Modifier {
-    return then(if (selected) Modifier.background(ZorkColors.Selected, LiquidShape(radius)) else Modifier)
-        .liquidPressable(enabled = enabled, radius = radius, onClick = onClick)
+    return then(if (selected) Modifier.background(ZorkColors.Selected, androidx.compose.foundation.shape.RoundedCornerShape(radius)) else Modifier)
+        .zorkPressable(enabled = enabled, radius = radius, onClick = onClick)
         .then(if (label == null) Modifier else Modifier.semantics { contentDescription = label })
 }
 
@@ -30,7 +30,7 @@ internal fun Modifier.historyPress(enabled: Boolean = true, selected: Boolean = 
 internal fun HistoryAction(text: String, enabled: Boolean = true, selected: Boolean = false,
     modifier: Modifier = Modifier, label: String = text, onClick: () -> Unit) {
     Box(modifier.heightIn(min = 44.dp).widthIn(min = 44.dp)
-        .historyPress(enabled, selected, LiquidTokens.PillRadius, label, onClick)
+        .historyPress(enabled, selected, UiTokens.PillRadius, label, onClick)
         .padding(horizontal = 10.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
         Text(text, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             color = if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
@@ -39,7 +39,7 @@ internal fun HistoryAction(text: String, enabled: Boolean = true, selected: Bool
 
 @Composable
 internal fun HistoryIconAction(icon: Int, label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    LiquidIconButton(label, enabled = enabled, onClick = onClick) {
+    ZorkIconButton(label, enabled = enabled, onClick = onClick) {
         Glyph(icon, 18.dp, if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
     }
 }

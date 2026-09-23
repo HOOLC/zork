@@ -18,8 +18,8 @@ class QrScanActivity : CaptureActivity()
 internal fun PhoneConnectActions(model: ClientViewModel) {
     model.meshSwitch?.let { confirmation ->
         Text(confirmation.text("message"), color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp)
-        LiquidButton("确认切换", primary = true, onClick = model::confirmMeshSwitch, enabled = !model.busy, modifier = Modifier.fillMaxWidth())
-        LiquidButton("保留当前连接", quiet = true, onClick = model::cancelMeshSwitch, enabled = !model.busy)
+        ZorkButton("确认切换", primary = true, onClick = model::confirmMeshSwitch, enabled = !model.busy, modifier = Modifier.fillMaxWidth())
+        ZorkButton("保留当前连接", quiet = true, onClick = model::cancelMeshSwitch, enabled = !model.busy)
         model.notice?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
         return
     }
@@ -36,16 +36,16 @@ internal fun PhoneConnectActions(model: ClientViewModel) {
         }
     }
     Text("在电脑中选择「连接设备 → 连接手机」，然后扫描二维码。", color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp)
-    LiquidButton("扫一扫连接", primary = true, onClick = {
+    ZorkButton("扫一扫连接", primary = true, onClick = {
         scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
             .setPrompt("扫描电脑 Zork 的连接二维码").setBeepEnabled(false)
             .setOrientationLocked(true).setCaptureActivity(QrScanActivity::class.java))
     }, enabled = !model.busy && model.ready, modifier = Modifier.fillMaxWidth())
-    LiquidButton("粘贴连接邀请", quiet = true, onClick = { paste = !paste }, enabled = !model.busy)
+    ZorkButton("粘贴连接邀请", quiet = true, onClick = { paste = !paste }, enabled = !model.busy)
     if (paste) {
         FormField(ticket, { if (it.length <= 32768) ticket = it }, label = { Text("连接邀请") },
             modifier = Modifier.fillMaxWidth(), maxLines = 4)
-        LiquidButton("连接", primary = true, onClick = { model.beginInvitation(ticket) }, enabled = ticket.isNotBlank() && !model.busy && model.ready,
+        ZorkButton("连接", primary = true, onClick = { model.beginInvitation(ticket) }, enabled = ticket.isNotBlank() && !model.busy && model.ready,
             modifier = Modifier.fillMaxWidth())
     }
     (scanNotice ?: model.notice)?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
@@ -59,5 +59,5 @@ internal fun PhoneInvitationStatus(model: ClientViewModel) {
     Text(when (invitation.text("status")) { "awaiting_approval" -> "请在电脑上允许这台手机连接。"; "failed", "expired", "revoked", "conflict" -> "请重新获取连接邀请。"; else -> "正在连接设备…" },
         color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 23.sp)
     model.notice?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
-    LiquidButton("取消连接", quiet = true, onClick = model::cancelInvitation, enabled = !model.busy)
+    ZorkButton("取消连接", quiet = true, onClick = model::cancelInvitation, enabled = !model.busy)
 }

@@ -84,6 +84,6 @@ internal fun ZorkTheme(content: @Composable () -> Unit) {
         secondaryContainer = ZorkColors.Selected,
         error = ZorkColors.Danger,
     ), typography = ZorkFonts.Styles) {
-        CompositionLocalProvider(LocalContentColor provides ZorkColors.Ink, LocalTextStyle provides TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp)) { LiquidHost(content) }
+        CompositionLocalProvider(LocalContentColor provides ZorkColors.Ink, LocalTextStyle provides TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp)) { content() }
     }
 }

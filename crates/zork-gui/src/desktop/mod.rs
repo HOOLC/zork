@@ -1,6 +1,4 @@
 //! Desktop presentation of the core-owned device directory and host operations.
-#[cfg(feature = "headless-bench")]
-mod agents;
 pub mod client_settings;
 #[cfg(feature = "headless-bench")]
 mod interaction_story;
@@ -18,8 +16,6 @@ mod startup;
 pub mod store;
 pub mod transport;
 pub(crate) mod ui;
-#[cfg(feature = "headless-bench")]
-pub use agents::AgentsView as HeadlessAgentsView;
 #[cfg(feature = "headless-bench")]
 pub use model_settings::ModelSettings as HeadlessModelSettings;
 #[cfg(feature = "headless-bench")]
@@ -156,11 +152,7 @@ impl DesktopRoot {
         let remote_addr = field("局域网地址（可选），例如 192.168.1.20:43120");
         let mut add_device_modal = ui::ModalState::new(cx);
         add_device_modal.retain("add-device-dialog", None::<()>, cx);
-        let navigation = cx.new(|cx| {
-            let mut navigation = navigation::DeviceNavigation::new(store.clone(), &nodes, cx);
-            navigation.bind_add_device_source(add_device_modal.source("add-device-dialog"), cx);
-            navigation
-        });
+        let navigation = cx.new(|cx| navigation::DeviceNavigation::new(store.clone(), &nodes, cx));
         cx.subscribe(&navigation, |v, _, action: &navigation::Navigate, cx| {
             v.navigate_device(action.clone(), cx);
         })
@@ -583,7 +575,6 @@ impl DesktopRoot {
                             let locale = desktop.client_settings.locale;
                             desktop.resource_inspector = Some(cx.new(|cx| {
                                 resources::ResourcesView::inspector(core, node, query, locale, cx)
-                                    .from_source(event.source.clone(), cx)
                             }));
                         }
                         Err(error) => {
@@ -596,7 +587,6 @@ impl DesktopRoot {
                                     locale,
                                     cx,
                                 )
-                                .from_source(event.source.clone(), cx)
                             }));
                         }
                     }
@@ -972,7 +962,6 @@ impl DesktopRoot {
             .child(zork_ui::settings::device(
                 data,
                 &self.device_switch_focus,
-                self.rename_modal.source("device-rename-dialog"),
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
@@ -1361,19 +1350,6 @@ impl Render for DesktopRoot {
                                                             cx,
                                                         )
                                                     }))
-                                                    .map(|tab| {
-                                                        self.add_device_modal
-                                                            .source("add-device-dialog")
-                                                            .bind(
-                                                                tab,
-                                                                "连接设备",
-                                                                ui::ActionStyle {
-                                                                    quiet: true,
-                                                                    icon: Some("icons/plus.svg"),
-                                                                    ..Default::default()
-                                                                },
-                                                            )
-                                                    })
                                                     .automation(AutomationRole::Button, "连接设备"),
                                             ),
                                     ),

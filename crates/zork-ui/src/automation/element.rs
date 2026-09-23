@@ -276,6 +276,17 @@ impl<E: Element> AutomationElement<E> {
     }
 }
 
+impl<E: Element + gpui_base::Selectable> gpui_base::Selectable for AutomationElement<E> {
+    fn selected(mut self, selected: bool) -> Self {
+        self.inner = self.inner.selected(selected);
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        self.inner.is_selected()
+    }
+}
+
 impl<E: Element> IntoElement for AutomationElement<E> {
     type Element = Self;
 
