@@ -123,6 +123,21 @@ fn main() -> anyhow::Result<()> {
             connection.label.contains(device),
             "Profile card lost its device identity"
         );
+        let device_name = snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == format!("profile-device-{device}-fixture") && e.visible)
+            .ok_or_else(|| anyhow::anyhow!("Missing {device} label inside Profile card"))?;
+        anyhow::ensure!(
+            device_name.label == device
+                && device_name.bounds.x >= connection.bounds.x
+                && device_name.bounds.y >= connection.bounds.y
+                && device_name.bounds.x + device_name.bounds.width
+                    <= connection.bounds.x + connection.bounds.width
+                && device_name.bounds.y + device_name.bounds.height
+                    <= connection.bounds.y + connection.bounds.height,
+            "Device label is outside its Profile card: {device_name:?}"
+        );
         let billing = snapshot
             .elements
             .iter()
@@ -233,6 +248,8 @@ fn main() -> anyhow::Result<()> {
         "model-provider-openai",
         "profile-detail-desktop-fixture",
         "profile-detail-laptop-fixture",
+        "profile-device-desktop-fixture",
+        "profile-device-laptop-fixture",
     ] {
         let element = driver
             .snapshot(false)

@@ -151,7 +151,6 @@ impl ModelSettings {
         &self,
         provider_id: String,
         mut rows: Vec<ConnectionRow>,
-        multiple_devices: bool,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let palette = ZORK_UI.palette;
@@ -215,23 +214,11 @@ impl ModelSettings {
                         &row.profile,
                         &row.providers,
                         row.quota_failed,
+                        Some(&row.device_name),
                         on_click,
                     )
                 });
-                div()
-                    .flex()
-                    .flex_col()
-                    .when(multiple_devices, |v| {
-                        v.child(
-                            div()
-                                .pt_2()
-                                .text_size(px(11.))
-                                .text_color(rgb(palette.muted))
-                                .child(format!("设备 · {}", row.device_name)),
-                        )
-                    })
-                    .child(card)
-                    .into_any_element()
+                card
             }))
             .into_any_element()
     }
@@ -325,15 +312,6 @@ impl Render for ModelSettings {
         let mut groups = Groups::new();
         let mut notices = Vec::new();
         let mut connection_count = 0;
-        let visible_device_count = self
-            .devices
-            .iter()
-            .filter(|device| {
-                self.onboarding_local
-                    .as_ref()
-                    .is_none_or(|id| id == &device.id)
-            })
-            .count();
         for device in self.devices.iter().filter(|device| {
             self.onboarding_local
                 .as_ref()
@@ -406,9 +384,11 @@ impl Render for ModelSettings {
                     ),
                 )
             })
-            .children(groups.into_iter().map(|(provider, rows)| {
-                self.render_group(provider, rows, visible_device_count > 1, cx)
-            }))
+            .children(
+                groups
+                    .into_iter()
+                    .map(|(provider, rows)| self.render_group(provider, rows, cx)),
+            )
             .children(self.devices.iter().filter_map(|device| {
                 self.onboarding_local
                     .as_ref()

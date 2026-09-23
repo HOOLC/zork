@@ -2043,6 +2043,7 @@ impl ProfilesView {
             profile,
             &self.catalog,
             self.quota_failures.contains(&profile.profile_id),
+            None,
             cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
         )
     }
@@ -2052,6 +2053,7 @@ impl ProfilesView {
         profile: &ProfileInfo,
         catalog: &[Value],
         quota_failed: bool,
+        device_label: Option<&str>,
         on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
     ) -> gpui::AnyElement {
         let p = ZORK_UI.palette;
@@ -2140,10 +2142,31 @@ impl ProfilesView {
                 .gap_0()
                 .child(
                     div()
-                        .truncate()
-                        .text_size(px(13.))
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(profile.display_name().to_owned()),
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(px(13.))
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .child(profile.display_name().to_owned()),
+                        )
+                        .when_some(device_label, |v, device| {
+                            v.child(
+                                div()
+                                    .id(format!("profile-device-{row_key}"))
+                                    .flex_shrink_0()
+                                    .max_w(px(120.))
+                                    .truncate()
+                                    .text_size(px(11.))
+                                    .text_color(rgb(p.muted))
+                                    .child(device.to_owned())
+                                    .automation(AutomationRole::Status, device.to_owned()),
+                            )
+                        }),
                 )
                 .child(
                     div()
@@ -2193,11 +2216,9 @@ impl ProfilesView {
         })
         .automation(
             AutomationRole::Button,
-            if self.row_scope.is_some() {
-                format!("{} · {}", profile.display_name(), self.device_name)
-            } else {
-                profile.display_name().to_owned()
-            },
+            device_label
+                .map(|device| format!("{} · {device}", profile.display_name()))
+                .unwrap_or_else(|| profile.display_name().to_owned()),
         )
         .into_any_element()
     }
