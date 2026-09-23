@@ -43,6 +43,7 @@
     "test:installer": "python3 scripts/test-native-installer.py",
     "cache:status": "python3 scripts/build/cache_budget.py",
     "cache:prune": "python3 scripts/build/cache_budget.py --apply",
+    "cache:reclaim-completed": "python3 scripts/build/cache_budget.py --reclaim-released",
     "design:pc": "python3 scripts/design-pc/build.py --open",
     "design:pc:build": "python3 scripts/design-pc/build.py",
     "design:pc:verify": "python3 scripts/design-pc/build.py --verify"

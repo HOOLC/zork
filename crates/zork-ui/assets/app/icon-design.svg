@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Zork Design app icon</title>
+  <desc id="desc">Charcoal Zork mark on a lilac tile with an orange design sparkle.</desc>
+  <rect width="1024" height="1024" fill="#D9D0EA"/>
+  <g transform="translate(104 86) scale(6.4)">
+    <path fill="#24272B" d="M25 20 Q21 17 20 23 L18 47 L12 71 Q10 80 16 87 L34 108 Q37 112 41 110 L72 96 L65 111 L88 114 Q93 114 96 110 L112 88 Q117 81 114 72 L108 47 L106 23 Q106 17 102 20 L84 37 L64 33 L44 37 Z"/>
+    <path fill="#D9D0EA" d="M37 61 H49 A4 4 0 0 1 49 69 H37 A4 4 0 0 1 37 61 Z M78 61 H90 A4 4 0 0 1 90 69 H78 A4 4 0 0 1 78 61 Z"/>
+  </g>
+  <circle cx="787" cy="783" r="129" fill="#D9D0EA"/>
+  <circle cx="787" cy="783" r="107" fill="#E9643B"/>
+  <path d="M787 715 C796 755 815 774 855 783 C815 792 796 811 787 851 C778 811 759 792 719 783 C759 774 778 755 787 715 Z" fill="#F6F3EA"/>
+</svg>

@@ -1,11 +1,15 @@
 """Optional machine-local build settings. No shell evaluation of .env values."""
 import argparse
+from datetime import datetime, timezone
 import fcntl
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
+import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHEDIR_SIGNATURE = 'Signature: 8a477f597d28d172789f06886806bc55'
@@ -121,6 +125,50 @@ def register_isolated_target(env, root=ROOT):
             pending.unlink(missing_ok=True)
 
 
+def run_measured(command, env, root=ROOT):
+    """Record observed build cost without changing the command's result."""
+    configured = env.get('ZORK_BUILD_ROOT')
+    if not configured:
+        return subprocess.call(command, cwd=root, env=env)
+    cache_root = Path(configured).expanduser()
+    cache_root = (cache_root if cache_root.is_absolute() else root / cache_root).resolve()
+    if not cache_root.is_dir():
+        return subprocess.call(command, cwd=root, env=env)
+    started_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
+    try:
+        before = shutil.disk_usage(cache_root).free
+    except OSError as error:
+        print(f'Build usage record unavailable: {error}', file=sys.stderr)
+        return subprocess.call(command, cwd=root, env=env)
+    result = None
+    try:
+        result = subprocess.call(command, cwd=root, env=env)
+        return result
+    finally:
+        finished_at = datetime.now(timezone.utc).isoformat()
+        try:
+            after = shutil.disk_usage(cache_root).free
+            command_kind = Path(command[0]).name
+            if command_kind == 'cargo' and len(command) > 1 and command[1] in \
+                    {'build', 'check', 'clean', 'run', 'test'}:
+                command_kind += ' ' + command[1]
+            record = {'schema': 1, 'started_at': started_at, 'finished_at': finished_at,
+                      'elapsed_ms': round((time.monotonic() - started) * 1000),
+                      'pid': os.getpid(), 'target_dir': env['CARGO_TARGET_DIR'],
+                      'command': command_kind, 'exit_code': result,
+                      'free_before_bytes': before, 'free_after_bytes': after}
+            line = (json.dumps(record, sort_keys=True) + '\n').encode()
+            fd = os.open(cache_root / '.zork-build-usage.jsonl', os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                os.write(fd, line)
+            finally:
+                os.close(fd)
+        except OSError as error:
+            print(f'Build usage record unavailable: {error}', file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--shell', action='store_true', help='Print quoted exports for eval')
@@ -145,7 +193,7 @@ def main():
             command = command[1:]
         if not command:
             parser.error('provide a command or --shell/--json')
-        raise SystemExit(subprocess.call(command, cwd=ROOT, env=env))
+        raise SystemExit(run_measured(command, env))
 
 
 if __name__ == '__main__':

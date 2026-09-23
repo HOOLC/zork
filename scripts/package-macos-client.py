@@ -39,8 +39,9 @@ def copy_binary(source, destination):
 
 def app_info(version, prefix='ing.zork', channel='release'):
     name = 'Zork Dev' if channel == 'dev' else 'Zork'
+    icon = 'ZorkDev.icns' if channel == 'dev' else 'Zork.icns'
     return {'CFBundleIdentifier': prefix + '.desktop', 'CFBundleName': name,
-            'CFBundleDisplayName': name, 'CFBundleIconFile': 'Zork.icns',
+            'CFBundleDisplayName': name, 'CFBundleIconFile': icon,
             'CFBundleExecutable': 'zork-gui', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': version, 'CFBundleVersion': version,
             'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
@@ -120,7 +121,8 @@ def build_app(args, repo, app):
     version=json.loads((repo/'packages/zork/package.json').read_text())['version']
     mac=app/'Contents/MacOS';resources=app/'Contents/Resources'
     mac.mkdir(parents=True);resources.mkdir()
-    shutil.copyfile(repo/'crates/zork-ui/assets/app/Zork.icns',resources/'Zork.icns')
+    icon = app_info(version, prefix, channel)['CFBundleIconFile']
+    shutil.copyfile(repo/'crates/zork-ui/assets/app'/icon,resources/icon)
     (resources/'licenses').mkdir()
     shutil.copyfile(repo/'crates/zork-mesh/LICENSE.synchronicity',resources/'licenses/Synchronicity.txt')
     shutil.copyfile(repo/'crates/zork-ui/LICENSE.qrcode',resources/'licenses/QRCode.txt')

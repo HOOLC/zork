@@ -3,15 +3,13 @@ use zork_ui::components::message::MessageDocument;
 #[derive(Default)]
 pub struct MessageRenderDocument {
     pub(crate) interaction: std::cell::RefCell<Option<Box<super::interaction::Rendered>>>,
-    preview: std::cell::OnceCell<MessageDocument>,
-    full: std::cell::OnceCell<MessageDocument>,
+    document: std::cell::OnceCell<MessageDocument>,
     files: std::cell::OnceCell<std::sync::Arc<Vec<zork_client_core::files::FileRef>>>,
-    pub expanded: std::cell::Cell<bool>,
 }
 impl std::ops::Deref for MessageRenderDocument {
     type Target = std::cell::OnceCell<MessageDocument>;
     fn deref(&self) -> &Self::Target {
-        &self.preview
+        &self.document
     }
 }
 impl MessageRenderDocument {
@@ -40,12 +38,8 @@ impl MessageRenderDocument {
         })
     }
     pub fn document(&self, role: &crate::api::Role, content: &str) -> &MessageDocument {
-        if self.expanded.get() {
-            self.full.get_or_init(|| message_document(role, content))
-        } else {
-            self.preview
-                .get_or_init(|| message_preview_document(role, content))
-        }
+        self.document
+            .get_or_init(|| message_document(role, content))
     }
 }
 
@@ -56,33 +50,6 @@ pub fn message_document(role: &crate::api::Role, content: &str) -> MessageDocume
         crate::api::Role::User => MessageDocument::plain(&text),
         crate::api::Role::Assistant => MessageDocument::parse(&text),
     }
-}
-
-/// Bound source work before Markdown parsing, including single enormous lines.
-/// The layout component applies the exact physical-height limit afterwards.
-pub fn message_preview_document(role: &crate::api::Role, content: &str) -> MessageDocument {
-    let body = zork_client_core::files::decode(content).map(|(text, _)| text);
-    let text = crate::comments::display_text(body.as_deref().unwrap_or(content));
-    let mut lines = 0;
-    let end = text
-        .char_indices()
-        .enumerate()
-        .find_map(|(count, (offset, ch))| {
-            if count >= 4096 || lines >= 64 {
-                return Some(offset);
-            }
-            if ch == '\n' {
-                lines += 1;
-            }
-            None
-        })
-        .unwrap_or(text.len());
-    let preview = &text[..end];
-    match role {
-        crate::api::Role::User => MessageDocument::plain(preview),
-        crate::api::Role::Assistant => MessageDocument::parse(preview),
-    }
-    .with_truncated(end < text.len())
 }
 
 /// Documents follow the core's ordered edits. Normal delivery never scans or
@@ -221,6 +188,14 @@ mod transcript_cache_tests {
         assert!(!assistant.plain_text().contains("**"));
         assert!(!assistant.plain_text().contains("```"));
         assert!(assistant.plain_text().contains("中文🐈"));
+    }
+    #[test]
+    fn long_message_document_keeps_the_ending() {
+        let source = format!("{}END-OF-MESSAGE", "line\n".repeat(100));
+        let cached = MessageRenderDocument::default();
+        let document = cached.document(&Role::Assistant, &source);
+        assert!(document.plain_text().ends_with("END-OF-MESSAGE"));
+        assert!(!document.is_truncated());
     }
     #[test]
     fn scrolling_reuses_parsing_and_history_changes_keep_the_right_document() {

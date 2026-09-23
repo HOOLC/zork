@@ -906,9 +906,9 @@ impl Render for PrimitiveStory {
                     .into_any_element()
                 } else {
                     if state == "leader" {
-                        leader.card()
+                        leader.card(window)
                     } else {
-                        task.card()
+                        task.card(window)
                     }
                     .into_any_element()
                 }

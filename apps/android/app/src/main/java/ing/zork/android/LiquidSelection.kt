@@ -42,7 +42,7 @@ internal fun LiquidChoiceField(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
         Box {
-            LiquidSelectTrigger(text, label, Modifier.fillMaxWidth().onSizeChanged {
+            LiquidSelectTrigger(text, label, Modifier.onSizeChanged {
                 width = with(density) { it.width.toDp() }
             }, enabled && options.isNotEmpty(), expanded = expanded, onClick = { expanded = !expanded })
             PlainMenu(label, expanded, { expanded = false }, width) {

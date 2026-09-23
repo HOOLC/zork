@@ -1,16 +1,8 @@
 //! Complete transcript message row shared by the application and Playground.
-use super::{
-    liquid::overlay::SourceBinding, message::MessageDocument, selection::SelectionContext,
-};
-use crate::{
-    automation::{AutomationElementExt, AutomationRole},
-    design::ZORK_UI,
-};
+use super::{message::MessageDocument, selection::SelectionContext};
+use crate::design::ZORK_UI;
 use gpui::{prelude::*, *};
-const TEXT: u32 = ZORK_UI.palette.text;
 const DIM: u32 = ZORK_UI.palette.muted;
-const BORDER: u32 = ZORK_UI.palette.border;
-const BG: u32 = ZORK_UI.palette.canvas;
 
 pub struct Row<'a> {
     pub index: usize,
@@ -18,32 +10,19 @@ pub struct Row<'a> {
     pub document: &'a MessageDocument,
     pub content_width: f32,
     pub selection: Option<&'a SelectionContext>,
-    pub preview_limit: f32,
-    pub expanded: bool,
-    pub text: crate::resources::Text,
-    pub reader_source: SourceBinding,
     pub author_name: Option<String>,
     pub device: Option<String>,
     pub model: Option<String>,
     pub time: Option<String>,
 }
 impl Row<'_> {
-    pub fn render(
-        self,
-        window: &mut Window,
-        on_expand: impl Fn(&mut Window, &mut App) + 'static,
-        on_read: impl Fn(&mut Window, &mut App) + 'static,
-    ) -> AnyElement {
+    pub fn render(self, window: &mut Window) -> AnyElement {
         let Self {
             index,
             user,
             document,
             content_width,
             selection,
-            preview_limit,
-            expanded,
-            text,
-            reader_source,
             author_name,
             device,
             model,
@@ -62,15 +41,8 @@ impl Row<'_> {
                 window,
             );
             // Retain rounding slack so fractional glyph advances do not orphan punctuation.
-            let footer_width = if document.is_truncated()
-                || document.shared_plain_text().lines().count() as f32 * 20. > preview_limit
-            {
-                220_f32.min(max_width)
-            } else {
-                40.
-            };
             (measured.ceil() + 2. * ZORK_UI.thread.user_padding_x + 2.).clamp(
-                footer_width,
+                40.,
                 (content_width - ZORK_UI.thread.user_left_clearance)
                     .min(ZORK_UI.thread.user_max_width)
                     .max(40.),
@@ -86,88 +58,6 @@ impl Row<'_> {
             )
         } else {
             crate::components::message::render_document(&format!("message-{index}"), document)
-        };
-        let width = if user {
-            bubble_width - 2. * ZORK_UI.thread.user_padding_x
-        } else {
-            content_width
-        };
-        let expand_label = text.text(if expanded {
-            "message_collapse"
-        } else {
-            "message_expand"
-        });
-        let footer = div()
-            .w_full()
-            .min_h(px(46.))
-            .border_t(gpui::px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(BORDER))
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_2()
-            .when(width < 190., |v| v.flex_col().items_start())
-            .child(
-                div()
-                    .id(format!("message-expand-{index}"))
-                    .min_h(px(44.))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .cursor_pointer()
-                    .text_size(px(12.))
-                    .text_color(rgb(DIM))
-                    .child(expand_label.clone())
-                    .on_click(move |_, window, cx| {
-                        on_expand(window, cx);
-                    })
-                    .automation(AutomationRole::Button, expand_label),
-            )
-            .child(
-                div()
-                    .id(format!("message-full-{index}"))
-                    .min_h(px(44.))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .cursor_pointer()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(TEXT))
-                    .child(text.text("message_view_full"))
-                    .child(
-                        svg()
-                            .path("icons/open.svg")
-                            .size(px(14.))
-                            .text_color(rgb(TEXT)),
-                    )
-                    .on_click(move |_, window, cx| {
-                        on_read(window, cx);
-                    })
-                    .map(|button| {
-                        reader_source.bind(
-                            button,
-                            text.text("message_view_full"),
-                            crate::controls::ActionStyle {
-                                quiet: true,
-                                icon: Some("icons/open.svg"),
-                                ..Default::default()
-                            },
-                        )
-                    })
-                    .automation(AutomationRole::Button, text.text("message_view_full")),
-            )
-            .into_any_element();
-        let prose = crate::components::message_preview::MessagePreview {
-            lines: None,
-            body: prose,
-            footer,
-            width: width.max(1.),
-            limit: preview_limit,
-            more: document.is_truncated(),
-            expanded,
-            fade: true,
-            background: rgb(if user { ZORK_UI.thread.user_fill } else { BG }).into(),
         };
         match user {
             true => transcript_row()

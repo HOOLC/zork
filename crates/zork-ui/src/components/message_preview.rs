@@ -1,4 +1,4 @@
-//! A bounded, selectable excerpt with an integrated full-message link.
+//! A bounded, selectable excerpt for long history output.
 //! Measure the bounded source once per layout, before choosing the footer, so
 //! the first painted frame already has its final height.
 use gpui::{

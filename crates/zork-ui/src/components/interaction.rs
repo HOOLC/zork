@@ -1,6 +1,6 @@
 //! Presentation-only interaction card. Business actions, validation and outcome
 //! state arrive from core; the entity owns only unsubmitted field buffers.
-use super::text_input::ComposerInput;
+use super::text_input::{ComposerInput, ComposerLayoutChanged};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls,
@@ -138,6 +138,10 @@ impl InteractionCard {
                         }
                     })
                 });
+                if fresh {
+                    cx.subscribe(input, |_, _, _: &ComposerLayoutChanged, cx| cx.notify())
+                        .detach();
+                }
                 if fresh || reset {
                     input.update(cx, |input, cx| input.set_value(field.value.to_string(), cx));
                 }
@@ -394,8 +398,11 @@ impl Render for InteractionCard {
                 )
             } else {
                 let input = self.inputs[&field.id].clone();
+                let content_height = input.read(cx).content_height().unwrap_or(20.);
                 controls::input_control(id, &input, field.error.is_some(), cx)
-                    .when(field.kind == FieldKind::Multiline, |field| field.h(px(96.)))
+                    .when(field.kind == FieldKind::Multiline, |field| {
+                        field.h(px(content_height.min(200.) + 10.))
+                    })
                     .automation(AutomationRole::TextInput, field.label.clone())
                     .into_any_element()
             };

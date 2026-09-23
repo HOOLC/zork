@@ -1,5 +1,4 @@
-//! Per-conversation presentation: one-shot arrivals, interruptible tail motion,
-//! and full messages hosted in a centered reading dialog.
+//! Per-conversation presentation: one-shot arrivals and interruptible tail motion.
 use super::*;
 use std::time::Instant;
 
@@ -14,6 +13,7 @@ impl RootView {
     pub(super) fn track_message_arrivals(
         &mut self,
         arrivals: &zork_client_core::state::MessageArrivals,
+        following: bool,
         cx: &mut Context<Self>,
     ) {
         let now = Instant::now();
@@ -26,18 +26,18 @@ impl RootView {
         for id in &arrivals.ids {
             self.message_motion.arrivals.insert(id.clone(), now);
         }
-        // Following means: actually following, mid-animation, at the scrollbar end,
-        // or sitting on the last message's header (our new tail target for tall messages).
-        let is_at_end = self.transcript_list.is_scrolled_to_end().unwrap_or(false);
-        let is_on_last_header = !self.lines.is_empty()
-            && self.transcript_list.logical_scroll_top().item_ix
-                == self.lines.len().saturating_sub(1);
-        let following = self.transcript_list.is_following_tail()
-            || self.message_motion.scroll.is_some()
-            || is_at_end
-            || is_on_last_header;
         if following {
-            self.animate_message_tail(cx);
+            let target = arrivals
+                .ids
+                .iter()
+                .filter_map(|id| self.transcript_lookup.index_of(id))
+                .min()
+                .unwrap_or_else(|| {
+                    self.lines.len().saturating_sub(
+                        usize::try_from(arrivals.count).unwrap_or(usize::MAX).max(1),
+                    )
+                });
+            self.animate_message_tail(Some(target), cx);
         } else {
             self.message_motion.unread = self
                 .message_motion
@@ -46,42 +46,36 @@ impl RootView {
         }
     }
 
-    pub(super) fn animate_message_tail(&mut self, cx: &mut Context<Self>) {
-        if std::mem::take(&mut self.message_motion.unread) > 0 {
+    pub(super) fn animate_message_tail(&mut self, target: Option<usize>, cx: &mut Context<Self>) {
+        let unread = std::mem::take(&mut self.message_motion.unread);
+        if unread > 0 {
             zork_ui::components::region::invalidate(cx, &["composer"]);
         }
-        // Determine the first newly arrived message so we can scroll its
-        // header into view instead of only bringing the absolute bottom
-        // into view (which clips tall headers).
-        let first_new = self
-            .lines
-            .len()
-            .saturating_sub(self.message_motion.arrivals.len().max(1));
+        let first_new = target.unwrap_or_else(|| self.lines.len().saturating_sub(unread.max(1)));
         let target_offset = gpui::ListOffset {
             item_ix: first_new.min(self.lines.len().saturating_sub(1)),
             offset_in_item: px(0.),
         };
+        self.message_motion.scroll.take();
         if cx.reduce_motion() {
-            // Reduce-motion: immediate jump to the new message's header.
-            // For small messages header==bottom, this matches classic Tail; for tall
-            // messages it keeps the header visible without animation.
+            // Stay in normal mode so a newly inserted tall row cannot restore
+            // tail mode from its still-estimated height and jump to the bottom.
             self.transcript_list.set_follow_mode(FollowMode::Normal);
             self.transcript_list.scroll_to(target_offset);
-            let target_y = -self
-                .transcript_list
-                .scroll_px_offset_for_scrollbar()
-                .y
-                .as_f32();
-            let max_y = self.transcript_list.max_offset_for_scrollbar().y.as_f32();
-            if target_y >= max_y - 1. {
-                // Small message: restore Tail semantics so is_following_tail stays true
-                self.transcript_list.set_follow_mode(FollowMode::Tail);
-                self.transcript_list.scroll_to_end();
-            }
+            self.message_motion.scroll = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(Duration::from_millis(32))
+                    .await;
+                let _ = this.update(cx, |v, cx| {
+                    if v.transcript_list.is_scrolled_to_end().unwrap_or(false) {
+                        v.transcript_list.set_follow_mode(FollowMode::Tail);
+                        v.transcript_list.scroll_to_end();
+                    }
+                    v.message_motion.scroll = None;
+                    zork_ui::components::region::invalidate(cx, &["transcript"]);
+                });
+            }));
             zork_ui::components::region::invalidate(cx, &["transcript"]);
-            return;
-        }
-        if self.message_motion.scroll.is_some() {
             return;
         }
         let start = -self
@@ -118,21 +112,14 @@ impl RootView {
                         let next = start + (target - start).max(0.) * (1. - (1. - t).powi(3));
                         v.transcript_list.scroll_by(px((next - current).max(0.)));
                         if t >= 1. {
-                            let final_ix = v
-                                .lines
-                                .len()
-                                .saturating_sub(v.message_motion.arrivals.len().max(1))
-                                .min(v.lines.len().saturating_sub(1));
-                            let max_y = v.transcript_list.max_offset_for_scrollbar().y.as_f32();
-                            if target >= max_y - 1. {
+                            v.transcript_list.set_follow_mode(FollowMode::Normal);
+                            v.transcript_list.scroll_to(gpui::ListOffset {
+                                item_ix: first_new.min(v.lines.len().saturating_sub(1)),
+                                offset_in_item: px(0.),
+                            });
+                            if v.transcript_list.is_scrolled_to_end().unwrap_or(false) {
                                 v.transcript_list.set_follow_mode(FollowMode::Tail);
                                 v.transcript_list.scroll_to_end();
-                            } else {
-                                v.transcript_list.set_follow_mode(FollowMode::Normal);
-                                v.transcript_list.scroll_to(gpui::ListOffset {
-                                    item_ix: final_ix,
-                                    offset_in_item: px(0.),
-                                });
                             }
                             v.message_motion.scroll = None;
                         }
@@ -165,36 +152,5 @@ impl RootView {
                 }
             });
         });
-    }
-
-    pub(super) fn open_message_reader(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(TranscriptLine::Message {
-            role,
-            content,
-            metadata,
-        }) = self.lines.get(index)
-        else {
-            return;
-        };
-        let text = crate::comments::display_text(content);
-        let document = crate::components::message::message_document(role, content);
-        let source = crate::comments::CommentSource {
-            session_id: self.selected_session.clone().unwrap_or_default(),
-            message_id: metadata.id.clone(),
-            author: metadata.author_name.clone(),
-            author_agent_id: metadata.author_agent_id.clone(),
-            quote: String::new(),
-        };
-        let links = self.message_link_handler(cx);
-        let title = self.locale.text("message_full_title").into();
-        let copy = self.locale.text("message_copy_full").into();
-        self.message_reader.update(cx, |reader, cx| {
-            reader.configure(title, copy, links);
-            reader.open(
-                zork_ui::components::message_reader::Content::new(source, text, document),
-                cx,
-            );
-        });
-        zork_ui::components::region::invalidate_all(cx);
     }
 }

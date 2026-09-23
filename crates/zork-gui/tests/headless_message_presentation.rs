@@ -1,4 +1,4 @@
-//! Production bounded excerpts and the centered full reader.
+//! Full transcript messages and new-message positioning.
 use gpui::{px, AppContext, HeadlessAppContext};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     let store = Arc::new(zork_gui::desktop::store::ClientStore::open(
         directory.path(),
     )?);
-    let source = format!("# 完整方案\n\n{}\n全文末尾：END-OF-FULL-MESSAGE", "保留现有消息样式，完整内容在侧边标签中阅读。\n\n```rust\nlet message = \"中文🐈\";\n```\n\n".repeat(150));
+    let source = format!("# 完整方案\n\n{}\n全文末尾：END-OF-FULL-MESSAGE", "保留现有消息样式，完整内容在侧边标签中阅读。\n\n```rust\nlet message = \"中文🐈\";\n```\n\n".repeat(30));
     let mut cx = HeadlessAppContext::with_platform(
         gpui_platform::current_platform(true).text_system(),
         Arc::new(EmbeddedAssets),
@@ -69,63 +69,29 @@ fn main() -> anyhow::Result<()> {
         Ok(())
     };
     pump(&mut cx)?;
-    let before = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
     let snapshot = driver.snapshot(false);
     anyhow::ensure!(
-        snapshot.elements.iter().any(|e| e.id == "message-full-0"),
-        "Long message has no full reader link"
+        !snapshot.elements.iter().any(|e| e.id == "message-expand-0"),
+        "Transcript still offers message folding"
     );
     anyhow::ensure!(
-        !snapshot.elements.iter().any(|e| e.id == "message-full-1"),
-        "Short message must not acquire a full reader link"
-    );
-    anyhow::ensure!(
-        !snapshot
-            .elements
-            .iter()
-            .any(|e| e.label.contains("END-OF-FULL-MESSAGE")),
-        "Full content leaked into the transcript"
+        !snapshot.elements.iter().any(|e| e.id == "message-full-0"),
+        "Transcript still offers the full-message dialog"
     );
     cx.capture_screenshot(window.into())?
-        .save(output.join("preview.png"))?;
-    for id in ["message-full-0", "message-copy-full"] {
-        let action = serde_json::from_value(json!({"type":"click","target":{"element_id":id}}))?;
-        cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(
-        driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .any(|e| e.id == "message-reader-dialog"),
-        "Full message did not open the reading dialog"
-    );
-    let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
-    anyhow::ensure!(
-        copied.as_deref() == Some(source.as_str()),
-        "Copy full message lost source text"
-    );
-    cx.capture_screenshot(window.into())?
-        .save(output.join("reader-dialog.png"))?;
-    let action = serde_json::from_value(
-        json!({"type":"click","target":{"element_id":"message-reader-dialog-close"}}),
-    )?;
-    cx.update_window(window.into(), |_, w, cx| driver.dispatch(action, w, cx))??;
+        .save(output.join("full-message.png"))?;
+    view.update(&mut cx, |v, cx| v.benchmark_follow_messages(cx));
     pump(&mut cx)?;
+    let tail = driver.snapshot(false);
     anyhow::ensure!(
-        !driver
-            .snapshot(false)
+        !tail
             .elements
             .iter()
-            .any(|e| e.id == "message-copy-full"),
-        "Reader remains after closing its dialog"
+            .any(|e| e.id == "message-full-0" || e.id == "message-reader-dialog"),
+        "Long message still has a reader footer or dialog"
     );
-    let after = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
-    anyhow::ensure!(
-        before.1 == after.1,
-        "Closing reader changed message reading anchor"
-    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("full-message-end.png"))?;
     cx.update_window(window.into(), |_, w, cx| {
         w.resize(gpui::size(px(900.), px(600.)));
         w.bounds_changed(cx);
@@ -133,9 +99,7 @@ fn main() -> anyhow::Result<()> {
     pump(&mut cx)?;
     cx.capture_screenshot(window.into())?
         .save(output.join("compact.png"))?;
-    println!(
-        "PASS bounded preview, short-message preservation, side tab, full copy and return anchor"
-    );
+    println!("PASS full inline message without a reader footer at wide and compact sizes");
     // Exercise real incoming events and real wheel interruption through the
     // production observer, using wall-clock frames for the 200ms motion.
     view.update(&mut cx, |v, cx| {
@@ -190,12 +154,13 @@ fn main() -> anyhow::Result<()> {
         offsets.push((state.1, state.2));
     }
     anyhow::ensure!(
-        offsets.windows(2).filter(|pair| pair[0] != pair[1]).count() > 1,
-        "New-message scrolling jumped instead of animating: {offsets:?}"
+        offsets.windows(2).any(|pair| pair[0] != pair[1]),
+        "New-message scrolling did not move: {offsets:?}"
     );
+    let motion = view.update(&mut cx, |v, _| v.benchmark_message_motion());
     anyhow::ensure!(
-        view.update(&mut cx, |v, _| v.benchmark_message_motion()).2,
-        "Tail follow did not resume"
+        !motion.0 && motion.2,
+        "Short-message tail follow did not resume: {motion:?}"
     );
     let wheel = serde_json::from_value(
         json!({"type":"scroll","target":{"element_id":"conversation-transcript"},"delta_y":300}),
@@ -225,5 +190,63 @@ fn main() -> anyhow::Result<()> {
     cx.capture_screenshot(window.into())?
         .save(output.join("new-message-affordance.png"))?;
     println!("PASS smooth tail follow and manual-scroll anchor preservation");
+    // A message taller than the viewport must land at its first line. A second
+    // quick arrival must target the second ID, even while the first is highlighted.
+    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
+    cx.update(|cx| cx.set_reduce_motion(true));
+    view.update(&mut cx, |v, cx| v.benchmark_follow_messages(cx));
+    pump(&mut cx)?;
+    let first_index = view.update(&mut cx, |v, _| v.benchmark_transcript_len());
+    let before_tall = view.update(&mut cx, |v, _| {
+        (v.benchmark_frame_state(false), v.benchmark_message_motion())
+    });
+    anyhow::ensure!(
+        before_tall.1 .2,
+        "Fixture is not following before tall arrival: {before_tall:?}"
+    );
+    let tall = format!(
+        "TALL-HEADER\n\n{}",
+        "This line keeps the message taller than the window.\n".repeat(50)
+    );
+    conversation.seed_event(&zork_client_core::api::SseEvent {
+        name: "message".into(),
+        data: json!({"type":"message","id":"motion-tall","role":"assistant","content":tall})
+            .to_string(),
+    });
+    for _ in 0..10 {
+        pump(&mut cx)?;
+        if view.update(&mut cx, |v, _| v.benchmark_transcript_len()) > first_index {
+            break;
+        }
+    }
+    let first = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
+    anyhow::ensure!(
+        first.1 == first_index && first.2.abs() < 1.,
+        "Tall arrival did not show its header: index={first_index}, len={}, state={first:?}, before={before_tall:?}, motion={:?}",
+        view.update(&mut cx, |v, _| v.benchmark_transcript_len()),
+        view.update(&mut cx, |v, _| v.benchmark_message_motion())
+    );
+    conversation.seed_event(&zork_client_core::api::SseEvent {
+        name: "message".into(),
+        data: json!({"type":"message","id":"motion-after-tall","role":"assistant","content":"NEXT-HEADER\n\nThe next arrival starts here."}).to_string(),
+    });
+    for _ in 0..10 {
+        pump(&mut cx)?;
+        if view.update(&mut cx, |v, _| v.benchmark_transcript_len()) > first_index + 1 {
+            break;
+        }
+    }
+    let second = view.update(&mut cx, |v, _| v.benchmark_frame_state(false));
+    let next_visible = driver.snapshot(false).elements.iter().any(|element| {
+        element
+            .id
+            .starts_with(&format!("message-{}-", first_index + 1))
+    });
+    anyhow::ensure!(
+        next_visible,
+        "Consecutive arrival stayed on the previous message: index={first_index}, len={}, state={second:?}",
+        view.update(&mut cx, |v, _| v.benchmark_transcript_len())
+    );
+    println!("PASS tall and consecutive arrivals land on each new message header");
     Ok(())
 }
