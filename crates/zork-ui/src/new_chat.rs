@@ -94,6 +94,9 @@ impl Page {
             self.picker_open = false;
             self.device_menu = false;
         }
+        if data.device.options.len() <= 1 {
+            self.device_menu = false;
+        }
         self.input.update(cx, |input, cx| {
             // Rendering can precede delivery of ComposerEdited. Keep a local
             // edit until core echoes it; a frozen submission remains authoritative.
@@ -226,10 +229,18 @@ impl Render for Page {
             },
             ..Default::default()
         };
+        let selected_thinking = match self.data.thinking.value.as_str() {
+            "off" | "low" | "medium" | "high" | "minimal" | "xhigh" | "max" => Some(format!(
+                "{} · {}",
+                self.text.text("new_chat_thinking_short"),
+                self.thinking_label(&self.data.thinking.value)
+            )),
+            _ => None,
+        };
         let trigger = self.picker.trigger(
             "new-chat-options",
-            self.text.text("new_chat_choose_intensity"),
-            130.,
+            selected_thinking.unwrap_or_else(|| self.text.text("new_chat_choose_intensity")),
+            152.,
             self.picker_open,
             self.data.editable,
             cx,
@@ -284,7 +295,8 @@ impl Render for Page {
             window,
             cx,
         );
-        let device = self.device_selector(window, cx);
+        let has_device_selector = self.data.device.options.len() > 1;
+        let device = has_device_selector.then(|| self.device_selector(window, cx));
         let popup_width = 272_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let content = if self.picker_open || self.picker.alive() {
             self.picker_content(popup_width, window, cx)
@@ -396,27 +408,29 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .child(
-                crate::components::liquid::primitives::surface(
-                    "new-chat-context",
-                    16.,
-                    ZORK_UI.palette.sidebar_hover,
-                    false,
+            .when_some(device, |v, device| {
+                v.child(
+                    crate::components::liquid::primitives::surface(
+                        "new-chat-context",
+                        16.,
+                        ZORK_UI.palette.sidebar_hover,
+                        false,
+                    )
+                    .w(px((self.width - 24.).max(196.)))
+                    .px_3()
+                    .font_weight(FontWeight::NORMAL)
+                    .pt_2()
+                    .pb(px(16.))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(ui::icon("icons/node.svg", 14.))
+                    .child(device),
                 )
-                .w(px((self.width - 24.).max(196.)))
-                .px_3()
-                .font_weight(FontWeight::NORMAL)
-                .pt_2()
-                .pb(px(16.))
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(ui::icon("icons/node.svg", 14.))
-                .child(device),
-            )
+            })
             .child(
                 div()
-                    .mt(px(-8.))
+                    .mt(px(if has_device_selector { -8. } else { 0. }))
                     .w(px(self.width))
                     .h(px(height))
                     .child(composer),

@@ -162,9 +162,14 @@ def main():
         choose("story-scenario", "story-scenario-onboarding-ready-compact")
         wait(lambda: native.element("new-chat-welcome"), "first Chat greeting", timeout=10)
         assert not native.element("onboarding-finish")
+        assert not native.element("new-chat-context")
+        assert not native.element("new-chat-device")
+        options = native.element("new-chat-options")
+        assert options["label"] == "思考 · 高"
+        assert options["bounds"] == options["visible_bounds"]
         assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
         save("09-onboarding-new-chat")
-        checks.append("failure actions have breathing room and completion enters New Chat without a confirmation button")
+        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its current thinking level")
 
         choose("story-scenario", "story-scenario-onboarding-models-compact")
         click("onboarding-add-model")
