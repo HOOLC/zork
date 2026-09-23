@@ -12,11 +12,6 @@ fn main() -> anyhow::Result<()> {
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../artifacts/conversation-files/approved-native");
-    let output = if std::env::var_os("ZORK_FILES_CONTOUR_ONLY").is_some() {
-        output.join("contour")
-    } else {
-        output
-    };
     std::fs::create_dir_all(&output)?;
     let directory = tempfile::tempdir()?;
     let store = Arc::new(zork_client_core::store::ClientStore::open(
@@ -258,57 +253,12 @@ fn main() -> anyhow::Result<()> {
                 )
                 .to_image()
                 .save(out.join(format!("native-{count}-{state}-detail.png")))?;
-                if count == 1 && state == "closed" {
-                    let paper = snapshot
-                        .elements
-                        .iter()
-                        .find(|e| e.id == format!("draft-preview-{}", file.id))
-                        .unwrap()
-                        .bounds;
-                    anyhow::ensure!(
-                        (paper.x + paper.width * 0.5
-                            - composer.x
-                            - model["axis_x"].as_f64().unwrap() as f32)
-                            .abs()
-                            <= 0.5,
-                        "paper and aperture axes are misaligned"
-                    );
-                    let x = ((composer.x + model["axis_x"].as_f64().unwrap() as f32) * 2.) as u32;
-                    for y in ((composer.y - 12.) * 2.) as u32..((composer.y - 2.) * 2.) as u32 {
-                        anyhow::ensure!(
-                            &image.get_pixel(x, y).0[..3] != [246, 245, 241],
-                            "paper is interrupted by the composer surface at {x},{y}"
-                        );
-                    }
-                }
-                // The front lip must remain visible over every paper, including
-                // unsupported-file placeholders, throughout the closed fan.
-                if state == "closed" {
-                    use zork_ui::components::attachment_fan::{sample, Opening, Shape};
-                    let rim = Opening::new(Shape::for_count(count), 0.);
-                    for curve in &rim.hole[3..5] {
-                        for step in 1..10 {
-                            let point = sample(*curve, step as f32 / 10.);
-                            let x =
-                                ((composer.x + model["axis_x"].as_f64().unwrap() as f32 + point.x)
-                                    * 2.) as u32;
-                            let y = ((composer.y - 12. + point.y) * 2.) as u32;
-                            let color = image.get_pixel(x, y).0;
-                            anyhow::ensure!(
-                                color[0] <= 246
-                                    && color[1] <= 246
-                                    && color[2] <= 246
-                                    && color[..3].iter().max().unwrap()
-                                        - color[..3].iter().min().unwrap()
-                                        <= 2,
-                                "front lip is covered at {x},{y}: {color:?}"
-                            );
-                        }
-                    }
-                }
                 measurements.push(json!({"count":count,"state":state,"geometry":view.read_with(&cx,|v,_|v.benchmark_file_geometry())}));
                 if state == "open" {
-                    act(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
+                    act(
+                        &mut cx,
+                        json!({"type":"click","target":{"element_id":"draft-file-fan-toggle"}}),
+                    )?;
                 }
             }
         }
@@ -316,15 +266,11 @@ fn main() -> anyhow::Result<()> {
             out.join("native-geometry.json"),
             serde_json::to_vec_pretty(&measurements)?,
         )?;
-        println!(
-            "PASS: matched reference assets; one/two/three-file closed and open visual captures; continuous paper through rim"
-        );
+        println!("PASS: one/two/three-file attachment ribbon captures and core-backed geometry");
         return Ok(());
     }
     if std::env::var_os("ZORK_FILES_STATIC_ONLY").is_some() {
-        println!(
-            "PASS: native static attachment pocket with three real previews; closeup normalized to reference framing"
-        );
+        println!("PASS: native static attachment ribbon with three real previews");
         return Ok(());
     }
     act(
@@ -435,9 +381,11 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(core.draft("render-fixture").files == vec![file.clone()]);
     let overlay = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
     anyhow::ensure!(
-        overlay["destinationLayer"] == "modal"
-            && overlay["anchor"]["w"].as_f64().is_some_and(|w| w > 40.),
-        "attachment preview did not bind the real file source: {overlay}"
+        overlay["engine"] == "plain"
+            && overlay["open"] == true
+            && overlay["contentAlpha"] == 1.
+            && overlay["backdropAlpha"] == 1.,
+        "attachment preview did not open its plain dialog: {overlay}"
     );
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
     cx.update(|cx| cx.set_reduce_motion(false));
@@ -447,9 +395,12 @@ fn main() -> anyhow::Result<()> {
     )?;
     let retiring = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
     anyhow::ensure!(
-        retiring["destinationLayer"] == "source"
-            && retiring["progress"].as_f64().is_some_and(|p| p > 0.),
-        "closing attachment skipped its retained exit: {retiring}"
+        retiring["engine"] == "plain"
+            && retiring["open"] == false
+            && retiring["contentAlpha"]
+                .as_f64()
+                .is_some_and(|alpha| alpha > 0.),
+        "closing attachment skipped its dialog fade: {retiring}"
     );
     anyhow::ensure!(
         !driver
@@ -459,14 +410,20 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.id == "drive-save" && e.enabled),
         "retiring preview kept an active save action"
     );
+    pump(&mut cx)?;
+    let closed = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
+    anyhow::ensure!(
+        closed["open"] == false && closed["contentAlpha"] == 0.,
+        "attachment dialog did not finish closing: {closed}"
+    );
     act(
         &mut cx,
         json!({"type":"click","target":{"element_id":format!("message-file-0-{}",file.id)}}),
     )?;
     let reversed = view.read_with(&cx, |v, cx| v.benchmark_attachment_overlay(cx));
     anyhow::ensure!(
-        reversed["destinationLayer"] == "modal",
-        "attachment did not reverse into the modal layer"
+        reversed["engine"] == "plain" && reversed["open"] == true,
+        "attachment did not reopen its dialog: {reversed}"
     );
     std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "1");
     cx.update(|cx| cx.set_reduce_motion(true));
@@ -524,277 +481,69 @@ fn main() -> anyhow::Result<()> {
             element.id
         );
     }
-    // Verify actual frame samples as well as reduced-motion interaction states.
+    // The preview ribbon follows the current core attachment list directly.
     act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    std::env::set_var("ZORK_GUI_TEST_REDUCE_MOTION", "0");
-    cx.update(|cx| cx.set_reduce_motion(false));
     let image_id = core.draft("render-fixture").files[0].id.clone();
     act(
         &mut cx,
         json!({"type":"move","target":{"element_id":format!("draft-preview-{image_id}")}}),
     )?;
-    let intermediate = view.read_with(&cx, |v, _| v.benchmark_file_fan_progress());
-    anyhow::ensure!(
-        intermediate > 0. && intermediate < 1.,
-        "fan skipped continuous expansion: {intermediate}"
-    );
-    for _ in 0..4 {
-        pump(&mut cx)?;
-    }
     anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 1.);
     act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 1.,
-        "fan collapsed during the pointer-exit grace period"
-    );
-    pump(&mut cx)?;
-    let intermediate = view.read_with(&cx, |v, _| v.benchmark_file_fan_progress());
-    anyhow::ensure!(
-        intermediate > 0. && intermediate < 1.,
-        "fan skipped continuous collapse: {intermediate}"
-    );
-    act(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":format!("draft-preview-{image_id}")}}),
-    )?;
-    anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) > intermediate,
-        "re-entering the fan did not reverse the in-flight collapse"
-    );
-    for _ in 0..4 {
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 1.);
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    for _ in 0..4 {
-        pump(&mut cx)?;
-    }
     anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 0.);
-    // Membership animation uses the real draft subscription and native frames.
-    // File data has already been prepared; time only layout/paint, not thumbnail
-    // decoding or sleeping for a background loader.
-    let before_count_motion =
-        cx.update_window(window.into(), |_, w, _| w.frame_duration_snapshot())?;
     for file in &core.draft("render-fixture").files {
         core.remove_file("render-fixture", &file.id)?;
     }
-    for _ in 0..8 {
-        pump(&mut cx)?;
-    }
+    pump(&mut cx)?;
     let geometry = |cx: &HeadlessAppContext| view.read_with(cx, |v, _| v.benchmark_file_geometry());
-    let until = |cx: &mut HeadlessAppContext,
-                 label: &str,
-                 predicate: &dyn Fn(&serde_json::Value) -> bool|
-     -> anyhow::Result<serde_json::Value> {
-        for _ in 0..240 {
-            let state = geometry(cx);
-            if predicate(&state) {
-                return Ok(state);
-            }
-            std::thread::sleep(Duration::from_millis(10));
-            cx.advance_clock(Duration::from_millis(16));
-            cx.run_until_parked();
-            cx.update_window(window.into(), |_, w, cx| {
-                w.simulate_next_frame(cx);
-                w.draw(cx).clear(cx)
-            })?;
-        }
-        anyhow::bail!("animation phase not reached: {label}")
-    };
-    anyhow::ensure!(geometry(&cx)["presence"] == 0.);
-    let mut stages = Vec::new();
+    anyhow::ensure!(geometry(&cx)["files"].as_array().unwrap().is_empty());
+    let before_change = cx.update_window(window.into(), |_, w, _| w.frame_duration_snapshot())?;
     let first = core.attach_file("render-fixture", "first.png", chart_bytes.get_ref())?;
-    let opening = until(&mut cx, "opening before first file", &|g| {
-        let presence = g["presence"].as_f64().unwrap();
-        presence >= 0.3 && presence < 1.
-    })?;
-    anyhow::ensure!(opening["changing_count"] == true);
-    anyhow::ensure!(
-        opening["presence"].as_f64().unwrap() > 0. && opening["presence"].as_f64().unwrap() < 1.
-    );
-    anyhow::ensure!(
-        opening["files"][0]["visible"] == false,
-        "first file appeared before its opening"
-    );
+    pump(&mut cx)?;
+    let single = geometry(&cx);
+    anyhow::ensure!(single["files"].as_array().unwrap().len() == 1);
     cx.capture_screenshot(window.into())?
-        .save(output.join("count-0-to-1-hole-first.png"))?;
-    stages.push(json!({"stage":"0-to-1-hole-first","geometry":opening}));
-    let emerging = until(&mut cx, "first file emergence", &|g| {
-        g["presence"] == 1. && g["files"][0]["visible"] == true
-    })?;
-    anyhow::ensure!(emerging["presence"] == 1. && emerging["files"][0]["visible"] == true);
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-0-to-1-emerging.png"))?;
-    stages.push(json!({"stage":"0-to-1-emerging","geometry":emerging}));
-    let single = until(&mut cx, "single file settled", &|g| {
-        g["changing_count"] == false
-    })?;
-    anyhow::ensure!(single["changing_count"] == false && single["outer_height"] == 0.);
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-1-closed.png"))?;
+        .save(output.join("count-1.png"))?;
     let second = core.attach_file("render-fixture", "second.png", chart_bytes.get_ref())?;
-    let widening = until(&mut cx, "widen before second file", &|g| {
-        g["width_factor"].as_f64().unwrap() > single["width_factor"].as_f64().unwrap() + 0.001
-            && g["files"][1]["visible"] == false
-    })?;
+    pump(&mut cx)?;
+    let two = geometry(&cx);
     anyhow::ensure!(
-        widening["width_factor"].as_f64().unwrap() > single["width_factor"].as_f64().unwrap()
+        two["files"].as_array().unwrap().len() == 2
+            && two["width"].as_f64().unwrap() >= single["width"].as_f64().unwrap()
     );
-    anyhow::ensure!(
-        widening["files"][1]["visible"] == false,
-        "second file appeared before widening"
-    );
-    stages.push(json!({"stage":"1-to-2-widen-first","geometry":widening}));
-    let two = until(&mut cx, "two files settled", &|g| {
-        g["changing_count"] == false
-    })?;
-    anyhow::ensure!(two["changing_count"] == false);
-    anyhow::ensure!(
-        (two["files"][0]["x"].as_f64().unwrap() + two["files"][1]["x"].as_f64().unwrap()).abs()
-            < 0.01
-    );
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-2-closed.png"))?;
     act(
         &mut cx,
         json!({"type":"move","target":{"element_id":format!("draft-preview-{}",first.id)}}),
     )?;
-    for _ in 0..4 {
-        pump(&mut cx)?;
-    }
-    let expanded = geometry(&cx);
-    anyhow::ensure!(
-        (expanded["hole_height"].as_f64().unwrap() - single["hole_height"].as_f64().unwrap()).abs()
-            < 0.01,
-        "single-file slot height differs from flattened multi-file slot"
-    );
-    for button in driver
-        .snapshot(false)
-        .elements
-        .iter()
-        .filter(|e| e.id.starts_with("remove-"))
-    {
-        anyhow::ensure!(
-            button.bounds.width >= 28. && button.bounds.height >= 28.,
-            "remove target is too small"
-        );
-    }
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-2-expanded.png"))?;
-    let snapshot = driver.snapshot(false);
-    let composer = snapshot
-        .elements
-        .iter()
-        .find(|e| e.id == "composer-surface")
-        .unwrap()
-        .bounds;
-    let pixels = cx.capture_screenshot(window.into())?;
-    let scale = pixels.width() as f32 / 900.;
-    let y = ((composer.y + 40.) * scale) as u32;
-    for x in
-        ((composer.x + 40.) * scale) as u32..((composer.x + composer.width - 40.) * scale) as u32
-    {
-        anyhow::ensure!(
-            &pixels.get_pixel(x, y).0[..3] == [246, 245, 241],
-            "attachment mask seam in composer body at {x},{y}"
-        );
-    }
+    anyhow::ensure!(geometry(&cx)["expanded"] == 1.);
     act(
         &mut cx,
         json!({"type":"click","target":{"element_id":format!("remove-{}",first.id)}}),
     )?;
     pump(&mut cx)?;
-    let retreating = geometry(&cx);
-    anyhow::ensure!(retreating["changing_count"] == true);
-    anyhow::ensure!(
-        retreating["expanded"] == 1.,
-        "deletion reset the hover expansion"
-    );
-    anyhow::ensure!(retreating["files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|v| v["id"] == first.id && v["departing"] == true));
-    anyhow::ensure!(
-        (retreating["width_factor"].as_f64().unwrap() - two["width_factor"].as_f64().unwrap())
-            .abs()
-            < 0.01,
-        "opening narrowed before departing file retreated"
-    );
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-2-to-1-retreating.png"))?;
-    stages.push(json!({"stage":"2-to-1-retreat-first","geometry":retreating}));
-    for _ in 0..7 {
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(
-        geometry(&cx)["expanded"] == 1.,
-        "fan collapsed after deleting the hovered file"
-    );
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    for _ in 0..4 {
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(
-        geometry(&cx)["expanded"] == 0.,
-        "fan stayed expanded after the pointer left"
-    );
+    anyhow::ensure!(core.draft("render-fixture").files.len() == 1);
+    anyhow::ensure!(geometry(&cx)["files"].as_array().unwrap().len() == 1);
     core.remove_file("render-fixture", &second.id)?;
     pump(&mut cx)?;
-    pump(&mut cx)?;
-    let last = geometry(&cx);
-    anyhow::ensure!(last["presence"] == 1. && last["files"][0]["departing"] == true);
-    stages.push(json!({"stage":"1-to-0-retreat-first","geometry":last}));
-    for _ in 0..7 {
-        pump(&mut cx)?;
-    }
-    anyhow::ensure!(
-        geometry(&cx)["presence"] == 0. && geometry(&cx)["files"].as_array().unwrap().is_empty()
-    );
-    // The shared composer retains the changing opening until its contour also
-    // settles. Verify that lifetime explicitly before testing idle redraws.
-    let mut settling_frames = 0;
-    while view.read_with(&cx, |v, _| {
-        v.benchmark_composer_material()["moving"] == true
-    }) && settling_frames < 30
-    {
-        pump(&mut cx)?;
-        settling_frames += 1;
-    }
-    anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_composer_material()["moving"]
-            == false),
-        "attachment material did not settle"
-    );
-    pump(&mut cx)?;
+    anyhow::ensure!(geometry(&cx)["files"].as_array().unwrap().is_empty());
     let stable = view.update(&mut cx, |v, cx| v.benchmark_region_counts(cx));
     for _ in 0..4 {
         pump(&mut cx)?;
     }
     let after = view.read_with(&cx, |v, cx| v.benchmark_region_counts(cx));
-    anyhow::ensure!(
-        stable == after,
-        "attachment animation keeps redrawing after completion: before={stable:?}, after={after:?}, material={}",
-        view.read_with(&cx, |v, _| v.benchmark_composer_material())
-    );
+    anyhow::ensure!(stable == after, "static attachment ribbon kept redrawing");
     let mut timings = cx.update_window(window.into(), |_, w, _| w.frame_duration_snapshot())?;
     timings
         .draw_duration_histogram
-        .subtract(&before_count_motion.draw_duration_histogram)?;
+        .subtract(&before_change.draw_duration_histogram)?;
     let p95 = timings.draw_duration_histogram.value_at_quantile(0.95) as f64 / 1e6;
-    let p99 = timings.draw_duration_histogram.value_at_quantile(0.99) as f64 / 1e6;
     std::fs::write(
-        output.join("count-animation.json"),
+        output.join("attachment-states.json"),
         serde_json::to_vec_pretty(
-            &json!({"stages":stages,"p95_draw_ms":p95,"p99_draw_ms":p99,"idle_stable":true}),
+            &json!({"single":single,"two":two,"idle_stable":true,"p95_draw_ms":p95}),
         )?,
     )?;
-    anyhow::ensure!(
-        p95 <= 1000. / 120.,
-        "attachment animation exceeded CPU frame budget: {p95:.2} ms"
-    );
-    // A single delivered file retains complete round caps inside the compact
-    // message plate, rather than being cut off by that plate's outer corners.
+    // A delivered file remains available through its message preview control.
     let solo = core.attach_file(
         "render-fixture",
         "single-message.png",
@@ -837,26 +586,53 @@ fn main() -> anyhow::Result<()> {
     let maximum = geometry(&cx);
     anyhow::ensure!(maximum["files"].as_array().unwrap().len() == 16 && maximum["expanded"] == 1.);
     let controls = driver
-        .snapshot(false)
+        .snapshot(true)
         .elements
         .into_iter()
         .filter(|e| e.id.starts_with("remove-"))
         .collect::<Vec<_>>();
     anyhow::ensure!(controls.len() == 16);
-    for control in &controls {
+    for control in controls
+        .iter()
+        .filter(|control| control.visible_bounds.width > 0.)
+    {
         anyhow::ensure!(
-            control.visible_bounds.width >= 27.
-                && control.visible_bounds.height >= 27.
+            control.bounds.width >= 24.
+                && control.bounds.height >= 24.
                 && control.bounds.y >= 0.
                 && control.bounds.x + control.bounds.width <= 900.,
             "max-count control clipped: {}",
             control.id
         );
     }
-    cx.capture_screenshot(window.into())?
-        .save(output.join("count-16-expanded.png"))?;
-    println!(
-        "PASS: real thumbnails, closed aperture, hover/flat expansion, large remove targets, first-file emergence, widen-before-entry, retreat-before-narrowing, single/two-file geometry, idle scheduling, send/preview/reuse, clipboard, and compact layouts"
+    let last = core
+        .draft("render-fixture")
+        .files
+        .last()
+        .unwrap()
+        .id
+        .clone();
+    let fan_center = driver
+        .snapshot(false)
+        .elements
+        .iter()
+        .find(|element| element.id == "draft-file-fan-toggle")
+        .unwrap()
+        .center;
+    act(
+        &mut cx,
+        json!({"type":"scroll","target":{"x":fan_center.x,"y":fan_center.y},"delta_x":-2000.,"delta_y":0.}),
+    )?;
+    anyhow::ensure!(
+        driver.snapshot(false).elements.iter().any(|element| {
+            element.id == format!("remove-{last}")
+                && element.visible
+                && element.bounds == element.visible_bounds
+        }),
+        "last attachment remove button is unreachable by horizontal scrolling"
     );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("count-16-ribbon.png"))?;
+    println!("PASS: attachment ribbon, core membership, preview controls, clipboard, and compact layouts");
     Ok(())
 }

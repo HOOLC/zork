@@ -16,7 +16,6 @@ pub struct ClientPreferences {
 pub enum ViewState {
     LastSession,
     Reading(String),
-    NavigationCollapsed,
     SidebarWidth,
 }
 impl ViewState {
@@ -27,7 +26,6 @@ impl ViewState {
                 crate::valid_session(id)?;
                 format!("reading:{id}")
             }
-            Self::NavigationCollapsed => "navigation-collapsed".into(),
             Self::SidebarWidth => "sidebar-width".into(),
         })
     }

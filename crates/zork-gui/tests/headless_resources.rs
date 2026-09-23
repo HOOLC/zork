@@ -1,4 +1,4 @@
-//! The actual resource views inside the existing settings/Agent layout contracts.
+//! The actual resource views inside the current settings layout.
 use gpui::{div, prelude::*, px, AppContext, HeadlessAppContext};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -481,7 +481,7 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
         let elements = driver.snapshot(false).elements;
         let panel = elements
             .iter()
-            .find(|e| e.id == "conversation-files-flyout-material-content")
+            .find(|e| e.id == "conversation-files-flyout")
             .unwrap();
         let close = elements
             .iter()
@@ -545,7 +545,7 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
             let composer_before = rect("composer-surface")?;
             click(&mut cx, "conversation-files-button")?;
             let after = geometry(&cx);
-            let panel = rect("conversation-files-flyout-material-content")?;
+            let panel = rect("conversation-files-flyout")?;
             let button = rect("conversation-files-button")?;
             let transcript = rect("conversation-transcript")?;
             let composer = rect("composer-surface")?;
@@ -703,10 +703,10 @@ fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {
             .save(output.join(format!("{label}-file-management.png")))?;
         click(&mut cx, &scrolled[0])?;
         anyhow::ensure!(
-            has("drive-close-preview"),
+            has("attachment-preview-dialog-close"),
             "file tab row did not open preview"
         );
-        click(&mut cx, "drive-close-preview")?;
+        click(&mut cx, "attachment-preview-dialog-close")?;
         anyhow::ensure!(
             file_rows().iter().map(|e| e.id.clone()).collect::<Vec<_>>() == scrolled,
             "closing preview lost file scroll position"

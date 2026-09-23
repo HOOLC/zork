@@ -143,13 +143,13 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
             }
         }
     }
-    LiquidRetained(state.takeIf { it.selectedId != null }) { shown, open, closed ->
+    ZorkRetained(state.takeIf { it.selectedId != null }) { shown, open, closed ->
         HistoryDetailSheet(shown, actions, open, closed)
     }
-    LiquidRetained(identity.takeIf { !status.revoked }) { person, open, closed ->
+    ZorkRetained(identity.takeIf { !status.revoked }) { person, open, closed ->
         HistoryIdentitySheet(person, { identity = null }, open, closed)
     }
-    LiquidRetained(state.overview?.profile.takeIf { profileOpen && !status.revoked }) { profile, open, closed ->
+    ZorkRetained(state.overview?.profile.takeIf { profileOpen && !status.revoked }) { profile, open, closed ->
         HistoryProfileSheet(profile, { profileOpen = false }, open, closed)
     }
     LaunchedEffect(status.revoked) { if (status.revoked) { identity = null; profileOpen = false } }

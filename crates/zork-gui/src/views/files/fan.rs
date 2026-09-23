@@ -2,7 +2,8 @@ use super::motion::{DraftFiles, Frame};
 use super::*;
 use std::cell::RefCell;
 use zork_client_core::files::FileRef;
-use zork_ui::components::attachment_fan::{self as geometry, Opening};
+
+const FRONT_ANGLE: usize = 48;
 
 #[derive(Clone, Copy, Default)]
 pub(in crate::views) struct FanState {
@@ -11,49 +12,20 @@ pub(in crate::views) struct FanState {
     pub active: Option<usize>,
     pub progress: f32,
     row: Option<usize>,
-    from: f32,
-    began: Option<std::time::Instant>,
-    leave_deadline: Option<std::time::Instant>,
 }
 impl FanState {
-    fn advance(&mut self, now: std::time::Instant, reduced: bool) -> bool {
-        if self.leave_deadline.is_some_and(|deadline| now >= deadline) {
-            self.leave_deadline = None;
-            self.from = self.progress;
-            self.began = Some(now);
-        }
-        let target = self.open() as u8 as f32;
-        if reduced {
-            self.progress = target;
-            self.began = None;
-            return false;
-        }
-        if let Some(began) = self.began {
-            let duration =
-                ((if target > 0. { 0.28 } else { 0.22 }) * (target - self.from).abs()).max(0.08);
-            let t = (now.duration_since(began).as_secs_f32() / duration).min(1.);
-            self.progress = self.from + (target - self.from) * (1. - (1. - t).powi(3));
-            if t == 1. {
-                self.began = None;
-            }
-        }
-        self.began.is_some() || self.leave_deadline.is_some()
+    fn advance(&mut self, _: std::time::Instant, _: bool) -> bool {
+        self.progress = if self.open() { 1. } else { 0. };
+        false
     }
-    fn transition(&mut self, now: std::time::Instant, reduced: bool) {
-        self.from = self.progress;
-        self.began = Some(now);
-        self.advance(now, reduced);
+    fn transition(&mut self, _: std::time::Instant, _: bool) {
+        self.progress = if self.open() { 1. } else { 0. };
     }
-    fn set_hover(&mut self, hover: bool, now: std::time::Instant, reduced: bool) {
+    fn set_hover(&mut self, hover: bool, _: std::time::Instant, _: bool) {
         self.hovered = hover;
-        self.leave_deadline = if !hover && !reduced {
-            Some(now + std::time::Duration::from_millis(120))
-        } else {
-            None
-        };
     }
     pub fn open(self) -> bool {
-        self.hovered || self.pinned || self.leave_deadline.is_some()
+        self.hovered || self.pinned
     }
 }
 
@@ -206,19 +178,12 @@ impl RootView {
     }
     pub(in crate::views) fn file_fan_center(&self) -> f32 {
         let frame = self.draft_file_frame();
-        let half = (frame.width * 0.5).max(72. * frame.shape.width);
+        let half = frame.width * 0.5;
         (self.composer_surface_width - half - 24.).max(half + 24.)
     }
     pub(in crate::views) fn file_fan_dimensions(&self) -> (f32, f32) {
         let frame = self.draft_file_frame();
         (frame.width, frame.height)
-    }
-    pub(in crate::views) fn draft_opening(&self) -> Option<Opening> {
-        let frame = self.draft_file_frame();
-        (!frame.files.is_empty()).then(|| {
-            Opening::new(frame.shape, frame.expanded)
-                .translated(gpui::point(self.file_fan_center(), 0.))
-        })
     }
     pub(in crate::views) fn ensure_file_previews(
         &mut self,
@@ -349,18 +314,11 @@ impl RootView {
             &frame
                 .files
                 .iter()
-                .map(|v| {
-                    (
-                        v.file.clone(),
-                        ((v.pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize,
-                    )
-                })
+                .map(|v| (v.file.clone(), FRONT_ANGLE))
                 .collect::<Vec<_>>(),
             cx,
         );
         let width = frame.width;
-        let below =
-            geometry::clip_below(&Opening::new(frame.shape, frame.expanded), frame.expanded);
         render(
             frame,
             self.file_ui.draft,
@@ -370,19 +328,15 @@ impl RootView {
             true,
             self.selected_session.clone().unwrap_or_default(),
             self.locale,
-            self.attachment_source(),
         )
         .absolute()
         .right(px(self.composer_surface_width
             - self.file_fan_center()
             - width * 0.5))
-        .bottom(px(
-            zork_ui::components::liquid_composer::TOP_EXTENSION - below
-        ))
+        .bottom(px(zork_ui::components::composer_layout::TOP_EXTENSION))
     }
     pub(in crate::views) fn close_draft_fan(&mut self, cx: &mut Context<Self>) {
         self.file_ui.draft.hovered = false;
-        self.file_ui.draft.leave_deadline = None;
         self.file_ui.draft.pinned = false;
         self.file_ui
             .draft
@@ -474,9 +428,8 @@ fn render(
     draft: bool,
     session: String,
     locale: Locale,
-    source: zork_ui::components::liquid::overlay::SourceBinding,
 ) -> gpui::Stateful<Div> {
-    use zork_ui::components::liquid::composer::fan as component;
+    use zork_ui::components::widgets::composer::fan as component;
     let files: HashMap<_, _> = frame
         .files
         .iter()
@@ -512,26 +465,16 @@ fn render(
         files: frame
             .files
             .iter()
-            .enumerate()
-            .map(|(i, visual)| component::File {
+            .map(|visual| component::File {
                 id: visual.file.id.clone(),
                 name: visual.file.name.clone(),
-                pose: visual.pose,
-                image: Some(cache.borrow_mut().image(
-                    &visual.file,
-                    ((visual.pose.angle + 12.) * 4.).round().clamp(0., 96.) as usize,
-                )),
-                visible: visual.visible,
-                departing: visual.departing,
-                active: state.active == Some(i),
-                removable: draft && open && state.progress > 0.98 && !visual.departing,
+                image: Some(cache.borrow_mut().image(&visual.file, FRONT_ANGLE)),
+                removable: draft && open && state.progress > 0.98,
             })
             .collect(),
         width: frame.width,
         height: frame.height,
-        opening: Opening::new(frame.shape, frame.expanded),
         expanded: frame.expanded,
-        rim: draft,
     };
     let handler = Rc::new(move |action, window: &mut Window, cx: &mut gpui::App| {
         let _ = root.update(cx, |v, cx| match action {
@@ -548,9 +491,6 @@ fn render(
                 }
             }
             component::Action::Open(id) => {
-                if draft && v.file_ui.draft_files.changing() {
-                    return;
-                }
                 if !open || (draft && !state.pinned) {
                     v.change_fan(message.clone(), None, true, cx);
                 } else if let Some(file) = files.get(&id) {
@@ -567,12 +507,11 @@ fn render(
             }
         });
     });
-    component::render_with_source(
+    component::render(
         ids,
         component_frame,
         locale.text("conversation_files").into(),
         locale.text("remove_attachment").into(),
         handler,
-        Some(source),
     )
 }

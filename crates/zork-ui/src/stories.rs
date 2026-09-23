@@ -52,16 +52,16 @@ fn click(id: &str) -> Value {
 }
 pub fn catalog() -> Vec<Story> {
     let mut items = vec![];
-    let mut liquid = Story::new(
-        "liquid",
-        "液态控件",
+    let mut components = Story::new(
+        "components",
+        "组件展示",
         "gallery",
-        "crates/zork-ui/src/liquid_story",
-        "liquid",
+        "crates/zork-ui/src/component_story",
+        "components",
     );
-    liquid.width = 1180.;
-    liquid.height = 900.;
-    items.push(liquid);
+    components.width = 1180.;
+    components.height = 900.;
+    items.push(components);
     for (family, title, states, source, reference) in [
         (
             "device-name",
@@ -148,13 +148,6 @@ pub fn catalog() -> Vec<Story> {
             "modal",
         ),
         (
-            "avatar-picker",
-            "头像选择",
-            &["selected", "disabled"][..],
-            "crates/zork-ui/src/controls.rs::avatar_picker",
-            "avatar-picker",
-        ),
-        (
             "history",
             "执行历史",
             &["collapsed", "expanded", "narrow", "empty", "error"][..],
@@ -186,7 +179,7 @@ pub fn catalog() -> Vec<Story> {
         ),
         (
             "avatar",
-            "Agent 头像",
+            "历史作者头像",
             &["24", "32", "40"][..],
             "crates/zork-ui/src/controls.rs::agent_avatar",
             "avatar",
@@ -239,8 +232,6 @@ pub fn catalog() -> Vec<Story> {
                 "focus",
                 "selected-focus",
                 "long",
-                "fold-open",
-                "fold-closed",
             ][..],
             "crates/zork-ui/src/navigation.rs::TabGroup",
             "navigation",
@@ -299,7 +290,7 @@ pub fn catalog() -> Vec<Story> {
             if family == "field" && *state == "error" {
                 story.target = "story-field-surface".into();
             }
-            if family == "navigation" && matches!(*state, "gap" | "fold-open" | "fold-closed") {
+            if family == "navigation" && *state == "gap" {
                 story.target = "story-component".into();
             }
             if family == "brand" {
@@ -384,7 +375,7 @@ impl PrimitiveStory {
 
     pub fn inspect(&self, cx: &gpui::App) -> Value {
         if let Some(extra) = &self.extra {
-            if let Ok(view) = extra.clone().downcast::<crate::liquid_story::Gallery>() {
+            if let Ok(view) = extra.clone().downcast::<crate::component_story::Gallery>() {
                 return view.read(cx).inspect(cx);
             }
         }
@@ -416,13 +407,9 @@ impl PrimitiveStory {
             _ => BrandMotion::Linked,
         };
         let brand = cx.new(|_| Brand::new(motion, ZORK_UI.palette.canvas));
-        let selected = if story.family == "avatar-picker" {
-            3
-        } else {
-            usize::from(matches!(story.state.as_str(), "on" | "disabled-on"))
-        };
-        let extra = if story.family == "liquid" {
-            Some(cx.new(crate::liquid_story::Gallery::new).into())
+        let selected = usize::from(matches!(story.state.as_str(), "on" | "disabled-on"));
+        let extra = if story.family == "components" {
+            Some(cx.new(crate::component_story::Gallery::new).into())
         } else if story.family == "interaction" {
             if story.state == "form" {
                 Some(cx.new(crate::form_story::FormStory::new).into())
@@ -487,7 +474,7 @@ impl PrimitiveStory {
 }
 impl Render for PrimitiveStory {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.story.family == "liquid" {
+        if self.story.family == "components" {
             return div()
                 .id(self.id("story-sample"))
                 .size_full()
@@ -681,13 +668,13 @@ impl Render for PrimitiveStory {
             .id(self.id("story-field-surface"))
             .automation(AutomationRole::Status, "输入框示例")
             .into_any_element(),
-            "choice" => crate::components::liquid::controls::deferred_segmented(
+            "choice" => crate::components::widgets::controls::deferred_segmented(
                 self.id("choice-active"),
                 ["订阅账号", "API 接入"]
                     .into_iter()
                     .enumerate()
                     .map(
-                        |(index, label)| crate::components::liquid::controls::Segment {
+                        |(index, label)| crate::components::widgets::controls::Segment {
                             id: self.id(&format!("story-choice-{index}")),
                             label: label.into(),
                             disabled: false,
@@ -696,7 +683,7 @@ impl Render for PrimitiveStory {
                     .collect(),
                 vec![],
                 Some(self.selected),
-                crate::components::liquid::controls::SegmentKind::Choice,
+                crate::components::widgets::controls::SegmentKind::Choice,
                 state != "disabled",
                 ZORK_UI.palette.canvas,
                 cx.listener(|v, index: &usize, _, cx| {
@@ -752,20 +739,6 @@ impl Render for PrimitiveStory {
                     cx.notify();
                 },
             ),
-            "avatar-picker" => ui::avatar_picker(
-                self.id("story-avatar"),
-                ui::AGENT_AVATARS[self.selected].0,
-                state != "disabled",
-                cx,
-                |v, key, cx| {
-                    v.selected = ui::AGENT_AVATARS
-                        .iter()
-                        .position(|a| a.0 == key)
-                        .unwrap_or(0);
-                    cx.notify();
-                },
-            )
-            .into_any_element(),
             "history" | "comments" => div()
                 .size_full()
                 .when_some(self.extra.clone(), |v, e| v.child(e))
@@ -1000,67 +973,6 @@ impl Render for PrimitiveStory {
                     .into_any_element()
             }
             "brand" => div().flex().child(self.brand.clone()).into_any_element(),
-            "navigation" if state.starts_with("fold-") => {
-                let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                let fold = crate::components::collapse::Collapse::new(
-                    self.id("navigation-fold"),
-                    state == "fold-open",
-                    240.,
-                    window,
-                    cx,
-                );
-                let focus = fold.header_focus(cx);
-                let interactive = fold.interactive(cx);
-                let body = fold.mounted(cx).then(|| {
-                    tabs.column()
-                        .pt(px(2.))
-                        .children((0..4).map(|i| {
-                            tabs.tab(self.id(&format!("fold-task-{i}")), i == 1)
-                                .tab_stop(interactive)
-                                .pl(px(30.))
-                                .child(format!("Task {}", i + 1))
-                                .automation(AutomationRole::Button, format!("Task {}", i + 1))
-                        }))
-                        .into_any_element()
-                });
-                let owner = cx.entity().downgrade();
-                tabs.surface(
-                    div()
-                        .w(px(240.))
-                        .flex()
-                        .flex_col()
-                        .child(
-                            tabs.tab(self.id("fold-header"), false)
-                                .track_focus(&focus)
-                                .child(ui::icon("icons/node.svg", 20.))
-                                .child("mini1")
-                                .on_click(cx.listener(|v, _, _, cx| {
-                                    v.story.state = if v.story.state == "fold-open" {
-                                        "fold-closed"
-                                    } else {
-                                        "fold-open"
-                                    }
-                                    .into();
-                                    cx.notify();
-                                }))
-                                .automation(AutomationRole::Button, "mini1"),
-                        )
-                        .child(fold.element(
-                            body,
-                            move |_, cx| {
-                                let _ = owner.update(cx, |_, cx| cx.notify());
-                            },
-                            cx,
-                        ))
-                        .child(
-                            tabs.tab(self.id("fold-following"), false)
-                                .child(ui::icon("icons/node.svg", 20.))
-                                .child("mini2")
-                                .automation(AutomationRole::Button, "mini2"),
-                        ),
-                )
-                .into_any_element()
-            }
             "navigation" if state == "gap" => {
                 let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
                 tabs.surface(
@@ -1362,7 +1274,7 @@ impl FamilyStories {
 }
 impl Render for FamilyStories {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        if self.family == "liquid" {
+        if self.family == "components" {
             return div()
                 .size_full()
                 .children(self.items.first().map(|(_, child)| child.clone()))
@@ -1396,7 +1308,6 @@ impl Render for FamilyStories {
             "tooltip" => 280.,
             "comments" => 380.,
             "attachment" => 220.,
-            "avatar-picker" => 160.,
             "dropdown" => 246.,
             "icons" => 580.,
             "markdown" => 232.,

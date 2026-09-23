@@ -50,13 +50,8 @@ impl Render for Story {
                 });
             }),
         );
-        let source = self.view.read(cx).source();
         wb::column(12.)
-            .child(
-                source
-                    .bind(button, "查看详情", ui::ActionStyle::default())
-                    .automation(AutomationRole::Button, "查看详情"),
-            )
+            .child(button.automation(AutomationRole::Button, "查看详情"))
             .child(self.view.clone())
     }
 }

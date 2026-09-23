@@ -126,7 +126,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
     var advancedOpen by remember(card.id) { mutableStateOf(false) }
     LaunchedEffect(card.editable) { if (!card.editable) advancedOpen = false }
     LaunchedEffect(card.fields.map { it.id }) { values.keys.retainAll(card.fields.map { it.id }.toSet()) }
-    LiquidCard(Modifier.fillMaxWidth().widthIn(max = 620.dp)) {
+    ZorkCard(Modifier.fillMaxWidth().widthIn(max = 620.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(card.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink)
@@ -147,7 +147,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
                         InteractionValue(if (field.kind == "multi_choice") choiceLabel(field, field.value) else field.options.find { it.first == field.value }?.second ?: field.value)
                     } else if (field.kind == "choice" || field.kind == "multi_choice") {
                         val multiple = field.kind == "multi_choice"
-                        LiquidChoiceField(field.label,
+                        ZorkChoiceField(field.label,
                             if (multiple) choiceLabel(field, draft) else field.options.find { it.first == draft }?.second ?: "请选择",
                             field.options, if (multiple) choiceValues(draft).toSet() else setOf(draft),
                             closeOnSelect = !multiple) { value ->
@@ -159,7 +159,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
                             values[field.id] = draft
                         }
                     } else {
-                        LiquidTextField(field.label, draft, { draft = it; values[field.id] = it },
+                        ZorkTextField(field.label, draft, { draft = it; values[field.id] = it },
                             modifier = Modifier.fillMaxWidth(), secret = field.sensitive,
                             singleLine = field.kind != "multiline" && field.kind != "json", minLines = if (field.kind == "multiline" || field.kind == "json") 3 else 1,
                             maxLines = if (field.kind == "multiline" || field.kind == "json") 5 else 1, error = field.error)
@@ -168,7 +168,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
                         field.error?.let { Text(it, color = ZorkColors.Danger, fontSize = 12.sp) }
                 }
             } }
-            if (card.fields.any { it.advanced }) LiquidButton(
+            if (card.fields.any { it.advanced }) ZorkButton(
                 interactionText(if (advancedOpen) "interaction_less_settings" else "interaction_more_settings"),
                 quiet = true, onClick = { advancedOpen = !advancedOpen })
             if (card.details.isNotEmpty()) {
@@ -181,7 +181,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
             card.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             card.actions.forEach { action ->
                 val click = { if (action.openUrl != null) uriHandler.openUri(action.openUrl) else activate(action.id, values.toMap()) }
-                LiquidButton(action.label, Modifier.fillMaxWidth(), primary = action.primary, quiet = !action.primary, onClick = click)
+                ZorkButton(action.label, Modifier.fillMaxWidth(), primary = action.primary, quiet = !action.primary, onClick = click)
             }
         }
     }
@@ -205,6 +205,6 @@ private fun InteractionValue(value: String) {
         if (expanded) Box(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
             Text(value, fontSize = 13.sp, color = ZorkColors.Ink)
         } else Text(value, maxLines = 6, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, color = ZorkColors.Ink)
-        if (long) LiquidButton(if (expanded) "收起" else "展开完整内容", quiet = true, onClick = { expanded = !expanded })
+        if (long) ZorkButton(if (expanded) "收起" else "展开完整内容", quiet = true, onClick = { expanded = !expanded })
     }
 }

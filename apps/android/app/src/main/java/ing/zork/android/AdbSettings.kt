@@ -65,11 +65,11 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
     LaunchedEffect(Unit) { actions.adbRefresh() }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            LiquidIconButton("返回设置", onClick = actions.back) {
+            ZorkIconButton("返回设置", onClick = actions.back) {
                 Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp))
             }
             Text("安卓调试", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            if (page?.optBoolean("show_details") == true) LiquidButton("详情", quiet = true, onClick = { overlay = "details" })
+            if (page?.optBoolean("show_details") == true) ZorkButton("详情", quiet = true, onClick = { overlay = "details" })
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp)) {
             if (page == null) {
@@ -113,7 +113,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
             }
         }
     }
-    LiquidRetained(help) { help, open, closed -> SettingsSheet(help.text("title").orEmpty(), busy = busy, error = error, dismiss = { overlay = null }, open = open, onClosed = closed) {
+    ZorkRetained(help) { help, open, closed -> SettingsSheet(help.text("title").orEmpty(), busy = busy, error = error, dismiss = { overlay = null }, open = open, onClosed = closed) {
         help.optJSONArray("paragraphs")?.let { paragraphs ->
             repeat(paragraphs.length()) { Text(paragraphs.getString(it), color = ZorkColors.Muted, fontSize = 15.sp, lineHeight = 24.sp) }
         }
@@ -121,13 +121,13 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
             Row(Modifier.fillMaxWidth().background(ZorkColors.Paper, SettingsStyle.Field).padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SelectionContainer(Modifier.weight(1f)) { Text(activationCommand, color = ZorkColors.Ink, fontSize = 13.sp, fontFamily = FontFamily.Monospace) }
-                LiquidIconButton("复制激活命令", onClick = { AdbPlatform.copyCommand(context, activationCommand) }) {
+                ZorkIconButton("复制激活命令", onClick = { AdbPlatform.copyCommand(context, activationCommand) }) {
                     Icon(painterResource(R.drawable.ic_copy), null, Modifier.size(18.dp))
                 }
             }
         }
         if (help.text("kind") == "activation") {
-            LiquidButton("使用了其他调试端口？", quiet = true, onClick = { advanced = !advanced }, enabled = !busy)
+            ZorkButton("使用了其他调试端口？", quiet = true, onClick = { advanced = !advanced }, enabled = !busy)
             if (advanced) {
                 SettingsField("手机调试端口", port, { port = it }, enabled = !busy)
                 AdbButton("保存端口", enabled = !busy) {
@@ -137,7 +137,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
         }
         help.text("note")?.let { Text(it, color = ZorkColors.Muted, fontSize = 13.sp) }
     } }
-    LiquidRetained(Unit.takeIf { details }) { _, open, closed -> SettingsSheet("调试详情", dismiss = { overlay = null }, open = open, onClosed = closed) {
+    ZorkRetained(Unit.takeIf { details }) { _, open, closed -> SettingsSheet("调试详情", dismiss = { overlay = null }, open = open, onClosed = closed) {
         stations.forEach { station ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
@@ -156,7 +156,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
 
 @Composable
 private fun AdbButton(label: String, primary: Boolean = false, enabled: Boolean = true, click: () -> Unit) {
-    LiquidButton(label, primary = primary, onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth())
+    ZorkButton(label, primary = primary, onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
@@ -171,7 +171,7 @@ private fun AdbStationRow(station: JSONObject, enabled: Boolean, help: () -> Uni
                 Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text(station.text("state_label").orEmpty(), color = adbTone(station.text("tone")), fontSize = 13.sp)
             }
-            if (station.optJSONObject("help") != null) LiquidButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
+            if (station.optJSONObject("help") != null) ZorkButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
         }
         HorizontalDivider(color = ZorkColors.Border)
     }

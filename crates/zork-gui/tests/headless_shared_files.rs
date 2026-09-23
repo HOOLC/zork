@@ -215,10 +215,10 @@ fn main() -> anyhow::Result<()> {
                     &mut cx,
                     json!({"type":"click","target":{"element_id":"shared-more"}}),
                 )?;
-                act(
-                    &mut cx,
-                    json!({"type":"click","target":{"element_id":"shared-menu-0-shared-sources"}}),
-                )?;
+                for _ in 0..4 {
+                    act(&mut cx, json!({"type":"key","keystroke":"down"}))?;
+                }
+                act(&mut cx, json!({"type":"key","keystroke":"right"}))?;
                 cx.capture_screenshot(window.into())?
                     .save(output.join(format!("{label}-sources.png")))?;
                 anyhow::ensure!(

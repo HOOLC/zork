@@ -53,15 +53,10 @@ impl RootView {
     }
     pub fn benchmark_file_geometry(&self) -> serde_json::Value {
         let frame = self.draft_file_frame();
-        let opening =
-            zork_ui::components::attachment_fan::Opening::new(frame.shape, frame.expanded);
         serde_json::json!({
             "composer_width":self.composer_surface_width,"axis_x":self.file_fan_center(),
-            "changing_count":frame.changing_count,"presence":frame.shape.presence,"width_factor":frame.shape.width,
-            "expanded":frame.expanded,"hole_height":opening.hole[3][3].y-opening.hole[0][0].y,
-            "hole_width":opening.hole[1][3].x-opening.hole[5][3].x,"outer_height":-opening.outer[1][0].y,
-            "files":frame.files.iter().map(|v|serde_json::json!({"id":v.file.id,"visible":v.visible,"departing":v.departing,
-                "x":v.pose.center.x,"y":v.pose.center.y,"width":v.pose.width,"height":v.pose.height,"angle":v.pose.angle})).collect::<Vec<_>>()
+            "expanded":frame.expanded,"width":frame.width,"height":frame.height,
+            "files":frame.files.iter().map(|v|serde_json::json!({"id":v.file.id})).collect::<Vec<_>>()
         })
     }
     pub fn benchmark_file_fan_state(&self) -> (bool, bool, usize) {
@@ -230,6 +225,7 @@ impl RootView {
         let (selection, locale) = view.navigation_selection();
         let mut directory = zork_client_core::state::DeviceData::default();
         directory.online = Some(true);
+        directory.sessions = view.sessions.clone();
         directory.agents = view.node_agents.clone();
         directory.tasks = view.tasks_by_leader.clone();
         let data = zork_client_core::state::NavigationData::project(&directory, Default::default());

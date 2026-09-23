@@ -48,25 +48,6 @@ pub fn install(cx: &mut gpui::App) {
             crate::i18n::Locale::ZhCn.text(key).into()
         })),
     ));
-    if cx
-        .try_global::<zork_ui::liquid_story::business::Catalog>()
-        .is_none()
-    {
-        zork_ui::liquid_story::business::install(
-            catalog(),
-            |story, cx| cx.new(|cx| StoryHost::new(story, cx)).into(),
-            |view, cx| {
-                view.clone()
-                    .downcast::<StoryHost>()
-                    .map(|view| view.read(cx).inspect(cx))
-                    .unwrap_or_default()
-            },
-            cx,
-        );
-    }
-    zork_ui::liquid_story::install_composer_fixture(cx, || {
-        Box::new(zork_client_core::composer::fixture::Fixture::default())
-    });
 }
 
 pub fn catalog() -> Vec<Story> {
@@ -149,20 +130,6 @@ pub fn catalog() -> Vec<Story> {
         story.actions = vec![click("history-details-open")];
         items.push(story);
     }
-    for state in ["idle", "active", "error"] {
-        let mut story = Story::new(
-            "member-activity",
-            "成员活动预览",
-            state,
-            "crates/zork-ui/src/member_activity.rs",
-            "member-activity",
-        );
-        story.width = 640.;
-        story.height = 600.;
-        story.actions =
-            vec![json!({"type":"move","target":{"element_id":"member-activity-source"}})];
-        items.push(story);
-    }
     for state in ["idle", "error"] {
         let mut story = Story::new(
             "data-settings",
@@ -192,7 +159,7 @@ pub fn catalog() -> Vec<Story> {
         "composer",
         "消息输入",
         "interactive",
-        "crates/zork-ui/src/components/liquid/composer.rs",
+        "crates/zork-ui/src/components/widgets/composer.rs",
         "composer",
     );
     composer.width = 900.;
@@ -336,7 +303,7 @@ pub fn catalog() -> Vec<Story> {
             "conversation",
             "会话",
             "composer",
-            "liquid-composer-surface",
+            "composer-surface",
             vec![],
             "composer",
         ),
@@ -356,8 +323,6 @@ pub fn catalog() -> Vec<Story> {
                 &format!("{state}-{suffix}"),
                 if family == "conversation" {
                     "crates/zork-ui/src/components/message_row.rs / history_page/mod.rs"
-                } else if family == "agent" {
-                    "desktop/agents.rs"
                 } else {
                     "desktop/profiles.rs"
                 },
@@ -567,9 +532,9 @@ impl StoryHost {
         if let Ok(view) = self
             .inner
             .clone()
-            .downcast::<zork_ui::liquid_story::ComposerExample>()
+            .downcast::<zork_ui::component_story::ComposerExample>()
         {
-            return view.read(cx).inspect();
+            return view.read(cx).inspect(cx);
         }
         if let Ok(view) = self.inner.clone().downcast::<PrimitiveStory>() {
             return view.read(cx).inspect(cx);
@@ -642,17 +607,6 @@ impl StoryHost {
                     )
                 })
                 .into(),
-            "member-activity" => cx
-                .new(|cx| {
-                    zork_ui::member_activity::stories::Story::new(
-                        &story.state,
-                        zork_ui::resources::Text(std::rc::Rc::new(|key| {
-                            crate::i18n::Locale::ZhCn.text(key).into()
-                        })),
-                        cx,
-                    )
-                })
-                .into(),
             "data-settings" => cx
                 .new(|cx| {
                     zork_ui::settings::data::DataSettings::new(
@@ -679,7 +633,9 @@ impl StoryHost {
                     )
                 })
                 .into(),
-            "composer" => cx.new(zork_ui::liquid_story::ComposerExample::new).into(),
+            "composer" => cx
+                .new(zork_ui::component_story::ComposerExample::new)
+                .into(),
             "attachment-viewer" => cx
                 .new(|cx| {
                     zork_ui::attachment_viewer::stories::Story::new(

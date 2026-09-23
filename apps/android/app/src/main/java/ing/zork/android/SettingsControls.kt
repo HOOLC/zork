@@ -20,25 +20,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Existing Zork system with shared liquid geometry and native touch input.
+// Zork styling on native Compose controls and touch input.
 internal object SettingsStyle {
-    val Card = LiquidShape(LiquidTokens.CompactRadius)
-    val Field = LiquidShape(LiquidTokens.FieldRadius)
-    val Pill = LiquidShape(LiquidTokens.PillRadius)
+    val Card = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.CompactRadius)
+    val Field = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.FieldRadius)
+    val Pill = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.PillRadius)
 }
 @Composable internal fun SettingsButton(text: String, primary: Boolean = false, enabled: Boolean = true, click: () -> Unit) {
-    LiquidButton(text, if (primary) Modifier.fillMaxWidth() else Modifier, primary, enabled, onClick = click)
+    ZorkButton(text, if (primary) Modifier.fillMaxWidth() else Modifier, primary, enabled, onClick = click)
 }
 @Composable internal fun SettingsField(label: String, value: String, change: (String) -> Unit, secret: Boolean = false, enabled: Boolean = true,
     error: String? = null, detail: String? = null, singleLine: Boolean = true) {
-    LiquidTextField(label, value, change, secret = secret, enabled = enabled, error = error, detail = detail, singleLine = singleLine)
+    ZorkTextField(label, value, change, secret = secret, enabled = enabled, error = error, detail = detail, singleLine = singleLine)
 }
 @Composable internal fun SettingsSelect(label: String, selected: String, options: List<Pair<String,String>>, enabled: Boolean = true, choose: (String) -> Unit) {
-    LiquidChoiceField(label, options.find { it.first == selected }?.second ?: "请选择",
+    ZorkChoiceField(label, options.find { it.first == selected }?.second ?: "请选择",
         options, setOf(selected), enabled = enabled, choose = choose)
 }
 @Composable internal fun SettingsSegments(options: List<Pair<String,String>>, selected: String, enabled: Boolean = true, choose: (String) -> Unit) {
-    LiquidSegments(options, selected, choose, enabled = enabled)
+    ZorkSegments(options, selected, choose, enabled = enabled)
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun SettingsSheet(title: String, busy: Boolean = false, error: String? = null, dismiss: () -> Unit,
@@ -49,12 +49,12 @@ internal object SettingsStyle {
     val visible = open ?: localOpen
     val close = { if (!busy || dismissWhileBusy) { if (open == null) localOpen = false else dismiss() } }
     LaunchedEffect(error) { if(error!=null) scroll.animateScrollTo(0) }
-    LiquidSheet(visible, title, close, onClosed = onClosed) {
+    ZorkSheet(visible, title, close, onClosed = onClosed) {
         Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * .86f).dp)
             .then(if (footer == null) Modifier.verticalScroll(scroll) else Modifier), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                LiquidIconButton("关闭", enabled = visible && (!busy || dismissWhileBusy), onClick = close) { Icon(painterResource(R.drawable.ic_x), null, Modifier.size(18.dp)) }
+                ZorkIconButton("关闭", enabled = visible && (!busy || dismissWhileBusy), onClick = close) { Icon(painterResource(R.drawable.ic_x), null, Modifier.size(18.dp)) }
             }
             if (footer == null) {
                 if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.Prompt, SettingsStyle.Field).padding(12.dp))
@@ -76,7 +76,7 @@ internal object SettingsStyle {
 
 @Composable
 internal fun SettingsListGroup(content: @Composable ColumnScope.() -> Unit) {
-    LiquidCard(Modifier.fillMaxWidth(), color = ZorkColors.Paper, outlined = false) {
+    ZorkCard(Modifier.fillMaxWidth(), color = ZorkColors.Paper, outlined = false) {
         Column(content = content)
     }
 }
@@ -98,7 +98,7 @@ internal fun SettingsListRow(
     trailing: (@Composable () -> Unit)? = null,
     action: (() -> Unit)? = null,
 ) {
-    LiquidListRow(Modifier.fillMaxWidth().heightIn(min = 56.dp), onClick = action) {
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 56.dp), onClick = action) {
         if (leading != null || avatar != null || icon != null) Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
             when {
                 leading != null -> leading()
@@ -124,6 +124,6 @@ internal fun SettingsToggle(label: String, checked: Boolean, enabled: Boolean = 
             Text(label, fontSize = 14.sp)
             detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
         }
-        LiquidSwitch(checked, change, enabled = enabled, modifier = Modifier.semantics { contentDescription = label })
+        ZorkSwitch(checked, change, enabled = enabled, modifier = Modifier.semantics { contentDescription = label })
     }
 }

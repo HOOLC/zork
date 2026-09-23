@@ -1,7 +1,7 @@
 //! A host retains only the presentation payload needed for a dialog's exit.
 //! Business completion/cancellation still happens immediately in the host.
 use super::*;
-use crate::components::liquid::overlay::{DialogOptions, Placement, SourceBinding};
+use crate::components::widgets::overlay::DialogOptions;
 use std::{any::Any, cell::RefCell, collections::HashMap};
 
 struct Slot {
@@ -69,32 +69,6 @@ impl ModalState {
                 .clone()
         })
     }
-    pub fn source(&self, id: &str) -> SourceBinding {
-        self.slots
-            .borrow()
-            .get(id)
-            .expect("retain the dialog before building its sources")
-            .dialog
-            .source_binding()
-    }
-    pub fn bind_source(
-        &mut self,
-        id: impl Into<gpui::SharedString>,
-        source: SourceBinding,
-        cx: &mut App,
-    ) {
-        self.slots
-            .get_mut()
-            .entry(id.into())
-            .or_insert_with(|| Slot {
-                dialog: PlainDialog::new(cx),
-                open: false,
-                controlled: true,
-                payload: None,
-            })
-            .dialog
-            .bind_source(source);
-    }
     pub fn presentation<T: Clone + 'static>(&self, id: &str) -> Option<T> {
         self.slots
             .borrow()
@@ -152,10 +126,6 @@ impl ModalState {
                 body,
                 footer,
                 open,
-                Placement::Window {
-                    width: ui::DIALOG_WIDTH,
-                },
-                crate::components::liquid::Material::ordinary(),
                 DialogOptions {
                     title_editor,
                     title_action,

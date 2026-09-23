@@ -424,7 +424,7 @@ impl RootView {
             .iter()
             .find(|a| a["session_id"].as_str() == self.history.session.as_deref())
             .and_then(|a| a["name"].as_str())
-            .unwrap_or("小伙伴")
+            .unwrap_or("对话")
             .to_owned()
     }
 }
@@ -585,12 +585,6 @@ impl HistoryHost for RootView {
         entry: &Entry,
     ) -> (Option<String>, Option<zork_ui::history_page::Jump>) {
         self.activity_subject(activity, entry)
-    }
-    fn history_source(
-        &self,
-        cx: &gpui::App,
-    ) -> zork_ui::components::liquid::overlay::SourceBinding {
-        self.history_details.read(cx).source()
     }
     fn history_action(&mut self, action: zork_ui::history_page::Action, cx: &mut Context<Self>) {
         match action {

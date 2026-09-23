@@ -47,7 +47,7 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
         sample(3, "Studio", "gpt-5.4", state),
     ];
     let view = cx.new(|cx| {
-        let mut view = Navigation::new(HashSet::new(), text, cx);
+        let mut view = Navigation::new(text, cx);
         view.set_data(
             if state == "empty" { vec![] } else { devices },
             Some("device-0".into()),

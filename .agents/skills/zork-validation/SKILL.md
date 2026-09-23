@@ -21,7 +21,7 @@ Rust 先测受影响 package，JS 用对应测试，完整 CI 以当前 workflow
 - 用户参与：[合同](../../../docs/design/user-participation.md)、`scripts/test-user-interactions.py` 与 core 测试。分别验证不含业务载荷的登记合同和业务卡片链路；用普通生产 `agent.create/update` 核对原 invocation 的实际效果、局部修改、重复/取消和恢复，不能用通用等待探针代替。
 - 导航/历史：[Chat](../../../docs/design/chat.md#navigation)、[历史](../../../docs/design/execution-history.md)、`scripts/test-chat-navigation.py`；文件和 Skill 按 [共享文件](../zork-shared-files/SKILL.md) / [运行时 Skill](../zork-agent-skills/SKILL.md) 选入口。 新建 Chat 页面入口或选择器变更另跑 `cargo test --locked -p zork-gui --features headless-bench --test headless_new_chat`，验证真实控件的可见性、选择和输入；普通桌面测试不会启用该用例。
 - Android：`scripts/android/build.py` 与对应 instrumentation，遵循 [手机范围](../../../docs/design/interface.md#mobile)。通知 fixture 只在独立模拟器运行。
-- 液态/文本：[UI parity](../zork-ui-parity/SKILL.md)，原生组件与完整帧报告以同一构建产物和输入匹配。
+- UI/文本：[UI parity](../zork-ui-parity/SKILL.md)，原生组件与完整帧报告以同一构建产物和输入匹配。
 - macOS 身份：`scripts/test-macos-notification-identity.py`、`scripts/test-macos-process-identities.py`。主入口与实际 GUI 必须同签名身份，deep 签名通过不保证 OS 接受；横幅/声音/冷启动点击另测，不改正式应用权限。局域网验收沿正常 App 入口启动；固定 bundle ID 和安装路径，可靠继承网络授权仍需有效 Apple 签名。注销 Launch Services 不等于删除本地网络权限记录，不能据此报告重复权限已清理。
 - release/dev 切换和恢复按[自救指南](../../../docs/guides/release-dev-recovery.md)运行隔离故障演练；核对整包构建摘要与运行映像、完整数据恢复和聊天往返。恢复旧快照须更新消息源与投影 epoch；不能以换回二进制或仅节点 ready 作为成功。
 - cua 桌面能力：`scripts/test-cua-packaging.py` 验证宿主身份与固定运行产物，`scripts/test-cua-roundtrip.py` 验证隔离 Station 的模型工具链。fixture 不能代替真实权限、截图和点击；真实测试只针对独立空白窗口，权限缺失明确报告，不修改 TCC 或借用其它应用身份。

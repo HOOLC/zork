@@ -7,7 +7,7 @@ import androidx.compose.runtime.key
 
 @Composable
 internal fun LocalScriptPanel(platform: LocalScriptPlatform) {
-    LiquidRetained(platform.run) { run, open, closed ->
+    ZorkRetained(platform.run) { run, open, closed ->
     val id = run.id
     key(id) {
         SettingsSheet(run.title, error = run.error, dismiss = { platform.action("dismiss", id) }, open = open, onClosed = closed,

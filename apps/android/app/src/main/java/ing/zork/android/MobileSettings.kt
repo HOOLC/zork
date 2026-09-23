@@ -104,7 +104,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "models" -> "大模型"; else -> "连接详情" }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            LiquidIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
+            ZorkIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (state.page != "home") SettingsRefreshButton(state.loading, actions.refresh)
         }
@@ -139,7 +139,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(44.dp).background(ZorkColors.Canvas, SettingsStyle.Field), contentAlignment = Alignment.Center) { Glyph(R.drawable.ic_node, 25.dp, ZorkColors.Muted) }
                         DeviceName(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi(), Modifier.weight(1f))
-                        if (state.online) LiquidIconButton("修改设备名称", opensPanel = true, onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
+                        if (state.online) ZorkIconButton("修改设备名称", opensPanel = true, onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.size(6.dp).background(if (state.online) ZorkColors.Online else ZorkColors.Muted, androidx.compose.foundation.shape.CircleShape))
@@ -180,7 +180,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
             state.message?.takeIf{it.isNotBlank()}?.let { Text(it,fontSize=13.sp,color=ZorkColors.Danger) }
         }
     }
-    LiquidRetained(editor?.let { it to editing }) { (type, source), open, closed -> key(type, source?.text("id")) {
+    ZorkRetained(editor?.let { it to editing }) { (type, source), open, closed -> key(type, source?.text("id")) {
         SettingsEditor(type,source,state,actions,latest,{editor=null},{editor=null;actions.refresh()},
             open=open, onClosed=closed)
     } }
@@ -197,7 +197,7 @@ internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
             angle.snapTo(0f) // 360° and 0° render identically.
         } while (loading)
     }
-    LiquidIconButton(if (loading) "正在刷新" else "刷新", onClick = refresh, enabled = !loading) {
+    ZorkIconButton(if (loading) "正在刷新" else "刷新", onClick = refresh, enabled = !loading) {
         Icon(painterResource(R.drawable.ic_reload), null,
             Modifier.size(18.dp).graphicsLayer { rotationZ = angle.value }, tint = ZorkColors.Ink)
     }

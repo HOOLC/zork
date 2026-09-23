@@ -240,7 +240,7 @@ impl InteractionCard {
 impl Render for InteractionCard {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = ZORK_UI.palette;
-        let mut body = super::liquid::panel::inline(format!("interaction-card-{}", self.view.id))
+        let mut body = super::widgets::panel::inline(format!("interaction-card-{}", self.view.id))
             .w_full()
             .min_w(px(0.))
             .max_w(px(620.))
@@ -248,7 +248,7 @@ impl Render for InteractionCard {
             .flex_col()
             .gap_3()
             .p_4()
-            .radius(12.)
+            .rounded(px(12.))
             .child(
                 div()
                     .flex()
@@ -359,9 +359,9 @@ impl Render for InteractionCard {
                     self.open_choice.as_ref() == Some(&field.id),
                     !field.options.is_empty(),
                     if multiple {
-                        crate::components::liquid::overlay::Selection::Multiple
+                        crate::controls::Selection::Multiple
                     } else {
-                        crate::components::liquid::overlay::Selection::Single
+                        crate::controls::Selection::Single
                     },
                     window,
                     cx,
