@@ -217,7 +217,10 @@ pub fn adaptive_action(
                 }))
             });
     }
-    button = button.focus_visible(|v| v.border_color(rgb(crate::controls::FIELD_FOCUS_BORDER)));
+    button = button.focus_visible(|v| {
+        v.border(px(crate::design::BORDER_WIDTH))
+            .border_color(rgb(crate::controls::FIELD_FOCUS_BORDER))
+    });
     Action {
         inner: Some(button),
         rendered: None,

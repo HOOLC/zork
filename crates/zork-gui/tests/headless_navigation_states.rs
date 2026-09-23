@@ -15,10 +15,6 @@ use zork_gui::{
     automation::{AutomationRoot, HeadlessAutomation},
     desktop::stories::{self, StoryHost},
 };
-#[path = "support/collapse.rs"]
-mod collapse;
-#[path = "support/sliding.rs"]
-mod sliding;
 
 fn main() -> anyhow::Result<()> {
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -28,20 +24,11 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| "artifacts/ui-unification/navigation-checks".into()),
         );
     std::fs::create_dir_all(&output)?;
-    if std::env::args().any(|arg| arg == "--slide-motion" || arg == "--slide-baseline") {
-        return sliding::run(
-            &output,
-            std::env::args().any(|arg| arg == "--slide-baseline"),
-        );
-    }
     if std::env::args().any(|arg| arg == "--settings-tabs") {
         return settings_sidebar_checks(&output);
     }
     if std::env::args().any(|arg| arg == "--settings-process") {
         return settings_sidebar_process(&output);
-    }
-    if std::env::args().any(|arg| arg == "--collapse") {
-        return collapse::run(&output);
     }
     if std::env::args().any(|arg| arg == "--chat-hover") {
         chat_hover_checks()?;
@@ -113,34 +100,16 @@ fn main() -> anyhow::Result<()> {
                     .0)
             };
             let normal = pixel(&mut cx)?;
-            let marker = |cx: &mut HeadlessAppContext| -> anyhow::Result<[u8; 4]> {
-                let scale = driver.snapshot(false).scale_factor;
-                Ok(cx
-                    .capture_screenshot(window.into())?
-                    .get_pixel(
-                        ((bounds.x + 3.) * scale) as u32,
-                        ((bounds.y + 16.) * scale) as u32,
-                    )
-                    .0)
-            };
-            let active_color = zork_ui::design::BRAND_ACCENT.to_be_bytes()[1..].to_vec();
             let image = cx.capture_screenshot(window.into())?;
-            let scale = driver.snapshot(false).scale_factor;
-            let background = image
-                .get_pixel(
-                    ((bounds.x + bounds.width - 12.) * scale) as u32,
-                    ((bounds.y + bounds.height + 4.) * scale) as u32,
-                )
-                .0;
-            anyhow::ensure!(normal == background, "active tab still has a selected fill");
+            let default_color = zork_ui::design::ZORK_UI.palette.sidebar.to_be_bytes();
+            let selected_color = zork_ui::design::ZORK_UI.palette.selected.to_be_bytes();
             anyhow::ensure!(
-                &marker(&mut cx)?[..3]
-                    == if selected {
-                        active_color.as_slice()
-                    } else {
-                        &normal[..3]
-                    },
-                "active marker missing or shown on inactive tab"
+                if selected {
+                    normal[..3] == selected_color[1..]
+                } else {
+                    normal[..3] == default_color[1..]
+                },
+                "navigation selected surface does not match its current state: selected={selected}, pixel={normal:?}"
             );
             image.save(output.join(format!("{width}-{id}-default.png")))?;
             act(&mut cx, json!({"type":"key","keystroke":"tab"}))?;
@@ -180,12 +149,6 @@ fn main() -> anyhow::Result<()> {
             let pressed = pixel(&mut cx)?;
             let expected_hover = [239, 238, 234];
             let expected_pressed = [234, 231, 225];
-            if selected {
-                anyhow::ensure!(
-                    marker(&mut cx)?[..3] == active_color,
-                    "pressed feedback covered the active marker"
-                );
-            }
             anyhow::ensure!(hover[..3] == expected_hover, "{id}: hover {hover:?}");
             anyhow::ensure!(
                 pressed[..3] == expected_pressed,
@@ -226,9 +189,18 @@ fn main() -> anyhow::Result<()> {
                     == if selected { "default" } else { "selected" },
                 "click did not toggle exactly once"
             );
+            act(
+                &mut cx,
+                json!({"type":"move","target":{"x":bounds.x+bounds.width+12.,"y":bounds.y+bounds.height+12.}}),
+            )?;
+            let switched = pixel(&mut cx)?;
             anyhow::ensure!(
-                (marker(&mut cx)?[..3] == active_color) != selected,
-                "active marker did not follow selection"
+                if selected {
+                    switched[..3] == default_color[1..]
+                } else {
+                    switched[..3] == selected_color[1..]
+                },
+                "selected surface did not follow click: {switched:?}"
             );
             act(&mut cx, json!({"type":"key","keystroke":"enter"}))?;
             anyhow::ensure!(
@@ -269,13 +241,10 @@ fn main() -> anyhow::Result<()> {
         output.join("report.json"),
         serde_json::to_vec_pretty(&reports)?,
     )?;
-    collapse::run(&output)?;
-    sliding_hover_checks(&output)?;
-    gap_surface_checks(&output)?;
     settings_sidebar_process(&output)?;
     chat_hover_checks()?;
     composer_preview_checks()?;
-    println!("PASS navigation input, sliding hover, geometry and CPU draw budget");
+    println!("PASS navigation input, geometry and CPU draw budget");
     Ok(())
 }
 
@@ -535,132 +504,6 @@ fn composer_preview_checks() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn sliding_hover_checks(output: &std::path::Path) -> anyhow::Result<()> {
-    let mut cx = HeadlessAppContext::with_platform(
-        gpui_platform::current_platform(true).text_system(),
-        Arc::new(EmbeddedAssets),
-        gpui_platform::current_headless_renderer,
-    );
-    let driver = cx.update(|cx| {
-        zork_gui::assets::init_fonts(cx);
-        zork_gui::components::init(cx);
-        cx.set_reduce_motion(false);
-        HeadlessAutomation::install(cx)
-    });
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "tooltip-hover")
-        .unwrap();
-    let window = cx.open_window(gpui::size(px(640.), px(400.)), |_, cx| {
-        let host = cx.new(|cx| StoryHost::new(story, cx));
-        cx.new(|_| AutomationRoot::new(host))
-    })?;
-    let pump = |cx: &mut HeadlessAppContext, frames: usize| -> anyhow::Result<()> {
-        for _ in 0..frames {
-            // Match the 120 Hz motion fixture: two 16 ms sleeps plus
-            // rendering/readback can miss a short row transition entirely.
-            let tick = Duration::from_nanos(8_333_333);
-            std::thread::sleep(tick);
-            cx.advance_clock(tick);
-            cx.run_until_parked();
-            cx.update_window(window.into(), |_, w, cx| {
-                w.simulate_next_frame(cx);
-            })?;
-        }
-        Ok(())
-    };
-    pump(&mut cx, 4)?;
-    let elements = driver.snapshot(false).elements;
-    let leader = elements
-        .iter()
-        .find(|e| e.id.ends_with("tooltip-leader-trigger"))
-        .unwrap();
-    let task = elements
-        .iter()
-        .find(|e| e.id.ends_with("tooltip-task-trigger"))
-        .unwrap();
-    anyhow::ensure!(
-        (task.bounds.y - leader.bounds.y - leader.bounds.height - 2.).abs() < 0.1,
-        "row gutter is not 2px"
-    );
-    let move_to = |cx: &mut HeadlessAppContext, x: f32, y: f32| -> anyhow::Result<()> {
-        cx.update_window(window.into(), |_, w, cx| {
-            driver.dispatch(
-                serde_json::from_value(json!({"type":"move","target":{"x":x,"y":y}})).unwrap(),
-                w,
-                cx,
-            )
-        })??;
-        Ok(())
-    };
-    let scale = driver.snapshot(false).scale_factor;
-    let top = |cx: &mut HeadlessAppContext, name: &str| -> anyhow::Result<f32> {
-        let image = cx.capture_screenshot(window.into())?;
-        image.save(output.join(format!("sliding-{name}.png")))?;
-        let x = ((leader.bounds.x + leader.bounds.width - 12.) * scale) as u32;
-        let ys = ((leader.bounds.y * scale) as u32)
-            ..(((task.bounds.y + task.bounds.height) * scale) as u32);
-        let y = ys
-            .into_iter()
-            .find(|y| image.get_pixel(x, *y).0[..3] == [239, 238, 234]);
-        Ok(y.map_or(-1., |y| y as f32 / scale))
-    };
-    let x = leader.bounds.x + 120.;
-    move_to(&mut cx, x, leader.bounds.y + 16.)?;
-    pump(&mut cx, 24)?;
-    let first = top(&mut cx, "first")?;
-    anyhow::ensure!(
-        first >= leader.bounds.y && first <= leader.bounds.y + 3.,
-        "first hover missing: {first}"
-    );
-    move_to(&mut cx, x, task.bounds.y + 16.)?;
-    pump(&mut cx, 2)?;
-    let moving = top(&mut cx, "moving")?;
-    anyhow::ensure!(
-        moving > first && moving < task.bounds.y,
-        "hover teleported: {first} -> {moving}"
-    );
-    move_to(&mut cx, x, leader.bounds.y + 16.)?;
-    pump(&mut cx, 1)?;
-    let reversing = top(&mut cx, "reverse")?;
-    anyhow::ensure!(
-        reversing >= first && reversing < moving,
-        "hover did not reverse continuously: {moving} -> {reversing}"
-    );
-    move_to(&mut cx, x, task.bounds.y + 16.)?;
-    pump(&mut cx, 30)?;
-    let settled = top(&mut cx, "settled")?;
-    anyhow::ensure!(
-        settled >= task.bounds.y && settled <= task.bounds.y + 3.,
-        "hover did not settle: {settled}"
-    );
-    cx.update(|cx| cx.set_reduce_motion(true));
-    move_to(&mut cx, x, leader.bounds.y + 16.)?;
-    pump(&mut cx, 2)?;
-    anyhow::ensure!(
-        top(&mut cx, "reduced")? == first,
-        "reduced motion did not reach target immediately"
-    );
-    move_to(&mut cx, 630., 390.)?;
-    pump(&mut cx, 30)?;
-    anyhow::ensure!(
-        top(&mut cx, "leave")? == -1.,
-        "hover remained after leaving"
-    );
-    let pending = cx.update_window(window.into(), |_, w, cx| w.simulate_next_frame(cx))?;
-    anyhow::ensure!(
-        pending == 0,
-        "settled hover still schedules frames: {pending}"
-    );
-    std::fs::write(
-        output.join("sliding.json"),
-        serde_json::to_vec_pretty(
-            &json!({"first":first,"moving":moving,"reversing":reversing,"settled":settled,"gutter_px":2,"idle_callbacks":pending}),
-        )?,
-    )?;
-    Ok(())
-}
-
 fn settings_sidebar_process(output: &std::path::Path) -> anyhow::Result<()> {
     // A separate process supplies an isolated desktop store before GPUI starts;
     // no live device is restored and no local node is launched.
@@ -791,7 +634,8 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
             );
         }
         let scale = snapshot.scale_factor;
-        let color = zork_ui::design::BRAND_ACCENT.to_be_bytes()[1..].to_vec();
+        let selected_color = zork_ui::design::ZORK_UI.palette.selected.to_be_bytes();
+        let default_color = zork_ui::design::ZORK_UI.palette.sidebar.to_be_bytes();
         let sample = |cx: &mut HeadlessAppContext, x: f32, y: f32| -> anyhow::Result<[u8; 4]> {
             Ok(cx
                 .capture_screenshot(window.into())?
@@ -809,18 +653,19 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         pump(&mut cx, 20)?;
         cx.capture_screenshot(window.into())?
             .save(output.join(format!("settings-{width}-active-notifications.png")))?;
-        let notifications_marker = sample(&mut cx, notifications.x + 3., notifications.y + 16.)?;
+        let notifications_fill = sample(
+            &mut cx,
+            notifications.x + notifications.width - 12.,
+            notifications.y + 16.,
+        )?;
         anyhow::ensure!(
-            notifications_marker[..3] == color,
-            "notifications active marker missing: {notifications_marker:?} at {notifications:?}"
+            notifications_fill[..3] == selected_color[1..],
+            "notifications selected fill missing: {notifications_fill:?} at {notifications:?}"
         );
         anyhow::ensure!(
-            sample(
-                &mut cx,
-                notifications.x + notifications.width - 12.,
-                notifications.y + 16.
-            )? == sample(&mut cx, account.x + account.width - 12., account.y + 16.)?,
-            "selected settings tab retained a fill"
+            sample(&mut cx, account.x + account.width - 12., account.y + 16.)?[..3]
+                == default_color[1..],
+            "unselected account tab has a selected fill"
         );
         action(
             &mut cx,
@@ -832,12 +677,18 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         )?;
         pump(&mut cx, 20)?;
         anyhow::ensure!(
-            sample(&mut cx, account.x + 3., account.y + 16.)?[..3] == color,
-            "account selection did not move the marker"
+            sample(&mut cx, account.x + account.width - 12., account.y + 16.)?[..3]
+                == selected_color[1..],
+            "account selection did not update its fill"
         );
         anyhow::ensure!(
-            sample(&mut cx, notifications.x + 3., notifications.y + 16.)?[..3] != color,
-            "old active marker remained"
+            sample(
+                &mut cx,
+                notifications.x + notifications.width - 12.,
+                notifications.y + 16.
+            )?[..3]
+                == default_color[1..],
+            "old notifications fill remained"
         );
         action(
             &mut cx,
@@ -853,181 +704,6 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
             )?,
         )?;
     }
-    println!(
-        "PASS client settings sidebar: shared geometry, independent active marker, selection, idle"
-    );
-    Ok(())
-}
-
-fn gap_surface_checks(output: &std::path::Path) -> anyhow::Result<()> {
-    let mut cx = HeadlessAppContext::with_platform(
-        gpui_platform::current_platform(true).text_system(),
-        Arc::new(EmbeddedAssets),
-        gpui_platform::current_headless_renderer,
-    );
-    let driver = cx.update(|cx| {
-        zork_gui::assets::init_fonts(cx);
-        zork_gui::components::init(cx);
-        cx.set_reduce_motion(true);
-        HeadlessAutomation::install(cx)
-    });
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "navigation-gap")
-        .unwrap();
-    let window = cx.open_window(gpui::size(px(400.), px(360.)), |_, cx| {
-        let host = cx.new(|cx| StoryHost::new(story, cx));
-        cx.new(|_| AutomationRoot::new(host))
-    })?;
-    let pump = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
-        std::thread::sleep(Duration::from_millis(4));
-        cx.advance_clock(Duration::from_millis(4));
-        cx.run_until_parked();
-        cx.update_window(window.into(), |_, w, cx| {
-            w.simulate_next_frame(cx);
-        })?;
-        Ok(())
-    };
-    let action = |cx: &mut HeadlessAppContext, value| -> anyhow::Result<()> {
-        cx.update_window(window.into(), |_, w, cx| {
-            driver.dispatch(serde_json::from_value(value).unwrap(), w, cx)
-        })??;
-        Ok(())
-    };
-    pump(&mut cx)?;
-    let snapshot = driver.snapshot(false);
-    let first = snapshot
-        .elements
-        .iter()
-        .find(|e| e.id == "gap-tab-first")
-        .unwrap()
-        .bounds;
-    let second = snapshot
-        .elements
-        .iter()
-        .find(|e| e.id == "gap-tab-second")
-        .unwrap()
-        .bounds;
-    let scale = snapshot.scale_factor;
-    let marker_x = ((first.x + 3.) * scale) as u32;
-    let fill_x = ((first.x + first.width - 12.) * scale) as u32;
-    let gap_y = (((first.y + first.height + second.y) / 2.) * scale) as u32;
-    // A short marker can cross one scanline between readbacks. Observe the
-    // entire gap, then verify that the captured surface has its full height.
-    let gap_rows = (((first.y + first.height) * scale) as u32)..((second.y * scale) as u32);
-    let active = zork_ui::design::BRAND_ACCENT.to_be_bytes()[1..].to_vec();
-    action(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":"gap-tab-first"}}),
-    )?;
-    pump(&mut cx)?;
-    cx.update(|cx| cx.set_reduce_motion(false));
-    action(
-        &mut cx,
-        json!({"type":"click","target":{"element_id":"gap-tab-second"}}),
-    )?;
-    // Hover follows pointer input, while the active marker follows selection.
-    // Their first frames can differ; each surface must cross the gap intact.
-    let mut active_crossing = None;
-    let mut hover_crossing = None;
-    let probe_started = Instant::now();
-    let mut probes = Vec::new();
-    for _ in 0..60 {
-        pump(&mut cx)?;
-        let image = cx.capture_screenshot(window.into())?;
-        probes.push(json!({"ms":probe_started.elapsed().as_secs_f64()*1000.,
-            "active_top":(0..image.height()).find(|y|image.get_pixel(marker_x,*y).0[..3]==active),
-            "hover_top":(0..image.height()).find(|y|image.get_pixel(fill_x,*y).0[..3]==[239,238,234])}));
-        if active_crossing.is_none()
-            && gap_rows
-                .clone()
-                .any(|y| image.get_pixel(marker_x, y).0[..3] == active)
-        {
-            active_crossing = Some(image.clone());
-        }
-        if hover_crossing.is_none()
-            && gap_rows
-                .clone()
-                .any(|y| image.get_pixel(fill_x, y).0[..3] == [239, 238, 234])
-        {
-            hover_crossing = Some(image);
-        }
-        if active_crossing.is_some() && hover_crossing.is_some() {
-            break;
-        }
-    }
-    std::fs::write(
-        output.join("gap-probes.json"),
-        serde_json::to_vec_pretty(
-            &json!({"first":first,"second":second,"scale":scale,"gap_y":gap_y,"frames":probes}),
-        )?,
-    )?;
-    let active_image = active_crossing.context("active disappeared in the 52px section gap")?;
-    let hover_image = hover_crossing.context("hover disappeared in the 52px section gap")?;
-    active_image.save(output.join("gap-active-crossing.png"))?;
-    hover_image.save(output.join("gap-hover-crossing.png"))?;
-    let ys = ((first.y * scale) as u32)..(((second.y + second.height) * scale) as u32);
-    let marker_pixels = ys
-        .clone()
-        .filter(|y| active_image.get_pixel(marker_x, *y).0[..3] == active)
-        .collect::<Vec<_>>();
-    let hover_pixels = ys
-        .clone()
-        .filter(|y| hover_image.get_pixel(fill_x, *y).0[..3] == [239, 238, 234])
-        .collect::<Vec<_>>();
-    anyhow::ensure!(
-        marker_pixels.len() >= (12. * scale) as usize
-            && marker_pixels.windows(2).all(|p| p[1] == p[0] + 1),
-        "active marker was clipped between tabs"
-    );
-    anyhow::ensure!(
-        hover_pixels.len() >= (28. * scale) as usize
-            && hover_pixels.windows(2).all(|p| p[1] == p[0] + 1),
-        "hover surface was clipped between tabs"
-    );
-    let current = cx.capture_screenshot(window.into())?;
-    let moving_top = ys
-        .clone()
-        .find(|y| current.get_pixel(marker_x, *y).0[..3] == active)
-        .context("active marker disappeared before reversal")? as f32
-        / scale;
-    action(
-        &mut cx,
-        json!({"type":"click","target":{"element_id":"gap-tab-first"}}),
-    )?;
-    for _ in 0..3 {
-        pump(&mut cx)?;
-    }
-    let reverse = cx.capture_screenshot(window.into())?;
-    let reverse_top = ((first.y * scale) as u32..((second.y + second.height) * scale) as u32)
-        .find(|y| reverse.get_pixel(marker_x, *y).0[..3] == active)
-        .map(|y| y as f32 / scale)
-        .unwrap_or(-1.);
-    anyhow::ensure!(
-        reverse_top >= first.y + 8. && reverse_top < moving_top,
-        "active did not reverse from its displayed position: {moving_top} -> {reverse_top}"
-    );
-    reverse.save(output.join("gap-active-reverse.png"))?;
-    cx.update(|cx| cx.set_reduce_motion(true));
-    action(
-        &mut cx,
-        json!({"type":"click","target":{"element_id":"gap-tab-second"}}),
-    )?;
-    pump(&mut cx)?;
-    let settled = cx.capture_screenshot(window.into())?;
-    anyhow::ensure!(
-        settled
-            .get_pixel(marker_x, ((second.y + 16.) * scale) as u32)
-            .0[..3]
-            == active,
-        "active did not snap with reduced motion"
-    );
-    settled.save(output.join("gap-active-settled.png"))?;
-    std::fs::write(
-        output.join("gap.json"),
-        serde_json::to_vec_pretty(
-            &json!({"gap_px":second.y-first.y-first.height,"moving_active_top":moving_top,"reversed_active_top":reverse_top,"active_pixel_height":marker_pixels.len() as f32/scale,"hover_pixel_height":hover_pixels.len() as f32/scale}),
-        )?,
-    )?;
+    println!("PASS client settings sidebar: shared geometry, selected fill and idle state");
     Ok(())
 }

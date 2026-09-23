@@ -225,6 +225,7 @@ impl RootView {
         let (selection, locale) = view.navigation_selection();
         let mut directory = zork_client_core::state::DeviceData::default();
         directory.online = Some(true);
+        directory.sessions = view.sessions.clone();
         directory.agents = view.node_agents.clone();
         directory.tasks = view.tasks_by_leader.clone();
         let data = zork_client_core::state::NavigationData::project(&directory, Default::default());
