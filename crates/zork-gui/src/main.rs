@@ -139,7 +139,24 @@ fn quit_on_sigterm() -> anyhow::Result<futures_channel::oneshot::Receiver<()>> {
     Ok(requested)
 }
 
+#[cfg(target_os = "macos")]
+fn mark_gui_main_for_smoke() {
+    let Some(path) = std::env::var_os("ZORK_GUI_MAIN_NS_FILE") else {
+        return;
+    };
+    let mut clock = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut clock) } == 0 {
+        let ns = clock.tv_sec as u64 * 1_000_000_000 + clock.tv_nsec as u64;
+        let _ = std::fs::write(path, format!("{} {ns}\n", std::process::id()));
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    mark_gui_main_for_smoke();
     zork_client_core::desktop::trace_startup("gui.main");
     let options = parse_args_from(std::env::args().skip(1)).unwrap_or_else(|error| {
         eprintln!("{error}\nTry zork-gui --help");

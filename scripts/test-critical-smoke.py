@@ -20,8 +20,12 @@ spec.loader.exec_module(native_budget)
 
 
 class GateTests(unittest.TestCase):
-    def sample(self, ui=750, node=1000):
-        return {"gui_alive": True, "ui_interactive": {"ms": ui}, "local_node": {"ms": node}}
+    def sample(self, ui=750, node=1000, case="first-initialization"):
+        sample = {"case": case, "gui_alive": True, "pre_main_ms": 9000,
+                  "ui_interactive": {"ms": ui}, "local_node": {"ms": node}}
+        if case.startswith("paired-"):
+            sample.update(remote_address="192.168.215.6", remote_network_driver="bridge")
+        return sample
 
     def test_both_milestones_must_meet_the_inclusive_deadline(self):
         self.assertEqual(smoke.GATES["local-startup"]["budget_ms"], 1000)
@@ -30,7 +34,7 @@ class GateTests(unittest.TestCase):
         self.assertFalse(smoke.gate_passes(self.sample(ui=1001, node=20), 1000))
 
     def test_missing_readiness_or_process_exit_cannot_pass(self):
-        for key in ("ui_interactive", "local_node", "gui_alive"):
+        for key in ("case", "ui_interactive", "local_node", "gui_alive", "pre_main_ms"):
             sample = self.sample()
             sample.pop(key)
             self.assertFalse(smoke.gate_passes(sample, 1000))
@@ -38,9 +42,54 @@ class GateTests(unittest.TestCase):
         sample["local_node"]["error"] = "process exited"
         self.assertFalse(smoke.gate_passes(sample, 1000))
 
+    def test_mesh_cases_require_each_real_readiness_and_sync_milestone(self):
+        cases = smoke.GATES["local-startup"]["cases"]
+        for case in ("mesh-first-initialization", "client-mesh-first-initialization",
+                     "paired-restart-1", "paired-restart-2"):
+            sample = self.sample(case=case)
+            for metric in cases[case]:
+                sample.setdefault(metric, {"ms": 750})
+            self.assertTrue(smoke.gate_passes(sample, 1000), case)
+            for metric in cases[case]:
+                missing = copy.deepcopy(sample)
+                del missing[metric]
+                self.assertFalse(smoke.gate_passes(missing, 1000), (case, metric))
+                slow = copy.deepcopy(sample)
+                slow[metric]["ms"] = 1000.001
+                self.assertFalse(smoke.gate_passes(slow, 1000), (case, metric))
+
+    def test_paired_gate_requires_a_separate_bridge_network(self):
+        sample = self.sample(case="paired-restart-1")
+        for metric in smoke.GATES["local-startup"]["cases"]["paired-restart-1"]:
+            sample.setdefault(metric, {"ms": 750})
+        self.assertTrue(smoke.gate_passes(sample, 1000))
+        for address, driver in (("127.0.0.1", "bridge"), ("192.168.215.6", "host"),
+                                ("not-an-ip", "bridge")):
+            changed = {**sample, "remote_address": address, "remote_network_driver": driver}
+            self.assertFalse(smoke.gate_passes(changed, 1000))
+
+    def test_main_marker_must_match_the_spawned_process_and_clock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "main.ns"
+            with patch.object(smoke, "monotonic_ns", return_value=1050):
+                marker.write_text("42 1000\n")
+                self.assertEqual(smoke.read_main_marker(marker, 42, 900), 1000)
+                for contents, pid, started in (("41 1000\n", 42, 900),
+                                               ("42 899\n", 42, 900),
+                                               ("42 1051\n", 42, 900)):
+                    marker.write_text(contents)
+                    with self.assertRaises(RuntimeError):
+                        smoke.read_main_marker(marker, pid, started)
+            marker.unlink()
+            with self.assertRaises(FileNotFoundError):
+                smoke.read_main_marker(marker, 42, 900)
+
     def test_invalid_measurements_cannot_pass(self):
         for value in (-1, float("nan"), float("inf"), "1", True, False):
             self.assertFalse(smoke.gate_passes(self.sample(node=value), 1000))
+            sample = self.sample()
+            sample["pre_main_ms"] = value
+            self.assertFalse(smoke.gate_passes(sample, 1000))
 
     def test_readiness_belongs_to_the_same_embedded_node_and_fixture(self):
         root = Path("/fixture/node")
