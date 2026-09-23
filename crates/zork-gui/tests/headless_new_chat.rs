@@ -133,6 +133,8 @@ fn main() -> anyhow::Result<()> {
                 .is_some_and(|element| element.label.contains("Demo model · 中")),
             "picker trigger did not follow the visible strength at {width}"
         );
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-picker-{width}.png")))?;
         let label_center = driver
             .snapshot(false)
             .elements
@@ -142,12 +144,6 @@ fn main() -> anyhow::Result<()> {
             .center;
         action(
             json!({"type":"click","target":{"x":label_center.x,"y":label_center.y}}),
-            &mut cx,
-        )?;
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-picker-{width}.png")))?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-model"}}),
             &mut cx,
         )?;
         let picker = driver.snapshot(false);
@@ -223,6 +219,14 @@ fn main() -> anyhow::Result<()> {
         anyhow::ensure!(
             host.read_with(&cx, |view, cx| view.inspect(cx))["thinking"]["value"] == "off",
             "reset did not use the selected model's default"
+        );
+        anyhow::ensure!(
+            driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|element| element.id == "new-chat-thinking-thumb-0" && element.visible),
+            "reset unexpectedly left the strength picker at {width}"
         );
         action(
             json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),

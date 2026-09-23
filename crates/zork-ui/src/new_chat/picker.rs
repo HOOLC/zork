@@ -33,15 +33,27 @@ impl Page {
                 .min(levels.len() - 1)
         })
     }
-    fn picker_button(&self, id: &'static str, label: String, cx: &Context<Self>) -> AnyElement {
-        let accessible_label = format!("{}: {}", self.text.text("new_chat_choose_model"), label);
+    fn picker_button(
+        &self,
+        id: &'static str,
+        effort: String,
+        model: String,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let accessible_label = format!(
+            "{}: {}; {}: {}",
+            self.text.text("new_chat_choose_model"),
+            model,
+            self.text.text("new_chat_thinking"),
+            effort
+        );
         adaptive_action(
             id,
-            label.clone(),
+            "",
             ActionStyle {
                 quiet: true,
-                trailing: Some("icons/arrow-right.svg"),
-                balance_trailing: true,
+                bare: true,
+                icon_only: Some(false),
                 radius: Some(8.),
                 disabled: !(self.picker_open && self.data.editable),
                 ..Default::default()
@@ -49,9 +61,46 @@ impl Page {
             ZORK_UI.palette.canvas,
         )
         .w_full()
-        .h(px(32.))
+        .h(px(60.))
         .px_0()
-        .font_weight(FontWeight::MEDIUM)
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .gap(px(7.))
+                        .child(div().w(px(12.)).flex_shrink_0())
+                        .child(
+                            div()
+                                .id("new-chat-thinking-label")
+                                .text_size(px(15.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(crate::design::BRAND_ACCENT))
+                                .child(effort.clone())
+                                .automation(AutomationRole::Status, effort),
+                        )
+                        .child(
+                            div()
+                                .text_color(rgb(ZORK_UI.palette.muted))
+                                .child(ui::icon("icons/arrow-right.svg", 12.)),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(ZORK_UI.palette.text))
+                        .child(model),
+                ),
+        )
         .aria_label(accessible_label.clone())
         .on_click(cx.listener(move |view, _, window, cx| {
             view.picker_mode = PickerMode::Models;
@@ -278,19 +327,8 @@ impl Page {
             .map(|o| self.thinking_label(&o.value))
             .unwrap_or_else(|| self.text.text("new_chat_thinking"));
         let header = div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .child(div().w(px(24.)))
-            .child(
-                div()
-                    .id("new-chat-thinking-label")
-                    .text_size(px(15.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(crate::design::BRAND_ACCENT))
-                    .child(label.clone())
-                    .automation(AutomationRole::Status, label.clone()),
-            )
+            .relative()
+            .child(self.picker_button("new-chat-model", label.clone(), model, cx))
             .child(
                 ui::quiet_button(
                     "new-chat-thinking-reset",
@@ -298,10 +336,14 @@ impl Page {
                     enabled && !levels.is_empty(),
                     ui::IconButtonSize::Small,
                 )
+                .absolute()
+                .right_0()
+                .top_0()
                 .w(px(24.))
                 .p_0()
                 .child(ui::icon("icons/reload.svg", 16.))
                 .on_click(cx.listener(|view, _, _, cx| {
+                    cx.stop_propagation();
                     view.thinking_preview = None;
                     cx.emit(Event::Intent(Action::Thinking {
                         value: String::new(),
@@ -313,12 +355,7 @@ impl Page {
                     self.text.text("new_chat_reset_thinking"),
                 ),
             );
-        let mut content = div().flex().flex_col().child(header).child(
-            div()
-                .flex()
-                .justify_center()
-                .child(self.picker_button("new-chat-model", model, cx)),
-        );
+        let mut content = div().flex().flex_col().child(header);
         if levels.len() > 1 {
             let values: Vec<String> = levels.iter().map(|o| o.value.clone()).collect();
             let slider = range::step_slider(
