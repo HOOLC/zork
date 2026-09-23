@@ -141,6 +141,8 @@ pub struct Participant {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Channel {
+    #[serde(default)]
+    pub archived: bool,
     pub chat_id: String,
     pub title: String,
     pub created_at: String,

@@ -165,6 +165,7 @@ struct Reading {
 struct Owned {
     data: DeviceData,
     seen: HashMap<String, String>,
+    archive_operations: HashMap<String, (bool, Option<String>)>,
     reading: Reading,
     notifications: crate::notifications::Ledger,
     notifications_dirty: bool,
@@ -316,6 +317,7 @@ impl Device {
         let owned = Owned {
             data: data.clone(),
             seen: cached(&cache, "navigation-seen"),
+            archive_operations: Default::default(),
             reading: Reading::default(),
             notifications: cached(&cache, crate::notifications::KEY),
             notifications_dirty: false,
@@ -708,7 +710,7 @@ impl Device {
     }
     fn project_navigation(owned: &Owned) -> NavigationData {
         let data = &owned.data;
-        NavigationData::project(
+        let mut navigation = NavigationData::project(
             data,
             data.read_markers
                 .iter()
@@ -718,7 +720,73 @@ impl Device {
                 })
                 .map(|m| m.session_id.clone())
                 .collect(),
-        )
+        );
+        for chat in Arc::make_mut(&mut navigation.chats) {
+            if let Some((pending, error)) = owned.archive_operations.get(&chat.chat_id) {
+                chat.archive_pending = *pending;
+                chat.archive_error = error.clone();
+            }
+        }
+        navigation
+    }
+    pub fn set_chat_archived(
+        self: &Arc<Self>,
+        chat: &str,
+        archived: bool,
+        expected_message_count: u64,
+    ) -> anyhow::Result<()> {
+        crate::model_edit::valid_id(chat)?;
+        {
+            let mut owned = self.owned.lock().unwrap();
+            anyhow::ensure!(!owned.data.revoked, "设备访问权限已撤销");
+            anyhow::ensure!(
+                !owned.archive_operations.get(chat).is_some_and(|v| v.0),
+                "归档操作正在进行"
+            );
+            let Some(_) = owned
+                .data
+                .chats
+                .as_ref()
+                .and_then(|items| items.iter().find(|c| c.chat_id == chat))
+            else {
+                owned.archive_operations.insert(
+                    chat.to_owned(),
+                    (
+                        false,
+                        Some("Chat 尚未同步或设备版本不支持归档，请刷新或更新设备后重试".into()),
+                    ),
+                );
+                self.navigation.publish(Self::project_navigation(&owned));
+                return Ok(());
+            };
+            owned
+                .archive_operations
+                .insert(chat.to_owned(), (true, None));
+            self.navigation.publish(Self::project_navigation(&owned));
+        }
+        let device = self.clone();
+        let chat = chat.to_owned();
+        self.client.spawn(async move {
+            let result = device.client.node_request(reqwest::Method::POST,
+                format!("/v1/node/chats/{chat}/archive"),
+                Some(serde_json::json!({"archived":archived,"expected_message_count":expected_message_count}))).await;
+            device.refresh(Domains::SESSIONS).await;
+            let mut owned = device.owned.lock().unwrap();
+            if owned.data.revoked { owned.archive_operations.clear(); }
+            else if let Err(error) = result {
+                let message = match &error {
+                    crate::api::ApiError::Api { status: 403, message }
+                        if message == "mesh_client_route_not_allowed" =>
+                    {
+                        "设备版本过旧，请更新节点后重试".to_owned()
+                    }
+                    _ => error.to_string(),
+                };
+                owned.archive_operations.insert(chat, (false, Some(message)));
+            } else { owned.archive_operations.remove(&chat); }
+            device.navigation.publish(Self::project_navigation(&owned));
+        });
+        Ok(())
     }
     pub fn notifications(&self) -> Subscription<crate::notifications::Ledger> {
         self.notifications.subscribe()
@@ -1054,6 +1122,76 @@ impl Device {
 mod tests {
     use super::*;
     use futures_util::FutureExt;
+
+    #[tokio::test]
+    async fn archive_owns_pending_state_and_keeps_failed_chat_visible() {
+        use axum::{routing::post, Json, Router};
+        let release = Arc::new(tokio::sync::Notify::new());
+        let (sent, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let handler_release = release.clone();
+        let router = Router::new().route(
+            "/v1/node/chats/chat/archive",
+            post(move |Json(body): Json<Value>| {
+                let release = handler_release.clone();
+                let sent = sent.clone();
+                async move {
+                    sent.send(body).unwrap();
+                    release.notified().await;
+                    (
+                        axum::http::StatusCode::CONFLICT,
+                        Json(serde_json::json!({"error":"new message arrived"})),
+                    )
+                }
+            }),
+        );
+        let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = socket.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(socket, router).await.unwrap();
+        });
+        let device = Device::open(
+            Arc::new(StationClient::new(&format!("http://{address}"), None)),
+            None,
+            false,
+        );
+        device.commit(|state| {
+            state.chats = Some(Arc::new(vec![serde_json::from_value(serde_json::json!({
+                "chat_id":"chat", "title":"Chat", "created_at":"now", "message_count":12
+            }))
+            .unwrap()]))
+        });
+        let mut changes = device.navigation();
+        changes.snapshot();
+        device.commit(|state| Arc::make_mut(state.chats.as_mut().unwrap())[0].message_count = 13);
+        device.set_chat_archived("chat", true, 12).unwrap();
+        assert!(device.set_chat_archived("chat", false, 12).is_err());
+        let pending = changes.snapshot();
+        assert!(pending.chats[0].archive_pending);
+        assert!(!pending.chats[0].archived);
+        let request = tokio::time::timeout(std::time::Duration::from_secs(5), received.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            request,
+            serde_json::json!({"archived":true,"expected_message_count":12})
+        );
+        release.notify_one();
+        let failed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let state = changes.changed().await.unwrap();
+                if state.chats[0].archive_error.is_some() {
+                    break state;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!failed.chats[0].archived);
+        assert!(!failed.chats[0].archive_pending);
+        assert!(received.try_recv().is_err());
+        server.abort();
+    }
 
     #[test]
     fn navigation_wakeup_can_resolve_the_advertised_chat_from_device_state() {

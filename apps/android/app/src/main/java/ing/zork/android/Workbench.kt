@@ -106,6 +106,7 @@ internal class WorkbenchActions(
     val sharedFiles: () -> Unit = {},
     val chatFile: (String, String) -> Unit = { _, _ -> },
     val newChat: (Peer) -> Unit = {},
+    val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
 )
 
 private class ConversationPresentation {
@@ -181,6 +182,7 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
 @Composable
 private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier) {
     var details by remember { mutableStateOf<Pair<String,List<Pair<String,String>>>?>(null) }
+    var showArchived by rememberSaveable { mutableStateOf(false) }
     Column(modifier.fillMaxHeight().background(ZorkColors.Paper)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -192,6 +194,9 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
         NavRow(onClick = actions.sharedFiles) {
             Glyph(R.drawable.ic_folder, 24.dp)
             Text("共享文件", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        }
+        NavRow(onClick = { showArchived = !showArchived }) {
+            Text(if (showArchived) "返回 Chat" else "已归档", fontSize = 15.sp)
         }
         val collapsed = remember { mutableStateMapOf<String, Boolean>() }
         val expanded = remember { mutableStateMapOf<String, Boolean>() }
@@ -222,21 +227,31 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                             Text("新建 Chat", fontSize = 15.sp)
                         }
                     }
-                    if (tree.sessions.isEmpty()) item {
-                        Text(if (tree.online) "还没有 Chat" else "等待设备连接…", fontSize = 12.sp,
+                    val matching = tree.sessions.filter { it.optBoolean("archived") == showArchived }
+                    if (matching.isEmpty()) item {
+                        Text(if (showArchived) "没有已归档的 Chat" else if (tree.online) "还没有 Chat" else "等待设备连接…", fontSize = 12.sp,
                             color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 54.dp, vertical = 10.dp))
                     }
                     val othersKey = "${peer.id}/unattributed"
-                    val others = tree.sessions.filter { expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
+                    val others = matching.filter { showArchived || expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
                     items(others, key = { "unassigned:${peer.id}:${it.text("chat_id")}" }) { session ->
                         NavRow(indent = 54.dp,
                             onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
                             Text(session.text("title", "对话"), fontSize = 15.sp,
                                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            LiquidIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
+                                enabled = !session.optBoolean("archive_pending"),
+                                onClick = { actions.archiveChat(peer.id, session.text("chat_id"), !session.optBoolean("archived"), session.optLong("message_count")) }) {
+                                Glyph(if (session.optBoolean("archived")) R.drawable.ic_archive_restore else R.drawable.ic_archive,
+                                    16.dp, ZorkColors.Ink.copy(alpha = 0.5f))
+                            }
                             if (session.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
                         }
+                        if (!session.isNull("archive_error")) {
+                            Text(session.text("archive_error"), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 54.dp))
+                        }
                     }
-                    if (others.size < tree.sessions.size || expanded[othersKey] == true) item(key = "more:$othersKey") {
+                    if (!showArchived && (others.size < matching.size || expanded[othersKey] == true)) item(key = "more:$othersKey") {
                         NavRow(indent = 54.dp, onClick = { expanded[othersKey] = expanded[othersKey] != true }) {
                             Text(if (expanded[othersKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
                         }

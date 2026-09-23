@@ -207,6 +207,7 @@ impl NewChat {
                 .as_ref()
                 .map(|c| zork_client_types::navigation::NavigationChat {
                     chat_id: c.chat_id.clone(),
+                    message_count: c.message_count,
                     title: c.title.clone(),
                     can_send: true,
                     can_stop: true,
@@ -444,6 +445,7 @@ mod tests {
                                 .into_response()
                         } else {
                             Json(Channel {
+                                archived: false,
                                 chat_id: request.request_id,
                                 title: "created".into(),
                                 created_at: "now".into(),

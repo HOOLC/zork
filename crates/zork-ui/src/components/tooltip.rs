@@ -511,10 +511,20 @@ pub struct HintTrigger<E: ControlElement> {
     key: String,
     text: String,
     focus: Option<gpui::FocusHandle>,
+    side: Side,
+    min_width: f32,
 }
 impl<E: ControlElement> HintTrigger<E> {
+    pub fn above(mut self) -> Self {
+        self.side = Side::Above;
+        self
+    }
     pub fn focus_handle(mut self, focus: &gpui::FocusHandle) -> Self {
         self.focus = Some(focus.clone());
+        self
+    }
+    pub fn min_width(mut self, width: f32) -> Self {
+        self.min_width = width;
         self
     }
 }
@@ -528,6 +538,8 @@ pub fn hint<E: ControlElement>(
         key: key.into(),
         text: text.into(),
         focus: None,
+        side: Side::Below,
+        min_width: 0.,
     }
 }
 impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
@@ -590,7 +602,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
             let available_width = (window.viewport_size().width.as_f32() - 24.)
                 .max(2.)
                 .min(360.);
-            let width = natural_width.min(available_width);
+            let width = natural_width.max(self.min_width).min(available_width);
             let single_line = natural_width <= available_width;
             let text = self.text.clone();
             let content = div()
@@ -615,7 +627,7 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
                     open,
                     FloatingStyle {
                         width,
-                        side: Side::Below,
+                        side: self.side,
                         radius: 9.,
                         priority: 110,
                         role: gpui::Role::Tooltip,

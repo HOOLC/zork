@@ -169,6 +169,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
 fn map_channel(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatRow> {
     Ok(ChatRow {
         channel: Channel {
+            archived: row.get(8)?,
             chat_id: row.get(0)?,
             title: row.get(2)?,
             created_at: row.get(4)?,
@@ -190,7 +191,7 @@ fn map_channel(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatRow> {
         session_key: row.get(1)?,
     })
 }
-const CHANNEL_SELECT: &str = "SELECT chat_id,session_key,title,epoch,created_at,message_count,creator,last_message_at FROM chat_channels";
+const CHANNEL_SELECT: &str = "SELECT chat_id,session_key,title,epoch,created_at,message_count,creator,last_message_at,archived FROM chat_channels";
 
 pub(super) fn ensure_channel(conn: &Connection, key: &str) -> Result<Option<String>> {
     let inserted = conn.execute(
@@ -412,8 +413,8 @@ pub(super) fn record_with_client(
         conn.execute("UPDATE product_tasks SET goal=?2,title=CASE WHEN title='' THEN ?3 ELSE title END WHERE session_key=?1 AND goal=''",params![row.session_key,row.text,title])?;
     }
     conn.execute(
-        "UPDATE chat_channels SET message_count=message_count+1,last_message_at=?2 WHERE chat_id=?1",
-        params![chat_id, row.created_at],
+        "UPDATE chat_channels SET archived=CASE WHEN ?3 THEN 0 ELSE archived END,message_count=message_count+1,last_message_at=?2 WHERE chat_id=?1",
+        params![chat_id, row.created_at, deliver],
     )?;
     if author.kind != AuthorKind::System {
         conn.execute("INSERT INTO chat_participants(chat_id,author_id,author,message_count,first_sequence) VALUES (?1,?2,?3,1,?4)

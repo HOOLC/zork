@@ -58,6 +58,33 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
         view
     });
     cx.subscribe(&view, |view, event: &Action, cx| {
+        if let Action::Archive {
+            node,
+            chat,
+            archived,
+            ..
+        } = event
+        {
+            // Supply a confirmed mock response; archive policy belongs to core/Station.
+            view.update(cx, |view, cx| {
+                let mut devices = view.devices.clone();
+                if let Some(device) = devices.iter_mut().find(|device| &device.id == node) {
+                    if let Some(item) = Arc::make_mut(&mut device.chats)
+                        .iter_mut()
+                        .find(|item| &item.chat_id == chat)
+                    {
+                        item.archived = *archived;
+                    }
+                }
+                view.set_data(
+                    devices,
+                    view.active.clone(),
+                    view.shared_files,
+                    view.width,
+                    cx,
+                );
+            });
+        }
         if let Action::Navigate { node, destination } = event {
             view.update(cx, |view, cx| {
                 let mut devices = view.devices.clone();

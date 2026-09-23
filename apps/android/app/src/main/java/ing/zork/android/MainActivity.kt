@@ -199,7 +199,7 @@ internal fun ClientScreen(model: ClientViewModel) {
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles, chatFile = model::openChatFile, newChat = model::openNewChat),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
     ) }
     }
     LiquidRetained(editingComment) { comment, open, closed ->

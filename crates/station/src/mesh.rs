@@ -1454,6 +1454,7 @@ fn client_route(method: &str, path: &str) -> bool {
             | ["v1", "node", "shared-files", "directory" | "content"]
             | ["v1", "node", "update"]
             | ["v1", "node", "agents", _, "open"]
+            | ["v1", "node", "chats", _, "archive"]
             | ["v1", "node", "chats", _, "messages", _, "agent-configuration"]
             | ["v1", "node", "auth"]
             | ["v1", "node", "profiles", _, "refresh"]
@@ -2441,6 +2442,7 @@ mod native_routes_tests {
             ("PUT", "/v1/node/profiles/p/name"),
             ("POST", "/v1/node/profiles/p/refresh"),
             ("PATCH", "/v1/node/agents/a/model"),
+            ("POST", "/v1/node/chats/c/archive"),
             ("POST", "/v1/node/chats/c/messages/m/agent-configuration"),
             ("GET", "/v1/node/chats/c/messages/m/provider-login"),
             ("POST", "/v1/node/chats/c/messages/m/provider-login"),
@@ -2462,6 +2464,8 @@ mod native_routes_tests {
             ("PUT", "/v1/node/profiles/../models"),
             ("POST", "/v1/node/profiles/p/name"),
             ("PUT", "/v1/node/profiles/../name"),
+            ("GET", "/v1/node/chats/c/archive"),
+            ("POST", "/v1/node/chats/c/archive/extra"),
             ("GET", "/v1/node/chats/c/messages/m/agent-configuration"),
             ("POST", "/v1/node/chats/c/messages/m/respond"),
             ("GET", "/v1/node/chats/c/messages/m/private"),
