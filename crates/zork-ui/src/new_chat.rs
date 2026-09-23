@@ -182,6 +182,7 @@ impl Render for Page {
             self.focus_pending = false;
             window.focus(&self.input.read(cx).focus_handle(), cx);
         }
+        let has_device_selector = self.data.device.options.len() > 1;
         let body_height = self
             .input
             .read(cx)
@@ -190,7 +191,12 @@ impl Render for Page {
             .clamp(48., composer::EDITOR_MAX)
             + crate::components::liquid_composer::TOP_EXTENSION
             + crate::components::liquid_composer::COMPOSER_CHROME;
-        let height = body_height + RAIL_VISIBLE_HEIGHT;
+        let rail_offset = if has_device_selector {
+            RAIL_VISIBLE_HEIGHT
+        } else {
+            0.
+        };
+        let height = body_height + rail_offset;
         let now = cx.background_executor().now();
         let elapsed = self.previous.replace(now).map_or(0., |before| {
             now.saturating_duration_since(before).as_secs_f64()
@@ -258,28 +264,30 @@ impl Render for Page {
                 cx.notify();
             },
         );
-        let device = self.device_selector(window, cx);
-        let rail = div()
-            .id("new-chat-device-rail")
-            .absolute()
-            .left(px(RAIL_INSET))
-            .top(px(0.))
-            .w(px(self.width - 2. * RAIL_INSET))
-            .h(px(RAIL_VISIBLE_HEIGHT + RAIL_OVERLAP))
-            .rounded_tl(px(RAIL_RADIUS))
-            .rounded_tr(px(RAIL_RADIUS))
-            .bg(rgb(ZORK_UI.palette.sidebar_hover))
-            .child(
-                div()
-                    .h(px(RAIL_VISIBLE_HEIGHT))
-                    .px(px(RAIL_CONTENT_INSET))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(ui::icon("icons/node.svg", 14.))
-                    .child(device),
-            )
-            .automation(AutomationRole::Status, "设备选择栏");
+        let rail = has_device_selector.then(|| {
+            let device = self.device_selector(window, cx);
+            div()
+                .id("new-chat-device-rail")
+                .absolute()
+                .left(px(RAIL_INSET))
+                .top(px(0.))
+                .w(px(self.width - 2. * RAIL_INSET))
+                .h(px(RAIL_VISIBLE_HEIGHT + RAIL_OVERLAP))
+                .rounded_tl(px(RAIL_RADIUS))
+                .rounded_tr(px(RAIL_RADIUS))
+                .bg(rgb(ZORK_UI.palette.sidebar_hover))
+                .child(
+                    div()
+                        .h(px(RAIL_VISIBLE_HEIGHT))
+                        .px(px(RAIL_CONTENT_INSET))
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(ui::icon("icons/node.svg", 14.))
+                        .child(device),
+                )
+                .automation(AutomationRole::Status, "设备选择栏")
+        });
         let composer = composer::render(
             composer::Props {
                 id: "new-chat-composer",
@@ -292,7 +300,7 @@ impl Render for Page {
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
-                transparent_exterior: true,
+                transparent_exterior: has_device_selector,
                 action_size: 28.,
                 accessory_band: 0.,
                 accessories: vec![div()
@@ -442,12 +450,12 @@ impl Render for Page {
                     .relative()
                     .w(px(self.width))
                     .h(px(height))
-                    .child(rail)
+                    .when_some(rail, |wrapper, rail| wrapper.child(rail))
                     .child(
                         div()
                             .absolute()
                             .left(px(0.))
-                            .top(px(RAIL_VISIBLE_HEIGHT))
+                            .top(px(rail_offset))
                             .w(px(self.width))
                             .h(px(body_height))
                             .child(composer),
