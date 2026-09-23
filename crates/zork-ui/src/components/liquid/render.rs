@@ -161,6 +161,28 @@ impl Surface {
             height,
             colors,
             content,
+            true,
+        )
+    }
+    /// A sibling material can remain visible behind this contour's corners.
+    /// Use only when the parent redraws its own background each frame.
+    pub fn layer_with_transparent_exterior(
+        &self,
+        id: impl Into<ElementId>,
+        width: f32,
+        height: f32,
+        colors: SurfaceColors,
+        content: impl IntoElement,
+    ) -> Stateful<Div> {
+        layer(
+            id,
+            self.model.contour(),
+            self.paint.clone(),
+            width,
+            height,
+            colors,
+            content,
+            false,
         )
     }
     pub fn background(&self, fill: u32, stroke: Option<u32>) -> impl IntoElement {
@@ -624,6 +646,7 @@ fn layer(
     height: f32,
     colors: SurfaceColors,
     content: impl IntoElement,
+    paint_exterior: bool,
 ) -> Stateful<Div> {
     let back = paint.clone();
     let front = paint.clone();
@@ -665,12 +688,16 @@ fn layer(
                     }
                     let focus_visible = colors.focused && window.last_input_was_keyboard();
                     cache.prepare(&front_path, bounds);
-                    cache.prepare_exterior(&front_path, bounds);
+                    if paint_exterior {
+                        cache.prepare_exterior(&front_path, bounds);
+                    }
                     if focus_visible {
                         cache.prepare_focus(&front_path);
                     }
-                    if let Some(path) = &cache.exterior {
-                        paint_at(window, path, bounds.origin, colors.parent);
+                    if paint_exterior {
+                        if let Some(path) = &cache.exterior {
+                            paint_at(window, path, bounds.origin, colors.parent);
+                        }
                     }
                     let path = if focus_visible {
                         &cache.focus
@@ -834,6 +861,7 @@ pub fn skin(
             height,
             colors,
             content,
+            true,
         ),
         state.contour.clone(),
         state.paint.clone(),

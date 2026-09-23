@@ -70,10 +70,16 @@ fn main() -> anyhow::Result<()> {
                 .clone()
         };
         let surface = bounds("new-chat-composer-surface");
+        let rail = bounds("new-chat-device-rail");
         let device = bounds("new-chat-device");
         anyhow::ensure!(
-            device.y >= surface.y && device.y + device.height <= surface.y + surface.height,
-            "device selector escaped the unified composer surface at {width}"
+            rail.x > surface.x
+                && rail.x + rail.width < surface.x + surface.width
+                && rail.y < surface.y
+                && rail.y + rail.height > surface.y
+                && device.y >= rail.y
+                && device.y + device.height <= surface.y,
+            "device rail must be narrower than and overlap behind the composer at {width}"
         );
         anyhow::ensure!(
             (bounds("new-chat-options").height - bounds("new-chat-send").height).abs() < 0.1,
@@ -104,23 +110,34 @@ fn main() -> anyhow::Result<()> {
                 .0
         };
         let middle = surface.x + surface.width / 2.;
-        let header = sample(middle, surface.y + 4.);
-        let editor = sample(middle, surface.y + 52.);
+        let header = sample(middle, rail.y + 4.);
+        let editor = sample(middle, surface.y + 12.);
         anyhow::ensure!(
             u16::from(header[0]) + 4 < u16::from(editor[0])
                 && u16::from(header[1]) + 4 < u16::from(editor[1]),
-            "device header lost its gray section at {width}: {header:?} / {editor:?}"
+            "device rail lost its gray section at {width}: {header:?} / {editor:?}"
+        );
+        anyhow::ensure!(
+            sample(surface.x + 4., rail.y + 10.)[..3]
+                .iter()
+                .all(|channel| *channel >= 250),
+            "device rail unexpectedly fills the composer width at {width}"
         );
         for fraction in [0.15, 0.5, 0.85] {
             let x = surface.x + surface.width * fraction;
-            for offset in [39., 40., 41.] {
+            for offset in [-1., 0., 1.] {
                 let pixel = sample(x, surface.y + offset);
                 anyhow::ensure!(
                     pixel[..3].iter().all(|channel| *channel < 250),
-                    "canvas-colored seam in the shared surface at {width}: {pixel:?}"
+                    "canvas-colored seam between rail and composer at {width}: {pixel:?}"
                 );
             }
         }
+        let shoulder = sample(rail.x + 2., surface.y + 2.);
+        anyhow::ensure!(
+            shoulder[..3].iter().all(|channel| *channel < 250),
+            "the rail was erased behind the composer corner at {width}: {shoulder:?}"
+        );
         screenshot.save(output.join(format!("new-chat-{width}.png")))?;
         let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
             cx.update_window(window.into(), |_, w, cx| {

@@ -164,10 +164,8 @@ pub struct Props<'a> {
     pub fan_pinned: bool,
     pub bubbles: &'a [super::departure::Bubble<'a>],
     pub handler: Handler,
-    /// Optional content at the top of the same composer material.
-    pub header: Option<AnyElement>,
-    pub header_fill: Option<u32>,
-    pub header_height: f32,
+    /// Preserve a sibling rail behind this material's outer corners.
+    pub transparent_exterior: bool,
     pub action_size: f32,
     pub presentation: Option<Presentation>,
     /// Extra space kept above the action row so accessories do not cover the editor.
@@ -188,9 +186,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         fan_pinned,
         bubbles,
         handler,
-        header,
-        header_fill,
-        header_height,
+        transparent_exterior,
         action_size,
         mut presentation,
         accessory_band,
@@ -199,22 +195,16 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     surface.set_border_width(spec::BORDER_WIDTH);
     let p = surface.simulation.pose();
     let c = snapshot.capabilities;
-    let editor_height = (p.h as f32
-        - spec::TOP_EXTENSION
-        - spec::COMPOSER_CHROME
-        - header_height.max(0.)
-        - accessory_band.max(0.))
-    .clamp(0., EDITOR_MAX);
+    let editor_height =
+        (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME - accessory_band.max(0.))
+            .clamp(0., EDITOR_MAX);
     let input = editor.clone();
     let editor_id = presentation
         .as_ref()
         .map_or_else(|| format!("{id}-editor"), |p| p.editor_id.clone());
     let editor_view = positioned(
         p.left() + TEXT_INSET as f64,
-        p.top()
-            + header_height.max(0.) as f64
-            + spec::TOP_EXTENSION as f64
-            + spec::EDITOR_TOP_INSET as f64,
+        p.top() + spec::TOP_EXTENSION as f64 + spec::EDITOR_TOP_INSET as f64,
         p.w - 2. * TEXT_INSET as f64,
         editor_height as f64,
     )
@@ -251,24 +241,6 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
                 .guard(plate)
                 .automation(AutomationRole::Status, "消息输入区"),
         )
-        .when_some(header_fill, |content, fill| {
-            content.child(
-                positioned(p.left(), p.top(), p.w, header_height.max(0.) as f64).bg(rgb(fill)),
-            )
-        })
-        .when_some(header, |content, header| {
-            content.child(
-                positioned(
-                    p.left() + TEXT_INSET as f64,
-                    p.top() + 6.,
-                    p.w - 2. * TEXT_INSET as f64,
-                    header_height.max(0.) as f64,
-                )
-                .flex()
-                .items_center()
-                .child(header),
-            )
-        })
         .child(surface.guard(editor_view).automation_enabled(
             c.editable,
             AutomationRole::TextInput,
@@ -490,13 +462,23 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         .relative()
         .w(px(width))
         .h(px(height))
-        .child(surface.layer(
-            format!("{id}-material"),
-            width,
-            height,
-            SurfaceColors::filled(spec::SURFACE_COLOR, ZORK_UI.palette.canvas),
-            content,
-        ))
+        .child(if transparent_exterior {
+            surface.layer_with_transparent_exterior(
+                format!("{id}-material"),
+                width,
+                height,
+                SurfaceColors::filled(spec::SURFACE_COLOR, ZORK_UI.palette.canvas),
+                content,
+            )
+        } else {
+            surface.layer(
+                format!("{id}-material"),
+                width,
+                height,
+                SurfaceColors::filled(spec::SURFACE_COLOR, ZORK_UI.palette.canvas),
+                content,
+            )
+        })
         .children(custom_fan)
         .when(!has_custom_fan && !snapshot.files.is_empty(), |v| {
             v.child(render_fan(

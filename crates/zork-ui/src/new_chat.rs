@@ -17,6 +17,12 @@ mod picker;
 use crate::components::liquid::panel::PopoverPanel;
 use picker::PickerMode;
 
+const RAIL_INSET: f32 = 13.;
+const RAIL_CONTENT_INSET: f32 = 12.;
+const RAIL_VISIBLE_HEIGHT: f32 = 40.;
+const RAIL_OVERLAP: f32 = 16.;
+const RAIL_RADIUS: f32 = 16.;
+
 pub enum Event {
     Intent(Action),
     ConfigureModels,
@@ -150,7 +156,7 @@ impl Page {
             options,
             self.device_menu,
             self.data.editable && !values.is_empty(),
-            (self.width - 58.).max(48.),
+            (self.width - 2. * (RAIL_INSET + RAIL_CONTENT_INSET) - 18.).max(48.),
             window,
             cx,
             |view, open, cx| {
@@ -176,16 +182,15 @@ impl Render for Page {
             self.focus_pending = false;
             window.focus(&self.input.read(cx).focus_handle(), cx);
         }
-        const HEADER_HEIGHT: f32 = 40.;
-        let height = self
+        let body_height = self
             .input
             .read(cx)
             .content_height()
             .unwrap_or(composer::EDITOR_MIN)
             .clamp(48., composer::EDITOR_MAX)
             + crate::components::liquid_composer::TOP_EXTENSION
-            + crate::components::liquid_composer::COMPOSER_CHROME
-            + HEADER_HEIGHT;
+            + crate::components::liquid_composer::COMPOSER_CHROME;
+        let height = body_height + RAIL_VISIBLE_HEIGHT;
         let now = cx.background_executor().now();
         let elapsed = self.previous.replace(now).map_or(0., |before| {
             now.saturating_duration_since(before).as_secs_f64()
@@ -194,7 +199,7 @@ impl Render for Page {
             0.,
             0.,
             self.width as f64,
-            height as f64,
+            body_height as f64,
             crate::components::liquid_composer::SURFACE_RADIUS as f64,
         );
         let moving = self
@@ -254,30 +259,40 @@ impl Render for Page {
             },
         );
         let device = self.device_selector(window, cx);
+        let rail = div()
+            .id("new-chat-device-rail")
+            .absolute()
+            .left(px(RAIL_INSET))
+            .top(px(0.))
+            .w(px(self.width - 2. * RAIL_INSET))
+            .h(px(RAIL_VISIBLE_HEIGHT + RAIL_OVERLAP))
+            .rounded_tl(px(RAIL_RADIUS))
+            .rounded_tr(px(RAIL_RADIUS))
+            .bg(rgb(ZORK_UI.palette.sidebar_hover))
+            .child(
+                div()
+                    .h(px(RAIL_VISIBLE_HEIGHT))
+                    .px(px(RAIL_CONTENT_INSET))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(ui::icon("icons/node.svg", 14.))
+                    .child(device),
+            )
+            .automation(AutomationRole::Status, "设备选择栏");
         let composer = composer::render(
             composer::Props {
                 id: "new-chat-composer",
                 surface: self.scene.surface.as_ref().expect("composer surface"),
                 width: self.width,
-                height,
+                height: body_height,
                 editor: &self.input,
                 snapshot: &snapshot,
                 fan_progress: 0.,
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
-                header: Some(
-                    div()
-                        .w_full()
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .child(ui::icon("icons/node.svg", 14.))
-                        .child(device)
-                        .into_any_element(),
-                ),
-                header_fill: Some(ZORK_UI.palette.sidebar_hover),
-                header_height: HEADER_HEIGHT,
+                transparent_exterior: true,
                 action_size: 28.,
                 accessory_band: 0.,
                 accessories: vec![div()
@@ -422,7 +437,22 @@ impl Render for Page {
                         .automation(AutomationRole::Status, error),
                 )
             })
-            .child(div().w(px(self.width)).h(px(height)).child(composer))
+            .child(
+                div()
+                    .relative()
+                    .w(px(self.width))
+                    .h(px(height))
+                    .child(rail)
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(0.))
+                            .top(px(RAIL_VISIBLE_HEIGHT))
+                            .w(px(self.width))
+                            .h(px(body_height))
+                            .child(composer),
+                    ),
+            )
             .children(popup)
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }
