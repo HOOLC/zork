@@ -20,8 +20,7 @@ pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
 pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
 pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
 
-/// The 12% accent tint behind a row icon uses an inset of 3px vertically
-/// and -2px horizontally on the 16px icon box.
+/// The 12% accent tint behind a row icon fills its 20px box.
 fn accent_chip(color: u32) -> gpui::Rgba {
     rgba((color << 8) | 0x1F)
 }
@@ -85,6 +84,8 @@ pub fn activity_header_sources<V: 'static>(
 ) -> impl IntoElement {
     let face = header.action.clone();
     let icon = header.icon;
+    // The full chip needs 20px, while the row's text keeps its former start.
+    let label_inset = if icon.is_some() { -4. } else { 0. };
     let open = std::rc::Rc::new(open);
     let navigate = std::rc::Rc::new(navigate);
     let id = id.into();
@@ -151,7 +152,7 @@ pub fn activity_header_sources<V: 'static>(
             v.child(
                 div()
                     .relative()
-                    .w(px(16.))
+                    .w(px(20.))
                     .h(px(26.))
                     .flex_shrink_0()
                     .flex()
@@ -161,7 +162,7 @@ pub fn activity_header_sources<V: 'static>(
                         v.child(
                             div()
                                 .absolute()
-                                .left(px(-2.))
+                                .left_0()
                                 .top(px(3.))
                                 .w(px(20.))
                                 .h(px(20.))
@@ -188,6 +189,7 @@ pub fn activity_header_sources<V: 'static>(
             // The group summary shrinks and ellipsises its counts.
             true => div()
                 .min_w_0()
+                .ml(px(label_inset))
                 .text_size(px(11.))
                 .text_color(rgb(label_color))
                 .whitespace_nowrap()
@@ -197,6 +199,7 @@ pub fn activity_header_sources<V: 'static>(
             // The activity label is `flex: none` at 11px, medium when accented.
             false => div()
                 .min_w_0()
+                .ml(px(label_inset))
                 .when(header.tail, |v| v.flex_shrink_0())
                 .when(!header.tail, |v| v.truncate())
                 .text_size(px(11.))
