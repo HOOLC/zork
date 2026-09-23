@@ -20,6 +20,8 @@ mod form_story;
 #[cfg(feature = "stories")]
 mod interaction_story;
 #[cfg(feature = "stories")]
+mod unified_story;
+#[cfg(feature = "stories")]
 pub mod stories;
 
 pub mod resources;

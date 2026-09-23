@@ -62,6 +62,16 @@ pub fn catalog() -> Vec<Story> {
     components.width = 1180.;
     components.height = 900.;
     items.push(components);
+    let mut unified = Story::new(
+        "unified-design",
+        "统一设计",
+        "overview",
+        "crates/zork-ui/src/unified_story.rs",
+        "unified-design",
+    );
+    unified.width = 1180.;
+    unified.height = 1180.;
+    items.push(unified);
     for (family, title, states, source, reference) in [
         (
             "device-name",
@@ -487,6 +497,7 @@ impl Render for PrimitiveStory {
         let state = self.story.state.as_str();
         let p = ZORK_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
+            "unified-design" => crate::unified_story::overview(&self.input, cx),
             "profile-card" => {
                 let quota = match state {
                     "subscription" | "narrow" | "full" | "hover-5h" => Some(Quota {
@@ -1268,6 +1279,14 @@ impl Render for FamilyStories {
         if self.family == "components" {
             return div()
                 .size_full()
+                .children(self.items.first().map(|(_, child)| child.clone()))
+                .into_any_element();
+        }
+        if self.family == "unified-design" {
+            return div()
+                .id("family-unified-design")
+                .size_full()
+                .overflow_y_scroll()
                 .children(self.items.first().map(|(_, child)| child.clone()))
                 .into_any_element();
         }
