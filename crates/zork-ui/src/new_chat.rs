@@ -6,7 +6,7 @@ use crate::{
         text_input::{ComposerEdited, ComposerInput, ComposerLayoutChanged, ComposerSubmit},
     },
     controls as ui,
-    design::ZORK_UI,
+    design::{TextRole, ZORK_UI},
     resources::Text,
 };
 use gpui::{prelude::*, *};
@@ -39,6 +39,7 @@ pub struct Page {
     previous: Option<Instant>,
     scheduled: bool,
     focus_pending: bool,
+    welcome: bool,
 }
 impl EventEmitter<Event> for Page {}
 impl Page {
@@ -78,6 +79,13 @@ impl Page {
             previous: None,
             scheduled: false,
             focus_pending: true,
+            welcome: false,
+        }
+    }
+    pub fn set_welcome(&mut self, welcome: bool, cx: &mut Context<Self>) {
+        if self.welcome != welcome {
+            self.welcome = welcome;
+            cx.notify();
         }
     }
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
@@ -317,6 +325,34 @@ impl Render for Page {
             .justify_end()
             .px_6()
             .pb(px(ZORK_UI.layout.composer_bottom_inset))
+            .when(self.welcome, |v| {
+                v.child(
+                    div()
+                        .id("new-chat-welcome")
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .pb_6()
+                        .child(
+                            div()
+                                .max_w(px(600.))
+                                .px_4()
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .text_center()
+                                .child(ui::page_title(self.text.text("onboarding_ready")))
+                                .child(div().mt_3().child(ui::text_role(
+                                    self.text.text("onboarding_ready_description"),
+                                    TextRole::Description,
+                                ))),
+                        )
+                        .automation(AutomationRole::Status, self.text.text("onboarding_ready")),
+                )
+            })
             .when(self.data.loading, |v| {
                 v.child(
                     div()

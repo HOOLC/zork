@@ -37,6 +37,8 @@ pub struct State {
     pub mesh: Phase,
     pub onboarding: Option<Onboarding>,
     pub onboarding_error: Option<String>,
+    /// Show the first-chat greeting after setup hands the user to New Chat.
+    pub first_chat_welcome: bool,
 }
 
 impl State {

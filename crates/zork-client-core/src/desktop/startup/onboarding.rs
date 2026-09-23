@@ -110,13 +110,14 @@ impl Recovery {
         } else {
             Onboarding::Models
         };
-        // A previously configured model skips setup entirely. New connections
-        // retain the setup screen until the user elects to start chatting.
-        if usable && state.onboarding == Some(Onboarding::Preparing) {
+        // A usable model completes setup from either the initial scan or the
+        // model editor. The first Chat opens without an extra confirmation.
+        if usable {
             match self.directory.store.put("client", KEY, &true) {
                 Ok(()) => {
                     state.onboarding = None;
                     state.onboarding_error = None;
+                    state.first_chat_welcome = true;
                     self.onboarding_stop.notify_one();
                 }
                 Err(error) => {
@@ -201,6 +202,7 @@ impl Startup {
         self.directory.store.put("client", KEY, &true)?;
         state.onboarding = None;
         state.onboarding_error = None;
+        state.first_chat_welcome = true;
         self.recovery.updates.publish(state.clone());
         self.recovery.onboarding_stop.notify_one();
         Ok(())
@@ -344,10 +346,11 @@ mod tests {
         recovery.models_changed("local", binding, &models(true, false));
         assert_eq!(recovery.updates.read().onboarding, Some(Onboarding::Models));
         recovery.models_changed("local", binding, &models(true, true));
-        assert_eq!(recovery.updates.read().onboarding, Some(Onboarding::Ready));
-        assert!(required(&source).unwrap());
+        assert_eq!(recovery.updates.read().onboarding, None);
+        assert!(recovery.updates.read().first_chat_welcome);
+        assert!(!required(&source).unwrap());
         recovery.models_changed("local", binding, &models(true, false));
-        assert_eq!(recovery.updates.read().onboarding, Some(Onboarding::Models));
+        assert_eq!(recovery.updates.read().onboarding, None);
     }
 
     #[test]
@@ -372,6 +375,7 @@ mod tests {
         signed_in(&source, true);
         recovery.models_changed("local", binding, &models(true, true));
         assert!(recovery.updates.read().onboarding.is_none());
+        assert!(recovery.updates.read().first_chat_welcome);
         assert!(!required(&source).unwrap());
         recovery.models_changed("local", binding, &models(false, false));
         assert!(recovery.updates.read().onboarding.is_none());
@@ -412,5 +416,6 @@ mod tests {
         startup.finish_onboarding().unwrap();
         assert!(!required(&source).unwrap());
         assert!(startup.subscribe().snapshot().onboarding.is_none());
+        assert!(startup.subscribe().snapshot().first_chat_welcome);
     }
 }

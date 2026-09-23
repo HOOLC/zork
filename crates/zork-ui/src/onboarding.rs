@@ -1,6 +1,11 @@
 //! Native first-use composition shared by the product and the design browser.
-use crate::{controls as ui, design::TextRole};
-use gpui::{div, prelude::*, px, Div, MouseButton, SharedString};
+use crate::{
+    automation::{AutomationElementExt, AutomationRole},
+    components::liquid::primitives::{feedback, surface},
+    controls::{self as ui, NoticeKind},
+    design::TextRole,
+};
+use gpui::{div, prelude::*, px, rgb, Div, MouseButton, Role, SharedString};
 
 pub fn frame() -> Div {
     div().size_full().flex().flex_col().child(
@@ -37,4 +42,29 @@ pub fn center(body: impl IntoElement) -> Div {
         .justify_center()
         .pb(px(48.))
         .child(body)
+}
+
+pub fn failure_notice(message: String) -> Div {
+    let (ink, fill) = feedback::colors(NoticeKind::Info);
+    div().w_auto().max_w(px(340.)).min_w_0().child(
+        surface("onboarding-notice-surface", ui::FIELD_RADIUS, fill, false)
+            .w_auto()
+            .px_3()
+            .py_2()
+            .child(
+                div()
+                    .id("onboarding-error")
+                    .role(Role::Alert)
+                    .aria_label(message.clone())
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_size(px(13.))
+                    .line_height(px(20.))
+                    .text_color(rgb(ink))
+                    .child(ui::icon("icons/attention.svg", 14.))
+                    .child(div().min_w_0().child(message.clone()))
+                    .automation(AutomationRole::Status, message),
+            ),
+    )
 }

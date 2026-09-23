@@ -7,6 +7,7 @@ impl DesktopRoot {
     pub(super) fn apply_startup(&mut self, state: Arc<State>, cx: &mut Context<Self>) {
         let selection_changed =
             self.startup_state.selection_generation != state.selection_generation;
+        let entered_first_chat = state.first_chat_welcome && !self.startup_state.first_chat_welcome;
         self.startup_state = state.clone();
         if selection_changed && self.active.is_none() {
             if let Some(node) = state
@@ -19,6 +20,21 @@ impl DesktopRoot {
                 let managing = self.managing;
                 self.open_node(node, cx);
                 self.managing = managing;
+            }
+        }
+        if entered_first_chat {
+            if self.active.is_none() {
+                if let Some(node) = state
+                    .selected
+                    .as_deref()
+                    .and_then(|id| self.source.node(id))
+                {
+                    self.open_node(node, cx);
+                }
+            }
+            if let Some(active) = &self.active {
+                active.update(cx, |view, cx| view.set_first_chat_welcome(true, cx));
+                self.apply_navigation(navigation::Destination::Home, cx);
             }
         }
         cx.notify();
@@ -270,22 +286,31 @@ impl DesktopRoot {
                                 }))
                                 .automation(AutomationRole::Button, locale.text("onboarding_back")),
                             )
-                            .when(phase == Onboarding::Ready, |v| {
-                                v.child(
-                                    ui::button(
-                                        "onboarding-finish",
-                                        locale.text("onboarding_start"),
-                                        true,
-                                        true,
+                            .when(
+                                phase == Onboarding::Ready
+                                    && self.startup_state.onboarding_error.is_some(),
+                                |v| {
+                                    v.child(
+                                        ui::button(
+                                            "onboarding-retry-completion",
+                                            locale.text("onboarding_retry"),
+                                            false,
+                                            true,
+                                        )
+                                        .on_click(
+                                            cx.listener(|v, _, _, cx| v.finish_onboarding(cx)),
+                                        )
+                                        .automation(
+                                            AutomationRole::Button,
+                                            locale.text("onboarding_retry"),
+                                        ),
                                     )
-                                    .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
-                                    .automation(
-                                        AutomationRole::Button,
-                                        locale.text("onboarding_start"),
-                                    ),
-                                )
-                            }),
+                                },
+                            ),
                     )
+                    .when_some(self.startup_state.onboarding_error.clone(), |v, error| {
+                        v.child(ui::feedback(error))
+                    })
                     .when_some(self.error.clone(), |v, error| v.child(ui::feedback(error)))
                     .child(
                         div()
@@ -410,54 +435,77 @@ impl DesktopRoot {
                         )))
                     })
                     .when_some(failure, |v, error| {
-                        v.child(ui::feedback(error)).child(
+                        v.child(
+                            div()
+                                .w_full()
+                                .mt(px(30.))
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .gap_4()
+                                .child(zork_ui::onboarding::failure_notice(error))
+                                .child(
+                                    ui::button(
+                                        "desktop-startup-retry",
+                                        locale.text("onboarding_retry"),
+                                        true,
+                                        true,
+                                    )
+                                    .on_click(cx.listener(|v, _, _, cx| v.retry_startup(cx)))
+                                    .automation(
+                                        AutomationRole::Button,
+                                        locale.text("onboarding_retry"),
+                                    ),
+                                ),
+                        )
+                    });
+            }
+            Onboarding::Models => {
+                body = body.child(
+                    div().mt(px(30.)).child(
+                        ui::button(
+                            "onboarding-add-model",
+                            locale.text("onboarding_add_model"),
+                            true,
+                            self.model_settings
+                                .as_ref()
+                                .zip(self.active_node_id.as_ref())
+                                .is_some_and(|(view, id)| view.read(cx).has_device(id)),
+                        )
+                        .on_click(cx.listener(|v, _, _, cx| {
+                            if let (Some(settings), Some(id)) =
+                                (v.model_settings.clone(), v.active_node_id.clone())
+                            {
+                                if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
+                                    v.onboarding_models_open = true;
+                                }
+                            }
+                            cx.notify();
+                        }))
+                        .automation(AutomationRole::Button, locale.text("onboarding_add_model")),
+                    ),
+                );
+            }
+            Onboarding::Ready => {}
+        }
+        body = body
+            .when(
+                phase == Onboarding::Ready && self.startup_state.onboarding_error.is_some(),
+                |v| {
+                    v.child(
+                        div().mt(px(30.)).child(
                             ui::button(
-                                "desktop-startup-retry",
+                                "onboarding-retry-completion",
                                 locale.text("onboarding_retry"),
                                 true,
                                 true,
                             )
-                            .on_click(cx.listener(|v, _, _, cx| v.retry_startup(cx)))
+                            .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
                             .automation(AutomationRole::Button, locale.text("onboarding_retry")),
-                        )
-                    });
-            }
-            Onboarding::Models | Onboarding::Ready => {
-                let ready = phase == Onboarding::Ready;
-                body = body.child(div().mt(px(30.)).child(if ready {
-                    ui::button(
-                        "onboarding-finish",
-                        locale.text("onboarding_start"),
-                        true,
-                        true,
+                        ),
                     )
-                    .on_click(cx.listener(|v, _, _, cx| v.finish_onboarding(cx)))
-                    .automation(AutomationRole::Button, locale.text("onboarding_start"))
-                } else {
-                    ui::button(
-                        "onboarding-add-model",
-                        locale.text("onboarding_add_model"),
-                        true,
-                        self.model_settings
-                            .as_ref()
-                            .zip(self.active_node_id.as_ref())
-                            .is_some_and(|(view, id)| view.read(cx).has_device(id)),
-                    )
-                    .on_click(cx.listener(|v, _, _, cx| {
-                        if let (Some(settings), Some(id)) =
-                            (v.model_settings.clone(), v.active_node_id.clone())
-                        {
-                            if settings.update(cx, |view, cx| view.begin_onboarding(&id, cx)) {
-                                v.onboarding_models_open = true;
-                            }
-                        }
-                        cx.notify();
-                    }))
-                    .automation(AutomationRole::Button, locale.text("onboarding_add_model"))
-                }));
-            }
-        }
-        body = body
+                },
+            )
             .when(
                 phase == Onboarding::Models && self.startup_state.onboarding_error.is_some(),
                 |v| {

@@ -153,6 +153,19 @@ def main():
         wait(lambda: native.element("onboarding-cancel-login"), "browser wait specimen", timeout=10)
         click("onboarding-cancel-login")
         wait(lambda: native.element("desktop-welcome-login", enabled=True), "cancel returns to login", timeout=10)
+        choose("story-scenario", "story-scenario-onboarding-failure-compact")
+        notice = wait(lambda: native.element("onboarding-error"), "startup failure notice", timeout=10)
+        retry = native.element("desktop-startup-retry")
+        assert retry["bounds"]["y"] - (notice["bounds"]["y"] + notice["bounds"]["height"]) >= 12
+        assert notice["bounds"]["width"] < 300
+        save("08-onboarding-failure-spacing")
+        choose("story-scenario", "story-scenario-onboarding-ready-compact")
+        wait(lambda: native.element("new-chat-welcome"), "first Chat greeting", timeout=10)
+        assert not native.element("onboarding-finish")
+        assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
+        save("09-onboarding-new-chat")
+        checks.append("failure actions have breathing room and completion enters New Chat without a confirmation button")
+
         choose("story-scenario", "story-scenario-onboarding-models-compact")
         click("onboarding-add-model")
         wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)

@@ -97,7 +97,7 @@ pub fn catalog() -> Vec<Story> {
                 "failure" => "desktop-startup-retry",
                 "models" => "onboarding-add-model",
                 "model-form" => "profile-create-dialog",
-                _ => "onboarding-finish",
+                _ => "new-chat-welcome",
             }
             .into();
             items.push(story);
