@@ -11,13 +11,17 @@ use zork_ui::{components::loading, design::TextRole, onboarding};
 pub struct OnboardingStory {
     state: String,
     models_open: bool,
-    finished: bool,
     models: Entity<ModelSettings>,
     chat: Entity<zork_ui::new_chat::Page>,
 }
 
 impl OnboardingStory {
     pub fn new(state: &str, cx: &mut Context<Self>) -> Self {
+        let width = if state.ends_with("-compact") {
+            360.
+        } else {
+            960.
+        };
         let state = state
             .trim_end_matches("-compact")
             .trim_end_matches("-wide")
@@ -29,24 +33,27 @@ impl OnboardingStory {
                 assert!(view.begin_onboarding("mini1", cx));
             });
         }
+        let chat = new_chat_story("draft", width, cx);
+        if state == "ready" {
+            chat.update(cx, |view, cx| view.set_welcome(true, cx));
+        }
         Self {
             state,
             models_open,
-            finished: false,
             models,
-            chat: new_chat_story("draft", 900., cx),
+            chat,
         }
     }
 
     pub fn inspect(&self) -> Value {
-        json!({"state": self.state, "models_open": self.models_open, "finished": self.finished})
+        json!({"state": self.state, "models_open": self.models_open, "entered_chat": self.state == "ready"})
     }
 }
 
 impl Render for OnboardingStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let locale = Locale::ZhCn;
-        if self.finished {
+        if self.state == "ready" {
             return div().size_full().child(self.chat.clone());
         }
         if self.models_open {
@@ -147,21 +154,31 @@ impl Render for OnboardingStory {
                 )));
             }
             "failure" => {
-                hero = hero
-                    .child(ui::feedback("本机工作空间暂时无法启动".into()))
-                    .child(
-                        ui::button(
-                            "desktop-startup-retry",
-                            locale.text("onboarding_retry"),
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.state = "preparing".into();
-                            cx.notify();
-                        }))
-                        .automation(AutomationRole::Button, locale.text("onboarding_retry")),
-                    );
+                hero = hero.child(
+                    div()
+                        .w_full()
+                        .mt(px(30.))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap_4()
+                        .child(onboarding::failure_notice(
+                            "本机工作空间暂时无法启动".into(),
+                        ))
+                        .child(
+                            ui::button(
+                                "desktop-startup-retry",
+                                locale.text("onboarding_retry"),
+                                true,
+                                true,
+                            )
+                            .on_click(cx.listener(|v, _, _, cx| {
+                                v.state = "preparing".into();
+                                cx.notify();
+                            }))
+                            .automation(AutomationRole::Button, locale.text("onboarding_retry")),
+                        ),
+                );
             }
             "models" | "model-form" => {
                 hero = hero.child(
@@ -180,23 +197,6 @@ impl Render for OnboardingStory {
                             cx.notify();
                         }))
                         .automation(AutomationRole::Button, locale.text("onboarding_add_model")),
-                    ),
-                );
-            }
-            "ready" => {
-                hero = hero.child(
-                    div().mt(px(30.)).child(
-                        ui::button(
-                            "onboarding-finish",
-                            locale.text("onboarding_start"),
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|v, _, _, cx| {
-                            v.finished = true;
-                            cx.notify();
-                        }))
-                        .automation(AutomationRole::Button, locale.text("onboarding_start")),
                     ),
                 );
             }

@@ -744,7 +744,6 @@
   "device_connected": "Connected",
   "device_revoked": "Access revoked",
   "onboarding_back": "Back",
-  "onboarding_start": "Start chatting",
   "onboarding_browser_title": "Continue in your browser",
   "onboarding_welcome": "Welcome to Zork",
   "onboarding_browser_description": "Sign in with Google, then return to Zork to continue.",

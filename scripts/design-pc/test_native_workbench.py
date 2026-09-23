@@ -162,6 +162,23 @@ def main():
         assert not native.element("model-add-device-mini1")
         checks.append("first-use flow opens the real local model editor without device choice")
 
+        click("profile-close-form")
+        wait(lambda: not native.element("profile-create-dialog") and
+             not native.element("profile-close-form"), "model form closed", timeout=10)
+        time.sleep(0.35)
+        choose("story-scenario", "story-scenario-onboarding-failure-compact")
+        notice = wait(lambda: native.element("onboarding-error"), "startup failure notice", timeout=10)
+        retry = native.element("desktop-startup-retry")
+        assert retry["bounds"]["y"] - (notice["bounds"]["y"] + notice["bounds"]["height"]) >= 12
+        assert notice["bounds"]["width"] < 300
+        save("08-onboarding-failure-spacing")
+        choose("story-scenario", "story-scenario-onboarding-ready-compact")
+        wait(lambda: native.element("new-chat-welcome"), "first Chat greeting", timeout=10)
+        assert not native.element("onboarding-finish")
+        assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
+        save("09-onboarding-new-chat")
+        checks.append("failure actions have breathing room and completion enters New Chat without a confirmation button")
+
         print("PASS zork-design-pc: " + "; ".join(checks), flush=True)
         (args.output / "result.json").write_text(json.dumps({
             "checks": checks,
