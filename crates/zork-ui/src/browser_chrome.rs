@@ -172,7 +172,7 @@ impl Chrome {
                                 .gap_2()
                                 .pl_2()
                                 .pr_1()
-                                .rounded(px(8.))
+                                .rounded(px(crate::design::RADIUS.control))
                                 .text_size(px(13.))
                                 .text_color(rgb(if selected { p.text } else { p.muted }))
                                 .when(selected, |v| v.font_weight(FontWeight::MEDIUM))
@@ -241,7 +241,7 @@ impl Chrome {
                                 .gap_2()
                                 .pl_2()
                                 .pr_1()
-                                .rounded(px(8.))
+                                .rounded(px(crate::design::RADIUS.control))
                                 .text_size(px(13.))
                                 .text_color(rgb(if selected { p.text } else { p.muted }))
                                 .when(selected, |v| v.font_weight(FontWeight::MEDIUM))
@@ -304,7 +304,7 @@ impl Chrome {
                                     .gap_2()
                                     .pl_2()
                                     .pr_1()
-                                    .rounded(px(8.))
+                                    .rounded(px(crate::design::RADIUS.control))
                                     .cursor_pointer()
                                     .on_click(cx.listener(|v, _, window, cx| {
                                         v.browser_action(Action::ShowWeb, Some(window), cx);

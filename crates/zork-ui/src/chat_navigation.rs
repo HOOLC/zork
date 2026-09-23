@@ -444,7 +444,7 @@ impl Navigation {
             .tab_stop(true)
             .relative()
             .w_full()
-            .px(px(8.))
+            .px(px(12.))
             .py(px(6.))
             .flex()
             .flex_col()
@@ -453,8 +453,16 @@ impl Navigation {
             .rounded(px(radius))
             .when(!selected, |row| {
                 row.hover(|row| row.bg(rgb(crate::design::INTERACTION.neutral_hover)))
+                    .focus_visible(|row| {
+                        row.bg(rgb(ZORK_UI.palette.sidebar))
+                            .shadow(crate::controls::focus_ring())
+                    })
             })
-            .when(selected, |row| row.bg(rgb(ZORK_UI.palette.selected)))
+            .when(selected, |row| {
+                row.bg(rgb(ZORK_UI.palette.selected))
+                    .hover(|row| row.bg(rgb(crate::design::SELECTED_HOVER)))
+                    .focus_visible(|row| row.shadow(crate::controls::focus_ring()))
+            })
             .child(
                 div()
                     .text_size(px(13.))

@@ -829,7 +829,7 @@ fn render_block<'a>(
                 .w_full()
                 .border(gpui::px(crate::design::BORDER_WIDTH))
                 .border_color(rgb(BORDER))
-                .rounded_lg()
+                .rounded(px(crate::design::RADIUS.block))
                 .children(rendered_rows)
                 .into_any_element()
         }
@@ -1049,7 +1049,7 @@ fn render_code_ready(
     div()
         .w_full()
         .min_w_0()
-        .rounded(px(8.))
+        .rounded(px(crate::design::RADIUS.block))
         .overflow_hidden()
         .border(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(BORDER))

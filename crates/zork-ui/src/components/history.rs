@@ -161,7 +161,7 @@ pub fn activity_header<V: 'static>(
                                 .top(px(3.))
                                 .w(px(20.))
                                 .h(px(20.))
-                                .rounded(px(5.))
+                                .rounded(px(crate::design::RADIUS.inline))
                                 .bg(accent_chip(header.color)),
                         )
                     })

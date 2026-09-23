@@ -78,6 +78,7 @@ impl Row<'_> {
                                     div()
                                         .w_full()
                                         .rounded(px(ZORK_UI.thread.user_radius))
+                                        .rounded_br(px(crate::design::RADIUS.fold))
                                         .bg(rgb(ZORK_UI.thread.user_fill))
                                         .px(px(ZORK_UI.thread.user_padding_x))
                                         .py(px(ZORK_UI.thread.user_padding_y))

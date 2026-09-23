@@ -78,7 +78,7 @@ impl ListDelegate for Options {
                 .h(px(32.))
                 .px(px(10.))
                 .py_0()
-                .rounded(px(10.))
+                .rounded(px(crate::design::RADIUS.control))
                 .text_size(px(12.))
                 .role(match self.selection {
                     Selection::Single => Role::RadioButton,

@@ -1456,7 +1456,7 @@ impl RootView {
                                                 .id("load-older")
                                                 .px_3()
                                                 .py_1()
-                                                .rounded_lg()
+                                                .rounded(px(zork_ui::design::RADIUS.control))
                                                 .cursor_pointer()
                                                 .hover(|style| style.bg(rgb(PROMPT)))
                                                 .on_click(move |_, _, cx| {

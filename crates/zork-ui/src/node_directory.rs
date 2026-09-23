@@ -66,7 +66,7 @@ pub trait Host: Sized + 'static {
                     .child(
                         div()
                             .size(px(44.))
-                            .rounded(px(12.))
+                            .rounded(px(crate::design::RADIUS.block))
                             .bg(rgb(p.selected))
                             .flex()
                             .items_center()

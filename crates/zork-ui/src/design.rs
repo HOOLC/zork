@@ -6,7 +6,52 @@
 //! generic dashboard.
 
 pub const BRAND_ACCENT: u32 = 0xE9643B;
-pub const UI_OUTLINE: u32 = 0xB6BABD;
+pub const UI_OUTLINE: u32 = 0xCCC7BD;
+/// Keyboard focus is an independent persimmon ring outside the outline.
+pub const FOCUS_RING: u32 = 0xE9643B;
+pub const FOCUS_RING_ALPHA: f32 = 0.6;
+/// Text and glyphs of disabled controls; disabled surfaces use `palette.prompt`.
+pub const DISABLED_TEXT: u32 = 0xB9B5AD;
+/// A selected row keeps its identity under the pointer: hover deepens it.
+pub const SELECTED_HOVER: u32 = 0xDCD6CA;
+
+/// Corner radii by role. Controls are capsules; containers grow so a capsule
+/// sits concentric inside them (inner radius = outer radius - padding).
+/// Corners render as continuous-curvature curves in the GPUI renderer.
+pub struct Radii {
+    /// Inline code, key caps and skeleton lines.
+    pub inline: f32,
+    /// Buttons, fields, rows, menu items: a capsule at the 32 px control height.
+    pub control: f32,
+    /// Embedded blocks that can grow: code blocks, attachments, multi-line fields.
+    pub block: f32,
+    /// Cards, menus, popovers and banners.
+    pub container: f32,
+    /// Dialogs, the composer and other large surfaces.
+    pub surface: f32,
+    /// Message bubbles; the folded corner echoes the brand mark.
+    pub bubble: f32,
+    pub fold: f32,
+}
+pub const RADIUS: Radii = Radii {
+    inline: 6.,
+    control: 16.,
+    block: 16.,
+    container: 24.,
+    surface: 32.,
+    bubble: 24.,
+    fold: 8.,
+};
+
+/// Stable identity hues for devices. They mark which device a Chat or message
+/// belongs to and never express status; status keeps its own shape and text.
+pub const DEVICE_HUES: [u32; 5] = [0x5E8B6B, 0x56759A, 0xA27A2B, 0x87618F, 0x3E8787];
+pub fn device_hue(key: &str) -> u32 {
+    let hash = key
+        .bytes()
+        .fold(0x811C9DC5u32, |hash, byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193));
+    DEVICE_HUES[hash as usize % DEVICE_HUES.len()]
+}
 pub const BORDER_WIDTH: f32 = 0.5;
 
 pub struct InteractionPalette {
@@ -21,15 +66,15 @@ pub struct InteractionPalette {
     pub focus_border: u32,
 }
 pub const INTERACTION: InteractionPalette = InteractionPalette {
-    neutral_hover: 0xEFEEEA,
-    neutral_pressed: 0xEAE7E1,
-    primary_hover: 0x41464C,
-    primary_pressed: 0x1B1E21,
+    neutral_hover: 0xEDEAE3,
+    neutral_pressed: 0xE5E1D8,
+    primary_hover: 0x3B3F44,
+    primary_pressed: 0x4C5157,
     accent_hover: 0xDB572F,
     accent_pressed: 0xC84A27,
-    danger_hover: 0xA61B24,
-    danger_pressed: 0x8F1720,
-    focus_border: 0x646970,
+    danger_hover: 0x9E252C,
+    danger_pressed: 0x8A1D23,
+    focus_border: 0x24272B,
 };
 
 /// Apply the same palette to complete library components and our Base wrappers.
@@ -47,16 +92,16 @@ pub(crate) fn init_component_theme(cx: &mut gpui::App) {
     theme.foreground = rgb(p.text).into();
     theme.border = rgb(UI_OUTLINE).into();
     theme.input = rgb(UI_OUTLINE).into();
-    theme.ring = rgb(FORM.focus_border).into();
+    theme.ring = rgb(FOCUS_RING).into();
     theme.caret = rgb(p.text).into();
     theme.muted = rgb(p.selected).into();
     theme.muted_foreground = rgb(p.muted).into();
     theme.accent = rgb(INTERACTION.neutral_hover).into();
     theme.accent_foreground = rgb(p.text).into();
-    theme.primary = rgb(BRAND_ACCENT).into();
+    theme.primary = rgb(p.text).into();
     theme.primary_foreground = rgb(p.canvas).into();
-    theme.primary_hover = rgb(INTERACTION.accent_hover).into();
-    theme.primary_active = rgb(INTERACTION.accent_pressed).into();
+    theme.primary_hover = rgb(INTERACTION.primary_hover).into();
+    theme.primary_active = rgb(INTERACTION.primary_pressed).into();
     theme.secondary = rgb(p.selected).into();
     theme.secondary_foreground = rgb(p.text).into();
     theme.popover = rgb(p.canvas).into();
@@ -65,7 +110,7 @@ pub(crate) fn init_component_theme(cx: &mut gpui::App) {
     theme.list_hover = rgb(INTERACTION.neutral_hover).into();
     theme.list_active = rgb(p.selected).into();
     theme.list_active_border = rgb(FORM.focus_border).into();
-    theme.slider_bar = rgb(BRAND_ACCENT).into();
+    theme.slider_bar = rgb(p.text).into();
     theme.slider_thumb = rgb(p.canvas).into();
     theme.switch = rgb(FORM.switch_off).into();
     theme.switch_thumb = rgb(p.canvas).into();
@@ -98,14 +143,14 @@ pub struct FormPalette {
     pub switch_off: u32,
 }
 pub const FORM: FormPalette = FormPalette {
-    hover_border: 0x9A9EA3,
+    hover_border: 0xA9A398,
     focus_border: INTERACTION.focus_border,
     error_border: 0xC9837E,
     error_focus_border: ZORK_UI.palette.danger,
     error_surface: 0xFFFAFA,
-    success_surface: 0xECFDF3,
-    warning_surface: 0xFFFAEB,
-    switch_off: 0xC1C4C9,
+    success_surface: 0xE6F2EA,
+    warning_surface: 0xFBF1DE,
+    switch_off: 0xCCC7BD,
 };
 
 #[derive(Clone, Copy)]
@@ -357,22 +402,22 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
     force_light_window_chrome: true,
     // sRGB values sampled from the approved HTML design tokens in a browser.
     palette: Palette {
-        window: 0xF6F5F1,
+        window: 0xF4F2ED,
         canvas: 0xFFFFFF,
-        sidebar: 0xF6F5F1,
-        sidebar_hover: 0xEFEEEA,
-        selected: 0xEAE7E1,
+        sidebar: 0xF4F2ED,
+        sidebar_hover: 0xEDEAE3,
+        selected: 0xE4DFD4,
         elevated: 0xFFFFFF,
-        prompt: 0xF5F5F5,
-        border: 0xEEEDEA,
-        border_strong: 0xDEDFDF,
+        prompt: 0xF1EEE8,
+        border: 0xE7E3DB,
+        border_strong: 0xD8D3C9,
         text: 0x24272B,
-        muted: 0x646970,
-        subtle: 0x73787D,
-        accent: 0x24282B,
-        success: 0x006A3F,
-        warning: 0x7F5306,
-        danger: 0xA12F35,
+        muted: 0x575C62,
+        subtle: 0x676C72,
+        accent: 0x24272B,
+        success: 0x1F7A4D,
+        warning: 0x935800,
+        danger: 0xB42E35,
     },
     layout: LayoutSpec {
         rail_width: 75.0,
@@ -393,8 +438,7 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         activity: TranscriptTreatment::InlineActivity,
     },
     composer: ComposerSpec {
-        surface_radius: crate::controls::IconButtonSize::Small.extent() / 2.0
-            + crate::components::composer_layout::ACTION_INSET,
+        surface_radius: RADIUS.container,
         minimum_editor_height: 40.0,
         home_max_editor_height: 120.0,
         thread_max_editor_height: 60.0,
@@ -407,14 +451,14 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         toolbar_height: 48.0,
         footer_height: 46.0,
         inline_inset: 8.0,
-        row_height: 36.0,
-        row_radius: 12.0,
+        row_height: 32.0,
+        row_radius: RADIUS.control,
         item_font_size: 13.0,
         item_line_height: 20.0,
         section_label_font_size: 12.0,
         section_label_line_height: 18.0,
         section_label_weight: 500,
-        selected_fill: 0xDFE0E2,
+        selected_fill: 0xE4DFD4,
         has_hard_divider: false,
     },
     home: HomeSpec {
@@ -437,8 +481,8 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         user_left_clearance: 42.0,
         user_padding_x: 16.0,
         user_padding_y: 10.0,
-        user_radius: 20.0,
-        user_fill: 0xF6F5F1,
+        user_radius: RADIUS.bubble,
+        user_fill: 0xF1EEE8,
     },
     task_rows: TaskRowSpec {
         group_by_workspace: true,

@@ -248,7 +248,7 @@ impl Render for InteractionCard {
             .flex_col()
             .gap_3()
             .p_4()
-            .rounded(px(12.))
+            .rounded(px(crate::design::RADIUS.container))
             .child(
                 div()
                     .flex()

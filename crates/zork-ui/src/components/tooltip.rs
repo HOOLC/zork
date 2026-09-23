@@ -58,7 +58,7 @@ impl DetailsTooltip {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(12.))
+                            .rounded(px(crate::design::RADIUS.block))
                             .bg(rgb(p.prompt))
                             .child(ui::icon("icons/checklist.svg", 18.)),
                     )

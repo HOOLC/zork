@@ -1366,7 +1366,7 @@ impl Render for ProfilesView {
                             v.child(
                                 div()
                                     .p_4()
-                                    .rounded(px(10.))
+                                    .rounded(px(zork_ui::design::RADIUS.control))
                                     .bg(rgb(p.selected))
                                     .flex()
                                     .flex_col()

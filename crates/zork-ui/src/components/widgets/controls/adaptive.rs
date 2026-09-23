@@ -167,8 +167,11 @@ impl Field {
         let inner = std::mem::replace(&mut self.inner, div().id("field-layout"));
         self.inner = inner
             .border_color(rgb(border))
+            .when(focused, |v| v.shadow(crate::controls::focus_ring()))
             .when(disabled, |v| {
-                v.cursor_default().text_color(rgb(ZORK_UI.palette.subtle))
+                v.cursor_default()
+                    .bg(rgb(ZORK_UI.palette.prompt))
+                    .text_color(rgb(crate::design::DISABLED_TEXT))
             })
             .when(!disabled, |v| {
                 v.cursor_text()
@@ -262,11 +265,12 @@ pub fn adaptive_action(
         .unwrap_or(label.is_empty() && !appearance.select_trigger);
     let danger = appearance.variant == Some(ButtonVariant::Danger);
     let fill = if appearance.disabled {
-        INTERACTION.neutral_pressed
+        ZORK_UI.palette.prompt
     } else if danger {
         ZORK_UI.palette.danger
     } else if solid {
-        BRAND_ACCENT
+        // Primary actions are ink; persimmon is reserved for work in progress and sending.
+        ZORK_UI.palette.text
     } else if soft {
         ZORK_UI.palette.selected
     } else if appearance.quiet || icon_only {
@@ -297,6 +301,17 @@ pub fn adaptive_action(
         } else {
             crate::controls::BUTTON_PADDING_X
         }))
+        .when(
+            !icon_only && !appearance.select_trigger && !appearance.leading,
+            |v| {
+                v.when(appearance.icon.is_some() || appearance.image.is_some(), |v| {
+                    v.pl(px(crate::controls::ICON_SIDE_PADDING_X))
+                })
+                .when(appearance.trailing.is_some(), |v| {
+                    v.pr(px(crate::controls::ICON_SIDE_PADDING_X))
+                })
+            },
+        )
         .flex()
         .items_center()
         .justify_center()
@@ -330,7 +345,9 @@ pub fn adaptive_action(
                 v.bg(rgb(if danger {
                     INTERACTION.danger_hover
                 } else if solid {
-                    INTERACTION.accent_hover
+                    INTERACTION.primary_hover
+                } else if appearance.selected {
+                    crate::design::SELECTED_HOVER
                 } else {
                     INTERACTION.neutral_hover
                 }))
@@ -339,16 +356,16 @@ pub fn adaptive_action(
                 v.bg(rgb(if danger {
                     INTERACTION.danger_pressed
                 } else if solid {
-                    INTERACTION.accent_pressed
+                    INTERACTION.primary_pressed
+                } else if appearance.selected {
+                    crate::design::SELECTED_HOVER
                 } else {
                     INTERACTION.neutral_pressed
                 }))
             });
     }
-    button = button.focus_visible(|v| {
-        v.border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::controls::FIELD_FOCUS_BORDER))
-    });
+    // Keyboard focus is its own ring, so it stays visible over hover, selection and errors.
+    button = button.focus_visible(|v| v.shadow(crate::controls::focus_ring()));
     Action {
         inner: Some(button),
         rendered: None,
@@ -450,6 +467,16 @@ impl Element for Action {
                     handler(event, window, cx);
                 }
             });
+        }
+        if self.appearance.selected
+            && !self.appearance.disabled
+            && !self.appearance.busy
+            && !self.appearance.select_trigger
+        {
+            // Selection may be set after construction; keep it distinguishable under the pointer.
+            button = button
+                .hover(|v| v.bg(rgb(crate::design::SELECTED_HOVER)))
+                .active(|v| v.bg(rgb(crate::design::SELECTED_HOVER)));
         }
         if self.appearance.select_trigger && !self.appearance.disabled && !self.appearance.busy {
             button = button.hover(|v| v.border_color(rgb(crate::design::FORM.hover_border)));

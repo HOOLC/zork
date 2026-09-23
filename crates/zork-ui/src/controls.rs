@@ -24,20 +24,34 @@ pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_RADIUS: f32 = 999.;
-pub const CARD_RADIUS: f32 = 12.;
-pub const COMPACT_CARD_RADIUS: f32 = 12.;
-pub const FIELD_RADIUS: f32 = 10.;
-pub const ICON_BUTTON_RADIUS: f32 = 10.;
+pub const CARD_RADIUS: f32 = crate::design::RADIUS.container;
+pub const COMPACT_CARD_RADIUS: f32 = crate::design::RADIUS.block;
+/// A capsule at the control height; taller multi-line fields keep a block corner.
+pub const FIELD_RADIUS: f32 = crate::design::RADIUS.control;
+pub const ICON_BUTTON_RADIUS: f32 = crate::design::RADIUS.control;
 pub const BUTTON_PADDING_X: f32 = 16.;
-pub const MODAL_RADIUS: f32 = CARD_RADIUS;
-pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
-/// Ordinary Codex-style popup geometry, independent of field and card radii.
-pub const PLAIN_POPOVER_RADIUS: f32 = 16.;
+pub const MODAL_RADIUS: f32 = crate::design::RADIUS.surface;
+pub const MENU_RADIUS: f32 = PLAIN_POPOVER_RADIUS;
+/// Menus and popovers: MENU_PADDING inside keeps capsule items concentric.
+pub const PLAIN_POPOVER_RADIUS: f32 = crate::design::RADIUS.container;
 pub const MENU_OUTSET: f32 = 4.;
 pub const MENU_GAP: f32 = 6.;
 pub const MENU_PADDING: f32 = 8.;
 pub const FIELD_HOVER_BORDER: u32 = FORM.hover_border;
 pub const FIELD_FOCUS_BORDER: u32 = FORM.focus_border;
+/// Optical padding: an icon carries its own inset, so its side of a button is narrower.
+pub const ICON_SIDE_PADDING_X: f32 = BUTTON_PADDING_X - 4.;
+/// The shared keyboard-focus ring, drawn outside the control outline.
+pub fn focus_ring() -> Vec<gpui::BoxShadow> {
+    let [r, g, b] = [16u32, 8, 0].map(|shift| ((crate::design::FOCUS_RING >> shift) & 0xFF) as f32 / 255.);
+    vec![gpui::BoxShadow {
+        color: gpui::Rgba { r, g, b, a: crate::design::FOCUS_RING_ALPHA }.into(),
+        offset: gpui::point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(2.),
+        inset: false,
+    }]
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
@@ -222,8 +236,8 @@ impl IconButtonSize {
     pub const fn radius(self) -> f32 {
         match self {
             Self::Standard => ICON_BUTTON_RADIUS,
-            Self::Compact => 10.,
-            Self::Small => 8.,
+            Self::Compact => ICON_BUTTON_RADIUS,
+            Self::Small => ICON_BUTTON_RADIUS,
         }
     }
 }

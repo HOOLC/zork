@@ -460,7 +460,8 @@ fn render_toggle(
                 .w(px(41.))
                 .h(px(24.))
                 .rounded(px(12.))
-                .bg(rgb(track)),
+                .bg(rgb(track))
+                .when(focused, |v| v.shadow(crate::controls::focus_ring())),
         )
         .child(
             div()
@@ -471,11 +472,7 @@ fn render_toggle(
                 .rounded(px(9.))
                 .bg(rgb(thumb)),
         )
-        .when(focused, |v| {
-            v.border(px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(INTERACTION.focus_border))
-                .rounded(px(16.))
-        });
+;
     div().id(id).w(px(48.)).h(px(32.)).child(switch)
 }
 
@@ -602,7 +599,7 @@ fn action_ink(_label: &str, style: ActionStyle) -> u32 {
     let style = style.resolved();
     let p = ZORK_UI.palette;
     if style.disabled {
-        p.subtle
+        crate::design::DISABLED_TEXT
     } else if style.primary && !style.select_trigger {
         p.canvas
     } else {
