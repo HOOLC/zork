@@ -85,6 +85,8 @@ pub enum Trigger {
 
 pub struct Popover {
     motion: Motion,
+    plain_reveal: zork_liquid::motion::Reveal,
+    plain_reveal_last: Option<Instant>,
     option_hover: Motion,
     hot_option: Rc<Cell<Option<usize>>>,
     last_option: Option<usize>,
@@ -107,6 +109,8 @@ impl Popover {
         };
         Self {
             motion,
+            plain_reveal: Default::default(),
+            plain_reveal_last: None,
             option_hover,
             hot_option: Default::default(),
             last_option: None,
@@ -215,7 +219,7 @@ impl Popover {
             .relative()
             .w(px(width))
             .h(px(height))
-            .child(anchor.measure(self.motion.alive(), cx))
+            .child(anchor.measure(self.motion.alive() || self.plain_reveal.opacity() > 0., cx))
             .children(children)
             .into_any_element()
     }
@@ -371,7 +375,7 @@ impl Popover {
                 )
             }
         };
-        if !open && !self.motion.alive() {
+        if !open && !self.motion.alive() && self.plain_reveal.opacity() == 0. {
             self.anchor.reset_placement();
         }
         let trigger_pose = source;
@@ -396,6 +400,35 @@ impl Popover {
             window,
             cx,
         );
+        let plain_was_visible = self.plain_reveal.opacity() > 0.;
+        if floating {
+            let now = Instant::now();
+            let elapsed = self
+                .plain_reveal_last
+                .replace(now)
+                .map_or(0., |last| now.duration_since(last).as_secs_f64())
+                .min(0.05)
+                * super::press::playback_rate(cx);
+            let moving = self.plain_reveal.advance(
+                open,
+                elapsed,
+                cx.reduce_motion() || !self.anchor.visible.get(),
+            );
+            if moving || (plain_was_visible && self.plain_reveal.opacity() == 0.) {
+                super::motion::schedule(
+                    &self.motion.scheduled,
+                    &cx.entity().into_any().downgrade(),
+                    window,
+                );
+            } else {
+                self.plain_reveal_last = None;
+            }
+        }
+        let menu_visible = if floating {
+            self.plain_reveal.opacity() > 0.
+        } else {
+            reveal(self.motion.progress()) > 0.
+        };
         if !open || !enabled || self.hot_option.get().is_some_and(|i| i >= count) {
             self.hot_option.set(None);
         }
@@ -426,8 +459,7 @@ impl Popover {
             false,
             false,
             material,
-            (!floating || self.anchor.visible.get())
-                && (open || reveal(self.motion.progress()) > 0.),
+            (!floating || self.anchor.visible.get()) && (open || menu_visible),
             window,
             cx,
         );
@@ -703,7 +735,7 @@ impl Popover {
         if !floating {
             stage = stage.child(trigger.take().unwrap());
         }
-        if open || reveal(self.motion.progress()) > 0. {
+        if open || menu_visible {
             let return_focus = focus.clone();
             let key_close = set_open.clone();
             let handles = option_focus;
@@ -834,7 +866,11 @@ impl Popover {
                 .when(open && (floating || self.motion.progress() > 0.45), |v| {
                     v.occlude()
                 })
-                .opacity(reveal(self.motion.progress()))
+                .opacity(if floating {
+                    self.plain_reveal.opacity()
+                } else {
+                    reveal(self.motion.progress())
+                })
                 .when(floating, |v| {
                     v.rounded(px(crate::controls::PLAIN_POPOVER_RADIUS))
                         .shadow_sm()
@@ -950,7 +986,7 @@ impl Popover {
         if floating {
             let anchor = self.anchor.clone();
             let mut children = vec![trigger.take().unwrap()];
-            if open || self.motion.alive() {
+            if open || menu_visible {
                 children.push(anchor.layer(stage, 400));
             }
             self.window_slot(trigger_pose.w as f32, trigger_height, children, cx)
