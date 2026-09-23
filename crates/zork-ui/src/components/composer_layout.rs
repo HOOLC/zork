@@ -22,7 +22,6 @@ pub const DEFAULT_HEIGHT: f32 = 24. + TOP_EXTENSION + COMPOSER_CHROME;
 pub fn SURFACE_COLOR() -> u32 {
     crate::design::ZORK_UI.palette.window
 }
-pub const LOWER_COLOR: u32 = SURFACE_COLOR();
 #[allow(non_snake_case)]
 pub fn BORDER_COLOR() -> u32 {
     crate::design::ZORK_UI.palette.border_strong

@@ -119,8 +119,6 @@ impl Element for RoundedViewport {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let width = bounds.size.width.as_f32();
-        let height = bounds.size.height.as_f32();
         let radius = if self.radius.is_finite() {
             self.radius.max(0.)
         } else {
