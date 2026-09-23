@@ -1,4 +1,8 @@
-//! Real HTTPS relay, a CONNECT proxy and independent UDP QAD, all isolated.
+#[path = "../src/network.rs"]
+mod network;
+#[path = "../src/punch.rs"]
+mod punch;
+// Real HTTPS relay, a CONNECT proxy and independent UDP QAD, all isolated.
 use anyhow::{ensure, Context, Result};
 use iroh::{endpoint::presets, tls::CaTlsConfig, Endpoint, EndpointAddr, EndpointId, Watcher};
 use iroh_relay::server::{Access, AccessControl, ClientRequest, ConnectionId, Server};
@@ -144,25 +148,21 @@ async fn exchange(connection: &iroh::endpoint::Connection) -> Result<()> {
     Ok(())
 }
 async fn endpoint(
-    options: &synch_net::NetOptions,
+    options: &network::Options,
     cert: rustls::pki_types::CertificateDer<'static>,
     only_relay: bool,
-) -> Result<(
-    Endpoint,
-    synch_net::RelayHttpRoute,
-    Arc<synch_net::RelayAccess>,
-)> {
+) -> Result<(Endpoint, punch::RelayHttpRoute, Arc<RelayAccess>)> {
     let builder = Endpoint::builder(presets::N0)
         .clear_address_lookup()
         .ca_tls_config(CaTlsConfig::custom_roots([cert]))
-        .alpns(vec![synch_net::ALPN_CONTROL.to_vec()]);
-    let (mut builder, route) = synch_net::configure_endpoint(builder, options).await?;
+        .alpns(vec![b"zork-control/1".to_vec()]);
+    let (mut builder, route) = network::configure_endpoint(builder, options).await?;
     builder = builder.clear_address_lookup();
     if only_relay {
         builder = builder.clear_ip_transports();
     }
     let endpoint = builder.bind().await?;
-    let access = synch_net::RelayAccess::new(endpoint.clone(), options)?;
+    let access = RelayAccess::new(endpoint.clone(), options)?;
     Ok((endpoint, route, access))
 }
 async fn run(listener: std::net::TcpListener) -> Result<()> {
@@ -202,7 +202,7 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
     let mut qad_config = iroh_relay::server::ServerConfig::default();
     qad_config.quic = Some(qad);
     let qad = Server::spawn(qad_config).await?;
-    let options = synch_net::NetOptions {
+    let options = network::Options {
         relay_urls: vec![relay_url.clone()],
         relay_quic_port: Some(qad.quic_addr().context("QAD")?.port()),
         quic_discovery_urls: vec!["https://127.0.0.1:9".into()],
@@ -219,7 +219,7 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
     let target = EndpointAddr::new(b.id()).with_relay_url(relay_url.parse()?);
     let connection = tokio::time::timeout(
         Duration::from_secs(20),
-        a.connect(target.clone(), synch_net::ALPN_CONTROL),
+        a.connect(target.clone(), b"zork-control/1"),
     )
     .await??;
     ensure!(
@@ -264,7 +264,7 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
         !matches!(
             tokio::time::timeout(
                 Duration::from_secs(2),
-                a.connect(target.clone(), synch_net::ALPN_CONTROL)
+                a.connect(target.clone(), b"zork-control/1")
             )
             .await,
             Ok(Ok(_))
@@ -278,7 +278,7 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
     access_a.set(&relay_url, Some("second")).await?;
     let connection = tokio::time::timeout(
         Duration::from_secs(20),
-        a.connect(target, synch_net::ALPN_CONTROL),
+        a.connect(target, b"zork-control/1"),
     )
     .await??;
     exchange(&connection).await?;
@@ -323,7 +323,7 @@ async fn run(listener: std::net::TcpListener) -> Result<()> {
         Duration::from_secs(20),
         c.connect(
             EndpointAddr::new(d.id()).with_relay_url(relay_url.parse()?),
-            synch_net::ALPN_CONTROL,
+            b"zork-control/1",
         ),
     )
     .await??;
@@ -364,4 +364,46 @@ fn main() -> Result<()> {
         .enable_all()
         .build()?
         .block_on(run(listener))
+}
+
+// Relay credential rotation is a transport fixture, independent of product account membership.
+struct RelayAccess {
+    endpoint: Endpoint,
+    configs: Vec<iroh::RelayConfig>,
+}
+impl RelayAccess {
+    fn new(endpoint: Endpoint, options: &network::Options) -> Result<Arc<Self>> {
+        let configs = options
+            .relay_urls
+            .iter()
+            .map(|url| {
+                Ok(iroh::RelayConfig::new(
+                    url.parse()?,
+                    options
+                        .relay_quic_port
+                        .map(iroh_relay::RelayQuicConfig::new),
+                ))
+            })
+            .collect::<Result<_>>()?;
+        Ok(Arc::new(Self { endpoint, configs }))
+    }
+    async fn set(&self, origin: &str, token: Option<&str>) -> Result<()> {
+        let origin = url::Url::parse(origin)?.origin();
+        for config in self
+            .configs
+            .iter()
+            .filter(|config| config.url.origin() == origin)
+        {
+            self.endpoint.remove_relay(&config.url).await;
+            if let Some(token) = token {
+                self.endpoint
+                    .insert_relay(
+                        config.url.clone(),
+                        Arc::new(config.clone().with_auth_token(token)),
+                    )
+                    .await;
+            }
+        }
+        Ok(())
+    }
 }

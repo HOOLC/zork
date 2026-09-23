@@ -38,11 +38,11 @@ fn an_empty_client_can_reopen_after_persisting_no_selected_device() {
             .execute(command)
             .unwrap();
         let client = Client::open(root.path()).unwrap();
-        let mut invitation = client
+        let mut directory = client
             .local()
-            .observe(zork_client_core::subscriptions::Key::Invitation)
+            .observe(zork_client_core::subscriptions::Key::Directory)
             .unwrap();
-        let opening = invitation.prepare().unwrap().unwrap();
+        let opening = directory.prepare().unwrap().unwrap();
         assert!(opening["snapshot"]["selected_peer"].is_null());
         assert!(opening["snapshot"]["nodes"].as_array().unwrap().is_empty());
     }

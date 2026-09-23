@@ -11,29 +11,6 @@ impl ClientStore {
         self.settings_changed("\0directory");
     }
 
-    pub(crate) fn current_mesh(&self) -> Result<Option<MeshGroup>> {
-        let mut groups: Vec<_> = self
-            .nodes()?
-            .into_iter()
-            .filter_map(|node| node.group)
-            .collect();
-        groups.sort();
-        groups.dedup();
-        ensure!(
-            groups.len() <= 1,
-            "存在多个已保存的 Mesh，请先选择要保留的连接"
-        );
-        let Some(authority) = groups.first() else {
-            return Ok(None);
-        };
-        Ok(Some(
-            self.get("device", &format!("mesh-membership:{authority}"))?
-                .context("正在同步当前 Mesh，请稍后再试")?,
-        ))
-    }
-
-    /// Accept a directory only from a saved, authenticated member of that Mesh.
-    /// The caller serializes transport reconciliation with this transaction.
     pub(crate) fn apply_mesh_directory(
         &self,
         anchor: &str,
@@ -123,7 +100,7 @@ impl ClientStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zork_config::membership::{MeshDevice, MeshVersion};
+    use zork_config::membership::MeshDevice;
     fn device(key: char) -> MeshDevice {
         MeshDevice {
             routes: None,
@@ -147,6 +124,33 @@ mod tests {
             group: Some(authority.into()),
         }
     }
+    #[test]
+    fn account_logout_preserves_manual_peers_and_cached_history() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let store = ClientStore::open(root.path())?;
+        let mut manual = saved(&device('y'), "manual");
+        manual.group = None;
+        let mut account = saved(&device('b'), "account");
+        account.group = None;
+        store.save_node(&manual)?;
+        store.replace_account_nodes(&[manual.clone(), account.clone()])?;
+        store.put(&account.id, "draft:chat", &"preserved")?;
+        drop(store);
+        let store = ClientStore::open(root.path())?;
+        let removed = store.replace_account_nodes(&[])?;
+        assert_eq!(removed, vec![account.id.clone()]);
+        assert_eq!(store.nodes()?, vec![manual]);
+        assert_eq!(
+            store.get::<String>(&account.id, "draft:chat")?.as_deref(),
+            Some("preserved")
+        );
+        assert!(store
+            .get::<Vec<String>>("device", "account_peers")?
+            .unwrap()
+            .is_empty());
+        Ok(())
+    }
+
     #[test]
     fn directory_revision_survives_reopen_and_removal_preserves_history() -> Result<()> {
         let root = tempfile::tempdir()?;
@@ -187,68 +191,6 @@ mod tests {
         assert!(store
             .apply_mesh_directory(&a.origin, &phone.origin, &old)
             .is_err());
-        Ok(())
-    }
-    #[test]
-    fn switch_commit_requires_the_confirmed_revision_and_is_atomic() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let store = ClientStore::open(root.path())?;
-        let (a, b, phone) = (device('y'), device('b'), device('n'));
-        let old = MeshGroup {
-            authority: a.origin.clone(),
-            revision: 1,
-            members: vec![a.clone()],
-            clients: vec![phone.clone()],
-        };
-        let target = MeshGroup {
-            authority: b.origin.clone(),
-            revision: 1,
-            members: vec![b.clone()],
-            clients: vec![phone.clone()],
-        };
-        store.save_node(&saved(&a, &a.origin))?;
-        store.apply_mesh_directory(&a.origin, &phone.origin, &old)?;
-        store.put(&a.origin, "draft:chat", &"preserved")?;
-        store.put(
-            "device",
-            "invitation",
-            &serde_json::json!({"invitation":{"id":"next"},"switch_from":MeshVersion::of(&old)}),
-        )?;
-        let mut newer = old.clone();
-        newer.revision += 1;
-        newer.members[0].name = "renamed".into();
-        store.apply_mesh_directory(&a.origin, &phone.origin, &newer)?;
-        assert!(store
-            .accept_invitation_if(
-                "next",
-                &[saved(&b, &b.origin)],
-                &crate::Network::default(),
-                &target
-            )
-            .is_err());
-        assert_eq!(store.nodes()?[0].id, a.origin);
-        assert!(store
-            .get::<serde_json::Value>("device", "invitation")?
-            .is_some());
-        store.put(
-            "device",
-            "invitation",
-            &serde_json::json!({"invitation":{"id":"next"},"switch_from":MeshVersion::of(&newer)}),
-        )?;
-        store.accept_invitation_if(
-            "next",
-            &[saved(&b, &b.origin)],
-            &crate::Network::default(),
-            &target,
-        )?;
-        assert_eq!(store.nodes()?[0].id, b.origin);
-        assert_eq!(
-            store.get::<String>(&a.origin, "draft:chat")?.as_deref(),
-            Some("preserved")
-        );
-        assert!(store
-            .get::<serde_json::Value>("device", "invitation")?
-            .is_none());
         Ok(())
     }
 }

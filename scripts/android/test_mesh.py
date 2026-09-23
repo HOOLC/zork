@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Android JNI -> embedded Synch -> isolated real Station/fake-model Agent.
+"""Android JNI -> embedded iroh -> isolated real Station/fake-model Agent.
 
 Requires an already running arm64 emulator (default emulator-5554), debug APK
 and instrumentation APK. No user node, model account or workspace is accessed.

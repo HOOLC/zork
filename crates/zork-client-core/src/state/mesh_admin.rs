@@ -13,7 +13,7 @@ pub struct MeshAdminData {
     pub config: Option<zork_config::MeshConfig>,
     pub origin: Option<String>,
     pub peers: Vec<MeshPeer>,
-    pub invitations: [Option<Value>; 2],
+    pub invitation: Option<Value>,
     pub busy: bool,
     pub message: Option<String>,
     pub saved: u64,
@@ -28,9 +28,8 @@ pub enum MeshAction {
         client: bool,
     },
     RemovePeer(String),
-    CreateInvite(bool),
-    ApproveInvite(bool),
-    RevokeInvite(bool),
+    CreateInvite,
+    RevokeInvite,
 }
 pub struct MeshAdmin {
     client: Arc<StationClient>,
@@ -44,18 +43,19 @@ impl MeshAdmin {
         client: Arc<StationClient>,
         device: std::sync::Weak<super::Device>,
     ) -> Arc<Self> {
-        let invitations = device
-            .upgrade()
-            .and_then(|d| d.cache.clone())
-            .and_then(|(store, peer)| {
-                store
-                    .get::<[Option<Value>; 2]>(&peer, "mesh-admin-invitations")
-                    .ok()
-                    .flatten()
-            })
-            .unwrap_or_default();
+        let invitation =
+            device
+                .upgrade()
+                .and_then(|d| d.cache.clone())
+                .and_then(|(store, peer)| {
+                    store
+                        .get::<Option<Value>>(&peer, "mesh-admin-invitation")
+                        .ok()
+                        .flatten()
+                        .flatten()
+                });
         let initial = MeshAdminData {
-            invitations,
+            invitation,
             ..Default::default()
         };
         let source = Arc::new(Self {
@@ -67,9 +67,8 @@ impl MeshAdmin {
         });
         if source
             .snapshot()
-            .invitations
+            .invitation
             .iter()
-            .flatten()
             .any(|invite| !finished(invite))
         {
             source.watch();
@@ -105,29 +104,28 @@ impl MeshAdmin {
             let active = invite.as_ref().is_some_and(|i| !finished(i));
             value["can_create"] = json!(available && !state.busy && !active);
             value["can_revoke"] = json!(available && !state.busy && active);
-            value["can_approve"] =
-                json!(available && !state.busy && value["status"] == "awaiting_approval");
             value
         };
         json!({"available":available,"busy":state.busy,"error":state.message,
-            "node":project(&state.invitations[0]),"phone":project(&state.invitations[1])})
+            "node":project(&state.invitation)})
     }
     fn commit(&self, change: impl FnOnce(&mut MeshAdminData)) {
         let mut s = self.owned.lock().unwrap();
-        let previous = s.invitations.clone();
+        let previous = s.invitation.clone();
         change(&mut s);
-        for invitation in s.invitations.iter_mut().flatten() {
+        for invitation in s.invitation.iter_mut() {
             if finished(invitation) {
                 if let Some(fields) = invitation.as_object_mut() {
                     fields.remove("invitation");
                     fields.remove("command");
+                    fields.remove("install_url");
                 }
             }
         }
-        if previous != s.invitations {
+        if previous != s.invitation {
             if let Some((store, peer)) = self.device.upgrade().and_then(|d| d.cache.clone()) {
                 if let Err(error) =
-                    store.put_authorized_settings(&peer, "mesh-admin-invitations", &s.invitations)
+                    store.put_authorized_settings(&peer, "mesh-admin-invitation", &s.invitation)
                 {
                     s.message = Some(format!("邀请状态未能保存：{error}"));
                 }
@@ -241,7 +239,7 @@ impl MeshAdmin {
                     self.save(config).await
                 }
             }
-            MeshAction::CreateInvite(phone) => {
+            MeshAction::CreateInvite => {
                 let mut config = self.current().await?;
                 if !config.enabled {
                     config.enabled = true;
@@ -261,46 +259,22 @@ impl MeshAdmin {
                 .await
                 .context("Mesh 启动超时")??;
                 self.current().await?;
-                let path = if phone {
-                    "/v1/node/mesh/client-invites"
-                } else {
-                    "/v1/node/mesh/invites"
-                };
+                let path = "/v1/node/mesh/invites";
                 let mut invitation = self
                     .client
                     .node_request(http::Method::POST, path.into(), None)
                     .await?;
                 invitation["status"] = json!("waiting");
                 self.commit(|s| {
-                    s.invitations[usize::from(phone)] = Some(invitation);
+                    s.invitation = Some(invitation);
                     s.message = None;
                 });
                 self.watch();
                 self.refresh().await
             }
-            MeshAction::ApproveInvite(phone) => {
+            MeshAction::RevokeInvite => {
                 let snapshot = self.snapshot();
-                let invite = snapshot.invitations[usize::from(phone)]
-                    .as_ref()
-                    .context("没有正在进行的邀请")?;
-                anyhow::ensure!(
-                    invite["status"] == "awaiting_approval",
-                    "邀请已变化，请刷新后重试"
-                );
-                let id = invite["id"].as_str().context("邀请缺少 ID")?;
-                self.client.node_request(http::Method::POST,format!("/v1/node/mesh/invites/{id}/approve"),Some(json!({"origin":invite["device"]["origin"],"claim_id":invite["claim_id"]}))).await?;
-                self.commit(|s| {
-                    if let Some(invite) = &mut s.invitations[usize::from(phone)] {
-                        invite["status"] = json!("connecting");
-                    }
-                });
-                Ok(())
-            }
-            MeshAction::RevokeInvite(phone) => {
-                let snapshot = self.snapshot();
-                let invite = snapshot.invitations[usize::from(phone)]
-                    .as_ref()
-                    .context("没有正在进行的邀请")?;
+                let invite = snapshot.invitation.as_ref().context("没有正在进行的邀请")?;
                 let id = invite["id"].as_str().context("邀请缺少 ID")?;
                 self.client
                     .node_request(
@@ -310,7 +284,7 @@ impl MeshAdmin {
                     )
                     .await?;
                 self.commit(|s| {
-                    if let Some(invite) = &mut s.invitations[usize::from(phone)] {
+                    if let Some(invite) = &mut s.invitation {
                         invite["status"] = json!("revoked");
                     }
                 });
@@ -334,15 +308,10 @@ impl MeshAdmin {
                 let online = changes.snapshot().state.online;
                 let Some(source) = weak.upgrade() else { return; };
                 let old = source.snapshot();
-                let active: Vec<_> = old.invitations.iter().enumerate()
-                    .filter_map(|(index, invite)| invite.as_ref().filter(|value| !finished(value)).map(|value| (index, value.clone())))
-                    .collect();
-                if active.is_empty() { return; }
-                // Both invitation kinds share one authority/list request.
+                let Some(mut next) = old.invitation.clone().filter(|value| !finished(value)) else { return; };
                 let response = client.node_request(http::Method::GET, "/v1/node/mesh/invites".into(), None).await;
                 let failed = response.is_err();
                 source.commit(|state| {
-                    for (index, mut next) in active {
                         let id = next["id"].clone();
                         if let Ok(value) = &response {
                             if let Some(status) = value["items"].as_array().and_then(|items| items.iter().find(|item| item["id"] == id)) {
@@ -353,17 +322,16 @@ impl MeshAdmin {
                             && !matches!(next["status"].as_str(), Some("joined" | "revoked")) {
                             next["status"] = json!("expired");
                         }
-                        if state.invitations[index].as_ref().is_some_and(|current| current["id"] == id && !finished(current)) {
-                            state.invitations[index] = Some(next);
+                        if state.invitation.as_ref().is_some_and(|current| current["id"] == id && !finished(current)) {
+                            state.invitation = Some(next);
                         }
-                    }
                 });
                 let current = source.snapshot();
-                if current.invitations.iter().flatten().all(finished) {
+                if current.invitation.iter().all(finished) {
                     let _ = source.refresh().await;
                     return;
                 }
-                let remaining = current.invitations.iter().flatten().filter(|value| !finished(value))
+                let remaining = current.invitation.iter().filter(|value| !finished(value))
                     .filter_map(|value| value["expires_at"].as_u64())
                     .map(|at| at.saturating_sub(zork_mesh::enrollment::now())).min();
                 drop(source);
@@ -382,8 +350,9 @@ impl MeshAdmin {
             }
         })));
     }
-    pub fn remaining(&self, phone: bool) -> Option<u64> {
-        self.snapshot().invitations[usize::from(phone)]
+    pub fn remaining(&self) -> Option<u64> {
+        self.snapshot()
+            .invitation
             .as_ref()?
             .get("expires_at")?
             .as_u64()
@@ -410,23 +379,20 @@ mod tests {
         let device =
             super::super::Device::open(client.clone(), Some((store.clone(), "node".into())), false);
         let source = device.mesh_admin();
-        source.commit(|s| s.invitations[1] = Some(json!({"id":"phone","status":"waiting","invitation":"private-ticket","expires_at":zork_mesh::enrollment::now()+300})));
+        source.commit(|s| s.invitation = Some(json!({"id":"node","status":"waiting","invitation":"private-ticket","expires_at":zork_mesh::enrollment::now()+300})));
         drop(source);
         drop(device);
         let next = super::super::Device::open(client, Some((store.clone(), "node".into())), false);
         let source = next.mesh_admin();
-        assert_eq!(
-            source.snapshot().invitations[1].as_ref().unwrap()["id"],
-            "phone"
-        );
+        assert_eq!(source.snapshot().invitation.as_ref().unwrap()["id"], "node");
         source.commit(|s| {
             s.config = Some(Default::default());
-            s.invitations[1].as_mut().unwrap()["status"] = json!("revoked");
+            s.invitation.as_mut().unwrap()["status"] = json!("revoked");
         });
-        assert_eq!(source.invitation_view()["phone"]["can_create"], true);
-        assert_eq!(source.invitation_view()["phone"]["can_revoke"], false);
+        assert_eq!(source.invitation_view()["node"]["can_create"], true);
+        assert_eq!(source.invitation_view()["node"]["can_revoke"], false);
         assert!(!store
-            .get::<Value>("node", "mesh-admin-invitations")
+            .get::<Value>("node", "mesh-admin-invitation")
             .unwrap()
             .unwrap()
             .to_string()
@@ -435,12 +401,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invitation_kinds_share_reads_and_ignore_unrelated_device_changes() {
+    async fn invitation_ignores_unrelated_device_changes() {
         let reads = Arc::new(AtomicUsize::new(0));
         let count = reads.clone();
         let router = axum::Router::new().route("/v1/node/mesh/invites", axum::routing::get(move || {
             count.fetch_add(1, Ordering::SeqCst);
-            async { axum::Json(json!({"items":[{"id":"node","status":"waiting"},{"id":"phone","status":"waiting"}]})) }
+            async { axum::Json(json!({"items":[{"id":"node","status":"waiting"},{"id":"node","status":"waiting"}]})) }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let client = Arc::new(StationClient::new(
@@ -454,7 +420,7 @@ mod tests {
         device.commit(|state| state.online = Some(true));
         let source = device.mesh_admin();
         source.commit(|state| {
-            state.invitations = ["node", "phone"].map(|id| Some(json!({"id":id,"status":"waiting","expires_at":zork_mesh::enrollment::now()+600})));
+            state.invitation = Some(json!({"id":"node","status":"waiting","expires_at":zork_mesh::enrollment::now()+600}));
         });
         source.watch();
         let wait_for = |expected| {

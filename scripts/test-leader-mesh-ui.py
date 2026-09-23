@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native client-only → Leader node → remote Worker, using real Synch transport."""
+"""Native client-only → Leader node → remote Worker, using real iroh transport."""
 import importlib.util,json,os,subprocess,tempfile,time
 from pathlib import Path
 from urllib.request import Request,urlopen

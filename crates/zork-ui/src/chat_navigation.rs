@@ -14,7 +14,6 @@ use std::{
 use zork_client_types::navigation::NavigationChat;
 #[derive(Clone)]
 pub enum Destination {
-    SharedFiles,
     NewChat,
     Conversation { session: String },
     Manage(usize),
@@ -74,7 +73,6 @@ pub struct Navigation {
     locale: Text,
     width: f32,
     brand: Option<gpui::Entity<crate::components::brand::Brand>>,
-    shared_files: bool,
     tabs: TabGroup,
     details_overlay: Option<gpui::Entity<crate::components::tooltip::DetailsOverlay>>,
 }
@@ -93,7 +91,6 @@ impl Navigation {
             locale,
             width: 240.,
             brand: None,
-            shared_files: false,
             tabs: TabGroup::new(cx),
             details_overlay: None,
         }
@@ -102,7 +99,6 @@ impl Navigation {
         &mut self,
         devices: Vec<Device>,
         active: Option<String>,
-        shared_files: bool,
         width: f32,
         cx: &mut Context<Self>,
     ) {
@@ -117,7 +113,7 @@ impl Navigation {
                 changed.push(format!("device/{}", device.id));
             }
         }
-        let all = self.active != active || self.shared_files != shared_files || self.width != width;
+        let all = self.active != active || self.width != width;
         let removed = self.devices.len() != devices.len();
         self.devices = devices;
         if !self.focus_subscriptions.get_mut().is_empty() || self.hovered_row.is_some() {
@@ -145,7 +141,6 @@ impl Navigation {
             }
         }
         self.active = active;
-        self.shared_files = shared_files;
         self.width = width;
         if all || removed || !changed.is_empty() {
             crate::components::region::invalidate(cx, &["chats"]);
@@ -210,11 +205,9 @@ impl Navigation {
             .map(|device| device.id.clone())
     }
     fn on_new_chat(&self) -> bool {
-        !self.shared_files
-            && self.devices.iter().any(|device| {
-                self.active.as_deref() == Some(device.id.as_str())
-                    && device.selected_session.is_none()
-            })
+        self.devices.iter().any(|device| {
+            self.active.as_deref() == Some(device.id.as_str()) && device.selected_session.is_none()
+        })
     }
     fn chat_list(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let mut chats: Vec<_> = self
@@ -319,8 +312,7 @@ impl Navigation {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let selected = !self.shared_files
-            && self.active.as_deref() == Some(&device.id)
+        let selected = self.active.as_deref() == Some(&device.id)
             && device.selected_session.as_deref() == Some(&chat.chat_id);
         let title = if chat.title.is_empty() {
             self.locale.text("device_untitled_task").to_owned()
@@ -679,19 +671,6 @@ impl Render for Navigation {
                         ),
                 )
                 .child(brand)
-                .child(
-                    self.tabs
-                        .tab("navigation-shared-files".into(), self.shared_files)
-                        .child(ui::icon("icons/phosphor-folder-simple.svg", 20.))
-                        .child(self.locale.text("shared_files"))
-                        .on_click(cx.listener(|_, _, _, cx| {
-                            cx.emit(Action::Navigate {
-                                node: None,
-                                destination: Destination::SharedFiles,
-                            })
-                        }))
-                        .automation(AutomationRole::Button, self.locale.text("shared_files")),
-                )
                 .child(
                     div()
                         .id("device-sidebar-scroll")

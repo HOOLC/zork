@@ -24,7 +24,6 @@ use zork_mesh::{
 
 pub struct MeshService {
     pub adb: Arc<crate::adb::Registry>,
-    pub shared_files: std::sync::OnceLock<Arc<crate::shared_files::SharedFiles>>,
     pub services: Arc<crate::shared_services::Registry>,
     node: MeshNode,
     runtime: tokio::sync::Mutex<Option<zork_client_core::transport::Runtime>>,
@@ -80,9 +79,6 @@ enum RpcRequest {
     ChannelFile {
         body: crate::channels::FileRequest,
     },
-    Mcp {
-        body: crate::mcp::Rpc,
-    },
     ClientBrowser {
         session_id: String,
         client_id: String,
@@ -105,11 +101,7 @@ enum RpcRequest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<Value>,
     },
-    WatchPeer,
-    WatchAssignment {
-        assignment_id: String,
-        after: i64,
-    },
+
     Client {
         method: String,
         path: String,
@@ -355,22 +347,6 @@ impl MeshService {
         );
         Ok(reply["data"].clone())
     }
-    pub async fn mcp_call(&self, origin: &str, body: crate::mcp::Rpc) -> Result<Value> {
-        let reply = self
-            .node
-            .subscribe(origin, &json!({"v":1,"request":{"kind":"mcp","body":body}}))
-            .await?
-            .next()
-            .await?
-            .context("tool_transport_closed")?;
-        ensure!(
-            reply["ok"] == true,
-            "{}",
-            reply["error"].as_str().unwrap_or("mcp_remote_unavailable")
-        );
-        Ok(reply["data"].clone())
-    }
-
     pub async fn membership_call(&self, origin: &str, action: &str, body: Value) -> Result<Value> {
         let reply = self
             .node
@@ -413,7 +389,7 @@ impl MeshService {
             let _ = task.await;
         }
         // These are independent endpoints. Waiting for enrollment's external
-        // address probes first can delay Synch close beyond the desktop peer's
+        // address probes first can delay transport close beyond the desktop peer's
         // quit window, turning a local close into a timeout.
         let runtime = self.runtime.lock().await.take();
         let ((), stopped) = tokio::join!(self.enrollment.transport.close(), async {
@@ -451,9 +427,7 @@ impl MeshService {
             Err(_) => Value::Null,
         }
     }
-    pub(crate) fn file_tree(&self) -> MeshNode {
-        self.node.clone()
-    }
+
     pub async fn prepare(root: &Path) -> Result<Option<Prepared>> {
         let mut config = zork_config::load_config(root)?.mesh;
         if !config.enabled {
@@ -465,17 +439,12 @@ impl MeshService {
         .apply_defaults(&mut config)?;
         managed::validate(&config)?;
         let control_state = Arc::new(std::sync::OnceLock::new());
-        let runtime = managed::start_with_control_retiring_sources(
+        let runtime = managed::start_with_control(
             root,
             &config,
             Arc::new(ControlIngress {
                 state: control_state.clone(),
             }),
-            &[
-                "zork",
-                zork_config::tree::STATION_FILES_SPACE,
-                "zork-control",
-            ],
         )
         .await?;
         let node = runtime.node();
@@ -487,18 +456,6 @@ impl MeshService {
         managed::configure(root, &config, &node).await?;
         let files = zork_config::files_root(root);
         std::fs::create_dir_all(&files)?;
-        let shared = zork_config::shared_files_root(root);
-        std::fs::create_dir_all(&shared)?;
-        node.add_filesystem_source(zork_config::tree::SHARED_FILES_SPACE, &shared)
-            .await?;
-        let skills = zork_config::skill_bundles::skills_root(root);
-        std::fs::create_dir_all(&skills)?;
-        node.add_filesystem_source(zork_config::tree::SKILLS_SPACE, &skills)
-            .await?;
-        node.schedule_source_scan(zork_config::tree::SHARED_FILES_SPACE)
-            .await?;
-        node.schedule_source_scan(zork_config::tree::SKILLS_SPACE)
-            .await?;
         let peer_cache = root.join("mesh/peer-capabilities.json");
         let cached: std::collections::BTreeMap<String, Vec<String>> = std::fs::read(&peer_cache)
             .ok()
@@ -535,7 +492,6 @@ impl MeshService {
                 peer_cache,
                 peers: std::sync::Mutex::new(peers),
                 owner_subscriptions: Default::default(),
-                shared_files: Default::default(),
             }),
             state: control_state,
         }))
@@ -751,28 +707,7 @@ async fn membership_request(
                 )
                 .await
         }
-        "create_invite" => {
-            service
-                .enrollment
-                .create_kind(
-                    state,
-                    serde_json::from_value(body.get("kind").cloned().unwrap_or(json!("station")))?,
-                )
-                .await
-        }
-        "approve_client_invite" => {
-            service
-                .enrollment
-                .approve_client(
-                    state,
-                    body["id"].as_str().context("invite_id_required")?,
-                    body["origin"]
-                        .as_str()
-                        .context("device_identity_required")?,
-                    body["claim_id"].as_str().context("claim_id_required")?,
-                )
-                .await
-        }
+        "create_invite" => service.enrollment.create(state).await,
         "list_invites" => service.enrollment.list(state).await,
         "revoke_invite" => {
             service
@@ -894,7 +829,6 @@ async fn watch_membership(service: Arc<MeshService>, state: AppState, authority:
 }
 
 async fn watch_peer(service: Arc<MeshService>, state: AppState, peer: zork_config::MeshPeer) {
-    // Keep the legacy request name so upgraded consumers can watch older peers.
     let request = WatchTopic::Peer;
     let mut feed = service.node.follow(peer.origin.clone(), request);
     while let Some(event) = feed.next().await {
@@ -1033,7 +967,7 @@ pub async fn dispatch(state: AppState, peer: Peer, request: Value) -> Result<Rep
     }
     if matches!(
         request.pointer("/request/kind").and_then(Value::as_str),
-        Some("watch" | "subscribe" | "watch_peer" | "watch_assignment")
+        Some("watch" | "subscribe")
     ) {
         return match mesh_subscription(&state, peer, request).await {
             Ok(rx) => Ok(Reply::Subscription(rx)),
@@ -1042,7 +976,7 @@ pub async fn dispatch(state: AppState, peer: Peer, request: Value) -> Result<Rep
     }
     if matches!(
         request.pointer("/request/kind").and_then(Value::as_str),
-        Some("node_tool" | "mcp" | "business_card" | "interaction_registration" | "client_browser")
+        Some("node_tool" | "business_card" | "interaction_registration" | "client_browser")
     ) || (request.pointer("/request/kind").and_then(Value::as_str) == Some("channel_tool")
         && request
             .pointer("/request/body/tool")
@@ -1082,8 +1016,6 @@ pub fn start(prepared: Prepared, state: AppState) {
     let _ = prepared.state.set(state.clone());
     let service = prepared.service;
     service.enrollment.resume_join(state.clone());
-    let shared_files = crate::shared_files::SharedFiles::new(service.node.clone());
-    let _ = service.shared_files.set(shared_files.clone());
     let owner = service.clone();
     let services = service.services.clone();
     let service_task = tokio::spawn(services.run());
@@ -1091,6 +1023,117 @@ pub fn start(prepared: Prepared, state: AppState) {
         service.enrollment.clone(),
         state.clone(),
     )];
+    {
+        let service = service.clone();
+        let state = state.clone();
+        tasks.push(tokio::spawn(async move {
+            let root = service.root.clone();
+            let account_task = zork_client_core::relay_account::devices::start(
+                &root,
+                service.node.clone(),
+                true,
+                move |devices| {
+                    let devices: Vec<_> = devices
+                        .into_iter()
+                        .filter(|device| !device.station)
+                        .collect();
+                    let service = service.clone();
+                    let state = state.clone();
+                    async move {
+                        let root = service.root.clone();
+                        let origin = service.origin.clone();
+                        tokio::task::spawn_blocking(move || -> Result<()> {
+                            let current = zork_config::load_config(&root)?.mesh;
+                            let project = |config: &mut zork_config::MeshConfig| -> Result<()> {
+                                let previous = config.account_peers.clone();
+                                config.peers.retain(|peer| {
+                                    !previous.contains(&peer.origin)
+                                        || devices.iter().any(|device| device.origin == peer.origin)
+                                });
+                                let mut owned = Vec::new();
+                                for device in &devices {
+                                    if config.peers.iter().any(|peer| peer.origin == device.origin)
+                                        && !previous.contains(&device.origin)
+                                    {
+                                        continue;
+                                    }
+                                    let peer = zork_config::MeshPeer {
+                                        origin: device.origin.clone(),
+                                        name: device.name.clone(),
+                                        addr: None,
+                                        routes: None,
+                                        execute: vec![],
+                                        client: !device.station,
+                                        collaborate: device.station,
+                                    };
+                                    if let Some(existing) = config
+                                        .peers
+                                        .iter_mut()
+                                        .find(|peer| peer.origin == device.origin)
+                                    {
+                                        *existing = peer;
+                                    } else {
+                                        config.peers.push(peer);
+                                    }
+                                    owned.push(device.origin.clone());
+                                }
+                                if let Some(mut group) = config.group.clone() {
+                                    let original = group.clone();
+                                    group.clients.retain(|client| {
+                                        !previous.contains(&client.origin)
+                                            || devices
+                                                .iter()
+                                                .any(|device| device.origin == client.origin)
+                                    });
+                                    for device in &devices {
+                                        if owned.contains(&device.origin)
+                                            && !group
+                                                .clients
+                                                .iter()
+                                                .any(|client| client.origin == device.origin)
+                                        {
+                                            group.clients.push(
+                                                zork_config::membership::MeshDevice {
+                                                    origin: device.origin.clone(),
+                                                    name: device.name.clone(),
+                                                    addr: None,
+                                                    routes: None,
+                                                },
+                                            );
+                                        }
+                                    }
+                                    if group != original && group.authority == origin {
+                                        group.revision += 1;
+                                        group.apply(&origin, config)?;
+                                    }
+                                }
+                                config.account_peers = owned;
+                                managed::validate(config)
+                            };
+                            let mut next = current.clone();
+                            project(&mut next)?;
+                            if next != current {
+                                zork_config::update_config(&root, |config| {
+                                    project(&mut config.mesh)
+                                })?;
+                            }
+                            Ok(())
+                        })
+                        .await??;
+                        service.refresh(&state).await?;
+                        // Pinned public addresses are transport hints, not a second trust source.
+                        Ok(())
+                    }
+                },
+            );
+            match account_task {
+                Ok(task) => {
+                    let _ = task.await;
+                }
+                Err(error) => tracing::warn!(%error,"account device discovery unavailable"),
+            }
+        }));
+    }
     tasks.push(service_task);
     tasks.push(tokio::spawn(maintain_membership(
         service.clone(),
@@ -1169,12 +1212,10 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
         RpcRequest::ChannelFile { body } => {
             crate::channels::remote_file(state, &peer.origin, body).await
         }
-        RpcRequest::Mcp { body } => crate::mcp::remote(state, &peer.origin, body).await,
         RpcRequest::ConfirmJoin { .. } | RpcRequest::Membership { .. } => unreachable!(),
-        RpcRequest::Watch { .. }
-        | RpcRequest::Subscribe { .. }
-        | RpcRequest::WatchPeer
-        | RpcRequest::WatchAssignment { .. } => anyhow::bail!("subscription_requires_stream"),
+        RpcRequest::Watch { .. } | RpcRequest::Subscribe { .. } => {
+            anyhow::bail!("subscription_requires_stream")
+        }
         RpcRequest::Client { method, path, body } => {
             client_request(state, &method, &path, body).await
         }
@@ -1233,7 +1274,6 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
                 file,
             )?;
             let space = format!("zork-ws-{}", link.assignment.workspace_id);
-            service.node.add_api_source(&space).await?;
             let object = service
                 .node
                 .put(
@@ -1266,7 +1306,6 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
                 "history_response_too_large"
             );
             if bytes.len() > 128 * 1024 {
-                service.node.add_api_source("zork-client").await?;
                 let object = service
                     .node
                     .put(
@@ -1332,7 +1371,7 @@ async fn handle(state: &AppState, peer: Peer, request: Value) -> Result<Value> {
             Ok(json!({"items":items}))
         }
         RpcRequest::Hello => Ok(
-            json!({"origin":service.origin,"authenticated_peer":peer.origin,"execute_workspaces":live_config.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>(),"protocol":1,"mcp_protocol":1}),
+            json!({"origin":service.origin,"authenticated_peer":peer.origin,"execute_workspaces":live_config.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>(),"protocol":1}),
         ),
         RpcRequest::Delegate { assignment } => {
             ensure!(
@@ -1432,12 +1471,8 @@ fn client_route(method: &str, path: &str) -> bool {
             | ["v1", "node", "status"]
             | ["v1", "node", "info"]
             | ["v1", "node", "resources"]
-            | ["v1", "node", "shared-files"]
             | ["v1", "node", "pages"]
-            | ["v1", "node", "resources", "mcp", _]
             | ["v1", "node", "resources", "service", _]
-            | ["v1", "node", "agents", _, "skills", "catalog"]
-            | ["v1", "node", "agents", _, "skills", _]
             | ["v1", "node", "update"]
             | ["v1", "node", "conversations", "read-markers"]
             | ["v1", "node", "profiles", _]
@@ -1451,7 +1486,6 @@ fn client_route(method: &str, path: &str) -> bool {
             | ["v1", "node", "sync"]
             | ["v1", "node", "sync", "commands"]
             | ["v1", "node", "sync", "receipt"]
-            | ["v1", "node", "shared-files", "directory" | "content"]
             | ["v1", "node", "update"]
             | ["v1", "node", "agents", _, "open"]
             | ["v1", "node", "chats", _, "archive"]
@@ -1460,7 +1494,6 @@ fn client_route(method: &str, path: &str) -> bool {
             | ["v1", "node", "profiles", _, "refresh"]
             | ["v1", "node", "profiles", _, "models", "refresh"]
             | ["v1", "node", "mesh", "invites"]
-            | ["v1", "node", "mesh", "client-invites"]
             | ["v1", "node", "mesh", "invites", _, "approve"]
             | ["v1", "node", "mesh", "members", "remove"]
             | ["v1", "node", "mesh", "clients"]
@@ -1519,7 +1552,6 @@ async fn client_request(
         .is_some_and(|p| p.ends_with("/content"));
     if (200..300).contains(&status) && (binary || bytes.len() > 128 * 1024) {
         let service = state.mesh.get().context("mesh_disabled")?;
-        service.node.add_api_source("zork-client").await?;
         let object = service
             .node
             .put(
@@ -1849,7 +1881,6 @@ async fn publish_event(
         .mesh_link(&event.assignment_id)?
         .context("mesh link missing")?;
     let space = format!("zork-ws-{}", link.assignment.workspace_id);
-    service.node.add_api_source(&space).await?;
     if let EventBody::Artifact {
         artifact_id,
         object,
@@ -2071,7 +2102,7 @@ pub async fn status(State(state): State<AppState>) -> Response {
         .values()
         .cloned()
         .collect::<Vec<_>>();
-    Json(json!({"enabled":true,"change_token":state.db.realtime.token(state.db.realtime.current().mesh),"origin":service.origin,"group":service.config().ok().and_then(|c|c.group),"synch_version":zork_mesh::SYNCH_VERSION,"peers":peers,"workspaces":service.config().unwrap_or_default().workspaces.iter().map(|w|&w.id).collect::<Vec<_>>(),"assignments":links})).into_response()
+    Json(json!({"enabled":true,"change_token":state.db.realtime.token(state.db.realtime.current().mesh),"origin":service.origin,"group":service.config().ok().and_then(|c|c.group),"peers":peers,"workspaces":service.config().unwrap_or_default().workspaces.iter().map(|w|&w.id).collect::<Vec<_>>(),"assignments":links})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -2154,7 +2185,6 @@ async fn client_subscription(
         anyhow::bail!("invalid subscription")
     };
     let session = match path.split('/').collect::<Vec<_>>().as_slice() {
-        ["", "v1", "node", "shared-files", "events"] => None,
         ["", "v1", "im", "events"] => None,
         ["", "v1", "im", "sessions", id, "events"] if !id.is_empty() => Some((*id).to_owned()),
         ["", "v1", "client", "browser", "events"] => None,
@@ -2167,15 +2197,7 @@ async fn client_subscription(
     };
     ensure!(granted(state), "mesh_client_not_granted");
     let policy = state.db.realtime.listen(crate::realtime::MESH);
-    let source = if path == "/v1/node/shared-files/events" {
-        state
-            .mesh
-            .get()
-            .and_then(|m| m.shared_files.get())
-            .context("shared_files_unavailable")?
-            .subscribe(body.map(serde_json::from_value).transpose()?)
-            .await?
-    } else if path.ends_with("/browser/events") {
+    let source = if path.ends_with("/browser/events") {
         crate::browser::subscribe(
             state.clone(),
             serde_json::from_value(body.context("browser_registration_required")?)?,
@@ -2225,36 +2247,14 @@ async fn mesh_subscription(
     let topic = match envelope.request {
         RpcRequest::Subscribe { .. } => return client_subscription(state, peer, request).await,
         RpcRequest::Watch { topic } => topic,
-        RpcRequest::WatchPeer => WatchTopic::Peer,
-        RpcRequest::WatchAssignment {
-            assignment_id,
-            after,
-        } => WatchTopic::Assignment {
-            assignment_id,
-            after,
-        },
         _ => anyhow::bail!("invalid subscription"),
     };
     if let WatchTopic::AgentMessages { epoch, after } = topic {
         return crate::channels::subscribe(state.clone(), peer.origin, epoch, after);
     }
-    if let WatchTopic::Invitation {
-        id,
-        secret,
-        challenge,
-    } = topic
-    {
-        return crate::enrollment::subscribe_claim(
-            state.clone(),
-            peer.origin,
-            id,
-            secret,
-            challenge,
-        );
-    }
     let flags = match &topic {
         WatchTopic::Peer | WatchTopic::Membership => crate::realtime::MESH,
-        WatchTopic::Invitation { .. } | WatchTopic::AgentMessages { .. } => unreachable!(),
+        WatchTopic::AgentMessages { .. } => unreachable!(),
         WatchTopic::Assignment { .. } => {
             crate::realtime::MESH | crate::realtime::WORK | crate::realtime::ACTIVITY
         }
@@ -2335,7 +2335,7 @@ impl MeshWatch {
                 Ok(None)
             }
             WatchTopic::Peer => Ok(None),
-            WatchTopic::Invitation { .. } | WatchTopic::AgentMessages { .. } => unreachable!(),
+            WatchTopic::AgentMessages { .. } => unreachable!(),
         }
     }
 }
@@ -2357,7 +2357,7 @@ impl zork_notify::stream::Source for MeshWatch {
             .find(|p| p.origin == self.peer.origin)
             .context("mesh_peer_not_paired")?;
         Ok(match &self.topic {
-            WatchTopic::Invitation { .. } | WatchTopic::AgentMessages { .. } => unreachable!(),
+            WatchTopic::AgentMessages { .. } => unreachable!(),
             WatchTopic::Peer => Page::snapshot(
                 json!({"execute_workspaces":config.mesh.workspaces.iter().map(|w|w.id.clone()).collect::<Vec<_>>()}),
             ),

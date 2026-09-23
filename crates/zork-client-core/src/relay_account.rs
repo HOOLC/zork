@@ -1,6 +1,7 @@
 //! Public relay account operations. Mesh membership and LAN access are independent.
 pub mod controller;
 mod device;
+pub mod devices;
 mod login;
 mod runtime;
 #[cfg(test)]

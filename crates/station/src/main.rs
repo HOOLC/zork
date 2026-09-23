@@ -15,13 +15,11 @@ mod db;
 mod delivery;
 mod desktop_events;
 mod enrollment;
-mod files;
 mod http;
 mod im_entry;
 mod inbound;
 mod interaction_registry;
 mod jobs;
-mod mcp;
 mod mesh;
 mod message_log;
 mod node;
@@ -29,7 +27,6 @@ mod node_access;
 mod node_tools;
 mod provider_login;
 mod realtime;
-mod shared_files;
 mod shared_services;
 mod slack;
 mod slack_tools;
@@ -213,20 +210,10 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     let tools = Arc::new(ToolRegistry::default());
     zork_agent_station_tools::register(&tools, config.broker_http_base_url.clone())?;
     let mesh = Arc::new(std::sync::OnceLock::new());
-    let files = Arc::new(files::Files::new(
-        config.data_root.clone(),
-        db.clone(),
-        mesh.clone(),
-    ));
     let mut runtime = prepared_agent.start(AgentOptions {
-        files: Some(files.clone()),
         configure_tools: Some({
             let base = config.broker_http_base_url.clone();
             Arc::new(move |registry| zork_agent_station_tools::extend_shell(registry, &base))
-        }),
-        skill_catalog: Some({
-            let files = files.clone();
-            Arc::new(move |session| files.catalog(session))
         }),
         service: zork_agent::session::service::ServiceOptions {
             runner: zork_agent::session::runner::RunnerOptions {
@@ -242,15 +229,6 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
             },
             ..Default::default()
         },
-        skill_sources: Some({
-            let db = db.clone();
-            let root = config.data_root.clone();
-            Arc::new(move |session| {
-                zork_config::load_config(&root)?
-                    .skills
-                    .sources(&root, &db.skill_paths_for_session(session)?)
-            })
-        }),
         data_root: config.data_root.clone(),
         fake_agent: args.fake_agent,
         no_streaming: args.no_streaming,
@@ -262,21 +240,9 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
                 &config.broker_http_base_url,
             )?;
             environment.insert(
-                "SKILLS_ROOT".into(),
-                zork_config::skill_bundles::skills_root(&config.data_root)
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-            environment.insert(
                 "REPOS_ROOT".into(),
                 zork_config::files_root(&config.data_root)
                     .join("repos")
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-            environment.insert(
-                "SHARED_FILES_ROOT".into(),
-                zork_config::shared_files_root(&config.data_root)
                     .to_string_lossy()
                     .into_owned(),
             );
@@ -288,12 +254,10 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     let agent = runtime.agent().clone();
     let entries = im_entry::ImEntryStation::new(db.clone(), connections.clone());
     let state = AppState {
-        files,
         provider_auth: Arc::new(node::auth::Hub::new()?),
         login_cards: Default::default(),
         interaction_handlers: Arc::new(business_cards::lifecycle_handlers()?),
         node_tools: Arc::new(node_tools::Hub::open(&config.state_dir)?),
-        mcp: Arc::new(mcp::Hub::open(&config.state_dir)?),
         browser: Arc::new(browser::Hub::open(&config.data_root)?),
         agent: agent.clone(),
         draining: Arc::new(AtomicBool::new(true)),
@@ -335,7 +299,6 @@ async fn run(identity: zork_config::service::ProcessIdentity) -> Result<()> {
     drop(channel_delivery);
     drop(user_interaction_delivery);
     drop(business_card_delivery);
-    state.mcp.shutdown();
     state.node_tools.shutdown().await;
     let mesh_closing = std::time::Instant::now();
     state.draining.store(true, Ordering::Release);
@@ -460,12 +423,11 @@ async fn serve(
     zork_config::write_ready_pid(&state.config.data_root, "zork-station")?;
     state.draining.store(false, Ordering::Release);
     zork_config::startup::mark("station.ready");
-    let mcp_state = state.clone();
-    let mcp_maintenance = tokio::spawn(async move {
+    let maintenance_state = state.clone();
+    let maintenance = tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            mcp_state.mcp.reap_idle();
-            if let Err(error) = mcp_state.db.sync_maintain() {
+            if let Err(error) = maintenance_state.db.sync_maintain() {
                 tracing::warn!(%error, "sync retention maintenance failed");
             }
         }
@@ -480,8 +442,7 @@ async fn serve(
         }
     };
     state.draining.store(true, Ordering::Release);
-    mcp_maintenance.abort();
-    state.mcp.shutdown();
+    maintenance.abort();
     state.node_tools.shutdown().await;
     let draining_started = std::time::Instant::now();
     zork_config::clear_ready_pid(&state.config.data_root, "zork-station");

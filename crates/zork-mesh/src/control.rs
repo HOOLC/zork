@@ -1,5 +1,6 @@
 //! Framed RPC, subscriptions and byte tunnels on the native control ALPN.
 use crate::MAX_FRAME;
+pub(crate) const ALPN: &[u8] = b"zork-control/1";
 const STREAM_PREFACE: &[u8; 4] = b"ZC01";
 use anyhow::{ensure, Context, Result};
 use iroh::{
@@ -261,11 +262,11 @@ impl ControlService {
         }
     }
 }
-impl synch_net::ControlProtocol for ControlService {
+impl iroh::protocol::ProtocolHandler for ControlService {
     fn accept(
         &self,
         connection: Connection,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<(), AcceptError>> + Send>> {
+    ) -> impl std::future::Future<Output = Result<(), AcceptError>> + Send {
         let handler = self.handler.clone();
         let slots = self.slots.clone();
         let connections = self.connections.clone();
@@ -322,7 +323,7 @@ mod tests {
             .relay_mode(iroh::RelayMode::Disabled)
             .clear_ip_transports()
             .bind_addr("127.0.0.1:0")?
-            .alpns(vec![synch_net::ALPN_CONTROL.to_vec()])
+            .alpns(vec![ALPN.to_vec()])
             .bind()
             .await?;
         let accepted = Arc::new(AtomicUsize::new(0));
@@ -409,5 +410,59 @@ mod tests {
         endpoint.close().await;
         task.await??;
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DeviceHandler {
+    pub node: crate::node::MeshNode,
+    pub business: Option<Arc<dyn ControlHandler>>,
+    pub objects: Arc<tokio::sync::Semaphore>,
+}
+impl ControlHandler for DeviceHandler {
+    fn serve(
+        &self,
+        peer: Peer,
+        request: Value,
+        mut stream: ControlStream,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> {
+        let node = self.node.clone();
+        let business = self.business.clone();
+        let objects = self.objects.clone();
+        Box::pin(async move {
+            // Installation confirms a pinned invitation before ordinary trust exists.
+            // The Station validates its one-use capability and the authenticated peer.
+            let confirms_invitation =
+                request["v"] == 1 && request["request"]["kind"] == "confirm_join";
+            if !confirms_invitation && !node.is_trusted(&peer.origin).await? {
+                stream
+                    .write(&serde_json::json!({"v":1,"ok":false,"error":"mesh_peer_not_paired"}))
+                    .await?;
+                stream.finish()?;
+                return Ok(());
+            }
+            if request["v"] == 1 && request["request"]["kind"] == "object" {
+                let _permit = objects
+                    .try_acquire_owned()
+                    .context("attachment capacity reached")?;
+                let object: crate::node::ObjectRef =
+                    serde_json::from_value(request["request"]["object"].clone())?;
+                ensure!(
+                    object.origin == node.identity().await?,
+                    "object origin mismatch"
+                );
+                let bytes = node.local_object(&object).await?;
+                ensure!(node.is_trusted(&peer.origin).await?, "mesh_peer_not_paired");
+                stream.write(&serde_json::json!({"v":1,"ok":true})).await?;
+                stream.write_all(&bytes).await?;
+                stream.finish()?;
+                Ok(())
+            } else {
+                business
+                    .context("device does not host a Station")?
+                    .serve(peer, request, stream)
+                    .await
+            }
+        })
     }
 }

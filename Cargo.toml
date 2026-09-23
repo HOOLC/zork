@@ -23,7 +23,7 @@ members = [
   "crates/zork-client-types",
   "crates/zork-android",
 ]
-exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/synch-net", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/rustls-platform-verifier", "vendor/noq-udp"]
+exclude = ["vendor/iroh", "vendor/swarm-discovery", "vendor/gpui-unofficial", "vendor/gpui-base-uo", "vendor/gpui-wgpu-gpui-unofficial", "vendor/gpui-apple-gpui-unofficial", "vendor/gpui-macos-gpui-unofficial", "vendor/rustls-platform-verifier", "vendor/noq-udp"]
 resolver = "2"
 
 [workspace.package]
@@ -147,7 +147,3 @@ gpui-base-uo = { path = "vendor/gpui-base-uo" }
 gpui-wgpu-gpui-unofficial = { path = "vendor/gpui-wgpu-gpui-unofficial" }
 gpui-apple-gpui-unofficial = { path = "vendor/gpui-apple-gpui-unofficial" }
 gpui-macos-gpui-unofficial = { path = "vendor/gpui-macos-gpui-unofficial" }
-
-[patch."https://github.com/AFK-surf/synchronicity.git"]
-synch-engine = { path = "vendor/synch-engine" }
-synch-net = { path = "vendor/synch-net" }

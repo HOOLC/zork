@@ -40,7 +40,6 @@ private fun interactionText(key: String) = when (key) {
     "interaction_name" -> "名字"
     "interaction_instructions" -> "职责"
     "interaction_model" -> "使用模型"
-    "interaction_skills" -> "技能"
     "interaction_grants" -> "允许分配任务的 Agent"
     "interaction_create_agent" -> "创建 Agent"
     "interaction_update_agent" -> "修改 Agent"

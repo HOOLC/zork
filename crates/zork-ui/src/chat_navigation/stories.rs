@@ -51,7 +51,6 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
         view.set_data(
             if state == "empty" { vec![] } else { devices },
             Some("device-0".into()),
-            false,
             280.,
             cx,
         );
@@ -76,19 +75,12 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
                         item.archived = *archived;
                     }
                 }
-                view.set_data(
-                    devices,
-                    view.active.clone(),
-                    view.shared_files,
-                    view.width,
-                    cx,
-                );
+                view.set_data(devices, view.active.clone(), view.width, cx);
             });
         }
         if let Action::Navigate { node, destination } = event {
             view.update(cx, |view, cx| {
                 let mut devices = view.devices.clone();
-                let shared = matches!(destination, Destination::SharedFiles);
                 for device in &mut devices {
                     let chosen = Some(&device.id) == node.as_ref();
                     match destination {
@@ -106,7 +98,7 @@ pub fn create(state: &str, text: Text, cx: &mut gpui::App) -> gpui::Entity<Navig
                         _ => {}
                     }
                 }
-                view.set_data(devices, node.clone(), shared, view.width, cx);
+                view.set_data(devices, node.clone(), view.width, cx);
             });
         }
     })

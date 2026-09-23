@@ -20,7 +20,6 @@ pub struct MeshSettings {
     busy: bool,
     message: Option<String>,
     invitation: Option<serde_json::Value>,
-    phone: bool,
     peers: Vec<crate::api::MeshPeer>,
     modal: ui::ModalState,
     switch_focus: [gpui::FocusHandle; 2],
@@ -50,7 +49,6 @@ impl MeshSettings {
             busy: false,
             message: None,
             invitation: None,
-            phone: true,
             peers: vec![],
             modal: ui::ModalState::new(cx),
             switch_focus: [cx.focus_handle(), cx.focus_handle()],
@@ -77,7 +75,7 @@ impl MeshSettings {
         self.config = state.config.clone();
         self.origin = state.origin.clone();
         self.peers = state.peers.clone();
-        self.invitation = state.invitations[usize::from(self.phone)].clone();
+        self.invitation = state.invitation.clone();
         self.busy = state.busy;
         self.message = state.message.clone();
         if self.form_open && self.saved != state.saved {
@@ -100,15 +98,12 @@ impl MeshSettings {
         });
     }
 
-    fn create_invite(&mut self, phone: bool, _cx: &mut Context<Self>) {
-        self.source.dispatch(MeshAction::CreateInvite(phone));
+    fn create_invite(&mut self, _cx: &mut Context<Self>) {
+        self.source.dispatch(MeshAction::CreateInvite);
     }
 
-    fn approve_phone(&mut self, _cx: &mut Context<Self>) {
-        self.source.dispatch(MeshAction::ApproveInvite(self.phone));
-    }
     fn revoke_invite(&mut self, _cx: &mut Context<Self>) {
-        self.source.dispatch(MeshAction::RevokeInvite(self.phone));
+        self.source.dispatch(MeshAction::RevokeInvite);
     }
 
     fn remove_peer(&mut self, origin: String, _cx: &mut Context<Self>) {
@@ -119,39 +114,16 @@ impl MeshSettings {
     pub(super) fn enrollment_data(&self) -> zork_ui::network::EnrollmentData {
         let invitation = self.invitation.as_ref();
         let status = invitation.and_then(|i| i["status"].as_str()).unwrap_or("");
-        let remaining = self.source.remaining(self.phone).unwrap_or_default();
-        let phone = self.phone;
+        let remaining = self.source.remaining().unwrap_or_default();
         let label = match status {
-            "awaiting_approval" => format!(
-                "{} 请求连接，请确认是你的手机。",
-                invitation
-                    .and_then(|i| i["device"]["name"].as_str())
-                    .unwrap_or("手机")
-            ),
-            "joined" if phone => "手机已连接，可以继续工作。".into(),
-            "waiting" if phone => format!(
-                "等待手机扫码 · {} 分 {} 秒后过期",
-                remaining / 60,
-                remaining % 60
-            ),
             "joined" => format!(
                 "{} 已加入，任务协作已开启",
                 invitation
                     .and_then(|i| i["device"]["name"].as_str())
                     .unwrap_or("设备")
             ),
-            "expired" => if phone {
-                "手机邀请已过期，请重新生成。"
-            } else {
-                "加入命令已过期，请重新生成。"
-            }
-            .into(),
-            "revoked" => if phone {
-                "手机邀请已取消。"
-            } else {
-                "加入命令已撤销。"
-            }
-            .into(),
+            "expired" => "安装链接已过期，请重新生成。".into(),
+            "revoked" => "安装链接已撤销。".into(),
             "connecting" => "正在确认设备身份…".into(),
             "waiting" => format!(
                 "等待目标设备执行 · {} 分 {} 秒后过期",
@@ -161,25 +133,16 @@ impl MeshSettings {
             _ => String::new(),
         };
         zork_ui::network::EnrollmentData {
-            client: phone,
-            ticket: invitation
-                .and_then(|i| i["invitation"].as_str())
-                .unwrap_or_default()
-                .into(),
             available: self.config.is_some(),
             busy: self.busy,
             status: status.into(),
             command: invitation
-                .and_then(|i| i["command"].as_str())
+                .and_then(|i| i["install_url"].as_str())
                 .unwrap_or_default()
                 .into(),
             status_label: label,
             notice: self.message.clone(),
         }
-    }
-    fn select_invitation(&mut self, phone: bool, cx: &mut Context<Self>) {
-        self.phone = phone;
-        self.accept(self.source.snapshot(), cx);
     }
     pub(super) fn enrollment_action(
         &mut self,
@@ -187,20 +150,14 @@ impl MeshSettings {
         cx: &mut Context<Self>,
     ) {
         match action {
-            zork_ui::network::EnrollmentAction::Select(phone) => self.select_invitation(phone, cx),
-            zork_ui::network::EnrollmentAction::Create => self.create_invite(false, cx),
-            zork_ui::network::EnrollmentAction::CreateClient => self.create_invite(true, cx),
-            zork_ui::network::EnrollmentAction::Approve => self.approve_phone(cx),
+            zork_ui::network::EnrollmentAction::Create => self.create_invite(cx),
             zork_ui::network::EnrollmentAction::Revoke => self.revoke_invite(cx),
             zork_ui::network::EnrollmentAction::Copy => {
-                if let Some(command) = self.invitation.as_ref().and_then(|i| {
-                    i[if i["scope"] == "client" {
-                        "invitation"
-                    } else {
-                        "command"
-                    }]
-                    .as_str()
-                }) {
+                if let Some(command) = self
+                    .invitation
+                    .as_ref()
+                    .and_then(|i| i["install_url"].as_str())
+                {
                     cx.write_to_clipboard(gpui::ClipboardItem::new_string(command.into()));
                     self.message = Some("连接邀请已复制。".into());
                     cx.notify();

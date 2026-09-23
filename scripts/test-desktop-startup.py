@@ -505,12 +505,6 @@ print(ink)
                     + str(self.process.pid) + ").terminate;"], check=True, capture_output=True, timeout=5)
                 self.process.wait(timeout=20)
             self.sample["shutdown"] = "native quit"
-            if self.sample["kind"] == "paired-startup-performance":
-                receipts = {name: (self.client / path / "mesh/synch/clean-start.json").is_file()
-                            for name, path in [("station", "node"), ("client", "transport")]}
-                self.sample["shutdown_receipts"] = receipts
-                if not all(receipts.values()):
-                    raise RuntimeError("Mesh did not record a complete shutdown: " + str(receipts))
         except Exception as failure:
             shutdown_error = failure
             self.sample["shutdown_error"] = str(failure)

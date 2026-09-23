@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 use store::{ClientStore, QueuedMessage, RemoteNode, SavedNode};
@@ -40,9 +40,6 @@ pub enum Command {
     },
     ChatFiles {
         operation: chat_files::Action,
-    },
-    SharedFiles {
-        operation: shared_files::Action,
     },
     NotificationSettings {
         operation: Option<notifications::mobile::Action>,
@@ -128,19 +125,6 @@ pub enum Command {
     Network {
         network: Network,
     },
-    BeginInvitation {
-        ticket: String,
-        name: String,
-        #[serde(default)]
-        switch_from: Option<zork_config::membership::MeshVersion>,
-    },
-    PollInvitation,
-    NextInvitation,
-    ConfirmInvitationSwitch {
-        input_id: String,
-        expected: zork_config::membership::MeshVersion,
-    },
-    CancelInvitation,
     SavePeer {
         origin: String,
         name: String,
@@ -221,7 +205,6 @@ impl Command {
                 | Self::LocalScript { .. }
                 | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
-                | Self::SharedFiles { .. }
                 | Self::ChatFiles { .. }
                 | Self::TestNotification
                 | Self::NotificationReceipt { .. }
@@ -264,10 +247,8 @@ pub struct LocalClient {
     data_reset: Arc<data_reset::Controller>,
     local_scripts: Arc<local_scripts::Controller>,
     adb: Arc<adb::Controller>,
-    shared_files: Arc<shared_files::SharedFiles>,
     chat_files: Arc<chat_files::Controller>,
     resources: Arc<resources::Resources>,
-    invitation: Arc<enrollment::InvitationState>,
     services: Arc<services::Views>,
     store: Arc<ClientStore>,
 }
@@ -277,9 +258,6 @@ impl LocalClient {
     }
     pub fn chat_files(&self) -> Arc<chat_files::Controller> {
         self.chat_files.clone()
-    }
-    pub fn shared_files(&self) -> Arc<shared_files::SharedFiles> {
-        self.shared_files.clone()
     }
     /// Independent observation lane. Opening/reading/waiting never takes the
     /// command executor lock or starts a second device controller.
@@ -307,12 +285,6 @@ impl LocalClient {
                 self.chat_files.clone(),
             ));
         }
-        if matches!(key, subscriptions::Key::SharedFiles) {
-            return Ok(subscriptions::WireSubscription::from_shared_files(
-                self.shared_files.clone(),
-                self.store.clone(),
-            ));
-        }
         if matches!(key, subscriptions::Key::Notifications) {
             return subscriptions::WireSubscription::from_notifications(self.store.clone());
         }
@@ -333,11 +305,7 @@ impl LocalClient {
                 &self.directory,
             ));
         }
-        if matches!(key, subscriptions::Key::Invitation) {
-            return Ok(subscriptions::WireSubscription::from_invitation(
-                &self.invitation.source,
-            ));
-        }
+
         self.peer(key.peer())?;
         let device = self
             .device_state(key.peer())
@@ -397,15 +365,6 @@ impl LocalClient {
             }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
             Command::Adb { operation } => self.adb.execute(operation),
-            Command::SharedFiles { operation } => {
-                let runtime = tokio::runtime::Handle::try_current()
-                    .context("共享文件操作需要客户端运行环境")?;
-                let source = self.shared_files.clone();
-                runtime.spawn(async move {
-                    let _ = source.dispatch(operation).await;
-                });
-                Ok(json!({}))
-            }
             Command::NotificationSettings { operation } => {
                 notifications::mobile::apply(&self.store, operation)
             }
@@ -754,19 +713,17 @@ pub struct Client {
     local_scripts: Arc<local_scripts::Controller>,
     adb: Arc<adb::Controller>,
     adb_background_service: Option<String>,
-    shared_files: Arc<shared_files::SharedFiles>,
     chat_files: Arc<chat_files::Controller>,
     foreground: bool,
     host_generation: u64,
     background_service: Option<String>,
     resources: Arc<resources::Resources>,
     directory: Arc<client_directory::Directory>,
-    invitation: Arc<enrollment::InvitationState>,
-    invitation_job: Option<zork_notify::Task<()>>,
     services: Arc<services::Views>,
     root: PathBuf,
     store: Arc<ClientStore>,
     runtime: Option<transport::Runtime>,
+    account_devices: Option<zork_notify::Task<()>>,
 }
 
 impl Drop for Client {
@@ -783,10 +740,8 @@ impl Client {
             data_reset: self.data_reset.clone(),
             local_scripts: self.local_scripts.clone(),
             adb: self.adb.clone(),
-            shared_files: self.shared_files.clone(),
             chat_files: self.chat_files.clone(),
             resources: self.resources.clone(),
-            invitation: self.invitation.clone(),
             services: self.services.clone(),
             store: self.store.clone(),
         }
@@ -798,13 +753,11 @@ impl Client {
         let store = Arc::new(ClientStore::open(root)?);
         settings_actions::recover_operations(&store)?;
         let adb = adb::Controller::new(store.clone())?;
-        let shared_files = shared_files::SharedFiles::new(store.clone());
         let resources = resources::Resources::new(vec![]);
         let chat_files = chat_files::Controller::new(store.clone());
         let directory = client_directory::Directory::new(
             store.clone(),
             resources.clone(),
-            shared_files.clone(),
             chat_files.clone(),
             adb.clone(),
         )?;
@@ -814,20 +767,16 @@ impl Client {
             local_scripts: local_scripts::Controller::new(store.clone()),
             adb,
             adb_background_service: None,
-            shared_files,
             chat_files: chat_files.clone(),
             foreground: false,
             host_generation: 0,
             background_service: None,
             resources,
             directory,
-            invitation: Arc::new(enrollment::InvitationState::new(
-                enrollment::public_snapshot(&store, false)?,
-            )),
-            invitation_job: None,
             root: root.to_owned(),
             store,
             runtime: None,
+            account_devices: None,
             services: Default::default(),
         })
     }
@@ -891,7 +840,7 @@ impl Client {
             self.directory
                 .set_mesh_readiness(device_status::MeshReadiness::Preparing);
             let started = async {
-                let network = self.enrollment_network()?;
+                let network = self.store.get::<Network>("device", "network")?.unwrap_or_default();
                 let config = self.config(&network)?;
                 let (mut runtime, identity) = transport::start(&self.root, &config).await?;
                 if let Err(error) = self.store.put("device", "identity", &identity) {
@@ -911,10 +860,10 @@ impl Client {
                     return Err(error);
                 }
             };
+            self.account_devices = Some(relay_account::devices::start_client(&self.root, runtime.node(), self.store.clone())?);
             self.runtime = Some(runtime);
         }
         self.watch_devices().await?;
-        self.watch_invitation()?;
         self.adb.start(self.node()?);
         Ok(())
     }
@@ -927,14 +876,12 @@ impl Client {
     }
 
     pub async fn pause(&mut self) -> Result<()> {
+        self.account_devices.take();
         self.directory
             .set_mesh_readiness(device_status::MeshReadiness::Stopping);
         self.adb.pause();
         self.directory.stop().await;
         self.chat_files.pause();
-        self.invitation_job.take();
-        self.invitation
-            .replace(enrollment::public_snapshot(&self.store, false)?);
         self.services.clear();
         if let Some(mut runtime) = self.runtime.take() {
             runtime.shutdown().await?;
@@ -955,10 +902,11 @@ impl Client {
     }
 
     fn snapshot(&self) -> Result<Value> {
-        enrollment::public_snapshot(
-            &self.store,
-            self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
-        )
+        Ok(json!({"identity":self.store.get::<String>("device","identity")?,
+            "running":self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
+            "nodes":self.store.nodes()?,
+            "selected_peer":self.store.get::<Option<String>>("device","last-node")?.flatten(),
+            "network":self.store.get::<Network>("device","network")?.unwrap_or_default()}))
     }
 
     async fn request(
@@ -1081,14 +1029,6 @@ impl Client {
                 });
                 Ok(json!({}))
             }
-            Command::SharedFiles { operation } => {
-                self.directory.refresh().await?;
-                let source = self.shared_files.clone();
-                tokio::spawn(async move {
-                    let _ = source.dispatch(operation).await;
-                });
-                Ok(json!({}))
-            }
             Command::DiagnoseConnections => {
                 let connections = self
                     .store
@@ -1146,17 +1086,6 @@ impl Client {
                 self.resume().await?;
                 self.snapshot()
             }
-            Command::BeginInvitation {
-                ticket,
-                name,
-                switch_from,
-            } => self.begin_invitation(&ticket, &name, switch_from).await,
-            Command::PollInvitation => self.poll_invitation().await,
-            Command::NextInvitation => self.next_invitation().await,
-            Command::ConfirmInvitationSwitch { input_id, expected } => {
-                self.confirm_invitation_switch(&input_id, expected).await
-            }
-            Command::CancelInvitation => self.cancel_invitation().await,
             Command::SavePeer {
                 origin,
                 name,

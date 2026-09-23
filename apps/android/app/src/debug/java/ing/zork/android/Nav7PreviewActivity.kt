@@ -53,7 +53,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     actions.put(intent);lastBody=intent;snapshot=project()
                                 }, {})
                             }
-                            else if (route in listOf("home","appearance","device","models","profile","connections","services","skills","notifications")) {
+                            else if (route in listOf("home","appearance","device","models","profile","connections","services","notifications")) {
                                 var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
@@ -66,7 +66,6 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     clearData={lastAction="clear-data"},
                                     notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
                                     resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
-                                    skills={agent->val selected=ResourceSelection(settings.device?.id,"skill",JSONObject().put("agent_skills",agent.text("id")).toString(),"技能");settings=settings.copy(page="skills",resource=selected,resourceData=settingsResourceFixture(selected))},
                                     page={settings=settingsFixturePage(settings,it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->
                                     if(failNextRequest){failNextRequest=false;error("fixture request failed")}
                                     lastAction=action;lastBody=JSONObject(body.toString())

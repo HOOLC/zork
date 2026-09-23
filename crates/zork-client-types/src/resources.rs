@@ -5,17 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceKind {
-    Skill,
-    Mcp,
     Service,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResourceSubject {
-    pub id: String,
-    pub name: String,
-    #[serde(default)]
-    pub origin: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,18 +16,9 @@ pub struct Resource {
     #[serde(default)]
     pub description: String,
     pub status: String,
-    /// MCP: local/mesh/selected; skill: bound/unbound; service: shared/private.
+    /// Service visibility: shared/private.
     pub scope: String,
-    #[serde(default)]
-    pub subjects: Vec<ResourceSubject>,
-    #[serde(default)]
-    pub path: Option<String>,
-    #[serde(default)]
     pub revision: Option<String>,
-    #[serde(default)]
-    pub resource_count: Option<usize>,
-    #[serde(default)]
-    pub tool_allowlist: Option<Vec<String>>,
     #[serde(default)]
     pub owner_session: Option<String>,
     #[serde(default)]
@@ -59,12 +40,8 @@ impl Resource {
             name,
             status,
             scope,
-            description: String::new(),
-            subjects: vec![],
-            path: None,
             revision: None,
-            resource_count: None,
-            tool_allowlist: None,
+            description: String::new(),
             owner_session: None,
             url: None,
             port: None,
@@ -87,23 +64,6 @@ pub struct ResourceCatalog {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillEntry {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub path: String,
-    pub source: String,
-    pub content_hash: String,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentSkills {
-    pub skills: Vec<SkillEntry>,
-    #[serde(default)]
-    pub diagnostics: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceFile {
     pub path: String,
     pub byte_len: u64,
@@ -116,20 +76,10 @@ pub struct ResourceDocument {
     pub truncated: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResourceTool {
-    pub name: String,
-    pub description: String,
-    #[serde(default)]
-    pub input_schema: serde_json::Value,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceDetails {
     pub title: String,
     pub description: String,
-    #[serde(default)]
-    pub tools: Vec<ResourceTool>,
     #[serde(default)]
     pub files: Vec<ResourceFile>,
     #[serde(default)]
@@ -142,21 +92,10 @@ pub struct ResourceDetails {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Inspection {
-    AgentSkills(String),
-    Skill {
-        agent: String,
-        skill: String,
-        file: Option<String>,
-    },
-    Mcp(String),
-    Service {
-        id: String,
-        log: Option<String>,
-    },
+    Service { id: String, log: Option<String> },
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InspectionContent {
-    Skills(AgentSkills),
     Details(ResourceDetails),
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 zork-observe = { path = "../zork-observe" }
-qrcode = { version = "=0.14.1", default-features = false }
 zork-client-types = { path = "../zork-client-types" }
 gpui = { package = "gpui-unofficial", version = "=1.17.0-pre", default-features = false }
 gpui-base = { package = "gpui-base-uo", version = "=1.17.0-pre" }

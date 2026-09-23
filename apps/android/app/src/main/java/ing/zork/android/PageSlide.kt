@@ -24,7 +24,6 @@ internal fun settingsRouteDepth(state: MobileSettingsState?): Int {
         "display", "appearance", "connections", "notifications" -> 2
         "device" -> deviceDepth
         "profile" -> deviceDepth + 2
-        "skills" -> deviceDepth + 2
         else -> deviceDepth + 1
     } + state.resourceDepth
 }

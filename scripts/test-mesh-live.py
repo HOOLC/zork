@@ -13,7 +13,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('directory_fixture', ROOT / 'scripts/test-mobile-mesh-directory.py')
+spec = importlib.util.spec_from_file_location('directory_fixture', ROOT / 'scripts/lib/mobile_mesh_fixture.py')
 d = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(d)
 
@@ -78,10 +78,11 @@ def main():
         d.join(b, a)
         d.admin(a, 'POST', '/v1/node/agents', {'id': 'mesh-live', 'name': 'Mesh live acceptance', 'role': 'leader',
             'profile_id': 'live', 'model': args.model, 'thinking': args.thinking})
-        phone = d.Phone(root / 'client')
-        invite, _ = d.phone_invite(phone, a)
-        accepted = d.approve(phone, a, invite)
-        identity = accepted['identity']
+        phone = d.NativeClient(root / 'client')
+        identity = phone.command('resume')['identity']
+        d.admin(a, 'POST', '/v1/node/mesh/clients', {'origin':identity,'name':'Live client','addr':None,'routes':None})
+        for node in nodes:
+            phone.command('save_peer', origin=node.origin, name=node.root.name, address=None)
         phone.nodes([a.origin, b.origin])
         opened = phone.command('request', peer=a.origin, method='POST', path='/v1/node/agents/mesh-live/open', body={})
         chat = opened['chat_id']

@@ -4,7 +4,6 @@ pub mod agent_configuration;
 pub mod channels;
 mod computer;
 mod history;
-mod mcp;
 mod namespaced;
 mod service;
 mod shell;

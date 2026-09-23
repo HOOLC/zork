@@ -1,11 +1,10 @@
 pub mod channel;
+pub mod distribution;
 pub mod membership;
 pub mod relay_account;
 pub mod service;
 pub mod services;
-pub mod skill_bundles;
 pub mod startup;
-pub mod tree;
 pub mod update;
 
 /// Generate a bearer credential with 256 bits of OS randomness.
@@ -42,15 +41,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 /// Station-owned files, including execution records and immutable attachments.
-/// Keep this location stable for existing workspaces and fixed file references;
-/// it is separate from the directory users choose to share.
+/// This directory belongs to Station, not to a user-published file share.
 pub fn files_root(data_root: &Path) -> PathBuf {
     data_root.join("shared-files")
-}
-
-/// The user-controlled file-sharing source. A fresh node leaves it empty.
-pub fn shared_files_root(data_root: &Path) -> PathBuf {
-    data_root.join("shared")
 }
 
 const DEFAULT_GATEWAY_BIND: &str = "127.0.0.1:18790";
@@ -61,8 +54,6 @@ const DEFAULT_SLACK_API: &str = "https://slack.com/api";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileConfig {
-    #[serde(default)]
-    pub skills: SkillsConfig,
     #[serde(default)]
     pub context: ContextConfig,
     #[serde(default)]
@@ -77,98 +68,6 @@ pub struct FileConfig {
     pub mesh: MeshConfig,
 }
 
-/// Ordered filesystem sources. Relative paths resolve against the node data root.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, deny_unknown_fields)]
-pub struct SkillsConfig {
-    pub shared_path: PathBuf,
-    pub paths: Vec<PathBuf>,
-}
-
-impl Default for SkillsConfig {
-    fn default() -> Self {
-        Self {
-            shared_path: PathBuf::from("skills"),
-            paths: Vec::new(),
-        }
-    }
-}
-
-impl SkillsConfig {
-    pub fn sources(&self, data_root: &Path, agent_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
-        validate_skill_paths(&self.paths)?;
-        validate_skill_paths(agent_paths)?;
-        validate_skill_paths(std::slice::from_ref(&self.shared_path))?;
-        let mut sources = skill_bundles::sources(data_root)?;
-        sources.push(skill_bundles::skills_root(data_root));
-        sources.extend(
-            std::iter::once(&self.shared_path)
-                .chain(&self.paths)
-                .chain(agent_paths)
-                .map(|path| {
-                    if path.is_absolute() || path.to_string_lossy().starts_with("synch://") {
-                        path.clone()
-                    } else {
-                        if path == &self.shared_path && path == std::path::Path::new("skills") {
-                            skill_bundles::skills_root(data_root)
-                        } else {
-                            data_root.join(path)
-                        }
-                    }
-                }),
-        );
-        let mut seen = std::collections::BTreeSet::new();
-        sources.retain(|source| seen.insert(source.clone()));
-        Ok(sources)
-    }
-}
-
-pub fn validate_skill_paths(paths: &[PathBuf]) -> Result<()> {
-    anyhow::ensure!(paths.len() <= 32, "at most 32 skill paths are allowed");
-    for path in paths {
-        let text = path.to_string_lossy();
-        anyhow::ensure!(
-            !text.trim().is_empty() && text.len() <= 4096 && !text.chars().any(char::is_control),
-            "invalid skill path"
-        );
-        if text.starts_with("synch://") {
-            anyhow::ensure!(
-                tree::Reference::parse(&text)?.root.is_none(),
-                "skill source must reference a directory"
-            );
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod skill_tests {
-    use super::*;
-    #[test]
-    fn legacy_config_defaults_and_ordered_sources_roundtrip() {
-        let mut config: FileConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.skills.shared_path, PathBuf::from("skills"));
-        config.skills.shared_path = PathBuf::from("shared/skills");
-        config.skills.paths = vec![PathBuf::from("devices/one/skills")];
-        let copy: FileConfig =
-            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
-        let root = std::env::temp_dir().join("zork-skill-config");
-        assert_eq!(
-            copy.skills
-                .sources(&root, &[PathBuf::from("agent/skills")])
-                .unwrap(),
-            vec![
-                skill_bundles::skills_root(&root),
-                root.join("shared/skills"),
-                root.join("devices/one/skills"),
-                root.join("agent/skills")
-            ]
-        );
-        assert!(validate_skill_paths(&[PathBuf::new()]).is_err());
-        assert!(validate_skill_paths(&vec![PathBuf::from("skills"); 33]).is_err());
-    }
-}
-
 /// Personal Mesh is opt-in. Product grants remain separate from network trust.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
@@ -177,9 +76,6 @@ pub struct MeshConfig {
     pub name: String,
     pub group: Option<membership::MeshGroup>,
     pub enabled: bool,
-    /// Legacy configuration accepted for upgrades; transport is embedded.
-    #[serde(skip_serializing)]
-    pub synch_binary: Option<PathBuf>,
     pub offline: bool,
     pub bind: Option<String>,
     pub relay_urls: Option<Vec<String>>,
@@ -191,6 +87,9 @@ pub struct MeshConfig {
     /// Optional UDP-only QAD servers, separate from authenticated relay forwarding.
     pub quic_discovery_urls: Option<Vec<String>>,
     pub peers: Vec<MeshPeer>,
+    /// Peers owned by account discovery, separate from installed/manual members.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub account_peers: Vec<String>,
     pub workspaces: Vec<MeshWorkspace>,
 }
 
@@ -544,9 +443,7 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 pub fn ensure_layout(data_root: &Path) -> Result<FileConfig> {
     fs::create_dir_all(data_root).with_context(|| format!("create {}", data_root.display()))?;
     fs::create_dir_all(data_root.join("state"))?;
-    fs::create_dir_all(shared_files_root(data_root))?;
     fs::create_dir_all(files_root(data_root).join("sessions"))?;
-    fs::create_dir_all(skill_bundles::skills_root(data_root))?;
     fs::create_dir_all(files_root(data_root).join("repos"))?;
     fs::create_dir_all(files_root(data_root).join("jobs"))?;
     fs::create_dir_all(data_root.join("logs"))?;
@@ -580,17 +477,30 @@ pub fn load_config(data_root: &Path) -> Result<FileConfig> {
 pub fn save_config(data_root: &Path, config: &FileConfig) -> Result<()> {
     fs::create_dir_all(data_root)?;
     let path = config_path(data_root);
-    let temporary_path = data_root.join("config.json.tmp");
+    let temporary_path = data_root.join(format!(".config-{}.tmp", random_token()));
     let body = serde_json::to_string_pretty(config)? + "\n";
-    fs::write(&temporary_path, body)
-        .with_context(|| format!("write {}", temporary_path.display()))?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temporary_path, fs::Permissions::from_mode(0o600))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
-    fs::rename(&temporary_path, &path).with_context(|| format!("replace {}", path.display()))?;
-    Ok(())
+    let result = (|| -> Result<()> {
+        use std::io::Write;
+        let mut file = options.open(&temporary_path)?;
+        file.write_all(body.as_bytes())?;
+        file.sync_all()?;
+        fs::rename(&temporary_path, &path)
+            .with_context(|| format!("replace {}", path.display()))?;
+        #[cfg(unix)]
+        fs::File::open(data_root)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    result
 }
 
 /// Serialize read-modify-write operations across the Station, CLI and client.
@@ -835,5 +745,30 @@ mod tests {
 
         let supplied = parse_process_args_from(["--no-streaming"]).unwrap();
         assert!(supplied.no_streaming);
+    }
+}
+
+#[cfg(test)]
+mod atomic_save_tests {
+    #[test]
+    fn concurrent_saves_never_publish_partial_json() {
+        let root = tempfile::tempdir().unwrap();
+        super::save_config(root.path(), &super::FileConfig::default()).unwrap();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let root = root.path();
+                scope.spawn(move || {
+                    for _ in 0..20 {
+                        super::save_config(root, &super::FileConfig::default()).unwrap();
+                        super::load_config(root).unwrap();
+                    }
+                });
+            }
+        });
+        assert!(!std::fs::read_dir(root.path()).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".tmp")));
     }
 }

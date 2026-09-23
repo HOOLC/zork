@@ -2,7 +2,7 @@
 
 The Worker coordinates signed discovery and one official iroh relay container.
 Device-held keys and local Mesh membership authorize native peer requests; the
-cloud cannot grant membership or decrypt end-to-end business traffic. Relay and
+account directory establishes same-account phone access; the cloud cannot decrypt end-to-end business traffic. Relay and
 LAN/direct connections work without a Google account.
 
 One shared Durable Object bounds relay connections, upgrade attempts, bytes and
@@ -15,7 +15,8 @@ protocol passes through the Worker: it forwards native iroh relay frames.
 Optional cloud accounts have separate sessions. Access credentials expire;
 refresh credentials rotate with idle and absolute expiry. Retrying a lost refresh
 response uses the persisted request ID; reuse outside that retry revokes the
-session. Account logout, expiry and blocking do not close Mesh connections.
+session. Logout removes account-owned device access; independently installed
+members and their direct/relay connectivity remain available.
 Account contracts live in [the account implementation](src/account.ts).
 
 The browser returns a one-use code to a loopback listener, bound to client state
@@ -151,11 +152,6 @@ These local fixtures validate the product flow; real Google consent must also
 be checked against the deployed OAuth client.
 The browser check submits the actual confirmation form in Chromium; an HTTP
 302 alone does not verify Origin, cookies or browser navigation policy.
-
-For Google-independent LAN bootstrap, run the isolated Station regression from
-the repository root after rebuilding Station:
-
-    python3 scripts/android/test_enrollment.py --test relay_account_enrollment
 
 The native regression uses the production CLI, Station and official relay
 container without Google configuration. Account UI tests use a local RS256 Google

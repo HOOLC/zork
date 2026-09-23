@@ -43,22 +43,14 @@ pub(crate) async fn local(
     request: Watch,
     is_local: bool,
 ) -> Result<mpsc::Receiver<Value>> {
-    ensure!(
-        matches!(request.domain.as_str(), "device" | "mcp"),
-        "invalid_tool_domain"
-    );
-    let changes = if request.domain == "device" {
-        crate::node_tools::changes(&state)
-    } else {
-        crate::mcp::changes(&state)
-    }
-    .merge(state.db.realtime.listen(crate::realtime::MESH));
+    ensure!(request.domain == "device", "invalid_tool_domain");
+    let changes =
+        crate::node_tools::changes(&state).merge(state.db.realtime.listen(crate::realtime::MESH));
     Ok(zork_notify::stream::spawn(
         ToolSource {
             state,
             request,
             is_local,
-            terminal: None,
         },
         changes,
         8,
@@ -75,77 +67,32 @@ struct ToolSource {
     state: AppState,
     request: Watch,
     is_local: bool,
-    terminal: Option<(Value, Vec<u8>)>,
 }
 impl zork_notify::stream::Source for ToolSource {
     type Item = Value;
     type Error = anyhow::Error;
     fn check_access(&self) -> Result<()> {
-        if self.request.domain == "device" {
-            node_access::manage(&self.state, &self.request.subject, self.is_local)
-        } else {
-            crate::mcp::authorize_snapshot(
-                &self.state,
-                &self.request.subject,
-                &self.request.id,
-                self.is_local,
-            )
-        }
+        node_access::manage(&self.state, &self.request.subject, self.is_local)
     }
     async fn read(&mut self) -> Result<zork_notify::stream::Page<Value>> {
         use zork_notify::stream::Page;
         let request = &self.request;
-        if self.terminal.is_none() {
-            let mut value = if request.domain == "device" {
-                crate::node_tools::snapshot(
-                    &self.state,
-                    &request.subject,
-                    &request.id,
-                    request.offset,
-                    self.is_local,
-                )
-                .await?
-            } else {
-                crate::mcp::snapshot(
-                    &self.state,
-                    &request.subject,
-                    &request.id,
-                    request.offset,
-                    self.is_local,
-                )
-                .await?
-            };
-            if request.domain == "mcp" && !active(&value) {
-                let bytes = serde_json::to_vec(&value["result"])?;
-                value
-                    .as_object_mut()
-                    .expect("MCP snapshot")
-                    .remove("result");
-                self.terminal = Some((value, bytes));
-            } else {
-                let more = value["chunk"]["eof"] == false;
-                let done = !active(&value) && !more;
-                let frame = json!({"value":value,"done":done});
-                return Ok(if more || done {
-                    Page::chunk(frame, more, done)
-                } else {
-                    Page::snapshot(frame)
-                });
-            }
-        }
-        // Serialize a frozen terminal result once, while still rechecking
-        // current ownership/grants before every bounded outgoing chunk.
-        crate::mcp::authorize_snapshot(&self.state, &request.subject, &request.id, self.is_local)?;
-        let (metadata, bytes) = self.terminal.as_ref().expect("terminal MCP result");
-        ensure!(request.offset <= bytes.len() as u64, "mcp_invalid_offset");
-        let offset = request.offset as usize;
-        let end = (offset + 32 * 1024).min(bytes.len());
-        let mut value = metadata.clone();
-        use base64::Engine;
-        value["chunk"] = json!({"offset":offset,"next_offset":end,
-            "base64":base64::engine::general_purpose::STANDARD.encode(&bytes[offset..end])});
-        let done = end == bytes.len();
-        Ok(Page::chunk(json!({"value":value,"done":done}), !done, done))
+        let value = crate::node_tools::snapshot(
+            &self.state,
+            &request.subject,
+            &request.id,
+            request.offset,
+            self.is_local,
+        )
+        .await?;
+        let more = value["chunk"]["eof"] == false;
+        let done = !active(&value) && !more;
+        let frame = json!({"value":value,"done":done});
+        Ok(if more || done {
+            Page::chunk(frame, more, done)
+        } else {
+            Page::snapshot(frame)
+        })
     }
     fn delivered(&mut self, value: &Value) {
         if let Some(offset) = value["value"]["chunk"]["next_offset"].as_u64() {
@@ -198,7 +145,6 @@ async fn subscribe(state: &AppState, input: Input) -> Result<mpsc::Receiver<Valu
     let mut subject = node_access::subject(state, &input.session_id)?;
     let owner = match input.domain.as_str() {
         "device" => crate::node_tools::watch_owner(state, &subject, &input.id)?,
-        "mcp" => crate::mcp::watch_owner(state, &subject, &input.id)?,
         _ => anyhow::bail!("invalid_tool_domain"),
     };
     if owner == "local" || owner == node_access::identity(state) {

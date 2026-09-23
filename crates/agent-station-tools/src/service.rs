@@ -1,4 +1,4 @@
-//! Service tool contracts. Operational guidance lives in the bundled skill.
+//! Service tool contracts. Operational guidance is supplied by tool.help.
 use super::Kind;
 use serde_json::{json, Value};
 type Definition = (Kind, &'static str, &'static str, Value, Vec<&'static str>);

@@ -158,6 +158,14 @@ def build_app(args, repo, app):
         services=json.loads(args.services_config.read_text())
         assert isinstance(services,dict) and not set(services)-{'relay_urls','relay_quic_port','discovery_url','quic_discovery_urls'}
         (resources/'services.json').write_text(json.dumps(services,indent=2)+'\n')
+    distribution = getattr(args, 'test_distribution', None)
+    if distribution:
+        if channel != 'test':
+            raise RuntimeError('Test distribution metadata requires the test channel')
+        source = json.loads(distribution.read_text())
+        if not {'base_url', 'version'} <= set(source) or set(source) - {'base_url', 'version', 'install_page'}:
+            raise RuntimeError('Invalid test distribution metadata')
+        (resources/'test-distribution.json').write_text(json.dumps(source,indent=2)+'\n')
     with (app/'Contents/Info.plist').open('wb') as f:
         plistlib.dump(app_info(version, prefix, channel), f)
     (resources/'channel').write_text(channel+'\n')
@@ -169,7 +177,7 @@ def build_app(args, repo, app):
             if digest(binaries/name) != expected:
                 raise RuntimeError('Binary differs from the captured Cargo build: '+name)
         (resources/'build.json').write_text(json.dumps(build, indent=2)+'\n')
-    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nZork accounts are optional and do not control Mesh connectivity. Model credentials are configured on each node.\n')
+    (resources/'README.txt').write_text('Zork desktop. The local node starts only when enabled. Keep Station running after quitting is available in Node settings; independently installed Stations outlive the client.\nPublic service defaults: services.json. Device overrides: services.json in the selected channel client data directory.\nPhones connect through the same Google account; other nodes join through installation links. Model credentials are configured on each node.\n')
     for helper in helpers:
         # Native entries are the helper's main executable and are signed with
         # its Info.plist here. Service-watch reuses the already signed Station.
@@ -180,6 +188,7 @@ def build_app(args, repo, app):
 def main():
     parser=argparse.ArgumentParser(description='Update the one persistent app for this worktree')
     parser.add_argument('--services-config',type=Path,help='Public service defaults; no credentials')
+    parser.add_argument('--test-distribution',type=Path,help='Test package source metadata; no credentials')
     parser.add_argument('--channel',choices=CHANNELS,default='test',help='Signed data and identity channel')
     parser.add_argument('--id-prefix',help='Override bundle prefix for isolated test identities')
     parser.add_argument('--build-record',type=Path,help='Captured Cargo and native desktop runtime provenance and input digests')

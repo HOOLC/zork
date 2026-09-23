@@ -132,7 +132,7 @@ impl RootView {
                     self.open_leader(agent, cx);
                 }
             }
-            Destination::Manage(_) | Destination::SharedFiles => {}
+            Destination::Manage(_) => {}
         }
         self.notify_navigation(cx);
         zork_ui::components::region::invalidate_all(cx);

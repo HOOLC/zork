@@ -13,7 +13,6 @@ pub mod sync;
 pub mod files;
 pub mod pages;
 pub mod resources;
-pub mod shared_files;
 
 pub mod composer;
 

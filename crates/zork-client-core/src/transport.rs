@@ -1,7 +1,7 @@
 //! Shared embedded client-only Mesh startup. Hosts supply paths, configuration
 //! and a Tokio executor; no Station, Agent, workspace scanner or socket pool.
 mod enrollment;
-pub use enrollment::{resolve_invitation, Enrollment};
+pub use enrollment::Enrollment;
 use std::path::Path;
 use zork_config::MeshConfig;
 use zork_mesh::managed;

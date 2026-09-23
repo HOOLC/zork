@@ -11,14 +11,6 @@ use zork_gui::{
 };
 
 fn fixture() -> ResourcesData {
-    let mut mcp = Resource::new(
-        ResourceKind::Mcp,
-        "mcp-1".into(),
-        "团队知识库".into(),
-        "ready".into(),
-        "selected".into(),
-    );
-    mcp.description = "查询团队文档与已归档研究材料。".into();
     let mut service = Resource::new(
         ResourceKind::Service,
         "service-1".into(),
@@ -27,16 +19,7 @@ fn fixture() -> ResourcesData {
         "shared".into(),
     );
     service.owner_session = Some("research-report-task".into());
-    let mut items = vec![mcp, service];
-    for n in 0..10_000 {
-        items.push(Resource::new(
-            ResourceKind::Mcp,
-            format!("extra-{n}"),
-            format!("归档知识库 {n}"),
-            "disabled".into(),
-            "selected".into(),
-        ));
-    }
+    let items = vec![service];
     let mut data = ResourcesData {
         devices: vec![
             ResourceDevice {
@@ -67,76 +50,6 @@ fn fixture() -> ResourcesData {
             },
         );
     };
-    insert(
-        Inspection::Mcp("mcp-1".into()),
-        InspectionContent::Details(ResourceDetails {
-            title: "团队知识库".into(),
-            description: "查询团队文档与已归档研究材料。".into(),
-            tools: vec![ResourceTool {
-                name: "search".into(),
-                description: "按关键词查找文档".into(),
-                input_schema: json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}),
-            }],
-            facts: vec![
-                ("status".into(), "ready".into()),
-                ("protocol".into(), "stdio".into()),
-            ],
-            ..Default::default()
-        }),
-    );
-    insert(
-        Inspection::AgentSkills("research".into()),
-        InspectionContent::Skills(AgentSkills {
-            skills: vec![SkillEntry {
-                id: "skill-1".into(),
-                name: "写作与研究手册".into(),
-                description: "整理资料、撰写报告，附带参考模板。".into(),
-                path: "/skills/research/SKILL.md".into(),
-                source: "/skills".into(),
-                content_hash: "revision".into(),
-            }],
-            diagnostics: vec![],
-        }),
-    );
-    insert(
-        Inspection::Skill {
-            agent: "research".into(),
-            skill: "skill-1".into(),
-            file: None,
-        },
-        InspectionContent::Details(ResourceDetails {
-            title: "写作与研究手册".into(),
-            description: "研究资料的使用方式".into(),
-            document: Some(ResourceDocument {
-                path: "SKILL.md".into(),
-                text:
-                    "# 写作与研究\n\n先核实来源，再撰写结论。\n\n- 保留原始链接\n- 区分事实与推测"
-                        .into(),
-                truncated: false,
-            }),
-            files: vec![ResourceFile {
-                path: "references/template.md".into(),
-                byte_len: 64,
-            }],
-            ..Default::default()
-        }),
-    );
-    insert(
-        Inspection::Skill {
-            agent: "research".into(),
-            skill: "skill-1".into(),
-            file: Some("references/template.md".into()),
-        },
-        InspectionContent::Details(ResourceDetails {
-            title: "写作与研究手册".into(),
-            document: Some(ResourceDocument {
-                path: "references/template.md".into(),
-                text: "# 报告模板\n\n## 事实依据\n\n列出来源与证据。".into(),
-                truncated: false,
-            }),
-            ..Default::default()
-        }),
-    );
     insert(
         Inspection::Service {
             id: "service-1".into(),
@@ -180,13 +93,12 @@ fn main() -> anyhow::Result<()> {
                 .join("../../artifacts/resource-native-implementation/resources-ui")
         });
     std::fs::create_dir_all(&output)?;
-    let mut evidence = vec![];
     for (width, height, locale, label) in [
         (1280., 820., Locale::ZhCn, "wide"),
         (660., 700., Locale::ZhCn, "compact"),
         (1280., 820., Locale::En, "english"),
     ] {
-        for mode in ["connections", "skills", "services"] {
+        for _mode in ["services"] {
             let mut cx = HeadlessAppContext::with_platform(
                 gpui_platform::current_platform(true).text_system(),
                 Arc::new(EmbeddedAssets),
@@ -200,19 +112,8 @@ fn main() -> anyhow::Result<()> {
             });
             let window = cx.open_window(gpui::size(px(width), px(height)), |_, cx| {
                 let core = Resources::fixture(fixture());
-                let view = cx.new(|cx| match mode {
-                    "skills" => HeadlessResourcesView::skills(
-                        core,
-                        "studio".into(),
-                        "research".into(),
-                        locale,
-                        cx,
-                    ),
-                    "services" => {
-                        HeadlessResourcesView::services(core, "studio".into(), locale, cx)
-                    }
-                    _ => HeadlessResourcesView::new(core, locale, cx),
-                });
+                let view =
+                    cx.new(|cx| HeadlessResourcesView::services(core, "studio".into(), locale, cx));
                 // Uses the same setting width, padding and scrolling container.
                 let content = cx.new(|_| Frame(view));
                 cx.new(|_| AutomationRoot::new(content))
@@ -240,74 +141,7 @@ fn main() -> anyhow::Result<()> {
             };
             let has = |id: &str| driver.snapshot(false).elements.iter().any(|e| e.id == id);
             pump(&mut cx)?;
-            if mode == "connections" {
-                let count = driver
-                    .snapshot(true)
-                    .elements
-                    .iter()
-                    .filter(|e| e.id.starts_with("resource-row-"))
-                    .count();
-                anyhow::ensure!(
-                    count > 0 && count < 40,
-                    "connection list is not virtualized: {count}"
-                );
-                let mut samples = vec![];
-                for _ in 0..20 {
-                    let start = std::time::Instant::now();
-                    cx.update_window(window.into(), |_, w, cx| {
-                        w.simulate_next_frame(cx);
-                        w.draw(cx).clear(cx)
-                    })?;
-                    samples.push(start.elapsed().as_secs_f64() * 1000.);
-                }
-                samples.sort_by(f64::total_cmp);
-                anyhow::ensure!(
-                    samples[18] < 50.,
-                    "resource redraw exceeded budget: {}",
-                    samples[18]
-                );
-                evidence.push(json!({"viewport":label,"connections":10001,"visible_rows":count,"p95_ms":samples[18]}));
-                click(&mut cx, "resource-row-0")?;
-                anyhow::ensure!(has("resource-tool-search"), "MCP tools missing");
-                click(&mut cx, "resource-tool-search")?;
-                cx.capture_screenshot(window.into())?
-                    .save(output.join(format!("{label}-mcp-parameters.png")))?;
-                click(&mut cx, "resource-back")?;
-                click(&mut cx, "resource-more")?;
-                cx.capture_screenshot(window.into())?
-                    .save(output.join(format!("{label}-mcp-details.png")))?;
-                click(&mut cx, "resource-detail-modal-close")?;
-                anyhow::ensure!(!has("resource-detail-modal-close"), "detail did not close");
-                let row = driver
-                    .snapshot(false)
-                    .elements
-                    .into_iter()
-                    .find(|e| e.id == "resource-row-0")
-                    .unwrap();
-                let center = row.bounds.center();
-                act(
-                    &mut cx,
-                    json!({"type":"scroll","target":{"x":center.x,"y":center.y},"delta_y":-5000.}),
-                )?;
-                anyhow::ensure!(!has("resource-row-0"), "virtual list did not scroll");
-            } else if mode == "skills" {
-                click(&mut cx, "agent-skill-skill-1")?;
-                anyhow::ensure!(
-                    !has("resource-detail-modal-close"),
-                    "Skill inspection created a nested modal"
-                );
-                cx.capture_screenshot(window.into())?
-                    .save(output.join(format!("{label}-skill-body.png")))?;
-                click(&mut cx, "resource-file-references/template.md")?;
-                cx.capture_screenshot(window.into())?
-                    .save(output.join(format!("{label}-skill-file.png")))?;
-                click(&mut cx, "resource-back")?;
-                click(&mut cx, "resource-back")?;
-                anyhow::ensure!(
-                    has("agent-skill-skill-1"),
-                    "Skill back did not restore the catalog"
-                );
-            } else {
+            {
                 click(&mut cx, "resource-row-0")?;
                 click(&mut cx, "resource-file-stderr.log")?;
                 cx.capture_screenshot(window.into())?
@@ -320,12 +154,8 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
-    std::fs::write(
-        output.join("performance.json"),
-        serde_json::to_vec_pretty(&evidence)?,
-    )?;
     pages_in_conversation(&output)?;
-    println!("PASS: existing resource views, tool parameters, Skill body/files, service logs, close/Escape, locales and 10k connection virtualization");
+    println!("PASS: service logs, close/Escape and locales");
     Ok(())
 }
 fn pages_in_conversation(output: &std::path::Path) -> anyhow::Result<()> {

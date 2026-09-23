@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two real Zork supervisors with isolated Synchronicity identities and fake models.
+"""Two real Zork supervisors with isolated iroh identities and fake models.
 
 The Agent executes real shell and registered Station tools; no model network
 request or user workspace is used. Keep the temp directory for failure diagnosis.
@@ -66,7 +66,7 @@ class Node:
         }}
         self.process = None
         (root / 'config.json').write_text(json.dumps(self.config))
-        # Station itself owns Synch. No supervisor or transport helper is
+        # Station itself owns iroh. No supervisor or transport helper is
         # involved in identity initialization, network startup or shutdown.
         with (root / 'bootstrap.log').open('wb') as log:
             bootstrap = subprocess.Popen([str(TARGET / 'zork-station'), '--data', str(root)],
@@ -75,15 +75,15 @@ class Node:
                 def identity():
                     assert bootstrap.poll() is None, f'Station exited during bootstrap; see {root / "bootstrap.log"}'
                     return self.get('/v1/mesh').get('origin')
-                self.origin = wait(identity, 'Station-owned Synch initialization')
+                self.origin = wait(identity, 'Station-owned iroh initialization')
                 children = subprocess.run(['pgrep', '-P', str(bootstrap.pid)], capture_output=True, text=True)
                 assert children.returncode == 1 and not children.stdout.strip(), 'Station spawned a transport helper'
                 assert not (root / 'zork.pid').exists(), 'Station required a supervisor'
-                assert not (root / 'mesh/synch/control.sock').exists(), 'Station created a Synch control socket'
-                assert not (root / 'mesh/synch/control.token').exists(), 'Station created a Synch control token'
+                assert not (root / 'mesh/iroh/control.sock').exists(), 'Station created a Mesh control socket'
+                assert not (root / 'mesh/iroh/control.token').exists(), 'Station created a Mesh control token'
             finally:
                 bootstrap.terminate()
-                assert bootstrap.wait(timeout=30) == 0, 'Station did not close its Synch tasks cleanly'
+                assert bootstrap.wait(timeout=30) == 0, 'Station did not close its Mesh tasks cleanly'
 
     def pair(self, other):
         self.config['mesh']['peers'] = [{'origin': other.origin, 'name': other.root.name,

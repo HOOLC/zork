@@ -79,13 +79,9 @@ internal fun ClientScreen(model: ClientViewModel) {
             catch (_: android.content.ActivityNotFoundException) { model.accountBrowserFailed() }
         }
     }
-    LaunchedEffect(model.ready, model.activePeer?.id, model.conversation?.id, model.settings != null, model.sharedFiles != null) { model.reportVisibleConversation() }
+    LaunchedEffect(model.ready, model.activePeer?.id, model.conversation?.id, model.settings != null) { model.reportVisibleConversation() }
     var addDevice by rememberSaveable { mutableStateOf(false) }
-    var hadInvitation by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(model.invitation?.text("id")) {
-        if (model.invitation != null) { hadInvitation = true; addDevice = true }
-        else if (hadInvitation) { hadInvitation = false; addDevice = false }
-    }
+
     var editingComment by remember { mutableStateOf<DraftCommentUi?>(null) }
     var fullMessage by remember(model.activePeer?.id, model.conversation?.id) { mutableStateOf<ChatMessage?>(null) }
     var attachmentPeer by rememberSaveable { mutableStateOf<String?>(null) }
@@ -116,21 +112,8 @@ internal fun ClientScreen(model: ClientViewModel) {
             close = { model.chatFileAction("close", "key" to file.key) },
             save = { model.chatFileAction("prepare_save", "key" to file.key) })
     }
-    var sharedSaveTicket by rememberSaveable { mutableStateOf<String?>(null) }
-    val sharedSaveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        sharedSaveTicket?.let { model.saveSharedFile(uri, it) }
-        sharedSaveTicket = null
-    }
-    LaunchedEffect(model.sharedFiles?.save?.ticket) {
-        val save = model.sharedFiles?.save
-        if (save?.ticket != null && sharedSaveTicket != save.ticket) {
-            sharedSaveTicket = save.ticket
-            sharedSaveFile.launch(save.name)
-        }
-    }
-    BackHandler(enabled = model.sharedFiles != null || model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
-        if (model.sharedFiles != null) model.sharedFileAction("back")
-        else if (model.sessionHistory != null) {
+    BackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
+        if (model.sessionHistory != null) {
             if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
         } else if (fullMessage != null) fullMessage = null else if (model.settings != null) model.backSettings() else model.back()
     }
@@ -141,23 +124,12 @@ internal fun ClientScreen(model: ClientViewModel) {
             model.busy || model.loadingOlder, model.ready, model.connected, model.notice, model.activity, model.running,
             model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer)
     val history = model.sessionHistory
-    val shared = model.sharedFiles
     val draftChat = model.newChat
-    val routeKey = shared?.let { "shared:${it.space.orEmpty()}/${it.path}/${it.preview?.path.orEmpty()}" } ?: history?.let { "history:${it.peer}:${it.session}" } ?: fullMessage?.let { "message:${it.id}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
-    val sharedDepth = shared?.let { 1 + (if (it.space == null) 0 else 1) + it.path.count { c -> c == '/' } + (if (it.path.isBlank()) 0 else 1) + (if (it.preview == null) 0 else 1) }
-    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage, history, shared, draftChat), routeKey, sharedDepth ?: if (history != null || fullMessage != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
+    val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: fullMessage?.let { "message:${it.id}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
+    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage, history, draftChat), routeKey, if (history != null || fullMessage != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
         if (currentSettings != null || model.conversation != null || draftChat != null) ZorkColors.Canvas else ZorkColors.Paper,
         Modifier.safeDrawingPadding().imePadding()) { shown, active ->
-    if (shown.shared != null) {
-        val savedKey = sharedFilesSavedKey(shown.shared)
-        retained.SaveableStateProvider(savedKey) {
-        SharedFilesPage(shown.shared, model.sharedFileImage.takeIf { model.sharedFiles?.preview?.selected == shown.shared.preview?.selected }, if (!active) SharedFilesActions() else SharedFilesActions(
-            back = { model.sharedFileAction("back") }, space = { model.sharedFileAction("open_space", "space" to it) }, entry = { model.sharedFileAction("open_entry", "id" to it) },
-            source = { model.sharedFileAction("source", "peer" to it) }, search = { model.sharedFileAction("search", "query" to it) },
-            refresh = { model.sharedFileAction("refresh") }, more = { model.sharedFileAction("more") }, layout = { model.sharedFileAction("layout", "layout" to it) },
-            sort = { model.sharedFileAction("sort", "sort" to it) }, version = { model.sharedFileAction("select_version", "root" to it) }, save = { model.sharedFileAction("prepare_save") }))
-        }
-    } else if (shown.history != null) {
+    if (shown.history != null) {
         SessionHistoryPage(shown.history, if (!active) HistoryActions() else HistoryActions(
             model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory, model::retryHistory, model::historyDetail, model::historyAnchor, model::historyNavigate))
     } else if (shown.message != null) {
@@ -174,7 +146,7 @@ internal fun ClientScreen(model: ClientViewModel) {
                 model::settingsPage, model::settingsProfile, model::assistSettings, model::checkUpdate,
                 { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction,
                 messagePreviewHeight = model.messagePreviewHeight, saveMessagePreviewHeight = model::saveMessagePreviewHeight,
-                resource = model::inspectResource, skills = model::agentSkills,
+                resource = model::inspectResource,
                 notifications = model.notificationSettings, notificationError = model.notificationError,
                 notificationTarget = model.activePeer?.id?.let { peer -> model.conversation?.id?.let { peer to it } },
                 notificationAction = model::notificationAction, testNotification = model::testNotification,
@@ -199,7 +171,7 @@ internal fun ClientScreen(model: ClientViewModel) {
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, sharedFiles = model::openSharedFiles, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
     ) }
     }
     ZorkRetained(editingComment) { comment, open, closed ->
@@ -207,13 +179,13 @@ internal fun ClientScreen(model: ClientViewModel) {
     }
     ZorkRetained(Unit.takeIf { addDevice }) { _, open, closed ->
         SettingsSheet("连接设备", dismiss = { addDevice = false }, open = open, onClosed = closed) {
-            if (model.invitation != null) PhoneInvitationStatus(model) else PhoneConnectActions(model)
+            PhoneConnectActions(model)
         }
     }
 }
 
 private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState, val message: ChatMessage? = null,
-    val history: SessionHistoryState? = null, val shared: SharedFilesUi? = null, val newChat: NewChatUi? = null)
+    val history: SessionHistoryState? = null, val newChat: NewChatUi? = null)
 
 @Composable
 internal fun PlainMessage(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, onComment: ((String) -> Unit)? = null) {

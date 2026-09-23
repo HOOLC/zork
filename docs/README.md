@@ -6,9 +6,9 @@
 
 `design/` 说明系统应当怎样工作，以及不能破坏的语义；不代表每项设计均已完成实现。
 
-- **执行与配置**：[Agent 运行时](design/agent-runtime.md)、[模型连接与账号](design/model-connections.md)、[Agent Skill](design/agent-skills.md)。
+- **执行与配置**：[Agent 运行时](design/agent-runtime.md)、[模型连接与账号](design/model-connections.md)。
 - **协作与事实**：[Chat](design/chat.md)、[活动与执行历史](design/execution-history.md)、[用户参与](design/user-participation.md)。
-- **数据与能力**：[设备身份和生命周期](design/devices.md)、[外部能力与授权](design/external-capabilities.md)、[共享文件](design/shared-files.md)、[同步与恢复](design/synchronization.md)。
+- **数据与能力**：[设备身份和生命周期](design/devices.md)、[外部能力与授权](design/external-capabilities.md)、[聊天附件](design/shared-files.md)、[同步与恢复](design/synchronization.md)。
 - **客户端**：[core/UI 边界](design/client-core.md)、[状态订阅](design/state-subscriptions.md)、[系统通知](design/notifications.md)、[界面与组件设计](design/interface.md)。
 
 ## 待决方案
@@ -24,7 +24,6 @@
 
 - [Android 本机操作](guides/android-local-operations.md)：脚本使用方式、原生入口与权限条件。
 - [Rust 构建与缓存](guides/rust-builds.md)
-- [共享文件 CAS 审计与回收](guides/file-cas-recovery.md)：原数据保护、只读预览与引擎回收前提。
 - [原生节点安装、接入、发布与升级](guides/native-releases.md)
 - [release/dev 开发、自救与提升](guides/release-dev-recovery.md)
 

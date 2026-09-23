@@ -8,7 +8,6 @@ mod new_chat;
 mod notifications;
 mod resources;
 mod settings;
-mod shared_files;
 mod snapshot;
 #[cfg(test)]
 mod tests;
@@ -26,7 +25,6 @@ pub enum Key {
     DataReset,
     LocalScripts,
     Adb,
-    SharedFiles,
     ChatFiles,
     Notifications,
     Resources {
@@ -34,7 +32,6 @@ pub enum Key {
         kind: crate::resources::ResourceKind,
         query: Option<crate::resources::Inspection>,
     },
-    Invitation,
     Directory,
     Conversation {
         peer: String,
@@ -58,10 +55,8 @@ impl Key {
             | Self::DataReset
             | Self::LocalScripts
             | Self::Adb
-            | Self::Invitation
             | Self::Directory
             | Self::Notifications
-            | Self::SharedFiles
             | Self::ChatFiles => "",
             Self::Resources { peer, .. } => peer.as_deref().unwrap_or(""),
             Self::Conversation { peer, .. }
@@ -107,11 +102,9 @@ enum Projection {
     DataReset(snapshot::SnapshotWire<crate::data_reset::Snapshot>),
     LocalScripts(snapshot::SnapshotWire),
     Adb(adb::AdbWire),
-    SharedFiles(shared_files::SharedFilesWire),
     ChatFiles(chat_files::ChatFilesWire),
     Notifications(notifications::NotificationsWire),
     Resources(resources::ResourcesWire),
-    Invitation(snapshot::SnapshotWire),
     Directory(snapshot::SnapshotWire),
     Conversation(conversation::ConversationWire),
     History(history::HistoryWire),
@@ -175,18 +168,6 @@ impl WireSubscription {
             applied: 0,
         }
     }
-    pub(crate) fn from_shared_files(
-        source: Arc<crate::shared_files::SharedFiles>,
-        store: Arc<ClientStore>,
-    ) -> Self {
-        Self {
-            projection: Projection::SharedFiles(shared_files::SharedFilesWire::new(source, store)),
-            device: None,
-            prepared: None,
-            sequence: 0,
-            applied: 0,
-        }
-    }
     pub(crate) fn from_notifications(store: Arc<ClientStore>) -> Result<Self> {
         Ok(Self {
             projection: Projection::Notifications(notifications::NotificationsWire::new(store)?),
@@ -222,17 +203,6 @@ impl WireSubscription {
             applied: 0,
         }
     }
-    pub(crate) fn from_invitation(source: &zork_observe::ValueSource<Value>) -> Self {
-        Self {
-            projection: Projection::Invitation(snapshot::SnapshotWire::new(source)),
-            device: None,
-            prepared: None,
-            sequence: 0,
-            applied: 0,
-        }
-    }
-    /// Adapt an already-owned controller. Its lifecycle is independent of this
-    /// read-only observer; the caller activates business operations separately.
     pub fn from_device(key: Key, device: Arc<Device>, store: Arc<ClientStore>) -> Result<Self> {
         anyhow::ensure!(
             device.bound_peer().is_none_or(|peer| peer == key.peer()),
@@ -243,10 +213,8 @@ impl WireSubscription {
             | Key::DataReset
             | Key::LocalScripts
             | Key::Adb
-            | Key::Invitation
             | Key::Directory
             | Key::Notifications
-            | Key::SharedFiles
             | Key::ChatFiles
             | Key::Resources { .. } => {
                 anyhow::bail!("projection uses a client-owned source")
@@ -275,13 +243,10 @@ impl WireSubscription {
             Projection::Account(p) => p.signals(),
             Projection::DataReset(p) => p.signals(),
             Projection::Adb(p) => p.wire.signals(),
-            Projection::SharedFiles(p) => p.signals(),
             Projection::ChatFiles(p) => p.signals(),
             Projection::Notifications(p) => p.wire.signals(),
             Projection::Resources(p) => p.signals(),
-            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
-                p.signals()
-            }
+            Projection::Directory(p) | Projection::LocalScripts(p) => p.signals(),
             Projection::Conversation(p) => p.signals(),
             Projection::History(p) => p.signals(),
             Projection::Settings(p) => p.signals(),
@@ -300,13 +265,10 @@ impl WireSubscription {
             Projection::Account(p) => p.valid(),
             Projection::DataReset(p) => p.valid(),
             Projection::Adb(p) => p.valid(),
-            Projection::SharedFiles(p) => p.valid(),
             Projection::ChatFiles(p) => p.valid(),
             Projection::Notifications(p) => p.valid(),
             Projection::Resources(p) => p.valid(),
-            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
-                p.valid()
-            }
+            Projection::Directory(p) | Projection::LocalScripts(p) => p.valid(),
             Projection::Conversation(p) => p.valid(),
             Projection::History(p) => p.valid(),
             Projection::Settings(p) => p.valid(),
@@ -326,13 +288,10 @@ impl WireSubscription {
             Projection::Account(p) => p.prepare()?,
             Projection::DataReset(p) => p.prepare()?,
             Projection::Adb(p) => p.prepare()?,
-            Projection::SharedFiles(p) => p.prepare()?,
             Projection::ChatFiles(p) => p.prepare()?,
             Projection::Notifications(p) => p.prepare()?,
             Projection::Resources(p) => p.prepare()?,
-            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
-                p.prepare()?
-            }
+            Projection::Directory(p) | Projection::LocalScripts(p) => p.prepare()?,
             Projection::Conversation(p) => p.prepare()?,
             Projection::History(p) => p.prepare()?,
             Projection::Settings(p) => p.prepare()?,
@@ -363,10 +322,7 @@ impl WireSubscription {
             Projection::Adb(p) => p.wire.finish(applied && valid),
             Projection::Notifications(p) => p.wire.finish(applied && valid),
             Projection::Resources(p) => p.finish(applied && valid),
-            Projection::SharedFiles(p) => p.finish(applied && valid),
-            Projection::Invitation(p) | Projection::Directory(p) | Projection::LocalScripts(p) => {
-                p.finish(applied && valid)
-            }
+            Projection::Directory(p) | Projection::LocalScripts(p) => p.finish(applied && valid),
             Projection::ChatFiles(p) => p.finish(applied && valid),
             Projection::Conversation(p) => p.finish(applied && valid),
             Projection::History(p) => p.finish(applied && valid),

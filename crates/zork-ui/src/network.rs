@@ -160,8 +160,6 @@ pub fn network<V: 'static>(
 }
 #[derive(Clone, Default)]
 pub struct EnrollmentData {
-    pub client: bool,
-    pub ticket: String,
     pub available: bool,
     pub busy: bool,
     pub status: String,
@@ -171,9 +169,6 @@ pub struct EnrollmentData {
 }
 #[derive(Clone, Debug)]
 pub enum EnrollmentAction {
-    Select(bool),
-    CreateClient,
-    Approve,
     Create,
     Copy,
     Revoke,
@@ -187,49 +182,22 @@ pub fn enrollment<V: 'static>(
     let create = action.clone();
     let copy = action.clone();
     let revoke = action.clone();
-    let select_client = action.clone();
-    let approve = action.clone();
-    let active = matches!(
-        data.status.as_str(),
-        "waiting" | "connecting" | "awaiting_approval"
-    ) && (!data.command.is_empty() || !data.ticket.is_empty());
+    let active =
+        matches!(data.status.as_str(), "waiting" | "connecting") && !data.command.is_empty();
     div()
         .flex()
         .flex_col()
         .gap_4()
-        .child(crate::components::widgets::controls::deferred_segmented(
-            "mesh-connect-mode",
-            [
-                ("mesh-connect-phone-tab", "连接手机"),
-                ("mesh-connect-device-tab", "连接其它设备"),
-            ]
-            .into_iter()
-            .map(
-                |(id, label)| crate::components::widgets::controls::Segment {
-                    id: id.into(),
-                    label: label.into(),
-                    disabled: false,
-                },
-            )
-            .collect(),
-            vec![],
-            Some(usize::from(!data.client)),
-            crate::components::widgets::controls::SegmentKind::Choice,
-            !data.busy,
-            ZORK_UI.palette.canvas,
-            cx.listener(move |v, index: &usize, _, cx| {
-                select_client(v, EnrollmentAction::Select(*index == 0), cx)
-            }),
-        ))
+        .child(
+            div()
+                .text_size(px(12.))
+                .child("手机登录同一个 Google 账号后会自动连接。"),
+        )
         .child(
             div()
                 .text_size(px(11.))
                 .text_color(rgb(ZORK_UI.palette.muted))
-                .child(if data.client {
-                    "在手机 Zork 中打开扫一扫。扫码后，请在这里确认允许连接。"
-                } else {
-                    "复制加入命令，在其它设备的终端执行。"
-                }),
+                .child("连接其它设备：生成安装链接，并在目标设备打开链接完成安装。"),
         )
         .when(!data.status_label.is_empty(), |v| {
             v.child(
@@ -241,157 +209,39 @@ pub fn enrollment<V: 'static>(
             )
         })
         .when(!active, |v| {
-            let label = if data.busy {
-                "正在生成…"
-            } else if data.client {
-                "生成连接二维码"
-            } else {
-                "生成加入命令"
-            };
             v.child(
                 ui::button(
-                    if data.client {
-                        "mesh-client-invite-create"
+                    "mesh-invite-create",
+                    if data.busy {
+                        "正在生成…"
                     } else {
-                        "mesh-invite-create"
+                        "生成安装链接"
                     },
-                    label,
                     true,
                     !data.busy && data.available,
                 )
-                .on_click(cx.listener(move |v, _, _, cx| {
-                    create(
-                        v,
-                        if data.client {
-                            EnrollmentAction::CreateClient
-                        } else {
-                            EnrollmentAction::Create
-                        },
-                        cx,
-                    )
-                }))
+                .on_click(cx.listener(move |v, _, _, cx| create(v, EnrollmentAction::Create, cx)))
                 .automation_enabled(
                     !data.busy && data.available,
                     AutomationRole::Button,
-                    label,
+                    "生成安装链接",
                 ),
             )
         })
         .when(active, |v| {
-            v.when(data.client, |v| v.child(invitation_qr(&data.ticket)))
-                .when(!data.client, |v| {
-                    v.child(command_block("mesh-invite-command", data.command.clone()))
-                })
-                .when(data.status == "awaiting_approval", |v| {
-                    v.child(
-                        ui::button("mesh-client-invite-approve", "允许连接", true, !data.busy)
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                approve(v, EnrollmentAction::Approve, cx)
-                            }))
-                            .automation_enabled(!data.busy, AutomationRole::Button, "允许连接手机"),
-                    )
-                })
+            v.child(command_block("mesh-invite-command", data.command.clone()))
                 .child(
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(
-                            ui::button(
-                                "mesh-invite-revoke",
-                                if data.client {
-                                    "取消邀请"
-                                } else {
-                                    "撤销命令"
-                                },
-                                false,
-                                !data.busy,
-                            )
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                revoke(v, EnrollmentAction::Revoke, cx)
-                            }))
-                            .automation_enabled(
-                                !data.busy,
-                                AutomationRole::Button,
-                                if data.client {
-                                    "取消手机邀请"
-                                } else {
-                                    "撤销加入命令"
-                                },
-                            ),
-                        )
-                        .child(
-                            ui::button(
-                                "mesh-invite-copy",
-                                if data.client {
-                                    "复制邀请"
-                                } else {
-                                    "复制命令"
-                                },
-                                true,
-                                true,
-                            )
-                            .on_click(
-                                cx.listener(move |v, _, _, cx| copy(v, EnrollmentAction::Copy, cx)),
-                            )
-                            .automation(
-                                AutomationRole::Button,
-                                if data.client {
-                                    "复制手机邀请"
-                                } else {
-                                    "复制加入命令"
-                                },
-                            ),
-                        ),
+                    ui::button("mesh-invite-copy", "复制安装链接", true, !data.busy).on_click(
+                        cx.listener(move |v, _, _, cx| copy(v, EnrollmentAction::Copy, cx)),
+                    ),
+                )
+                .child(
+                    ui::button("mesh-invite-revoke", "撤销链接", false, !data.busy).on_click(
+                        cx.listener(move |v, _, _, cx| revoke(v, EnrollmentAction::Revoke, cx)),
+                    ),
                 )
         })
         .when_some(data.notice, |v, text| v.child(ui::feedback(text)))
-}
-fn invitation_qr(ticket: &str) -> gpui::AnyElement {
-    let Ok(code) = qrcode::QrCode::new(ticket.as_bytes()) else {
-        return ui::feedback("邀请较长，请使用复制邀请连接。".into()).into_any_element();
-    };
-    let width = code.width();
-    let modules = code.to_colors();
-    // Four modules of quiet zone; integer physical pixels keep camera edges sharp.
-    div()
-        .id("mesh-client-invite-qr")
-        .flex()
-        .justify_center()
-        .child(
-            gpui::canvas(
-                |_, _, _| (),
-                move |bounds, _, window, _| {
-                    let scale = window.scale_factor();
-                    let unit = ((f32::from(bounds.size.width) * scale) / (width + 8) as f32)
-                        .floor()
-                        .max(1.0)
-                        / scale;
-                    let left = bounds.origin.x
-                        + px((f32::from(bounds.size.width) - unit * (width + 8) as f32) / 2.0);
-                    window.paint_quad(gpui::fill(bounds, gpui::rgb(0xffffff)));
-                    for y in 0..width {
-                        for x in 0..width {
-                            if modules[y * width + x] == qrcode::Color::Dark {
-                                window.paint_quad(gpui::fill(
-                                    gpui::Bounds::new(
-                                        gpui::point(
-                                            left + px((x + 4) as f32 * unit),
-                                            bounds.origin.y + px((y + 4) as f32 * unit),
-                                        ),
-                                        gpui::size(px(unit), px(unit)),
-                                    ),
-                                    gpui::rgb(0x000000),
-                                ));
-                            }
-                        }
-                    }
-                },
-            )
-            .w(px(300.))
-            .h(px(300.)),
-        )
-        .into_any_element()
 }
 pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl IntoElement {
     div()
@@ -474,8 +324,6 @@ impl NetworkStory {
                 notice: None,
             },
             enrollment: EnrollmentData {
-                client: false,
-                ticket: String::new(),
                 available: true,
                 busy: state == "loading",
                 status: status.into(),
@@ -503,15 +351,7 @@ impl NetworkStory {
     }
     fn enrollment_action(&mut self, action: EnrollmentAction, cx: &mut Context<Self>) {
         match action {
-            EnrollmentAction::Select(phone) => {
-                self.enrollment.client = phone;
-                self.enrollment.status.clear();
-                self.enrollment.status_label.clear();
-                self.enrollment.command.clear();
-                self.enrollment.ticket.clear();
-                self.enrollment.notice = None;
-            }
-            EnrollmentAction::CreateClient | EnrollmentAction::Create => {
+            EnrollmentAction::Create => {
                 self.enrollment.busy = false;
                 self.enrollment.status = "waiting".into();
                 self.enrollment.status_label = "等待目标设备执行 · 10 分 0 秒后过期".into();
@@ -525,9 +365,6 @@ impl NetworkStory {
                 self.enrollment.status = "revoked".into();
                 self.enrollment.status_label = "加入命令已撤销。".into();
                 self.enrollment.command.clear();
-            }
-            EnrollmentAction::Approve => {
-                self.enrollment.status = "connecting".into();
             }
             EnrollmentAction::Copy => {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(

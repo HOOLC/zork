@@ -18,17 +18,6 @@ pub fn router(state: RuntimeState) -> Router {
         .route("/healthz", get(admin_readyz))
         .route("/admin/api/overview", get(overview))
         .route("/admin/api/status", get(status))
-        .route(
-            "/admin/api/mcp",
-            get(crate::mcp::admin_list).post(crate::mcp::admin_create),
-        )
-        .route(
-            "/admin/api/mcp/{id}",
-            axum::routing::put(crate::mcp::admin_update)
-                .get(crate::mcp::admin_get)
-                .delete(crate::mcp::admin_remove),
-        )
-        .route("/admin/api/mcp/{id}/probe", post(crate::mcp::admin_probe))
         .route("/admin/api/im/providers", get(list_im_providers))
         .route(
             "/admin/api/im/connections",

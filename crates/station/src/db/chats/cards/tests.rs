@@ -380,7 +380,7 @@ fn agent_effect_receipt_and_final_card_commit_atomically() {
     publish(&db, &chat.chat_id, &request, &owner.agent);
     accept(&db, &request);
     let receipt = db.chat_begin("business", "business").unwrap();
-    let agent:crate::db::agents::NodeAgent=serde_json::from_value(json!({"id":receipt.object_id,"name":"Created","role":"worker","profile_id":"fixture","model":"model","thinking":"off","instructions":"","skill_paths":[],"allowed_leaders":[]})).unwrap();
+    let agent:crate::db::agents::NodeAgent=serde_json::from_value(json!({"id":receipt.object_id,"name":"Created","role":"worker","profile_id":"fixture","model":"model","thinking":"off","instructions":"","allowed_leaders":[]})).unwrap();
     db.conn.lock().unwrap().execute_batch("CREATE TRIGGER reject_final BEFORE INSERT ON tool_interaction_messages WHEN json_extract(NEW.value,'$.result.outcome')='completed' BEGIN SELECT RAISE(ABORT,'injected final write failure'); END;").unwrap();
     assert!(db
         .save_channel_agent("business", &agent, None, Some(&request.request_id))
@@ -502,7 +502,7 @@ fn revocation_before_business_commit_prevents_agent_effects() {
     let request = create(&db, &owner, "invocation");
     accept(&db, &request);
     let receipt = db.chat_begin("business", "business").unwrap();
-    let agent:crate::db::agents::NodeAgent=serde_json::from_value(json!({"id":receipt.object_id,"name":"Cancelled","role":"worker","profile_id":"fixture","model":"model","thinking":"off","instructions":"","skill_paths":[],"allowed_leaders":[]})).unwrap();
+    let agent:crate::db::agents::NodeAgent=serde_json::from_value(json!({"id":receipt.object_id,"name":"Cancelled","role":"worker","profile_id":"fixture","model":"model","thinking":"off","instructions":"","allowed_leaders":[]})).unwrap();
     db.revoke_interaction_registrations(&owner, "invocation")
         .unwrap();
     assert!(db

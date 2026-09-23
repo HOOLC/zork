@@ -31,11 +31,6 @@ pub enum Watch {
         assignment_id: String,
         after: i64,
     },
-    Invitation {
-        id: String,
-        secret: String,
-        challenge: String,
-    },
 }
 impl std::fmt::Debug for Watch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,34 +50,17 @@ impl std::fmt::Debug for Watch {
                 .field("id", assignment_id)
                 .field("after", after)
                 .finish(),
-            Self::Invitation { id, .. } => f
-                .debug_struct("Invitation")
-                .field("id", id)
-                .finish_non_exhaustive(),
         }
     }
 }
 impl Watch {
     fn wire(&self) -> Value {
         use serde_json::json;
-        match self {
-            // Retain compatibility with peers predating the common envelope.
-            Self::Peer => json!({"v":1,"request":{"kind":"watch_peer"}}),
-            Self::Assignment {
-                assignment_id,
-                after,
-            } => json!({"v":1,"request":{
-                "kind":"watch_assignment","assignment_id":assignment_id,"after":after,
-            }}),
-            Self::Membership | Self::Invitation { .. } | Self::AgentMessages { .. } => {
-                json!({"v":1,"request":{"kind":"watch","topic":self}})
-            }
-        }
+        json!({"v":1,"request":{"kind":"watch","topic":self}})
     }
     fn resume(&mut self, next: Self) -> Result<()> {
         let same = match (&*self, &next) {
             (Self::Peer, Self::Peer) | (Self::Membership, Self::Membership) => true,
-            (Self::Invitation { .. }, Self::Invitation { .. }) => *self == next,
             (
                 Self::AgentMessages { epoch, after },
                 Self::AgentMessages {
@@ -231,7 +209,7 @@ mod tests {
     use super::*;
     #[test]
     fn reconnect_requests_cannot_execute_commands_or_retarget_acknowledgements() {
-        for kind in ["delegate", "cancel", "client", "node_tool", "mcp"] {
+        for kind in ["delegate", "cancel", "client", "node_tool"] {
             assert!(serde_json::from_value::<Watch>(serde_json::json!({"type":kind})).is_err());
         }
         let request = |id: &str, after| Watch::Assignment {
@@ -244,7 +222,7 @@ mod tests {
         assert!(current.resume(Watch::Membership).is_err());
         assert_eq!(current, request("one", 10));
         current.resume(request("one", 11)).unwrap();
-        assert_eq!(current.wire()["request"]["after"], 11);
+        assert_eq!(current.wire()["request"]["topic"]["after"], 11);
     }
 
     #[test]

@@ -209,20 +209,8 @@ harness = false
 required-features = ["headless-bench"]
 
 [[test]]
-name = "headless_resource_concept"
-path = "tests/headless_resource_concept.rs"
-harness = false
-required-features = ["headless-bench"]
-
-[[test]]
 name = "headless_interactions"
 path = "tests/headless_interactions.rs"
-harness = false
-required-features = ["headless-bench"]
-
-[[test]]
-name = "headless_shared_files"
-path = "tests/headless_shared_files.rs"
 harness = false
 required-features = ["headless-bench"]
 

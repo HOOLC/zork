@@ -21,21 +21,13 @@ tests() {
   cargo test --locked "${packages[@]}" --lib --tests --no-fail-fast
   pnpm test
   python3 scripts/test-slack-forwarding.py
-  python3 scripts/test-skills.py
   python3 scripts/test-sync-idle.py
   python3 crates/zork-gui/tests/test_station_entry.py
-}
-
-shared_files() {
-  ZORK_TEST_STATION_BIN="$ZORK_TEST_BIN_DIR/zork-station" \
-    cargo test --locked -p zork-client-core --features desktop \
-      --test shared_files_mesh -- --ignored
 }
 
 case "${1:-all}" in
   build) build ;;
   test) tests ;;
   all) build; tests ;;
-  shared-files) build; shared_files ;;
-  *) echo 'Usage: check-runtime.sh [build|test|all|shared-files]' >&2; exit 2 ;;
+  *) echo 'Usage: check-runtime.sh [build|test|all]' >&2; exit 2 ;;
 esac
