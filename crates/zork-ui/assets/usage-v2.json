@@ -139,12 +139,6 @@
     "filter.svg": [
       "src/views.rs"
     ],
-    "group-by-model.svg": [
-      "src/desktop/model_settings.rs"
-    ],
-    "group-by-provider.svg": [
-      "src/desktop/model_settings.rs"
-    ],
     "handoff.svg": [],
     "history.svg": [],
     "home.svg": [

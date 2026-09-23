@@ -18,7 +18,6 @@ use zork_ui::controls::{provider_icon, provider_path};
 pub struct ProfilesView {
     source: Arc<crate::api::Profiles>,
     dialog_only: bool,
-    show_connection_rows: bool,
     row_scope: Option<String>,
     detail_request: u64,
     source_updates: Option<Task<()>>,
@@ -93,7 +92,6 @@ impl ProfilesView {
     ) -> Self {
         let mut view = Self::new_source(source, cx);
         view.dialog_only = true;
-        view.show_connection_rows = true;
         view.row_scope = Some(device_id);
         view.device_name = name;
         view.set_visible(true, cx);
@@ -156,7 +154,6 @@ impl ProfilesView {
             modal: ui::ModalState::new(cx),
             source,
             dialog_only: false,
-            show_connection_rows: false,
             row_scope: None,
             detail_request: 0,
             source_updates: None,
@@ -1251,23 +1248,26 @@ impl Render for ProfilesView {
             "feedback".into(),
         ]);
         self.regions.retain(|key| keep.contains(key));
-        let rows = ids
-            .into_iter()
-            .map(|id| {
-                self.regions.element(
-                    &format!("profile/{id}"),
-                    gpui::StyleRefinement::default().w_full().h(px(80.)),
-                    cx,
-                    move |v, _, cx| {
-                        v.profiles
-                            .iter()
-                            .find(|p| p.profile_id == id)
-                            .map(|p| v.render_profile_row(p, cx))
-                            .unwrap_or_else(|| gpui::Empty.into_any_element())
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
+        let rows = if self.dialog_only {
+            vec![]
+        } else {
+            ids.into_iter()
+                .map(|id| {
+                    self.regions.element(
+                        &format!("profile/{id}"),
+                        gpui::StyleRefinement::default().w_full().h(px(80.)),
+                        cx,
+                        move |v, _, cx| {
+                            v.profiles
+                                .iter()
+                                .find(|p| p.profile_id == id)
+                                .map(|p| v.render_profile_row(p, cx))
+                                .unwrap_or_else(|| gpui::Empty.into_any_element())
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
         let header = self
             .regions
             .auto_height("header", width, cx, |v, _, cx| v.render_header(cx));
@@ -1276,10 +1276,9 @@ impl Render for ProfilesView {
             .flex_col()
             .gap_0()
             .when(!self.dialog_only, |v| v.child(header))
-            .when(
-                (!self.dialog_only || self.show_connection_rows) && !self.profiles.is_empty(),
-                |v| v.child(div().flex().flex_col().mx(px(-12.)).children(rows)),
-            )
+            .when(!self.dialog_only && !self.profiles.is_empty(), |v| {
+                v.child(div().flex().flex_col().mx(px(-12.)).children(rows))
+            })
             .when(
                 !self.dialog_only
                     && self.profiles.is_empty()
@@ -2042,6 +2041,22 @@ impl ProfilesView {
         profile: &ProfileInfo,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
+        let id = profile.profile_id.clone();
+        self.render_profile_row_with_click(
+            profile,
+            &self.catalog,
+            self.quota_failures.contains(&profile.profile_id),
+            cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
+        )
+    }
+
+    pub(super) fn render_profile_row_with_click(
+        &self,
+        profile: &ProfileInfo,
+        catalog: &[Value],
+        quota_failed: bool,
+        on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+    ) -> gpui::AnyElement {
         let p = ZORK_UI.palette;
 
         let id = profile.profile_id.clone();
@@ -2050,7 +2065,7 @@ impl ProfilesView {
             .as_ref()
             .map(|scope| format!("{scope}-{id}"))
             .unwrap_or_else(|| id.clone());
-        let provider = self.catalog.iter().find(|p| p["id"] == profile.provider);
+        let provider = catalog.iter().find(|p| p["id"] == profile.provider);
         let provider_name = provider
             .and_then(|p| p["label"].as_str())
             .unwrap_or(&profile.provider);
@@ -2083,6 +2098,11 @@ impl ProfilesView {
                 "profile_unverified"
             })
             .to_owned();
+        let quota = if quota_failed {
+            QuotaPresentation::failure(self.locale)
+        } else {
+            QuotaPresentation::new(profile, self.locale)
+        };
 
         ui::quiet_button(
             format!("profile-detail-{row_key}"),
@@ -2094,7 +2114,7 @@ impl ProfilesView {
         .font_weight(gpui::FontWeight::NORMAL)
         .justify_start()
         .w_full()
-        .on_click(cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)))
+        .on_click(on_click)
         .h(px(80.))
         .px(px(12.))
         .rounded(px(ui::FIELD_RADIUS))
@@ -2138,10 +2158,9 @@ impl ProfilesView {
                         .child(billing_summary.clone())
                         .automation(AutomationRole::Status, billing_summary),
                 )
-                .when_some(
-                    self.quota.get(&profile.profile_id).filter(|q| q.visible()),
-                    |v, quota| v.child(self.render_quota_summary(&profile.profile_id, quota)),
-                ),
+                .when(quota.visible(), |v| {
+                    v.child(self.render_quota_summary(&profile.profile_id, &quota))
+                }),
         )
         .child(
             div()
