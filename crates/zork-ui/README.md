@@ -56,14 +56,6 @@ The component gallery uses the same library components as its examples. Read the
 
 `interaction-overview` exercises action feedback; `interaction-form` combines production fields, a select, a switch, text actions and local save/error/busy states. Existing model/connection stories render the actual settings view against isolated fixtures. Fixed state swatches are reference samples; input-driven checks provide behavioral evidence.
 
-`components::collapse` measures uncompressed content at the available width and animates
-its clipped layout height with a shared speed limit and smooth acceleration/braking.
-The content retracts slightly and fades as the aperture closes. Retain it by stable ID while closed;
-use `mounted` to omit settled hidden rows and `interactive` for descendant tab stops.
-Its frame callback must invalidate the owning region’s intrinsic height. The
-`navigation-fold-open` / `navigation-fold-closed` stories run the same component
-as the native client and are exercised through `zork-design-pc`.
-
 <a id="playground"></a>
 
 ## Component gallery

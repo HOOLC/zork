@@ -285,7 +285,6 @@ fn chat_hover_checks() -> anyhow::Result<()> {
     let window = cx.open_window(gpui::size(px(800.), px(600.)), |_, cx| {
         let navigation = cx.new(|cx| {
             let mut view = zork_ui::chat_navigation::Navigation::new(
-                Default::default(),
                 zork_ui::resources::Text(Rc::new(|key| {
                     zork_gui::i18n::Locale::ZhCn.text(key).into()
                 })),

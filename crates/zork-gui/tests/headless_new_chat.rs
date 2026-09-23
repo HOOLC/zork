@@ -233,7 +233,7 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-thumb-0"}}),
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
             &mut cx,
         )?;
         action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
@@ -250,7 +250,7 @@ fn main() -> anyhow::Result<()> {
                 .snapshot(false)
                 .elements
                 .iter()
-                .any(|element| element.id == "new-chat-thinking-thumb-0" && element.visible),
+                .any(|element| element.id == "new-chat-thinking-keyboard" && element.visible),
             "reset unexpectedly left the strength picker at {width}"
         );
         action(

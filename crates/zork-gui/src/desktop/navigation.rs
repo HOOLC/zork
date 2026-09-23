@@ -48,7 +48,6 @@ pub struct DeviceNavigation {
     view_locale: Option<Locale>,
     devices: Vec<Device>,
     active: Option<String>,
-    collapsed: HashSet<String>,
     locale: Locale,
     width: f32,
     pub resizing: bool,
@@ -75,10 +74,6 @@ impl DeviceNavigation {
             .unwrap_or_default()
     }
     pub fn new(store: Arc<ClientStore>, nodes: &[SavedNode], _cx: &mut gpui::App) -> Self {
-        let collapsed = read_view_state(&store, "device", ViewState::NavigationCollapsed)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
         let width = read_view_state::<f32>(&store, "device", ViewState::SidebarWidth)
             .ok()
             .flatten()
@@ -94,7 +89,6 @@ impl DeviceNavigation {
             shared_files: false,
             devices: Vec::new(),
             active: None,
-            collapsed,
             locale: crate::i18n::load_locale(
                 &crate::i18n::preferences_path(),
                 std::env::var("ZORK_GUI_LOCALE").ok().as_deref(),
@@ -422,7 +416,6 @@ impl Render for DeviceNavigation {
             let locale = self.locale;
             let view = cx.new(|cx| {
                 zork_ui::chat_navigation::Navigation::new(
-                    self.collapsed.clone(),
                     zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into())),
                     cx,
                 )
@@ -464,17 +457,6 @@ impl Render for DeviceNavigation {
                 }
                 Action::BeginResize => {
                     v.resizing = true;
-                }
-                Action::Collapsed(collapsed) => {
-                    v.collapsed = collapsed.clone();
-                    if let Err(error) = save_view_state(
-                        &v.store,
-                        "device",
-                        ViewState::NavigationCollapsed,
-                        &v.collapsed,
-                    ) {
-                        eprintln!("Could not save device navigation state: {error}");
-                    }
                 }
                 Action::Preview {
                     node,

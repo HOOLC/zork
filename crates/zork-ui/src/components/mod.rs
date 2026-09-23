@@ -27,7 +27,6 @@ pub mod composer_layout;
 pub mod standard_menu;
 pub mod widgets;
 
-pub mod collapse;
 pub mod smooth;
 pub mod workbench;
 

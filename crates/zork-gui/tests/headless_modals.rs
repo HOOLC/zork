@@ -672,7 +672,6 @@ fn enrollment_checks() -> anyhow::Result<()> {
             modal.retain("add-device-dialog", None::<()>, cx);
             let navigation = cx.new(|cx| {
                 zork_ui::chat_navigation::Navigation::new(
-                    Default::default(),
                     zork_ui::resources::Text(std::rc::Rc::new(|key| {
                         zork_gui::i18n::Locale::ZhCn.text(key).into()
                     })),

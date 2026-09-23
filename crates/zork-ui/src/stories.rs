@@ -232,8 +232,6 @@ pub fn catalog() -> Vec<Story> {
                 "focus",
                 "selected-focus",
                 "long",
-                "fold-open",
-                "fold-closed",
             ][..],
             "crates/zork-ui/src/navigation.rs::TabGroup",
             "navigation",
@@ -292,7 +290,7 @@ pub fn catalog() -> Vec<Story> {
             if family == "field" && *state == "error" {
                 story.target = "story-field-surface".into();
             }
-            if family == "navigation" && matches!(*state, "gap" | "fold-open" | "fold-closed") {
+            if family == "navigation" && *state == "gap" {
                 story.target = "story-component".into();
             }
             if family == "brand" {
@@ -972,67 +970,6 @@ impl Render for PrimitiveStory {
                     .into_any_element()
             }
             "brand" => div().flex().child(self.brand.clone()).into_any_element(),
-            "navigation" if state.starts_with("fold-") => {
-                let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                let fold = crate::components::collapse::Collapse::new(
-                    self.id("navigation-fold"),
-                    state == "fold-open",
-                    240.,
-                    window,
-                    cx,
-                );
-                let focus = fold.header_focus(cx);
-                let interactive = fold.interactive(cx);
-                let body = fold.mounted(cx).then(|| {
-                    tabs.column()
-                        .pt(px(2.))
-                        .children((0..4).map(|i| {
-                            tabs.tab(self.id(&format!("fold-task-{i}")), i == 1)
-                                .tab_stop(interactive)
-                                .pl(px(30.))
-                                .child(format!("Task {}", i + 1))
-                                .automation(AutomationRole::Button, format!("Task {}", i + 1))
-                        }))
-                        .into_any_element()
-                });
-                let owner = cx.entity().downgrade();
-                tabs.surface(
-                    div()
-                        .w(px(240.))
-                        .flex()
-                        .flex_col()
-                        .child(
-                            tabs.tab(self.id("fold-header"), false)
-                                .track_focus(&focus)
-                                .child(ui::icon("icons/node.svg", 20.))
-                                .child("mini1")
-                                .on_click(cx.listener(|v, _, _, cx| {
-                                    v.story.state = if v.story.state == "fold-open" {
-                                        "fold-closed"
-                                    } else {
-                                        "fold-open"
-                                    }
-                                    .into();
-                                    cx.notify();
-                                }))
-                                .automation(AutomationRole::Button, "mini1"),
-                        )
-                        .child(fold.element(
-                            body,
-                            move |_, cx| {
-                                let _ = owner.update(cx, |_, cx| cx.notify());
-                            },
-                            cx,
-                        ))
-                        .child(
-                            tabs.tab(self.id("fold-following"), false)
-                                .child(ui::icon("icons/node.svg", 20.))
-                                .child("mini2")
-                                .automation(AutomationRole::Button, "mini2"),
-                        ),
-                )
-                .into_any_element()
-            }
             "navigation" if state == "gap" => {
                 let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
                 tabs.surface(

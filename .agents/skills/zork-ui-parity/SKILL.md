@@ -14,6 +14,7 @@ description: 新增或修改 zork UI 控件、共享组件及 zork-design-pc 展
 - 保持 Zork 的颜色、尺寸、文字角色和状态。hover/pressed、selected、invalid、busy、disabled 和键盘焦点分别检查；禁用输入不能只改颜色。触屏关键动作不能依赖 hover。
 - 输入复用 `ComposerInput` 与宿主键盘映射。Composer Enter 提交，独立多行字段 Enter 换行；IME 候选不提交。只读和禁用同时约束键盘、IME 与粘贴，投影回声不重置光标和撤销历史。
 - 模态、菜单与浮层检查 Esc/Back、正反 Tab、外部点击、滚动、IME 和焦点返回。GPUI 可聚焦按钮已将 Enter/Space 变成点击，避免在 key-down 重复执行。弹窗关闭后不可见内容不保留输入资格。
+- macOS 应用外壳共用菜单动作；退出走 GPUI 优雅关闭，设置走客户端现有导航，编辑命令复用共享输入动作。分别验证菜单点击和快捷键。
 
 ## 展示与验证
 

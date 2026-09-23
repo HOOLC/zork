@@ -242,6 +242,7 @@ impl Render for Page {
         })
         .min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let trigger = Popover::new("new-chat-options-panel")
+            .rounded(px(24.))
             .trigger(
                 ui::quiet_button(
                     "new-chat-options",
