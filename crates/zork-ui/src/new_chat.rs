@@ -268,6 +268,8 @@ impl Render for Page {
                 fan_pinned: false,
                 bubbles: &[],
                 handler,
+                transparent_exterior: false,
+                action_size: ZORK_UI.composer.action_size,
                 accessory_band: 0.,
                 accessories: vec![div()
                     .w_full()
