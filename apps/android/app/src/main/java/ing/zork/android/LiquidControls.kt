@@ -174,8 +174,8 @@ internal fun LiquidIconButton(
 @Composable
 internal fun LiquidSelectTrigger(text: String, label: String, modifier: Modifier = Modifier, enabled: Boolean = true, expanded: Boolean = false, onClick: () -> Unit) {
     LiquidAction(modifier.semantics { contentDescription = "$label：$text"; stateDescription = if (expanded) "已展开" else "已收起" }, false, enabled, false, true, LiquidTokens.FieldRadius, onClick) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f, fill = false), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Glyph(R.drawable.ic_chevron_down, 16.dp, ZorkColors.Muted)
         }
     }

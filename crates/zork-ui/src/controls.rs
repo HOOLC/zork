@@ -564,8 +564,6 @@ fn menu_dropdown<V: 'static>(
         })
         .read(cx)
         .clone();
-    let measured = window.use_keyed_state(format!("{id}-width"), cx, |_, _| 0f32);
-    let width = *measured.read(cx);
     let choices = options
         .into_iter()
         .map(|(id, label, checked)| Choice {
@@ -581,12 +579,10 @@ fn menu_dropdown<V: 'static>(
         Trigger::Field
     };
     let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
-    let control_width = if quiet {
-        state.borrow_mut().trigger_width(&label, trigger, window)
-    } else {
-        width.max(32.)
-    }
-    .min(max_width.unwrap_or(f32::MAX).max(48.));
+    let control_width = state
+        .borrow_mut()
+        .trigger_width(&label, trigger, window)
+        .min(max_width.unwrap_or(f32::MAX).max(48.));
     let popover = state.borrow_mut().render_with_icons(
         id,
         label,
@@ -608,26 +604,9 @@ fn menu_dropdown<V: 'static>(
     );
     div()
         .relative()
-        .w(px(if quiet { control_width } else { width.max(32.) }))
-        .when(!quiet, |v| v.w_full())
+        .w(px(control_width))
         .flex_shrink_0()
         .h(px(control_height))
-        .child(
-            gpui::canvas(
-                move |bounds, _, cx| {
-                    measured.update(cx, |width, cx| {
-                        let next = bounds.size.width.as_f32();
-                        if (*width - next).abs() > 0.1 {
-                            *width = next;
-                            cx.notify();
-                        }
-                    });
-                },
-                |_, _, _, _| {},
-            )
-            .absolute()
-            .size_full(),
-        )
         .child(popover)
         .into_any_element()
 }
