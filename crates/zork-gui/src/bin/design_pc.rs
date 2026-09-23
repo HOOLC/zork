@@ -316,6 +316,7 @@ fn main() -> anyhow::Result<()> {
         .run(move |cx| {
             zork_gui::assets::init_fonts(cx);
             zork_gui::components::init(cx);
+            cx.set_window_appearance(zork_ui::design::pinned_theme().map(|theme| theme.appearance()));
             #[cfg(target_os = "macos")]
             zork_gui::app_menu::install(cx, zork_gui::app_menu::AppKind::Design);
             let driver = if let Some(automation) = &automation {
@@ -337,6 +338,7 @@ fn main() -> anyhow::Result<()> {
                     },
                     |w, cx| {
                         w.set_window_title("Zork Design PC");
+                        zork_ui::design::follow_appearance(w).detach();
                         w.on_window_should_close(cx, |_, cx| {
                             cx.quit();
                             true

@@ -3,13 +3,16 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::{TextRole, UI_OUTLINE, ZORK_UI},
+    design::{FORM, TextRole, ZORK_UI},
 };
 use gpui::{
     div, prelude::*, px, rgb, Context, Div, ElementId, Font, SharedString, Stateful, Window,
 };
 
-pub const CANVAS: u32 = ZORK_UI.palette.canvas;
+#[allow(non_snake_case)]
+pub fn CANVAS() -> u32 {
+    ZORK_UI.palette.canvas
+}
 
 pub const GAP: f32 = 24.;
 pub const PREVIEW_PADDING: f32 = 18.;
@@ -198,7 +201,7 @@ pub fn stepper<V: 'static>(
         100.,
         32.,
         ui::FIELD_RADIUS,
-        super::widgets::SurfaceColors::outlined(UI_OUTLINE, ZORK_UI.palette.canvas),
+        super::widgets::SurfaceColors::outlined(FORM.outline, ZORK_UI.palette.canvas),
         content,
         window,
         cx,
@@ -291,7 +294,7 @@ pub fn viewport(id: impl Into<ElementId>, gutter: f32, content: impl IntoElement
         .min_h_0()
         .overflow_y_scroll()
         .p(px(gutter))
-        .bg(rgb(CANVAS))
+        .bg(rgb(CANVAS()))
         .child(content)
 }
 pub fn shell(

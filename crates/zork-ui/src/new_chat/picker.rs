@@ -266,7 +266,7 @@ impl Page {
                                     .flex_shrink_0()
                                     .text_size(px(13.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(crate::design::BRAND_ACCENT))
+                                    .text_color(rgb(crate::design::INTERACTION.accent))
                                     .child(label.clone())
                                     .automation(AutomationRole::Status, label.clone()),
                             ),

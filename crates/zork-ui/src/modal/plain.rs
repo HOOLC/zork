@@ -237,7 +237,7 @@ impl PlainDialog {
             .flex_col()
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::design::UI_OUTLINE))
+            .border_color(rgb(crate::design::FORM.outline))
             .opacity(alpha)
             .child(contents)
             .automation(AutomationRole::Status, title.to_string());

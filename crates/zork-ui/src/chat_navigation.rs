@@ -460,7 +460,7 @@ impl Navigation {
             })
             .when(selected, |row| {
                 row.bg(rgb(ZORK_UI.palette.selected))
-                    .hover(|row| row.bg(rgb(crate::design::SELECTED_HOVER)))
+                    .hover(|row| row.bg(rgb(crate::design::INTERACTION.selected_hover)))
                     .focus_visible(|row| row.shadow(crate::controls::focus_ring()))
             })
             .child(

@@ -3,7 +3,7 @@ use super::{skin, SurfaceColors};
 use crate::{
     components::text_input::ComposerInput,
     controls::CONTROL_HEIGHT,
-    design::{BRAND_ACCENT, INTERACTION, UI_OUTLINE, ZORK_UI},
+    design::{BRAND_ACCENT, FORM, INTERACTION, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 mod adaptive;
@@ -358,7 +358,7 @@ fn render_segmented(
             width,
             CONTROL_HEIGHT,
             CONTROL_HEIGHT / 2.,
-            SurfaceColors::outlined(UI_OUTLINE, parent),
+            SurfaceColors::outlined(FORM.outline, parent),
             div(),
             window,
             cx,
@@ -599,7 +599,7 @@ fn action_ink(_label: &str, style: ActionStyle) -> u32 {
     let style = style.resolved();
     let p = ZORK_UI.palette;
     if style.disabled {
-        crate::design::DISABLED_TEXT
+        crate::design::FORM.disabled_text
     } else if style.primary && !style.select_trigger {
         p.canvas
     } else {

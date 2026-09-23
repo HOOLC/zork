@@ -1,4 +1,4 @@
-use gpui::{prelude::*, px, size, AnyWindowHandle, App, Bounds, WindowAppearance};
+use gpui::{prelude::*, px, size, AnyWindowHandle, App, Bounds};
 use gpui_platform::application;
 use zork_gui::assets::EmbeddedAssets;
 use zork_gui::automation::{AutomationRoot, DevAutomation, DEFAULT_DEV_PORT};
@@ -230,7 +230,8 @@ fn main() {
         zork_client_core::desktop::trace_startup("gui.components_ready");
         #[cfg(target_os = "macos")]
         app_menu::install(cx, AppKind::Client);
-        cx.set_window_appearance(Some(WindowAppearance::Light));
+        // Follow the system appearance unless ZORK_THEME pins light or dark.
+        cx.set_window_appearance(zork_ui::design::pinned_theme().map(|theme| theme.appearance()));
         let window_options = gpui::WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -251,6 +252,7 @@ fn main() {
                     cx.quit();
                     true
                 });
+                zork_ui::design::follow_appearance(window).detach();
                 let root = cx.new(DesktopRoot::new);
                 cx.new(|_| AutomationRoot::new(root))
             })
@@ -262,6 +264,7 @@ fn main() {
                     cx.quit();
                     true
                 });
+                zork_ui::design::follow_appearance(window).detach();
                 cx.new(DesktopRoot::new)
             })
             .expect("failed to open window")

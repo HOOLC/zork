@@ -21,10 +21,22 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-const DIM: u32 = crate::design::ZORK_UI.palette.muted;
-const TEXT: u32 = crate::design::ZORK_UI.palette.text;
-const SUBTLE: u32 = crate::design::ZORK_UI.palette.subtle;
-const BORDER: u32 = crate::design::ZORK_UI.palette.border;
+#[allow(non_snake_case)]
+fn DIM() -> u32 {
+    crate::design::ZORK_UI.palette.muted
+}
+#[allow(non_snake_case)]
+fn TEXT() -> u32 {
+    crate::design::ZORK_UI.palette.text
+}
+#[allow(non_snake_case)]
+fn SUBTLE() -> u32 {
+    crate::design::ZORK_UI.palette.subtle
+}
+#[allow(non_snake_case)]
+fn BORDER() -> u32 {
+    crate::design::ZORK_UI.palette.border
+}
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
@@ -257,7 +269,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .text_center()
             .text_size(px(11.))
             .line_height(px(16.5))
-            .text_color(rgb(SUBTLE))
+            .text_color(rgb(SUBTLE()))
             .when(busy || paging.error || !paging.older, |v| {
                 v.child(div().when(!busy, |v| v.mt(px(6.))).child(label.clone()))
             })
@@ -400,11 +412,11 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                         .py(px(7.))
                                         .rounded_full()
                                         .border_1()
-                                        .border_color(rgb(BORDER))
+                                        .border_color(rgb(BORDER()))
                                         .bg(rgb(ZORK_UI.palette.canvas))
                                         .shadow_sm()
                                         .text_size(px(11.))
-                                        .text_color(rgb(DIM))
+                                        .text_color(rgb(DIM()))
                                         .cursor_pointer()
                                         .child(crate::controls::icon(
                                             "interface/chevron-down.svg",
@@ -486,7 +498,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .track_focus(&focus)
             .tab_stop(true)
             .text_size(px(11.))
-            .text_color(rgb(SUBTLE))
+            .text_color(rgb(SUBTLE()))
             .child(disclosure_label.clone())
             .when(expanded, |v| {
                 v.child(
@@ -779,7 +791,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         kind_icon(a.kind)
                     }),
                     color: if group {
-                        SUBTLE
+                        SUBTLE()
                     } else {
                         activity_color(a.kind, &entry.state)
                     },
@@ -848,10 +860,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .pb(px(6.))
             .pl(px(12.))
             .border_l_1()
-            .border_color(rgb(BORDER))
+            .border_color(rgb(BORDER()))
             .text_size(px(12.))
             .line_height(px(21.6))
-            .text_color(rgb(DIM))
+            .text_color(rgb(DIM()))
             .child(record_time(index, entry.start.or(entry.end)))
             .when(!detail.command.is_empty(), |body| {
                 body.child(
@@ -881,7 +893,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     .id(format!("history-file-{index}-{i}"))
                     .mt(px(6.))
                     .text_size(px(11.))
-                    .text_color(rgb(TEXT))
+                    .text_color(rgb(TEXT()))
                     .flex()
                     .items_center()
                     .gap(px(5.))
@@ -906,7 +918,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     div()
                         .mt(px(8.))
                         .text_size(px(11.))
-                        .text_color(rgb(SUBTLE))
+                        .text_color(rgb(SUBTLE()))
                         .child(self.history_text().text("history_content_truncated")),
                 )
             })
@@ -929,7 +941,7 @@ fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
         .id(("history-output-clock", index))
         .mb(px(6.))
         .text_size(px(9.))
-        .text_color(rgb(SUBTLE))
+        .text_color(rgb(SUBTLE()))
         .font_features(crate::components::history::tabular_nums())
         .child(clock.clone())
         .automation(AutomationRole::Status, clock)

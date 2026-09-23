@@ -69,13 +69,13 @@ fn action(
             busy: !attach && busy,
             ..Default::default()
         },
-        spec::SURFACE_COLOR,
+        spec::SURFACE_COLOR(),
         window,
         cx,
     )
     // Sending starts work, the one action that keeps the persimmon accent.
     .when(!attach && !stop && enabled && !busy, |send| {
-        send.bg(rgb(crate::design::BRAND_ACCENT))
+        send.bg(rgb(crate::design::INTERACTION.accent))
             .hover(|v| v.bg(rgb(crate::design::INTERACTION.accent_hover)))
             .active(|v| v.bg(rgb(crate::design::INTERACTION.accent_pressed)))
     })
@@ -157,7 +157,7 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     .id(editor_id)
     .text_size(px(13.))
     .line_height(px(20.))
-    .text_color(rgb(spec::TEXT_COLOR))
+    .text_color(rgb(spec::TEXT_COLOR()))
     .overflow_hidden()
     .when(c.editable, |v| {
         v.child(input.clone())
@@ -174,9 +174,9 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     let plate = positioned(p.left(), p.top(), p.w, p.h)
         .id(format!("{id}-surface"))
         .rounded(px(spec::SURFACE_RADIUS))
-        .bg(rgb(spec::SURFACE_COLOR))
+        .bg(rgb(spec::SURFACE_COLOR()))
         .border(px(spec::BORDER_WIDTH))
-        .border_color(rgb(spec::BORDER_COLOR))
+        .border_color(rgb(spec::BORDER_COLOR()))
         .occlude()
         .on_mouse_down(MouseButton::Left, move |_, w, cx| {
             if c.editable {

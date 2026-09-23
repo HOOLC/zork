@@ -608,8 +608,8 @@ impl Render for PrimitiveStory {
                             .child("添加连接")
                     })
                     .when(self.grouped && state == "hover", |v| {
-                        v.bg(rgb(ui::BUTTON_FOCUS_BACKGROUND))
-                            .border_color(rgb(ui::BUTTON_FOCUS_BACKGROUND))
+                        v.bg(rgb(ui::BUTTON_FOCUS_BACKGROUND()))
+                            .border_color(rgb(ui::BUTTON_FOCUS_BACKGROUND()))
                     })
                     .when(state == "focus", |v| {
                         v.track_focus(&self.focus)

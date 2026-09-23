@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::widgets::controls::ControlElement,
-    design::{BORDER_WIDTH, UI_OUTLINE, ZORK_UI},
+    design::{BORDER_WIDTH, FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use gpui_base::{Align, Placement, Positioner};
@@ -158,7 +158,7 @@ impl Flyout {
             .rounded(px(crate::controls::CARD_RADIUS))
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(BORDER_WIDTH))
-            .border_color(rgb(UI_OUTLINE))
+            .border_color(rgb(FORM.outline))
             .p(px(padding))
             .occlude()
             .track_focus(&focus)

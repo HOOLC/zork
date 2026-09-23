@@ -218,7 +218,7 @@ impl SelectionContext {
             (
                 range,
                 HighlightStyle {
-                    background_color: Some(rgba(0xC9DCF5CC).into()),
+                    background_color: Some(rgba(*crate::design::TEXT_SELECTION).into()),
                     ..Default::default()
                 },
             )

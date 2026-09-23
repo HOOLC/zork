@@ -2,7 +2,10 @@
 use super::{message::MessageDocument, selection::SelectionContext};
 use crate::design::ZORK_UI;
 use gpui::{prelude::*, *};
-const DIM: u32 = ZORK_UI.palette.muted;
+#[allow(non_snake_case)]
+fn DIM() -> u32 {
+    ZORK_UI.palette.muted
+}
 
 pub struct Row<'a> {
     pub index: usize,
@@ -88,7 +91,7 @@ impl Row<'_> {
                                 )
                                 .when_some(time, |v, time| {
                                     v.child(
-                                        div().text_size(px(10.)).text_color(rgb(DIM)).child(time),
+                                        div().text_size(px(10.)).text_color(rgb(DIM())).child(time),
                                     )
                                 }),
                         ),
@@ -130,7 +133,7 @@ impl Row<'_> {
                                                     .min_w_0()
                                                     .truncate()
                                                     .text_size(px(12.))
-                                                    .text_color(rgb(DIM))
+                                                    .text_color(rgb(DIM()))
                                                     .child(model),
                                             )
                                         },
@@ -140,7 +143,7 @@ impl Row<'_> {
                                             div()
                                                 .flex_shrink_0()
                                                 .text_size(px(12.))
-                                                .text_color(rgb(DIM))
+                                                .text_color(rgb(DIM()))
                                                 .child(time),
                                         )
                                     }),

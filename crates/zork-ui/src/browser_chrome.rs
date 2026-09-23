@@ -105,7 +105,7 @@ impl Chrome {
 }
 const TAB_WIDTH: f32 = 156.;
 const CONTROL_SIZE: f32 = 28.;
-const TAB_ROW_HEIGHT: f32 = ZORK_UI.thread.header_height;
+const TAB_ROW_HEIGHT: f32 = crate::design::LIGHT_UI.thread.header_height;
 const ADDRESS_ROW_HEIGHT: f32 = 40.;
 
 fn icon_button(

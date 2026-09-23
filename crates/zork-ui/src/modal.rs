@@ -317,7 +317,7 @@ fn modal_preview_with_title_action<V: 'static>(
         .flex_col()
         .bg(rgb(ZORK_UI.palette.canvas))
         .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
+        .border_color(rgb(crate::design::FORM.outline))
         .child(contents)
         .automation(AutomationRole::Status, title.to_string())
         .into_any_element()

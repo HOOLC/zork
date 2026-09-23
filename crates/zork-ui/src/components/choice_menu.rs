@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::widgets::controls::{action_focus, adaptive_action, ActionStyle},
     controls::{self as ui, Selection},
-    design::{BORDER_WIDTH, UI_OUTLINE, ZORK_UI},
+    design::{BORDER_WIDTH, FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -322,7 +322,7 @@ pub(crate) fn render<V: 'static>(
             .rounded(px(ui::PLAIN_POPOVER_RADIUS))
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(BORDER_WIDTH))
-            .border_color(rgb(UI_OUTLINE))
+            .border_color(rgb(FORM.outline))
             .shadow_sm()
             .child(crate::components::smooth::rounded_viewport(
                 format!("{id}-viewport"),

@@ -162,7 +162,7 @@ impl Field {
             (true, true) => form.error_focus_border,
             (true, false) => form.error_border,
             (false, true) => form.focus_border,
-            (false, false) => UI_OUTLINE,
+            (false, false) => FORM.outline,
         };
         let inner = std::mem::replace(&mut self.inner, div().id("field-layout"));
         self.inner = inner
@@ -171,7 +171,7 @@ impl Field {
             .when(disabled, |v| {
                 v.cursor_default()
                     .bg(rgb(ZORK_UI.palette.prompt))
-                    .text_color(rgb(crate::design::DISABLED_TEXT))
+                    .text_color(rgb(crate::design::FORM.disabled_text))
             })
             .when(!disabled, |v| {
                 v.cursor_text()
@@ -334,9 +334,9 @@ pub fn adaptive_action(
         button = button
             .border(px(crate::design::BORDER_WIDTH))
             .border_color(rgb(if appearance.selected || appearance.expanded {
-                crate::controls::FIELD_FOCUS_BORDER
+                crate::controls::FIELD_FOCUS_BORDER()
             } else {
-                UI_OUTLINE
+                FORM.outline
             }));
     }
     if enabled && !appearance.select_trigger {
@@ -347,7 +347,7 @@ pub fn adaptive_action(
                 } else if solid {
                     INTERACTION.primary_hover
                 } else if appearance.selected {
-                    crate::design::SELECTED_HOVER
+                    crate::design::INTERACTION.selected_hover
                 } else {
                     INTERACTION.neutral_hover
                 }))
@@ -358,7 +358,7 @@ pub fn adaptive_action(
                 } else if solid {
                     INTERACTION.primary_pressed
                 } else if appearance.selected {
-                    crate::design::SELECTED_HOVER
+                    crate::design::INTERACTION.selected_hover
                 } else {
                     INTERACTION.neutral_pressed
                 }))
@@ -475,8 +475,8 @@ impl Element for Action {
         {
             // Selection may be set after construction; keep it distinguishable under the pointer.
             button = button
-                .hover(|v| v.bg(rgb(crate::design::SELECTED_HOVER)))
-                .active(|v| v.bg(rgb(crate::design::SELECTED_HOVER)));
+                .hover(|v| v.bg(rgb(crate::design::INTERACTION.selected_hover)))
+                .active(|v| v.bg(rgb(crate::design::INTERACTION.selected_hover)));
         }
         if self.appearance.select_trigger && !self.appearance.disabled && !self.appearance.busy {
             button = button.hover(|v| v.border_color(rgb(crate::design::FORM.hover_border)));

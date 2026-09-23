@@ -21,7 +21,10 @@ pub const DIALOG_WIDTH: f32 = 540.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
-pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
+#[allow(non_snake_case)]
+pub fn BUTTON_FOCUS_BACKGROUND() -> u32 {
+    INTERACTION.primary_hover
+}
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_RADIUS: f32 = 999.;
 pub const CARD_RADIUS: f32 = crate::design::RADIUS.container;
@@ -37,13 +40,19 @@ pub const PLAIN_POPOVER_RADIUS: f32 = crate::design::RADIUS.container;
 pub const MENU_OUTSET: f32 = 4.;
 pub const MENU_GAP: f32 = 6.;
 pub const MENU_PADDING: f32 = 8.;
-pub const FIELD_HOVER_BORDER: u32 = FORM.hover_border;
-pub const FIELD_FOCUS_BORDER: u32 = FORM.focus_border;
+#[allow(non_snake_case)]
+pub fn FIELD_HOVER_BORDER() -> u32 {
+    FORM.hover_border
+}
+#[allow(non_snake_case)]
+pub fn FIELD_FOCUS_BORDER() -> u32 {
+    FORM.focus_border
+}
 /// Optical padding: an icon carries its own inset, so its side of a button is narrower.
 pub const ICON_SIDE_PADDING_X: f32 = BUTTON_PADDING_X - 4.;
 /// The shared keyboard-focus ring, drawn outside the control outline.
 pub fn focus_ring() -> Vec<gpui::BoxShadow> {
-    let [r, g, b] = [16u32, 8, 0].map(|shift| ((crate::design::FOCUS_RING >> shift) & 0xFF) as f32 / 255.);
+    let [r, g, b] = [16u32, 8, 0].map(|shift| ((crate::design::INTERACTION.focus_ring >> shift) & 0xFF) as f32 / 255.);
     vec![gpui::BoxShadow {
         color: gpui::Rgba { r, g, b, a: crate::design::FOCUS_RING_ALPHA }.into(),
         offset: gpui::point(px(0.), px(0.)),
@@ -534,7 +543,7 @@ pub fn provider_icon(provider: &str, size: f32) -> gpui::Div {
         .flex_shrink_0()
         // Embedded provider marks are monochrome currentColor SVGs. Drawing them
         // directly keeps the first presentation independent of image-loader wakeups.
-        .child(svg().path(path).size(px(size)).text_color(rgb(0x000000)))
+        .child(svg().path(path).size(px(size)).text_color(rgb(ZORK_UI.palette.text)))
 }
 
 /// Controlled switch with the same compact geometry in native and Web renderers.

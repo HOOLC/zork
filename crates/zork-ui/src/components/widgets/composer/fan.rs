@@ -56,7 +56,7 @@ pub fn render(
         .rounded(px(crate::design::RADIUS.block))
         .bg(rgb(crate::design::ZORK_UI.palette.canvas))
         .border(px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
+        .border_color(rgb(crate::design::FORM.outline))
         .overflow_x_scroll()
         .on_hover(move |inside, window, cx| hover(Action::Hover(*inside), window, cx))
         .child(
@@ -88,7 +88,7 @@ pub fn render(
             .overflow_hidden()
             .bg(rgb(crate::design::ZORK_UI.palette.sidebar_hover))
             .border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::design::UI_OUTLINE));
+            .border_color(rgb(crate::design::FORM.outline));
         tile = tile.child(if let Some(image) = file.image {
             img(image).size_full().into_any_element()
         } else {

@@ -13,7 +13,10 @@ use crate::{
 };
 use gpui::{prelude::*, *};
 use std::{rc::Rc, sync::Arc};
-const BG: u32 = ZORK_UI.palette.canvas;
+#[allow(non_snake_case)]
+fn BG() -> u32 {
+    ZORK_UI.palette.canvas
+}
 #[derive(Clone)]
 pub struct DecodedImage {
     pub rendered: Arc<RenderImage>,
@@ -418,7 +421,7 @@ impl Viewer {
             .flex()
             .flex_col()
             .gap_4()
-            .when(!image_view, |v| v.rounded(px(ui::MODAL_RADIUS)).bg(rgb(BG)))
+            .when(!image_view, |v| v.rounded(px(ui::MODAL_RADIUS)).bg(rgb(BG())))
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .capture_key_down(cx.listener(move |v, event: &KeyDownEvent, window, cx| {
                 if v.viewer.menu.is_open() {

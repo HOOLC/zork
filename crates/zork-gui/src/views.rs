@@ -43,11 +43,26 @@ mod new_chat;
 mod panel_layout;
 mod session_activity;
 
-const BG: u32 = ZORK_UI.palette.canvas;
-const PROMPT: u32 = ZORK_UI.palette.prompt;
-const BORDER: u32 = ZORK_UI.palette.border;
-const TEXT: u32 = ZORK_UI.palette.text;
-const DIM: u32 = ZORK_UI.palette.muted;
+#[allow(non_snake_case)]
+fn BG() -> u32 {
+    ZORK_UI.palette.canvas
+}
+#[allow(non_snake_case)]
+fn PROMPT() -> u32 {
+    ZORK_UI.palette.prompt
+}
+#[allow(non_snake_case)]
+fn BORDER() -> u32 {
+    ZORK_UI.palette.border
+}
+#[allow(non_snake_case)]
+fn TEXT() -> u32 {
+    ZORK_UI.palette.text
+}
+#[allow(non_snake_case)]
+fn DIM() -> u32 {
+    ZORK_UI.palette.muted
+}
 
 #[cfg(test)]
 use crate::api::SseEvent;
@@ -1039,7 +1054,7 @@ impl Render for RootView {
                 }),
             )
             .bg(rgb(ZORK_UI.palette.window))
-            .text_color(rgb(TEXT))
+            .text_color(rgb(TEXT()))
             .font_family("Inter Variable")
             .text_size(px(13.))
             .child(self.panel_resize_events(cx))
@@ -1075,7 +1090,7 @@ impl Render for RootView {
                             .flex()
                             .relative()
                             .bg(rgb({
-                                BG
+                                BG()
                             }))
                             .overflow_hidden()
                             .child(
@@ -1108,9 +1123,9 @@ impl Render for RootView {
                                                     .px_4()
                                                     .py_2()
                                                     .text_size(px(11.))
-                                                    .text_color(rgb(DIM))
+                                                    .text_color(rgb(DIM()))
                                                     .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
-                                                    .border_color(rgb(BORDER))
+                                                    .border_color(rgb(BORDER()))
                                                     .child(self.connection_hint())
                                                     .when(self.access_revoked, |v| {
                                                         v.child(
@@ -1154,7 +1169,7 @@ impl Render for RootView {
                                     let content = self.active_content_kind(cx);
                                     let width = self.browser.read(cx).panel_width();
                                     return v.child(div().id("page-workspace").relative().w(px(width)).h_full().overflow_hidden()
-                                        .border_l(gpui::px(zork_ui::design::BORDER_WIDTH)).border_color(rgb(BORDER))
+                                        .border_l(gpui::px(zork_ui::design::BORDER_WIDTH)).border_color(rgb(BORDER()))
                                         .flex_shrink_0().flex().flex_col().min_h_0()
                                         .child(self.browser.clone())
                                         .when(native, |v| v.child(self.regions.element("history",
@@ -1444,7 +1459,7 @@ impl RootView {
                                         .items_center()
                                         .justify_center()
                                         .text_size(px(12.))
-                                        .text_color(rgb(DIM))
+                                        .text_color(rgb(DIM()))
                                         .child(if loading_older {
                                             loading::status(
                                                 "messages-older-loading",
@@ -1458,7 +1473,7 @@ impl RootView {
                                                 .py_1()
                                                 .rounded(px(zork_ui::design::RADIUS.control))
                                                 .cursor_pointer()
-                                                .hover(|style| style.bg(rgb(PROMPT)))
+                                                .hover(|style| style.bg(rgb(PROMPT())))
                                                 .on_click(move |_, _, cx| {
                                                     let _ = older_root.update(cx, |v, cx| {
                                                         v.load_older(cx);
@@ -1521,7 +1536,7 @@ impl RootView {
                                     .justify_end()
                                     .gap_2()
                                     .text_size(px(11.))
-                                    .text_color(rgb(DIM))
+                                    .text_color(rgb(DIM()))
                                     .child(
                                         match message.status.as_str() {
                                             "failed" => delivery_locale.text("delivery_failed"),
@@ -1878,7 +1893,7 @@ impl RootView {
                         div()
                             .pb_2()
                             .text_size(px(12.))
-                            .text_color(rgb(DIM))
+                            .text_color(rgb(DIM()))
                             .child(text),
                     )
                 })

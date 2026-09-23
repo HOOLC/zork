@@ -17,8 +17,14 @@ pub const MODEL_COLOR: u32 = 0x92969D;
 /// failure utility error. The timeline keeps its own neutral accents.
 pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
 pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
-pub const ACTIVITY_WAIT_COLOR: u32 = crate::design::ZORK_UI.palette.warning;
-pub const ACTIVITY_ERROR_COLOR: u32 = crate::design::ZORK_UI.palette.danger;
+#[allow(non_snake_case)]
+pub fn ACTIVITY_WAIT_COLOR() -> u32 {
+    crate::design::ZORK_UI.palette.warning
+}
+#[allow(non_snake_case)]
+pub fn ACTIVITY_ERROR_COLOR() -> u32 {
+    crate::design::ZORK_UI.palette.danger
+}
 
 /// The 12% accent tint behind a row icon fills its 20px box.
 fn accent_chip(color: u32) -> gpui::Rgba {
@@ -108,7 +114,7 @@ pub fn activity_header<V: 'static>(
     // colour, a failed tool paints it error and a live row without an activity
     // kind reads primary.
     let icon_color = if header.failed {
-        ACTIVITY_ERROR_COLOR
+        ACTIVITY_ERROR_COLOR()
     } else if header.accent {
         header.color
     } else if header.live {
@@ -117,7 +123,7 @@ pub fn activity_header<V: 'static>(
         crate::design::ZORK_UI.palette.subtle
     };
     let status_color = if header.failed {
-        ACTIVITY_ERROR_COLOR
+        ACTIVITY_ERROR_COLOR()
     } else {
         crate::design::ZORK_UI.palette.subtle
     };
@@ -271,8 +277,8 @@ pub fn activity_header<V: 'static>(
                         .child(div().absolute().left_0().top_0().bottom_0().w(px(12.)).bg(
                             gpui::linear_gradient(
                                 90.,
-                                gpui::linear_color_stop(rgb(0xFFFFFF), 0.),
-                                gpui::linear_color_stop(rgba(0xFFFFFF00), 1.),
+                                gpui::linear_color_stop(rgb(crate::design::ZORK_UI.palette.canvas), 0.),
+                                gpui::linear_color_stop(rgba(crate::design::ZORK_UI.palette.canvas << 8), 1.),
                             ),
                         )),
                 );
@@ -348,13 +354,13 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
 }
 pub fn activity_color(kind: Kind, state: &str) -> u32 {
     if matches!(state, "failed" | "timed_out") {
-        return ACTIVITY_ERROR_COLOR;
+        return ACTIVITY_ERROR_COLOR();
     }
     match kind {
         Kind::Input => ACTIVITY_RECEIVE_COLOR,
         Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
-        Kind::Wait => ACTIVITY_WAIT_COLOR,
-        Kind::Error => ACTIVITY_ERROR_COLOR,
+        Kind::Wait => ACTIVITY_WAIT_COLOR(),
+        Kind::Error => ACTIVITY_ERROR_COLOR(),
         // Output, thinking and ordinary operations read neutral, as the history page's
         // text-tertiary icon and secondary label do.
         _ => ZORK_UI.palette.subtle,
