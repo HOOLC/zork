@@ -328,6 +328,9 @@ pub fn catalog() -> Vec<Story> {
                 ("navigation", "hover" | "selected-hover") => story
                     .actions
                     .push(json!({"type":"move","target":{"element_id":"story-nav"}})),
+                ("tooltip", "hover") => story.actions.push(json!({
+                    "type":"move","target":{"element_id":"tooltip-leader-trigger"}
+                })),
                 ("profile-card", "hover-5h") => story.actions.push(json!({
                     "type":"move","target":{"element_id":"profile-quota-window-story-card-0"}
                 })),
