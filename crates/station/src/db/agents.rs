@@ -18,8 +18,6 @@ pub struct NodeAgent {
     pub model: String,
     pub thinking: String,
     pub instructions: String,
-    #[serde(default)]
-    pub skill_paths: Vec<std::path::PathBuf>,
     pub allowed_leaders: Vec<String>,
     pub session_key: Option<String>,
     pub session_id: Option<String>,
@@ -61,49 +59,6 @@ impl StationDb {
             })
             .transpose()
     }
-
-    pub fn update_agent_skill_paths(
-        &self,
-        id: &str,
-        paths: Vec<std::path::PathBuf>,
-    ) -> Result<NodeAgent> {
-        zork_config::validate_skill_paths(&paths)?;
-        let mut conn = self.conn.lock().expect("db mutex");
-        let tx = conn.transaction()?;
-        let value: String =
-            tx.query_row("SELECT value FROM node_agents WHERE id=?1", [id], |r| {
-                r.get(0)
-            })?;
-        let mut agent: NodeAgent = serde_json::from_str(&value)?;
-        agent.skill_paths = paths;
-        tx.execute(
-            "UPDATE node_agents SET value=?2 WHERE id=?1",
-            params![id, serde_json::to_string(&agent)?],
-        )?;
-        tx.commit()?;
-        self.flush_messages(&conn)?;
-        Ok(agent)
-    }
-
-    /// Resolve on the execution node, including recovered Worker sessions.
-    pub fn skill_paths_for_session(&self, session_id: &str) -> Result<Vec<std::path::PathBuf>> {
-        let conn = self.conn.lock().expect("db mutex");
-        let value: Option<String> = conn.query_row(
-            "SELECT value FROM node_agents WHERE session_id=?1
-             UNION ALL SELECT a.value FROM worker_tasks w JOIN node_agents a ON a.id=w.worker_id WHERE w.session_id=?1
-             UNION ALL SELECT a.value FROM mesh_runtime_sessions r
-             JOIN mesh_links l ON l.assignment_id=r.assignment_id
-             JOIN node_agents a ON a.id=json_extract(l.assignment_json,'$.worker.worker_id')
-             WHERE r.runtime_id=?1 AND l.role='executor' LIMIT 1",
-            [session_id], |r| r.get(0)).optional()?;
-        Ok(value
-            .map(|value| serde_json::from_str::<NodeAgent>(&value))
-            .transpose()?
-            .map(|a| a.skill_paths)
-            .unwrap_or_default())
-    }
-
-    /// Serialize source list edits with other updates to the same Agent definition.
 
     pub fn update_agent_model(
         &self,
@@ -442,112 +397,11 @@ mod gui_contract_tests {
             model: "old-model".into(),
             thinking: "high".into(),
             instructions: "keep instructions".into(),
-            skill_paths: Vec::new(),
             allowed_leaders: vec!["leader".into()],
             session_key: None,
             session_id: None,
         }
     }
-    #[test]
-    fn remote_worker_skill_paths_resolve_on_executor_after_recovery() {
-        use crate::db::mesh::{Assignment, WorkerTarget};
-        let dir = tempfile::tempdir().unwrap();
-        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
-        db.insert_node_agent(&definition("worker", AgentRole::Worker))
-            .unwrap();
-        db.update_agent_skill_paths("worker", vec!["executor-only".into()])
-            .unwrap();
-        let assignment = Assignment {
-            assignment_id: "assignment".into(),
-            task_id: "task".into(),
-            owner_origin: "owner".into(),
-            executor_origin: "executor".into(),
-            workspace_id: "worker-workspace".into(),
-            goal: "goal".into(),
-            worker: Some(WorkerTarget {
-                leader_id: "leader".into(),
-                worker_id: "worker".into(),
-            }),
-        };
-        db.mesh_receive_assignment(&assignment).unwrap();
-        let session = db.mesh_runtime_id("assignment").unwrap();
-        db.update_agent_model("worker", "new", "remote-new-model", "off")
-            .unwrap();
-        assert_eq!(
-            db.skill_paths_for_session(&session).unwrap(),
-            vec![std::path::PathBuf::from("executor-only")]
-        );
-        drop(db);
-        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
-        assert_eq!(
-            db.selection_for_session(&session).unwrap().unwrap().model,
-            "remote-new-model"
-        );
-        assert_eq!(
-            db.skill_paths_for_session(&session).unwrap(),
-            vec![std::path::PathBuf::from("executor-only")]
-        );
-        db.update_agent_skill_paths(
-            "worker",
-            vec!["executor-only".into(), "remote-extra".into()],
-        )
-        .unwrap();
-        assert_eq!(
-            db.skill_paths_for_session(&session).unwrap(),
-            vec![
-                std::path::PathBuf::from("executor-only"),
-                std::path::PathBuf::from("remote-extra")
-            ]
-        );
-        db.update_agent_skill_paths("worker", vec![]).unwrap();
-        assert!(db.skill_paths_for_session(&session).unwrap().is_empty());
-    }
-
-    #[test]
-    fn skill_paths_persist_and_worker_sessions_use_executor_configuration() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
-        let mut leader = definition("leader", AgentRole::Leader);
-        leader.session_id = Some("leader-session".into());
-        leader.session_key = Some("leader-key".into());
-        db.insert_node_agent(&leader).unwrap();
-        db.insert_node_agent(&definition("worker", AgentRole::Worker))
-            .unwrap();
-        db.update_agent_skill_paths("leader", vec!["leader-only".into()])
-            .unwrap();
-        db.update_agent_skill_paths("worker", vec!["device/skills".into()])
-            .unwrap();
-        let (_, worker_session, _) = db
-            .worker_task_allocation("leader", "request", "worker", "goal")
-            .unwrap();
-        assert_eq!(
-            db.skill_paths_for_session(&worker_session).unwrap(),
-            vec![std::path::PathBuf::from("device/skills")]
-        );
-        assert_eq!(
-            db.skill_paths_for_session("leader-session").unwrap(),
-            vec![std::path::PathBuf::from("leader-only")]
-        );
-        assert!(db.skill_paths_for_session("unknown").unwrap().is_empty());
-        assert!(db
-            .update_agent_skill_paths("worker", vec!["".into()])
-            .is_err());
-        drop(db);
-        let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
-        assert_eq!(
-            db.skill_paths_for_session(&worker_session).unwrap(),
-            vec![std::path::PathBuf::from("device/skills")]
-        );
-        let updated = db
-            .update_agent_skill_paths("worker", vec!["updated".into()])
-            .unwrap();
-        assert_eq!(updated.instructions, "keep instructions");
-        assert_eq!(
-            db.skill_paths_for_session(&worker_session).unwrap(),
-            vec![std::path::PathBuf::from("updated")]
-        );
-    }
-
     #[test]
     fn model_change_updates_worker_selection_and_keeps_identity_grants_workspace() {
         let dir = tempfile::tempdir().unwrap();

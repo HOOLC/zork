@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real core invitation observation and browser streams against an isolated Station."""
+"""Real browser streams against an isolated Station."""
 import concurrent.futures
 import importlib.util
 import json
@@ -92,41 +92,6 @@ def main():
         try:
             f.wait(lambda: node.request('GET', '/readyz')[0] == 200, 'Station ready')
             f.wait(lambda: admin(node, 'GET', '/v1/node/mesh').get('origin'), 'Mesh ready')
-            for cancel in (False, True):
-                invitation = admin(node, 'POST', '/v1/node/mesh/client-invites')
-                phone = root / ('cancelled' if cancel else 'phone')
-                log = (REPORT / ('cancelled-client.log' if cancel else 'invitation-client.log')).open('wb')
-                binary = f.TARGET / 'invitation-observer'
-                if not binary.exists():
-                    binary = f.TARGET / 'examples/invitation-observer'
-                helper = subprocess.Popen([str(binary), str(phone), invitation['invitation']]
-                    + (['cancel'] if cancel else []), stdout=subprocess.PIPE, stderr=log)
-                helpers.append((helper, log))
-                events = Events(helper.stdout)
-                if cancel:
-                    events.until(lambda v: v.get('done') is True)
-                    assert helper.wait(timeout=35) == 0
-                    with sqlite3.connect(phone / 'client.db') as db:
-                        assert db.execute('SELECT count(*) FROM nodes').fetchone()[0] == 0
-                    results.append('cancel_releases_subscription_and_cannot_commit_late_membership')
-                else:
-                    events.until(lambda v: (v.get('invitation') or {}).get('status') == 'awaiting_approval')
-                    # A pending approval produces no repeated frames or commands.
-                    try:
-                        value = events.queue.get(timeout=5)
-                        raise AssertionError(('pending invitation was not idle', value))
-                    except queue.Empty:
-                        pass
-                    record = next(i for i in admin(node, 'GET', '/v1/node/mesh/invites')['items'] if i['id'] == invitation['id'])
-                    admin(node, 'POST', '/v1/node/mesh/invites/' + invitation['id'] + '/approve',
-                          {'origin': record['device']['origin'], 'claim_id': record['claim_id']})
-                    joined = events.until(lambda v: 'joined_peer' in v)
-                    assert joined['joined_peer'] == node.origin
-                    assert helper.wait(timeout=35) == 0
-                    assert 'secret' not in json.dumps(events.values) and 'challenge' not in json.dumps(events.values)
-                    results.append('phone_approval_push_uses_shared_wire_baseline_without_pending_polling')
-                (REPORT / ('cancelled-invitation.json' if cancel else 'invitation.json')).write_text(json.dumps(events.values, indent=2))
-
             admin(node, 'POST', '/v1/node/agents', {'id': 'browser', 'name': 'Browser fixture', 'role': 'leader',
                 'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'})
             session = admin(node, 'POST', '/v1/node/agents/browser/open', {})['session_id']

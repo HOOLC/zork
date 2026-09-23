@@ -21,9 +21,7 @@ pub struct Refresh {
 impl gpui::EventEmitter<Refresh> for ResourcesView {}
 #[derive(Clone)]
 pub enum Mode {
-    Connections,
     Services(String),
-    Skills { node: String, agent: String },
     Inspector,
 }
 
@@ -34,7 +32,6 @@ struct DetailPresentation {
     error: Option<String>,
     data: Arc<ResourcesData>,
     document: Option<(String, bool, MessageDocument)>,
-    parameters: bool,
     back: bool,
     facts_open: bool,
 }
@@ -49,7 +46,6 @@ pub struct ResourcesView {
     trail: Vec<(String, Inspection)>,
     modal: ui::ModalState,
     document: Option<(String, bool, MessageDocument)>,
-    parameters: Option<String>,
     facts_open: bool,
     focus_pending: bool,
 }
@@ -65,7 +61,6 @@ impl ResourcesView {
             trail: vec![],
             modal: ui::ModalState::new(cx),
             document: None,
-            parameters: None,
             facts_open: false,
             focus_pending: false,
         };
@@ -86,12 +81,7 @@ impl ResourcesView {
         cx.notify();
     }
     pub fn refresh(&self, cx: &mut Context<Self>) {
-        let query = self.selected.clone().or_else(|| match &self.mode {
-            Mode::Skills { node, agent } => {
-                Some((node.clone(), Inspection::AgentSkills(agent.clone())))
-            }
-            _ => None,
-        });
+        let query = self.selected.clone();
         cx.emit(Refresh { query });
     }
     fn project(&mut self) {
@@ -102,11 +92,9 @@ impl ResourcesView {
         {
             self.selected = None;
             self.trail.clear();
-            self.parameters = None;
             self.document = None;
         }
         self.rows = Arc::new(match &self.mode {
-            Mode::Connections => self.data.rows(ResourceKind::Mcp, None),
             Mode::Services(node) => self.data.rows(ResourceKind::Service, Some(node)),
             _ => vec![],
         });
@@ -116,24 +104,12 @@ impl ResourcesView {
             .and_then(|(node, query)| self.data.inspection(node, query))
             .and_then(|state| state.content.as_deref())
             .and_then(|content| match content {
-                InspectionContent::Details(details) => {
-                    if let Some(tool) = &self.parameters {
-                        details
-                            .tools
-                            .iter()
-                            .find(|t| &t.name == tool)
-                            .and_then(|t| serde_json::to_string_pretty(&t.input_schema).ok())
-                            .map(|text| (text, false))
-                    } else {
-                        details.document.as_ref().map(|d| {
-                            (
-                                d.text.clone(),
-                                d.path.ends_with(".md") || d.path.ends_with(".markdown"),
-                            )
-                        })
-                    }
-                }
-                _ => None,
+                InspectionContent::Details(details) => details.document.as_ref().map(|d| {
+                    (
+                        d.text.clone(),
+                        d.path.ends_with(".md") || d.path.ends_with(".markdown"),
+                    )
+                }),
             });
         if self
             .document
@@ -155,7 +131,6 @@ impl ResourcesView {
         if let Some(previous) = self.selected.replace((node, query)) {
             self.trail.push(previous);
         }
-        self.parameters = None;
         self.facts_open = false;
         self.focus_pending = true;
         self.project();
@@ -164,11 +139,6 @@ impl ResourcesView {
     }
     fn back(&mut self, cx: &mut Context<Self>) {
         self.focus_pending = true;
-        if self.parameters.take().is_some() {
-            self.project();
-            cx.notify();
-            return;
-        }
         self.selected = self.trail.pop();
         self.project();
         // The shared bounded cache may have evicted an earlier file while the
@@ -180,14 +150,10 @@ impl ResourcesView {
         self.selected = None;
         self.opening_error = None;
         self.trail.clear();
-        self.parameters = None;
         self.document = None;
         cx.notify();
     }
     fn title(&self) -> String {
-        if let Some(tool) = &self.parameters {
-            return format!("{tool} · {}", self.locale.text("resource_parameters"));
-        }
         self.selected
             .as_ref()
             .and_then(|(node, query)| self.data.inspection(node, query))
@@ -200,7 +166,6 @@ impl ResourcesView {
                         .filter(|_| !self.trail.is_empty())
                         .unwrap_or_else(|| d.title.clone()),
                 ),
-                _ => None,
             })
             .unwrap_or_else(|| self.locale.text("resource_details").into())
     }
@@ -208,69 +173,8 @@ impl ResourcesView {
         div().py_2().child(ui::feedback(text))
     }
     fn list(&self, cx: &mut Context<Self>) -> Div {
-        if let Mode::Skills { node, agent } = &self.mode {
-            let query = Inspection::AgentSkills(agent.clone());
-            let state = self.data.inspection(node, &query);
-            let mut body = ui::section().child(ui::text_role(
-                self.locale.text("agent_skills"),
-                TextRole::SectionTitle,
-            ));
-            if let Some(state) = state {
-                if state.loading {
-                    body = body.child(ui::text_role(
-                        self.locale.text("resource_loading"),
-                        TextRole::Description,
-                    ));
-                }
-                if let Some(error) = &state.error {
-                    body = body.child(self.notice(error.clone()));
-                }
-                if let Some(InspectionContent::Skills(catalog)) = state.content.as_deref() {
-                    if catalog.skills.is_empty() {
-                        body = body.child(ui::text_role(
-                            self.locale.text("agent_skills_empty"),
-                            TextRole::Description,
-                        ));
-                    }
-                    for skill in &catalog.skills {
-                        let (node, agent, skill_id) =
-                            (node.clone(), agent.clone(), skill.id.clone());
-                        body = body.child(crate::components::attachments::content_row(
-                            format!("agent-skill-{}", skill.id),
-                            "icons/file.svg",
-                            skill.name.clone(),
-                            skill.description.clone(),
-                            cx,
-                            move |view, cx| {
-                                view.select(
-                                    node.clone(),
-                                    Inspection::Skill {
-                                        agent: agent.clone(),
-                                        skill: skill_id.clone(),
-                                        file: None,
-                                    },
-                                    cx,
-                                )
-                            },
-                        ));
-                    }
-                    for diagnostic in &catalog.diagnostics {
-                        body = body.child(self.notice(diagnostic.clone()));
-                    }
-                }
-            }
-            return body;
-        }
-        let kind = if matches!(self.mode, Mode::Services(_)) {
-            ResourceKind::Service
-        } else {
-            ResourceKind::Mcp
-        };
-        let title = self.locale.text(if kind == ResourceKind::Mcp {
-            "tool_connections"
-        } else {
-            "device_services"
-        });
+        let kind = ResourceKind::Service;
+        let title = self.locale.text("device_services");
         let mut body = div().w_full().flex().flex_col().gap_3().child(
             div()
                 .flex()
@@ -333,8 +237,6 @@ impl ResourcesView {
                 self.locale
                     .text(if self.data.devices.iter().any(|d| d.loading) {
                         "resource_loading"
-                    } else if kind == ResourceKind::Mcp {
-                        "tool_connections_empty"
                     } else {
                         "device_services_empty"
                     }),
@@ -355,13 +257,9 @@ impl ResourcesView {
                             let device = &data.devices[di];
                             let item = &device.catalog.as_ref().unwrap().items[ri];
                             let node = device.id.clone();
-                            let query = if item.kind == ResourceKind::Mcp {
-                                Inspection::Mcp(item.id.clone())
-                            } else {
-                                Inspection::Service {
-                                    id: item.id.clone(),
-                                    log: None,
-                                }
+                            let query = Inspection::Service {
+                                id: item.id.clone(),
+                                log: None,
                             };
                             let meta = if item.description.is_empty() {
                                 format!(
@@ -388,11 +286,7 @@ impl ResourcesView {
                             div().h(px(56.)).pb_2().child(
                                 crate::components::attachments::content_row(
                                     format!("resource-row-{index}"),
-                                    if item.kind == ResourceKind::Mcp {
-                                        "icons/mesh.svg"
-                                    } else {
-                                        "icons/node.svg"
-                                    },
+                                    "icons/node.svg",
                                     item.name.clone(),
                                     meta,
                                     cx,
@@ -415,13 +309,9 @@ impl ResourcesView {
             error: self.opening_error.clone(),
             data: self.data.clone(),
             document: self.document.clone(),
-            parameters: self.parameters.is_some(),
             back: !self.trail.is_empty(),
             facts_open: self.facts_open,
         }
-    }
-    fn detail(&self, cx: &mut Context<Self>) -> Div {
-        self.render_detail(&self.detail_presentation(), cx)
     }
     fn render_detail(&self, shown: &DetailPresentation, cx: &mut Context<Self>) -> Div {
         if let Some(error) = &shown.error {
@@ -431,10 +321,7 @@ impl ResourcesView {
             return div();
         };
         let mut body = div().w_full().flex().flex_col().gap_3();
-        if matches!(self.mode, Mode::Skills { .. }) {
-            body = body.child(ui::text_role(shown.title.clone(), TextRole::SectionTitle));
-        }
-        if shown.back || matches!(self.mode, Mode::Skills { .. }) || shown.parameters {
+        if shown.back {
             body = body.child(
                 ui::quiet_button("resource-back", "", true, ui::IconButtonSize::Compact)
                     .self_start()
@@ -517,50 +404,6 @@ impl ResourcesView {
                 ));
             }
         }
-        if shown.parameters {
-            return body;
-        }
-        if !details.tools.is_empty() {
-            body = body.child(ui::text_role(
-                self.locale.text("resource_tool_list"),
-                TextRole::SectionTitle,
-            ));
-            let content = state.content.clone().unwrap();
-            body = body.child(
-                gpui::uniform_list(
-                    "resource-tools",
-                    details.tools.len(),
-                    cx.processor(move |_: &mut Self, range: std::ops::Range<usize>, _, cx| {
-                        let InspectionContent::Details(details) = content.as_ref() else {
-                            return vec![];
-                        };
-                        range
-                            .map(|index| {
-                                let tool = &details.tools[index];
-                                let name = tool.name.clone();
-                                div().h(px(52.)).pb_1().child(
-                                    crate::components::attachments::content_row(
-                                        format!("resource-tool-{}", tool.name),
-                                        "icons/mesh.svg",
-                                        tool.name.clone(),
-                                        tool.description.clone(),
-                                        cx,
-                                        move |view, cx| {
-                                            view.parameters = Some(name.clone());
-                                            view.focus_pending = true;
-                                            view.project();
-                                            cx.notify();
-                                        },
-                                    ),
-                                )
-                            })
-                            .collect()
-                    }),
-                )
-                .w_full()
-                .h(px(details.tools.len().min(6) as f32 * 52.)),
-            );
-        }
         if !details.files.is_empty() {
             body = body.child(ui::text_role(
                 self.locale
@@ -574,16 +417,10 @@ impl ResourcesView {
             for file in &details.files {
                 let node = node.clone();
                 let next = match query {
-                    Inspection::Skill { agent, skill, .. } => Some(Inspection::Skill {
-                        agent: agent.clone(),
-                        skill: skill.clone(),
-                        file: Some(file.path.clone()),
-                    }),
                     Inspection::Service { id, .. } => Some(Inspection::Service {
                         id: id.clone(),
                         log: Some(file.path.clone()),
                     }),
-                    _ => None,
                 };
                 if let Some(next) = next {
                     body = body.child(crate::components::attachments::content_row(
@@ -654,8 +491,7 @@ impl ResourcesView {
 }
 impl Render for ResourcesView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let inline = matches!(self.mode, Mode::Skills { .. });
-        let detail_open = (self.selected.is_some() || self.opening_error.is_some()) && !inline;
+        let detail_open = (self.selected.is_some() || self.opening_error.is_some());
         self.modal
             .sync(detail_open.then_some("resource-detail-modal"), window, cx);
         let presentation = detail_open.then(|| self.detail_presentation());
@@ -666,8 +502,6 @@ impl Render for ResourcesView {
         }
         let mut body = if matches!(self.mode, Mode::Inspector) {
             div()
-        } else if inline && self.selected.is_some() {
-            self.detail(cx)
         } else {
             self.list(cx)
         };
@@ -683,9 +517,6 @@ impl Render for ResourcesView {
                 true,
                 |view, _, cx| view.close(cx),
             ));
-        }
-        if inline {
-            body = body.track_focus(&self.modal.focus);
         }
         body.font_family("Inter Variable")
             .text_size(px(13.))

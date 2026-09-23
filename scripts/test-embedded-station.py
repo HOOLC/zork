@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove Station owns Synch without a supervisor, daemon, or local control service."""
+"""Prove Station owns iroh without a supervisor, daemon, or local control service."""
 import importlib.util
 import json
 import os
@@ -31,11 +31,11 @@ def main():
             station = subprocess.Popen([str(f.TARGET / 'zork-station'), '--data', str(node.root), '--fake-agent'],
                                        stdout=log, stderr=log)
             try:
-                f.wait(lambda: node.get('/v1/mesh').get('origin') == origin, 'standalone Station Synch ready')
+                f.wait(lambda: node.get('/v1/mesh').get('origin') == origin, 'standalone Station iroh ready')
                 assert not (node.root / 'zork.pid').exists(), 'Supervisor was required'
                 assert not (node.root / 'run/zork-agent.pid').exists(), 'Agent was started'
-                assert not (node.root / 'mesh/synch/control.sock').exists(), 'daemon control socket created'
-                assert not (node.root / 'mesh/synch/control.token').exists(), 'daemon control token created'
+                assert not (node.root / 'mesh/iroh/control.sock').exists(), 'daemon control socket created'
+                assert not (node.root / 'mesh/iroh/control.token').exists(), 'daemon control token created'
                 children = subprocess.run(['pgrep', '-P', str(station.pid)], capture_output=True, text=True)
                 assert children.returncode == 1 and not children.stdout.strip(), children.stdout
                 ready = agent('GET', '/readyz')
@@ -56,7 +56,7 @@ def main():
                     assert duplicate.returncode != 0, 'duplicate node ownership was accepted'
                     assert node.get('/v1/mesh')['origin'] == origin, 'duplicate stopped the owner'
                 station.send_signal(signal.SIGINT if index == 1 else signal.SIGTERM)
-                assert station.wait(timeout=30) == 0, 'Station did not drain its Synch tasks'
+                assert station.wait(timeout=30) == 0, 'Station did not drain its iroh tasks'
                 assert not (node.root / 'run/zork-station.pid').exists(), 'Station readiness leaked'
                 if shell_pid is not None:
                     try: os.kill(shell_pid, 0)
@@ -67,7 +67,7 @@ def main():
                 if station.poll() is None:
                     station.kill()
                     station.wait()
-    print(f'PASS: Station owns Agent and Synch; no sidecar/control service; Agent PID equals Station; shell shutdown and session recovery; duplicate exclusion; stable identity and UDP bind across SIGTERM/SIGINT restarts; {root}')
+    print(f'PASS: Station owns Agent and iroh; no sidecar/control service; Agent PID equals Station; shell shutdown and session recovery; duplicate exclusion; stable identity and UDP bind across SIGTERM/SIGINT restarts; {root}')
 
 
 if __name__ == '__main__':

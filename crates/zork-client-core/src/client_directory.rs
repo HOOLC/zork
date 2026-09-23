@@ -26,7 +26,6 @@ pub(crate) struct Directory {
     store: Arc<ClientStore>,
     pub(crate) source: Arc<zork_observe::ValueSource<Value>>,
     resources: Arc<crate::resources::Resources>,
-    shared_files: Arc<crate::shared_files::SharedFiles>,
     chat_files: Arc<crate::chat_files::Controller>,
     adb: Arc<crate::adb::Controller>,
     node: Mutex<Option<MeshNode>>,
@@ -49,7 +48,6 @@ impl Directory {
     pub(crate) fn new(
         store: Arc<ClientStore>,
         resources: Arc<crate::resources::Resources>,
-        shared_files: Arc<crate::shared_files::SharedFiles>,
         chat_files: Arc<crate::chat_files::Controller>,
         adb: Arc<crate::adb::Controller>,
     ) -> Result<Arc<Self>> {
@@ -62,7 +60,6 @@ impl Directory {
         Ok(Arc::new(Self {
             store,
             resources,
-            shared_files,
             chat_files,
             adb,
             source: Arc::new(zork_observe::ValueSource::new(value)),
@@ -140,7 +137,6 @@ impl Directory {
             connection.device.stop_sync();
         }
         self.resources.replace_devices(Vec::new());
-        self.shared_files.pause();
         let _ = self.publish(true);
     }
     pub(crate) fn devices(&self) -> Vec<Arc<Device>> {
@@ -286,7 +282,6 @@ impl Directory {
             let mut changes = device.subscribe_domains(Domains::CONNECTION | Domains::MESH);
             let weak = Arc::downgrade(self);
             let id = peer.id.clone();
-            let watched_client = client.clone();
             let watcher = zork_notify::Task(tokio::spawn(async move {
                 loop {
                     let state = changes.snapshot().state;
@@ -297,9 +292,6 @@ impl Directory {
                         if directory.generation.load(Ordering::Acquire) != generation {
                             return;
                         }
-                        directory
-                            .shared_files
-                            .update_device(&id, &watched_client, &state);
                         let _ = directory.publish(true);
                         directory
                             .resources
@@ -312,6 +304,25 @@ impl Directory {
                         if let Some(group) = &state.mesh.group {
                             let identity = directory.store.get::<String>("device", "identity");
                             if let Ok(Some(identity)) = identity {
+                                let account_owned: Vec<String> = directory
+                                    .store
+                                    .get("device", "account_peers")
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_default();
+                                if account_owned.contains(&id)
+                                    && group.clients.iter().any(|client| client.origin == identity)
+                                {
+                                    if let Ok(nodes) = directory.store.nodes() {
+                                        if let Some(mut anchor) = nodes
+                                            .into_iter()
+                                            .find(|node| node.id == id && node.group.is_none())
+                                        {
+                                            anchor.group = Some(group.authority.clone());
+                                            let _ = directory.store.save_node(&anchor);
+                                        }
+                                    }
+                                }
                                 if let Err(error) =
                                     directory.store.apply_mesh_directory(&id, &identity, group)
                                 {
@@ -361,16 +372,6 @@ impl Directory {
                 )
             })
             .collect();
-        self.shared_files.replace_devices(
-            clients
-                .iter()
-                .map(|(id, name, client, _)| (id.clone(), name.clone(), false, client.clone()))
-                .collect(),
-        );
-        for (id, _, client, device) in &clients {
-            self.shared_files
-                .update_device(id, client, &device.snapshot());
-        }
         self.resources.replace_devices(
             clients
                 .into_iter()

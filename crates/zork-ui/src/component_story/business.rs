@@ -23,7 +23,6 @@ pub fn is_business(family: &str) -> bool {
             | "activity"
             | "composer"
             | "resources"
-            | "shared-files"
             | "notifications"
             | "appearance"
             | "data-settings"
@@ -104,7 +103,6 @@ pub fn state_label(state: &str) -> String {
         "denied" => "未获授权",
         "busy" => "处理中",
         "services" => "服务",
-        "skills" => "技能",
         "list" => "列表",
         "create" => "新建",
         "edit" | "editing" => "编辑",

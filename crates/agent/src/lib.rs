@@ -6,7 +6,6 @@ pub mod profiles;
 pub mod provider;
 pub mod runtime;
 pub mod session;
-pub mod skills;
 
 pub use profiles::ProfileStore;
 

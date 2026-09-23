@@ -103,7 +103,6 @@ internal class WorkbenchActions(
     val windowAnchor: (String?) -> Unit = {},
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
     val history: (String, String) -> Unit = { _, _ -> },
-    val sharedFiles: () -> Unit = {},
     val chatFile: (String, String) -> Unit = { _, _ -> },
     val newChat: (Peer) -> Unit = {},
     val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
@@ -191,10 +190,6 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
         }
         if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
         Spacer(Modifier.height(0.5.dp))
-        NavRow(onClick = actions.sharedFiles) {
-            Glyph(R.drawable.ic_folder, 24.dp)
-            Text("共享文件", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        }
         NavRow(onClick = { showArchived = !showArchived }) {
             Text(if (showArchived) "返回 Chat" else "已归档", fontSize = 15.sp)
         }

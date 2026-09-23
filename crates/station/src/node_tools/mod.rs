@@ -1,8 +1,6 @@
-//! Device execution and managed skill packages use one authenticated route and
-//! durable receipt contract. MCP shares its target identity and access policy.
+//! Device execution uses one authenticated route and
+//! durable receipt contract.
 mod jobs;
-mod skills;
-pub(crate) use skills::client_resources;
 mod store;
 #[cfg(test)]
 mod tests;
@@ -42,9 +40,7 @@ fn fingerprint(value: &impl Serialize) -> Result<String> {
 
 fn error(e: &anyhow::Error) -> String {
     let s = e.to_string();
-    if ["device_", "skill_", "node_"]
-        .iter()
-        .any(|p| s.starts_with(p))
+    if ["device_", "node_"].iter().any(|p| s.starts_with(p))
         && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
     {
         s
@@ -80,7 +76,6 @@ pub struct Hub {
     store: store::Store,
     active: Mutex<HashMap<String, watch::Sender<bool>>>,
     slots: Arc<Semaphore>,
-    gate: Mutex<()>,
     finished: Notify,
 }
 impl Hub {
@@ -89,7 +84,6 @@ impl Hub {
             store: store::Store::open(root)?,
             active: Mutex::new(HashMap::new()),
             slots: Arc::new(Semaphore::new(8)),
-            gate: Mutex::new(()),
             finished: Notify::new(),
         })
     }
@@ -286,7 +280,7 @@ async fn execute(state: &AppState, rpc: Rpc, local: bool) -> Result<Value> {
     match rpc.tool.as_str() {
         "device.inspect" => {
             let mut v = node_access::environment(state);
-            v["capabilities"] = json!(["shell.run", "mcp.call"]);
+            v["capabilities"] = json!(["shell.run"]);
             Ok(v)
         }
         "device.status" | "device.read" | "device.cancel" => jobs::status(state, &rpc).await,

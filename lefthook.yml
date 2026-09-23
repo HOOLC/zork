@@ -37,10 +37,10 @@ pre-push:
     runtime-tests:
       glob:
         - "crates/{agent*,profile,slack,station,zork,zork-android,zork-browser,zork-client-core,zork-client-types,zork-config,zork-gh,zork-mesh,zork-notify,zork-observe}/**"
-        - "vendor/{synch*,rustls*,iroh,swarm-discovery,noq-udp}/**"
+        - "vendor/{rustls*,iroh,swarm-discovery,noq-udp}/**"
         - "{Cargo.toml,Cargo.lock,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,vite.config.ts,lefthook.yml}"
         - "{packages,test}/**"
-        - "scripts/{check-runtime.sh,test-build-env.py,test-ci-source-stamps.py,test-mesh.py,test-skills.py,test-slack-forwarding.py,test-sync-idle.py}"
+        - "scripts/{check-runtime.sh,test-build-env.py,test-ci-source-stamps.py,test-mesh.py,test-slack-forwarding.py,test-sync-idle.py}"
         - "scripts/lib/{build_env,ci_source_stamps}.py"
         - "crates/zork-gui/tests/test_station_entry.py"
         - ".github/workflows/ci.yml"
@@ -57,19 +57,6 @@ pre-push:
         CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0}
         CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
         python3 scripts/lib/build_env.py -- cargo test --locked -p zork-gui -p zork-ui --lib --tests
-    shared-files:
-      glob:
-        - "crates/{zork-client-core,zork-mesh}/**"
-        - "crates/station/src/{mesh.rs,db/artifacts.rs,channels/attachments.rs}"
-        - "vendor/{synch*,iroh,noq-udp}/**"
-        - "{Cargo.toml,Cargo.lock,lefthook.yml}"
-        - "scripts/check-runtime.sh"
-      run: bash scripts/check-runtime.sh shared-files
-    file-cas-audit:
-      glob:
-        - "scripts/{audit-file-cas.py,test-file-cas-audit.py}"
-        - "lefthook.yml"
-      run: python3 scripts/test-file-cas-audit.py
     cua-packaging:
       glob:
         - "scripts/{build-cua-driver.py,package-macos-client.py,test-cua-build.py,test-cua-packaging.py}"

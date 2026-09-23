@@ -68,7 +68,7 @@ class ChatFileDeliveryTest {
         call("network", "network" to JSONObject().put("direct_only", true))
         context.filesDir.resolve("file-delivery-identity.json").writeText(call("snapshot").toString())
     }
-    @Test fun realSharedFilesAndChatImagesUseCoreAndNativeExport() = runBlocking<Unit> {
+    @Test fun chatImagesUseCoreAndNativeExport() = runBlocking<Unit> {
         initialize()
         val peer = args.getString("origin")!!
         val session = args.getString("chat")!!
@@ -96,7 +96,7 @@ class ChatFileDeliveryTest {
                 }
               } } catch (error: Exception) {
                 var detail = ""
-                scenario.onActivity { detail = "ready=${model.ready} connected=${model.connected} notice=${model.notice} rows=${model.messages.map { it.id to it.deliveredFiles }} preview=${model.chatFile} shared=${model.sharedFiles}" }
+                scenario.onActivity { detail = "ready=${model.ready} connected=${model.connected} notice=${model.notice} rows=${model.messages.map { it.id to it.deliveredFiles }} preview=${model.chatFile}" }
                 capture("failure")
                 throw AssertionError("$label: $detail", error)
               }
@@ -120,17 +120,6 @@ class ChatFileDeliveryTest {
                 capture("chat-image")
                 click("关闭")
                 awaitModel("Chat preview closed") { it.chatFile == null }
-                scenario.onActivity { model.openSharedFiles() }
-                awaitModel("shared image entry") { it.sharedFiles?.entries?.any { entry -> entry.name == "visible.png" } == true }
-                delay(500)
-                click("visible.png")
-                awaitModel("shared image preview") { it.sharedFileImage != null && it.sharedFiles?.preview?.loading == false }
-                scenario.onActivity {
-                    val selected = model.sharedFiles!!.preview!!.selected
-                    assertEquals(args.getString("image_sha"), sha(NativeBridge.sharedFileBytes(root, selected)))
-                }
-                delay(500)
-                capture("shared-image")
             } finally {
                 scenario.onActivity { model.foreground(false); models.clear() }
             }

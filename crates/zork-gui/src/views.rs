@@ -43,14 +43,6 @@ mod new_chat;
 mod panel_layout;
 mod session_activity;
 
-pub(crate) fn shared_file_image(
-    bytes: &[u8],
-    format: gpui::ImageFormat,
-    renderer: &gpui::SvgRenderer,
-) -> anyhow::Result<Arc<gpui::RenderImage>> {
-    Ok(files::image::decode(bytes, format, renderer)?.rendered)
-}
-
 const BG: u32 = ZORK_UI.palette.canvas;
 const PROMPT: u32 = ZORK_UI.palette.prompt;
 const BORDER: u32 = ZORK_UI.palette.border;

@@ -221,6 +221,8 @@ provider adapter 必须按所选协议发送 profile 解析出的控制项，不
 
 runner 可以向 ModelGateway 提供 session 或稳定 key 的资源释放建议。建议不影响正确性，provider 自己决定何时执行。
 
+`provider_input` 只记录模型请求计数与响应标识；`provider_context` 保存后续请求和重启回放需要的供应商返回项，可能包含必须原样回传的推理数据。文件缓存清理不删除这些上下文；上下文瘦身须独立验证模型回传、工具接续和重启语义。
+
 ### 7.2 Generation 前缀（`PROJECTION-01`、`PROJECTION-02`、`PROJECTION-03`）
 
 同一 generation 内，已经发送给 provider 的 transcript 只能追加，不能删除、替换或重新组织前面的消息。ToolResult 在下一请求前到达时可以直接配对；一个 pending 调用一旦以“仍未完成”的合法占位结果发送，后来的真实结果只能作为新增通知出现。auto wait 结束后、下一请求冻结前到达的结果仍可合并，不以等待结束作为结果分类冻结点。
@@ -496,11 +498,11 @@ async fn run(data_root: std::path::PathBuf) -> anyhow::Result<()> {
 
 ### 12.2 Station 嵌入（`EMBED-03`）
 
-`zork` supervisor 只启动、监控和重启 `zork-station`。Station 同时持有 AgentRuntime 和 Synch；没有独立 Agent PID 文件。`AppState.agent` 是共享应用接口，会话、profile、mailbox、取消、删除、history 和后台 job 事件均直接调用库。状态投影直接订阅库的 snapshot 与后续事件流，不再解析进程间 SSE，也不为聚合初始化回放历史。
+`zork` supervisor 只启动、监控和重启 `zork-station`。Station 同时持有 AgentRuntime 和 iroh；没有独立 Agent PID 文件。`AppState.agent` 是共享应用接口，会话、profile、mailbox、取消、删除、history 和后台 job 事件均直接调用库。状态投影直接订阅库的 snapshot 与后续事件流，不再解析进程间 SSE，也不为聚合初始化回放历史。
 
 Station 在启动恢复前绑定监听器，让恢复中的工具回调可以等待监听器开始服务。原 Agent HTTP/SSE 路径和 `--agent-token` 鉴权由同一 station 进程提供，只用于外部客户端；Agent `/readyz` 返回 `embedded: true`，PID 与 Station 一致。Station readiness 包含 Agent 初始化，桌面端只需等待 Station ready。
 
-关闭顺序为：标记 draining、停止 IM 连接接收，等待 AgentRuntime 关闭，停止状态订阅，再排空并关闭 HTTP，最后关闭 Synch。HTTP 在 Agent 关闭期间保持可用，供工具回调完成。异常退出由 supervisor 重启整个 Station；`reload-mesh` 也会一起重启 Agent，不再提供 Agent 独立于 Station 的运行连续性。
+关闭顺序为：标记 draining、停止 IM 连接接收，等待 AgentRuntime 关闭，停止状态订阅，再排空并关闭 HTTP，最后关闭 iroh。HTTP 在 Agent 关闭期间保持可用，供工具回调完成。异常退出由 supervisor 重启整个 Station；`reload-mesh` 也会一起重启 Agent，不再提供 Agent 独立于 Station 的运行连续性。
 
 从旧双进程版本迁移时必须重启 supervisor 或执行完整原生版本升级。旧 supervisor 会继续启动独立 Agent，与嵌入实例争用监听端口和 data root 锁；新 CLI 的 `zork update` 先检查 supervisor 的 `agent_mode`，拒绝对旧进程模型执行热重载。迁移完成后普通 update 只重启一个 Station 子进程。
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real Station/Agent, embedded Synch access client, HTTP and WebSocket service.
+"""Real Station/Agent, embedded iroh access client, HTTP and WebSocket service.
 
 Build the affected binaries first. Uses isolated identities and a fake model;
 never touches an installed node, user workspace or personal mobile device.

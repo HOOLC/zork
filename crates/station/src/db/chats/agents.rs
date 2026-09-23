@@ -5,7 +5,7 @@ pub fn configuration_revision(agent: &NodeAgent) -> Result<String> {
     Ok(blake3::hash(&serde_json::to_vec(
         &json!({"name":agent.name,"avatar":agent.avatar,
         "profile_id":agent.profile_id,"model":agent.model,"thinking":agent.thinking,
-        "instructions":agent.instructions,"skill_paths":agent.skill_paths,"role":agent.role,
+        "instructions":agent.instructions,"role":agent.role,
         "allowed_leaders":agent.allowed_leaders}),
     )?)
     .to_hex()

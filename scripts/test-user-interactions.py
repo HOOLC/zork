@@ -59,7 +59,7 @@ def main():
             caller_b, home_b = channels.make_caller(b, 'caller-b')
             chat_b = channels.operation(b, caller_b, 'chat.create', {'title': 'Business tool review', 'text': 'Review business-tool input', 'model': 'fixture-model', 'thinking': 'off'})['chat_id']
             config = {'name': 'Suggested worker', 'selection': {'profile_id': 'fixture', 'model': 'fixture-model', 'thinking': 'off'},
-                'instructions': 'Original instructions', 'skill_paths': []}
+                'instructions': 'Original instructions'}
             seen, discovered = set(), set()
             def start(name, args, label):
                 if name not in discovered:
@@ -118,7 +118,7 @@ def main():
             assert not tool_results(b, caller_b, notice['invocation_id'])
             path, card = publish(notice, 'publish-create')
             assert not tool_results(b, caller_b, notice['invocation_id'])
-            assert {'/name', '/selection', '/instructions', '/skill_paths', '/role'} <= {f['id'] for f in json.loads(channels.sql(a, 'SELECT form FROM agent_configuration_cards WHERE request_id=?', (notice['request_id'],))[0][0])['fields']}
+            assert {'/name', '/selection', '/instructions', '/role'} <= {f['id'] for f in json.loads(channels.sql(a, 'SELECT form FROM agent_configuration_cards WHERE request_id=?', (notice['request_id'],))[0][0])['fields']}
             assert channels.request(b, 'POST', path.rsplit('/', 1)[0] + '/respond', {'response_id': 'retired', 'accept': False})[0] == 404
             assert channels.request(b, 'GET', path.rsplit('/', 1)[0] + '/private')[0] == 404
             assert channels.request(b, 'GET', path.rsplit('/', 1)[0] + '/provider-login')[0] == 400

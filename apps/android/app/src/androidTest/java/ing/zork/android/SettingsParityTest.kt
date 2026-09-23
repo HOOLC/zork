@@ -26,15 +26,7 @@ class SettingsParityTest {
             scenario.onActivity { assertEquals("clear-data", it.lastAction) }
         }
     }
-    @Test fun resourceSettingsExposeToolsParametersSkillsAndServiceLogs() {
-        launch("connections").use {
-            settle(); click("资料搜索"); click("search_docs"); await("search_docs · 参数")
-            capture("tool-parameters"); click("返回"); click("详细信息"); await("接入方式：stdio")
-        }
-        launch("skills").use {
-            settle(); click("界面规范"); await("guide.md"); click("guide.md")
-            capture("skill-file"); click("返回"); await("详细信息")
-        }
+    @Test fun resourceSettingsExposeServiceLogs() {
         launch("services").use {
             settle(); click("设计预览"); click("stdout.log"); await("preview server ready")
             capture("service-log")

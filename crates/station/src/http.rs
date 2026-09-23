@@ -229,7 +229,6 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/slack/forward", post(crate::slack_tools::forward))
         .route("/v1/browser/command", post(crate::browser::tool))
         .route("/v1/services", post(crate::shared_services::tool))
-        .route("/v1/mcp", post(crate::mcp::tool))
         .route("/v1/node-tools", post(crate::node_tools::tool))
         .route("/v1/channels/tools", post(crate::channels::tool))
         .route(
@@ -241,7 +240,6 @@ pub fn router(state: AppState) -> Router {
             "/v1/node-tools/interrupt",
             post(crate::node_tools::interrupt),
         )
-        .route("/v1/mcp/interrupt", post(crate::mcp::interrupt))
         .route("/v1/computer/command", post(crate::computer::call))
         .route("/v1/client/browser/events", post(crate::browser::events))
         .route(

@@ -1,4 +1,4 @@
-//! Browser-facing loopback listeners over authenticated Synch streams.
+//! Browser-facing loopback listeners over authenticated iroh streams.
 use crate::node::MeshNode;
 use anyhow::{ensure, Context, Result};
 use std::time::Duration;
@@ -28,7 +28,7 @@ impl ServiceLink {
         );
         let mut parts = url.path().trim_start_matches('/').splitn(3, '/');
         let key = parts.next().context("missing_service_node")?;
-        let node = synch_core::NodeId::from_z32(key)?;
+        let node = iroh::EndpointId::from_z32(key)?;
         ensure!(node.to_z32() == key, "invalid_service_node");
         let id = parts.next().context("missing_service_id")?;
         ensure!(

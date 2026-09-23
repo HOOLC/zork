@@ -1,5 +1,5 @@
 //! Station-owned invitations and personal mesh membership. No model secrets
-//! leave this node. Enrollment is finalized by the joining Synch device key.
+//! leave this node. Enrollment is finalized by the joining iroh device key.
 mod operations;
 mod routes;
 use crate::state::AppState;
@@ -17,7 +17,7 @@ use zork_config::{
     MeshConfig,
 };
 use zork_mesh::{
-    enrollment::{self, Invitation, InviteKind},
+    enrollment::{self, Invitation},
     node::MeshNode,
 };
 
@@ -34,26 +34,19 @@ pub struct EnrollmentService {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 struct InviteRecord {
-    #[serde(default)]
-    ephemeral: bool,
-    #[serde(default)]
-    kind: InviteKind,
     id: String,
     secret_hash: String,
     expires_at: u64,
     revoked: bool,
     claim: Option<Claim>,
     used_by: Option<String>,
-    #[serde(default)]
     committed: bool,
 }
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 struct Claim {
-    #[serde(default)]
-    verified: bool,
-    #[serde(default)]
-    approved: bool,
     endpoint: String,
     device: MeshDevice,
     challenge: String,
@@ -83,8 +76,7 @@ impl EnrollmentService {
     }
     fn path(&self, id: &str) -> Result<PathBuf> {
         ensure!(
-            ulid::Ulid::from_string(id).is_ok_and(|value| value.to_string() == id)
-                || (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())),
+            id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()),
             "invalid_invite_id"
         );
         Ok(self.root.join("mesh/invites").join(format!("{id}.json")))
@@ -99,7 +91,7 @@ impl EnrollmentService {
         )?)
     }
     fn save(&self, record: &InviteRecord) -> Result<()> {
-        if record.ephemeral && record.used_by.is_none() {
+        if record.used_by.is_none() {
             self.pending
                 .lock()
                 .expect("pending invitations")
@@ -130,19 +122,23 @@ impl EnrollmentService {
     }
 
     pub async fn create(&self, state: &AppState) -> Result<Value> {
-        self.create_kind(state, InviteKind::Station).await
-    }
-
-    pub async fn create_kind(&self, state: &AppState, kind: InviteKind) -> Result<Value> {
         let service = state.mesh.get().context("mesh_not_ready")?;
         if let Some(group) = zork_config::load_config(&self.root)?.mesh.group {
             ensure!(group.contains(service.origin()), "device_removed_from_mesh");
             if group.authority != service.origin() {
                 return service
-                    .membership_call(&group.authority, "create_invite", json!({"kind":kind}))
+                    .membership_call(&group.authority, "create_invite", json!({}))
                     .await;
             }
         }
+        let channel = zork_config::channel::current()?;
+        let test_source = if channel == zork_config::channel::Channel::Test {
+            Some(zork_config::distribution::TestDistribution::load(
+                &zork_config::relay_account::resolve_root(&self.root)?,
+            )?)
+        } else {
+            None
+        };
         let _guard = self.transaction.lock().await;
         let device = own_device(&self.root, service.origin(), &self.node)?;
         zork_config::update_config(&self.root, |config| {
@@ -178,13 +174,11 @@ impl EnrollmentService {
             let _ = std::fs::remove_file(self.path(&record.id)?);
         }
         let config = zork_config::load_config(&self.root)?.mesh;
-        let short = enrollment::ticket::Ticket::new(kind, self.transport.address().await, &config)?;
+        let short = enrollment::ticket::Ticket::new(self.transport.address().await, &config)?;
         let id = short.id();
         let secret = short.secret();
         let expires_at = enrollment::now() + enrollment::INVITE_SECONDS;
         let record = InviteRecord {
-            ephemeral: true,
-            kind,
             id: id.clone(),
             secret_hash: zork_mesh::content_root(secret.as_bytes()),
             expires_at,
@@ -195,19 +189,32 @@ impl EnrollmentService {
         };
         self.save(&record)?;
         let ticket = short.encode()?;
-        if kind == InviteKind::Client {
-            state.db.realtime.notify(crate::realtime::MESH);
-            return Ok(
-                json!({"id":id,"expires_at":expires_at,"invitation":ticket,"scope":"client","permissions":["node_management"]}),
-            );
-        }
         state.db.realtime.notify(crate::realtime::MESH);
-        let channel = zork_config::channel::current()?;
         // Portable installed-CLI command: it never names the inviting host's
         // filesystem or assumes an unpublished GitHub Release asset exists.
         let command = format!("zork mesh join '{ticket}' --channel {}", channel.as_str());
+        let mut network = config.clone();
+        zork_config::services::ServicesConfig::load_for_data_root(
+            &zork_config::relay_account::resolve_root(&self.root)?,
+        )?
+        .apply_defaults(&mut network)?;
+        let install_url = zork_config::relay_account::control_origin(network.relay_urls.as_deref())
+            .map(|origin| {
+                let page = test_source
+                    .as_ref()
+                    .and_then(|source| source.install_page.clone())
+                    .unwrap_or_else(|| format!("{origin}/install"));
+                let mut link = format!("{page}#ticket={ticket}&channel={}", channel.as_str());
+                if let Some(source) = test_source {
+                    let fields = source.fragment_fields();
+                    link.push('&');
+                    link.push_str(&fields);
+                }
+                link
+            });
+
         Ok(
-            json!({"id":id,"expires_at":expires_at,"invitation":ticket,"command":command,"scope":"personal_mesh","permissions":["collaborate","task_files","node_management"]}),
+            json!({"id":id,"expires_at":expires_at,"invitation":ticket,"command":command,"install_url":install_url,"scope":"personal_mesh","permissions":["collaborate","task_files","node_management"]}),
         )
     }
 
@@ -222,7 +229,7 @@ impl EnrollmentService {
         }
         let _guard = self.transaction.lock().await;
         Ok(
-            json!({"items":self.records()?.into_iter().map(|r|json!({"id":r.id,"kind":r.kind,"expires_at":r.expires_at,"claim_id":r.claim.as_ref().map(|c|zork_mesh::content_root(c.challenge.as_bytes())),"status":if r.revoked {"revoked"}else if r.committed{"joined"}else if r.expires_at<=enrollment::now(){"expired"}else if r.kind==InviteKind::Client && r.claim.as_ref().is_some_and(|c|c.verified && !c.approved){"awaiting_approval"}else if r.claim.is_some(){"connecting"}else{"waiting"},"device":r.claim.map(|c|c.device),"origin":r.used_by})).collect::<Vec<_>>()}),
+            json!({"items":self.records()?.into_iter().map(|r|json!({"id":r.id,"expires_at":r.expires_at,"claim_id":r.claim.as_ref().map(|c|zork_mesh::content_root(c.challenge.as_bytes())),"status":if r.revoked {"revoked"}else if r.committed{"joined"}else if r.expires_at<=enrollment::now(){"expired"}else if r.claim.is_some(){"connecting"}else{"waiting"},"device":r.claim.map(|c|c.device),"origin":r.used_by})).collect::<Vec<_>>()}),
         )
     }
 
@@ -254,7 +261,6 @@ impl EnrollmentService {
             op: String,
             id: String,
             secret: String,
-            kind: InviteKind,
         }
         let request: Resolve = serde_json::from_value(request)?;
         ensure!(request.op == "resolve", "invalid_invite_operation");
@@ -264,7 +270,6 @@ impl EnrollmentService {
             .context("invite_expired_or_restart")?;
         ensure!(
             !record.revoked
-                && record.kind == request.kind
                 && zork_mesh::content_root(request.secret.as_bytes()) == record.secret_hash,
             "invalid_or_revoked_invite"
         );
@@ -279,7 +284,7 @@ impl EnrollmentService {
                 config
                     .group
                     .as_ref()
-                    .is_some_and(|g| !record.committed || enrolled(g, record.kind, origin)),
+                    .is_some_and(|g| !record.committed || enrolled(g, origin)),
                 "device_removed_from_mesh"
             );
         }
@@ -287,7 +292,6 @@ impl EnrollmentService {
             channel: zork_config::channel::current()?,
             relay_quic_port: config.relay_quic_port,
             quic_discovery_urls: config.quic_discovery_urls.clone(),
-            kind: record.kind,
             version: 1,
             id: record.id,
             secret: request.secret,
@@ -327,8 +331,7 @@ impl EnrollmentService {
         );
         if let Some(origin) = &record.used_by {
             ensure!(
-                origin == &request.device.origin
-                    && (!record.committed || enrolled(&group, record.kind, origin)),
+                origin == &request.device.origin && (!record.committed || enrolled(&group, origin)),
                 "invite_already_used_or_device_removed"
             );
             // Replaying the exact receipt is safe even after the short invitation expired.
@@ -342,12 +345,7 @@ impl EnrollmentService {
         } else {
             ensure!(record.expires_at > enrollment::now(), "invite_expired");
             ensure!(
-                (if record.kind == InviteKind::Client {
-                    group.clients.len()
-                } else {
-                    group.members.len()
-                }) < 16
-                    || enrolled(&group, record.kind, &request.device.origin),
+                group.members.len() < 16 || enrolled(&group, &request.device.origin),
                 "mesh_device_limit"
             );
         }
@@ -363,69 +361,19 @@ impl EnrollmentService {
         }
         if record.claim.is_none() {
             record.claim = Some(Claim {
-                verified: false,
-                approved: false,
                 endpoint,
                 device: request.device,
                 challenge: enrollment::secret(),
-                expires_at: if record.kind == InviteKind::Client {
-                    record.expires_at
-                } else {
-                    (enrollment::now() + 60).min(record.expires_at)
-                },
+                expires_at: (enrollment::now() + 60).min(record.expires_at),
             });
             self.save(&record)?;
         }
         let claim = record.claim.as_ref().unwrap();
         Ok(
-            json!({"challenge":claim.challenge,"origin":service.origin(),"address":self.node.address()?,"claim_watch":1}),
+            json!({"challenge":claim.challenge,"origin":service.origin(),"address":self.node.address()?}),
         )
     }
 
-    /// Observe only the claim already proved by this Synch identity. This does
-    /// not grant membership or execute confirm_join during a reconnect.
-    fn claim_status(
-        &self,
-        origin: &str,
-        id: &str,
-        secret: &str,
-        challenge: &str,
-    ) -> Result<(Value, Option<u64>)> {
-        let record = self.load(id).context("invite_expired_or_restart")?;
-        ensure!(
-            !record.revoked && zork_mesh::content_root(secret.as_bytes()) == record.secret_hash,
-            "invalid_or_revoked_invite"
-        );
-        ensure!(record.kind == InviteKind::Client, "invalid_invitation_kind");
-        let claim = record.claim.as_ref().context("invite_not_claimed")?;
-        ensure!(
-            claim.verified && claim.device.origin == origin && claim.challenge == challenge,
-            "invite_device_proof_mismatch"
-        );
-        let config = zork_config::load_config(&self.root)?.mesh;
-        let group = config.group.context("mesh_membership_missing")?;
-        ensure!(group.authority == self.origin, "invite_authority_changed");
-        if record.committed {
-            ensure!(
-                enrolled(&group, record.kind, origin),
-                "device_removed_from_mesh"
-            );
-        }
-        let expires = record
-            .used_by
-            .is_none()
-            .then_some(record.expires_at.min(claim.expires_at));
-        ensure!(
-            expires.is_none_or(|at| at > enrollment::now()),
-            "invite_expired"
-        );
-        Ok((
-            json!({"id":id,"status":if record.committed {"joined"} else if claim.approved {"approved"} else {"awaiting_approval"},"expires_at":expires}),
-            expires,
-        ))
-    }
-
-    /// Called only after Synch authenticated `origin`; no caller-supplied identity.
     pub async fn confirm(
         &self,
         state: &AppState,
@@ -460,27 +408,11 @@ impl EnrollmentService {
         );
         if let Some(used) = &record.used_by {
             ensure!(
-                used == origin && (!record.committed || enrolled(&group, record.kind, origin)),
+                used == origin && (!record.committed || enrolled(&group, origin)),
                 "device_removed_from_mesh"
             );
         }
         if !record.committed {
-            if record.kind == InviteKind::Client {
-                ensure!(
-                    record.used_by.is_some()
-                        || (record.expires_at > enrollment::now()
-                            && claim.expires_at > enrollment::now()),
-                    "invite_expired"
-                );
-                if !claim.verified {
-                    record.claim.as_mut().unwrap().verified = true;
-                    self.save(&record)?;
-                    state.db.realtime.notify(crate::realtime::MESH);
-                }
-                if !claim.approved {
-                    return Ok(json!({"joined":false,"status":"awaiting_approval"}));
-                }
-            }
             if record.used_by.is_none() {
                 ensure!(
                     record.expires_at > enrollment::now() && claim.expires_at > enrollment::now(),
@@ -491,17 +423,12 @@ impl EnrollmentService {
             record.used_by = Some(origin.into());
             self.save(&record)?;
             let device = claim.device.clone();
-            if !enrolled(&group, record.kind, origin) {
-                if record.kind == InviteKind::Client {
-                    ensure!(!group.contains(origin), "device_is_a_station");
-                    group.clients.push(device);
-                } else {
-                    ensure!(
-                        !group.clients.iter().any(|c| c.origin == origin),
-                        "device_is_a_client"
-                    );
-                    group.members.push(device);
-                }
+            if !enrolled(&group, origin) {
+                ensure!(
+                    !group.clients.iter().any(|c| c.origin == origin),
+                    "device_is_a_client"
+                );
+                group.members.push(device);
                 group.revision += 1;
             }
             group.validate()?;
@@ -536,14 +463,9 @@ impl EnrollmentService {
         let invitation = enrollment::ticket::resolve_on_node(
             &self.root.join("invite-bootstrap"),
             ticket,
-            InviteKind::Station,
             &self.node,
         )
         .await?;
-        ensure!(
-            invitation.kind == InviteKind::Station,
-            "client_invite_requires_client"
-        );
         let service = state.mesh.get().context("mesh_not_ready")?;
         let before = zork_config::load_config(&self.root)?.mesh;
         ensure!(
@@ -675,50 +597,6 @@ impl EnrollmentService {
         Ok(json!({"removed":true,"group":group}))
     }
 
-    pub async fn approve_client(
-        &self,
-        state: &AppState,
-        id: &str,
-        origin: &str,
-        claim_id: &str,
-    ) -> Result<Value> {
-        let service = state.mesh.get().context("mesh_not_ready")?;
-        let group = zork_config::load_config(&self.root)?
-            .mesh
-            .group
-            .context("mesh_membership_missing")?;
-        if group.authority != service.origin() {
-            return service
-                .membership_call(
-                    &group.authority,
-                    "approve_client_invite",
-                    json!({"id":id,"origin":origin,"claim_id":claim_id}),
-                )
-                .await;
-        }
-        let _guard = self.transaction.lock().await;
-        let mut record = self.load(id)?;
-        ensure!(
-            record.kind == InviteKind::Client
-                && !record.revoked
-                && record.expires_at > enrollment::now()
-                && record.used_by.is_none(),
-            "client_invite_not_active"
-        );
-        let claim = record.claim.as_mut().context("invite_not_claimed")?;
-        ensure!(
-            claim.verified
-                && claim.device.origin == origin
-                && zork_mesh::content_root(claim.challenge.as_bytes()) == claim_id
-                && claim.expires_at > enrollment::now(),
-            "invite_claim_changed"
-        );
-        claim.approved = true;
-        self.save(&record)?;
-        state.db.realtime.notify(crate::realtime::MESH);
-        Ok(json!({"approved":true}))
-    }
-
     pub async fn register_client(&self, state: &AppState, device: MeshDevice) -> Result<Value> {
         device.validate()?;
         let service = state.mesh.get().context("mesh_not_ready")?;
@@ -819,11 +697,8 @@ impl EnrollmentService {
     }
 }
 
-fn enrolled(group: &MeshGroup, kind: InviteKind, origin: &str) -> bool {
-    match kind {
-        InviteKind::Station => group.contains(origin),
-        InviteKind::Client => group.clients.iter().any(|c| c.origin == origin),
-    }
+fn enrolled(group: &MeshGroup, origin: &str) -> bool {
+    group.contains(origin)
 }
 
 pub fn own_device(root: &Path, origin: &str, node: &MeshNode) -> Result<MeshDevice> {
@@ -902,239 +777,4 @@ pub(crate) fn private_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     file.sync_all()?;
     std::fs::rename(temp, path)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod invitation_storage_tests {
-    use super::*;
-    #[tokio::test]
-    async fn claim_observation_is_bound_to_proof_authority_and_membership() {
-        let root = tempfile::tempdir().unwrap();
-        zork_config::ensure_layout(root.path()).unwrap();
-        let mesh = MeshConfig {
-            offline: true,
-            bind: Some("127.0.0.1:0".into()),
-            ..Default::default()
-        };
-        let mut runtime = zork_mesh::managed::start(root.path(), &mesh).await.unwrap();
-        let service = EnrollmentService::new(root.path(), &mesh, runtime.node())
-            .await
-            .unwrap();
-        let device = MeshDevice {
-            routes: None,
-            origin: format!("key:{}", "y".repeat(52)),
-            name: "Phone".into(),
-            addr: None,
-        };
-        zork_config::update_config(root.path(), |config| {
-            config.mesh.group = Some(MeshGroup {
-                authority: service.origin.clone(),
-                revision: 1,
-                members: vec![MeshDevice {
-                    routes: None,
-                    origin: service.origin.clone(),
-                    name: "Authority".into(),
-                    addr: None,
-                }],
-                clients: vec![],
-            });
-            Ok(())
-        })
-        .unwrap();
-        let secret = "a".repeat(64);
-        let mut record = InviteRecord {
-            ephemeral: true,
-            kind: InviteKind::Client,
-            id: "a".repeat(32),
-            secret_hash: zork_mesh::content_root(secret.as_bytes()),
-            expires_at: enrollment::now() + 900,
-            revoked: false,
-            used_by: None,
-            committed: false,
-            claim: Some(Claim {
-                verified: true,
-                approved: false,
-                endpoint: "127.0.0.1:1".into(),
-                device: device.clone(),
-                challenge: "proof".into(),
-                expires_at: enrollment::now() + 900,
-            }),
-        };
-        service.save(&record).unwrap();
-        let read = || service.claim_status(&device.origin, &record.id, &secret, "proof");
-        assert_eq!(read().unwrap().0["status"], "awaiting_approval");
-        assert!(service
-            .claim_status(&service.origin, &record.id, &secret, "proof")
-            .is_err());
-        assert!(service
-            .claim_status(&device.origin, &record.id, "wrong", "proof")
-            .is_err());
-        assert!(service
-            .claim_status(&device.origin, &record.id, &secret, "wrong")
-            .is_err());
-        record.claim.as_mut().unwrap().approved = true;
-        service.save(&record).unwrap();
-        assert_eq!(read().unwrap().0["status"], "approved");
-        record.expires_at = enrollment::now() - 1;
-        service.save(&record).unwrap();
-        assert_eq!(read().unwrap_err().to_string(), "invite_expired");
-        record.used_by = Some(device.origin.clone());
-        record.committed = true;
-        service.save(&record).unwrap();
-        assert_eq!(read().unwrap_err().to_string(), "device_removed_from_mesh");
-        zork_config::update_config(root.path(), |config| {
-            config
-                .mesh
-                .group
-                .as_mut()
-                .unwrap()
-                .clients
-                .push(device.clone());
-            Ok(())
-        })
-        .unwrap();
-        let joined = read().unwrap();
-        assert_eq!(joined.0["status"], "joined");
-        assert_eq!(joined.1, None);
-        record.revoked = true;
-        service.save(&record).unwrap();
-        assert_eq!(read().unwrap_err().to_string(), "invalid_or_revoked_invite");
-        record.revoked = false;
-        service.save(&record).unwrap();
-        zork_config::update_config(root.path(), |config| {
-            let group = config.mesh.group.as_mut().unwrap();
-            group.authority = device.origin.clone();
-            group.clients.clear();
-            group.members.push(device.clone());
-            Ok(())
-        })
-        .unwrap();
-        assert_eq!(read().unwrap_err().to_string(), "invite_authority_changed");
-        service.transport.close().await;
-        runtime.shutdown().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn pending_is_memory_only_but_committed_receipts_and_legacy_survive_restart() {
-        let root = std::env::temp_dir().join(format!("zork-invite-storage-{}", ulid::Ulid::new()));
-        std::fs::create_dir_all(&root).unwrap();
-        let config = MeshConfig {
-            offline: true,
-            bind: Some("127.0.0.1:0".into()),
-            ..Default::default()
-        };
-        let mut runtime = zork_mesh::managed::start(&root, &config).await.unwrap();
-        let make = || runtime.node();
-        let service = EnrollmentService::new(&root, &config, make())
-            .await
-            .unwrap();
-        let mut pending = InviteRecord {
-            ephemeral: true,
-            kind: InviteKind::Client,
-            id: "a".repeat(32),
-            secret_hash: "test".into(),
-            expires_at: enrollment::now() + 900,
-            revoked: false,
-            claim: None,
-            used_by: None,
-            committed: false,
-        };
-        service.save(&pending).unwrap();
-        assert!(!service.path(&pending.id).unwrap().exists());
-        assert!(service.load(&pending.id).is_ok());
-        let missing_id = pending.id.clone();
-        pending.id = "b".repeat(32);
-        pending.used_by = Some(format!("key:{}", "y".repeat(52)));
-        pending.committed = true;
-        service.save(&pending).unwrap();
-        let mut legacy = pending.clone();
-        legacy.id = "c".repeat(32);
-        legacy.ephemeral = false;
-        legacy.used_by = None;
-        legacy.committed = false;
-        service.save(&legacy).unwrap();
-        service.transport.close().await;
-        drop(service);
-        let restarted = EnrollmentService::new(&root, &config, make())
-            .await
-            .unwrap();
-        assert!(restarted.load(&missing_id).is_err());
-        assert!(restarted.load(&pending.id).unwrap().committed);
-        assert!(!restarted.load(&legacy.id).unwrap().ephemeral);
-        restarted.transport.close().await;
-        runtime.shutdown().await.unwrap();
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-}
-
-pub(crate) fn subscribe_claim(
-    state: AppState,
-    origin: String,
-    id: String,
-    secret: String,
-    challenge: String,
-) -> Result<tokio::sync::mpsc::Receiver<Value>> {
-    let changes = state.db.realtime.listen(crate::realtime::MESH);
-    let enrollment = state
-        .mesh
-        .get()
-        .context("mesh_not_ready")?
-        .enrollment
-        .clone();
-    let (_, expires) = enrollment.claim_status(&origin, &id, &secret, &challenge)?;
-    let source = ClaimSource {
-        enrollment,
-        origin,
-        id,
-        secret,
-        challenge,
-        expires: expires.map(|at| {
-            tokio::time::Instant::now()
-                + std::time::Duration::from_secs(at.saturating_sub(enrollment::now()))
-        }),
-    };
-    Ok(zork_notify::stream::spawn(
-        source,
-        changes,
-        4,
-        Some(zork_mesh::feed::HEARTBEAT),
-        |event| {
-            use zork_notify::stream::Event;
-            Some(match event {
-                Event::Data(data) => json!({"v":1,"ok":true,"data":data}),
-                Event::Heartbeat => json!({"v":1,"ok":true,"heartbeat":true}),
-                Event::Error(error) => json!({"v":1,"ok":false,"error":error.to_string()}),
-            })
-        },
-    ))
-}
-struct ClaimSource {
-    enrollment: Arc<EnrollmentService>,
-    origin: String,
-    id: String,
-    secret: String,
-    challenge: String,
-    expires: Option<tokio::time::Instant>,
-}
-impl zork_notify::stream::Source for ClaimSource {
-    type Item = Value;
-    type Error = anyhow::Error;
-    fn check_access(&self) -> Result<()> {
-        self.enrollment
-            .claim_status(&self.origin, &self.id, &self.secret, &self.challenge)
-            .map(|_| ())
-    }
-    fn expiry(&self) -> Option<(tokio::time::Instant, Self::Error)> {
-        self.expires
-            .map(|at| (at, anyhow::anyhow!("invite_expired")))
-    }
-    async fn read(&mut self) -> Result<zork_notify::stream::Page<Value>> {
-        let (status, _) =
-            self.enrollment
-                .claim_status(&self.origin, &self.id, &self.secret, &self.challenge)?;
-        let done = status["status"] != "awaiting_approval";
-        let mut page = zork_notify::stream::Page::snapshot(status);
-        page.done = done;
-        Ok(page)
-    }
 }

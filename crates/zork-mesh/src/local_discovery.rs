@@ -1,5 +1,5 @@
-//! Same-user, same-host address hints for Synch's existing QUIC transport.
-//! A hint grants no trust. Synch still checks membership and the peer's key.
+//! Same-user, same-host address hints for iroh's existing QUIC transport.
+//! A hint grants no trust. iroh still checks membership and the peer's key.
 use anyhow::{ensure, Context, Result};
 use fs2::FileExt;
 use futures_util::{future, stream, StreamExt};
@@ -204,7 +204,7 @@ pub(crate) async fn install(endpoint: &Endpoint) -> Result<Option<Registration>>
     };
     endpoint
         .address_lookup()
-        .context("Synch address lookup is unavailable")?
+        .context("iroh address lookup is unavailable")?
         .add(LocalLookup { directory });
     Ok(registration)
 }

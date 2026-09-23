@@ -16,9 +16,6 @@ pub struct ResourcesView {
     _task: Task<()>,
 }
 impl ResourcesView {
-    pub fn new(core: Arc<Resources>, locale: Locale, cx: &mut Context<Self>) -> Self {
-        Self::create(core, locale, Mode::Connections, cx)
-    }
     pub fn services(
         core: Arc<Resources>,
         node: String,
@@ -26,16 +23,6 @@ impl ResourcesView {
         cx: &mut Context<Self>,
     ) -> Self {
         Self::create(core, locale, Mode::Services(node), cx)
-    }
-    #[cfg(feature = "headless-bench")]
-    pub fn skills(
-        core: Arc<Resources>,
-        node: String,
-        agent: String,
-        locale: Locale,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        Self::create(core, locale, Mode::Skills { node, agent }, cx)
     }
     pub fn inspector(
         core: Arc<Resources>,
@@ -60,7 +47,7 @@ impl ResourcesView {
     }
     #[cfg(feature = "headless-bench")]
     pub fn fixture(data: ResourcesData, locale: Locale, cx: &mut Context<Self>) -> Self {
-        Self::new(Resources::fixture(data), locale, cx)
+        Self::create(Resources::fixture(data), locale, Mode::Inspector, cx)
     }
     fn create(core: Arc<Resources>, locale: Locale, mode: Mode, cx: &mut Context<Self>) -> Self {
         let mut updates = core.subscribe();
@@ -114,9 +101,7 @@ impl ResourcesView {
             self.updates.acknowledge(id);
         }
     }
-    pub fn set_locale(&mut self, locale: Locale, cx: &mut Context<Self>) {
-        self.view.update(cx, |v, cx| v.set_text(text(locale), cx));
-    }
+
     pub fn refresh(&self, cx: &mut Context<Self>) {
         self.view.update(cx, |v, cx| v.refresh(cx));
     }

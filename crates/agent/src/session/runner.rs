@@ -55,8 +55,6 @@ impl RunnerObserver for NoopRunnerObserver {}
 pub struct RunnerOptions {
     pub configuration_source: Option<ConfigurationSource>,
     pub selection_source: Option<SelectionSource>,
-    pub skill_sources: Option<crate::skills::SkillSources>,
-    pub skill_catalog: Option<crate::skills::SkillCatalogSource>,
     pub auto_wait: Duration,
     pub provider_retry_limit: u32,
     pub context_attempt_limit: u32,
@@ -74,8 +72,6 @@ impl Default for RunnerOptions {
         Self {
             configuration_source: None,
             selection_source: None,
-            skill_sources: None,
-            skill_catalog: None,
             auto_wait: Duration::from_secs(60),
             provider_retry_limit: 10,
             context_attempt_limit: 10,
@@ -650,45 +646,6 @@ impl SessionRunner {
             {
                 if let Some(confirmation) = &self.state.end_turn_confirmation {
                     notices.push(format!("[runtime.end_confirmation] {confirmation}"));
-                }
-            }
-            if let Some(source) = self.dependencies.options.skill_catalog.clone().or_else(|| {
-                self.dependencies
-                    .options
-                    .skill_sources
-                    .clone()
-                    .map(crate::skills::local_catalog)
-            }) {
-                let session = self.state.session_id.clone();
-                let catalog = tokio::task::spawn_blocking(move || {
-                    match source(&session) {
-                        Ok(catalog) => catalog,
-                        Err(error) => crate::skills::SkillCatalog {
-                            skills: Vec::new(),
-                            diagnostics: vec![error.to_string()],
-                            continuations: vec![],
-                        },
-                    }
-                    .notice()
-                })
-                .await
-                .map_err(|error| infrastructure_failure("skills.discover", error))?;
-                let previous = self
-                    .state
-                    .generation
-                    .entries
-                    .iter()
-                    .rev()
-                    .find_map(|entry| match entry {
-                        GenerationEntry::Notice { message }
-                            if message.starts_with(crate::skills::CATALOG_NOTICE) =>
-                        {
-                            Some(message)
-                        }
-                        _ => None,
-                    });
-                if previous != Some(&catalog) {
-                    notices.push(catalog);
                 }
             }
         }

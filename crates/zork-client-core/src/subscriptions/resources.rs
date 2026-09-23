@@ -34,22 +34,13 @@ mod tests {
                 name: "fixture".into(),
                 catalog: Some(crate::resources::ResourceCatalog {
                     origin: "node".into(),
-                    items: vec![
-                        crate::resources::Resource::new(
-                            ResourceKind::Mcp,
-                            "tool".into(),
-                            "Tools".into(),
-                            "ready".into(),
-                            "local".into(),
-                        ),
-                        crate::resources::Resource::new(
-                            ResourceKind::Service,
-                            "service".into(),
-                            "Service".into(),
-                            "running".into(),
-                            "shared".into(),
-                        ),
-                    ],
+                    items: vec![crate::resources::Resource::new(
+                        ResourceKind::Service,
+                        "service".into(),
+                        "Service".into(),
+                        "running".into(),
+                        "shared".into(),
+                    )],
                     issues: vec![],
                 }),
                 ..Default::default()
@@ -60,7 +51,7 @@ mod tests {
             source,
             store.clone(),
             Some("node".into()),
-            ResourceKind::Mcp,
+            ResourceKind::Service,
             None,
         )
         .unwrap();
@@ -72,7 +63,7 @@ mod tests {
                 .len(),
             1
         );
-        assert_eq!(first["snapshot"]["devices"][0]["items"][0]["id"], "tool");
+        assert_eq!(first["snapshot"]["devices"][0]["items"][0]["id"], "service");
         wire.finish(first["batch"].as_u64().unwrap(), false);
         let retry = wire.prepare().unwrap().unwrap();
         assert_eq!(retry["from"], 0);
@@ -149,7 +140,6 @@ impl ResourcesWire {
                 let mut value = json!({"loading":state.is_some_and(|s| s.loading),
                 "error":state.and_then(|s|s.error.as_ref())});
                 match state.and_then(|s| s.content.as_deref()) {
-                    Some(InspectionContent::Skills(skills)) => value["skills"] = json!(skills),
                     Some(InspectionContent::Details(details)) => value["details"] = json!(details),
                     None => {}
                 }

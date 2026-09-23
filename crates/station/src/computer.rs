@@ -1,4 +1,4 @@
-//! Native cua IPC to this device's signed desktop host; no MCP server or fallback daemon.
+//! Native cua IPC to this device's signed desktop host.
 use crate::state::AppState;
 use axum::{
     extract::State,

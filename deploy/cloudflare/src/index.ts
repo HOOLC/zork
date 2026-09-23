@@ -1,3 +1,4 @@
+import { installPage } from "./install";
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
 import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
@@ -58,6 +59,10 @@ export default {
         relay: "iroh-relay-1.1.0",
         google_login: authConfigured(env),
       });
+    }
+    if (path === "/install" && request.method === "GET") {
+      if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
+      return installPage();
     }
     if (path === "/relay") {
       if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
@@ -145,7 +150,7 @@ export default {
         return reply({ error: "invalid_request" }, 400);
       }
     }
-    if (path === "/v1/auth/session" || path === "/v1/auth/sessions" || /^\/v1\/auth\/sessions\/[^/]+$/.test(path)) {
+    if (path === "/v1/auth/devices" || path === "/v1/auth/session" || path === "/v1/auth/sessions" || /^\/v1\/auth\/sessions\/[^/]+$/.test(path)) {
       const token = bearerToken(request);
       const claims = token ? await verifyToken(env, token, "access") : null;
       if (!claims) return denied();

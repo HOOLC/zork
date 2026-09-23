@@ -1,6 +1,7 @@
+import { decodeKey } from "./pkarr";
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
-import { ACCESS_TTL_SEC, REFRESH_RETRY_SEC, SESSION_IDLE_SEC, SESSION_TTL_SEC, bearerToken, denied, digest, limited, nowSeconds, randomSecret, reply, seal, signToken, unseal, validId, verifyToken, type Claims, type Identity, type Tokens } from "./auth";
+import { ACCESS_TTL_SEC, REFRESH_RETRY_SEC, SESSION_IDLE_SEC, SESSION_TTL_SEC, bearerToken, denied, digest, limited, nowSeconds, randomSecret, readJson, reply, seal, signToken, unseal, validId, verifyToken, type Claims, type Identity, type Tokens } from "./auth";
 
 const LIMITS = { sessions: 16, requestsPerMinute: 120 };
 type Retry = { hash: string; request: string; until: number; response: string };
@@ -14,7 +15,15 @@ type Session = {
   refreshHash: string;
   retry?: Retry;
 };
-type AccountData = Identity & { blocked: boolean; sessions: Session[] };
+type Device = {
+  origin: string;
+  name: string;
+  station: boolean;
+  address: unknown;
+  channel: string;
+  session: string;
+};
+type AccountData = Identity & { blocked: boolean; sessions: Session[]; devices?: Device[] };
 /** Optional cloud account sessions do not authorize Mesh peers or transport. */
 export class Account extends DurableObject<Env> {
   private data(): AccountData | undefined {
@@ -129,6 +138,7 @@ export class Account extends DurableObject<Env> {
 
   private revoke(data: AccountData, id?: string) {
     data.sessions = id ? data.sessions.filter((s) => s.id !== id) : [];
+    data.devices = data.devices?.filter((device) => data.sessions.some((session) => session.id === device.session));
     this.save(data);
   }
 
@@ -183,6 +193,51 @@ export class Account extends DurableObject<Env> {
     if (!claims || !this.session(data, claims)) return denied();
     if (!this.charge()) return limited();
     const path = new URL(request.url).pathname;
+    if (path === "/v1/auth/devices" && request.method === "PUT") {
+      try {
+        const body = await readJson(request);
+        if (
+          typeof body.origin !== "string" ||
+          !/^key:[a-z0-9]{52}$/.test(body.origin) ||
+          typeof body.name !== "string" ||
+          body.name.length > 128 ||
+          typeof body.station !== "boolean" ||
+          !["release", "dev", "test"].includes(String(body.channel)) ||
+          typeof body.signature !== "string" ||
+          !/^[a-f0-9]{128}$/.test(body.signature) ||
+          !body.address ||
+          JSON.stringify(body.address).length > 4096
+        )
+          return reply({ error: "invalid_device" }, 400);
+        const key = await crypto.subtle.importKey("raw", decodeKey(body.origin.slice(4)), { name: "Ed25519" }, false, ["verify"]);
+        const signature = Uint8Array.from(body.signature.match(/../g)!, (byte) => parseInt(byte, 16));
+        const message = new TextEncoder().encode(`zork-account-device-v1:${claims.sid}:${body.origin}`);
+        if (!(await crypto.subtle.verify("Ed25519", key, signature, message))) return denied();
+        // Re-read after verification; logout/revocation may have run while awaiting crypto.
+        const current = this.data();
+        if (!current || !this.session(current, claims)) return denied();
+        const devices = (current.devices ?? []).filter((device) => current.sessions.some((session) => session.id === device.session && session.expires > nowSeconds() && session.idle > nowSeconds()));
+        const index = devices.findIndex((device) => device.origin === body.origin);
+        if (index < 0 && devices.length >= 64) return limited();
+        const device: Device = {
+          origin: body.origin,
+          name: body.name,
+          station: body.station,
+          address: body.address,
+          channel: String(body.channel),
+          session: claims.sid,
+        };
+        if (index < 0) devices.push(device);
+        else devices[index] = device;
+        current.devices = devices;
+        this.save(current);
+        return reply({
+          devices: devices.filter((item) => item.channel === body.channel && item.origin !== body.origin).map(({ session: _, ...item }) => item),
+        });
+      } catch {
+        return reply({ error: "invalid_device" }, 400);
+      }
+    }
     if (path === "/v1/auth/session" && request.method === "GET")
       return reply({
         subject: claims.sub,

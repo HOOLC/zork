@@ -24,14 +24,11 @@ fn deliver(source: &str, observer: &mut WireSubscription) -> Result<()> {
 async fn main() -> Result<()> {
     let root = std::env::args_os().nth(1).context("client root")?;
     let mut client = Client::open(std::path::Path::new(&root))?;
-    let mut invitation = client.local().observe(Key::Invitation)?;
     let mut directory = client.local().observe(Key::Directory)?;
-    let mut invitation_changes = invitation.signals();
     let mut directory_changes = directory.signals();
     let mut input = tokio::io::BufReader::new(tokio::io::stdin()).lines();
     let result = async {
         loop {
-            deliver("invitation", &mut invitation)?;
             deliver("directory", &mut directory)?;
             tokio::select! {
                 line = input.next_line() => {
@@ -43,13 +40,11 @@ async fn main() -> Result<()> {
                         Err(error) => emit(json!({"id":request["id"],"error":error.to_string()}))?,
                     }
                 }
-                result = invitation_changes.changed() => { result?; },
                 result = directory_changes.changed() => { result?; },
             }
         }
     }
     .await;
-    drop(invitation);
     drop(directory);
     client.pause().await?;
     result

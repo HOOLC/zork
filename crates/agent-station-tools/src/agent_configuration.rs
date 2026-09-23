@@ -8,7 +8,6 @@ pub fn schema(creating: bool, complete: bool) -> Value {
     let mut value = json!({"type":"object","properties":{
         "name":{"type":"string","maxLength":160},"avatar":{"type":["string","null"]},
         "selection":selection,"instructions":{"type":"string","maxLength":32000},
-        "skill_paths":{"type":"array","maxItems":32,"items":string()},
         "allowed_leaders":{"type":"array","maxItems":32,"uniqueItems":true,"items":string()}
     },"required":if complete {json!(["name","selection"])}else{json!([])},"additionalProperties":false});
     if creating {
@@ -19,7 +18,6 @@ pub fn schema(creating: bool, complete: bool) -> Value {
         ("avatar", "Avatar"),
         ("selection", "Model selection"),
         ("instructions", "Instructions"),
-        ("skill_paths", "Skill sources (JSON list)"),
         ("allowed_leaders", "Allowed leaders (JSON list)"),
         ("role", "Role"),
     ] {
@@ -42,7 +40,6 @@ pub fn schema(creating: bool, complete: bool) -> Value {
 pub struct ReviewChoices {
     pub models: Vec<Choice>,
     pub leaders: Vec<Choice>,
-    pub skills: Vec<Choice>,
 }
 pub fn selection_value(value: &Value) -> String {
     serde_json::to_string(&json!({"profile_id":value["profile_id"],"model":value["model"],"thinking":value["thinking"]})).unwrap()
@@ -93,7 +90,6 @@ pub fn form(creating: bool, values: &Value, changes: &Value, choices: ReviewChoi
             default: selection,
             options: choices.models,
         },
-        multiple("/skill_paths", "interaction_skills", choices.skills),
         multiple("/allowed_leaders", "interaction_grants", choices.leaders),
         text("/avatar", "interaction_avatar", FieldKind::Text, false),
     ];
@@ -186,7 +182,7 @@ mod tests {
     use super::*;
     #[test]
     fn review_uses_business_parameters_and_keeps_patch_omissions() {
-        let initial = json!({"name":"Before","selection":{"profile_id":"p","model":"m","thinking":"high"},"skill_paths":["skill"],"avatar":"avatar","instructions":"Keep","allowed_leaders":["leader"]});
+        let initial = json!({"name":"Before","selection":{"profile_id":"p","model":"m","thinking":"high"},"avatar":"avatar","instructions":"Keep","allowed_leaders":["leader"]});
         let form = form(
             false,
             &initial,
@@ -195,10 +191,6 @@ mod tests {
                 models: vec![Choice {
                     value: selection_value(&initial["selection"]),
                     label: "Model".into(),
-                }],
-                skills: vec![Choice {
-                    value: "skill".into(),
-                    label: "Skill".into(),
                 }],
                 leaders: vec![Choice {
                     value: "leader".into(),
@@ -215,7 +207,6 @@ mod tests {
         .unwrap();
         assert_eq!(patch, json!({"name":"User name"}));
         assert!(form.defaults().contains_key("/selection"));
-        assert!(form.defaults().contains_key("/skill_paths"));
         assert!(
             matches!(&form, Request::AgentConfiguration { prominent, .. } if prominent==&vec!["/name".to_owned()])
         );
@@ -223,7 +214,7 @@ mod tests {
     #[test]
     fn reviewed_model_choice_updates_the_whole_selection_and_preserves_hidden_values() {
         let selection = json!({"profile_id":"p","model":"new-model","thinking":"high"});
-        let values = json!({"name":"Helper","selection":selection,"role":"worker","skill_paths":["skill"],"allowed_leaders":["caller"]});
+        let values = json!({"name":"Helper","selection":selection,"role":"worker","allowed_leaders":["caller"]});
         let form = form(
             true,
             &values,
@@ -237,10 +228,6 @@ mod tests {
                     value: "caller".into(),
                     label: "Requesting Agent".into(),
                 }],
-                skills: vec![Choice {
-                    value: "skill".into(),
-                    label: "Code review".into(),
-                }],
             },
         );
         form.validate().unwrap();
@@ -253,7 +240,6 @@ mod tests {
         .unwrap();
         assert_eq!(submitted["selection"], selection);
         assert_eq!(submitted["name"], "Chosen name");
-        assert_eq!(submitted["skill_paths"], values["skill_paths"]);
         assert_eq!(submitted["allowed_leaders"], values["allowed_leaders"]);
         assert!(!form.defaults().contains_key("/selection/profile_id"));
     }

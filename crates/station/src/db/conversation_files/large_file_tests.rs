@@ -115,7 +115,6 @@ async fn large_file_round_trip_at_300_mib() -> anyhow::Result<()> {
         b_node
             .trust(&a_node.identity().await?, "capacity A", None)
             .await?;
-        a_node.add_api_source("capacity-files").await?;
         let object = a_node.put("capacity-files", "large.bin", &bytes).await?;
         drop(bytes);
         let received = b_node.read(&object).await?;

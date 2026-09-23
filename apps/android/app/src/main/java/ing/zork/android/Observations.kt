@@ -51,7 +51,6 @@ internal class Observations(private val root: String) {
     fun settings(peer: String) = frames("settings", peer, null)
     fun newChat(peer: String) = frames("new_chat", peer, null)
     fun history(peer: String, session: String) = frames("history", peer, session)
-    fun invitation() = frames("invitation", "", null)
     fun directory() = frames("directory", "", null)
     fun notifications() = frames("notifications", "", null, frameAligned = false)
     fun localScripts() = frames("local_scripts", "", null, JSONObject().put("projection", "local_scripts"), frameAligned = false)
@@ -59,7 +58,6 @@ internal class Observations(private val root: String) {
     fun account() = frames("account", "", null, JSONObject().put("projection", "account"), frameAligned = false)
     fun dataReset() = frames("data_reset", "", null, JSONObject().put("projection", "data_reset"), frameAligned = false)
     fun chatFiles() = frames("chat_files", "", null, JSONObject().put("projection", "chat_files"))
-    fun sharedFiles() = frames("shared_files", "", null, JSONObject().put("projection", "shared_files"))
     fun resources(selection: ResourceSelection) = frames("resources", selection.peer.orEmpty(), null,
         JSONObject().put("projection", "resources").put("peer", selection.peer ?: JSONObject.NULL)
             .put("kind", selection.kind).put("query", selection.query?.let(::JSONObject) ?: JSONObject.NULL))
@@ -96,7 +94,7 @@ internal class Observations(private val root: String) {
             try {
                 withContext(Dispatchers.IO) {
                     val key = JSONObject().put("projection", projection)
-                    if (projection !in listOf("invitation", "directory", "notifications")) key.put("peer", peer)
+                    if (projection !in listOf("directory", "notifications")) key.put("peer", peer)
                     if (projection == "conversation" || projection == "history") key.put("session", session ?: JSONObject.NULL)
                     val opened = call(JSONObject().put("op", "open").put("generation", lease.generation).put("key", keyOverride ?: key))
                     // Publish the handle even if cancellation wins dispatch back

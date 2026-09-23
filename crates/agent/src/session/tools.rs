@@ -683,7 +683,6 @@ enum BuiltinKind {
     HistoryList,
     FileRead,
     FileList,
-    FileMaterialize,
     FileWrite,
     FileEdit,
     ShellRun,
@@ -698,9 +697,6 @@ impl BuiltinKind {
             Self::HistoryList => ToolActivity::new("查看执行历史", "Reading activity history", ""),
             Self::FileRead => ToolActivity::field("读取", "Reading", args, "/path"),
             Self::FileList => ToolActivity::field("浏览目录", "Listing files", args, "/path"),
-            Self::FileMaterialize => {
-                ToolActivity::field("准备执行文件", "Preparing files", args, "/path")
-            }
             Self::FileWrite => ToolActivity::field("写入", "Writing", args, "/path"),
             Self::FileEdit => ToolActivity::field("编辑", "Editing", args, "/path"),
             Self::ShellRun => ToolActivity::new("执行命令", "Running command", ""),
@@ -794,20 +790,10 @@ fn builtin_contracts() -> Result<Vec<(BuiltinKind, ToolContract)>, ToolDefinitio
                 }),
             },
         ),
-        (
-            BuiltinKind::FileMaterialize,
-            ToolContract {
-                name: "file.materialize".into(),
-                version: version()?,
-                initial_description: "Prepare a synch:// file or directory as an immutable local snapshot when a shell command needs local paths.".into(),
-                detailed_description: "Fetch the selected shared file versions into a read-only cache outside the published tree. Returns a local path stable for this Station process lifetime. Prefer file.read for inspection. Does not install a skill or bind a source; copy into the workspace explicitly if editing is needed.".into(),
-                input_schema: serde_json::json!({"type":"object","properties":{"path":{"type":"string","minLength":1}},"required":["path"],"additionalProperties":false}),
-            },
-        ),
         (BuiltinKind::FileList, ToolContract {
             name:"file.list".into(),version:version()?,
-            initial_description:"List one page of a local or synch:// directory. Use returned file paths with file.read and next_cursor for continuation.".into(),
-            detailed_description:"Read direct children without fetching file bodies. Keep the returned directory path and next_cursor together when continuing; a synch:// path with origin captures one fixed tree snapshot. The cursor is scoped to that directory and snapshot.".into(),
+            initial_description:"List one page of a local directory. Use returned file paths with file.read and next_cursor for continuation.".into(),
+            detailed_description:"Read direct children without fetching file bodies. Keep the returned directory path and next_cursor together when continuing. The cursor is scoped to that directory.".into(),
             input_schema:serde_json::json!({"type":"object","properties":{"path":{"type":"string","minLength":1},"cursor":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":128}},"required":["path"],"additionalProperties":false}),
         }),
         (
@@ -945,16 +931,6 @@ impl ToolImplementation for BuiltinTool {
                         .await;
                     match result {
                         Ok(value) => success(value),
-                        Err(error) => failed(error.to_string()),
-                    }
-                }
-                BuiltinKind::FileMaterialize => {
-                    let path =
-                        std::path::PathBuf::from(arguments["path"].as_str().expect("parsed path"));
-                    match dependencies.files.materialize(path).await {
-                        Ok(path) => success(
-                            serde_json::json!({"path":path,"lifetime":"station_process","read_only":true}),
-                        ),
                         Err(error) => failed(error.to_string()),
                     }
                 }
@@ -1173,9 +1149,6 @@ async fn read_file_page(
 }
 
 fn resolve_path(workspace: &str, path: &str) -> std::path::PathBuf {
-    if path.starts_with("synch://") {
-        return path.into();
-    }
     let path = std::path::PathBuf::from(path);
     if path.is_absolute() {
         path
