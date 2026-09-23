@@ -145,11 +145,21 @@ def main():
     high, low = budget(env)
     if not root.is_dir():
         print(json.dumps({'root': str(root), 'bytes': 0, 'candidates': []})); return
-    with (root / '.zork-cache-gc.lock').open('a+') as lock:
+    # Scanning the whole cache must not hold the registration lock. Keep this
+    # separate lock for collector serialization, including read-only previews.
+    with (root / '.zork-cache-maintenance.lock').open('a+') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | (fcntl.LOCK_NB if args.auto or args.reclaim_released else 0))
         except BlockingIOError:
             print(json.dumps({'root': str(root), 'status': 'another cleanup is running'}))
+            return
+        mode = ('reclaim-preview' if args.dry_run else 'reclaim') if args.reclaim_released else \
+            'auto-preview' if args.dry_run else 'auto' if args.auto else 'apply' if args.apply else 'preview'
+        if args.auto and not any(p.is_relative_to(root / 'isolated') and cargo_tag(p) and released(p)
+                                 for p in candidates(root)):
+            print(json.dumps({'root': str(root), 'observed_at': datetime.now(timezone.utc).isoformat(),
+                              'mode': mode, 'free_bytes': shutil.disk_usage(root).free,
+                              'candidates': []}, indent=2))
             return
         if args.reclaim_released:
             chosen = released_targets(root)
@@ -165,8 +175,6 @@ def main():
         untagged = [str(path) for path in candidates(root)
                     if (not (args.auto or args.reclaim_released) or path.is_relative_to(root / 'isolated'))
                     and not cargo_tag(path)]
-        mode = ('reclaim-preview' if args.dry_run else 'reclaim') if args.reclaim_released else \
-            'auto-preview' if args.dry_run else 'auto' if args.auto else 'apply' if args.apply else 'preview'
         observed_at = datetime.now(timezone.utc).isoformat()
         print(json.dumps({'root': str(root), 'observed_at': observed_at,
                           'bytes': total, 'free_bytes': free_before, 'budget_bytes': high,
@@ -180,19 +188,24 @@ def main():
         for path, _ in chosen:
             if not args.reclaim_released and size(root) <= low:
                 break
-            if path.is_symlink() or not path.resolve().is_relative_to(root):
-                raise RuntimeError('Candidate changed; refusing cleanup')
-            if not cargo_tag(path) or ((args.auto or args.reclaim_released) and not released(path)) or \
-                    (path / '.zork-cache-keep').exists() or \
-                    (not args.reclaim_released and time.time() - latest_write(path) < args.min_age_hours * 3600) or \
-                    not idle(path):
-                print('Skipped active/recent target:', path); continue
-            try:
-                subprocess.run(['cargo', 'clean', '--target-dir', str(path)], cwd=ROOT, env=env, check=True)
-                cleaned.append(str(path))
-            except subprocess.CalledProcessError as error:
-                failed = True
-                print(f'Skipped target rejected by Cargo: {path}: {error}', file=sys.stderr)
+            # Retain the existing registration protocol for older worktrees.
+            # A source may have reclaimed this target while we were scanning;
+            # recheck all deletion guards under the lock before touching it.
+            with (root / '.zork-cache-gc.lock').open('a+') as registration:
+                fcntl.flock(registration, fcntl.LOCK_EX)
+                if path.is_symlink() or not path.resolve().is_relative_to(root):
+                    raise RuntimeError('Candidate changed; refusing cleanup')
+                if not cargo_tag(path) or ((args.auto or args.reclaim_released) and not released(path)) or \
+                        (path / '.zork-cache-keep').exists() or \
+                        (not args.reclaim_released and time.time() - latest_write(path) < args.min_age_hours * 3600) or \
+                        not idle(path):
+                    print('Skipped active/recent target:', path); continue
+                try:
+                    subprocess.run(['cargo', 'clean', '--target-dir', str(path)], cwd=ROOT, env=env, check=True)
+                    cleaned.append(str(path))
+                except subprocess.CalledProcessError as error:
+                    failed = True
+                    print(f'Skipped target rejected by Cargo: {path}: {error}', file=sys.stderr)
         remaining = size(root)
         print('Remaining bytes:', remaining)
         free_after = shutil.disk_usage(root).free

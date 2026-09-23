@@ -16,6 +16,105 @@ spec.loader.exec_module(cache)
 
 
 class BuildSettingsTest(unittest.TestCase):
+    def registration_command(self, root, worktree):
+        return [sys.executable, '-c',
+                'import sys; sys.path.insert(0, sys.argv[1]); '
+                'from pathlib import Path; from build_env import register_isolated_target; '
+                'print("ready", flush=True); '
+                'register_isolated_target({"ZORK_BUILD_ROOT": sys.argv[2], '
+                '"CARGO_TARGET_DIR": sys.argv[3]}, Path(sys.argv[4]))',
+                str(Path(__file__).resolve().parent / 'lib'), str(root),
+                str(root / 'isolated' / worktree.name), str(worktree)]
+
+    def test_registration_proceeds_during_cleanup_scan(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve() / 'cache'; root.mkdir()
+            worktree = Path(d).resolve() / 'new-task'; worktree.mkdir()
+            def scan(path):
+                subprocess.run(self.registration_command(root, worktree), check=True,
+                               capture_output=True, timeout=5)
+                return 0
+            with patch('sys.argv', ['cache_budget']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value={'ZORK_BUILD_ROOT': str(root)}), \
+                 patch('cache_budget.size', side_effect=scan):
+                cache.main()
+            self.assertTrue((root / 'isolated/new-task/.zork-cache-owner.json').is_file())
+
+    def test_auto_without_released_targets_skips_full_root_scan(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d).resolve()
+            with patch('sys.argv', ['cache_budget', '--auto']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value={'ZORK_BUILD_ROOT': str(root)}), \
+                 patch('cache_budget.size', side_effect=AssertionError('unnecessary scan')):
+                cache.main()
+
+    def test_cleanup_rechecks_owner_registered_during_planning(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d).resolve()
+            root = base / 'cache'
+            worktree = base / 'new/task'; worktree.mkdir(parents=True)
+            target = root / 'isolated/task'; target.mkdir(parents=True)
+            (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (target / '.rustc_info.json').write_text('{}')
+            (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(base / 'gone/task')}))
+            def plan(*args):
+                subprocess.run(self.registration_command(root, worktree), check=True,
+                               capture_output=True, timeout=5)
+                return [(target, 2**30)]
+            with patch('sys.argv', ['cache_budget', '--auto']), \
+                 patch('sys.stdout', new_callable=io.StringIO), \
+                 patch('cache_budget.build_environment', return_value={'ZORK_BUILD_ROOT': str(root)}), \
+                 patch('cache_budget.size', return_value=2**40), \
+                 patch('cache_budget.plan', side_effect=plan), \
+                 patch('cache_budget.idle', side_effect=AssertionError('live owner must be preserved')):
+                cache.main()
+            self.assertTrue(target.exists())
+            self.assertFalse(cache.released(target))
+
+    def test_registration_waits_until_actual_deletion_finishes(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d).resolve()
+            root = base / 'cache'
+            target = root / 'isolated/task'; target.mkdir(parents=True)
+            (target / 'CACHEDIR.TAG').write_text(cache.CACHEDIR_SIGNATURE + '\n')
+            (target / '.rustc_info.json').write_text('{}')
+            (target / '.zork-cache-owner.json').write_text(json.dumps({'worktree': str(base / 'gone/task')}))
+            worktree = base / 'new/task'; worktree.mkdir(parents=True)
+            children = []
+            def clean(*args, **kwargs):
+                child = subprocess.Popen(self.registration_command(root, worktree), stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True)
+                children.append(child)
+                self.assertEqual(child.stdout.readline().strip(), 'ready')
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    child.wait(timeout=.2)
+                import shutil
+                shutil.rmtree(target)
+            try:
+                with patch('sys.argv', ['cache_budget', '--reclaim-released']), \
+                     patch('sys.stdout', new_callable=io.StringIO), \
+                     patch('cache_budget.build_environment', return_value={'ZORK_BUILD_ROOT': str(root)}), \
+                     patch('cache_budget.size', return_value=2**20), \
+                     patch('cache_budget.idle', return_value=True), \
+                     patch('cache_budget.subprocess.run', side_effect=clean):
+                    cache.main()
+                for child in children:
+                    _, error = child.communicate(timeout=5)
+                    self.assertEqual(child.returncode, 0, error)
+                self.assertEqual(json.loads((target / '.zork-cache-owner.json').read_text()),
+                                 {'worktree': str(worktree)})
+            finally:
+                for child in children:
+                    if child.poll() is None:
+                        child.kill()
+                    child.communicate()
+
     def test_dependency_git_cannot_reconfigure_the_parent_repository(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / 'project'
