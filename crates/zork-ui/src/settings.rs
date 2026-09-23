@@ -15,31 +15,28 @@ pub fn row(
     control: impl IntoElement,
 ) -> Div {
     div()
+        .w_full()
         .flex()
+        .flex_wrap()
         .items_center()
-        .gap_5()
+        .gap_4()
         .py(px(14.))
         .border_b(gpui::px(crate::design::BORDER_WIDTH))
         .border_color(rgb(ZORK_UI.palette.border))
         .child(
             div()
                 .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(title.into()),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(rgb(ZORK_UI.palette.muted))
-                        .child(detail.into()),
-                ),
+                .min_w(px(160.))
+                .flex_basis(px(160.))
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(ui::text_role(title, crate::design::TextRole::SectionTitle))
+                .child(ui::text_role(detail, crate::design::TextRole::Description)),
         )
-        .child(control)
+        .child(div().flex_shrink_0().child(control))
 }
+
 fn header(title: impl Into<gpui::SharedString>) -> Div {
     div().pb(px(18.)).child(ui::page_title(title))
 }

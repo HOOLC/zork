@@ -158,6 +158,10 @@ impl ComposerInput {
         cx.notify();
     }
 
+    pub(crate) fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
     pub fn set_editable(&mut self, disabled: bool, readonly: bool, cx: &mut Context<Self>) {
         if (self.disabled, self.readonly) != (disabled, readonly) {
             self.disabled = disabled;

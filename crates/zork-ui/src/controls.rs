@@ -248,6 +248,8 @@ pub fn icon_button_sized(
         ZORK_UI.palette.canvas,
     )
     .size(px(size.extent()))
+    .min_h_0()
+    .py_0()
     .gap_0()
     .px_0()
 }
@@ -269,39 +271,13 @@ pub fn quiet_button(
         ZORK_UI.palette.canvas,
     )
     .h(px(size.extent()))
+    .min_h_0()
+    .py_0()
     .w_auto()
     .px_2()
     .gap_1()
 }
-pub fn choice(
-    id: impl Into<gpui::ElementId>,
-    text: impl Into<gpui::SharedString>,
-    selected: bool,
-    enabled: bool,
-) -> Action {
-    use crate::components::widgets::controls::ButtonVariant;
-    adaptive_action(
-        id,
-        text,
-        ActionStyle {
-            selected,
-            disabled: !enabled,
-            icon_only: Some(false),
-            variant: Some(if selected {
-                ButtonVariant::Soft
-            } else {
-                ButtonVariant::Outline
-            }),
-            ..Default::default()
-        },
-        ZORK_UI.palette.canvas,
-    )
-    .aria_toggled(if selected {
-        gpui::Toggled::True
-    } else {
-        gpui::Toggled::False
-    })
-}
+
 pub fn field(
     id: impl Into<gpui::ElementId>,
     text: &'static str,
@@ -338,8 +314,11 @@ pub fn field_with_error(
         .gap_2()
         .child(label(text))
         .child(
-            input_control(id, input, error.is_some(), cx)
-                .automation(AutomationRole::TextInput, text),
+            input_control(id, input, error.is_some(), cx).automation_enabled(
+                !input.read(cx).is_disabled(),
+                AutomationRole::TextInput,
+                text,
+            ),
         )
         .when_some(error, |v, error| {
             v.child(
@@ -504,334 +483,22 @@ fn menu_dropdown<V: 'static>(
     set_open: impl Fn(&mut V, bool, &mut gpui::Context<V>) + 'static,
     choose: impl Fn(&mut V, usize, &mut gpui::Context<V>) + 'static,
 ) -> gpui::AnyElement {
-    use crate::components::widgets::controls::{adaptive_action, ActionStyle};
-    use gpui::{KeyDownEvent, Role};
-    use std::rc::Rc;
-
-    let id: gpui::SharedString = id.into();
-    let measured = window.use_keyed_state(format!("{id}-bounds"), cx, |_, _| {
-        gpui::Bounds::<gpui::Pixels>::default()
-    });
-    let bounds = *measured.read(cx);
-    let control_height = if quiet { 24. } else { DROPDOWN_HEIGHT };
-    let control_width = if quiet {
-        crate::components::widgets::overlay::measure_label(&label, 12., window) + 28.
-    } else {
-        crate::components::widgets::overlay::measure_label_with_weight(
-            &label,
-            13.,
-            gpui::FontWeight::MEDIUM,
-            window,
-        )
-        .ceil()
-            + 24. // Horizontal padding.
-            + 7. + 12. // Gap and trailing chevron.
-            + if leading.is_some() { 7. + 15. } else { 0. }
-            + 2. // Border on both sides.
-    }
-    .min(max_width.unwrap_or(f32::MAX).max(48.));
-    let owner = cx.entity().downgrade();
-    let choose = Rc::new(choose);
-    let set_open = Rc::new(set_open);
-    let handles: Vec<_> = options
-        .iter()
-        .enumerate()
-        .map(|(index, _)| {
-            crate::components::widgets::controls::action_focus(
-                format!("{id}-option-{index}"),
-                window,
-                cx,
-            )
-        })
-        .collect();
-    let active: Vec<usize> = (0..options.len()).collect();
-    let entry = options
-        .iter()
-        .position(|(_, _, checked)| *checked)
-        .unwrap_or(0);
-    let focus = handles.get(entry).cloned().unwrap_or_else(|| {
-        crate::components::widgets::controls::action_focus(format!("{id}-menu"), window, cx)
-    });
-    let trigger_focus =
-        crate::components::widgets::controls::action_focus(format!("{id}-trigger"), window, cx);
-    if open
-        && !trigger_focus.is_focused(window)
-        && !handles.iter().any(|handle| handle.is_focused(window))
-    {
-        let blur_owner = owner.clone();
-        let blur_close = set_open.clone();
-        cx.defer(move |app| {
-            let action = blur_close.clone();
-            let _ = blur_owner.update(app, |view, cx| action(view, false, cx));
-        });
-    }
-    let pointer_owner = owner.clone();
-    let pointer_open = set_open.clone();
-    let pointer_focus = focus.clone();
-    let pointer_trigger_focus = trigger_focus.clone();
-    let trigger = adaptive_action(
-        id.clone(),
-        label.clone(),
-        ActionStyle {
-            field: !quiet,
-            quiet,
-            opens_panel: true,
-            disabled: !enabled || options.is_empty(),
-            icon: leading,
-            trailing: Some("icons/chevron-down.svg"),
-            ..Default::default()
-        },
-        ZORK_UI.palette.canvas,
+    crate::components::choice_menu::render(
+        id,
+        label,
+        options,
+        open,
+        enabled,
+        selection,
+        quiet,
+        max_width,
+        leading,
+        option_icons,
+        window,
+        cx,
+        set_open,
+        choose,
     )
-    .px_0()
-    .w(px(control_width))
-    .h(px(control_height))
-    .track_focus(&trigger_focus)
-    .on_click(move |event, window, app| {
-        if !matches!(event, gpui::ClickEvent::Keyboard(_)) && enabled {
-            let action = pointer_open.clone();
-            let _ = pointer_owner.update(app, |view, cx| action(view, !open, cx));
-            window.focus(
-                if open {
-                    &pointer_trigger_focus
-                } else {
-                    &pointer_focus
-                },
-                app,
-            );
-        }
-    })
-    .automation_enabled(
-        enabled && !options.is_empty(),
-        AutomationRole::Button,
-        label.clone(),
-    );
-    let choice_focus = trigger_focus.clone();
-    let panel_id = id.clone();
-    let panel_padding = 6.;
-    let panel_height = 320.;
-    let scroll =
-        window.use_keyed_state(format!("{id}-scroll"), cx, |_, _| gpui::ScrollHandle::new());
-    let scroll = scroll.read(cx).clone();
-    let mut rows = div()
-        .id(format!("{panel_id}-rows"))
-        .w_full()
-        .max_h(px(
-            panel_height - 2. * (panel_padding + crate::design::BORDER_WIDTH)
-        ))
-        .overflow_y_scroll()
-        .track_scroll(&scroll)
-        .flex()
-        .flex_col();
-    for (index, (key, text, checked)) in options.iter().enumerate() {
-        let callback = choose.clone();
-        let close = set_open.clone();
-        let owner = owner.clone();
-        let focus = handles[index].clone();
-        let trigger_focus = choice_focus.clone();
-        let text: gpui::SharedString = text.clone().into();
-        let automation_label = text.to_string();
-        let checked = *checked;
-        let icon = option_icons.get(index).copied().flatten();
-        let role = match selection {
-            crate::controls::Selection::Single => Role::RadioButton,
-            crate::controls::Selection::Multiple => Role::CheckBox,
-            crate::controls::Selection::Actions => Role::Button,
-        };
-        let item = gpui_base::Button::new(format!("{key}-control"))
-            .disabled(!enabled)
-            .selected(checked)
-            .track_focus(&focus)
-            .tab_stop(enabled && index == entry)
-            .role(role)
-            .accessibility_label(text.clone())
-            .on_click(move |_, window, app| {
-                let callback = callback.clone();
-                let close = close.clone();
-                let _ = owner.update(app, |view, cx| {
-                    callback(view, index, cx);
-                    if selection == crate::controls::Selection::Single {
-                        close(view, false, cx);
-                    }
-                });
-                if selection == crate::controls::Selection::Single {
-                    window.focus(&trigger_focus, app);
-                }
-            })
-            .w_full()
-            .min_h(px(32.))
-            .rounded(px(10.))
-            .border(px(crate::design::BORDER_WIDTH))
-            .border_color(gpui::rgba(0))
-            .focus_visible(|v| v.border_color(rgb(crate::design::FORM.focus_border)))
-            .when(selection != Selection::Actions, |v| {
-                v.aria_toggled(if checked {
-                    gpui::Toggled::True
-                } else {
-                    gpui::Toggled::False
-                })
-            })
-            .when(checked, |v| v.bg(rgb(ZORK_UI.palette.selected)))
-            .hover(|v| v.bg(rgb(INTERACTION.neutral_hover)))
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .px(px(10.))
-            .text_size(px(12.))
-            .when_some(icon, |v, path| v.child(self::icon(path, 14.)))
-            .child(div().flex_1().min_w_0().child(text))
-            .when(checked, |v| v.child(self::icon("icons/check.svg", 12.)));
-        rows = rows.child(
-            div()
-                .id(key.clone())
-                .w_full()
-                .child(item)
-                .automation_enabled(enabled, AutomationRole::Option, automation_label),
-        );
-    }
-    let mut panel = div()
-        .id(format!("{panel_id}-menu"))
-        .occlude()
-        .w(px(control_width.max(160.)))
-        .max_h(px(panel_height))
-        .rounded(px(PLAIN_POPOVER_RADIUS))
-        .bg(rgb(ZORK_UI.palette.canvas))
-        .border(px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
-        .p(px(panel_padding))
-        .flex()
-        .flex_col()
-        .child(crate::components::smooth::rounded_viewport(
-            format!("{panel_id}-viewport"),
-            PLAIN_POPOVER_RADIUS - panel_padding,
-            rows,
-        ));
-    // Select binds arrows and Enter to actions; handle them inside the popup
-    // before the root's opening/focus-transfer handlers see them.
-    let move_focus = Rc::new({
-        let handles = handles.clone();
-        let scroll = scroll.clone();
-        move |delta: isize, window: &mut gpui::Window, app: &mut gpui::App| {
-            if handles.is_empty() {
-                return;
-            }
-            let current = handles
-                .iter()
-                .position(|h| h.is_focused(window))
-                .unwrap_or(entry);
-            let next = (current as isize + delta).rem_euclid(handles.len() as isize) as usize;
-            scroll.scroll_to_item(next);
-            window.focus(&handles[next], app);
-            app.stop_propagation();
-        }
-    });
-    let up = move_focus.clone();
-    let confirm_handles = handles.clone();
-    let confirm_owner = owner.clone();
-    let confirm_choose = choose.clone();
-    let confirm_close = set_open.clone();
-    let confirm_trigger = trigger_focus.clone();
-    panel = panel
-        .on_action(move |_: &gpui_base::actions::SelectUp, w, app| up(-1, w, app))
-        .on_action(move |_: &gpui_base::actions::SelectDown, w, app| move_focus(1, w, app))
-        .on_action(move |_: &gpui_base::actions::Confirm, window, app| {
-            app.stop_propagation();
-            if !enabled {
-                return;
-            }
-            let Some(index) = confirm_handles.iter().position(|h| h.is_focused(window)) else {
-                return;
-            };
-            let _ = confirm_owner.update(app, |view, cx| {
-                confirm_choose(view, index, cx);
-                if selection == Selection::Single {
-                    confirm_close(view, false, cx);
-                }
-            });
-            if selection == Selection::Single {
-                window.focus(&confirm_trigger, app);
-            }
-        });
-    let focus_for_keys = handles.clone();
-    let outside_owner = owner.clone();
-    let outside_close = set_open.clone();
-    let outside_focus = trigger_focus.clone();
-    panel = panel
-        .on_key_down(move |event: &KeyDownEvent, window, cx| {
-            if active.is_empty() {
-                return;
-            }
-            let current = active
-                .iter()
-                .position(|index| focus_for_keys[*index].is_focused(window))
-                .unwrap_or(0);
-            let next = match event.keystroke.key.as_str() {
-                "up" => (current + active.len() - 1) % active.len(),
-                "down" => (current + 1) % active.len(),
-                "home" => 0,
-                "end" => active.len() - 1,
-                _ => return,
-            };
-            scroll.scroll_to_item(active[next]);
-            window.focus(&focus_for_keys[active[next]], cx);
-            window.prevent_default();
-            cx.stop_propagation();
-        })
-        .on_mouse_down_out(move |_, window, app| {
-            let action = outside_close.clone();
-            let _ = outside_owner.update(app, |view, cx| action(view, false, cx));
-            window.focus(&outside_focus, app);
-        });
-    let open_owner = owner.clone();
-    let open_action = set_open.clone();
-    let mut select = gpui_base::Select::new(format!("{id}-select"))
-        .open(open)
-        .disabled(!enabled || options.is_empty())
-        .focus_handle(&trigger_focus)
-        .content_focus_handle(&focus)
-        .accessibility_label(label.clone())
-        .on_open_change(move |next, _, app| {
-            let action = open_action.clone();
-            let _ = open_owner.update(app, |view, cx| action(view, next, cx));
-        })
-        .w_full()
-        .h_full()
-        .child(trigger);
-    if open {
-        select = select.child(
-            gpui::deferred(
-                gpui_base::Positioner::side(bounds)
-                    .placement(gpui_base::Placement::Bottom)
-                    .align(gpui_base::Align::Start)
-                    .offset(px(MENU_GAP))
-                    .margin(px(8.))
-                    .child(panel.automation(AutomationRole::ScrollArea, label.clone())),
-            )
-            .with_priority(350),
-        );
-    }
-    div()
-        .relative()
-        .w(px(control_width))
-        .flex_shrink_0()
-        .h(px(control_height))
-        .child(
-            gpui::canvas(
-                move |bounds, _, cx| {
-                    measured.update(cx, |current, cx| {
-                        if *current != bounds {
-                            *current = bounds;
-                            cx.notify();
-                        }
-                    });
-                },
-                |_, _, _, _| {},
-            )
-            .absolute()
-            .size_full(),
-        )
-        .child(select)
-        .into_any_element()
 }
 
 pub fn provider_path(provider: &str) -> &'static str {
@@ -851,7 +518,9 @@ pub fn provider_icon(provider: &str, size: f32) -> gpui::Div {
     gpui::div()
         .size(px(size))
         .flex_shrink_0()
-        .child(gpui::img(path).size(px(size)))
+        // Embedded provider marks are monochrome currentColor SVGs. Drawing them
+        // directly keeps the first presentation independent of image-loader wakeups.
+        .child(svg().path(path).size(px(size)).text_color(rgb(0x000000)))
 }
 
 /// Controlled switch with the same compact geometry in native and Web renderers.

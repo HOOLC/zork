@@ -570,7 +570,6 @@ impl<E: ControlElement> gpui::RenderOnce for HintTrigger<E> {
                         radius: 9.,
                         priority: 110,
                         role: gpui::Role::Tooltip,
-                        placement_min_height: 30.,
                     },
                     Content {
                         sections: vec![content.into_any_element()],

@@ -1,8 +1,8 @@
 pub(super) mod content;
 mod fan;
 pub(super) mod image;
+mod layout;
 pub(super) mod message;
-mod motion;
 mod preview;
 mod system_preview;
 use super::*;

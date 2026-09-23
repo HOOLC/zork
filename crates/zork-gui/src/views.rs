@@ -949,7 +949,9 @@ impl Render for RootView {
             self.start_background(cx);
         }
         self.measure_composer_geometry(window, cx);
-        self.prepare_composer_frame(window, cx);
+        if self.draft_state.files.is_empty() {
+            self.file_ui.draft = Default::default();
+        }
         if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();

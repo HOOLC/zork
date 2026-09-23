@@ -96,6 +96,31 @@ fn main() -> anyhow::Result<()> {
         Ok(())
     };
     draw(&mut cx)?;
+    // Provider marks are visible on the first settled frame, without another input.
+    let snapshot = driver.snapshot(false);
+    let pixels = cx.capture_screenshot(window.into())?;
+    let marks: Vec<_> = snapshot
+        .elements
+        .iter()
+        .filter(|e| e.id.starts_with("profile-provider-mark-") && e.visible)
+        .collect();
+    anyhow::ensure!(!marks.is_empty(), "No provider marks were mounted");
+    for mark in marks {
+        let b = &mark.visible_bounds;
+        let scale = snapshot.scale_factor;
+        let dark = (b.y * scale)..((b.y + b.height) * scale);
+        let mut ink = 0;
+        for y in dark.start as u32..dark.end as u32 {
+            for x in (b.x * scale) as u32..((b.x + b.width) * scale) as u32 {
+                let p = pixels.get_pixel(x, y);
+                if p[0] < 80 && p[1] < 80 && p[2] < 80 {
+                    ink += 1;
+                }
+            }
+        }
+        anyhow::ensure!(ink > 8, "Provider mark is blank: {}", mark.id);
+    }
+
     let click = |id: &str, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
         cx.update_window(window.into(), |_, w, cx| {
             driver.dispatch(

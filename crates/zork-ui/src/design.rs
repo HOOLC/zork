@@ -16,6 +16,8 @@ pub struct InteractionPalette {
     pub primary_pressed: u32,
     pub accent_hover: u32,
     pub accent_pressed: u32,
+    pub danger_hover: u32,
+    pub danger_pressed: u32,
     pub focus_border: u32,
 }
 pub const INTERACTION: InteractionPalette = InteractionPalette {
@@ -25,6 +27,8 @@ pub const INTERACTION: InteractionPalette = InteractionPalette {
     primary_pressed: 0x1B1E21,
     accent_hover: 0xDB572F,
     accent_pressed: 0xC84A27,
+    danger_hover: 0xA61B24,
+    danger_pressed: 0x8F1720,
     focus_border: 0x646970,
 };
 

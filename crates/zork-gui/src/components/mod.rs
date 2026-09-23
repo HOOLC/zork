@@ -4,7 +4,6 @@ pub mod activity;
 pub mod brand;
 pub mod interaction;
 pub mod message;
-pub mod selector_menu;
 pub mod text_input;
 
 use gpui::App;

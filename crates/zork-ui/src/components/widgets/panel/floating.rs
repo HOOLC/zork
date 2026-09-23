@@ -1,11 +1,10 @@
-//! Floating content positioned by gpui-base rather than material geometry.
+//! Floating content positioned by gpui-base.
 use super::*;
 use gpui_base::{Align, Placement as PopupPlacement, Positioner};
 
 #[derive(Clone, Copy)]
 pub enum Side {
     Above,
-    AboveEnd(f32),
     Below,
     Beside,
 }
@@ -16,7 +15,6 @@ pub struct FloatingStyle {
     pub radius: f32,
     pub priority: usize,
     pub role: Role,
-    pub placement_min_height: f32,
 }
 impl FloatingStyle {
     pub fn details(width: f32, side: Side) -> Self {
@@ -26,7 +24,6 @@ impl FloatingStyle {
             radius: crate::controls::CARD_RADIUS,
             priority: 210,
             role: Role::Tooltip,
-            placement_min_height: 2.,
         }
     }
 }
@@ -71,7 +68,6 @@ impl FloatingPanel {
         let width = style.width.min((viewport.width.as_f32() - 24.).max(2.));
         let (placement, align) = match style.side {
             Side::Above => (PopupPlacement::Top, Align::Center),
-            Side::AboveEnd(_) => (PopupPlacement::Top, Align::End),
             Side::Below => (PopupPlacement::Bottom, Align::Center),
             Side::Beside => (PopupPlacement::Right, Align::Start),
         };

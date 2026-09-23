@@ -10,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -17,12 +18,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Same neutral press token as Android IconAction; no platform-default ripple. */
+/** Material ripple clipped to the same native shape as the selected background. */
 @Composable
 internal fun Modifier.historyPress(enabled: Boolean = true, selected: Boolean = false,
     radius: androidx.compose.ui.unit.Dp = 6.dp, label: String? = null, onClick: () -> Unit): Modifier {
-    return then(if (selected) Modifier.background(ZorkColors.Selected, androidx.compose.foundation.shape.RoundedCornerShape(radius)) else Modifier)
-        .zorkPressable(enabled = enabled, radius = radius, onClick = onClick)
+    return clip(androidx.compose.foundation.shape.RoundedCornerShape(radius)).then(if (selected) Modifier.background(ZorkColors.Selected, androidx.compose.foundation.shape.RoundedCornerShape(radius)) else Modifier)
+        .zorkPressable(enabled = enabled, onClick = onClick)
         .then(if (label == null) Modifier else Modifier.semantics { contentDescription = label })
 }
 

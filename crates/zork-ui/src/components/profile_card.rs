@@ -61,6 +61,7 @@ pub fn render(
     .justify_start()
     .w_full()
     .on_click(on_click)
+    .h_auto()
     .min_h(px(80.))
     .px(px(12.))
     .py(px(8.))

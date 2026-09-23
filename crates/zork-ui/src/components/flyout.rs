@@ -52,7 +52,7 @@ impl Flyout {
     pub fn inspect(&self) -> serde_json::Value {
         let bounds = self.anchor.get();
         serde_json::json!({
-            "material":{"moving":false},
+            "moving":false,
             "anchor":[bounds.origin.x.as_f32(), bounds.origin.y.as_f32(),
                 bounds.size.width.as_f32(), bounds.size.height.as_f32()],
             "sourceVisible":self.is_open(),

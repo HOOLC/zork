@@ -115,7 +115,9 @@ pub fn catalog() -> Vec<Story> {
         (
             "field",
             "输入框",
-            &["empty", "value", "focus", "secret", "error"][..],
+            &[
+                "empty", "value", "focus", "secret", "error", "disabled", "readonly",
+            ][..],
             "crates/zork-ui/src/controls.rs::field + components/text_input.rs",
             "field",
         ),
@@ -386,6 +388,10 @@ impl PrimitiveStory {
         input.update(cx, |v, cx| {
             if matches!(story.state.as_str(), "value" | "focus") {
                 v.set_value("产品模型连接", cx);
+            }
+            if story.family == "field" && matches!(story.state.as_str(), "disabled" | "readonly") {
+                v.set_value("产品模型连接", cx);
+                v.set_editable(story.state == "disabled", story.state == "readonly", cx);
             }
             if story.state == "secret" {
                 v.set_value("fixture-secret", cx);

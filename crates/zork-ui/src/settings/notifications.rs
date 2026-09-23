@@ -125,37 +125,44 @@ pub fn notifications<V: 'static>(
             .automation(AutomationRole::Status, data.permission_label),
         )
         .child(
-            ui::button(
-                "notifications-test",
-                text("notification_test"),
-                false,
-                enabled,
-            )
-            .on_click(cx.listener(move |view, _, _, cx| {
-                if enabled {
-                    test(view, NotificationAction::Test, cx);
-                }
-            }))
-            .automation_enabled(
-                enabled,
-                AutomationRole::Button,
-                text("notification_test"),
-            ),
-        )
-        .when(data.system_settings, |content| {
-            content.child(
-                ui::button(
-                    "notifications-system-settings",
-                    text("notification_system_settings"),
-                    false,
-                    true,
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .child(
+                    ui::button(
+                        "notifications-test",
+                        text("notification_test"),
+                        false,
+                        enabled,
+                    )
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        if enabled {
+                            test(view, NotificationAction::Test, cx);
+                        }
+                    }))
+                    .automation_enabled(
+                        enabled,
+                        AutomationRole::Button,
+                        text("notification_test"),
+                    ),
                 )
-                .on_click(cx.listener(move |view, _, _, cx| {
-                    action(view, NotificationAction::SystemSettings, cx)
-                }))
-                .automation(AutomationRole::Button, text("notification_system_settings")),
-            )
-        })
+                .when(data.system_settings, |v| {
+                    v.child(
+                        ui::button(
+                            "notifications-system-settings",
+                            text("notification_system_settings"),
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            action(view, NotificationAction::SystemSettings, cx)
+                        }))
+                        .automation(AutomationRole::Button, text("notification_system_settings")),
+                    )
+                }),
+        )
         .child(
             div()
                 .text_size(px(12.))

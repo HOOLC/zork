@@ -10,13 +10,19 @@ use std::rc::Rc;
 pub struct AlertDialog {
     dialog: PlainDialog,
     cancel_label: Option<SharedString>,
+    destructive: bool,
 }
 impl AlertDialog {
     pub fn new(cx: &mut App) -> Self {
         Self {
             dialog: PlainDialog::new(cx).alert(),
             cancel_label: None,
+            destructive: false,
         }
+    }
+    pub fn destructive(mut self) -> Self {
+        self.destructive = true;
+        self
     }
     pub fn cancel_label(&mut self, label: impl Into<SharedString>) {
         self.cancel_label = Some(label.into());
@@ -76,21 +82,18 @@ impl AlertDialog {
             .initial_focus(controls::action_focus(cancel_id.clone(), window, cx));
         let footer = div()
             .flex()
+            .flex_wrap()
             .justify_end()
             .gap(px(8.))
             .child(
-                controls::action(
+                controls::adaptive_action(
                     cancel_id,
                     cancel_label,
-                    76.,
-                    32.,
                     ActionStyle {
                         disabled: busy,
                         ..Default::default()
                     },
                     ZORK_UI.palette.canvas,
-                    window,
-                    cx,
                 )
                 .on_click(cx.listener(move |v, _, w, cx| {
                     if !busy {
@@ -104,19 +107,19 @@ impl AlertDialog {
                 ),
             )
             .child(
-                controls::action(
+                controls::adaptive_action(
                     format!("{id}-confirm"),
                     confirm_label.clone(),
-                    104.,
-                    32.,
                     ActionStyle {
-                        primary: true,
+                        variant: Some(if self.destructive {
+                            controls::ButtonVariant::Danger
+                        } else {
+                            controls::ButtonVariant::Solid
+                        }),
                         busy,
                         ..Default::default()
                     },
                     ZORK_UI.palette.canvas,
-                    window,
-                    cx,
                 )
                 .on_click(cx.listener(move |v, _, w, cx| {
                     if !busy {

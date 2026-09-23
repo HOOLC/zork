@@ -322,7 +322,7 @@ impl Render for Page {
                 height: body_height,
                 editor: &self.input,
                 snapshot: &snapshot,
-                fan_progress: 0.,
+                fan_expanded: false,
                 fan_pinned: false,
                 handler,
                 action_size: 28.,

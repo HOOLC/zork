@@ -249,8 +249,7 @@ fn main() -> anyhow::Result<()> {
         )?;
         if !baseline {
             let expected = zork_ui::design::INTERACTION.accent_hover.to_be_bytes();
-            // Drain pending frame deliveries and the retained hover spring
-            // before checking the final color.
+            // Drain pending frame deliveries before checking the static hover color.
             for _ in 0..32 {
                 if sample(&mut cx)?[..3] == expected[1..] {
                     break;

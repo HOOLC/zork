@@ -12,10 +12,6 @@ impl RootView {
         self.participants.clone()
     }
 
-    pub(super) fn prepare_composer_frame(&mut self, window: &Window, cx: &mut Context<Self>) {
-        self.advance_file_fans(window, cx);
-    }
-
     pub(super) fn render_shared_composer(
         &mut self,
         window: &mut Window,
@@ -77,7 +73,7 @@ impl RootView {
                 height: extent + height,
                 editor: &self.composer_input,
                 snapshot: &snapshot,
-                fan_progress: self.file_ui.draft.progress,
+                fan_expanded: self.file_ui.draft.open(),
                 fan_pinned: self.file_ui.draft.pinned,
                 handler,
                 action_size: 24.,
