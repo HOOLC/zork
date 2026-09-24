@@ -75,12 +75,12 @@ private fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
                 }
                 LinearProgressIndicator(progress = { window.remaining / 100f }, modifier = Modifier.fillMaxWidth().height(3.dp),
                     color = ZorkColors.Ink, trackColor = ZorkColors.FieldBorder)
-                if (!summary) window.reset?.let { Text(it, fontSize = 11.sp, color = ZorkColors.Muted) }
+                if (!summary) window.reset?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
             }
         }
         quota.balance?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
     }
-    if (!summary) quota.checked?.let { Text(it, fontSize = 11.sp, color = ZorkColors.Muted) }
+    if (!summary) quota.checked?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -139,7 +139,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     SettingsListGroup {
                         SettingsListRow(profileName(row), subtext = "${provider?.text("label") ?: row.text("provider")} · ${billing?.text("label") ?: row.text("billing")}",
                             detail = "${row.optJSONArray("models")?.length() ?: 0} 个模型", leading = { ProviderMark(row.text("provider")) },
-                            trailing = { Text(if (row.optBoolean("verified")) "已验证" else "待验证", fontSize = 11.sp, color = if (row.optBoolean("verified")) ZorkColors.Online else ZorkColors.Warning) },
+                            trailing = { Text(if (row.optBoolean("verified")) "已验证" else "待验证", fontSize = 12.sp, color = if (row.optBoolean("verified")) ZorkColors.Online else ZorkColors.Warning) },
                             action = { actions.profile(row) })
                         val quota = remember(row) { quotaUi(row) }
                         if (row.text("profile_id") in state.profileFailed) Text("额度刷新失败，已保留上次结果", color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(16.dp))

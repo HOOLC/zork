@@ -173,7 +173,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
             if (card.details.isNotEmpty()) {
                 HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
                 card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(label, fontSize = 11.sp, color = ZorkColors.Muted)
+                    Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
                     InteractionValue(value)
                 } }
             }

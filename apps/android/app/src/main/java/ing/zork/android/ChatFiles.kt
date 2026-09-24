@@ -52,7 +52,7 @@ internal fun DeliveredFileCard(file: ChatFileUi, open: () -> Unit) {
             Glyph(R.drawable.ic_result, 22.dp)
             Column(Modifier.weight(1f)) {
                 Text(file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text("${file.bytes} 字节", fontSize = 11.sp, color = ZorkColors.Muted)
+                Text("${file.bytes} 字节", fontSize = 12.sp, color = ZorkColors.Muted)
             }
             Glyph(R.drawable.ic_download, 19.dp)
         }

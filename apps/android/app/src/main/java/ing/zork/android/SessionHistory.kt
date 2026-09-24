@@ -132,9 +132,9 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
                                 Text(overview.model, Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 overview.profile?.let { profile -> HistoryAction(profile.name, modifier = Modifier.widthIn(max = 160.dp), label = "模型连接与额度") { profileOpen = true } }
                             }
-                            Text(overview.context, fontSize = 11.sp, color = ZorkColors.Muted)
-                            Text(overview.tokens, fontSize = 11.sp, color = ZorkColors.Muted)
-                            Text(overview.cache, fontSize = 11.sp, color = ZorkColors.Muted)
+                            Text(overview.context, fontSize = 12.sp, color = ZorkColors.Muted)
+                            Text(overview.tokens, fontSize = 12.sp, color = ZorkColors.Muted)
+                            Text(overview.cache, fontSize = 12.sp, color = ZorkColors.Muted)
                         }
                     }
                     if (state.entries.isNotEmpty()) HistoryTimeline(state.entries, state.revision, now, state.highlightedId, timeline,
@@ -174,7 +174,7 @@ private fun HistoryEntryRow(entry: HistoryRow, child: Boolean, selected: Boolean
             if (target.actionable) HistorySubjectLink(target) { subject(target) }
             else Text(target.label, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(whenText, fontSize = 10.sp, color = ZorkColors.Muted, maxLines = 1)
+        Text(whenText, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
         Text(caption, fontSize = 12.sp, lineHeight = 18.sp,
             color = if (entry.failed) ZorkColors.Danger else ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }) { children, constraints ->
@@ -225,7 +225,7 @@ private fun HistoryGroupRow(block: HistoryBlock, expanded: Boolean, now: Long, m
         Column(Modifier.weight(1f)) {
             Row(Modifier.fillMaxWidth().heightIn(min = firstLine), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(block.title.ifBlank { "${block.members.size} 项常规操作" }, Modifier.weight(1f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (expanded) "收起" else "展开", fontSize = 11.sp, color = ZorkColors.Muted)
+                Text(if (expanded) "收起" else "展开", fontSize = 12.sp, color = ZorkColors.Muted)
             }
             Text(block.summary.ifBlank { historyRelative(block.start, now) }, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)

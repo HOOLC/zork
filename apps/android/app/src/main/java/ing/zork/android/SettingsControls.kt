@@ -106,8 +106,8 @@ internal fun SettingsListRow(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            subtext?.let { Text(it, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-            detail?.let { Text(it, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            subtext?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         value?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
         trailing?.invoke()

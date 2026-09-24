@@ -473,7 +473,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                             modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
                                 .clickable { following = true; followTail() }.padding(horizontal = 14.dp, vertical = 8.dp))
                     }
-                    if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 10.sp,
+                    if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 12.sp,
                         modifier = Modifier.padding(start = gutter + 10.dp, end = gutter, bottom = 5.dp))
                     val commentLimit = (availableHeight * .25f).coerceAtMost(160.dp)
                     if (state.comments.isNotEmpty()) CommentTray(state.comments, actions, commentLimit)
@@ -631,12 +631,12 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
                 }
             }
             val time = messageTime(row.createdAt)
-            if (time.isNotEmpty()) Text(time, fontSize = 11.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
+            if (time.isNotEmpty()) Text(time, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
             if (row.pending) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (row.deliveryStatus.isNotBlank()) Column(Modifier.weight(1f, fill = false)) {
-                    Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 10.sp, color = ZorkColors.Muted)
+                    Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 12.sp, color = ZorkColors.Muted)
                     if (row.deliveryStatus == "failed" && row.deliveryError.isNotBlank())
-                        Text(row.deliveryError, fontSize = 10.sp, color = ZorkColors.Muted)
+                        Text(row.deliveryError, fontSize = 12.sp, color = ZorkColors.Muted)
                 }
                 if (row.deliveryStatus == "failed") {
                     ZorkButton("重发", quiet = true, onClick = { resend(row.requestId.ifBlank { row.id }) },
@@ -658,7 +658,7 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(device.ifBlank { row.author }, modifier = Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val detail = listOf(row.model, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
-                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
             row.files.forEach { FileCard(it) { file(it) } }
@@ -768,7 +768,7 @@ internal fun IconAction(resource: Int, description: String, enabled: Boolean = t
 @Composable
 private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(ZorkColors.Paper).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(message, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(message, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         ZorkButton("重试", quiet = true, onClick = retry, enabled = !busy)
     }
 }
@@ -786,7 +786,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
     ZorkCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("待发送评论 · ${comments.size}", fontSize = 11.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
+                Text("待发送评论 · ${comments.size}", fontSize = 12.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
             }
             comments.forEach { comment ->
                 HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
@@ -815,7 +815,7 @@ private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
             Glyph(R.drawable.ic_result, 22.dp)
             Column(Modifier.weight(1f)) {
                 Text(file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text(file.caption, fontSize = 11.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 4.dp))
+                Text(file.caption, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 4.dp))
             }
             Glyph(R.drawable.ic_download, 19.dp)
         }

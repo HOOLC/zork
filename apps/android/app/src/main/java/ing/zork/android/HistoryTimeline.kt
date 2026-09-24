@@ -199,7 +199,7 @@ internal fun HistoryTimeline(entries: List<HistoryRow>, revision: Long, now: Lon
             repeat(tickCount) { tick ->
                 Text(tickLabels[tick],
                     if (stackedTicks) Modifier.fillMaxWidth().wrapContentWidth(if (tick == 0) Alignment.Start else Alignment.End) else Modifier,
-                    fontSize = 10.sp, fontFamily = ZorkFonts.Mono, color = ZorkColors.Muted, maxLines = 1)
+                    fontSize = 12.sp, fontFamily = ZorkFonts.Mono, color = ZorkColors.Muted, maxLines = 1)
             }
         }
         val tickModifier = Modifier.fillMaxWidth().padding(start = labelWidth.dp, top = 4.dp)
@@ -217,7 +217,7 @@ internal fun HistoryTimeline(entries: List<HistoryRow>, revision: Long, now: Lon
             Column(Modifier.width(labelWidth.dp).padding(top = 4.dp)) {
                 listOf("输入", "模型", "工具").forEachIndexed { index, name ->
                     Box(Modifier.height(heights[index].dp).fillMaxWidth().padding(end = 6.dp), contentAlignment = Alignment.TopEnd) {
-                        Text(name, fontSize = 10.sp, lineHeight = 11.sp, color = ZorkColors.Muted, maxLines = 1)
+                        Text(name, fontSize = 12.sp, lineHeight = 12.sp, color = ZorkColors.Muted, maxLines = 1)
                     }
                 }
             }
@@ -308,7 +308,7 @@ internal fun HistoryTimeline(entries: List<HistoryRow>, revision: Long, now: Lon
                     chosen != null -> "${chosen.title} · ${chosen.status}"
                     else -> "已加载 ${entries.size} 条记录 · 双指缩放"
                 }
-                Text(label, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                Text(label, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     color = if (chosen?.failed == true) ZorkColors.HistoryError else ZorkColors.Muted)
             }
             if (chosen != null) HistoryIconAction(R.drawable.ic_result, "查看时间轴记录详情") { detail(chosen.id) }
