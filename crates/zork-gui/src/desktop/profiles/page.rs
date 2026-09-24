@@ -33,7 +33,7 @@ impl ProfilesView {
     pub(super) fn menu(
         &self,
         id: String,
-        trigger: ui::Action,
+        trigger: zork_ui::automation::element::AutomationElement<ui::Action>,
         items: Vec<MenuItem>,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
@@ -193,7 +193,8 @@ impl ProfilesView {
         let menu = self.menu(
             format!("model-menu-{id}"),
             ui::icon_button(format!("model-more-{id}"), !self.busy)
-                .child(ui::icon("icons/more-horizontal.svg", 14.)),
+                .child(ui::icon("icons/more-horizontal.svg", 14.))
+                .automation(AutomationRole::Button, format!("{id} 更多操作")),
             vec![
                 MenuItem {
                     id: format!("model-edit-action-{id}"),
@@ -325,7 +326,8 @@ impl ProfilesView {
         let more = self.menu(
             "profile-more".into(),
             ui::icon_button("profile-more", !self.busy)
-                .child(ui::icon("icons/more-horizontal.svg", 14.)),
+                .child(ui::icon("icons/more-horizontal.svg", 14.))
+                .automation(AutomationRole::Button, "更多"),
             vec![
                 MenuItem {
                     id: "profile-menu-rename".into(),

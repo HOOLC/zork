@@ -810,6 +810,7 @@ impl ProfilesView {
             },
         );
         body = body
+            .children(self.copy_link(cx))
             .child(self.row("协议", div().w(px(220.)).child(api).into_any_element(), None))
             .child(self.row("上下文", context, Some(context_ref)))
             .children(self.field_error("profile-context-limit", cx))
@@ -822,8 +823,7 @@ impl ProfilesView {
             .children(self.field_error("profile-default-thinking", cx))
             .children(self.reference_list(Field::Thinking, cx))
             .child(self.row("能力", image, Some(caps_ref)))
-            .children(self.reference_list(Field::Capabilities, cx))
-            .children(self.copy_link(cx));
+            .children(self.reference_list(Field::Capabilities, cx));
         body
     }
     /// 取消 / 保存 for either the dialog or the inline editor.
