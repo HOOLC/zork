@@ -531,12 +531,14 @@ impl Render for EnrollmentFrame {
                     .child(self.navigation.clone()),
             )
             .when(visible, |frame| {
+                // Opening starts a command right away; the only button left
+                // in the dialog is "重新生成" after an invitation expired.
                 let data = zork_ui::network::EnrollmentData {
                     available: true,
                     busy: false,
                     command: String::new(),
-                    status: String::new(),
-                    status_label: String::new(),
+                    status: "expired".into(),
+                    status_label: "安装链接已过期，请重新生成。".into(),
                     notice: None,
                 };
                 frame.child(zork_ui::network::enrollment_dialog(

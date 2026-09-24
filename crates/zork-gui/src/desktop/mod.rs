@@ -154,6 +154,15 @@ impl DesktopRoot {
             v.navigate_device(action.clone(), cx);
         })
         .detach();
+        cx.subscribe(&navigation, |v, _, _: &navigation::Changed, cx| {
+            if v.managing
+                && v.management_tab == 4
+                && v.client_settings.page == client_settings::Page::Archived
+            {
+                cx.notify();
+            }
+        })
+        .detach();
         cx.subscribe(&navigation, |v, _, event: &navigation::Preview, cx| {
             v.preview_chat(event, cx);
         })
@@ -366,6 +375,8 @@ impl DesktopRoot {
             if let Some(mesh) = &self.mesh_settings {
                 mesh.update(cx, |v, cx| {
                     v.enrollment_only = true;
+                    // Opening "连接设备" is the request: no second click to generate.
+                    v.request_invite(cx);
                     cx.notify();
                 });
             }
@@ -1208,26 +1219,27 @@ impl Render for DesktopRoot {
                                     .min_h_0()
                                     .overflow_y_scroll()
                                     .child(self.render_client_settings_navigation(tab == 4, cx))
-                                    .child(
-                                        self.settings_tabs
-                                            .tab("settings-models".into(), tab == 0)
-                                            .child(ui::icon("icons/models.svg", 20.))
-                                            .child("模型连接")
-                                            .on_click(cx.listener(|v, _, _, cx| {
-                                                v.apply_navigation(
-                                                    navigation::Destination::Manage(0),
-                                                    cx,
-                                                )
-                                            }))
-                                            .automation(AutomationRole::Button, "模型连接"),
-                                    )
+                                    // Mesh: model connections, devices, connect a device.
                                     .child(
                                         self.settings_tabs
                                             .section(
-                                                "device-settings-heading",
+                                                "mesh-settings-heading",
                                                 self.client_settings
                                                     .locale
-                                                    .text("device_settings_title"),
+                                                    .text("settings_mesh_title"),
+                                            )
+                                            .child(
+                                                self.settings_tabs
+                                                    .tab("settings-models".into(), tab == 0)
+                                                    .child(ui::icon("icons/models.svg", 20.))
+                                                    .child("模型连接")
+                                                    .on_click(cx.listener(|v, _, _, cx| {
+                                                        v.apply_navigation(
+                                                            navigation::Destination::Manage(0),
+                                                            cx,
+                                                        )
+                                                    }))
+                                                    .automation(AutomationRole::Button, "模型连接"),
                                             )
                                             .children(self.nodes.clone().into_iter().map(|node| {
                                                 let selected =
@@ -1239,7 +1251,7 @@ impl Render for DesktopRoot {
                                                             format!("settings-device-{}", node.id),
                                                             selected && tab == 3,
                                                         )
-                                                        .child(ui::icon("icons/node.svg", 20.))
+                                                        // The device mark is the row's only icon.
                                                         .child(
                                                             div().flex_1().min_w_0().child(
                                                                 zork_ui::device_name::label(
@@ -1290,7 +1302,8 @@ impl Render for DesktopRoot {
                                                     }))
                                                     .automation(AutomationRole::Button, "连接设备"),
                                             ),
-                                    ),
+                                    )
+                                    .child(self.render_advanced_settings_navigation(tab == 4, cx)),
                             )
                             .child(
                                 div()

@@ -65,7 +65,6 @@ pub struct Navigation {
     regions: crate::components::region::Regions<Self>,
     devices: Vec<Device>,
     active: Option<String>,
-    show_archived: bool,
     hovered_row: Option<String>,
     hovered_action: Option<String>,
     focus_subscriptions: RefCell<HashMap<String, Vec<gpui::Subscription>>>,
@@ -83,7 +82,6 @@ impl Navigation {
             regions: Default::default(),
             devices: vec![],
             active: None,
-            show_archived: false,
             hovered_row: None,
             hovered_action: None,
             focus_subscriptions: Default::default(),
@@ -117,13 +115,12 @@ impl Navigation {
         let removed = self.devices.len() != devices.len();
         self.devices = devices;
         if !self.focus_subscriptions.get_mut().is_empty() || self.hovered_row.is_some() {
-            let show_archived = self.show_archived;
             let visible = self
                 .devices
                 .iter()
                 .flat_map(|device| {
                     device.chats.iter().filter_map(move |chat| {
-                        (chat.archived == show_archived)
+                        (!chat.archived)
                             .then(|| format!("chat-{}-{}", device.id, chat.chat_id))
                     })
                 })
@@ -215,7 +212,8 @@ impl Navigation {
             .devices
             .iter()
             .flat_map(|device| device.chats.iter().map(move |chat| (device, chat)))
-            .filter(|(_, chat)| chat.archived == self.show_archived)
+            // Archived Chats live in client settings, not the daily list.
+            .filter(|(_, chat)| !chat.archived)
             .collect();
         chats.sort_by(|a, b| {
             b.1.updated_at
@@ -235,38 +233,6 @@ impl Navigation {
                 )
                 .automation(AutomationRole::Button, self.locale.text("new_chat"))
         });
-        list = list.child(
-            self.tabs
-                .tab("chat-archive-filter".into(), self.show_archived)
-                .child(self.locale.text(if self.show_archived {
-                    "chat_show_active"
-                } else {
-                    "chat_show_archived"
-                }))
-                .on_click(cx.listener(|v, _, _, cx| {
-                    v.show_archived = !v.show_archived;
-                    v.hovered_row = None;
-                    v.hovered_action = None;
-                    v.focus_subscriptions.borrow_mut().clear();
-                    crate::components::region::invalidate(cx, &["chats"]);
-                }))
-                .automation(
-                    AutomationRole::Button,
-                    self.locale.text(if self.show_archived {
-                        "chat_show_active"
-                    } else {
-                        "chat_show_archived"
-                    }),
-                ),
-        );
-        if chats.is_empty() && self.show_archived {
-            list = list.child(
-                div()
-                    .px_2()
-                    .py_2()
-                    .child(self.locale.text("chat_archive_empty")),
-            );
-        }
         let mut previous = String::new();
         for (device, chat) in chats {
             let label = self.day_label(&chat.updated_at);

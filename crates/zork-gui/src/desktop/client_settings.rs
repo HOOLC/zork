@@ -10,9 +10,10 @@ use zork_client_core::preferences::Theme;
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Page {
     #[default]
-    Notifications,
-    Appearance,
     Account,
+    Appearance,
+    Notifications,
+    Archived,
     Data,
 }
 
@@ -137,35 +138,87 @@ impl DesktopRoot {
     fn client_locale(&self) -> Locale {
         self.client_settings.locale
     }
+    fn client_settings_tab(
+        &self,
+        selected: bool,
+        page: Page,
+        key: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let locale = self.client_locale();
+        self.settings_tabs
+            .tab(key.into(), selected && self.client_settings.page == page)
+            .child(locale.text(key))
+            .on_click(cx.listener(move |view, _, _, cx| {
+                view.management_tab = 4;
+                view.client_settings.page = page;
+                if page == Page::Notifications {
+                    view.refresh_notification_permission(cx);
+                }
+                cx.notify();
+            }))
+            .automation(AutomationRole::Button, locale.text(key))
+    }
+    /// 客户端: account, appearance, notifications, then archived Chats.
     pub(super) fn render_client_settings_navigation(
         &self,
         selected: bool,
         cx: &mut Context<Self>,
     ) -> Div {
-        let locale = self.client_locale();
-        let mut pages = vec![(Page::Notifications, "client_notifications")];
-        pages.push((Page::Appearance, "client_appearance"));
-        pages.push((Page::Account, "client_account"));
-        pages.push((Page::Data, "client_data"));
+        let pages = [
+            (Page::Account, "client_account"),
+            (Page::Appearance, "client_appearance"),
+            (Page::Notifications, "client_notifications"),
+            (Page::Archived, "client_archived"),
+        ];
         self.settings_tabs
             .section(
                 "client-settings-heading",
-                locale.text("client_settings_title"),
+                self.client_locale().text("client_settings_title"),
             )
-            .children(pages.into_iter().map(|(page, key)| {
-                self.settings_tabs
-                    .tab(key.into(), selected && self.client_settings.page == page)
-                    .child(locale.text(key))
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.management_tab = 4;
-                        view.client_settings.page = page;
-                        if page == Page::Notifications {
-                            view.refresh_notification_permission(cx);
-                        }
-                        cx.notify();
-                    }))
-                    .automation(AutomationRole::Button, locale.text(key))
-            }))
+            .children(
+                pages
+                    .into_iter()
+                    .map(|(page, key)| self.client_settings_tab(selected, page, key, cx)),
+            )
+    }
+    /// 高级: local data, after the Mesh section.
+    pub(super) fn render_advanced_settings_navigation(
+        &self,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        self.settings_tabs
+            .section(
+                "advanced-settings-heading",
+                self.client_locale().text("settings_advanced_title"),
+            )
+            .child(self.client_settings_tab(selected, Page::Data, "client_data", cx))
+    }
+    fn render_archived(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        use zork_ui::settings::archived::Action;
+        let locale = self.client_locale();
+        let text = zork_ui::resources::Text(std::rc::Rc::new(move |key| locale.text(key).into()));
+        let chats = self.navigation.read(cx).archived_chats();
+        zork_ui::settings::archived::list(chats, &text, cx, |view, action, cx| match action {
+            Action::Open { node, chat } => view.navigate_device(
+                super::navigation::Navigate {
+                    node: Some(node),
+                    destination: super::navigation::Destination::Conversation {
+                        session: chat,
+                        leader: None,
+                    },
+                },
+                cx,
+            ),
+            Action::Restore {
+                node,
+                chat,
+                expected_message_count,
+            } => view.navigation.update(cx, |navigation, _| {
+                navigation.set_chat_archived(&node, &chat, false, expected_message_count)
+            }),
+        })
     }
 
     pub(super) fn render_client_settings(
@@ -180,6 +233,7 @@ impl DesktopRoot {
             Page::Notifications => "client_notifications",
             Page::Appearance => "client_appearance",
             Page::Account => "client_account",
+            Page::Archived => "client_archived",
             Page::Data => "client_data",
         };
         let account_page = state.page == Page::Account;
@@ -187,6 +241,7 @@ impl DesktopRoot {
             Page::Notifications => self.render_notification_settings(cx),
             Page::Appearance => self.render_appearance(cx),
             Page::Account => self.render_account(window, cx),
+            Page::Archived => div().child(self.render_archived(cx)),
             Page::Data => {
                 let data = zork_ui::settings::data::Data {
                     busy: state.reset.busy(),
