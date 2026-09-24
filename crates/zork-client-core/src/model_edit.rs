@@ -84,6 +84,10 @@ pub struct ModelInput {
     pub thinking: String,
     pub default_thinking: String,
     pub images: bool,
+    /// Structured thinking chosen in the editor. When absent, `thinking` and
+    /// `default_thinking` are read as the legacy comma-separated list.
+    #[serde(default)]
+    pub thinking_scheme: Option<crate::thinking::ThinkingScheme>,
 }
 
 pub fn model_form(profile: &Value, providers: &[Value], model: Option<Value>) -> ModelInput {
@@ -130,9 +134,27 @@ pub fn model_form(profile: &Value, providers: &[Value], model: Option<Value>) ->
             .unwrap_or("off")
             .into(),
         images: defaults.is_some_and(model_accepts_images),
+        thinking_scheme: defaults.map(crate::model_catalog::stored_scheme),
         previous: model,
         copied: None,
     }
+}
+/// The form for a model, with unset fields filled from the built-in catalog
+/// while the model is still unconfigured (new, or fetched without limits).
+pub fn model_form_with_catalog(
+    profile: &Value,
+    providers: &[Value],
+    model: Option<Value>,
+) -> ModelInput {
+    let input = model_form(profile, providers, model);
+    let unconfigured = input
+        .previous
+        .as_ref()
+        .is_none_or(|m| !m["limits"].is_object());
+    if !unconfigured {
+        return input;
+    }
+    crate::model_catalog::fill_input(input, profile["provider"].as_str()).0
 }
 pub fn copy_form(input: ModelInput, source: Value) -> ModelInput {
     let mut copied = model_form(&Value::Null, &[], Some(source.clone()));
@@ -191,28 +213,19 @@ impl ModelInput {
                 &format!("需小于上下文上限（{}）。", compact_tokens(context.unwrap())),
             );
         }
-        let levels = self.levels();
-        if levels.is_empty() || !levels.iter().any(|v| v == self.default_thinking.trim()) {
-            fail(
-                "profile-default-thinking",
-                "默认推理级别须包含在可用级别中。",
-            );
+        if let Some(message) = self.scheme().error(output) {
+            fail("profile-default-thinking", &message);
         }
         errors
     }
-    fn levels(&self) -> Vec<String> {
-        let mut result = Vec::new();
-        for value in self
-            .thinking
-            .split([',', '，'])
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            if !result.iter().any(|v| v == value) {
-                result.push(value.to_owned());
-            }
-        }
-        result
+    /// The thinking scheme this form describes.
+    pub fn scheme(&self) -> crate::thinking::ThinkingScheme {
+        self.thinking_scheme.clone().unwrap_or_else(|| {
+            crate::thinking::ThinkingScheme::from_legacy_input(
+                &self.thinking,
+                &self.default_thinking,
+            )
+        })
     }
     pub fn apply(&self, models: Vec<Value>) -> anyhow::Result<Vec<Value>> {
         if let Some(error) = self.errors(&models).first() {
@@ -236,8 +249,9 @@ impl ModelInput {
         }
         model["id"] = json!(self.id.trim());
         model["api"] = json!(self.api);
-        model["thinking"] = json!(self.levels());
-        model["default_thinking"] = json!(self.default_thinking.trim());
+        let (thinking, default_thinking) = self.scheme().encode();
+        model["thinking"] = json!(thinking);
+        model["default_thinking"] = json!(default_thinking);
         set_model_image_input(&mut model, self.images);
         if !model["limits"].is_object() {
             model["limits"] = json!({});
