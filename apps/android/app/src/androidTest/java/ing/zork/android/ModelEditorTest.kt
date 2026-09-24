@@ -292,7 +292,7 @@ class ModelEditorTest {
             ui.click("编辑 o3"); ui.await("与预设一致"); ui.click("移除"); ui.await("已移除 o3")
             ui.click("手动添加"); ui.focus("模型 ID")
             ui.await("工作室订阅 上可用")
-            ui.awaitPrefix("o3，o3")
+            ui.awaitPrefix("o3，200K")
             ui.capture("24-reported-suggestion")
         }
     }
@@ -383,7 +383,7 @@ class ModelEditorTest {
             val chip = ui.bounds("删除 $long")
             val width = ui.instrumentation.targetContext.resources.displayMetrics.widthPixels
             assertTrue("chip overflows: $chip", chip.right <= width)
-            ui.capture("35-long-level")
+            ui.showOnScreen("删除 $long"); ui.capture("35-long-level")
             ui.click("删除 $long"); ui.awaitGone("删除 $long")
         }
     }

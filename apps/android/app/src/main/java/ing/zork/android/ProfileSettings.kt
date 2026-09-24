@@ -196,7 +196,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
         scope.launch {
             // A connection without a model-list API, or a failure, just means no such suggestions.
             val ids = try { actions.perform("available_models", JSONObject().put("profile", profileId)).optJSONArray("ids") }
-                catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                catch (e: CancellationException) { throw e } catch (_: Exception) { reportedRead = false; null }
             reported.clear(); ids?.let { a -> reported.addAll((0 until a.length()).map { a.optString(it) }.filter(String::isNotBlank)) }
         }
     }

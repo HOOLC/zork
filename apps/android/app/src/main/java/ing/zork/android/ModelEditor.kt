@@ -372,9 +372,11 @@ private fun Suggestions(suggestions: JSONObject?, highlight: Int, enabled: Boole
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 2.dp))
             group.optJSONArray("items").objects().forEach { item ->
                 val at = index++
+                // A preset named like its id (o3) would only repeat it.
+                val name = item.text("name").takeUnless { it.equals(item.text("id"), ignoreCase = true) }.orEmpty()
                 SuggestionRow(at == highlight, enabled, { pick(item.text("id")) },
-                    listOf(item.text("id"), item.text("name"), item.text("meta")).filter(String::isNotBlank).joinToString("，")) {
-                    TwoLines(item.text("id"), listOf(item.text("name"), item.text("meta")), mono = true)
+                    listOf(item.text("id"), name, item.text("meta")).filter(String::isNotBlank).joinToString("，")) {
+                    TwoLines(item.text("id"), listOf(name, item.text("meta")), mono = true)
                 }
             }
         }
@@ -590,6 +592,10 @@ private fun ThinkingBody(thinking: JSONObject, enabled: Boolean, step: (String, 
     levelAdding: Boolean, setLevelAdding: (Boolean) -> Unit, levelText: String, setLevelText: (String) -> Unit,
     budgetAdding: Boolean, setBudgetAdding: (Boolean) -> Unit, budgetText: String, setBudgetText: (String) -> Unit) {
     fun send(type: String, vararg fields: Pair<String, Any?>) = step(type, fields)
+    val chosen = thinking.opt("selected").let { it != null && it != JSONObject.NULL }
+    val error = thinking.text("error").takeIf { it.isNotBlank() }
+    // Nothing chosen yet: the error belongs under the question, not below five options.
+    if (!chosen) error?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Danger) }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         thinking.optJSONArray("kinds").objects().forEach { kind ->
             val selected = kind.optBoolean("selected")
@@ -615,8 +621,8 @@ private fun ThinkingBody(thinking: JSONObject, enabled: Boolean, step: (String, 
             }
         }
     }
-    thinking.text("error").takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Danger) }
-    if (thinking.opt("selected").let { it != null && it != JSONObject.NULL }) PanelPreview(thinking)
+    if (chosen) error?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Danger) }
+    if (chosen) PanelPreview(thinking)
 }
 
 /** What the composer's model panel will show for this scheme, plus where the value goes in requests. */
@@ -636,7 +642,7 @@ private fun PanelPreview(thinking: JSONObject) {
             Box(Modifier.size(44.dp).clip(CircleShape).zorkPressable(onClick = { info = !info })
                 .semantics { contentDescription = "请求字段"; stateDescription = if (info) "已展开" else "已收起" },
                 contentAlignment = Alignment.Center) {
-                Text("ⓘ", fontSize = 16.sp, color = if (info) ZorkColors.Ink else ZorkColors.Subtle)
+                Glyph(R.drawable.history_help, 18.dp, if (info) ZorkColors.Ink else ZorkColors.Subtle)
             }
         }
         // The composer's own control, shown exactly: it can be wider than the sheet, so it scrolls.

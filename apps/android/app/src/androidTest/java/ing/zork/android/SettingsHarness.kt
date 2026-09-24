@@ -158,6 +158,11 @@ internal class SettingsHarness(private val folder: String) {
         error("$label is not on: $states\n" + dump())
     }
 
+    /** Scrolls [label] fully into view (Compose brings the node into its scroller's viewport). */
+    fun showOnScreen(label: String) {
+        reveal(label).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id); settle()
+    }
+
     fun bounds(label: String) = Rect().also { reveal(label).getBoundsInScreen(it) }
 
     /** Long-press [from], drag it onto [to], release. [dx] shifts both points (px), e.g. from a chip's × onto its name. */
