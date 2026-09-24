@@ -310,7 +310,17 @@ fn long_model_selection() -> anyhow::Result<()> {
             .elements
             .iter()
             .any(|e| e.id == "new-chat-model-39" && e.visible && e.bounds == e.visible_bounds),
-        "opening a long model list did not reveal the current choice"
+        "opening a long model list did not reveal the current choice: {:?}",
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .filter(|e| e.id == "new-chat-model-39"
+                || e.id == "new-chat-model-list"
+                || e.id == "new-chat-picker-content"
+                || e.id == "new-chat-options")
+            .map(|e| (&e.id, e.visible, e.bounds, e.visible_bounds))
+            .collect::<Vec<_>>()
     );
     action(
         json!({"type":"click","target":{"element_id":"new-chat-model-0"}}),

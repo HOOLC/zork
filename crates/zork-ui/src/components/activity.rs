@@ -204,6 +204,7 @@ pub fn render_session(
                             )
                             .ml(px(-10.))
                             .mt(px(2.))
+                            .self_start()
                             .child(crate::controls::icon("icons/arrow-right.svg", 12.))
                             .on_click(move |_, _, cx| open_history(id.clone(), cx))
                             .automation(AutomationRole::Button, "完整历史"),

@@ -2365,6 +2365,7 @@ impl ProfilesView {
                     ui::IconButtonSize::Compact,
                 )
                 .ml(px(-6.))
+                .self_start()
                 .text_size(px(12.5))
                 .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
                     icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
