@@ -145,7 +145,8 @@ impl Page {
         self.reveal_selected_model();
         let mut list = div()
             .id("new-chat-model-list")
-            .max_h(px(320.))
+            // The panel opens above the composer; keep the list inside the window.
+            .max_h(px((window.viewport_size().height.as_f32() - 300.).clamp(120., 320.)))
             .overflow_y_scroll()
             .track_scroll(&self.picker_scroll)
             .flex()
