@@ -107,7 +107,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
                 page.text("note")?.let { note ->
                     Spacer(Modifier.height(12.dp))
                     ZorkButton(if (showNote) "收起说明" else "ⓘ 说明", quiet = true, onClick = { showNote = !showNote })
-                    if (showNote) Text(note, color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 20.sp)
+                    ZorkExpand(showNote) { Text(note, color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 20.sp) }
                 }
                 page.optJSONObject("secondary_action")?.let { action ->
                     Spacer(Modifier.height(20.dp))

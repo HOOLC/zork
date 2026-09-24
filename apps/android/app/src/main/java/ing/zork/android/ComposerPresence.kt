@@ -110,13 +110,16 @@ private fun MemberCapsule(member: ComposerMember, history: (String, String) -> U
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DeviceMark(member.name, 18.dp)
                 Text(member.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Ink, maxLines = 1)
-                if (working) Box(Modifier.size(6.dp).background(ZorkColors.Accent, CircleShape))
+                if (working) Box(Modifier.size(6.dp).workingPulse(true).background(ZorkColors.Accent, CircleShape))
                 when {
                     member.failed -> Text("执行失败", fontSize = 12.sp, color = ZorkColors.Danger, maxLines = 1)
-                    current != null -> {
-                        Text(current.first, fontSize = 12.sp, color = ZorkColors.Ink, maxLines = 1)
-                        if (current.second.isNotBlank()) Text(current.second, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Monospace, modifier = Modifier.widthIn(max = 140.dp))
+                    current != null -> androidx.compose.animation.Crossfade(current, label = "step",
+                        animationSpec = androidx.compose.animation.core.tween(if (LocalReducedMotion.current) 0 else ZorkMotion.FAST)) { step ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(step.first, fontSize = 12.sp, color = ZorkColors.Ink, maxLines = 1)
+                            if (step.second.isNotBlank()) Text(step.second, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Monospace, modifier = Modifier.widthIn(max = 140.dp))
+                        }
                     }
                     member.label.isNotBlank() && !thinkingOnly -> Text(member.label.substringBefore(" · "), fontSize = 12.sp,
                         color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))

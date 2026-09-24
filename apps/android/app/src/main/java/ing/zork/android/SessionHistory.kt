@@ -51,6 +51,8 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
     var usageOpen by remember(state) { mutableStateOf(false) }
     LaunchedEffect(state) { while (true) { delay(30_000); clock = System.currentTimeMillis() } }
     val now = clock + status.clockOffset
+    // Loading shows only when it lasts past 300 ms, then stays at least 400 ms.
+    val showLoading = rememberDeferredLoading(status.loading)
     fun pin() { state.entries.firstOrNull()?.id?.let { latestActions.anchor(it) } }
     fun page(action: () -> Unit) {
         scope.launch { scroll.scrollToItem(0) }
@@ -122,18 +124,20 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
                     }
                 }
                 if (rows.isEmpty()) Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    if (status.loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = ZorkColors.Muted)
+                    if (showLoading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = ZorkColors.Muted)
                     else if (status.error == null && status.loaded) Text("暂无执行记录", color = ZorkColors.Muted, fontSize = 13.sp)
                 }
-                if (status.newer) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
+                // "回到最新" only fades; nothing scrolls on its own.
+                androidx.compose.animation.AnimatedVisibility(status.newer, Modifier.align(Alignment.BottomCenter),
+                    enter = zorkFadeIn(), exit = zorkFadeOut()) { Box(Modifier.padding(bottom = 24.dp)) {
                     Row(Modifier.heightIn(min = 44.dp).background(ZorkColors.Ink, ZorkShapes.Control)
                         .historyPress(enabled = !status.loading, radius = 22.dp, label = "回到最新") { page(actions.latest) }
                         .padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("回到最新", color = ZorkColors.Canvas, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
-                }
+                } }
             }
-            if (status.loading && state.entries.isNotEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = ZorkColors.Muted)
+            if (showLoading && state.entries.isNotEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = ZorkColors.Muted)
         }
     }
     ZorkRetained(state.takeIf { it.selectedId != null }) { shown, open, closed ->

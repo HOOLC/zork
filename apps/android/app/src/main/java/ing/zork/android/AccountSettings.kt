@@ -60,10 +60,10 @@ internal fun AccountContent(account: JSONObject?, error: String?, action: (Strin
     // Identity details are for troubleshooting only.
     if (signed || account?.text("origin")?.isNotBlank() == true) {
         ZorkButton(if (technical) "收起技术信息" else "技术信息", quiet = true, onClick = { technical = !technical })
-        if (technical) SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ZorkExpand(technical) { SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             account?.text("origin")?.takeIf { it.isNotBlank() }?.let { Text("服务 $it", fontSize = 12.sp, color = ZorkColors.Subtle) }
             account?.text("subject")?.takeIf { it.isNotBlank() }?.let { Text("账号 ID $it", fontSize = 12.sp, color = ZorkColors.Subtle,
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
-        } }
+        } } }
     }
 }

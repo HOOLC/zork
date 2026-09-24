@@ -144,8 +144,9 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
             messages = emptyList(), pending = emptyList(), draft = "", comments = emptyList(), attachments = emptyList(), historyLoading = true)
     }
     val chat = presentation.state ?: preview
+    val reduced = LocalReducedMotion.current
     val progress = transition.animateFloat(
-        transitionSpec = { PageSlideMotion.spec(targetState) },
+        transitionSpec = { PageSlideMotion.spec(targetState, reduced) },
         label = "conversation-slide",
     ) { if (it) 1f else 0f }
     val entering = !transition.currentState && transition.targetState
@@ -153,7 +154,7 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
     val visible = transition.currentState || transition.targetState
     Box(modifier.fillMaxSize().background(ZorkColors.Canvas).clipToBounds()) {
         if (!transition.currentState || !transition.targetState) {
-            Box(Modifier.fillMaxSize().pageSlideBack { progress.value }) {
+            Box(Modifier.fillMaxSize()) {
                 savedState.SaveableStateProvider("navigation") { Navigation(state, actions, Modifier.fillMaxWidth()) }
             }
         }
@@ -166,7 +167,7 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
             val replay = exiting || (entering && replayEntry)
             val shown = if (entering && loadingAtEntry) cached.copy(messages = emptyList(), pending = emptyList(), historyLoading = true) else cached
             val semantics = if (visible && !replay) Modifier.semantics { contentDescription = "聊天页面" } else Modifier.clearAndSetSemantics { }
-            Box(Modifier.fillMaxSize().pageSlideFront { if (replay) 1f else progress.value }.graphicsLayer {
+            Box(Modifier.fillMaxSize().pageSlideFront({ if (replay) 1f else progress.value }, reduced).graphicsLayer {
                 alpha = if (visible && !replay) 1f else 0f
             }.then(semantics)) {
                 savedState.SaveableStateProvider("conversation:${cached.activePeer?.id}:${cached.conversation!!.id}") {
@@ -177,14 +178,14 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
                         drawLayer(pageLayer)
                     }.background(ZorkColors.Canvas)) {
                         ConversationHeader(shown, if (visible) actions else inactiveActions, showBack = true)
-                        if (shown.notice != null && visible) Notice(shown.notice, shown.busy, actions.retry)
+                        AnimatedNotice(shown.notice.takeIf { visible }, shown.busy, actions.retry)
                         ConversationBody(shown, if (visible) actions else inactiveActions)
                     }
                 }
             }
             // Native text views stay in place while a recorded layer slides out.
             // This avoids relaying out long Markdown during the return animation.
-            if (replay) Canvas(Modifier.fillMaxSize().pageSlideFront { progress.value }
+            if (replay) Canvas(Modifier.fillMaxSize().pageSlideFront({ progress.value }, reduced)
                 .semantics { contentDescription = "聊天页面" }) { drawLayer(pageLayer) }
         }
     }
@@ -207,7 +208,7 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
                 Spacer(Modifier.weight(1f))
                 IconAction(R.drawable.ic_settings, "设置", onClick = actions.settings)
             }
-            if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
+            AnimatedNotice(state.notice.takeIf { state.conversation == null }, state.busy, actions.retry)
             if (state.peers.isNotEmpty()) DeviceStrip(state.peers, actions.device)
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(ZorkColors.Canvas)) {
@@ -261,7 +262,7 @@ private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions, openArch
                 Text(sectionTitle(chat.section), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Muted,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp))
             }
-            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions) }
+            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
         }
         if (state.peers.isNotEmpty()) item(key = "archived") {
             Row(Modifier.fillMaxWidth().height(52.dp).zorkPressable(onClick = openArchived).padding(horizontal = 20.dp),
@@ -289,16 +290,16 @@ private fun ArchivedChats(home: HomeNavigation, actions: WorkbenchActions, back:
             if (home.archived.isEmpty()) item(key = "empty") {
                 Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
             }
-            items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions) }
+            items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
         }
     }
 }
 
 @Composable
-private fun HomeChatRow(chat: HomeChat, actions: WorkbenchActions) {
+private fun HomeChatRow(chat: HomeChat, actions: WorkbenchActions, modifier: Modifier = Modifier) {
     val archive = { actions.archiveChat(chat.peer, chat.id, !chat.archived, chat.messageCount) }
     val archiveLabel = if (chat.archived) "取消归档" else "归档聊天"
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .zorkPressable(onLongClick = if (chat.archivePending) null else archive) { actions.session(chat.session()) }
             .semantics { if (!chat.archivePending) customActions = listOf(CustomAccessibilityAction(archiveLabel) { archive(); true }) }
@@ -589,7 +590,9 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             tailIndex = rows.size + 1,
             overlay = {
                 Column(Modifier.fillMaxWidth()) {
-                    if (unread > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    // Reading history while new messages arrive: nothing scrolls, the pill only fades in.
+                    androidx.compose.animation.AnimatedVisibility(unread > 0, enter = zorkFadeIn(), exit = zorkFadeOut()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         Box(Modifier.heightIn(min = 44.dp).clip(ZorkShapes.Control)
                             .clickable(role = androidx.compose.ui.semantics.Role.Button) { following = true; followTail() },
                             contentAlignment = Alignment.Center) {
@@ -597,6 +600,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                                 modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
                                     .border(UiTokens.Border, UiTokens.Outline, ZorkShapes.Control).padding(horizontal = 14.dp, vertical = 8.dp))
                         }
+                    }
                     }
                     if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 12.sp,
                         modifier = Modifier.padding(start = gutter + 10.dp, end = gutter, bottom = 5.dp))
@@ -900,6 +904,16 @@ internal fun Glyph(resource: Int, size: Dp, tint: Color = ZorkColors.Ink) {
 internal fun IconAction(resource: Int, description: String, enabled: Boolean = true, glyphSize: Dp = 22.dp, onClick: () -> Unit) {
     ZorkIconButton(description, enabled = enabled, onClick = onClick) {
         Glyph(resource, glyphSize, if (enabled) ZorkColors.Ink else ZorkColors.Ink.copy(alpha = 0.35f))
+    }
+}
+
+@Composable
+private fun AnimatedNotice(message: String?, busy: Boolean, retry: () -> Unit) {
+    // Notices come down 8 dp from the region's top edge; the last text stays while fading out.
+    val last = remember { arrayOfNulls<String>(1) }
+    if (message != null) last[0] = message
+    androidx.compose.animation.AnimatedVisibility(message != null, enter = zorkNoticeIn(), exit = zorkFadeOut(ZorkMotion.SURFACE)) {
+        last[0]?.let { Notice(it, busy, retry) }
     }
 }
 

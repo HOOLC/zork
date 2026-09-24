@@ -202,9 +202,13 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     } }
 }
 @Composable
-internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
+internal fun SettingsRefreshButton(rawLoading: Boolean, refresh: () -> Unit) {
+    val loading = rememberDeferredLoading(rawLoading)
     val angle = remember { Animatable(0f) }
-    LaunchedEffect(loading) {
+    val reduced = LocalReducedMotion.current
+    LaunchedEffect(loading, reduced) {
+        // Reduced motion: no loops, the icon stays still.
+        if (reduced) { angle.snapTo(0f); return@LaunchedEffect }
         if (!loading && angle.value == 0f) return@LaunchedEffect
         // Finish the current turn when loading ends; never jump back to zero.
         do {
@@ -213,7 +217,7 @@ internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
             angle.snapTo(0f) // 360° and 0° render identically.
         } while (loading)
     }
-    ZorkIconButton(if (loading) "正在刷新" else "刷新", onClick = refresh, enabled = !loading) {
+    ZorkIconButton(if (rawLoading) "正在刷新" else "刷新", onClick = refresh, enabled = !rawLoading) {
         Icon(painterResource(R.drawable.ic_reload), null,
             Modifier.size(18.dp).graphicsLayer { rotationZ = angle.value }, tint = ZorkColors.Ink)
     }

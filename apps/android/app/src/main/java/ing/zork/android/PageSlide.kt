@@ -39,8 +39,12 @@ private data class PageSlideChange<T>(val current: PageSlideEntry<T>, val outgoi
 @Composable
 internal fun <T> PageSlide(
     state: T, routeKey: String, depth: Int, background: Color,
-    modifier: Modifier = Modifier, content: @Composable (T, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Progress of an in-flight predictive back gesture, 0 when there is none. */
+    backProgress: () -> Float = { 0f },
+    content: @Composable (T, Boolean) -> Unit,
 ) {
+    val reduced = LocalReducedMotion.current
     val frames = remember { PageSlideFrames<T>() }
     val change = remember(routeKey) {
         val previous = frames.current
@@ -54,9 +58,10 @@ internal fun <T> PageSlide(
     var finished by remember(routeKey) { mutableStateOf(change.outgoing == null) }
     LaunchedEffect(routeKey) {
         if (change.outgoing != null) {
-            progress.snapTo(0f)
+            // A committed back gesture continues from where the finger let go.
+            progress.snapTo(if (change.forward) 0f else backProgress().coerceIn(0f, 1f))
             started = true
-            progress.animateTo(1f, PageSlideMotion.spec(change.forward))
+            progress.animateTo(1f, PageSlideMotion.spec(change.forward, reduced))
             finished = true
         }
     }
@@ -68,7 +73,11 @@ internal fun <T> PageSlide(
             val active = entry === change.current
             val front = active == change.forward
             Box(Modifier.fillMaxSize().zIndex(if (front) 1f else 0f)
-                .then(if (front) Modifier.pageSlideFront(::frontVisibility) else Modifier.pageSlideBack(::frontVisibility))
+                .then(when {
+                    finished -> Modifier.pageSlideGesture(backProgress, reduced)
+                    front -> Modifier.pageSlideFront(::frontVisibility, reduced)
+                    else -> Modifier
+                })
                 .background(entry.background)
                 .then(if (active) Modifier else Modifier.testTag("page-slide-outgoing").clearAndSetSemantics { })) {
                 content(entry.state, active)

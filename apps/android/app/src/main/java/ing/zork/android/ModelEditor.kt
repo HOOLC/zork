@@ -100,7 +100,7 @@ internal fun ModelEditor(source: JSONObject?, state: MobileSettingsState, action
                 modifier = Modifier.weight(1f))
             ZorkButton(if (expanded) "收起参数" else "调整参数", quiet = true, onClick = { expanded = !expanded })
         }
-        if (expanded) {
+        ZorkExpand(expanded) { Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (templates.isNotEmpty()) SettingsSelect("复制已有模型配置", "", templates.map { it.first to it.second }, !busy) { key ->
                 val template = templates.first { it.first == key }.third
                 copiedJson = template.toString()
@@ -127,7 +127,7 @@ internal fun ModelEditor(source: JSONObject?, state: MobileSettingsState, action
             ReferenceRow("能力", { reference = "capabilities" }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { PickerChip("读取图片", images, !busy) { images = !images } }
             }
-        }
+        } }
     }
     ZorkRetained(reference) { field, shown, closed ->
         ReferenceSheet(field, id, actions, shown, { reference = null }, closed) { value ->

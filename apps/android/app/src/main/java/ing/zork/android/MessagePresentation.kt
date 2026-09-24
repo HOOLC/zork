@@ -100,13 +100,19 @@ internal fun MessageBody(row: ChatMessage, comment: (String) -> Unit) {
 
 @Composable
 internal fun MessageEntry(start: Long?, user: Boolean, content: @Composable () -> Unit) {
-    val enabled = start != null && android.os.SystemClock.uptimeMillis() - start < 220 && ValueAnimator.areAnimatorsEnabled()
+    // Only rows core has just accepted animate: fade in while rising 6 dp. Rows
+    // present at load, and text streaming into an existing row, never animate.
+    val reduced = LocalReducedMotion.current
+    val enabled = start != null && android.os.SystemClock.uptimeMillis() - start < ZorkMotion.SURFACE && ValueAnimator.areAnimatorsEnabled()
     val progress = remember(start) { Animatable(if (enabled) 0f else 1f) }
-    val distance = with(LocalDensity.current) { (if (user) 8.dp else (-8).dp).toPx() }
+    val distance = with(LocalDensity.current) { ZorkMotion.RiseShift.toPx() }
     LaunchedEffect(start) {
-        if (enabled) progress.animateTo(1f, tween(180, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+        if (enabled) progress.animateTo(1f, if (reduced) tween(ZorkMotion.REDUCED_FADE) else ZorkMotion.enter(ZorkMotion.BASE))
     }
-    Box(Modifier.fillMaxWidth().graphicsLayer { alpha = progress.value; translationX = distance * (1f - progress.value) }) { content() }
+    Box(Modifier.fillMaxWidth().graphicsLayer {
+        alpha = progress.value
+        if (!reduced) translationY = distance * (1f - progress.value)
+    }) { content() }
 }
 
 /** Split only for the independent reader; copy-full continues to use the source.

@@ -120,7 +120,9 @@ internal fun ModelPickerSheet(open: Boolean, model: PickerChoice, thinking: Pick
 
 @Composable
 internal fun PickerChip(label: String, selected: Boolean, enabled: Boolean = true, click: () -> Unit) {
-    Box(Modifier.heightIn(min = 44.dp).background(if (selected) ZorkColors.Ink else ZorkColors.Prompt, ZorkShapes.Control)
+    val fill by androidx.compose.animation.animateColorAsState(if (selected) ZorkColors.Ink else ZorkColors.Prompt,
+        androidx.compose.animation.core.tween(ZorkMotion.FAST), label = "chip")
+    Box(Modifier.heightIn(min = 44.dp).background(fill, ZorkShapes.Control)
         .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = click)
         .padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
         Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
