@@ -500,6 +500,7 @@ impl ProfilesView {
                             .gap(px(10.))
                             .child(body)
                             .child(actions)
+                            .automation(AutomationRole::Status, "编辑模型")
                             .into_any_element(),
                     );
                 }

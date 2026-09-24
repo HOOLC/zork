@@ -150,8 +150,9 @@ impl Page {
                         .flex()
                         .items_center()
                         .gap_2()
+                        .min_w_0()
                         .child(crate::device_name::mark(&option.label, 18.))
-                        .child(option.label.clone())
+                        .child(div().min_w_0().text_ellipsis().child(option.label.clone()))
                         .into_any_element(),
                 };
                 crate::components::widgets::controls::adaptive_action(
@@ -170,6 +171,10 @@ impl Page {
                 .min_h(px(28.))
                 .pl(px(6.))
                 .pr(px(12.))
+                // Narrow windows shrink every tab and ellipsize its name
+                // instead of clipping the last device.
+                .min_w_0()
+                .flex_shrink_1()
                 .font_weight(FontWeight::NORMAL)
                 .child(content)
                 .on_click(cx.listener(move |view, _, _, cx| {

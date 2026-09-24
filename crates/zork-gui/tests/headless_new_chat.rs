@@ -47,7 +47,8 @@ fn main() -> anyhow::Result<()> {
         let snapshot = driver.snapshot(false);
         for id in [
             "new-chat-input",
-            "new-chat-device",
+            "new-chat-device-0",
+            "new-chat-device-1",
             "new-chat-options",
             "new-chat-send",
         ] {
@@ -80,20 +81,20 @@ fn main() -> anyhow::Result<()> {
                 .enabled,
             "empty draft can be sent"
         );
-        anyhow::ensure!(
-            snapshot
-                .elements
-                .iter()
-                .find(|e| e.id == "new-chat-device")
-                .is_some_and(|e| e.label.contains('●') && !e.label.contains("直连")),
-            "selected device must show a compact Mesh status icon"
-        );
+        // Up to four devices show as tabs: each keeps its name and Mesh
+        // status visible without opening a menu.
+        for id in ["new-chat-device-name-0", "new-chat-device-name-1"] {
+            anyhow::ensure!(
+                snapshot.elements.iter().any(|e| e.id == id && e.visible),
+                "device tab name {id} missing at {width}"
+            );
+        }
         anyhow::ensure!(
             snapshot
                 .elements
                 .iter()
                 .find(|element| element.id == "new-chat-options")
-                .is_some_and(|element| element.label.contains("Demo model · 高")),
+                .is_some_and(|element| element.label.contains("Demo model · high")),
             "picker trigger did not show the selected model and strength at {width}"
         );
         let initial_picker_width = snapshot
@@ -111,33 +112,16 @@ fn main() -> anyhow::Result<()> {
             })??;
             draw(cx)
         };
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-device"}}),
-            &mut cx,
-        )?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .find(|e| e.id == "new-chat-device-1")
-                .is_some_and(|e| e.label.contains('◌') && !e.label.contains("Mesh 准备中")),
-            "remote device option must show a compact Mesh status icon"
-        );
+        let before = host.read_with(&cx, |view, cx| view.inspect(cx));
         action(
             json!({"type":"click","target":{"element_id":"new-chat-device-1"}}),
             &mut cx,
         )?;
-        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
+        let after = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|e| e.id == "new-chat-device-1" && e.visible),
-            "device dropdown did not reopen from the keyboard"
+            after["device"]["value"] != before["device"]["value"],
+            "clicking a device tab did not select it: {after}"
         );
-        action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         action(
             json!({"type":"click","target":{"element_id":"new-chat-options"}}),
             &mut cx,

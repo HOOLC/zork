@@ -487,13 +487,22 @@ fn verify_refresh() -> anyhow::Result<()> {
     });
     for (index, expected) in [(0, "查询失败"), (1, "剩余 10%")] {
         for _ in 0..2 {
-            // 刷新额度 lives in the page's 更多 menu.
-            let open = serde_json::from_value(
-                json!({"type":"click","target":{"element_id":"profile-more"}}),
-            )?;
-            cx.update_window(window.into(), |_, w, cx| driver.dispatch(open, w, cx))??;
-            cx.run_until_parked();
-            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
+            // 刷新额度 lives in the page's 更多 menu. A click on the item while a
+            // refresh is in flight is a no-op and leaves the menu open, so only
+            // open it when it is closed (the trigger toggles).
+            if !driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .any(|e| e.id == "profile-quota-refresh")
+            {
+                let open = serde_json::from_value(
+                    json!({"type":"click","target":{"element_id":"profile-more"}}),
+                )?;
+                cx.update_window(window.into(), |_, w, cx| driver.dispatch(open, w, cx))??;
+                cx.run_until_parked();
+                cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
+            }
             let action = serde_json::from_value(
                 json!({"type":"click","target":{"element_id":"profile-quota-refresh"}}),
             )?;
