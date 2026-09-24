@@ -70,6 +70,40 @@ class ClientSettingsTest {
                 }
                 assertNull(find("这台手机")); assertNull(find("查看连接身份")); assertNotNull(find("通知")); assertNotNull(find("Mesh")); assertNull(find("工具连接"))
                 capture("home")
+                // Documented order: 客户端 · Mesh · 高级, rows in their documented order.
+                fun assertOrder(order: List<String>) {
+                    val tops = order.map { label ->
+                        var node = find(label)
+                        val until = System.currentTimeMillis() + 3000
+                        while (node == null && System.currentTimeMillis() < until) { Thread.sleep(80); node = find(label) }
+                        assertNotNull(label, node)
+                        android.graphics.Rect().also { node!!.getBoundsInScreen(it) }.top
+                    }
+                    order.indices.drop(1).forEach { i -> assertTrue("${order[i - 1]} before ${order[i]}", tops[i - 1] < tops[i]) }
+                }
+                assertOrder(listOf("客户端", "Zork 账号", "外观", "通知", "已归档的 Chat", "Mesh", "模型连接", "mini1", "连接设备"))
+                // 高级 sits below the fold on a phone: scroll, then check the tail of the order.
+                fun scrollable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (node == null) return null
+                    if (node.isScrollable) return node
+                    for (i in 0 until node.childCount) scrollable(node.getChild(i))?.let { return it }
+                    return null
+                }
+                instrumentation.uiAutomation.clearCache()
+                scrollable(instrumentation.uiAutomation.rootInActiveWindow)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                instrumentation.waitForIdleSync(); Thread.sleep(300)
+                assertOrder(listOf("连接设备", "高级", "安卓调试"))
+                scrollable(instrumentation.uiAutomation.rootInActiveWindow)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                instrumentation.waitForIdleSync(); Thread.sleep(300)
+                // Archived Chats open from client settings and can be restored there.
+                click("已归档的 Chat"); await("旧版导航"); capture("archived")
+                click("取消归档")
+                scenario.onActivity { assertEquals("archive:mini1/old/false", it.lastAction) }
+                await("没有已归档的 Chat")
+                click("返回"); await("模型连接")
+                // The "连接设备" row hands straight to the connect action.
+                click("连接设备")
+                scenario.onActivity { assertEquals("add-device", it.lastAction) }
                 assertNotNull(find("外观")); assertNull(find("文字大小"))
                 scenario.recreate(); instrumentation.waitForIdleSync(); await("外观")
                 assertNotNull(find("外观"))
@@ -79,7 +113,11 @@ class ClientSettingsTest {
                 capture("device")
                 click("返回对话"); await("模型连接")
             }
-
+            // The home list no longer carries an archived entry; it lives in settings.
+            ActivityScenario.launch<Nav7PreviewActivity>(Intent(context, Nav7PreviewActivity::class.java).putExtra("screen", "navigation").putExtra("width", 0)).use {
+                instrumentation.waitForIdleSync(); await("品牌规范整理")
+                assertNull(find("已归档")); assertNull(find("旧版导航"))
+            }
         }
     }
 }

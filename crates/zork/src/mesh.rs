@@ -179,6 +179,43 @@ fn install_binaries(root: &Path) -> Result<PathBuf> {
     Ok(root.join("bin/zork"))
 }
 
+/// Stable machine-readable invitation. The command is a one-time Mesh
+/// admission secret; callers must not log or forward it.
+fn invite_json(value: &Value, now: u64) -> Result<Value> {
+    let expires_at = value["expires_at"]
+        .as_u64()
+        .context("missing invitation expiry")?;
+    Ok(json!({
+        "id": value["id"].as_str().context("missing invitation id")?,
+        "command": value["command"].as_str().context("missing join command")?,
+        "install_url": value["install_url"],
+        "expires_at": expires_at,
+        "expires_in_seconds": expires_at.saturating_sub(now),
+        "single_use": true,
+        "scope": value["scope"],
+        "permissions": value["permissions"],
+    }))
+}
+
+#[cfg(test)]
+mod invite_json_tests {
+    use super::*;
+
+    #[test]
+    fn invite_json_is_structured_and_drops_raw_ticket() {
+        let value = json!({"id":"a".repeat(32),"expires_at":1_900,"invitation":"TICKET","command":"zork mesh join 'TICKET' --channel stable","install_url":null,"scope":"personal_mesh","permissions":["collaborate"]});
+        let output = invite_json(&value, 1_000).unwrap();
+        assert_eq!(output["expires_in_seconds"], 900);
+        assert_eq!(output["single_use"], true);
+        assert_eq!(
+            output["command"],
+            "zork mesh join 'TICKET' --channel stable"
+        );
+        assert!(output.get("invitation").is_none());
+        assert!(invite_json(&json!({"id":"x"}), 0).is_err());
+    }
+}
+
 pub async fn run(mut argv: Vec<String>) -> Result<()> {
     ensure!(
         !argv.is_empty(),
@@ -464,7 +501,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                 .request(reqwest::Method::POST, "/v1/node/mesh/invites", None)
                 .await?;
             if json_output {
-                println!("{value}");
+                println!("{}", invite_json(&value, zork_mesh::enrollment::now())?);
             } else {
                 println!(
                     "Run this command on the device to add (valid for 15 minutes):\n\n{}",

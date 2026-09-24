@@ -12,7 +12,7 @@ description: 每次 zork 任务交付前检查相关项目 skills 的准确性�
 - description 简短说明何时使用，必要时区分容易混淆的职责。
 - 正文只留会改变判断或执行的项目特有约束、关键步骤和按需入口。删除常识、重复、过程记录和无助于决策的例子。
 - 一条规则讲清一个要求，明确适用条件；使用短句，避免密集长段。不能把一次故障或局部偏好升级为通用禁令。
-- 同一规则只维护一处，细节按需引用。不要复制手册、参数表或源码清单，也不靠搬进 references、缩行或篇数目标伪装精简。产品内工具帮助由 `tool.help` 提供，开发者 skills 不进入产品运行时。
+- 同一规则只维护一处，细节按需引用。不要复制手册、参数表或源码清单，也不靠搬进 references、缩行或篇数目标伪装精简。产品内 Agent Skill 与 `tool.help` 的分工按 [内容职责](../../../docs/design/agent-skills.md#content-boundary) 检查；开发者 skills 不进入产品运行时。
 
 ## 更新与归属
 
@@ -20,7 +20,7 @@ description: 每次 zork 任务交付前检查相关项目 skills 的准确性�
 
 文档按用途维护：`docs/design/` 放设计约束，`docs/proposals/` 放待决方案，`docs/guides/` 放操作指南；模块运行说明留在其 README。优先更新已有章节，方案落地后提取必要约束、移除旧计划并更新 [索引](../../../docs/README.md)。进度和验证结果随任务/PR 或运行产物保存，不写常驻状态台账。
 
-合并、删除按 [项目清理](../zork-project-cleanup/SKILL.md) 核对独有内容与消费者。
+合并、删除按 [项目清理](../zork-project-cleanup/SKILL.md) 核对独有内容与消费者。产品内 Agent 的 Skill 另用 [运行时 skill](../zork-agent-skills/SKILL.md)。
 
 ## 交付检查
 

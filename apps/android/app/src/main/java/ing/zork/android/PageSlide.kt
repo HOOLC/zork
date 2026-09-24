@@ -27,7 +27,7 @@ internal fun settingsRouteDepth(state: MobileSettingsState?): Int {
     if (state.fromConnections && state.page in listOf("models", "profile")) return 3 + state.resourceDepth
     return when (state.page) {
         "home" -> 1
-        "appearance", "notifications", "account", "adb", "model-connections" -> 2
+        "appearance", "notifications", "account", "adb", "model-connections", "archived" -> 2
         "device" -> deviceDepth
         "profile" -> deviceDepth + 2
         else -> deviceDepth + 1

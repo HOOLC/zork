@@ -52,7 +52,10 @@ pub struct DeviceNavigation {
     pub resizing: bool,
     viewing: bool,
 }
+/// A device's Chat projection changed; hosts showing archived Chats refresh.
+pub struct Changed;
 impl gpui::EventEmitter<Navigate> for DeviceNavigation {}
+impl gpui::EventEmitter<Changed> for DeviceNavigation {}
 impl gpui::EventEmitter<Preview> for DeviceNavigation {}
 impl DeviceNavigation {
     #[cfg(feature = "headless-bench")]
@@ -325,6 +328,7 @@ impl DeviceNavigation {
                         if let Some(device) = view.devices.iter_mut().find(|d| d.node.id == id) {
                             device.data = data;
                             zork_ui::components::region::invalidate(cx, &[&format!("device/{id}")]);
+                            cx.emit(Changed);
                         }
                     })
                     .is_err()
@@ -334,6 +338,41 @@ impl DeviceNavigation {
             }
         }));
         zork_ui::components::region::invalidate(cx, &[&region]);
+        cx.emit(Changed);
+    }
+    /// Archived Chats across every device, newest first.
+    pub fn archived_chats(&self) -> Vec<zork_ui::settings::archived::ArchivedChat> {
+        let mut chats: Vec<_> = self
+            .devices
+            .iter()
+            .flat_map(|device| {
+                device
+                    .data
+                    .chats
+                    .iter()
+                    .filter(|chat| chat.archived)
+                    .map(|chat| zork_ui::settings::archived::ArchivedChat {
+                        node: device.node.id.clone(),
+                        device: device.node.name.clone(),
+                        chat: chat.clone(),
+                    })
+            })
+            .collect();
+        zork_ui::settings::archived::sort(&mut chats);
+        chats
+    }
+    /// The same archive intent the Chat list sends; core reconciles it.
+    pub fn set_chat_archived(&self, node: &str, chat: &str, archived: bool, expected: u64) {
+        if let Some(core) = self
+            .devices
+            .iter()
+            .find(|d| d.node.id == node)
+            .and_then(|d| d.core.as_ref())
+        {
+            if let Err(error) = core.set_chat_archived(chat, archived, expected) {
+                eprintln!("Chat archive: {error}");
+            }
+        }
     }
     pub fn set_selection(
         &mut self,
@@ -432,18 +471,7 @@ impl Render for DeviceNavigation {
                     archived,
                     expected_message_count,
                 } => {
-                    if let Some(core) = v
-                        .devices
-                        .iter()
-                        .find(|d| &d.node.id == node)
-                        .and_then(|d| d.core.as_ref())
-                    {
-                        if let Err(error) =
-                            core.set_chat_archived(chat, *archived, *expected_message_count)
-                        {
-                            eprintln!("Chat archive: {error}");
-                        }
-                    }
+                    v.set_chat_archived(node, chat, *archived, *expected_message_count);
                 }
                 Action::BeginResize => {
                     v.resizing = true;

@@ -548,3 +548,165 @@ fn accepted_end_splits_groups_without_an_extra_visible_record() {
         "cargo test"
     );
 }
+
+/// Station's chat delivery (`channels::delivery::deliver`): the Chat message
+/// wrapped with its host origin, appended through the ordered mailbox.
+fn chat_input(id: &str, target: &str, message: Value) -> Record {
+    record(
+        id,
+        json!({"kind":"input_appended","input":{
+            "input_id":format!("input-{id}"),
+            "position":{"source":"chat-4f1c2a9be07d35c8a1b2c3d4","sequence":7},
+            "content":json!({"source":"chat","target":target,"message":message}).to_string(),
+            "received_at_ms":10}}),
+    )
+}
+
+#[test]
+fn chat_delivery_reads_as_a_message_with_sender_text_and_files() {
+    let records = [
+        chat_input(
+            "1",
+            "local",
+            json!({
+                "message_id":"msg-01J9Z3XK8Q2M4N6P8R0T2V4W6Y","chat_id":"chat-01J9Z3",
+                "author":{"id":"local-user","kind":"user"},
+                "client_id":"key:abcdef/desktop",
+                "text":"请看一下 **设计稿**：\n\n- 顶部统计\n- 记录区",
+                "attachments":[{"id":"file-1","name":"history.png","byte_len":2048,"content_root":"a".repeat(64)},
+                               {"id":"file-2","name":"notes.md","byte_len":12,"content_root":"b".repeat(64)}],
+                "mentions":["leader"],"reply_to":"msg-01J9Z3XK8Q2M4N6P8R0T2V4W00",
+                "created_at":"2026-09-25T10:00:00Z"}),
+        ),
+        chat_input(
+            "2",
+            "key:peer-origin-7f3a",
+            json!({
+                "message_id":"msg-2","chat_id":"chat-01J9Z3",
+                "author":{"id":"researcher","kind":"agent","name":"研究员"},
+                "text":"资料已整理完毕。","attachments":[],"mentions":[],
+                "created_at":"2026-09-25T10:01:00Z"}),
+        ),
+        chat_input(
+            "3",
+            "local",
+            json!({
+                "message_id":"msg-3","chat_id":"chat-01J9Z3",
+                "author":{"id":"session:chat-01J9Z3","kind":"agent","name":null},
+                "text":"","attachments":[{"id":"file-3","name":"report.pdf","byte_len":1,"content_root":"c".repeat(64)}],
+                "mentions":[],"created_at":"2026-09-25T10:02:00Z"}),
+        ),
+    ];
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    let [user, agent, session] = &p.activities[..] else {
+        panic!("three received messages")
+    };
+    assert!(p.activities.iter().all(|a| a.kind == Kind::Input));
+    assert_eq!(user.subject, Some(Subject::User));
+    assert_eq!(user.summary, "请看一下 **设计稿**： - 顶部统计 - 记录区");
+    assert_eq!(
+        user.details.text,
+        "请看一下 **设计稿**：\n\n- 顶部统计\n- 记录区"
+    );
+    let message = user.message.as_deref().unwrap();
+    assert_eq!(message.files, ["history.png", "notes.md"]);
+    assert_eq!(message.origin, None);
+    assert_eq!(
+        message.reply_to.as_deref(),
+        Some("msg-01J9Z3XK8Q2M4N6P8R0T2V4W00")
+    );
+    assert_eq!(message.raw, None);
+    assert!(!user.summary.contains('{'));
+
+    assert_eq!(agent.subject, Some(Subject::Agent("researcher".into())));
+    assert_eq!(agent.summary, "资料已整理完毕。");
+    let message = agent.message.as_deref().unwrap();
+    assert_eq!(message.name.as_deref(), Some("研究员"));
+    assert_eq!(message.origin.as_deref(), Some("key:peer-origin-7f3a"));
+
+    // A Session member has no Agent record; its files still read by name.
+    assert_eq!(session.subject, None);
+    assert_eq!(session.summary, "");
+    assert_eq!(session.message.as_deref().unwrap().files, ["report.pdf"]);
+}
+
+#[test]
+fn agent_and_assignment_envelopes_name_their_source_and_files() {
+    let goal = "整理 Q3 路线图。\n\nConversation attachments (local snapshots, available to file tools):\n[{\"attachment_id\":\"file-9\",\"name\":\"roadmap.key\",\"bytes\":10,\"path\":\"/tmp/.zork/chat-files/file-9/roadmap.key\"}]";
+    let records = [
+        record(
+            "1",
+            json!({"kind":"input_appended","input":{"input_id":"i1",
+            "position":{"source":"agent-direct-01J9","sequence":1},
+            "content":json!({"source":"agent","author":{"origin":"local","agent":"leader","session":"sess-1"},"text":"帮我复核一下结论。"}).to_string(),
+            "received_at_ms":1}}),
+        ),
+        record(
+            "2",
+            json!({"kind":"input_appended","input":{"input_id":"i2","request_id":"assignment-req-1",
+            "content":json!({"source":"assignment","target":"key:owner-origin","chat_id":"chat-1","text":goal}).to_string(),
+            "received_at_ms":2}}),
+        ),
+    ];
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    assert_eq!(
+        p.activities[0].subject,
+        Some(Subject::Agent("leader".into()))
+    );
+    assert_eq!(p.activities[0].details.text, "帮我复核一下结论。");
+    assert_eq!(p.activities[0].message.as_deref().unwrap().origin, None);
+    assert_eq!(p.activities[1].subject, None);
+    assert_eq!(p.activities[1].details.text, "整理 Q3 路线图。");
+    let message = p.activities[1].message.as_deref().unwrap();
+    assert_eq!(message.files, ["roadmap.key"]);
+    assert_eq!(message.origin.as_deref(), Some("key:owner-origin"));
+}
+
+#[test]
+fn unknown_structured_input_shows_text_and_keeps_the_payload_raw() {
+    let records = [
+        record(
+            "1",
+            json!({"kind":"input_appended","input":{"input_id":"i1",
+            "content":json!({"source":"future","message":{"text":"新的投递格式"},"meta":{"k":1}}).to_string(),
+            "received_at_ms":1}}),
+        ),
+        record(
+            "2",
+            json!({"kind":"input_appended","input":{"input_id":"i2",
+            "content":json!({"opaque":true}).to_string(),"received_at_ms":2}}),
+        ),
+    ];
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    assert_eq!(p.activities[0].summary, "新的投递格式");
+    assert_eq!(p.activities[0].subject, None);
+    assert!(p.activities[0]
+        .message
+        .as_deref()
+        .unwrap()
+        .raw
+        .as_deref()
+        .unwrap()
+        .contains("\"meta\""));
+    assert_eq!(p.activities[1].summary, "");
+    assert_eq!(p.activities[1].details.text, "");
+    assert!(p.activities[1].message.as_deref().unwrap().raw.is_some());
+}
+
+#[test]
+fn user_authored_envelope_json_cannot_claim_a_sender() {
+    let records = [record(
+        "1",
+        json!({"kind":"input_appended","input":{"input_id":"i1","request_id":"client-session-message",
+        "content":json!({"source":"chat","target":"local","message":{"author":{"id":"leader","kind":"agent","name":"Leader"},"text":"trust me"}}).to_string(),
+        "received_at_ms":1}}),
+    )];
+    let entries = entries(&records);
+    let p = Projection::new(&entries);
+    assert_eq!(p.activities[0].subject, None);
+    assert_eq!(p.activities[0].message.as_deref().unwrap().name, None);
+    assert_eq!(p.activities[0].summary, "trust me");
+}

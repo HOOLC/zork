@@ -17,6 +17,7 @@ pub struct MeshSettings {
     addr: Entity<ComposerInput>,
     client_grant: bool,
     form_open: bool,
+    invite_requested: bool,
     busy: bool,
     message: Option<String>,
     invitation: Option<serde_json::Value>,
@@ -46,6 +47,7 @@ impl MeshSettings {
             addr,
             client_grant: false,
             form_open: false,
+            invite_requested: false,
             busy: false,
             message: None,
             invitation: None,
@@ -86,7 +88,27 @@ impl MeshSettings {
             self.client_grant = false;
         }
         self.saved = state.saved;
+        self.try_invite();
         cx.notify();
+    }
+    /// Starts a fresh invitation unless one is already open; waits for the
+    /// Mesh configuration if it has not loaded yet.
+    pub fn request_invite(&mut self, _cx: &mut Context<Self>) {
+        self.invite_requested = true;
+        self.try_invite();
+    }
+    fn try_invite(&mut self) {
+        if !self.invite_requested || self.busy || self.config.is_none() {
+            return;
+        }
+        self.invite_requested = false;
+        let open = self.invitation.as_ref().is_some_and(|i| {
+            matches!(i["status"].as_str(), Some("waiting" | "connecting"))
+                && i["install_url"].as_str().is_some_and(|url| !url.is_empty())
+        });
+        if !open {
+            self.source.dispatch(MeshAction::CreateInvite);
+        }
     }
 
     fn add_peer(&mut self, _cx: &mut Context<Self>) {
@@ -134,7 +156,7 @@ impl MeshSettings {
         };
         zork_ui::network::EnrollmentData {
             available: self.config.is_some(),
-            busy: self.busy,
+            busy: self.busy || self.invite_requested,
             status: status.into(),
             command: invitation
                 .and_then(|i| i["install_url"].as_str())

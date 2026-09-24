@@ -138,6 +138,12 @@ fn label(family: &str, state: &str) -> String {
         ("brand", "linked") => "品牌 · 组合标志".into(),
         ("brand", state) => format!("品牌 · {}", state_label(state)),
         ("conversation", "history") => "执行历史".into(),
+        ("activity", "collapsed") => "收起".into(),
+        ("activity", "expanded") => "展开".into(),
+        ("activity", "live") => "实时（动效演示）".into(),
+        ("activity", "waiting") => "等待记录".into(),
+        ("activity", "finished") => "已结束".into(),
+        ("activity", "disconnected") => "连接中断".into(),
         ("button" | "field" | "dropdown" | "choice", "disabled") => "禁用".into(),
         _ => state_label(state),
     }
@@ -525,7 +531,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "client",
             "客户端设置",
-            &["signed-out", "signed-in", "loading", "error"][..],
+            &["signed-out", "signed-in", "loading", "error", "archived", "archived-empty"][..],
         ),
         (
             "device",
@@ -536,7 +542,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "enrollment",
             "连接设备",
-            &["start", "command", "loading", "error", "expired"][..],
+            &["loading", "command", "error", "expired"][..],
         ),
     ] {
         for state in states {
@@ -608,6 +614,28 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 680.;
         items.push(story);
     }
+    // Session activity in the real Chat view: above the composer, at its width.
+    for state in [
+        "collapsed",
+        "expanded",
+        "live",
+        "waiting",
+        "finished",
+        "disconnected",
+    ] {
+        for (width, height, suffix) in [(900., 640., "compact"), (1440., 800., "wide")] {
+            let mut story = Story::new(
+                "activity",
+                "会话动态",
+                &format!("{state}-{suffix}"),
+                "crates/zork-ui/src/components/activity.rs + zork-gui/src/views/session_activity.rs",
+                "activity",
+            );
+            story.width = width;
+            story.height = height;
+            items.push(story);
+        }
+    }
     for state in ["long", "loading", "empty", "offline", "error"] {
         let mut story = Story::new(
             "conversation",
@@ -666,6 +694,7 @@ fn raw_catalog() -> Vec<Story> {
 pub struct StoryHost {
     inner: AnyView,
     settings: bool,
+    _live: Option<gpui::Task<()>>,
     _directory: tempfile::TempDir,
 }
 impl StoryHost {
@@ -766,7 +795,47 @@ impl StoryHost {
             story.family.as_str(),
             "connection" | "model" | "client" | "device" | "mesh" | "enrollment"
         );
+        let mut live = None;
         let inner = match story.family.as_str() {
+            "activity" => {
+                let store = std::sync::Arc::new(
+                    crate::desktop::store::ClientStore::open(directory.path())
+                        .expect("story client store"),
+                );
+                let state = story
+                    .state
+                    .trim_end_matches("-compact")
+                    .trim_end_matches("-wide")
+                    .to_owned();
+                let view = cx.new(|cx| {
+                    let mut view = crate::views::RootView::render_benchmark_fixture(false, store, cx);
+                    view.benchmark_activity_story(&state, cx);
+                    view
+                });
+                if state == "live" {
+                    // Plays the band's life: steps change, the round ends and
+                    // leaves, then a new round appears.
+                    let weak = view.downgrade();
+                    live = Some(cx.spawn(async move |_, cx| {
+                        let mut step = 0;
+                        loop {
+                            cx.background_executor()
+                                .timer(std::time::Duration::from_millis(1800))
+                                .await;
+                            step += 1;
+                            let ok = weak.update(cx, |view, cx| match step % 5 {
+                                3 => view.benchmark_activity_finish(cx),
+                                4 => view.benchmark_activity_story("live", cx),
+                                n => view.benchmark_activity_step(n, cx),
+                            });
+                            if ok.is_err() {
+                                return;
+                            }
+                        }
+                    }));
+                }
+                view.into()
+            }
             "onboarding" => cx
                 .new(|cx| {
                     // The onboarding fixture lays out for the compact or wide window.
@@ -932,6 +1001,7 @@ impl StoryHost {
         Self {
             inner,
             settings,
+            _live: live,
             _directory: directory,
         }
     }

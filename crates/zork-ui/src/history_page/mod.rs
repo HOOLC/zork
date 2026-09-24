@@ -9,12 +9,12 @@ use crate::history::{
     activity::{Activity, Kind, Projection, Row},
     Entry,
 };
+use crate::motion::MotionExt;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     design::ZORK_UI,
     resources::Text,
 };
-use crate::motion::MotionExt;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
@@ -49,6 +49,30 @@ fn sent_wash() -> Rgba {
 }
 /// A received or sent message previews three lines until it is opened.
 const MESSAGE_LINES: usize = 3;
+/// Characters of a closed message laid out for its three-line preview.
+const MESSAGE_PREVIEW_CHARS: usize = 180;
+
+/// The source prefix a closed message lays out: its first three non-empty
+/// Markdown lines, bounded so a long line does not shape the whole body.
+fn message_preview(body: &str) -> String {
+    let mut out = String::new();
+    let mut lines = 0;
+    for line in body.lines() {
+        if !line.trim().is_empty() {
+            if lines == MESSAGE_LINES {
+                break;
+            }
+            lines += 1;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if out.chars().count() > MESSAGE_PREVIEW_CHARS {
+        out = out.chars().take(MESSAGE_PREVIEW_CHARS).collect();
+        out.push('…');
+    }
+    out
+}
 /// A file revealed in a record's details previews this many lines.
 const FILE_LINES: usize = 20;
 mod live;
@@ -369,7 +393,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 .absolute()
                 .size_full(),
             )
-            .child(self.history_statistics().render(self.history_text(), width, window, cx))
+            .child(
+                self.history_statistics()
+                    .render(self.history_text(), width, window, cx),
+            )
             .child(
                 // The page body holds the scroll region the follow button
                 // floats over; the record list pads the records 12/16/24.
@@ -969,25 +996,27 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
     ) -> impl IntoElement {
         let text = self.history_text();
         let expanded = self.history().records_expanded.contains(&entry.id);
-        let body = if activity.details.text.trim().is_empty() {
+        let message = activity.message.as_deref();
+        let body = if activity.details.text.trim().is_empty() && message.is_none() {
             activity.summary.clone()
         } else {
             activity.details.text.clone()
         };
         let unknown = text.text("history_source_unknown");
-        let name = subject
-            .filter(|name| !name.is_empty() && name != &unknown)
-            .unwrap_or_else(|| text.text("history_ref_fallback"));
-        let template = text.text(if sent {
-            "history_message_send_to_chat"
-        } else {
-            "history_message_received_from"
-        });
+        let name = subject.filter(|name| !name.is_empty() && name != &unknown);
+        // Without a known sender the line says only that a message arrived.
+        let template = match (sent, &name) {
+            (true, _) => text.text("history_message_send_to_chat"),
+            (false, Some(_)) => text.text("history_message_received_from"),
+            (false, None) => text.text("history_message_received"),
+        };
+        let name = name.unwrap_or_else(|| text.text("history_ref_fallback"));
         let heading = template.replace("{name}", &name);
         let (before, after) = template
             .split_once("{name}")
             .map(|(before, after)| (before.to_owned(), after.to_owned()))
             .unwrap_or_else(|| (template.clone(), String::new()));
+        let named = template.contains("{name}");
         let failed = matches!(entry.state.as_str(), "failed" | "timed_out");
         // The source or destination is the one link on the line, in the
         // primary ink rather than a separate link colour.
@@ -1043,9 +1072,17 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     .min_w_0()
                     .whitespace_nowrap()
                     .when(!before.is_empty(), |v| v.child(before))
-                    .child(target)
+                    .when(named, |v| v.child(target))
                     .when(!after.is_empty(), |v| v.child(after)),
             )
+            .when(message.is_some_and(|m| m.reply_to.is_some()), |v| {
+                v.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(rgb(SUBTLE()))
+                        .child(text.text("history_message_reply")),
+                )
+            })
             .when(failed, |v| {
                 v.child(
                     div()
@@ -1054,26 +1091,85 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                         .child(text.text("history_error")),
                 )
             });
-        let long = body.lines().count() > MESSAGE_LINES;
+        let long = body.lines().filter(|l| !l.trim().is_empty()).count() > MESSAGE_LINES
+            || body.chars().count() > MESSAGE_PREVIEW_CHARS;
+        // The body is Markdown in the shared renderer. Closed, a bounded
+        // source prefix is laid out and clipped to three lines.
+        let body_element = if body.trim().is_empty() {
+            div()
+                .text_color(rgb(SUBTLE()))
+                .child(text.text(if message.is_some_and(|m| m.raw.is_some()) {
+                    "history_message_structured"
+                } else {
+                    "history_message_empty"
+                }))
+                .into_any_element()
+        } else {
+            let (key, source) = if expanded {
+                (entry.id.clone(), body.clone())
+            } else {
+                (format!("{}#preview", entry.id), message_preview(&body))
+            };
+            let document = self.history().document(&key, &source);
+            div()
+                .min_w_0()
+                .child(render_document(
+                    &format!("history-message-document-{index}"),
+                    document.as_ref(),
+                ))
+                .into_any_element()
+        };
+        let files = message.map_or(&[][..], |m| &m.files[..]);
+        let raw = message.and_then(|m| m.raw.clone()).filter(|_| expanded);
         let content = div()
             .flex_1()
             .min_w_0()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
             .text_size(px(13.))
             .line_height(px(21.))
             .text_color(rgb(TEXT()))
-            .whitespace_normal();
+            .whitespace_normal()
+            .child(body_element)
+            .when(!files.is_empty(), |v| {
+                v.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .min_w_0()
+                        .text_size(px(12.))
+                        .text_color(rgb(DIM()))
+                        .child(
+                            crate::controls::icon("history/attachment.svg", 14.)
+                                .flex_shrink_0()
+                                .text_color(rgb(SUBTLE())),
+                        )
+                        .child(div().min_w_0().truncate().child(files.join("、"))),
+                )
+            })
+            // Only an unrecognised payload keeps its source, and only opened.
+            .when_some(raw, |v, raw| {
+                v.child(
+                    div()
+                        .mt(px(4.))
+                        .min_w_0()
+                        .font_family(crate::assets::CODE_FONT_FAMILY)
+                        .text_size(px(11.))
+                        .line_height(px(18.))
+                        .text_color(rgb(DIM()))
+                        .child(raw),
+                )
+            });
         // Opened, the complete text is the record's inline detail.
         let content = if expanded {
             content
                 .id(("history-inline-detail", index))
-                .child(body.clone())
                 .automation(AutomationRole::Status, body.clone())
                 .into_any_element()
         } else {
-            content
-                .line_clamp(MESSAGE_LINES)
-                .child(body.clone())
-                .into_any_element()
+            content.into_any_element()
         };
         let id = entry.id.clone();
         let click_focus = focus.clone();
@@ -1348,6 +1444,7 @@ mod tests {
             routine: None,
             requested_wait_ms: seconds.map(|seconds| (seconds * 1000.) as i64),
             details: Default::default(),
+            message: None,
         }
     }
 

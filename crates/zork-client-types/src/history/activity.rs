@@ -96,6 +96,26 @@ pub struct Activity {
     pub routine: Option<Routine>,
     pub requested_wait_ms: Option<i64>,
     pub details: Details,
+    /// A received message read as a message: who sent it and what came with
+    /// it. The text itself is `details.text` (Markdown) and `summary`.
+    pub message: Option<Box<Message>>,
+}
+
+/// The facts a Station delivery envelope carries about a received message.
+/// Identifiers stay here for resolution; clients show names, never ids.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Message {
+    /// The display name the envelope carried for its author, if any.
+    pub name: Option<String>,
+    /// Station origin of the device the message came from; `None` is this device.
+    pub origin: Option<String>,
+    /// Attached file names, in the order they were sent.
+    pub files: Vec<String>,
+    /// The message this one replies to, when it is a reply.
+    pub reply_to: Option<String>,
+    /// A payload whose shape is not known: readable text is extracted, and the
+    /// pretty-printed source is kept only for the expandable raw details.
+    pub raw: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -365,6 +385,7 @@ fn project_summary(index: usize, entry: &Entry) -> Option<Activity> {
         routine: None,
         requested_wait_ms: None,
         details: Details::default(),
+        message: None,
     };
     if entry.lane == 1 {
         // The model lane is the assistant's own reply. A failed step is an
@@ -385,57 +406,7 @@ fn project_summary(index: usize, entry: &Entry) -> Option<Activity> {
     }
     if entry.action == "input" {
         result.kind = Kind::Input;
-        let receipt = input(entry).and_then(|input| input["request_id"].as_str());
-        if let Some(payload) = entry
-            .summary
-            .starts_with('{')
-            .then(|| serde_json::from_str::<Value>(&entry.summary).ok())
-            .flatten()
-        {
-            if payload["event"] == "worker_result"
-                && payload["event_id"]
-                    .as_str()
-                    .is_some_and(|id| receipt == Some(format!("worker-result-{id}").as_str()))
-            {
-                result.summary = preview(payload["result"].as_str().unwrap_or(&entry.summary));
-                result.subject = field(&payload, "worker_id").map(Subject::Agent);
-                return Some(result);
-            }
-        }
-        // Direct user messages have a Station request receipt. Do not interpret
-        // user-authored JSON or prose as authoritative sender metadata.
-        if receipt.is_some_and(|id| id.starts_with("worker-result-comment-")) {
-            if let Some(body) = entry.summary.strip_prefix("Human comment on Task ") {
-                if let Some((_, text)) = body.split_once("):\n") {
-                    result.subject = Some(Subject::User);
-                    result.summary = preview(
-                        text.split_once("\n\nReview this comment in the context of the Task.")
-                            .map_or(text, |(content, _)| content),
-                    );
-                    return Some(result);
-                }
-            }
-        }
-        if receipt.is_some() {
-            return Some(result);
-        }
-        if let Some(body) = entry.summary.strip_prefix(
-            "A broker-managed background job reported a new asynchronous event for this session.\n",
-        ) {
-            let job_id = body.lines().find_map(|line| line.strip_prefix("job_id: "));
-            if let (Some(job), Some((_, summary))) = (job_id, body.split_once("\nsummary: ")) {
-                result.subject = Some(Subject::Source(job.to_owned()));
-                result.summary = preview(summary);
-                return Some(result);
-            }
-        }
-        if let Some(envelope) = incoming_envelope(&entry.summary) {
-            result.summary = preview(envelope["text"].as_str().unwrap_or(&entry.summary));
-            result.subject = envelope["sender"]["display_name"]
-                .as_str()
-                .or_else(|| envelope["sender"]["user_id"].as_str())
-                .map(|name| Subject::Source(name.to_owned()));
-        }
+        project_input(&mut result, entry);
         return Some(result);
     }
     if entry.lane != 2 {
@@ -600,23 +571,8 @@ fn details(entry: &Entry, activity: &Activity) -> Details {
         .unwrap_or(&Value::Null);
     let mut detail = Details::default();
     match activity.kind {
-        Kind::Input => {
-            detail.text = incoming_envelope(&entry.summary)
-                .and_then(|v| field(&v, "text"))
-                .unwrap_or_else(|| entry.summary.clone());
-            if matches!(activity.subject, Some(Subject::Agent(_) | Subject::User)) {
-                if let Ok(payload) = serde_json::from_str::<Value>(&entry.summary) {
-                    if payload["event"] == "worker_result" {
-                        detail.text = field(&payload, "result").unwrap_or(detail.text);
-                    }
-                } else if let Some((_, body)) = entry.summary.split_once("):\n") {
-                    detail.text = body
-                        .split_once("\n\nReview this comment in the context of the Task.")
-                        .map_or(body, |(content, _)| content)
-                        .to_owned();
-                }
-            }
-        }
+        // Parsed once with the summary; the complete Markdown body.
+        Kind::Input => detail.text = activity.details.text.clone(),
         Kind::Output | Kind::Error | Kind::Notice => detail.text = entry.summary.clone(),
         Kind::Shell => {
             detail.command = field(args, "command").unwrap_or_default();
@@ -671,6 +627,252 @@ fn details(entry: &Entry, activity: &Activity) -> Details {
     detail.command = model_text(&detail.command);
     detail.output = model_text(&detail.output);
     detail
+}
+
+/// Resolve a session input into a message: its sender, Markdown text and
+/// files. Station envelopes are trusted only on their own delivery path; a
+/// direct user receipt keeps its authored text verbatim. A JSON payload of
+/// unknown shape never becomes the message body: readable fields are shown and
+/// the source stays in `Message::raw`.
+fn project_input(result: &mut Activity, entry: &Entry) {
+    let content = entry.summary.as_str();
+    let input = input(entry);
+    let receipt = input.and_then(|input| input["request_id"].as_str());
+    let position = input.and_then(|input| input["position"]["source"].as_str());
+    let mut set = |subject: Option<Subject>, text: &str, message: Option<Message>| {
+        result.subject = subject;
+        result.summary = preview(text);
+        result.details.text = text.to_owned();
+        result.message = message.map(Box::new);
+    };
+    let payload = content
+        .trim_start()
+        .starts_with('{')
+        .then(|| serde_json::from_str::<Value>(content).ok())
+        .flatten();
+    if let Some(payload) = &payload {
+        if payload["event"] == "worker_result"
+            && payload["event_id"]
+                .as_str()
+                .is_some_and(|id| receipt == Some(format!("worker-result-{id}").as_str()))
+        {
+            let text = payload["result"].as_str().unwrap_or_default();
+            set(field(payload, "worker_id").map(Subject::Agent), text, None);
+            return;
+        }
+        // Chat deliveries and Agent-to-Agent messages arrive through the
+        // ordered mailbox; assignments through their own request receipts.
+        let station = match payload["source"].as_str() {
+            Some("chat") => position.is_some_and(|s| s.starts_with("chat-")) || receipt.is_none(),
+            Some("agent") => {
+                position.is_some_and(|s| s.starts_with("agent-direct-")) || receipt.is_none()
+            }
+            Some("assignment") => receipt.is_none_or(|id| {
+                ["assignment-", "mesh-", "rework-"]
+                    .iter()
+                    .any(|prefix| id.starts_with(prefix))
+            }),
+            _ => false,
+        };
+        if station {
+            if let Some((subject, text, message)) = station_message(payload) {
+                set(subject, &text, Some(message));
+                return;
+            }
+        }
+    }
+    if receipt.is_some_and(|id| id.starts_with("worker-result-comment-")) {
+        if let Some(body) = content.strip_prefix("Human comment on Task ") {
+            if let Some((_, text)) = body.split_once("):\n") {
+                let text = text
+                    .split_once("\n\nReview this comment in the context of the Task.")
+                    .map_or(text, |(content, _)| content);
+                set(Some(Subject::User), text, None);
+                return;
+            }
+        }
+    }
+    if receipt.is_none() {
+        if let Some(body) = content.strip_prefix(
+            "A broker-managed background job reported a new asynchronous event for this session.\n",
+        ) {
+            let job_id = body.lines().find_map(|line| line.strip_prefix("job_id: "));
+            if let (Some(job), Some((_, summary))) = (job_id, body.split_once("\nsummary: ")) {
+                set(Some(Subject::Source(job.to_owned())), summary, None);
+                return;
+            }
+        }
+        if let Some(envelope) = incoming_envelope(content) {
+            // An IM user id is not a name; without a display name the source
+            // stays unknown.
+            let subject = field(&envelope["sender"], "display_name").map(Subject::Source);
+            let message = Message {
+                name: field(&envelope["sender"], "display_name"),
+                files: file_names(&envelope["attachments"]),
+                ..Default::default()
+            };
+            set(subject, &message_text(&envelope["text"]), Some(message));
+            return;
+        }
+    }
+    // Direct user messages have a Station request receipt. Do not interpret
+    // user-authored JSON or prose as authoritative sender metadata, but do not
+    // read a structured payload out as a JSON blob either.
+    if let Some(payload) = payload.filter(|p| p.is_object() && content.len() <= 1024 * 1024) {
+        let raw = serde_json::to_string_pretty(&payload).ok();
+        let text = readable_payload(&payload);
+        set(
+            None,
+            &text,
+            Some(Message {
+                files: file_names(&payload["attachments"]),
+                raw,
+                ..Default::default()
+            }),
+        );
+        return;
+    }
+    let (text, files) = attachment_suffix(content);
+    let files = files.unwrap_or_default();
+    set(
+        None,
+        text,
+        (!files.is_empty()).then(|| Message {
+            files,
+            ..Default::default()
+        }),
+    );
+}
+
+/// Station's delivery envelopes: `chat` (a Chat message delivered to this
+/// member), `agent` (a direct message from another Agent) and `assignment`
+/// (work handed over by a leader).
+fn station_message(payload: &Value) -> Option<(Option<Subject>, String, Message)> {
+    let origin = |value: &Value| {
+        value
+            .as_str()
+            .filter(|origin| !origin.is_empty() && *origin != "local")
+            .map(str::to_owned)
+    };
+    match payload["source"].as_str()? {
+        "chat" => {
+            let message = payload.get("message").filter(|m| m.is_object())?;
+            let author = &message["author"];
+            let id = author["id"].as_str().unwrap_or_default();
+            let subject = match author["kind"].as_str() {
+                Some("user") => Some(Subject::User),
+                // A Session member has no Agent record to resolve.
+                Some("agent") if !id.is_empty() && !id.starts_with("session:") => {
+                    Some(Subject::Agent(id.to_owned()))
+                }
+                _ => None,
+            };
+            let mut text = message_text(&message["text"]);
+            if text.trim().is_empty() {
+                text = message
+                    .get("interaction")
+                    .map(readable_payload)
+                    .unwrap_or_default();
+            }
+            Some((
+                subject,
+                text,
+                Message {
+                    name: field(author, "name"),
+                    origin: origin(&payload["target"]),
+                    files: file_names(&message["attachments"]),
+                    reply_to: field(message, "reply_to"),
+                    raw: None,
+                },
+            ))
+        }
+        "agent" => {
+            let author = &payload["author"];
+            let (text, files) = attachment_suffix(payload["text"].as_str()?);
+            Some((
+                field(author, "agent").map(Subject::Agent),
+                text.to_owned(),
+                Message {
+                    origin: origin(&author["origin"]),
+                    files: files.unwrap_or_default(),
+                    ..Default::default()
+                },
+            ))
+        }
+        "assignment" => {
+            let (text, files) = attachment_suffix(payload["text"].as_str()?);
+            Some((
+                None,
+                text.to_owned(),
+                Message {
+                    origin: origin(&payload["target"]),
+                    files: files.unwrap_or_default(),
+                    ..Default::default()
+                },
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Text that may itself be a Zork file envelope.
+fn message_text(value: &Value) -> String {
+    let text = value.as_str().unwrap_or_default();
+    crate::files::decode(text).map_or_else(|| text.to_owned(), |(text, _)| text)
+}
+
+fn file_names(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|file| {
+            ["name", "title", "filename", "file_name"]
+                .into_iter()
+                .find_map(|key| field(file, key))
+                .or_else(|| {
+                    field(file, "path").map(|p| p.rsplit(['/', '\\']).next().unwrap_or(&p).into())
+                })
+        })
+        .take(crate::files::MAX_FILES)
+        .collect()
+}
+
+/// Station appends local attachment snapshots to text handed to an Agent.
+const ATTACHMENTS: &str =
+    "\n\nConversation attachments (local snapshots, available to file tools):\n";
+fn attachment_suffix(text: &str) -> (&str, Option<Vec<String>>) {
+    match text.rsplit_once(ATTACHMENTS) {
+        Some((body, list)) if list.len() <= 256 * 1024 => {
+            match serde_json::from_str::<Value>(list.trim()) {
+                Ok(list @ Value::Array(_)) => (body, Some(file_names(&list))),
+                _ => (text, None),
+            }
+        }
+        _ => (text, None),
+    }
+}
+
+/// The readable prose of a payload whose shape is not known.
+fn readable_payload(value: &Value) -> String {
+    if let Some(text) = value.as_str() {
+        return text.to_owned();
+    }
+    for key in [
+        "text", "message", "body", "content", "summary", "result", "goal", "error",
+    ] {
+        match &value[key] {
+            Value::String(text) if !text.trim().is_empty() => return message_text(&value[key]),
+            nested @ Value::Object(_) => {
+                let text = readable_payload(nested);
+                if !text.is_empty() {
+                    return text;
+                }
+            }
+            _ => {}
+        }
+    }
+    String::new()
 }
 
 /// Station's current IM envelope. Do not guess a sender from arbitrary prose.

@@ -124,7 +124,12 @@
         "event": {
           "kind": "input_appended",
           "input": {
-            "content": "检查 Session History 的宽窄布局，保留代码、分组和完整执行结果。",
+            "input_id": "input-1",
+            "position": {
+              "source": "chat-4f1c2a9be07d35c8a1b2c3d4",
+              "sequence": 1
+            },
+            "content": "{\"source\":\"chat\",\"target\":\"local\",\"message\":{\"message_id\":\"msg-01J9Z3XK8Q2M4N6P8R0T2V4W01\",\"chat_id\":\"chat-01J9Z3\",\"author\":{\"id\":\"local-user\",\"kind\":\"user\"},\"text\":\"检查 Session History 的宽窄布局，保留代码、分组和完整执行结果。\",\"attachments\":[{\"id\":\"file-layout\",\"name\":\"history-layout.png\",\"byte_len\":48213,\"content_root\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}],\"mentions\":[],\"created_at\":\"2026-09-19T12:08:30Z\"}}",
             "received_at_ms": 1789824510000
           }
         }
@@ -337,7 +342,11 @@
           "kind": "input_appended",
           "input": {
             "input_id": "wake",
-            "content": "后台测试已完成。请给出完整结果。",
+            "position": {
+              "source": "chat-4f1c2a9be07d35c8a1b2c3d4",
+              "sequence": 2
+            },
+            "content": "{\"source\":\"chat\",\"target\":\"local\",\"message\":{\"message_id\":\"msg-01J9Z3XK8Q2M4N6P8R0T2V4W02\",\"chat_id\":\"chat-01J9Z3\",\"author\":{\"id\":\"leader\",\"kind\":\"agent\",\"name\":\"Studio\"},\"text\":\"后台测试已完成。请给出**完整结果**：\\n\\n- 宽屏与窄屏\\n- `回到最新` 按钮\",\"attachments\":[{\"id\":\"file-report\",\"name\":\"test-report.md\",\"byte_len\":2048,\"content_root\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"mentions\":[],\"reply_to\":\"msg-01J9Z3XK8Q2M4N6P8R0T2V4W01\",\"created_at\":\"2026-09-19T12:09:00Z\"}}",
             "received_at_ms": 1789824540000
           }
         }

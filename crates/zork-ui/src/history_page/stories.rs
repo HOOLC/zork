@@ -92,8 +92,12 @@ impl Host for Story {
     }
     fn history_subject(&self, a: &Activity, _: &Entry) -> (Option<String>, Option<Jump>) {
         use crate::history::activity::Subject;
+        let carried = a.message.as_deref().and_then(|m| m.name.clone());
         match &a.subject {
-            Some(Subject::Agent(id)) => (Some("Studio".into()), Some(Jump::Agent(id.clone()))),
+            Some(Subject::Agent(id)) => (
+                Some(carried.unwrap_or_else(|| "Studio".into())),
+                Some(Jump::Agent(id.clone())),
+            ),
             Some(Subject::Conversation) => {
                 (Some("聊天".into()), Some(Jump::Conversation("demo".into())))
             }
@@ -101,7 +105,10 @@ impl Host for Story {
                 (Some(id.clone()), Some(Jump::Entry(format!("tool:{id}"))))
             }
             Some(Subject::User) => (Some(self.text.text("history_user")), None),
-            _ if a.kind == Kind::Input => (Some(self.text.text("history_source_unknown")), None),
+            _ if a.kind == Kind::Input => (
+                Some(carried.unwrap_or_else(|| self.text.text("history_source_unknown"))),
+                None,
+            ),
             _ => (None, None),
         }
     }

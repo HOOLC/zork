@@ -53,10 +53,11 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     actions.put(intent);lastBody=intent;snapshot=project()
                                 }, {})
                             }
-                            else if (route in listOf("home","appearance","device","models","profile","profile-custom","model-connections","services","notifications")) {
+                            else if (route in listOf("home","appearance","device","models","profile","profile-custom","model-connections","services","notifications","archived")) {
                                 var settings by remember { mutableStateOf(if (route == "profile-custom") fixtureSettings().let { it.copy(page="profile",profile=it.profiles.first { p -> p.text("profile_id")=="lab" }) }
                                     else settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
+                                var archivedHome by remember { mutableStateOf(fixtureHome()) }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
                                     if(resourceTrail.isNotEmpty()) {
                                         val selected=resourceTrail.removeAt(resourceTrail.lastIndex)
@@ -71,6 +72,10 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     addConnection={peer->lastAction="add-connection:$peer";settings=settings.copy(page="models",fromConnections=true,addConnection=true)},
                                     theme=previewTheme, saveTheme={previewTheme=it},
                                     clearData={lastAction="clear-data"},
+                                    addDevice={lastAction="add-device"},
+                                    home=archivedHome, openChat={lastAction="open-chat:${it.optString("_peer")}/${it.text("chat_id")}"},
+                                    archiveChat={peer,chat,archived,_->lastAction="archive:$peer/$chat/$archived"
+                                        archivedHome=archivedHome.copy(archived=archivedHome.archived.filterNot{it.peer==peer&&it.id==chat},archivedTotal=archivedHome.archivedTotal-1)},
                                     notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
                                     resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
                                     page={settings=settingsFixturePage(settings,it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->

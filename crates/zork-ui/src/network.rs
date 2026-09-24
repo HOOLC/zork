@@ -204,40 +204,50 @@ pub fn enrollment<V: 'static>(
     let p = ZORK_UI.palette;
     let active =
         matches!(data.status.as_str(), "waiting" | "connecting") && !data.command.is_empty();
+    let generating = data.busy || (data.status.is_empty() && data.notice.is_none());
     div()
         .flex()
         .flex_col()
         .items_start()
         .gap_3()
-        .when(!active, |v| {
+        // Opening "连接设备" already asks for a command, so the first state is
+        // progress, never a lone button. A button only returns to start over
+        // after expiry, revocation, a join or a failure.
+        .when(!active && generating, |v| {
             v.child(
-                ui::button(
-                    "mesh-invite-create",
-                    if data.busy {
-                        "正在生成…"
-                    } else {
-                        "生成连接命令"
-                    },
-                    true,
-                    !data.busy && data.available,
-                )
-                .on_click(cx.listener(move |v, _, _, cx| create(v, EnrollmentAction::Create, cx)))
-                .automation_enabled(
-                    !data.busy && data.available,
-                    AutomationRole::Button,
-                    "生成连接命令",
-                ),
+                div()
+                    .id("mesh-invite-generating")
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_size(px(13.))
+                    .text_color(rgb(p.muted))
+                    .child(
+                        crate::components::loading::indicator("mesh-invite-loading", 14.)
+                            .without_delay(),
+                    )
+                    .child("正在生成连接命令…")
+                    .automation(AutomationRole::Status, "正在生成连接命令"),
             )
-            .when(!data.status_label.is_empty(), |v| {
+        })
+        .when(!active && !generating, |v| {
+            v.when(!data.status_label.is_empty(), |v| {
                 v.child(
                     div()
                         .id("mesh-invite-status")
-                        .text_size(px(12.))
+                        .text_size(px(13.))
                         .text_color(rgb(p.muted))
                         .child(data.status_label.clone())
                         .automation(AutomationRole::Status, data.status_label.clone()),
                 )
             })
+            .child(
+                ui::button("mesh-invite-create", "重新生成", true, data.available)
+                    .on_click(
+                        cx.listener(move |v, _, _, cx| create(v, EnrollmentAction::Create, cx)),
+                    )
+                    .automation_enabled(data.available, AutomationRole::Button, "重新生成连接命令"),
+            )
         })
         .when(active, |v| {
             v.child(div().text_size(px(14.)).child("在另一台电脑上运行："))
@@ -445,7 +455,7 @@ impl gpui::Render for NetworkStory {
                     ui::page_action("design-pc-add-device", "连接设备").on_click(cx.listener(
                         |v, _, _, cx| {
                             v.open = true;
-                            cx.notify();
+                            v.enrollment_action(EnrollmentAction::Create, cx);
                         },
                     )),
                 )
