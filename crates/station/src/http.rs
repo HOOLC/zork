@@ -230,6 +230,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/browser/command", post(crate::browser::tool))
         .route("/v1/services", post(crate::shared_services::tool))
         .route("/v1/node-tools", post(crate::node_tools::tool))
+        .route(
+            "/v1/mesh/invite-tools",
+            post(crate::mesh_invite_tools::tool),
+        )
         .route("/v1/channels/tools", post(crate::channels::tool))
         .route(
             "/v1/internal/user-actions",

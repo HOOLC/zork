@@ -4,6 +4,7 @@ pub mod agent_configuration;
 pub mod channels;
 mod computer;
 mod history;
+mod mesh;
 mod namespaced;
 mod service;
 mod shell;
@@ -174,6 +175,7 @@ pub fn register(registry: &Arc<ToolRegistry>, base: String) -> anyhow::Result<()
     slack::register(registry, &base)?;
     history::register(registry);
     namespaced::register(registry, &base, &http)?;
+    mesh::register(registry, &base, &http)?;
     channels::register(registry, &base, &http)?;
     Ok(())
 }
