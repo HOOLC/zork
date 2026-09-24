@@ -123,7 +123,7 @@ class AdbSettingsTest {
             assertNull(node("在手机上允许调试"))
             assertNull(node("查看提示"))
             capture("ready-320.png")
-            click("详情")
+            click("技术信息")
             await("127.0.0.1:41001")
             await("127.0.0.1:41002")
             click("关闭")

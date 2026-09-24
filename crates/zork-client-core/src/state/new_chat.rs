@@ -190,6 +190,11 @@ impl NewChat {
             &state.thinking,
             &state.profile,
         );
+        if let Some(name) = self.device.upgrade().and_then(|d| d.display_name()) {
+            for option in &mut view.model.options {
+                option.device = Some(name.clone());
+            }
+        }
         view.busy = state.busy;
         view.uncertain = state.pending.is_some() && !state.busy;
         view.editable = !state.busy && state.pending.is_none();

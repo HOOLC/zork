@@ -12,7 +12,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,33 +65,36 @@ internal fun NotificationSettings(actions: SettingsActions, modifier: Modifier =
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val enabled = preferences?.optBoolean("enabled") == true
             SettingsListGroup { Column(Modifier.padding(horizontal = 16.dp)) {
-                SettingsToggle("接收通知", enabled, !busy && preferences != null, "新回复、待验收和需要处理的任务") {
+                SettingsToggle("接收通知", enabled, !busy && preferences != null) {
                     if (it) request("enabled") else change("enabled", false)
                 }
-                SettingsToggle("显示会话名称", preferences?.optBoolean("preview") == true, !busy && preferences != null, "关闭时只显示 Zork 和事件类型") { change("preview", it) }
-                SettingsToggle("提示音", preferences?.optBoolean("sound") == true, !busy && preferences != null, "通知声音也可在系统通知设置中调整") { change("sound", it) }
+                SettingsToggle("显示会话名称", preferences?.optBoolean("preview") == true, !busy && preferences != null) { change("preview", it) }
+                SettingsToggle("提示音", preferences?.optBoolean("sound") == true, !busy && preferences != null) { change("sound", it) }
                 actions.notificationTarget?.let { (peer, session) ->
                     val muted = preferences?.optJSONArray("muted")?.let { rows ->
                         (0 until rows.length()).any { rows.optJSONArray(it)?.let { row -> row.optString(0) == peer && row.optString(1) == session } == true }
                     } == true
-                    SettingsToggle("当前会话免打扰", muted, !busy && preferences != null, "保留未读提示，不发送系统通知") { value ->
+                    SettingsToggle("当前会话免打扰", muted, !busy && preferences != null) { value ->
                         run { actions.notificationAction(JSONObject().put("action", "mute").put("peer", peer).put("session", session).put("value", value)) }
                     }
                 }
             } }
             SettingsListGroup { Column(Modifier.padding(horizontal = 16.dp)) {
                 SettingsToggle("离开应用后保持连接", preferences?.optBoolean("background") == true, !busy && enabled,
-                    "保持设备连接以接收通知，会显示常驻通知并增加耗电。系统停止应用后需重新打开。") {
+                    "会显示常驻通知，耗电略增") {
                     if (it) request("background") else change("background", false)
                 }
             } }
-            Text(if (allowed) "系统已允许通知" else "系统未允许通知", color = if (allowed) ZorkColors.Muted else ZorkColors.Warning, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 8.dp))
-            if (!allowed && Build.VERSION.SDK_INT >= 33) SettingsButton("允许系统通知", enabled = !busy) { request("permission") }
-            SettingsButton("发送测试通知", enabled = enabled && !busy) { request("test") }
-            SettingsButton("打开系统通知设置") {
-                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            // The system permission shows only when it is missing.
+            if (!allowed) Row(Modifier.fillMaxWidth().background(ZorkColors.WarningSoft, ZorkShapes.Container).padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("系统未允许通知", color = ZorkColors.Warning, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                if (Build.VERSION.SDK_INT >= 33) ZorkButton("允许", quiet = true, enabled = !busy, onClick = { request("permission") })
+                else ZorkButton("打开系统设置", quiet = true, onClick = {
+                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                })
             }
+            ZorkButton("发送测试通知", quiet = true, enabled = enabled && !busy, onClick = { request("test") })
             message?.let { Text(it, color = ZorkColors.Muted, fontSize = 13.sp) }
             actions.notificationError?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
         }

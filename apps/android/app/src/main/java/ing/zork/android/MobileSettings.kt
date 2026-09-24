@@ -119,29 +119,30 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
             if (state.page == "home") {
                 SectionTitle("客户端")
                 SettingsListGroup {
-                    SettingsListRow("Zork 账号", R.drawable.ic_settings, subtext = "Google 登录与公网连接", action = { actions.page("account") })
-                    SettingsListDivider()
+                    val account = actions.account
+                    SettingsListRow("Zork 账号", R.drawable.ic_settings,
+                        value = account?.text("email")?.takeIf { it.isNotBlank() && !account.text("subject").isNullOrBlank() } ?: "未登录",
+                        action = { actions.page("account") })
                     SettingsListRow("外观", R.drawable.ic_settings_three,
                         value = when (actions.theme) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" },
                         action = { actions.page("appearance") })
-                    SettingsListDivider()
-                    SettingsListRow("通知", R.drawable.ic_attention, subtext = "消息提醒、免打扰与后台连接", action = { actions.page("notifications") })
+                    SettingsListRow("通知", R.drawable.ic_attention,
+                        value = actions.notifications?.let { if (it.optBoolean("enabled")) "已开启" else "已关闭" },
+                        action = { actions.page("notifications") })
                 }
                 SectionTitle("Mesh")
                 SettingsListGroup {
                     SettingsListRow("模型连接", R.drawable.ic_mesh, value = connectionCount(state), action = { actions.page("model-connections") })
                     peers.forEach { peer ->
-                        SettingsListDivider()
                         SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
-                            trailing = { DeviceStatusBadge(peer.status) }, action = { actions.device(peer) })
+                            trailing = { if (peer.status.state !in listOf("direct", "connected")) DeviceStatusBadge(peer.status) },
+                            action = { actions.device(peer) })
                     }
-                    SettingsListDivider()
                     SettingsListRow("连接设备", R.drawable.ic_plus, action = actions.addDevice)
                 }
                 SectionTitle("高级")
                 SettingsListGroup {
-                    SettingsListRow("安卓调试", R.drawable.ic_node, subtext = "通过 Mesh 安装应用和调试", action = { actions.page("adb") })
-                    SettingsListDivider()
+                    SettingsListRow("安卓调试", R.drawable.ic_node, action = { actions.page("adb") })
                     ClearDataSettings(actions)
                 }
             } else if (state.page == "device") {
@@ -149,56 +150,46 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 val status = device?.status ?: DeviceStatusUi()
                 val current = update?.text("current")?.takeIf { it.isNotBlank() }
                     ?: state.info?.optJSONObject("station")?.let { it.text("release_version", it.text("version")) }?.takeIf { it.isNotBlank() }
-                SettingsListGroup {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        DeviceMark(device?.name.orEmpty(), 44.dp)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(device?.name.orEmpty(), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                DeviceStatusBadge(status)
-                                if (status.state in listOf("direct", "connected")) Text(deviceStatusText(status), fontSize = 12.sp, color = ZorkColors.Muted)
-                                Text("· ${current?.let { "v$it" } ?: "版本待获取"}", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
-                            }
+                val checking = update?.optBoolean("checking") == true
+                val available = update?.optBoolean("available") == true && state.online
+                var more by remember { mutableStateOf(false) }
+                // First glance: who and whether it is reachable. Name, version and checks live in "更多".
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    DeviceMark(device?.name.orEmpty(), 40.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(device?.name.orEmpty(), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DeviceStatusBadge(status)
+                            if (status.state in listOf("direct", "connected")) Text(deviceStatusText(status), fontSize = 12.sp, color = ZorkColors.Muted)
                         }
-                        if (state.online) ZorkIconButton("修改设备名称", onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
+                    }
+                    Box {
+                        IconAction(R.drawable.ic_more, "更多", enabled = !state.loading) { more = true }
+                        PlainMenu("设备操作", more, { more = false }, 200.dp) {
+                            ZorkMenuItem("重命名", false, enabled = state.online, onClick = { more = false; editor = "rename" })
+                            if (update?.optBoolean("supported") == true && state.online && !available)
+                                ZorkMenuItem(if (checking) "正在检查…" else "检查更新", false, enabled = !checking && !upgrading,
+                                    onClick = { more = false; actions.checkUpdate() })
+                            Text("版本 ${current?.let { "v$it" } ?: "—"}", fontSize = 12.sp, color = ZorkColors.Subtle,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                        }
                     }
                 }
-                SectionTitle("这台设备")
+                // The update row exists only when there is something to install.
+                if (available) SettingsListRow("可更新到 $latest", R.drawable.ic_reload,
+                    trailing = { ZorkButton("更新", primary = true, enabled = !checking && !upgrading, onClick = { editor = "upgrade" }) })
                 SettingsListGroup {
-                    SettingsListRow("服务", R.drawable.ic_node, subtext = "运行状态、共享信息与日志", action = { actions.page("services") })
-                    SettingsListDivider()
+                    SettingsListRow("服务", R.drawable.ic_node, action = { actions.page("services") })
                     SettingsListRow("模型连接", R.drawable.ic_mesh, value = if (state.profilesReady) state.profiles.size.toString() else "—",
-                        subtext = "保存在这台设备上的连接", action = { actions.page("models") })
+                        action = { actions.page("models") })
                 }
-                if (update != null && update.optBoolean("supported") && state.online) {
-                    val checking = update.optBoolean("checking")
-                    val available = update.optBoolean("available")
-                    SectionTitle("版本")
-                    SettingsListGroup {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(when {
-                                    available -> "可升级至 $latest"
-                                    update.optBoolean("up_to_date") -> "已是最新版本"
-                                    else -> current?.let { "当前 v$it" } ?: "版本待获取"
-                                }, fontSize = 15.sp)
-                                val detail = update.text("message").takeIf { it.isNotBlank() }
-                                    ?: if (available) "当前 ${current ?: "—"} · 升级后自动重启" else null
-                                detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
-                            }
-                            if (available) ZorkButton("升级", primary = true, enabled = !checking && !upgrading, onClick = { editor = "upgrade" })
-                            else ZorkButton(if (checking) "正在检查…" else "检查更新", enabled = !checking && !upgrading, onClick = actions.checkUpdate)
-                        }
-                    }
-                    update.text("error").takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp)) }
-                }
+                update?.text("error")?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
                 state.operation?.let { operation ->
                     val message = operation.text("error").ifBlank { operation.text("message").ifBlank {
                         if (operation.optBoolean("completed")) "设备升级完成" else if (operation.optBoolean("running")) "正在升级，等待设备恢复连接…" else ""
                     } }
-                    if (message.isNotBlank()) Text(message, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp),
+                    if (message.isNotBlank()) Text(message, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp),
                         color = if (operation.text("error").isNotBlank()) ZorkColors.Danger else ZorkColors.Muted)
                 }
             }
