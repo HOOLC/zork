@@ -1309,15 +1309,13 @@ impl Render for ProfilesView {
                                 .gap_2()
                                 .text_size(px(12.))
                                 .text_color(rgb(p.muted))
-                                .child(ui::icon("icons/node.svg", 14.))
-                                .child(format!(
-                                    "{} · 连接保存在此设备",
-                                    zork_ui::device_name::summary(
-                                        &self.device_name,
-                                        &self.device_status,
-                                        None
-                                    )
-                                )),
+                                .child(zork_ui::device_name::label(
+                                    "profile-create-device",
+                                    self.device_name.clone(),
+                                    &self.device_status,
+                                    None,
+                                ))
+                                .child("· 连接保存在此设备"),
                         )
                         .child(ui::form_field(
                             "接入方式",
@@ -1988,17 +1986,18 @@ impl ProfilesView {
                     .child(ui::page_title("大模型"))
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
                             .text_size(px(12.))
                             .text_color(rgb(p.muted))
-                            .child(format!(
-                                "{} · {} 个连接",
-                                zork_ui::device_name::summary(
-                                    &self.device_name,
-                                    &self.device_status,
-                                    None
-                                ),
-                                self.profiles.len()
-                            )),
+                            .child(zork_ui::device_name::label(
+                                "profile-page-device",
+                                self.device_name.clone(),
+                                &self.device_status,
+                                None,
+                            ))
+                            .child(format!("· {} 个连接", self.profiles.len())),
                     ),
             )
             .when(true, |header| {

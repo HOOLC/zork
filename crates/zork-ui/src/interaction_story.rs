@@ -147,7 +147,7 @@ impl Render for InteractionStory {
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(12.))
                                                     .text_color(rgb(p.muted))
                                                     .child(label),
                                             )

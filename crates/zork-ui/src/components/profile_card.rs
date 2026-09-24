@@ -191,7 +191,8 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                         } else {
                             p.success
                         };
-                        let size = 20.;
+                        // Wide enough for two 12 px digits inside the stroke.
+                        let size = 24.;
                         let track = ring_path(size, 1.);
                         let progress = ring_path(size, window.remaining / 100.);
                         let label = format!("{} · {}", window.label, window.value);

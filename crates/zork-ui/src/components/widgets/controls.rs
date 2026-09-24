@@ -3,7 +3,7 @@ use super::{skin, SurfaceColors};
 use crate::{
     components::text_input::ComposerInput,
     controls::CONTROL_HEIGHT,
-    design::{BRAND_ACCENT, FORM, INTERACTION, ZORK_UI},
+    design::{FORM, INTERACTION, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 mod adaptive;
@@ -254,9 +254,9 @@ fn render_segmented(
     let mut row = div()
         .absolute()
         .left(px(SEGMENT_INSET))
-        .top_0()
+        .top(px(SEGMENT_INSET))
         .w(px(width - 2. * SEGMENT_INSET))
-        .h(px(CONTROL_HEIGHT))
+        .h(px(CONTROL_HEIGHT - 2. * SEGMENT_INSET))
         .flex()
         .gap(px(SEGMENT_GAP));
     for (
@@ -435,9 +435,12 @@ fn render_toggle(
     let track = if checked {
         ZORK_UI.palette.accent
     } else {
-        ZORK_UI.palette.selected
+        FORM.switch_off
     };
-    let thumb = if enabled {
+    // A dark resting thumb would sink into the dark off track.
+    let thumb = if enabled && !checked && crate::design::theme() == crate::design::Theme::Dark {
+        ZORK_UI.palette.muted
+    } else if enabled {
         ZORK_UI.palette.elevated
     } else {
         ZORK_UI.palette.border_strong
