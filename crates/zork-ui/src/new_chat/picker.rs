@@ -104,8 +104,9 @@ impl Page {
             .position(|(p, m)| m == &self.data.model.value && p == profile)
             .or_else(|| pairs.iter().position(|(_, m)| m == &self.data.model.value))
     }
-    /// Scrolls the model list so the current choice is in view.
-    pub(super) fn reveal_selected_model(&self) {
+    /// Scrolls the model list so the current choice is in view. Row geometry
+    /// is fixed, so the offset comes from it rather than from last frame's bounds.
+    fn reveal_selected_model(&self, list_height: f32) {
         let Some(selected) = self.selected_pair() else {
             return;
         };
@@ -113,18 +114,29 @@ impl Page {
             return;
         }
         self.picker_revealed.set(Some(selected));
-        // Children alternate a group title with its model rows.
-        let mut child = 0;
-        let mut row = 0;
-        for group in self.groups() {
-            child += 1;
+        let (title, row, gap, group_gap) = (30., 36., 2., 6.);
+        let mut y = 0.;
+        let mut index = 0;
+        for (g, group) in self.groups().into_iter().enumerate() {
+            if g > 0 {
+                y += group_gap;
+            }
+            y += title + gap;
             for _ in &group.models {
-                if row == selected {
-                    self.picker_scroll.scroll_to_item(child);
+                if index == selected {
+                    let top = -self.picker_scroll.offset().y.as_f32();
+                    let target = if y < top {
+                        y
+                    } else if y + row > top + list_height {
+                        y + row - list_height
+                    } else {
+                        return;
+                    };
+                    self.picker_scroll.set_offset(point(px(0.), px(-target)));
                     return;
                 }
-                row += 1;
-                child += 1;
+                index += 1;
+                y += row + gap;
             }
         }
     }
@@ -141,12 +153,13 @@ impl Page {
         let p = ZORK_UI.palette;
         let enabled = self.picker_open && self.data.editable;
         let selected = self.selected_pair();
+        // The panel opens above or below the composer; keep the list inside the window.
+        let list_height = (window.viewport_size().height.as_f32() - 480.).clamp(120., 260.);
         // Keeps the current model in view when the panel opens or the choice moves.
-        self.reveal_selected_model();
+        self.reveal_selected_model(list_height);
         let mut list = div()
             .id("new-chat-model-list")
-            // The panel opens above the composer; keep the list inside the window.
-            .max_h(px((window.viewport_size().height.as_f32() - 480.).clamp(120., 260.)))
+            .max_h(px(list_height))
             .overflow_y_scroll()
             .track_scroll(&self.picker_scroll)
             .flex()
