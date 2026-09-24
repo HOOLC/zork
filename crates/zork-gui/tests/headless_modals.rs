@@ -311,7 +311,14 @@ fn main() -> anyhow::Result<()> {
         f.click("model-edit-fixture-model")?;
         anyhow::ensure!(
             f.element("model-inline-editor").is_some(),
-            "editing a model did not expand in place"
+            "editing a model did not expand in place: {:?}",
+            f.driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .filter(|e| e.id.starts_with("model") || e.id.starts_with("profile-model"))
+                .map(|e| (&e.id, e.visible))
+                .collect::<Vec<_>>()
         );
         f.screenshot(&format!("model-inline-{width}.png"))?;
         f.key("escape")?;

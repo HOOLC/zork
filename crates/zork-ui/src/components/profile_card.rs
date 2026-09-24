@@ -137,7 +137,13 @@ pub fn render(
                 .automation(AutomationRole::Status, card.verification),
         )
     })
-    .child(controls::icon("icons/chevron-right.svg", 14.).text_color(rgb(p.subtle)))
+    .child(
+        controls::icon("icons/chevron-down.svg", 14.)
+            .text_color(rgb(p.subtle))
+            .with_transformation(gpui::Transformation::rotate(gpui::radians(
+                -std::f32::consts::FRAC_PI_2,
+            ))),
+    )
 }
 
 fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
