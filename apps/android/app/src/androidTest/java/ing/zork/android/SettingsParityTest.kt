@@ -147,12 +147,12 @@ class SettingsParityTest {
                 assertEquals("enable_model", it.lastAction)
                 assertFalse(it.lastBody!!.getBoolean("enabled"))
             }
-            assertNotNull(reveal("待配置上下文与输出上限"))
-            click("更新模型"); await("模型已是最新")
+            assertNotNull(reveal("待配置"))
+            click("获取模型"); await("模型已是最新")
             scenario.onActivity { assertEquals("discover_models", it.lastAction) }
-            click("刷新额度")
+            click("更多"); click("刷新额度")
             scenario.onActivity { assertEquals("refresh_quota", it.lastAction) }
-            click("重命名连接"); field("名称", "手机可见的工作室账号"); click("保存")
+            click("更多"); click("重命名"); field("名称", "手机可见的工作室账号"); click("保存")
             await("手机可见的工作室账号")
             scenario.onActivity {
                 assertEquals("rename_profile", it.lastAction)
@@ -209,7 +209,7 @@ class SettingsParityTest {
             capture("model-connections")
             click("工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
-            await("刷新额度")
+            await("额度")
             click("返回"); await("OpenRouter")
             click("添加连接"); await("添加到哪台设备？"); click("mini1")
             scenario.onActivity { assertEquals("add-connection:mini1", it.lastAction) }

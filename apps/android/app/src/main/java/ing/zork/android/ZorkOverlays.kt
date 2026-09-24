@@ -39,10 +39,10 @@ internal fun ZorkDialog(
 ) {
     if (!open) return
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.padding(16.dp).widthIn(max = 640.dp).fillMaxWidth()
+        Surface(Modifier.padding(16.dp).widthIn(max = 480.dp).fillMaxWidth()
             .semantics { paneTitle = title }, shape = ZorkShapes.Surface,
             color = ZorkColors.Canvas, border = BorderStroke(UiTokens.Border, UiTokens.Outline)) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = content)
         }
     }
@@ -73,9 +73,9 @@ internal fun ZorkSheet(
         containerColor = ZorkColors.Canvas,
         dragHandle = null) {
         Column(Modifier.fillMaxWidth().widthIn(max = 640.dp)
-            .imePadding().navigationBarsPadding().padding(24.dp)
+            .imePadding().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp)
             .semantics { paneTitle = title },
-            verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
     }
 }
 

@@ -51,16 +51,16 @@ internal object SettingsStyle {
     LaunchedEffect(error) { if(error!=null) scroll.animateScrollTo(0) }
     ZorkSheet(visible, title, close, onClosed = onClosed, canDismiss = !busy || dismissWhileBusy) {
         Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * .86f).dp)
-            .then(if (footer == null) Modifier.verticalScroll(scroll) else Modifier), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            .then(if (footer == null) Modifier.verticalScroll(scroll) else Modifier), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 ZorkIconButton("关闭", enabled = visible && (!busy || dismissWhileBusy), onClick = close) { Icon(painterResource(R.drawable.ic_x), null, Modifier.size(18.dp)) }
             }
             if (footer == null) {
                 if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 18.dp, vertical = 12.dp))
                 content()
             } else {
-                Column(Modifier.weight(1f, fill = false).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Column(Modifier.weight(1f, fill = false).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 18.dp, vertical = 12.dp))
                     content()
                 }
@@ -76,14 +76,13 @@ internal object SettingsStyle {
 
 @Composable
 internal fun SettingsListGroup(content: @Composable ColumnScope.() -> Unit) {
-    ZorkCard(Modifier.fillMaxWidth(), color = ZorkColors.Paper, outlined = false, shape = ZorkShapes.Container) {
-        Column(content = content)
-    }
+    // Rows sit directly on the page surface; groups are separated by titles and spacing.
+    Column(Modifier.fillMaxWidth(), content = content)
 }
 
 @Composable
-internal fun SettingsListDivider(inset: androidx.compose.ui.unit.Dp = 60.dp) {
-    HorizontalDivider(Modifier.padding(start = inset, end = 16.dp), thickness = UiTokens.Border, color = ZorkColors.Border)
+internal fun SettingsListDivider(@Suppress("UNUSED_PARAMETER") inset: androidx.compose.ui.unit.Dp = 60.dp) {
+    // No divider lines: rows are separated by their own height.
 }
 
 @Composable
@@ -97,14 +96,14 @@ internal fun SettingsListRow(
     trailing: (@Composable () -> Unit)? = null,
     action: (() -> Unit)? = null,
 ) {
-    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 56.dp), onClick = action) {
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 52.dp), onClick = action) {
         if (leading != null || icon != null) Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
             when {
                 leading != null -> leading()
                 icon != null -> Icon(painterResource(icon), null, Modifier.size(24.dp), tint = ZorkColors.Muted)
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             subtext?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -116,9 +115,9 @@ internal fun SettingsListRow(
 
 @Composable
 internal fun SettingsToggle(label: String, checked: Boolean, enabled: Boolean = true, detail: String? = null, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, fontSize = 15.sp)
             detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
         }

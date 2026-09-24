@@ -110,7 +110,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             ZorkIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (state.page != "home") SettingsRefreshButton(state.loading, actions.refresh)
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,7 +159,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                                 Text("· ${current?.let { "v$it" } ?: "版本待获取"}", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
                             }
                         }
-                        if (state.online) ZorkIconButton("修改设备名称", opensPanel = true, onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
+                        if (state.online) ZorkIconButton("修改设备名称", onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
                     }
                 }
                 SectionTitle("这台设备")
@@ -228,5 +228,5 @@ internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
 
 @Composable private fun SectionTitle(title: String) {
     Text(title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
-        modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 4.dp))
+        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 2.dp))
 }

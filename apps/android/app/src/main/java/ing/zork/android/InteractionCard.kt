@@ -171,7 +171,7 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
                 interactionText(if (advancedOpen) "interaction_less_settings" else "interaction_more_settings"),
                 quiet = true, onClick = { advancedOpen = !advancedOpen })
             if (card.details.isNotEmpty()) {
-                HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
+                Spacer(Modifier.height(4.dp))
                 card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
                     InteractionValue(value)

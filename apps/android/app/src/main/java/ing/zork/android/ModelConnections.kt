@@ -61,7 +61,7 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = actions.back)
-            Text("模型连接", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+            Text("模型连接", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
             SettingsRefreshButton(state.loading, actions.refresh)
             ZorkIconButton("添加连接", opensPanel = true, enabled = peers.isNotEmpty(), onClick = { choosing = true }) {
                 Icon(painterResource(R.drawable.ic_plus), null, Modifier.size(20.dp))

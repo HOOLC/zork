@@ -411,7 +411,6 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
             }
         }
     }
-    HorizontalDivider(color = ZorkColors.Border, thickness = 0.5.dp)
     if (files) ChatFilesSheet(state.messages, state.files, actions) { files = false }
 }
 
@@ -646,10 +645,8 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 contentPadding = bottomPadding, verticalArrangement = Arrangement.Top) {
                 item {
                     val firstDate = messageState.firstDate
-                    if (firstDate.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(13.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                        HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
-                        Text(messageDate(firstDate), color = ZorkColors.Muted, fontSize = 12.sp)
-                        HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
+                    if (firstDate.isNotBlank()) Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                        Text(messageDate(firstDate), color = ZorkColors.Subtle, fontSize = 12.sp)
                     }
                     if (messageState.older) ZorkButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
                 }
@@ -930,8 +927,7 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
                 Text("待发送评论 · ${comments.size}", fontSize = 12.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
             }
             comments.forEach { comment ->
-                HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
-                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).zorkPressable() { actions.editComment(comment) }) {
                         Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))

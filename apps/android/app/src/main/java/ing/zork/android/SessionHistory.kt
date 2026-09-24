@@ -72,7 +72,6 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
                 }
                 HistoryIconAction(R.drawable.ic_reload, "刷新执行历史", !status.loading && !status.revoked, actions.retry)
             }
-            HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
             if (status.error != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 .background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
