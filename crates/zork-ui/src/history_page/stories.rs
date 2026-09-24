@@ -93,7 +93,7 @@ impl Host for Story {
     fn history_subject(&self, a: &Activity, _: &Entry) -> (Option<String>, Option<Jump>) {
         use crate::history::activity::Subject;
         match &a.subject {
-            Some(Subject::Agent(id)) => (Some("产品领队".into()), Some(Jump::Agent(id.clone()))),
+            Some(Subject::Agent(id)) => (Some("Studio".into()), Some(Jump::Agent(id.clone()))),
             Some(Subject::Conversation) => {
                 (Some("聊天".into()), Some(Jump::Conversation("demo".into())))
             }
@@ -131,7 +131,7 @@ impl Host for Story {
             Action::Jump(Jump::Agent(id)) => {
                 self.presentation = Some(Presentation::Agent {
                     id,
-                    name: "产品领队".into(),
+                    name: "Studio".into(),
                     role: Some("整理产品需求与研究资料".into()),
                 })
             }
@@ -148,8 +148,8 @@ impl Host for Story {
             calls: self.state.model_calls,
             models: self.state.models.clone(),
             runtime: Runtime {
-                name: "产品领队".into(),
-                role: Some("领队".into()),
+                name: "Studio".into(),
+                role: None,
                 environment: Some("Studio Mac".into()),
                 provider: Some("Codex".into()),
                 model: Some("gpt-5.4".into()),

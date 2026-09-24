@@ -56,8 +56,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                     Icon(painterResource(R.drawable.ic_zork), contentDescription = null, Modifier.size(40.dp), tint = ZorkColors.Ink)
                     Text("想让哪台设备开始工作？", fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp))
-                    Text("第一条消息发出时才会创建 Session。", fontSize = 14.sp, lineHeight = 21.sp, color = ZorkColors.Muted,
-                        textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp, bottom = 24.dp))
+                    Spacer(Modifier.height(24.dp))
                 }
                 if (switching) NewChatDeviceTabs(peers, state.peer, !data.optBoolean("busy"), selectDevice)
                 // The composer's outline covers the tabs' lower edge.

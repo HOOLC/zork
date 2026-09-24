@@ -378,6 +378,8 @@ impl DesktopRoot {
             permission_label: locale
                 .text(self.client_settings.notification_permission.label())
                 .into(),
+            permission_denied: self.client_settings.notification_permission
+                == Permission::Denied,
             busy: self.client_settings.notification_busy,
             system_settings: cfg!(target_os = "macos"),
             error: self.client_settings.notification_error.clone(),

@@ -192,7 +192,7 @@ class SettingsParityTest {
 
     @Test fun deviceSettingsDoNotExposeRoleOrGrantConfiguration() {
         launch("device").use {
-            settle(); await("模型连接"); await("这台设备")
+            settle(); await("模型连接"); await("服务")
             assertNull(find("队员")); assertNull(find("领队")); assertNull(find("管理授权"))
         }
     }
@@ -203,9 +203,9 @@ class SettingsParityTest {
             click("模型连接"); await("OpenAI"); await("Anthropic")
             // mini2 failed: its cached connection and the reason stay visible, never "none".
             assertNotNull(await("OpenRouter"))
-            assertNotNull(nodes().firstOrNull { it.text?.toString()?.startsWith("无法读取 mini2 上的连接") == true })
+            assertNotNull(nodes().firstOrNull { (it.text ?: it.contentDescription)?.toString()?.startsWith("mini2 读不到，显示缓存") == true })
             assertNotNull(find("重试")); assertNull(find("还没有模型连接"))
-            assertNotNull(await("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
+            assertNull(find("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
             capture("model-connections")
             click("工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }

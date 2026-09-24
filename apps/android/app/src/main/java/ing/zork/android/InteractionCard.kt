@@ -9,7 +9,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -123,15 +125,18 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
     val values = remember(card.id) { mutableStateMapOf<String, String>() }
     val uriHandler = LocalUriHandler.current
     var advancedOpen by remember(card.id) { mutableStateOf(false) }
+    var detailsOpen by remember(card.id) { mutableStateOf(false) }
     LaunchedEffect(card.editable) { if (!card.editable) advancedOpen = false }
     LaunchedEffect(card.fields.map { it.id }) { values.keys.retainAll(card.fields.map { it.id }.toSet()) }
     ZorkCard(Modifier.fillMaxWidth().widthIn(max = 620.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(card.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink)
-                Text(card.status, fontSize = 12.sp, color = ZorkColors.Muted)
-                card.description?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
+            // Status is a small pill beside the title; the description is the body.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(card.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink, modifier = Modifier.weight(1f, fill = false))
+                if (card.status.isNotBlank()) Text(card.status, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1,
+                    modifier = Modifier.background(ZorkColors.Prompt, ZorkShapes.Control).padding(horizontal = 10.dp, vertical = 3.dp))
             }
+            card.description?.let { Text(it, fontSize = 14.sp, lineHeight = 21.sp, color = ZorkColors.Ink) }
             card.fields.filter { !it.advanced || advancedOpen || it.error != null }.forEach { field -> key(card.id, field.id) {
                 val draftState = if (field.sensitive) remember(card.id, field.id) { mutableStateOf(values[field.id] ?: field.value) }
                     else rememberSaveable(card.id, field.id) { mutableStateOf(values[field.id] ?: field.value) }
@@ -170,9 +175,10 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
             if (card.fields.any { it.advanced }) ZorkButton(
                 interactionText(if (advancedOpen) "interaction_less_settings" else "interaction_more_settings"),
                 quiet = true, onClick = { advancedOpen = !advancedOpen })
+            // Request details stay available behind one expander.
             if (card.details.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                ZorkButton(if (detailsOpen) "收起详情" else "详情", quiet = true, onClick = { detailsOpen = !detailsOpen })
+                if (detailsOpen) card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
                     InteractionValue(value)
                 } }

@@ -194,7 +194,7 @@ def main():
         assert int((client / 'node/zork.pid').read_text()) == pid
         manage_local()
         native.screenshot(screenshots / 'background-station-small.png')
-        click('local-node-foreground')
+        click('local-node-background')  # the run-mode switch turns background off
         ui.wait(lambda: not settings()['enabled'] and native.element('local-node-background', True), 'return ownership to client')
         assert alive(pid)
         kill_gui()

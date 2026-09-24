@@ -482,67 +482,76 @@ impl Render for Page {
                         .automation(AutomationRole::Status, self.text.text("onboarding_ready")),
                 )
             })
-            .when(self.data.loading, |v| {
-                v.child(
-                    div()
-                        .w(px(self.width))
-                        .mb_2()
-                        .child(crate::components::loading::status(
-                            "new-chat-loading",
-                            self.text.text("new_chat_loading"),
-                        )),
-                )
-            })
-            .when(self.data.needs_model, |v| {
-                v.child(
-                    div().w(px(self.width)).mb_2().child(
-                        ui::button(
-                            "new-chat-model-settings",
-                            self.text.text("new_chat_add_model"),
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::ConfigureModels))),
-                    ),
-                )
-            })
-            .when_some(note, |v, note| {
-                v.child(
-                    div()
-                        .w(px(self.width))
-                        .mb_2()
-                        .text_size(px(12.))
-                        .text_color(rgb(ZORK_UI.palette.muted))
-                        .child(note),
-                )
-            })
-            .when_some(self.data.error.clone(), |v, error| {
-                v.child(
-                    div()
-                        .id("new-chat-error")
-                        .w(px(self.width))
-                        .mb_2()
-                        .text_size(px(12.))
-                        .text_color(rgb(ZORK_UI.palette.danger))
-                        .child(error.clone())
-                        .automation(AutomationRole::Status, error),
-                )
-            })
+            // Notices and the composer form one block; stories crop to it.
             .child(
                 div()
-                    .relative()
-                    .w(px(self.width))
-                    .h(px(height))
-                    .when_some(rail, |wrapper, rail| wrapper.child(rail))
+                    .id("new-chat-form")
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .when(self.data.loading, |v| {
+                        v.child(
+                            div()
+                                .w(px(self.width))
+                                .mb_2()
+                                .child(crate::components::loading::status(
+                                    "new-chat-loading",
+                                    self.text.text("new_chat_loading"),
+                                )),
+                        )
+                    })
+                    .when(self.data.needs_model, |v| {
+                        v.child(
+                            div().w(px(self.width)).mb_2().child(
+                                ui::button(
+                                    "new-chat-model-settings",
+                                    self.text.text("new_chat_add_model"),
+                                    true,
+                                    true,
+                                )
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::ConfigureModels))),
+                            ),
+                        )
+                    })
+                    .when_some(note, |v, note| {
+                        v.child(
+                            div()
+                                .w(px(self.width))
+                                .mb_2()
+                                .text_size(px(12.))
+                                .text_color(rgb(ZORK_UI.palette.muted))
+                                .child(note),
+                        )
+                    })
+                    .when_some(self.data.error.clone(), |v, error| {
+                        v.child(
+                            div()
+                                .id("new-chat-error")
+                                .w(px(self.width))
+                                .mb_2()
+                                .text_size(px(12.))
+                                .text_color(rgb(ZORK_UI.palette.danger))
+                                .child(error.clone())
+                                .automation(AutomationRole::Status, error),
+                        )
+                    })
                     .child(
                         div()
-                            .absolute()
-                            .left(px(0.))
-                            .top(px(rail_offset))
+                            .relative()
                             .w(px(self.width))
-                            .h(px(body_height))
-                            .child(composer),
-                    ),
+                            .h(px(height))
+                            .when_some(rail, |wrapper, rail| wrapper.child(rail))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left(px(0.))
+                                    .top(px(rail_offset))
+                                    .w(px(self.width))
+                                    .h(px(body_height))
+                                    .child(composer),
+                            ),
+                    )
+                    .automation(AutomationRole::Status, "new-chat-form"),
             )
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }

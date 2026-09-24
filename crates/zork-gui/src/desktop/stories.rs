@@ -296,6 +296,10 @@ fn raw_catalog() -> Vec<Story> {
             let mut story = Story::new(family, title, state, source, family);
             story.width = 900.;
             story.height = 700.;
+            if family == "new-chat" {
+                // Stills and thumbnails show the composer, not the empty page.
+                story.target = "new-chat-form".into();
+            }
             items.push(story);
         }
     }

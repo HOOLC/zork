@@ -41,7 +41,7 @@ impl Preview {
         } else {
             Request::AgentConfiguration {
                 creating: !state.starts_with("update"),
-                name: "实现队员".into(),
+                name: "Studio".into(),
                 prominent: if state.starts_with("update") {
                     vec!["/name".into()]
                 } else {
@@ -52,7 +52,7 @@ impl Preview {
                         id: "/name".into(),
                         label: "interaction_name".into(),
                         required: true,
-                        default: "实现队员".into(),
+                        default: "Studio".into(),
                         ..Default::default()
                     },
                     Field {

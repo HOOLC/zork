@@ -11,6 +11,8 @@ pub struct AlertDialog {
     dialog: PlainDialog,
     cancel_label: Option<SharedString>,
     destructive: bool,
+    /// Full consequences behind an expander: (label, text).
+    details: Option<(SharedString, SharedString)>,
 }
 impl AlertDialog {
     pub fn new(cx: &mut App) -> Self {
@@ -18,7 +20,13 @@ impl AlertDialog {
             dialog: PlainDialog::new(cx).alert(),
             cancel_label: None,
             destructive: false,
+            details: None,
         }
+    }
+    /// The body states the consequence in one sentence; the full list stays
+    /// behind a "label" expander.
+    pub fn details(&mut self, label: impl Into<SharedString>, text: impl Into<SharedString>) {
+        self.details = Some((label.into(), text.into()));
     }
     pub fn destructive(mut self) -> Self {
         self.destructive = true;
@@ -128,13 +136,30 @@ impl AlertDialog {
                 }))
                 .automation_enabled(!busy, AutomationRole::Button, confirm_label),
             );
+        let details = self.details.clone().map(|(label, text)| {
+            crate::components::disclosure::expander(
+                format!("{id}-details"),
+                label,
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(20.))
+                    .text_color(rgb(ZORK_UI.palette.muted))
+                    .child(text),
+                window,
+                cx,
+            )
+        });
         self.dialog.render(
             id,
             title,
             div()
+                .flex()
+                .flex_col()
+                .gap_2()
                 .text_size(px(13.))
                 .line_height(px(22.))
-                .child(description.into()),
+                .child(description.into())
+                .children(details),
             Some(footer.into_any_element()),
             open,
             window,

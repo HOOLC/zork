@@ -126,7 +126,7 @@ impl MeshSettings {
             "revoked" => "安装链接已撤销。".into(),
             "connecting" => "正在确认设备身份…".into(),
             "waiting" => format!(
-                "等待目标设备执行 · {} 分 {} 秒后过期",
+                "{} 分 {} 秒内有效",
                 remaining / 60,
                 remaining % 60
             ),

@@ -4,7 +4,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     i18n::Locale,
 };
-use gpui::{div, prelude::*, px, Context, Div, Entity};
+use gpui::{div, prelude::*, px, Context, Div, Entity, Window};
 use zork_client_core::preferences::Theme;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -112,7 +112,6 @@ impl DesktopRoot {
                     }
                 }),
             ))
-            .child(note("client_appearance_note"))
             .when(env_pinned, |view| view.child(note("client_appearance_pinned")))
     }
     pub(super) fn watch_data_reset(&mut self, cx: &mut Context<Self>) {
@@ -169,7 +168,11 @@ impl DesktopRoot {
             }))
     }
 
-    pub(super) fn render_client_settings(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_client_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let locale = self.client_locale();
         let t = |key| locale.text(key);
         let state = &self.client_settings;
@@ -183,7 +186,7 @@ impl DesktopRoot {
         let content = match state.page {
             Page::Notifications => self.render_notification_settings(cx),
             Page::Appearance => self.render_appearance(cx),
-            Page::Account => self.render_account(cx),
+            Page::Account => self.render_account(window, cx),
             Page::Data => {
                 let data = zork_ui::settings::data::Data {
                     busy: state.reset.busy(),

@@ -75,6 +75,8 @@ pub struct DesktopRoot {
     mesh_views: std::collections::HashMap<String, (u64, Entity<mesh_settings::MeshSettings>)>,
     device_info: std::collections::HashMap<String, serde_json::Value>,
     management_tab: usize,
+    /// The device page's 服务 entry row expands the services list in place.
+    device_services_open: bool,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
     active_node_name: Option<String>,
     account_state: Arc<zork_client_core::relay_account::controller::Snapshot>,
@@ -198,6 +200,7 @@ impl DesktopRoot {
             mesh_views: Default::default(),
             device_info: Default::default(),
             management_tab: 0,
+            device_services_open: false,
             mesh_settings: None,
             active_node_name: None,
             account_state,
@@ -851,7 +854,7 @@ impl DesktopRoot {
         .detach();
         cx.notify();
     }
-    fn render_device(&self, cx: &mut Context<Self>) -> Div {
+    fn render_device(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{DeviceAction, DeviceData};
         let Some(node) = self
             .nodes
@@ -906,7 +909,10 @@ impl DesktopRoot {
                         .or(i["update"]["status"]["message"].as_str())
                 })
                 .map(str::to_owned),
+            services: Some(String::new()),
+            connections: Some(String::new()),
         };
+        let services_open = self.device_services_open;
         div()
             .flex()
             .flex_col()
@@ -914,6 +920,7 @@ impl DesktopRoot {
             .child(zork_ui::settings::device(
                 data,
                 &self.device_switch_focus,
+                window,
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
@@ -933,16 +940,26 @@ impl DesktopRoot {
                         cx,
                     ),
                     DeviceAction::StartAtLogin(on) => v.set_node_background(true, on, cx),
+                    DeviceAction::Services => {
+                        v.device_services_open = !v.device_services_open;
+                        cx.notify();
+                    }
+                    // Model connections live on their own settings tab.
+                    DeviceAction::Connections => {
+                        v.management_tab = 0;
+                        cx.notify();
+                    }
                 },
             ))
             .when_some(
                 self.service_views
                     .get(&node.id)
+                    .filter(|_| services_open)
                     .map(|(_, view)| view.clone()),
                 |body, view| body.child(view),
             )
     }
-    fn render_account(&self, cx: &mut Context<Self>) -> Div {
+    fn render_account(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{AccountAction, AccountData};
         zork_ui::settings::account(
             AccountData {
@@ -961,6 +978,7 @@ impl DesktopRoot {
                         .then(|| "已退出本机，正在等待服务器确认撤销。".into())
                 }),
             },
+            window,
             cx,
             |v, action, cx| match action {
                 AccountAction::Login => v.login_account(cx),
@@ -1303,8 +1321,8 @@ impl Render for DesktopRoot {
                                     .w_full()
                                     .flex()
                                     .flex_col()
-                                    .when(tab == 3, |v| v.child(self.render_device(cx)))
-                                    .when(tab == 4, |v| v.child(self.render_client_settings(cx)))
+                                    .when(tab == 3, |v| v.child(self.render_device(window, cx)))
+                                    .when(tab == 4, |v| v.child(self.render_client_settings(window, cx)))
                                     .when(tab == 0, |v| {
                                         v.when_some(self.model_settings.clone(), |v, e| v.child(e))
                                     })

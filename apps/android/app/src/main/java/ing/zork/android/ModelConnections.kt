@@ -57,7 +57,6 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
         }
     }
     val groups = remember(rows) { rows.groupBy { it.providerLabel }.toSortedMap(String.CASE_INSENSITIVE_ORDER) }
-    val now = remember(devices) { System.currentTimeMillis() }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = actions.back)
@@ -74,15 +73,11 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
             }
             items(devices.filter { it.text("state") in listOf("failed", "revoked") }, key = { "issue:${it.text("peer")}" }) { device ->
                 val name = device.text("name")
-                val text = when {
-                    device.text("state") == "revoked" -> "$name 的访问权限已撤销"
-                    device.optBoolean("cached") -> "无法读取 $name 上的连接 · 显示${
-                        device.optLong("loaded_at_ms").takeIf { it > 0 }?.let { " ${historyRelative(it, now)}" } ?: "此前"
-                    }的缓存"
-                    else -> "无法读取 $name 上的连接"
-                }
+                // One line: whose connections are stale; the reason stays available to screen readers.
+                val text = if (device.text("state") == "revoked") "$name 已撤销访问"
+                    else if (device.optBoolean("cached")) "$name 读不到，显示缓存" else "$name 读不到"
                 val reason = device.text("error").takeIf { it.isNotBlank() && device.text("state") != "revoked" }
-                ConnectionBanner(text + (reason?.let { "\n$it" } ?: ""), if (device.text("state") == "failed") actions.refresh else null)
+                ConnectionBanner(text, if (device.text("state") == "failed") actions.refresh else null, reason)
             }
             devices.filter { it.text("state") == "loading" }.takeIf { it.isNotEmpty() }?.let { loading ->
                 item(key = "loading") {
@@ -97,7 +92,6 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
                             modifier = Modifier.padding(start = 8.dp, top = 8.dp))
                         SettingsListGroup {
                             connections.sortedBy { profileName(it.profile).lowercase() }.forEachIndexed { index, connection ->
-                                if (index > 0) SettingsListDivider(inset = 18.dp)
                                 ConnectionCard(connection) { actions.connection(connection.peer, connection.profile) }
                             }
                         }
@@ -106,24 +100,19 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
             }
             // Only claim "none" when every device was actually read.
             if (devices.isNotEmpty() && rows.isEmpty() && devices.all { it.text("state") == "ready" }) item(key = "empty") {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("还没有模型连接", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("添加订阅账号或 API Key，供新 Chat 选择模型。", fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted)
-                }
+                Text("还没有模型连接", fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 8.dp, vertical = 24.dp))
             }
             if (devices.isEmpty() && state.connections != null && !state.loading) item(key = "no-devices") {
-                Text("还没有连接设备。模型连接保存在执行设备上，先连接一台设备。", fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted,
+                Text("先连接一台设备", fontSize = 13.sp, color = ZorkColors.Muted,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 24.dp))
             }
         }
     }
     ZorkRetained(Unit.takeIf { choosing }) { _, open, closed ->
         SettingsSheet("添加到哪台设备？", dismiss = { choosing = false }, open = open, onClosed = closed) {
-            Text("模型连接和凭据保存在所选设备上，由该设备调用模型。", fontSize = 14.sp, lineHeight = 22.sp, color = ZorkColors.Muted)
             SettingsListGroup {
                 val revoked = devices.filter { it.text("state") == "revoked" }.map { it.text("peer") }.toSet()
                 peers.filter { it.id !in revoked }.forEachIndexed { index, peer ->
-                    if (index > 0) SettingsListDivider()
                     SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
                         trailing = { DeviceStatusBadge(peer.status) },
                         action = { choosing = false; actions.addConnection(peer.id) })
@@ -134,8 +123,8 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
 }
 
 @Composable
-private fun ConnectionBanner(text: String, retry: (() -> Unit)?) {
-    Row(Modifier.fillMaxWidth().background(ZorkColors.WarningSoft, ZorkShapes.Container)
+private fun ConnectionBanner(text: String, retry: (() -> Unit)?, reason: String? = null) {
+    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { reason?.let { contentDescription = "$text，$it" } }.background(ZorkColors.WarningSoft, ZorkShapes.Container)
         .padding(start = 18.dp, end = if (retry != null) 8.dp else 18.dp, top = 8.dp, bottom = 8.dp).heightIn(min = 40.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Glyph(R.drawable.ic_attention, 18.dp, ZorkColors.Warning)
@@ -146,24 +135,27 @@ private fun ConnectionBanner(text: String, retry: (() -> Unit)?) {
 
 @Composable
 private fun ConnectionCard(connection: ConnectionUi, open: () -> Unit) {
+    // One row: name, where it lives, a thin quota bar for subscriptions and the model
+    // count. A status pill appears only when verification needs attention.
     val profile = connection.profile
     val models = profile.optJSONArray("models")?.length() ?: 0
+    val verification = profile.text("verification", if (profile.optBoolean("verified")) "verified" else "pending")
+    val remaining = if (profile.text("billing") == "subscription") quotaRemaining(profile) else null
     val description = "${profileName(profile)}，${accessLabel(profile)}，${connection.device}"
-    ZorkListRow(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = description }, onClick = open) {
-        Column(Modifier.weight(1f).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(profileName(profile), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("${accessLabel(profile)} ·", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
-                        DeviceMark(connection.device, 16.dp)
-                        Text(connection.device, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics(mergeDescendants = true) { contentDescription = description }, onClick = open) {
+        Text(profileName(profile), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false))
+        DeviceMark(connection.device, 16.dp)
+        Spacer(Modifier.weight(1f))
+        if (verification != "verified") VerificationPill(profile)
+        else {
+            remaining?.let { share ->
+                val tone = when { share < 10f -> ZorkColors.Danger; share < 30f -> ZorkColors.Warning; else -> ZorkColors.Ink }
+                Box(Modifier.width(48.dp).height(4.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
+                    Box(Modifier.fillMaxWidth(share / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))
                 }
-                VerificationPill(profile)
             }
-            ProfileQuota(profile, summary = true)
-            Text("$models 个模型", fontSize = 12.sp, color = ZorkColors.Muted)
+            Text("$models", fontSize = 13.sp, color = ZorkColors.Subtle, modifier = Modifier.semantics { contentDescription = "$models 个模型" })
         }
     }
 }

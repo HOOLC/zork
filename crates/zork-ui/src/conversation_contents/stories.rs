@@ -117,7 +117,7 @@ impl Render for Story {
                 crate::conversation_toolbar::render(
                     vec![crate::conversation_toolbar::Member {
                         id: "leader".into(),
-                        name: "产品领队".into(),
+                        name: "Studio".into(),
                     }],
                     self.menu.clone(),
                     12.,

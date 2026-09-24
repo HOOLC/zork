@@ -1,6 +1,7 @@
 //! Full manual pairing dialog; hosts supply input entities and result state.
 use super::*;
 use crate::components::text_input::ComposerInput;
+use crate::settings::row;
 use gpui::{AnyElement, Entity, Window};
 pub struct Fields<'a> {
     pub name: &'a Entity<ComposerInput>,

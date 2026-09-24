@@ -20,11 +20,17 @@ import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
 /** A model choice as core presents it: current value plus its native options. */
-internal data class PickerChoice(val value: String, val options: List<Pair<String, String>>)
+internal data class PickerChoice(val value: String, val options: List<Pair<String, String>>,
+    /** Model value → connections (profile id, name) offering it, from core. */
+    val connections: Map<String, List<Pair<String, String>>> = emptyMap(),
+    val device: String = "")
 
 internal fun JSONObject?.pickerChoice(field: String): PickerChoice {
     val choice = this?.optJSONObject(field) ?: JSONObject()
-    return PickerChoice(choice.text("value"), choice.optJSONArray("options").objects().map { it.text("value") to it.text("label", it.text("value")) })
+    val options = choice.optJSONArray("options").objects()
+    return PickerChoice(choice.text("value"), options.map { it.text("value") to it.text("label", it.text("value")) },
+        options.associate { o -> o.text("value") to o.optJSONArray("connections").objects().map { it.text("profile") to it.text("name") } },
+        options.firstNotNullOfOrNull { it.text("device").takeIf(String::isNotBlank) }.orEmpty())
 }
 
 /** Thinking values keep each provider's own names; only "off" gets a Chinese word. */
@@ -63,23 +69,41 @@ internal fun ModelPickerSheet(open: Boolean, model: PickerChoice, thinking: Pick
             ZorkButton("完成", quiet = true, onClick = dismiss)
         }
         if (model.options.size > 8) ZorkTextField("", query, { query = it }, placeholder = { Text("搜索模型", fontSize = 14.sp, color = ZorkColors.Subtle) })
-        if (profile.options.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            profile.options.forEach { (value, label) ->
-                PickerChip(if (value == "auto") "自动" else label, value == profile.value, enabled) { choose("profile", value) }
-            }
-        }
         val visible = model.options.filter { query.isBlank() || it.second.contains(query.trim(), ignoreCase = true) }
-        Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-            visible.forEach { (value, label) ->
-                val selected = value == model.value
+        // Group by connection when core names them; a model offered by several
+        // connections appears under each, and choosing it there pins that connection.
+        val groups: List<Pair<Pair<String, String>?, List<Pair<String, String>>>> =
+            if (model.connections.values.all { it.isEmpty() }) listOf(null to visible)
+            else visible.flatMap { option -> model.connections[option.first].orEmpty().map { it to option } }
+                .groupBy({ it.first }, { it.second }).map { (connection, options) -> connection to options }
+        val pinned = profile.value.takeIf { it.isNotBlank() && it != "auto" }
+        Column(Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+            groups.forEach { (connection, options) ->
+            if (connection != null) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(connection.second, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (model.device.isNotBlank()) {
+                    DeviceMark(model.device, 14.dp)
+                    Text(model.device, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1)
+                }
+            }
+            options.forEach { (value, label) ->
+                val selected = value == model.value && (connection == null || pinned == null || pinned == connection.first)
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .background(if (selected) ZorkColors.Selected else ZorkColors.Canvas, ZorkShapes.Control)
-                    .selectable(selected, enabled = enabled, role = Role.RadioButton) { choose("model", value) }
+                    .selectable(selected, enabled = enabled, role = Role.RadioButton) {
+                        choose("model", value)
+                        // Several connections offer it: pin the one chosen here; one offers it: let core decide.
+                        if (connection != null && model.connections[value].orEmpty().size > 1 && profile.options.any { it.first == connection.first })
+                            choose("profile", connection.first)
+                    }
                     .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(label, fontSize = 15.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     if (selected) Glyph(R.drawable.ic_check, 16.dp, ZorkColors.Ink)
                 }
+            }
             }
             if (visible.isEmpty()) Text("没有匹配的模型", fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.padding(16.dp))
         }
