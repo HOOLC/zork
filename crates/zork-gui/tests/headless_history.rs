@@ -349,8 +349,9 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         })
         .expect("routine summary visible");
     let group_id = group.id.clone();
-    // The reply row is its Markdown document, so it legitimately exceeds the
-    // single-line row height; every other row still has to stay compact.
+    // The reply row is its Markdown document, and a received or sent message
+    // is a quote or block with its own body, so they legitimately exceed the
+    // single-line row height; every tool line still has to stay compact.
     let reply = snapshot
         .elements
         .iter()
@@ -360,7 +361,12 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         snapshot
             .elements
             .iter()
-            .filter(|e| e.id.starts_with("history-record-") && e.id != reply.id)
+            .filter(|e| {
+                e.id.starts_with("history-record-")
+                    && e.id != reply.id
+                    && !e.label.starts_with("收到来自")
+                    && !e.label.starts_with("发送到 Chat")
+            })
             .all(|e| e.bounds.height <= 46.),
         "history item exceeded two lines"
     );
@@ -494,8 +500,16 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"click","target":{"element_id":group_id}}),
     )?;
-    let target = driver
-        .snapshot(false)
+    let collapsed = driver.snapshot(false);
+    anyhow::ensure!(
+        collapsed.elements.iter().any(|e| {
+            e.id.starts_with("history-record-")
+                && e.label.starts_with("发送到 Chat「当前会话」")
+                && e.label.contains("我会调整条目层级")
+        }),
+        "the sent message did not read as a block with its destination and body"
+    );
+    let target = collapsed
         .elements
         .into_iter()
         .find(|e| e.id.starts_with("history-target-") && e.enabled && e.label == "当前会话")

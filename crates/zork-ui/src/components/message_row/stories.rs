@@ -5,7 +5,7 @@ pub struct Story {
     messages: Vec<MessageDocument>,
     text: crate::resources::Text,
     placeholder: Option<String>,
-    composer: Option<Entity<crate::component_story::ComposerExample>>,
+    composer: Option<Entity<crate::component_story::ConversationComposer>>,
 }
 impl Story {
     pub fn new(state: &str, text: crate::resources::Text, cx: &mut Context<Self>) -> Self {
@@ -38,7 +38,7 @@ impl Story {
                 .map(str::to_owned),
             composer: state
                 .starts_with("composer")
-                .then(|| cx.new(crate::component_story::ComposerExample::new)),
+                .then(|| cx.new(crate::component_story::ConversationComposer::new)),
         }
     }
 }

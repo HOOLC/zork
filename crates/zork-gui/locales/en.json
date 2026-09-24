@@ -698,6 +698,7 @@
   "history_message_received_from": "Received a message from {name}",
   "history_message_send_to": "Send message to",
   "history_message_send_to_name": "Send message to {name}",
+  "history_message_send_to_chat": "Sent to Chat “{name}”",
   "history_thinking_duration": "Thinking {seconds} s",
   "history_thinking_unmeasured": "Thinking · duration not recorded",
   "history_group_read": "Files read: {count}",
