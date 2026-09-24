@@ -3,6 +3,9 @@
 use super::*;
 use crate::design::INTERACTION;
 
+/// Beyond this many models the panel offers a search field.
+const SEARCH_THRESHOLD: usize = 8;
+
 /// Models of one connection, built from the connections core names on each
 /// model option; first appearance keeps core's order.
 pub(super) struct Group {
@@ -49,7 +52,7 @@ impl Page {
                 .unwrap_or(0)
         })
     }
-    pub(super) fn groups(&self) -> Vec<Group> {
+    pub(super) fn groups(&self, cx: &App) -> Vec<Group> {
         let mut groups: Vec<Group> = Vec::new();
         for option in &self.data.model.options {
             for connection in &option.connections {
@@ -64,6 +67,19 @@ impl Page {
                 }
             }
         }
+        if self.data.model.options.len() > SEARCH_THRESHOLD {
+            let query = self.picker_search.read(cx).value().trim().to_lowercase();
+            if !query.is_empty() {
+                for group in &mut groups {
+                    let name = group.name.to_lowercase();
+                    if !name.contains(&query) {
+                        group.models.retain(|m| m.to_lowercase().contains(&query));
+                    }
+                }
+                groups.retain(|g| !g.models.is_empty());
+                return groups;
+            }
+        }
         if groups.is_empty() && !self.data.model.options.is_empty() {
             // Older payloads carry no connection names; keep one plain group.
             groups.push(Group {
@@ -76,9 +92,9 @@ impl Page {
         groups
     }
     /// Provider of the connection the current model resolves to.
-    pub(super) fn selected_provider(&self) -> Option<String> {
+    pub(super) fn selected_provider(&self, cx: &App) -> Option<String> {
         let profile = self.data.profile.value.as_str();
-        self.groups()
+        self.groups(cx)
             .into_iter()
             .find(|g| {
                 (profile == "auto" || g.profile == profile)
@@ -87,8 +103,8 @@ impl Page {
             .map(|g| g.provider)
             .filter(|p| !p.is_empty())
     }
-    fn selectable_pairs(&self) -> Vec<(String, String)> {
-        self.groups()
+    fn selectable_pairs(&self, cx: &App) -> Vec<(String, String)> {
+        self.groups(cx)
             .into_iter()
             .flat_map(|g| {
                 let profile = g.profile;
@@ -96,8 +112,8 @@ impl Page {
             })
             .collect()
     }
-    fn selected_pair(&self) -> Option<usize> {
-        let pairs = self.selectable_pairs();
+    fn selected_pair(&self, cx: &App) -> Option<usize> {
+        let pairs = self.selectable_pairs(cx);
         let profile = self.data.profile.value.as_str();
         pairs
             .iter()
@@ -106,8 +122,8 @@ impl Page {
     }
     /// Scrolls the model list so the current choice is in view. Row geometry
     /// is fixed, so the offset comes from it rather than from last frame's bounds.
-    fn reveal_selected_model(&self, list_height: f32) {
-        let Some(selected) = self.selected_pair() else {
+    fn reveal_selected_model(&self, list_height: f32, cx: &App) {
+        let Some(selected) = self.selected_pair(cx) else {
             return;
         };
         if self.picker_revealed.get() == Some(selected) {
@@ -117,7 +133,7 @@ impl Page {
         let (title, row, gap, group_gap) = (30., 36., 2., 6.);
         let mut y = 0.;
         let mut index = 0;
-        for (g, group) in self.groups().into_iter().enumerate() {
+        for (g, group) in self.groups(cx).into_iter().enumerate() {
             if g > 0 {
                 y += group_gap;
             }
@@ -152,11 +168,11 @@ impl Page {
     ) -> AnyElement {
         let p = ZORK_UI.palette;
         let enabled = self.picker_open && self.data.editable;
-        let selected = self.selected_pair();
+        let selected = self.selected_pair(cx);
         // The panel opens above or below the composer; keep the list inside the window.
         let list_height = (window.viewport_size().height.as_f32() - 480.).clamp(120., 260.);
         // Keeps the current model in view when the panel opens or the choice moves.
-        self.reveal_selected_model(list_height);
+        self.reveal_selected_model(list_height, cx);
         let mut list = div()
             .id("new-chat-model-list")
             .max_h(px(list_height))
@@ -172,7 +188,7 @@ impl Page {
             .iter()
             .find_map(|o| o.device.clone());
         let mut index = 0usize;
-        for (g, group) in self.groups().into_iter().enumerate() {
+        for (g, group) in self.groups(cx).into_iter().enumerate() {
             list = list.child(
                 div()
                     .h(px(30.))
@@ -241,6 +257,12 @@ impl Page {
                 index += 1;
             }
         }
+        let search = (self.data.model.options.len() > SEARCH_THRESHOLD).then(|| {
+            div().pb(px(6.)).child(
+                ui::input_control("new-chat-model-search", &self.picker_search, false, cx)
+                    .automation(AutomationRole::TextInput, "搜索模型"),
+            )
+        });
         let levels = &self.data.thinking.options;
         let thinking = (levels.len() > 1).then(|| {
             let budget = levels
@@ -303,12 +325,12 @@ impl Page {
                 let key = event.keystroke.key.as_str();
                 match key {
                     "up" | "down" => {
-                        let pairs = view.selectable_pairs();
+                        let pairs = view.selectable_pairs(cx);
                         if pairs.is_empty() {
                             return;
                         }
                         let count = pairs.len();
-                        let next = match (view.selected_pair(), key) {
+                        let next = match (view.selected_pair(cx), key) {
                             (Some(i), "up") => (i + count - 1) % count,
                             (Some(i), _) => (i + 1) % count,
                             (None, _) => 0,
@@ -341,6 +363,7 @@ impl Page {
                 }
                 cx.stop_propagation();
             }))
+            .children(search)
             .child(list)
             .children(thinking)
             .into_any_element()

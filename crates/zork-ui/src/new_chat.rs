@@ -35,6 +35,7 @@ pub struct Page {
     picker_focus: FocusHandle,
     picker_trigger_focus: FocusHandle,
     picker_scroll: ScrollHandle,
+    picker_search: Entity<ComposerInput>,
     /// Model row last scrolled into view; cleared when the panel closes.
     picker_revealed: std::cell::Cell<Option<usize>>,
     width: f32,
@@ -50,6 +51,12 @@ impl Page {
     }
     pub fn new(text: Text, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| ComposerInput::new(text.text("composer_placeholder"), cx));
+        let picker_search = cx.new(|cx| ComposerInput::new("搜索模型", cx).single_line());
+        cx.subscribe(&picker_search, |view: &mut Self, _, _: &ComposerEdited, cx| {
+            view.picker_revealed.set(None);
+            cx.notify();
+        })
+        .detach();
         cx.subscribe(&input, |view, _, _: &ComposerEdited, cx| {
             cx.emit(Event::Intent(Action::Edit {
                 text: view.input.read(cx).value().into(),
@@ -75,6 +82,7 @@ impl Page {
             picker_focus: cx.focus_handle(),
             picker_trigger_focus: cx.focus_handle(),
             picker_scroll: ScrollHandle::new(),
+            picker_search,
             picker_revealed: Default::default(),
             width: 480.,
             scene: Default::default(),
@@ -313,7 +321,7 @@ impl Render for Page {
                         .flex()
                         .items_center()
                         .gap(px(6.))
-                        .when_some(self.selected_provider(), |v, provider| {
+                        .when_some(self.selected_provider(cx), |v, provider| {
                             v.child(ui::provider_icon(&provider, 16.))
                         })
                         .child(div().text_color(rgb(ZORK_UI.palette.text)).child(model_part))

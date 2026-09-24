@@ -64,8 +64,6 @@ fn append_groups(
 }
 pub struct ModelSettings {
     devices: Vec<Device>,
-    adding: bool,
-    modal: ui::ModalState,
     selected: Option<String>,
     onboarding_local: Option<String>,
 }
@@ -73,8 +71,6 @@ impl ModelSettings {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             devices: vec![],
-            adding: false,
-            modal: ui::ModalState::new(cx),
             selected: None,
             onboarding_local: None,
         }
@@ -115,7 +111,6 @@ impl ModelSettings {
         }
         if let Some(id) = &id {
             self.selected = Some(id.clone());
-            self.adding = false;
         }
         self.onboarding_local = id;
         cx.notify();
@@ -140,15 +135,44 @@ impl ModelSettings {
         }
         cx.notify();
     }
-    fn add_on_device(&mut self, id: &str, cx: &mut Context<Self>) {
+    fn add_on_device(&mut self, id: &str, provider: Option<usize>, cx: &mut Context<Self>) {
         self.selected = Some(id.to_owned());
-        self.adding = false;
         if let Some(device) = self.devices.iter().find(|device| device.id == id) {
-            device
-                .editor
-                .update(cx, |editor, cx| editor.add_connection(cx));
+            device.editor.update(cx, |editor, cx| match provider {
+                Some(provider) => editor.add_connection_with(provider, cx),
+                None => editor.add_connection(cx),
+            });
         }
         cx.notify();
+    }
+    /// The device a new connection is saved on unless the user picks another.
+    fn default_target(&self) -> Option<String> {
+        self.selected
+            .clone()
+            .filter(|id| self.has_device(id))
+            .or_else(|| self.devices.first().map(|d| d.id.clone()))
+    }
+    /// Every editor can move the add flow to any other device.
+    fn share_targets(&self, cx: &mut Context<Self>) {
+        let targets: Vec<_> = self
+            .devices
+            .iter()
+            .map(|d| super::profiles::SaveTarget {
+                id: d.id.clone(),
+                name: d.name.clone(),
+                status: d.status.clone(),
+            })
+            .collect();
+        let owner = cx.entity().downgrade();
+        let retarget: super::profiles::Retarget = std::rc::Rc::new(move |id, provider, app| {
+            let _ = owner.update(app, |view, cx| view.add_on_device(&id, Some(provider), cx));
+        });
+        for device in &self.devices {
+            let (targets, retarget) = (targets.clone(), retarget.clone());
+            device
+                .editor
+                .update(cx, |editor, _| editor.set_targets(targets, retarget));
+        }
     }
     fn render_group(
         &self,
@@ -241,10 +265,6 @@ impl ModelSettings {
         cx.notify();
     }
     pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
-        if !visible && self.adding {
-            self.adding = false;
-            cx.notify();
-        }
         for device in &self.devices {
             let visible = visible
                 && self
@@ -301,17 +321,20 @@ impl ModelSettings {
                 _updates,
             });
         }
+        self.share_targets(cx);
         cx.notify();
     }
 }
 impl Render for ModelSettings {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.modal
-            .sync(self.adding.then_some("model-device-dialog"), window, cx);
-        let chooser_visible = self
-            .modal
-            .retain("model-device-dialog", self.adding.then_some(()), cx)
-            .is_some();
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // An opened connection replaces the list with its own page.
+        if let Some(device) = self
+            .devices
+            .iter()
+            .find(|device| device.editor.read(cx).has_page())
+        {
+            return div().w_full().child(device.editor.clone()).into_any_element();
+        }
         // These groups are rebuilt from core snapshots for presentation only.
         let mut groups = Groups::new();
         let mut notices = Vec::new();
@@ -358,11 +381,8 @@ impl Render for ModelSettings {
                             .on_click(cx.listener(|v, _, _, cx| {
                                 if v.onboarding_local.is_some() {
                                     v.add_local_connection(cx);
-                                } else if v.devices.len() == 1 {
-                                    let id = v.devices[0].id.clone();
-                                    v.add_on_device(&id, cx);
-                                } else {
-                                    v.adding = true;
+                                } else if let Some(id) = v.default_target() {
+                                    v.add_on_device(&id, None, cx);
                                 }
                                 cx.notify();
                             }))
@@ -415,58 +435,7 @@ impl Render for ModelSettings {
                     .is_none_or(|id| id == &device.id)
                     .then(|| device.editor.clone())
             }))
-            .when(chooser_visible, |v| {
-                v.child(ui::detail_modal_sized(
-                    "model-device-dialog",
-                    "选择保存连接的设备",
-                    ui::section()
-                        .border_t_0()
-                        .py_0()
-                        .when(self.devices.is_empty(), |v| v.child("请先连接设备"))
-                        .children(self.devices.iter().map(|device| {
-                            let id = device.id.clone();
-                            ui::quiet_button(
-                                format!("model-add-device-{id}"),
-                                "",
-                                true,
-                                ui::IconButtonSize::Standard,
-                            )
-                            .w_full()
-                            .h(px(40.))
-                            .justify_start()
-                            .child(zork_ui::device_name::label(
-                                format!("model-add-device-name-{id}"),
-                                device.name.clone(),
-                                &device.status,
-                                None,
-                            ))
-                            .on_click(cx.listener(move |v, _, _, cx| {
-                                v.add_on_device(&id, cx);
-                            }))
-                            .automation(
-                                AutomationRole::Button,
-                                format!(
-                                    "添加连接到 {}",
-                                    zork_ui::device_name::accessible_summary(
-                                        &device.name,
-                                        &device.status,
-                                        None
-                                    )
-                                ),
-                            )
-                        })),
-                    None,
-                    &self.modal,
-                    ui::DIALOG_FORM_WIDTH,
-                    window,
-                    cx,
-                    true,
-                    |v, _, cx| {
-                        v.adding = false;
-                        cx.notify();
-                    },
-                ))
-            })
+            .into_any_element()
     }
 }
 

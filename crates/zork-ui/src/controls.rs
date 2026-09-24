@@ -1,5 +1,9 @@
 //! Shared compact native controls and approved Zork identity assets.
-pub use super::modal::{detail_modal, detail_modal_sized, detail_modal_with_title_action, modal, ModalState};
+pub use super::modal::{
+    detail_modal, detail_modal_sized, detail_modal_with_title_action, modal, modal_sized, ModalState,
+};
+/// Anchored popover for menus that app crates build from controls.
+pub use gpui_component::popover::Popover;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,

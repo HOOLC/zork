@@ -15,6 +15,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use zork_ui::controls::{provider_icon, provider_path};
 
+mod editor;
+mod page;
+mod wizard;
+pub use wizard::{Retarget, SaveTarget};
+
 pub struct ProfilesView {
     source: Arc<crate::api::Profiles>,
     dialog_only: bool,
@@ -74,6 +79,19 @@ pub struct ProfilesView {
     discovering: bool,
     message: Option<String>,
     attempt: Option<Value>,
+    api_touched: bool,
+    thinking_focus: gpui::FocusHandle,
+    budget_input: Entity<ComposerInput>,
+    page_focus: gpui::FocusHandle,
+    page_focus_pending: bool,
+    menu_open: Option<String>,
+    create_step: u8,
+    pending_id: Option<String>,
+    created: Option<String>,
+    created_detail: Option<Value>,
+    targets: Vec<SaveTarget>,
+    retarget: Option<Retarget>,
+    target_open: bool,
 }
 impl ProfilesView {
     pub fn set_device_status(
@@ -107,6 +125,10 @@ impl ProfilesView {
         self.model_form_open = false;
         self.detail = None;
         self.form_open = true;
+        self.create_step = 1;
+        self.pending_id = None;
+        self.created = None;
+        self.created_detail = None;
         self.id.update(cx, |v, cx| v.clear(cx));
         self.key.update(cx, |v, cx| v.clear(cx));
         self.base_url.update(cx, |v, cx| v.clear(cx));
@@ -165,6 +187,14 @@ impl ProfilesView {
             )
             .detach();
         }
+        let budget_input = cx.new(|cx| ComposerInput::new("自定义 K", cx).single_line());
+        cx.subscribe(
+            &budget_input,
+            |view, _, _: &crate::components::text_input::ComposerEdited, cx| {
+                view.apply_budget_input(cx)
+            },
+        )
+        .detach();
         context_limit.update(cx, |v, cx| v.set_value("32K", cx));
         output_limit.update(cx, |v, cx| v.set_value("4.096K", cx));
         key.update(cx, |input, cx| input.set_secret(true, cx));
@@ -228,6 +258,19 @@ impl ProfilesView {
             discovering: false,
             message: None,
             attempt: None,
+            api_touched: false,
+            thinking_focus: cx.focus_handle(),
+            budget_input,
+            page_focus: cx.focus_handle(),
+            page_focus_pending: false,
+            menu_open: None,
+            create_step: 1,
+            pending_id: None,
+            created: None,
+            created_detail: None,
+            targets: vec![],
+            retarget: None,
+            target_open: false,
         }
     }
     #[cfg(feature = "headless-bench")]
@@ -332,7 +375,10 @@ impl ProfilesView {
             self.busy = false;
             self.callback.update(cx, |v, cx| v.clear(cx));
             if state.authorization_complete {
-                self.form_open = false;
+                match self.pending_id.take().filter(|_| self.form_open) {
+                    Some(id) => self.enter_models_step(id, cx),
+                    None => self.form_open = false,
+                }
             }
         }
         self.attempt = state.authorization.clone();
@@ -352,6 +398,9 @@ impl ProfilesView {
         }
         if let Some(detail) = self.detail.take() {
             self.detail = Some(self.source.detail(detail));
+        }
+        if let Some(id) = self.created.clone().filter(|_| !self.discovering) {
+            self.created_detail = Some(self.source.detail(json!({"profile_id": id})));
         }
         if state.error.is_some() && self.profiles.is_empty() {
             self.message = Some(self.locale.text("quota_query_failed").into());
@@ -553,6 +602,8 @@ impl ProfilesView {
                 match result {
                     Ok(()) => {
                         v.detail = Some(source.detail(json!({"profile_id":id})));
+                        v.page_focus_pending = true;
+                        v.menu_open = None;
                         v.renaming = false;
                         v.form_open = false;
                         v.model_form_open = false;
@@ -663,6 +714,7 @@ impl ProfilesView {
         self.model_params_open = false;
         self.reference_open = None;
         self.params_touched = self.editing_model.is_some();
+        self.api_touched = self.editing_model.is_some();
         self.model_form_open = true;
         self.model_attempted = false;
         self.message = None;
@@ -696,52 +748,6 @@ impl ProfilesView {
     fn copy_model_configuration(&mut self, source: Value, cx: &mut Context<Self>) {
         self.apply_model_input(crate::api::copy_form(self.model_input(cx), source), cx);
         zork_ui::components::region::invalidate_all(cx);
-    }
-
-    fn copy_model_action(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let sources = self
-            .detail
-            .as_ref()
-            .and_then(|detail| detail["models"].as_array())
-            .into_iter()
-            .flatten()
-            .filter(|model| {
-                model["id"].as_str() != self.editing_model.as_deref() && crate::api::copyable(model)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        ui::dropdown_with_icons(
-            "model-copy-select",
-            "复制配置".into(),
-            sources
-                .iter()
-                .enumerate()
-                .map(|(index, model)| {
-                    (
-                        format!("model-copy-{index}"),
-                        model["id"].as_str().unwrap_or_default().to_owned(),
-                        false,
-                    )
-                })
-                .collect(),
-            self.copy_model_open,
-            !self.busy && !sources.is_empty(),
-            None,
-            vec![None; sources.len()],
-            window,
-            cx,
-            |view, open, cx| {
-                view.copy_model_open = open;
-                view.api_open = false;
-                zork_ui::components::region::invalidate_all(cx);
-            },
-            move |view, index, cx| {
-                view.copy_model_open = false;
-                if let Some(source) = sources.get(index) {
-                    view.copy_model_configuration(source.clone(), cx);
-                }
-            },
-        )
     }
 
     fn discover_models(&mut self, cx: &mut Context<Self>) {
@@ -801,106 +807,6 @@ impl ProfilesView {
     pub fn headless_model_rows_built(&mut self) -> usize {
         std::mem::take(&mut self.model_rows_built)
     }
-    fn render_model_row(&mut self, model: Value, cx: &mut Context<Self>) -> gpui::AnyElement {
-        #[cfg(feature = "headless-bench")]
-        {
-            self.model_rows_built += 1;
-        }
-        let p = ZORK_UI.palette;
-        let edit = model.clone();
-        let id = model["id"].as_str().unwrap_or_default().to_owned();
-        let remove = id.clone();
-        self.model_switch_focus
-            .entry(id.clone())
-            .or_insert_with(|| cx.focus_handle());
-        let active = model["enabled"].as_bool().unwrap_or(true);
-        let toggle_id = id.clone();
-        let limits = model["limits"].as_object();
-        let note = match limits
-            .and_then(|v| v.get("context_window_tokens"))
-            .and_then(Value::as_u64)
-            .zip(
-                limits
-                    .and_then(|v| v.get("max_output_tokens"))
-                    .and_then(Value::as_u64),
-            ) {
-            Some((context, output)) => format!(
-                "上下文 {} / 输出 {}",
-                compact_tokens(context),
-                compact_tokens(output)
-            ),
-            None => self.locale.text("model_needs_configuration").into(),
-        };
-        div()
-            .id(format!("model-edit-{id}"))
-            .group("profile-model-row")
-            .cursor_pointer()
-            .w_full()
-            .h(px(64.))
-            .py_3()
-            .flex()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(13.))
-                            .line_height(px(20.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(rgb(if active { p.text } else { p.muted }))
-                            .child(id.clone()),
-                    )
-                    .child(
-                        div()
-                            .id(format!("model-limits-{id}"))
-                            .truncate()
-                            .text_size(px(12.))
-                            .line_height(px(16.))
-                            .text_color(rgb(p.muted))
-                            .child(note.clone())
-                            .automation(AutomationRole::Status, note),
-                    ),
-            )
-            .child(
-                ui::button(format!("model-remove-{id}"), "移除", false, !self.busy)
-                    .h(px(ui::CONTROL_HEIGHT))
-                    .px(px(ui::BUTTON_PADDING_X))
-                    .text_size(px(12.))
-                    .opacity(0.)
-                    .group_hover("profile-model-row", |v| v.opacity(1.))
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        cx.stop_propagation();
-                        v.remove_model(&remove, cx);
-                    })),
-            )
-            .child(ui::switch(
-                format!("model-enabled-{id}"),
-                self.locale.text("model_enabled"),
-                active,
-                !self.busy && (active || limits.is_some()),
-                &self.model_switch_focus[&id],
-                cx,
-                move |v, on, cx| {
-                    cx.stop_propagation();
-                    v.set_model_enabled(toggle_id.clone(), on, cx);
-                },
-            ))
-            .on_click(cx.listener(move |v, _, _, cx| {
-                if !v.busy {
-                    v.edit_model(Some(edit.clone()), cx);
-                }
-            }))
-            .automation(AutomationRole::Button, format!("编辑 {id}"))
-            .into_any_element()
-    }
-
     fn set_model_enabled(&mut self, model_id: String, enabled: bool, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -1062,9 +968,12 @@ impl ProfilesView {
                 view.busy = false;
                 match result {
                     Ok(()) => {
-                        view.form_open = false;
                         view.key.update(cx, |v, cx| v.clear(cx));
                         view.message = None;
+                        match view.pending_id.take() {
+                            Some(id) => view.enter_models_step(id, cx),
+                            None => view.form_open = false,
+                        }
                     }
                     Err(e) => view.message = Some(e.to_string()),
                 }
@@ -1096,7 +1005,10 @@ impl ProfilesView {
                         view.busy = state.authorization_busy;
                         view.attempt = state.authorization.clone();
                         if state.authorization_complete {
-                            view.form_open = false;
+                            match view.pending_id.take() {
+                                Some(id) => view.enter_models_step(id, cx),
+                                None => view.form_open = false,
+                            }
                         }
                     }
                     Err(e) => {
@@ -1122,69 +1034,25 @@ impl ProfilesView {
         }
         if self.model_form_open {
             self.model_form_open = false;
+            self.editing_model = None;
             self.api_open = false;
         } else if self.detail.is_some() {
             self.detail = None;
             self.discovered = None;
+            self.renaming = false;
+            self.menu_open = None;
         } else {
             self.cancel(cx);
             self.form_open = false;
+            self.create_step = 1;
+            self.created = None;
+            self.created_detail = None;
+            self.pending_id = None;
             self.provider_open = false;
             self.key.update(cx, |input, cx| input.clear(cx));
         }
         self.message = None;
         zork_ui::components::region::invalidate_all(cx);
-    }
-    fn provider_dropdown(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let choices: Vec<_> = crate::api::connection_options(&self.catalog, self.subscription)
-            .into_iter()
-            .map(|(index, billing)| {
-                let provider = &self.catalog[index];
-                (
-                    index,
-                    billing,
-                    provider["label"].as_str().unwrap_or_default().to_owned(),
-                    provider_path(provider["id"].as_str().unwrap_or_default()),
-                )
-            })
-            .collect();
-        let provider = self.catalog.get(self.provider);
-        ui::dropdown_with_icons(
-            "profile-provider-select",
-            provider
-                .and_then(|p| p["label"].as_str())
-                .unwrap_or("选择供应商")
-                .into(),
-            choices
-                .iter()
-                .map(|(i, _, name, _)| {
-                    (
-                        format!("provider-option-{i}"),
-                        name.clone(),
-                        *i == self.provider,
-                    )
-                })
-                .collect(),
-            self.provider_open,
-            !self.busy && self.attempt.is_none(),
-            provider.map(|p| provider_path(p["id"].as_str().unwrap_or_default())),
-            choices.iter().map(|(_, _, _, path)| Some(*path)).collect(),
-            window,
-            cx,
-            |v, open, cx| {
-                v.provider_open = open;
-                zork_ui::components::region::invalidate_all(cx);
-            },
-            move |v, index, cx| {
-                let (provider, billing, _, _) = &choices[index];
-                v.provider = *provider;
-                v.billing = *billing;
-                v.provider_open = false;
-                v.key.update(cx, |i, cx| i.clear(cx));
-                v.base_url.update(cx, |i, cx| i.clear(cx));
-                zork_ui::components::region::invalidate_all(cx);
-            },
-        )
     }
     fn input(
         &self,
@@ -1215,13 +1083,13 @@ impl Render for ProfilesView {
         );
         self.id
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
-        let show = self.detail.is_none() && (self.form_open || self.attempt.is_some());
-        let modal_key = if self.model_form_open {
+        let paged = self.detail.clone();
+        let show = paged.is_none() && (self.form_open || self.attempt.is_some());
+        let model_dialog = self.model_form_open && paged.is_some() && !self.inline_editing();
+        let modal_key = if model_dialog {
             Some("model-editor-dialog")
         } else if show {
             Some("profile-create-dialog")
-        } else if self.detail.is_some() {
-            Some("profile-detail-dialog")
         } else {
             None
         };
@@ -1230,31 +1098,36 @@ impl Render for ProfilesView {
             .modal
             .retain("profile-create-dialog", show.then_some(()), cx)
             .is_some();
-        let detail_visible = self.modal.retain(
-            "profile-detail-dialog",
-            self.detail.clone().filter(|_| !self.model_form_open),
-            cx,
-        );
         let model_visible = self.modal.retain(
             "model-editor-dialog",
-            self.detail
-                .clone()
-                .filter(|_| self.model_form_open)
-                .map(|detail| (detail, self.editing_model.clone())),
+            model_dialog.then(|| self.editing_model.clone()),
             cx,
         );
-        let displayed_detail = detail_visible
-            .clone()
-            .or_else(|| model_visible.as_ref().map(|(detail, _)| detail.clone()));
-        let editor_body = model_visible
-            .is_some()
-            .then(|| self.model_editor_body(window, cx));
-        let supports = self
-            .selection()
-            .is_some_and(|(_, b)| b["deviceCode"] == true);
-        let custom = self
-            .selection()
-            .is_some_and(|(p, _)| p["id"] == "openai-compatible");
+        let model_dialog_element = model_visible.map(|editing| {
+            let body = self.model_editor_body(window, cx);
+            let actions = self.model_editor_actions(cx);
+            ui::modal(
+                "model-editor-dialog",
+                if editing.is_some() { "编辑模型" } else { "添加模型" },
+                body,
+                actions,
+                self.message.clone(),
+                &self.modal,
+                window,
+                cx,
+                !self.busy,
+                |v, _, cx| v.close_dialog(cx),
+            )
+        });
+        if let Some(detail) = paged {
+            let page = self.render_page(detail, window, cx);
+            return div()
+                .w_full()
+                .child(page)
+                .children(model_dialog_element)
+                .into_any_element();
+        }
+        let wizard = create_visible.then(|| self.wizard(window, cx));
         let width = window.viewport_size().width.as_f32();
         let ids = self
             .profiles
@@ -1333,1147 +1206,26 @@ impl Render for ProfilesView {
                     )
                 },
             )
-            .when(create_visible, |v| {
-                v.child(ui::modal(
+            .when_some(wizard, |v, (body, actions)| {
+                v.child(ui::modal_sized(
                     "profile-create-dialog",
                     "添加模型连接",
-                    ui::section()
-                        .border_t_0()
-                        .py_0()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.muted))
-                                .child(zork_ui::device_name::label(
-                                    "profile-create-device",
-                                    self.device_name.clone(),
-                                    &self.device_status,
-                                    None,
-                                ))
-                                .child("· 连接保存在此设备"),
-                        )
-                        .child(ui::form_field(
-                            "接入方式",
-                            zork_ui::components::widgets::controls::deferred_segmented(
-                                "profile-access-active",
-                                [
-                                    ("profile-access-true", "订阅账号"),
-                                    ("profile-access-false", "API 接入"),
-                                ]
-                                .into_iter()
-                                .map(|(id, label)| {
-                                    zork_ui::components::widgets::controls::Segment {
-                                        id: id.into(),
-                                        label: label.into(),
-                                        disabled: false,
-                                    }
-                                })
-                                .collect(),
-                                vec![],
-                                Some(usize::from(!self.subscription)),
-                                zork_ui::components::widgets::controls::SegmentKind::Choice,
-                                !self.busy && self.attempt.is_none(),
-                                p.canvas,
-                                cx.listener(|v, index: &usize, _, cx| {
-                                    if !v.busy && v.attempt.is_none() {
-                                        v.select_access(*index == 0);
-                                        v.key.update(cx, |i, cx| i.clear(cx));
-                                        v.base_url.update(cx, |i, cx| i.clear(cx));
-                                        zork_ui::components::region::invalidate_all(cx);
-                                    }
-                                }),
-                            ),
-                        ))
-                        .child(ui::form_field("供应商", self.provider_dropdown(window, cx)))
-                        .child(self.input("profile-id", "连接名称", &self.id, cx))
-                        .when(custom, |v| {
-                            v.child(self.input("profile-base-url", "接口地址", &self.base_url, cx))
-                        })
-                        .when(!supports, |v| {
-                            v.child(self.input("profile-key", "API Key", &self.key, cx))
-                        })
-                        .when_some(self.attempt.clone(), |v, attempt| {
-                            let url = attempt["verification_url"]
-                                .as_str()
-                                .unwrap_or_default()
-                                .to_owned();
-                            let code = attempt["user_code"].as_str().unwrap_or_default().to_owned();
-                            v.child(
-                                div()
-                                    .p_4()
-                                    .rounded(px(zork_ui::design::RADIUS.control))
-                                    .bg(rgb(p.selected))
-                                    .flex()
-                                    .flex_col()
-                                    .gap_3()
-                                    .child(div().text_size(px(12.)).text_color(rgb(p.muted)).child(
-                                        if code.is_empty() {
-                                            "在浏览器完成登录，然后粘贴返回的授权码。".into()
-                                        } else {
-                                            format!("在浏览器输入 {code}，完成后会自动保存。 ")
-                                        },
-                                    ))
-                                    .child(
-                                        div().flex().child(
-                                            ui::button(
-                                                "profile-open-browser",
-                                                "打开登录页面",
-                                                false,
-                                                true,
-                                            )
-                                            .on_click(move |_, _, cx| cx.open_url(&url))
-                                            .automation(AutomationRole::Button, "打开登录页面"),
-                                        ),
-                                    )
-                                    .when(attempt["flow"] == "browser_callback", |v| {
-                                        v.child(self.input(
-                                            "profile-callback",
-                                            "浏览器返回内容",
-                                            &self.callback,
-                                            cx,
-                                        ))
-                                    }),
-                            )
-                        }),
-                    div()
-                        .flex()
-                        .justify_end()
-                        .gap_2()
-                        .when(self.attempt.is_some(), |v| {
-                            v.child(
-                                ui::button("profile-cancel", "取消登录", false, true)
-                                    .on_click(cx.listener(|v, _, _, cx| v.cancel(cx)))
-                                    .automation(AutomationRole::Button, "取消登录"),
-                            )
-                        })
-                        .when(self.attempt.is_none(), |v| {
-                            v.child(
-                                ui::button("profile-close-form", "取消", false, !self.busy)
-                                    .on_click(cx.listener(|v, _, _, cx| {
-                                        if !v.busy {
-                                            v.form_open = false;
-                                            v.key.update(cx, |key, cx| key.clear(cx));
-                                            zork_ui::components::region::invalidate_all(cx);
-                                        }
-                                    }))
-                                    .automation_enabled(
-                                        !self.busy,
-                                        AutomationRole::Button,
-                                        "取消添加",
-                                    ),
-                            )
-                        })
-                        .when(!supports, |v| {
-                            v.child(
-                                ui::busy_button(
-                                    "profile-save",
-                                    if self.busy {
-                                        "正在保存…"
-                                    } else {
-                                        "保存连接"
-                                    },
-                                    true,
-                                    !self.busy,
-                                    self.busy,
-                                )
-                                .on_click(cx.listener(|v, _, _, cx| v.save_key(cx)))
-                                .automation_enabled(
-                                    !self.busy,
-                                    AutomationRole::Button,
-                                    "保存 Profile",
-                                ),
-                            )
-                        })
-                        .when(supports && self.attempt.is_none(), |v| {
-                            v.child(
-                                ui::busy_button(
-                                    "profile-signin",
-                                    if self.busy {
-                                        "正在连接…"
-                                    } else {
-                                        "登录并连接"
-                                    },
-                                    true,
-                                    !self.busy,
-                                    self.busy,
-                                )
-                                .on_click(cx.listener(|v, _, _, cx| v.start_auth(cx)))
-                                .automation_enabled(
-                                    !self.busy,
-                                    AutomationRole::Button,
-                                    "登录并创建 Profile",
-                                ),
-                            )
-                        })
-                        .when(
-                            self.attempt
-                                .as_ref()
-                                .is_some_and(|a| a["flow"] == "browser_callback"),
-                            |v| {
-                                v.child(
-                                    ui::button("profile-complete", "完成登录", true, true)
-                                        .on_click(cx.listener(|v, _, _, cx| v.poll_auth(cx)))
-                                        .automation(AutomationRole::Button, "完成登录"),
-                                )
-                            },
-                        ),
+                    body,
+                    actions,
                     self.message.clone(),
                     &self.modal,
+                    520.,
                     window,
                     cx,
                     !self.busy || self.attempt.is_some(),
-                    |v, _, cx| {
-                        v.close_dialog(cx);
-                    },
+                    |v, _, cx| v.close_dialog(cx),
                 ))
-            })
-            .when_some(displayed_detail, |v, detail| {
-                let profile_id = detail["profile_id"].as_str().unwrap_or_default().to_owned();
-                let title = detail["name"]
-                    .as_str()
-                    .filter(|name| !name.trim().is_empty())
-                    .unwrap_or(&profile_id)
-                    .to_owned();
-                let provider_name = self
-                    .catalog
-                    .iter()
-                    .find(|provider| provider["id"] == detail["provider"])
-                    .and_then(|p| p["label"].as_str())
-                    .unwrap_or("OpenAI");
-                let refresh_id = profile_id.clone();
-                let refreshing = self.refreshing_profiles.contains(&profile_id);
-                let verified = detail["account"]["verified"]
-                    .as_bool()
-                    .or_else(|| detail["account"]["ok"].as_bool())
-                    .unwrap_or_else(|| detail["verified"].as_bool().unwrap_or(false));
-                let model_count = detail["models"].as_array().map_or(0, Vec::len);
-                let content = div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .mb_3()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(p.muted))
-                                    .child(provider_icon(
-                                        detail["provider"].as_str().unwrap_or_default(),
-                                        18.,
-                                    ))
-                                    .child(div().truncate().child(if self.device_name.is_empty() {
-                                        provider_name.to_owned()
-                                    } else {
-                                        format!("{provider_name} · 保存在 {}", self.device_name)
-                                    }))
-                                    // Status only matters when it needs attention.
-                                    .when(!verified, |v| {
-                                        v.child(
-                                            div()
-                                                .flex_shrink_0()
-                                                .h(px(22.))
-                                                .px(px(9.))
-                                                .flex()
-                                                .items_center()
-                                                .rounded_full()
-                                                .font_weight(gpui::FontWeight::MEDIUM)
-                                                .bg(gpui::rgba((p.warning << 8) | 0x1f))
-                                                .text_color(rgb(p.warning))
-                                                .child(self.locale.text("profile_unverified")),
-                                        )
-                                    }),
-                            )
-                            .when_some(
-                                self.quota.get(&profile_id).and_then(|q| q.checked.clone()),
-                                |v, checked| {
-                                    v.child(
-                                        div()
-                                            .id("profile-quota-updated")
-                                            .flex_shrink_0()
-                                            .text_size(px(12.))
-                                            .text_color(rgb(p.muted))
-                                            .child(checked.clone())
-                                            .automation(AutomationRole::Status, checked),
-                                    )
-                                },
-                            )
-                            .child(
-                                ui::icon_button("profile-quota-refresh", !refreshing)
-                                    .flex_shrink_0()
-                                    .when(refreshing, |v| {
-                                        v.child(zork_ui::components::loading::indicator(
-                                            "quota-loading",
-                                            14.,
-                                        ))
-                                    })
-                                    .when(!refreshing, |v| {
-                                        v.child(ui::icon("icons/reload.svg", 14.))
-                                    })
-                                    .on_click(cx.listener(move |v, _, _, cx| {
-                                        v.refresh_quota(refresh_id.clone(), cx)
-                                    }))
-                                    .automation(
-                                        AutomationRole::Button,
-                                        self.locale.text("quota_refresh"),
-                                    ),
-                            ),
-                    )
-                    .child(self.quota_detail(&profile_id))
-                    .child(
-                        div()
-                            .h(px(ui::BUTTON_HEIGHT))
-                            .mb_3()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                            .child("模型"),
-                                    )
-                                    .when_some(
-                                        self.discovered
-                                            .as_ref()
-                                            .and_then(|value| value["message"].as_str())
-                                            .map(str::to_owned),
-                                        |v, message| {
-                                            v.child(
-                                                div()
-                                                    .id("profile-model-update-result")
-                                                    .text_size(px(12.))
-                                                    .text_color(rgb(p.muted))
-                                                    .child(message.clone())
-                                                    .automation(AutomationRole::Status, message),
-                                            )
-                                        },
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap_2()
-                                    .child(
-                                        ui::busy_button(
-                                            "profile-model-discover",
-                                            self.locale.text("profile_update_models"),
-                                            false,
-                                            !self.busy,
-                                            self.discovering,
-                                        )
-                                        .text_size(px(12.))
-                                        .px(px(ui::BUTTON_PADDING_X))
-                                        .gap_1()
-                                        .on_click(cx.listener(|v, _, _, cx| v.discover_models(cx)))
-                                        .automation(
-                                            AutomationRole::Button,
-                                            self.locale.text("profile_update_models"),
-                                        ),
-                                    )
-                                    .child(
-                                        ui::button("profile-model-add", "", false, !self.busy)
-                                            .text_size(px(12.))
-                                            .px(px(ui::BUTTON_PADDING_X))
-                                            .gap_1()
-                                            .child(ui::icon("icons/plus.svg", 13.))
-                                            .child("手动添加")
-                                            .on_click(cx.listener(|v, _, _, cx| {
-                                                if !v.busy {
-                                                    v.edit_model(None, cx);
-                                                }
-                                            }))
-                                            .automation(AutomationRole::Button, "手动添加模型"),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("profile-models")
-                            .h(px(64. * model_count.min(4) as f32))
-                            .w_full()
-                            .child(
-                                gpui::uniform_list(
-                                    "profile-model-list",
-                                    model_count,
-                                    cx.processor(|view, range: std::ops::Range<usize>, _, cx| {
-                                        let models = view
-                                            .detail
-                                            .as_ref()
-                                            .and_then(|d| d["models"].as_array())
-                                            .map(|models| {
-                                                models
-                                                    .iter()
-                                                    .skip(range.start)
-                                                    .take(range.len())
-                                                    .cloned()
-                                                    .collect::<Vec<_>>()
-                                            })
-                                            .unwrap_or_default();
-                                        models
-                                            .into_iter()
-                                            .map(|model| view.render_model_row(model, cx))
-                                            .collect::<Vec<_>>()
-                                    }),
-                                )
-                                .size_full(),
-                            )
-                            .automation(AutomationRole::ScrollArea, "模型列表"),
-                    );
-                v.when(detail_visible.is_some(), |v| {
-                    v.child(ui::detail_modal_with_title_action(
-                        "profile-detail-dialog",
-                        title,
-                        self.renaming.then(|| self.rename_editor(cx)),
-                        ui::icon_button(
-                            if self.renaming {
-                                "profile-name-save"
-                            } else {
-                                "profile-rename"
-                            },
-                            !self.busy,
-                        )
-                        .flex_shrink_0()
-                        .when(self.busy, |v| {
-                            v.child(zork_ui::components::loading::indicator("name-saving", 14.))
-                        })
-                        .when(!self.busy, |v| {
-                            v.child(ui::icon(
-                                if self.renaming {
-                                    "icons/check.svg"
-                                } else {
-                                    "icons/edit.svg"
-                                },
-                                14.,
-                            ))
-                        })
-                        .on_click(cx.listener(|v, _, window, cx| {
-                            if v.renaming {
-                                v.save_name(cx)
-                            } else {
-                                v.start_rename(window, cx)
-                            }
-                        }))
-                        .automation_enabled(
-                            !self.busy,
-                            AutomationRole::Button,
-                            self.locale.text(if self.renaming {
-                                "profile_rename_save"
-                            } else {
-                                "profile_rename"
-                            }),
-                        ),
-                        content,
-                        self.message.clone(),
-                        &self.modal,
-                        window,
-                        cx,
-                        !self.busy,
-                        |v, _, cx| v.close_dialog(cx),
-                    ))
-                })
-                .when(model_visible.is_some(), |v| {
-                    v.child(ui::modal(
-                        "model-editor-dialog",
-                        if model_visible
-                            .as_ref()
-                            .is_some_and(|(_, editing)| editing.is_some())
-                        {
-                            "编辑模型"
-                        } else {
-                            "添加模型"
-                        },
-                        ui::section()
-                            .border_t_0()
-                            .py_0()
-                            .when(self.dialog_only, |v| {
-                                v.child(ui::label(format!(
-                                    "{} · {}",
-                                    zork_ui::device_name::summary(
-                                        &self.device_name,
-                                        &self.device_status,
-                                        None,
-                                    ),
-                                    detail["name"]
-                                        .as_str()
-                                        .or_else(|| detail["profile_id"].as_str())
-                                        .unwrap_or("")
-                                )))
-                            })
-                            .children(editor_body),
-                        div()
-                            .w_full()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .w(px(180.))
-                                    .flex_shrink_0()
-                                    .child(self.copy_model_action(window, cx)),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(
-                                        ui::button(
-                                            "profile-model-cancel",
-                                            "取消",
-                                            false,
-                                            !self.busy,
-                                        )
-                                        .on_click(cx.listener(|v, _, _, cx| {
-                                            if !v.busy {
-                                                v.model_form_open = false;
-                                                zork_ui::components::region::invalidate_all(cx);
-                                            }
-                                        }))
-                                        .automation_enabled(
-                                            !self.busy,
-                                            AutomationRole::Button,
-                                            "取消编辑模型",
-                                        ),
-                                    )
-                                    .child(
-                                        ui::busy_button(
-                                            "profile-model-save",
-                                            "保存模型",
-                                            true,
-                                            !self.busy,
-                                            self.busy,
-                                        )
-                                        .on_click(
-                                            cx.listener(|v, _, window, cx| {
-                                                v.save_model(window, cx)
-                                            }),
-                                        )
-                                        .automation_enabled(
-                                            !self.busy,
-                                            AutomationRole::Button,
-                                            "保存模型",
-                                        ),
-                                    ),
-                            ),
-                        self.message.clone(),
-                        &self.modal,
-                        window,
-                        cx,
-                        !self.busy,
-                        |v, _, cx| {
-                            v.close_dialog(cx);
-                        },
-                    ))
-                })
             })
             .when_some(
                 self.message.clone().filter(|_| modal_key.is_none()),
                 |v, m| v.child(ui::status_notice(m, ui::NoticeKind::Error)),
             )
-    }
-}
-
-/// Model editor: recognition fills everything; parameters stay collapsed until
-/// the user asks, and every parameter can borrow a popular model's value.
-impl ProfilesView {
-    fn provider_id(&self) -> Option<String> {
-        self.detail
-            .as_ref()
-            .and_then(|d| d["provider"].as_str())
-            .map(str::to_owned)
-    }
-    fn recognition_line(&self, id: &str) -> Option<(String, String)> {
-        if id.trim().is_empty() {
-            return None;
-        }
-        let provider = self.provider_id();
-        let found = crate::api::model_catalog::recognition(id, provider.as_deref(), None);
-        Some((
-            found["entry"]["name"].as_str()?.to_owned(),
-            found["summary"].as_str().unwrap_or_default().to_owned(),
-        ))
-    }
-    fn recognize(&mut self, cx: &mut Context<Self>) {
-        let id = self.model.read(cx).value().to_owned();
-        self.recognized = self.recognition_line(&id);
-        if !self.params_touched && self.editing_model.is_none() {
-            // A new model takes every parameter from the recognized entry
-            // until the user changes one of them.
-            let provider = self.provider_id();
-            let blank = ModelInput {
-                id: id.clone(),
-                context: String::new(),
-                output: String::new(),
-                thinking: String::new(),
-                default_thinking: String::new(),
-                images: false,
-                thinking_scheme: None,
-                ..self.model_input(cx)
-            };
-            let (filled, entry) =
-                crate::api::model_catalog::fill_input(blank, provider.as_deref());
-            if entry.is_some() {
-                self.context_limit
-                    .update(cx, |v, cx| v.set_value(filled.context.clone(), cx));
-                self.output_limit
-                    .update(cx, |v, cx| v.set_value(filled.output.clone(), cx));
-                self.thinking_scheme = filled.scheme();
-                self.model_image_input = filled.images;
-                self.params_touched = false;
-            }
-        }
-        zork_ui::components::region::invalidate(cx, &["dialog"]);
-    }
-    fn apply_reference(
-        &mut self,
-        field: crate::api::model_catalog::Field,
-        value: Value,
-        cx: &mut Context<Self>,
-    ) {
-        use crate::api::model_catalog::Field;
-        let tokens = |v: &Value| v.as_u64().map(zork_client_core::model_edit::compact_tokens);
-        match field {
-            Field::Context => {
-                if let Some(text) = tokens(&value) {
-                    self.context_limit.update(cx, |v, cx| v.set_value(text, cx));
-                }
-            }
-            Field::Output => {
-                if let Some(text) = tokens(&value) {
-                    self.output_limit.update(cx, |v, cx| v.set_value(text, cx));
-                }
-            }
-            Field::Thinking => {
-                if let Ok(scheme) = serde_json::from_value(value["scheme"].clone()) {
-                    self.thinking_scheme = scheme;
-                }
-            }
-            Field::Capabilities => self.model_image_input = value["image"] == true,
-        }
-        self.params_touched = true;
-        self.reference_open = None;
-        zork_ui::components::region::invalidate(cx, &["dialog"]);
-    }
-    fn set_thinking(
-        &mut self,
-        scheme: crate::api::thinking::ThinkingScheme,
-        cx: &mut Context<Self>,
-    ) {
-        self.thinking_scheme = scheme;
-        self.params_touched = true;
-        zork_ui::components::region::invalidate(cx, &["dialog"]);
-    }
-    fn chip(
-        &self,
-        id: impl Into<gpui::ElementId>,
-        label: String,
-        on: bool,
-        cx: &mut Context<Self>,
-        click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
-    ) -> gpui::AnyElement {
-        let p = ZORK_UI.palette;
-        let enabled = !self.busy;
-        div()
-            .id(id)
-            .h(px(28.))
-            .px(px(12.))
-            .flex()
-            .items_center()
-            .rounded_full()
-            .text_size(px(12.5))
-            .font_weight(gpui::FontWeight::MEDIUM)
-            .bg(rgb(if on { p.text } else { p.prompt }))
-            .text_color(rgb(if on { p.canvas } else { p.muted }))
-            .when(enabled && !on, |v| {
-                v.hover(|s| s.bg(rgb(zork_ui::design::INTERACTION.neutral_hover)))
-            })
-            .when(enabled, |v| {
-                v.cursor_pointer()
-                    .on_click(cx.listener(move |view, _, _, cx| click(view, cx)))
-            })
-            .child(label.clone())
-            .automation_enabled(enabled, AutomationRole::Button, label)
             .into_any_element()
-    }
-    fn param_row(&self, label: &'static str, control: gpui::AnyElement) -> gpui::Div {
-        div()
-            .min_h(px(36.))
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .child(
-                div()
-                    .w(px(76.))
-                    .flex_shrink_0()
-                    .text_size(px(12.5))
-                    .text_color(rgb(ZORK_UI.palette.muted))
-                    .child(label),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .items_center()
-                    .flex_wrap()
-                    .gap(px(6.))
-                    .child(control),
-            )
-    }
-    fn reference_toggle(
-        &self,
-        field: crate::api::model_catalog::Field,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        let open = self.reference_open == Some(field);
-        ui::quiet_button(
-            format!("model-reference-{field:?}").to_lowercase(),
-            "参照",
-            !self.busy,
-            ui::IconButtonSize::Compact,
-        )
-        .text_size(px(12.))
-        .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
-            icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                std::f32::consts::PI,
-            )))
-        }))
-        .on_click(cx.listener(move |v, _, _, cx| {
-            v.reference_open = (v.reference_open != Some(field)).then_some(field);
-            zork_ui::components::region::invalidate(cx, &["dialog"]);
-        }))
-        .automation(AutomationRole::Button, "参照常见模型")
-        .into_any_element()
-    }
-    fn reference_list(
-        &self,
-        field: crate::api::model_catalog::Field,
-        cx: &mut Context<Self>,
-    ) -> Option<gpui::AnyElement> {
-        if self.reference_open != Some(field) {
-            return None;
-        }
-        let id = self.model.read(cx).value().to_owned();
-        let refs = crate::api::model_catalog::references(field, Some(&id));
-        let chips: Vec<_> = refs
-            .into_iter()
-            .take(10)
-            .enumerate()
-            .map(|(i, r)| {
-                let value = r.value.clone();
-                self.chip(
-                    gpui::SharedString::from(format!("model-reference-{i}")),
-                    format!("{} · {}", r.name, r.label),
-                    r.recognized,
-                    cx,
-                    move |v, cx| v.apply_reference(field, value.clone(), cx),
-                )
-            })
-            .collect();
-        Some(
-            div()
-                .id(gpui::SharedString::from(
-                    format!("model-references-{field:?}").to_lowercase(),
-                ))
-                .pl(px(84.))
-                .pb(px(6.))
-                .flex()
-                .flex_wrap()
-                .gap(px(6.))
-                .children(chips)
-                .into_any_element(),
-        )
-    }
-    fn thinking_controls(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        use crate::api::thinking::{BudgetChoice, ThinkingScheme as T};
-        let p = ZORK_UI.palette;
-        let kind = match &self.thinking_scheme {
-            T::Unsupported => 0,
-            T::Always { .. } => 1,
-            T::Toggle { .. } => 2,
-            T::Levels { .. } => 3,
-            T::Budget { .. } => 4,
-        };
-        let kinds = ["不支持", "固定开启", "开关", "档位", "预算"];
-        let kind_chips: Vec<_> = kinds
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                self.chip(
-                    gpui::SharedString::from(format!("model-thinking-kind-{i}")),
-                    (*name).to_owned(),
-                    i == kind,
-                    cx,
-                    move |v, cx| {
-                        if i == kind {
-                            return;
-                        }
-                        let next = match i {
-                            0 => T::Unsupported,
-                            1 => T::Always {
-                                value: "high".into(),
-                            },
-                            2 => T::Toggle {
-                                on: "enabled".into(),
-                                default_on: true,
-                            },
-                            3 => T::Levels {
-                                values: vec!["low".into(), "medium".into(), "high".into()],
-                                default: "medium".into(),
-                            },
-                            _ => T::Budget {
-                                presets: vec![4096, 16384, 32768],
-                                default: BudgetChoice::Tokens(16384),
-                                dynamic: false,
-                                allow_off: true,
-                            },
-                        };
-                        v.set_thinking(next, cx)
-                    },
-                )
-            })
-            .collect();
-        let mut col = div()
-            .flex()
-            .flex_col()
-            .gap(px(6.))
-            .child(div().flex().flex_wrap().gap(px(6.)).children(kind_chips));
-        const ORDER: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
-        match self.thinking_scheme.clone() {
-            T::Levels { values, default } => {
-                let mut known: Vec<String> = ORDER.iter().map(|v| (*v).to_owned()).collect();
-                for value in &values {
-                    if !known.contains(value) {
-                        known.push(value.clone());
-                    }
-                }
-                let level_chips: Vec<_> = known
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, name)| {
-                        let on = values.contains(&name);
-                        let (values, default) = (values.clone(), default.clone());
-                        self.chip(
-                            gpui::SharedString::from(format!("model-thinking-level-{i}")),
-                            name.clone(),
-                            on,
-                            cx,
-                            move |v, cx| {
-                                let mut next = values.clone();
-                                if on {
-                                    next.retain(|x| x != &name);
-                                } else {
-                                    next.push(name.clone());
-                                }
-                                next.sort_by_key(|x| {
-                                    ORDER.iter().position(|o| o == x).unwrap_or(ORDER.len())
-                                });
-                                let default = if next.contains(&default) {
-                                    default.clone()
-                                } else {
-                                    next.first().cloned().unwrap_or_default()
-                                };
-                                v.set_thinking(
-                                    T::Levels {
-                                        values: next,
-                                        default,
-                                    },
-                                    cx,
-                                )
-                            },
-                        )
-                    })
-                    .collect();
-                let options = values.iter().map(|v| (v.clone(), v.clone())).collect();
-                col = col
-                    .child(div().flex().flex_wrap().gap(px(6.)).children(level_chips))
-                    .child(self.default_choice(options, default, cx, move |value| T::Levels {
-                        values: values.clone(),
-                        default: value,
-                    }));
-            }
-            T::Budget {
-                presets,
-                default,
-                dynamic,
-                allow_off,
-            } => {
-                let mut options: Vec<(String, String)> = Vec::new();
-                if allow_off {
-                    options.push(("off".into(), "关".into()));
-                }
-                if dynamic {
-                    options.push(("dynamic".into(), "动态".into()));
-                }
-                options.extend(presets.iter().map(|t| {
-                    (
-                        crate::api::thinking::budget_value(*t),
-                        zork_client_core::model_edit::compact_tokens(u64::from(*t)),
-                    )
-                }));
-                let current = match default {
-                    BudgetChoice::Off => "off".into(),
-                    BudgetChoice::Dynamic => "dynamic".into(),
-                    BudgetChoice::Tokens(t) => crate::api::thinking::budget_value(t),
-                };
-                col = col.child(self.default_choice(options, current, cx, move |value| {
-                    let default = match value.as_str() {
-                        "off" => BudgetChoice::Off,
-                        "dynamic" => BudgetChoice::Dynamic,
-                        other => BudgetChoice::Tokens(
-                            crate::api::thinking::budget_tokens(other).unwrap_or(16384),
-                        ),
-                    };
-                    T::Budget {
-                        presets: presets.clone(),
-                        default,
-                        dynamic,
-                        allow_off,
-                    }
-                }));
-            }
-            T::Toggle { on, default_on } => {
-                col = col.child(div().flex().child(self.chip(
-                    "model-thinking-default-on",
-                    if default_on { "默认开启" } else { "默认关闭" }.to_owned(),
-                    default_on,
-                    cx,
-                    move |v, cx| {
-                        v.set_thinking(
-                            T::Toggle {
-                                on: on.clone(),
-                                default_on: !default_on,
-                            },
-                            cx,
-                        )
-                    },
-                )));
-            }
-            T::Always { .. } => {
-                col = col.child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(p.subtle))
-                        .child("这个模型总是会思考"),
-                );
-            }
-            T::Unsupported => {}
-        }
-        col.into_any_element()
-    }
-    fn default_choice(
-        &self,
-        options: Vec<(String, String)>,
-        current: String,
-        cx: &mut Context<Self>,
-        make: impl Fn(String) -> crate::api::thinking::ThinkingScheme + 'static,
-    ) -> gpui::AnyElement {
-        let make = std::rc::Rc::new(make);
-        let chips: Vec<_> = options
-            .into_iter()
-            .enumerate()
-            .map(|(i, (value, label))| {
-                let make = make.clone();
-                let on = value == current;
-                self.chip(
-                    gpui::SharedString::from(format!("model-thinking-default-{i}")),
-                    label,
-                    on,
-                    cx,
-                    move |v, cx| v.set_thinking(make(value.clone()), cx),
-                )
-            })
-            .collect();
-        div()
-            .flex()
-            .items_center()
-            .flex_wrap()
-            .gap(px(6.))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(ZORK_UI.palette.subtle))
-                    .mr(px(2.))
-                    .child("默认"),
-            )
-            .children(chips)
-            .into_any_element()
-    }
-    fn model_editor_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
-        use crate::api::model_catalog::Field;
-        let p = ZORK_UI.palette;
-        let recognized = self.recognized.clone();
-        let open = self.model_params_open;
-        let toggle_label = if open { "收起参数" } else { "调整参数" };
-        let recognition = match recognized {
-            Some((name, summary)) => div()
-                .id("model-recognition-summary")
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(
-                    div()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(rgb(p.text))
-                        .child(name.clone()),
-                )
-                .child(div().text_color(rgb(p.muted)).child(summary.clone()))
-                .automation(AutomationRole::Status, format!("{name} · {summary}"))
-                .into_any_element(),
-            None => div()
-                .text_color(rgb(p.subtle))
-                .child("未识别的模型：展开参数手动填写")
-                .into_any_element(),
-        };
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(self.input("profile-model", "模型 ID", &self.model, cx))
-            .child(
-                div()
-                    .id("model-recognition")
-                    .min_h(px(24.))
-                    .px(px(4.))
-                    .flex()
-                    .items_center()
-                    .text_size(px(12.5))
-                    .child(recognition),
-            )
-            .child(
-                ui::quiet_button(
-                    "model-params-toggle",
-                    toggle_label,
-                    !self.busy,
-                    ui::IconButtonSize::Compact,
-                )
-                .ml(px(-6.))
-                .self_start()
-                .text_size(px(12.5))
-                .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
-                    icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                        std::f32::consts::PI,
-                    )))
-                }))
-                .on_click(cx.listener(|v, _, _, cx| {
-                    v.model_params_open = !v.model_params_open;
-                    v.reference_open = None;
-                    zork_ui::components::region::invalidate(cx, &["dialog"]);
-                }))
-                .automation(AutomationRole::Button, toggle_label),
-            );
-        if !open {
-            return body;
-        }
-        let family = |api: &str| {
-            provider_path(if api.starts_with("anthropic") {
-                "anthropic"
-            } else {
-                "openai"
-            })
-        };
-        let api = ui::dropdown_with_icons(
-            "model-api-select",
-            MODEL_APIS[self.model_api].1.into(),
-            MODEL_APIS
-                .iter()
-                .enumerate()
-                .map(|(i, (_, name))| (format!("model-api-{i}"), (*name).into(), i == self.model_api))
-                .collect(),
-            self.api_open,
-            !self.busy,
-            Some(family(MODEL_APIS[self.model_api].0)),
-            MODEL_APIS.iter().map(|(api, _)| Some(family(api))).collect(),
-            window,
-            cx,
-            |v, open, cx| {
-                v.api_open = open;
-                v.copy_model_open = false;
-                zork_ui::components::region::invalidate_all(cx);
-            },
-            |v, index, cx| {
-                v.model_api = index;
-                v.api_open = false;
-                v.params_touched = true;
-                zork_ui::components::region::invalidate_all(cx);
-            },
-        );
-        let context = self
-            .input("profile-context-limit", "", &self.context_limit, cx)
-            .w(px(140.));
-        let output = self
-            .input("profile-output-limit", "", &self.output_limit, cx)
-            .w(px(140.));
-        let context_ref = self.reference_toggle(Field::Context, cx);
-        let output_ref = self.reference_toggle(Field::Output, cx);
-        let thinking_ref = self.reference_toggle(Field::Thinking, cx);
-        let caps_ref = self.reference_toggle(Field::Capabilities, cx);
-        let thinking = self.thinking_controls(cx);
-        let image = self.chip(
-            "profile-model-image-input",
-            self.locale.text("model_image_input").to_string(),
-            self.model_image_input,
-            cx,
-            |v, cx| {
-                v.model_image_input = !v.model_image_input;
-                v.params_touched = true;
-                zork_ui::components::region::invalidate(cx, &["dialog"]);
-            },
-        );
-        let row = |a: gpui::AnyElement, b: gpui::AnyElement| {
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .child(a)
-                .child(b)
-                .into_any_element()
-        };
-        body = body
-            .child(self.param_row("协议", div().w(px(220.)).child(api).into_any_element()))
-            .child(self.param_row("上下文", row(context.into_any_element(), context_ref)))
-            .children(self.reference_list(Field::Context, cx))
-            .child(self.param_row("最长输出", row(output.into_any_element(), output_ref)))
-            .children(self.reference_list(Field::Output, cx))
-            .child(
-                div()
-                    .flex()
-                    .items_start()
-                    .gap(px(8.))
-                    .child(
-                        div()
-                            .w(px(76.))
-                            .pt(px(6.))
-                            .flex_shrink_0()
-                            .text_size(px(12.5))
-                            .text_color(rgb(p.muted))
-                            .child("思考方式"),
-                    )
-                    .child(div().flex_1().min_w_0().child(thinking))
-                    .child(thinking_ref),
-            )
-            .children(self.reference_list(Field::Thinking, cx))
-            .child(self.param_row("能力", row(image, caps_ref)))
-            .children(self.reference_list(Field::Capabilities, cx));
-        body
     }
 }
 
