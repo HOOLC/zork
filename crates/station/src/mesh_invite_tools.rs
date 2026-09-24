@@ -1,10 +1,9 @@
 //! Agent-facing Mesh invitations. The Station mints the one-time join command
 //! through the same enrollment path as the clients and returns it only in the
-//! `mesh.invite` result. Only Sessions bound to a Zork client Chat may mint;
-//! external IM, proactive bindings and delegated Worker tasks are refused.
+//! `mesh.invite` result. Any Session bound to a Station conversation may mint:
+//! connected IM such as Slack is trusted like the Zork clients.
 use crate::{
-    db::{SessionBindingRow, StationDb},
-    im_entry::{LOCAL_GUI_ENTRY_ID, LOCAL_GUI_PLATFORM},
+    db::StationDb,
     state::AppState,
 };
 use anyhow::{Context, Result};
@@ -209,34 +208,17 @@ async fn api(state: &AppState, input: Request) -> Result<Value> {
     }
 }
 
-/// Minting is allowed only from a Chat the user opened in a Zork client.
+/// Minting requires a Session bound to a Station conversation. Every
+/// connected entry (Zork clients, Slack, proactive bindings, delegated tasks)
+/// is trusted: an IM is only connected when the user trusts it.
 fn admit(db: &StationDb, session_id: &str) -> Result<()> {
-    let binding = db.get_binding_by_id(session_id)?.ok_or_else(|| {
+    db.get_binding_by_id(session_id)?.ok_or_else(|| {
         refuse(
             "unknown_session",
             "This Session is not bound to a Station Chat.",
         )
     })?;
-    let ask = "Ask the user to request the new computer from a Chat in the Zork app.";
-    match binding {
-        SessionBindingRow::Proactive(binding) => Err(refuse(
-            "mesh_invite_requires_zork_chat",
-            format!("mesh.invite is not available to proactive {} bindings. {ask}", binding.platform),
-        )),
-        SessionBindingRow::Normal(session)
-            if session.platform != LOCAL_GUI_PLATFORM || session.connection_id != LOCAL_GUI_ENTRY_ID =>
-        {
-            Err(refuse(
-                "mesh_invite_requires_zork_chat",
-                format!("mesh.invite is not available in {} conversations: the join command must not reach external channels. {ask}", session.platform),
-            ))
-        }
-        SessionBindingRow::Normal(session) if session.channel_type.as_deref() == Some("worker_task") => Err(refuse(
-            "mesh_invite_requires_zork_chat",
-            format!("mesh.invite is not available to delegated Worker tasks. Report back to the Leader; the user must request it in their Zork Chat. {ask}"),
-        )),
-        SessionBindingRow::Normal(_) => Ok(()),
-    }
+    Ok(())
 }
 
 fn clean_label(label: Option<String>) -> Result<Option<String>> {
@@ -393,11 +375,10 @@ mod tests {
     }
 
     #[test]
-    fn only_zork_client_chats_may_mint_invitations() {
+    fn every_bound_session_may_mint_invitations() {
         let dir = tempfile::tempdir().unwrap();
         let db = StationDb::open(dir.path(), &dir.path().join("workspaces")).unwrap();
         let chat = session(&db, "local_gui", "local_gui", "leader_chat");
-        admit(&db, &chat).unwrap();
         let slack = session(&db, "work", "slack", "channel");
         let worker = session(&db, "local_gui", "local_gui", "worker_task");
         let binding = db.ensure_proactive_binding("work", "slack").unwrap();
@@ -410,17 +391,8 @@ mod tests {
             "high",
         )
         .unwrap();
-        let proactive = "proactive-session".to_owned();
-        for (id, needle) in [
-            (slack, "slack conversations"),
-            (worker, "Worker"),
-            (proactive, "proactive"),
-        ] {
-            let error = admit(&db, &id).unwrap_err();
-            let refusal = error.downcast_ref::<Refusal>().unwrap();
-            assert_eq!(refusal.code, "mesh_invite_requires_zork_chat");
-            assert!(refusal.message.contains(needle), "{}", refusal.message);
-            assert!(refusal.message.contains("Zork app"), "{}", refusal.message);
+        for id in [chat, slack, worker, "proactive-session".to_owned()] {
+            admit(&db, &id).unwrap();
         }
         assert_eq!(
             admit(&db, "missing")

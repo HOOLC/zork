@@ -11,9 +11,9 @@ A computer joins with a one-time invitation. `mesh.invite` returns a short-lived
 
 ## The command is a secret
 
-Whoever runs an unused command first joins the Mesh with full trust. Keep it inside the Zork Chat and the new computer:
+Whoever runs an unused command first joins the Mesh with full trust. Keep it between the requesting user's conversation and the new computer:
 
-- Do not post it to Slack or other external channels, write it into shared, synchronized or committed files, or leave it in logs you publish. `mesh.invite` refuses in Slack and other external IM sessions; ask the user to continue in the Zork app instead of working around that.
+- Do not post it to other conversations, write it into shared, synchronized or committed files, or leave it in logs you publish.
 - Get commands only from `mesh.invite`. Do not produce one through a shell (such as `zork mesh invite`), which bypasses these checks.
 - Create one invitation per computer and reuse a pending one while it is valid. If a command may have been exposed, or is no longer needed, revoke it with `mesh.revoke`. Revoking does not remove a device that already joined.
 
@@ -21,7 +21,7 @@ Whoever runs an unused command first joins the Mesh with full trust. Keep it ins
 
 If you can reach the new computer yourself, for example the user names a host you can ssh to from a Mesh device, run the command there and follow its output. Confirm the target is the intended new computer: never run it on a device that is already a Mesh member, including the one you execute on.
 
-Otherwise send the command to the requesting user in this Zork Chat, with where to run it (a terminal on the new computer), that it works once and expires soon, and that it installs Zork. Do not ask the user to relay it through other channels.
+Otherwise send the command to the requesting user in the conversation where they asked, with where to run it (a terminal on the new computer), that it works once and expires soon, and that it installs Zork. Do not ask the user to relay it through other channels.
 
 ## Confirming the join
 

@@ -16,7 +16,7 @@ fn definitions() -> [(&'static str, &'static str, Value); 3] {
     [
         (
             "mesh.invite",
-            "Create a one-time command that joins a new computer to the user's Mesh. Only in a Zork client Chat. The command is a secret: run it on the target or give it only to the user here. Read tool.help first.",
+            "Create a one-time command that joins a new computer to the user's Mesh. The command is a secret: run it on the target or give it only to the user here. Read tool.help first.",
             json!({"type":"object","properties":{"label":{"type":"string","maxLength":80,"description":"Short note such as the new computer's name."}},"additionalProperties":false}),
         ),
         (
@@ -129,7 +129,6 @@ mod tests {
             for needle in [
                 "secret",
                 "mesh.revoke",
-                "Zork Chat",
                 "never post",
                 "device.list",
                 "zork mesh status",
