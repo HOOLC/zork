@@ -478,7 +478,7 @@ mod android {
                     copy.clone(),
                 )
             } else {
-                zork_client_core::model_edit::model_form(
+                zork_client_core::model_edit::model_form_with_catalog(
                     &value["profile"],
                     value["providers"]
                         .as_array()

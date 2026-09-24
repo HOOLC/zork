@@ -687,8 +687,21 @@ fn model_token_usage(usage: &Usage) -> Option<zork_agent::session::model::ModelT
         })
 }
 
+/// Token budgets (`budget-16000`, stored for budget-style models) reach the
+/// provider layer as the effort closest to that budget; `dynamic` and other
+/// unknown values leave the choice to the provider.
+fn budget_effort(value: &str) -> Option<&'static str> {
+    let tokens: u32 = value.strip_prefix("budget-")?.parse().ok()?;
+    Some(match tokens {
+        0..=4096 => "low",
+        4097..=16384 => "medium",
+        16385..=32768 => "high",
+        _ => "xhigh",
+    })
+}
+
 fn reasoning_effort(value: &str) -> ReasoningEffort {
-    match value {
+    match budget_effort(value).unwrap_or(value) {
         "none" | "off" => ReasoningEffort::None,
         "minimal" => ReasoningEffort::Minimal,
         "low" => ReasoningEffort::Low,
@@ -700,6 +713,7 @@ fn reasoning_effort(value: &str) -> ReasoningEffort {
 }
 
 fn responses_provider_options(thinking: &str) -> HashMap<String, Value> {
+    let thinking = budget_effort(thinking).unwrap_or(thinking);
     HashMap::from([(
         "openai".to_owned(),
         serde_json::json!({
@@ -973,6 +987,23 @@ fn prompt_from_transcript(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn budget_values_map_to_the_nearest_effort() {
+        use super::{budget_effort, reasoning_effort, ReasoningEffort};
+        assert_eq!(budget_effort("budget-4000"), Some("low"));
+        assert_eq!(budget_effort("budget-16000"), Some("medium"));
+        assert_eq!(budget_effort("budget-32000"), Some("high"));
+        assert_eq!(budget_effort("budget-64000"), Some("xhigh"));
+        assert_eq!(budget_effort("high"), None);
+        assert!(matches!(
+            reasoning_effort("budget-16000"),
+            ReasoningEffort::Medium
+        ));
+        assert!(matches!(
+            reasoning_effort("dynamic"),
+            ReasoningEffort::ProviderDefault
+        ));
+    }
     use super::*;
 
     #[test]
