@@ -36,6 +36,10 @@ class PageSlideTest {
         assertTrue(settingsRouteDepth(device.copy(page="models")) > settingsRouteDepth(device))
         assertTrue(settingsRouteDepth(device.copy(page="profile")) > settingsRouteDepth(device.copy(page="models")))
         assertEquals(1, settingsRouteDepth(device.copy(fromChat=true)))
+        val connections = MobileSettingsState("model-connections")
+        assertEquals(2, settingsRouteDepth(connections))
+        assertTrue(settingsRouteDepth(device.copy(page="profile", fromConnections=true)) > settingsRouteDepth(connections))
+        assertEquals(settingsRouteDepth(device.copy(page="models", fromConnections=true)), settingsRouteDepth(device.copy(page="profile", fromConnections=true)))
         assertNotEquals(settingsRouteKey(device), settingsRouteKey(device.copy(device=Peer("b","b",""))))
     }
     @Test fun forwardBackRefreshAndInterruptedNavigation() {

@@ -53,15 +53,21 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     actions.put(intent);lastBody=intent;snapshot=project()
                                 }, {})
                             }
-                            else if (route in listOf("home","appearance","device","models","profile","connections","services","notifications")) {
+                            else if (route in listOf("home","appearance","device","models","profile","model-connections","services","notifications")) {
                                 var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
                                     if(resourceTrail.isNotEmpty()) {
                                         val selected=resourceTrail.removeAt(resourceTrail.lastIndex)
                                         settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))
-                                    } else settings=settings.copy(page=if(settings.page=="profile")"models" else "home",resource=null,resourceData=null)
+                                    } else settings=settings.copy(page=when {
+                                        settings.fromConnections && settings.page in listOf("models","profile") -> "model-connections"
+                                        settings.page=="profile" -> "models"
+                                        else -> "home"
+                                    },resource=null,resourceData=null,fromConnections=false,addConnection=false)
                                 }, device={settings=settings.copy(page="device",device=it,resource=null,resourceData=null)},
+                                    connection={_,profile->lastAction="open-connection:${profile.text("profile_id")}";settings=settings.copy(page="profile",profile=profile,fromConnections=true)},
+                                    addConnection={peer->lastAction="add-connection:$peer";settings=settings.copy(page="models",fromConnections=true,addConnection=true)},
                                     theme=previewTheme, saveTheme={previewTheme=it},
                                     clearData={lastAction="clear-data"},
                                     notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
@@ -141,7 +147,12 @@ private fun fixtureSettings(): MobileSettingsState {
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to 72,"resets_at" to 1789002000)),"balance" to org.json.JSONArray().put(0).put("USD")),"checkedAt" to "2026-09-10T01:00:00Z"),
         obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()))
     val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))))
-    return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,
+    val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray())
+    val connections=listOf(
+        obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),
+        obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
+            "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter")))))
+    return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
 

@@ -71,7 +71,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
             Text("安卓调试", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (page?.optBoolean("show_details") == true) ZorkButton("详情", quiet = true, onClick = { overlay = "details" })
         }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp)) {
             if (page == null) {
                 Text("正在读取调试状态…", color = ZorkColors.Muted, fontSize = 14.sp)
             } else {
@@ -92,9 +92,13 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
                     Spacer(Modifier.height(28.dp))
                     if (stations.isEmpty()) Text(page.text("empty_message").orEmpty(), color = ZorkColors.Muted, fontSize = 13.sp)
                     else {
-                        Text("Station 连接", color = ZorkColors.Muted, fontSize = 13.sp)
-                        stations.forEach { station ->
-                            AdbStationRow(station, !busy) { error = null; overlay = "station:${station.text("peer")}" }
+                        Text("Station 连接", color = ZorkColors.Subtle, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+                        SettingsListGroup {
+                            stations.forEachIndexed { index, station ->
+                                if (index > 0) SettingsListDivider()
+                                AdbStationRow(station, !busy) { error = null; overlay = "station:${station.text("peer")}" }
+                            }
                         }
                     }
                 }
@@ -161,19 +165,13 @@ private fun AdbButton(label: String, primary: Boolean = false, enabled: Boolean 
 
 @Composable
 private fun AdbStationRow(station: JSONObject, enabled: Boolean, help: () -> Unit) {
-    Column {
-        Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(42.dp).background(ZorkColors.Paper, SettingsStyle.Field), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.ic_node), null, Modifier.size(22.dp), tint = ZorkColors.Ink)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(station.text("state_label").orEmpty(), color = adbTone(station.text("tone")), fontSize = 13.sp)
-            }
-            if (station.optJSONObject("help") != null) ZorkButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { DeviceMark(station.text("name").orEmpty(), 28.dp) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(station.text("state_label").orEmpty(), color = adbTone(station.text("tone")), fontSize = 13.sp)
         }
-        HorizontalDivider(color = ZorkColors.Border)
+        if (station.optJSONObject("help") != null) ZorkButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
     }
 }
 

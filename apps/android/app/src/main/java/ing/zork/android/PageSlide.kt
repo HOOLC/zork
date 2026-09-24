@@ -19,9 +19,11 @@ internal fun settingsRouteKey(state: MobileSettingsState?): String = state?.let 
 internal fun settingsRouteDepth(state: MobileSettingsState?): Int {
     if (state == null) return 0
     val deviceDepth = if (state.fromChat) 1 else 2
+    // A connection opened from the global list sits one level above that list.
+    if (state.fromConnections && state.page in listOf("models", "profile")) return 3 + state.resourceDepth
     return when (state.page) {
         "home" -> 1
-        "display", "appearance", "connections", "notifications" -> 2
+        "appearance", "notifications", "account", "adb", "model-connections" -> 2
         "device" -> deviceDepth
         "profile" -> deviceDepth + 2
         else -> deviceDepth + 1

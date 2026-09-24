@@ -61,7 +61,7 @@ private fun quotaUi(profile: JSONObject): QuotaUi {
 }
 
 @Composable
-private fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
+internal fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
     val quota = remember(profile) { quotaUi(profile) }
     if (quota.failed) {
         Text("额度查询失败", fontSize = 12.sp, color = ZorkColors.Warning)
@@ -73,8 +73,9 @@ private fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
                     Text(window.label, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
                     Text(window.value, fontSize = 12.sp, color = ZorkColors.Muted)
                 }
-                LinearProgressIndicator(progress = { window.remaining / 100f }, modifier = Modifier.fillMaxWidth().height(3.dp),
-                    color = ZorkColors.Ink, trackColor = ZorkColors.FieldBorder)
+                Box(Modifier.fillMaxWidth().height(6.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
+                    Box(Modifier.fillMaxWidth(window.remaining / 100f).fillMaxHeight().background(ZorkColors.Ink, ZorkShapes.Control))
+                }
                 if (!summary) window.reset?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
             }
         }
@@ -95,6 +96,8 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
     var operation by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var error by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var updateMessage by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
+    // Arriving from the global list's add flow opens the editor once the device is usable.
+    var pendingAdd by rememberSaveable(state.device?.id) { mutableStateOf(state.addConnection) }
     val scope = rememberCoroutineScope()
     val enabled = state.online && state.profilesReady && !state.loading && (operation == null || operation == "quota")
     val refreshingQuota = profileId in state.profileRefreshing || operation == "quota"
@@ -108,19 +111,23 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
         }
     }
     fun editModel(model: JSONObject?) { editingJson = model?.toString(); editor = "model" }
+    LaunchedEffect(pendingAdd, enabled) { if (pendingAdd && enabled && !detail) { pendingAdd = false; editingJson = null; editor = "connection" } }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = actions.back)
-            Text(if (detail) profile?.let(::profileName) ?: "连接详情" else "大模型", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+            Text(if (detail) profile?.let(::profileName) ?: "连接详情" else "模型连接", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (detail && profile != null) IconAction(R.drawable.ic_edit, "重命名连接", enabled = enabled) { editingJson = profile.toString(); editor = "profile-name" }
             SettingsRefreshButton(state.loading, actions.refresh)
         }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item(key = "notice") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!state.online) Text(if (state.connectionState == "connecting") "正在连接设备…" else "设备离线，显示已保存的设置", color = ZorkColors.Muted, fontSize = 12.sp)
-                    (error ?: state.profileMessage ?: state.message)?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp) }
+                    (error ?: state.profileMessage ?: state.message)?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp,
+                            modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 18.dp, vertical = 12.dp))
+                    }
                 }
             }
             if (!detail) {
@@ -128,8 +135,11 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     SettingsButton("继续连接") { editingJson = null; editor = "connection" }
                 }
                 item(key = "heading") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("${compactDeviceName(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi())} · ${if (state.profilesReady) state.profiles.size else "—"} 个连接", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth().padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        DeviceMark(state.device?.name.orEmpty(), 18.dp)
+                        Text("${state.device?.name.orEmpty()} · ${if (state.profilesReady) state.profiles.size else "—"} 个连接", fontSize = 13.sp, color = ZorkColors.Muted,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        DeviceStatusBadge(state.device?.status ?: DeviceStatusUi())
                         SettingsButton("添加", enabled = enabled) { editingJson = null; editor = "connection" }
                     }
                 }
@@ -139,7 +149,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     SettingsListGroup {
                         SettingsListRow(profileName(row), subtext = "${provider?.text("label") ?: row.text("provider")} · ${billing?.text("label") ?: row.text("billing")}",
                             detail = "${row.optJSONArray("models")?.length() ?: 0} 个模型", leading = { ProviderMark(row.text("provider")) },
-                            trailing = { Text(if (row.optBoolean("verified")) "已验证" else "待验证", fontSize = 12.sp, color = if (row.optBoolean("verified")) ZorkColors.Online else ZorkColors.Warning) },
+                            trailing = { VerificationPill(row) },
                             action = { actions.profile(row) })
                         val quota = remember(row) { quotaUi(row) }
                         if (row.text("profile_id") in state.profileFailed) Text("额度刷新失败，已保留上次结果", color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(16.dp))
@@ -147,11 +157,13 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                     }
                 }
                 if (state.profilesReady && state.profiles.isEmpty()) item {
-                    Text("连接对话使用的模型", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("添加订阅账号或 API 连接，供新对话选择模型。", fontSize = 13.sp, color = ZorkColors.Muted)
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("这台设备还没有模型连接", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text("添加订阅账号或 API Key，供新 Chat 选择模型。", fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted)
+                    }
                 }
             } else if (profile == null) {
-                item { Text(if (state.loading) "正在读取连接…" else "此连接已不可用，返回大模型列表查看。", fontSize = 14.sp, color = ZorkColors.Muted) }
+                item { Text(if (state.loading) "正在读取连接…" else "此连接已不可用，返回模型连接列表查看。", fontSize = 14.sp, color = ZorkColors.Muted) }
             } else {
                 item(key = "account") {
                     SettingsListGroup {
@@ -159,7 +171,8 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 ProviderMark(profile.text("provider"))
                                 val provider = state.providers.find { it.text("id") == profile.text("provider") }
-                                Text("${provider?.text("label") ?: profile.text("provider")} · ${if (profile.optBoolean("verified")) "已验证" else "待验证"}", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                Text("${provider?.text("label") ?: profile.text("provider")} · ${accessLabel(profile)}", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                VerificationPill(profile)
                             }
                             ProfileQuota(profile)
                             if (profileId in state.profileFailed) Text("额度刷新失败，已保留上次结果", color = ZorkColors.Danger, fontSize = 12.sp)

@@ -148,6 +148,10 @@ pub enum Command {
         #[serde(default)]
         cached_only: bool,
     },
+    ModelConnections {
+        #[serde(default)]
+        cached_only: bool,
+    },
     Request {
         peer: String,
         method: String,
@@ -232,6 +236,7 @@ impl Command {
                     cached_only: true,
                     ..
                 }
+                | Self::ModelConnections { cached_only: true }
                 | Self::Read {
                     cached_only: true,
                     ..
@@ -675,6 +680,9 @@ impl LocalClient {
             } => {
                 self.peer(&peer)?;
                 settings::snapshot(&self.store, &peer)
+            }
+            Command::ModelConnections { cached_only: true } => {
+                model_connections::cached(&self.store)
             }
             Command::Read {
                 peer,
@@ -1160,6 +1168,13 @@ impl Client {
                     return settings::snapshot(&self.store, &peer);
                 }
                 settings::refresh(self.station(&peer)?, self.store.clone(), &peer).await
+            }
+            Command::ModelConnections { cached_only } => {
+                if cached_only {
+                    return model_connections::cached(&self.store);
+                }
+                self.directory.refresh().await?;
+                model_connections::refresh(self.store.clone(), |peer| self.station(peer)).await
             }
             Command::Read {
                 peer,

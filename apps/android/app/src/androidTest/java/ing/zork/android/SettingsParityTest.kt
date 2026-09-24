@@ -192,8 +192,27 @@ class SettingsParityTest {
 
     @Test fun deviceSettingsDoNotExposeRoleOrGrantConfiguration() {
         launch("device").use {
-            settle(); await("大模型")
+            settle(); await("模型连接"); await("这台设备")
             assertNull(find("队员")); assertNull(find("领队")); assertNull(find("管理授权"))
+        }
+    }
+
+    @Test fun modelConnectionsGroupByProviderAndKeepFailedDevicesVisible() {
+        launch("home").use { scenario ->
+            settle(); await("Mesh"); assertNull(find("工具连接"))
+            click("模型连接"); await("OpenAI"); await("Anthropic")
+            // mini2 failed: its cached connection and the reason stay visible, never "none".
+            assertNotNull(await("OpenRouter"))
+            assertNotNull(nodes().firstOrNull { it.text?.toString()?.startsWith("无法读取 mini2 上的连接") == true })
+            assertNotNull(find("重试")); assertNull(find("还没有模型连接"))
+            assertNotNull(await("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
+            capture("model-connections")
+            click("工作室订阅，订阅，mini1")
+            scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
+            await("刷新额度")
+            click("返回"); await("OpenRouter")
+            click("添加连接"); await("添加到哪台设备？"); click("mini1")
+            scenario.onActivity { assertEquals("add-connection:mini1", it.lastAction) }
         }
     }
     @Test fun newChatUsesCoreChoicesAndSubmitsOnlyAfterSending() {

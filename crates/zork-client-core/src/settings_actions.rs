@@ -124,8 +124,15 @@ impl Client {
                 return Ok(previous["result"].clone());
             }
         }
-        self.store
-            .put(&peer, "settings-command", &json!({"id":id,"running":true}))?;
+        let kind = match &action {
+            SettingsAction::CheckUpdate => Some("check_update"),
+            _ => None,
+        };
+        self.store.put(
+            &peer,
+            "settings-command",
+            &json!({"id":id,"kind":kind,"running":true}),
+        )?;
         let secret = match &action {
             SettingsAction::SaveConnection { input } => Some(input.key.clone()),
             SettingsAction::CompleteAuthorization { callback } => Some(callback.clone()),
@@ -154,9 +161,11 @@ impl Client {
             &peer,
             "settings-command",
             &match &result {
-                Ok(value) => json!({"id":id,"running":false,"completed":true,"result":value}),
+                Ok(value) => {
+                    json!({"id":id,"kind":kind,"running":false,"completed":true,"result":value})
+                }
                 Err(error) => {
-                    json!({"id":id,"running":false,"completed":false,"error":error.to_string()})
+                    json!({"id":id,"kind":kind,"running":false,"completed":false,"error":error.to_string()})
                 }
             },
         )?;
