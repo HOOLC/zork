@@ -299,7 +299,7 @@ impl Menu {
                                         interactive,
                                         ui::IconButtonSize::Compact,
                                     )
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .on_click(cx.listener(move |v, _, _, cx| {
                                         if interactive {
                                             v.close(cx);
@@ -391,7 +391,7 @@ impl Render for Menu {
                         true,
                         ui::IconButtonSize::Compact,
                     )
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .text_color(rgb(ZORK_UI.palette.muted))
                     .child(ui::icon("icons/file.svg", 14.))
                     .child(label.clone()),

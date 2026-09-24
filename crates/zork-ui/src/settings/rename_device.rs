@@ -33,7 +33,7 @@ pub fn render<V: 'static>(
             .child(ui::field("device-name-input", "名称", input, cx))
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .text_color(rgb(ZORK_UI.palette.muted))
                     .child("连接到此设备的客户端会看到新名称。"),
             ),

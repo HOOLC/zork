@@ -35,28 +35,7 @@ internal fun HistorySheet(title: String, dismiss: () -> Unit, open: Boolean, clo
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 HistoryIconAction(R.drawable.ic_x, "关闭记录详情", onClick = dismiss)
             }
-            HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
             content()
-        }
-    }
-}
-
-@Composable
-internal fun HistoryTimelineSelectionSheet(entries: List<HistoryRow>, select: (String) -> Unit, dismiss: () -> Unit, open: Boolean, closed: () -> Unit) {
-    HistorySheet("时间轴记录", dismiss, open, closed) {
-        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
-            items(entries, key = { it.id }) { entry ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                    .historyPress(label = "${entry.title} · ${historyClock(entry.start ?: entry.end)} · ${entry.status}") { select(entry.id); dismiss() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Glyph(if (entry.lane == 1) R.drawable.history_operations else historyIcon(entry.kind), 16.dp, if (entry.failed) ZorkColors.Danger else ZorkColors.Muted)
-                    Column(Modifier.weight(1f)) {
-                        Text(entry.title, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${historyClock(entry.start ?: entry.end)} · ${entry.status}", fontSize = 11.sp, color = ZorkColors.Muted)
-                    }
-                }
-            }
         }
     }
 }
@@ -109,7 +88,7 @@ internal fun HistoryDetailSheet(state: SessionHistoryState, actions: HistoryActi
                                     .historyPress(label = section.title) { rawOpen[index] = !expanded }
                                     .semantics { stateDescription = if (expanded) "已展开" else "已折叠" }, verticalAlignment = Alignment.CenterVertically) {
                                     Text(section.title, Modifier.weight(1f), fontSize = 12.sp, color = ZorkColors.Muted)
-                                    Text(if (expanded) "收起" else "展开", fontSize = 11.sp, color = ZorkColors.Muted)
+                                    Text(if (expanded) "收起" else "展开", fontSize = 12.sp, color = ZorkColors.Muted)
                                 } else Text(section.title, Modifier.weight(1f).semantics { heading() }, fontSize = 12.sp, color = ZorkColors.Muted)
                                 HistoryIconAction(R.drawable.ic_copy, "复制${section.title}") { copy(section) }
                             }

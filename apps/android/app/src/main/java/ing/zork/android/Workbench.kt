@@ -37,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
@@ -49,6 +51,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -81,10 +85,14 @@ internal data class WorkbenchState(
     val comments: List<DraftCommentUi> = emptyList(), val participants: List<JSONObject> = emptyList(),
     val deviceTrees: Map<String, DeviceTree> = emptyMap(),
     val attachments: List<TextAttachmentUi> = emptyList(),
+    val draftFiles: List<ChatFileUi> = emptyList(),
+    val attaching: List<PendingFileUi> = emptyList(),
+    val files: FileAvailability = FileAvailability(),
     val historyLoading: Boolean = false,
     val conversationEntry: Long = 0L,
     val messageActivity: MessageActivity = MessageActivity(),
     val newer: Boolean = false,
+    val home: HomeNavigation = HomeNavigation(),
 )
 internal class WorkbenchActions(
     val peer: (Peer) -> Unit = {}, val leader: (JSONObject) -> Unit = {},
@@ -98,14 +106,18 @@ internal class WorkbenchActions(
     val deviceSettings: () -> Unit = settings,
     val attach: () -> Unit = {}, val removeAttachment: (String) -> Unit = {}, val file: (TextAttachmentUi) -> Unit = {},
     val entered: () -> Unit = {},
-    val message: (ChatMessage) -> Unit = {},
     val newer: () -> Unit = {},
     val windowAnchor: (String?) -> Unit = {},
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
     val history: (String, String) -> Unit = { _, _ -> },
     val chatFile: (String, String) -> Unit = { _, _ -> },
+    val saveChatFile: (String, String) -> Unit = { _, _ -> },
+    val openDraftFile: (ChatFileUi) -> Unit = {},
+    val removeFile: (String) -> Unit = {},
+    val dismissPendingFile: (String) -> Unit = {},
     val newChat: (Peer) -> Unit = {},
     val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
+    val device: (Peer) -> Unit = {},
 )
 
 private class ConversationPresentation {
@@ -132,8 +144,9 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
             messages = emptyList(), pending = emptyList(), draft = "", comments = emptyList(), attachments = emptyList(), historyLoading = true)
     }
     val chat = presentation.state ?: preview
+    val reduced = LocalReducedMotion.current
     val progress = transition.animateFloat(
-        transitionSpec = { PageSlideMotion.spec(targetState) },
+        transitionSpec = { PageSlideMotion.spec(targetState, reduced) },
         label = "conversation-slide",
     ) { if (it) 1f else 0f }
     val entering = !transition.currentState && transition.targetState
@@ -141,7 +154,7 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
     val visible = transition.currentState || transition.targetState
     Box(modifier.fillMaxSize().background(ZorkColors.Canvas).clipToBounds()) {
         if (!transition.currentState || !transition.targetState) {
-            Box(Modifier.fillMaxSize().pageSlideBack { progress.value }) {
+            Box(Modifier.fillMaxSize()) {
                 savedState.SaveableStateProvider("navigation") { Navigation(state, actions, Modifier.fillMaxWidth()) }
             }
         }
@@ -154,7 +167,7 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
             val replay = exiting || (entering && replayEntry)
             val shown = if (entering && loadingAtEntry) cached.copy(messages = emptyList(), pending = emptyList(), historyLoading = true) else cached
             val semantics = if (visible && !replay) Modifier.semantics { contentDescription = "聊天页面" } else Modifier.clearAndSetSemantics { }
-            Box(Modifier.fillMaxSize().pageSlideFront { if (replay) 1f else progress.value }.graphicsLayer {
+            Box(Modifier.fillMaxSize().pageSlideFront({ if (replay) 1f else progress.value }, reduced).graphicsLayer {
                 alpha = if (visible && !replay) 1f else 0f
             }.then(semantics)) {
                 savedState.SaveableStateProvider("conversation:${cached.activePeer?.id}:${cached.conversation!!.id}") {
@@ -165,14 +178,14 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
                         drawLayer(pageLayer)
                     }.background(ZorkColors.Canvas)) {
                         ConversationHeader(shown, if (visible) actions else inactiveActions, showBack = true)
-                        if (shown.notice != null && visible) Notice(shown.notice, shown.busy, actions.retry)
+                        AnimatedNotice(shown.notice.takeIf { visible }, shown.busy, actions.retry)
                         ConversationBody(shown, if (visible) actions else inactiveActions)
                     }
                 }
             }
             // Native text views stay in place while a recorded layer slides out.
             // This avoids relaying out long Markdown during the return animation.
-            if (replay) Canvas(Modifier.fillMaxSize().pageSlideFront { progress.value }
+            if (replay) Canvas(Modifier.fillMaxSize().pageSlideFront({ progress.value }, reduced)
                 .semantics { contentDescription = "聊天页面" }) { drawLayer(pageLayer) }
         }
     }
@@ -180,145 +193,242 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
 
 @Composable
 private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier) {
-    var details by remember { mutableStateOf<Pair<String,List<Pair<String,String>>>?>(null) }
-    var showArchived by rememberSaveable { mutableStateOf(false) }
-    Column(modifier.fillMaxHeight().background(ZorkColors.Paper)) {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Image(painterResource(R.drawable.ic_zork), null, Modifier.size(26.dp))
-            Image(painterResource(R.drawable.zork_wordmark), "Zork", Modifier.width(80.dp).height(26.dp))
+    val home = state.home
+    // A new Chat goes to the last-used device, else the one with the first listed Chat.
+    val target = state.activePeer?.let { active -> state.peers.find { it.id == active.id } }
+        ?: home.chats.firstOrNull()?.let { chat -> state.peers.find { it.id == chat.peer } }
+        ?: state.peers.firstOrNull()
+    Box(modifier.fillMaxHeight().background(ZorkColors.Paper)) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Image(painterResource(R.drawable.ic_zork), null, Modifier.size(24.dp))
+                Image(painterResource(R.drawable.zork_wordmark), "Zork", Modifier.width(74.dp).height(24.dp))
+                Spacer(Modifier.weight(1f))
+                IconAction(R.drawable.ic_settings, "设置", onClick = actions.settings)
+            }
+            AnimatedNotice(state.notice.takeIf { state.conversation == null }, state.busy, actions.retry)
+            if (state.peers.isNotEmpty()) DeviceStrip(state.peers, actions.device)
+            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(ZorkColors.Canvas)) {
+                HomeChats(state, actions)
+            }
         }
-        if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
-        Spacer(Modifier.height(0.5.dp))
-        NavRow(onClick = { showArchived = !showArchived }) {
-            Text(if (showArchived) "返回 Chat" else "已归档", fontSize = 15.sp)
+        if (target != null) NewChatButton(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 28.dp)) {
+            actions.newChat(target)
         }
-        val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-        val expanded = remember { mutableStateMapOf<String, Boolean>() }
-        LazyColumn(state = rememberLazyListState(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 10.dp)) {
-            if (state.peers.isEmpty()) item {
+    }
+}
+
+/** Every device with its status; a chip opens that device's settings. */
+@Composable
+private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        peers.forEach { peer ->
+            Row(Modifier.height(44.dp).clip(ZorkShapes.Control).background(ZorkColors.Canvas)
+                .border(UiTokens.Border, ZorkColors.Border, ZorkShapes.Control)
+                .zorkPressable { open(peer) }
+                .semantics(mergeDescendants = true) { contentDescription = "${deviceNameSummary(peer.name, peer.status)} · 设备设置" }
+                .padding(start = 10.dp, end = 14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DeviceMark(peer.name, 20.dp)
+                Text(peer.name, fontSize = 14.sp, color = ZorkColors.Ink, maxLines = 1)
+                DeviceStatusBadge(peer.status)
+            }
+        }
+    }
+}
+
+/** The core's merged list, shown in its order; sections only label runs of rows. */
+@Composable
+private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions) {
+    val home = state.home
+    LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(top = 8.dp, bottom = 104.dp)) {
+        if (state.peers.isEmpty()) item(key = "empty") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (state.ready) "连接已有设备，开始新的 Chat。" else "正在准备连接…",
-                    fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 20.dp))
+                    fontSize = 14.sp, lineHeight = 22.sp, color = ZorkColors.Muted)
+                if (state.ready) ZorkButton("连接设备", primary = true, onClick = actions.add)
             }
-            state.peers.forEach { peer ->
-                val active = state.activePeer?.id == peer.id
-                val tree = state.deviceTrees[peer.id] ?: if (active) DeviceTree(state.leaders, state.sessions, state.tasksByLeader, state.connected) else null
-                item(key = "device:${peer.id}") {
-                    if (peer != state.peers.firstOrNull()) Spacer(Modifier.height(0.5.dp))
-                    Spacer(Modifier.height(16.dp))
-                    NavRow(onClick = {
-                        collapsed[peer.id] = !(collapsed[peer.id] ?: false)
-                        if (!active) { collapsed[peer.id] = false; actions.peer(peer) }
-                    }) {
-                        Glyph(R.drawable.ic_node, 26.dp)
-                        DeviceName(peer.name, peer.status, Modifier.weight(1f))
-                    }
-                }
-                if (tree != null && collapsed[peer.id] != true) {
-                    item(key = "new-chat:${peer.id}") {
-                        NavRow(indent = 54.dp, onClick = { actions.newChat(peer) }) {
-                            Glyph(R.drawable.ic_plus, 20.dp)
-                            Text("新建 Chat", fontSize = 15.sp)
-                        }
-                    }
-                    val matching = tree.sessions.filter { it.optBoolean("archived") == showArchived }
-                    if (matching.isEmpty()) item {
-                        Text(if (showArchived) "没有已归档的 Chat" else if (tree.online) "还没有 Chat" else "等待设备连接…", fontSize = 12.sp,
-                            color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 54.dp, vertical = 10.dp))
-                    }
-                    val othersKey = "${peer.id}/unattributed"
-                    val others = matching.filter { showArchived || expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
-                    items(others, key = { "unassigned:${peer.id}:${it.text("chat_id")}" }) { session ->
-                        NavRow(indent = 54.dp,
-                            onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
-                            Text(session.text("title", "对话"), fontSize = 15.sp,
-                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            ZorkIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
-                                enabled = !session.optBoolean("archive_pending"),
-                                onClick = { actions.archiveChat(peer.id, session.text("chat_id"), !session.optBoolean("archived"), session.optLong("message_count")) }) {
-                                Glyph(if (session.optBoolean("archived")) R.drawable.ic_archive_restore else R.drawable.ic_archive,
-                                    16.dp, ZorkColors.Ink.copy(alpha = 0.5f))
-                            }
-                            if (session.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
-                        }
-                        if (!session.isNull("archive_error")) {
-                            Text(session.text("archive_error"), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 54.dp))
-                        }
-                    }
-                    if (!showArchived && (others.size < matching.size || expanded[othersKey] == true)) item(key = "more:$othersKey") {
-                        NavRow(indent = 54.dp, onClick = { expanded[othersKey] = expanded[othersKey] != true }) {
-                            Text(if (expanded[othersKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
-                        }
-                    }
-                }
-                item { Spacer(Modifier.height(8.dp)) }
+        } else if (home.chats.isEmpty()) item(key = "empty") {
+            Text(if (home.loaded) "还没有 Chat" else "正在读取 Chat…", fontSize = 14.sp, color = ZorkColors.Muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp))
+        }
+        home.chats.forEachIndexed { index, chat ->
+            if (index == 0 || home.chats[index - 1].section != chat.section) item(key = "section:${chat.section}") {
+                Text(sectionTitle(chat.section), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Muted,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp))
             }
+            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
         }
-        Spacer(Modifier.height(0.5.dp))
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            FooterAction("连接设备", R.drawable.ic_plus, Modifier.weight(1f), state.ready, actions.add)
-            FooterAction("设置", R.drawable.ic_settings, Modifier.weight(1f), true, actions.settings)
-        }
-    }
-    ZorkRetained(details) { (title,rows), open, closed -> SettingsSheet(title,dismiss={details=null}, open=open, onClosed=closed) {
-        rows.filter{it.second.isNotBlank()}.forEach{(label,value)->Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,fontSize=12.sp,color=ZorkColors.Muted);Text(value,fontSize=14.sp,lineHeight=22.sp)}}
-    }}
-}
-
-@Composable
-private fun FooterAction(label: String, icon: Int, modifier: Modifier, enabled: Boolean, action: () -> Unit) {
-    Row(modifier.height(48.dp).zorkPressable(enabled = enabled, onClick = action),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-        Glyph(icon, 22.dp); Text(label, fontSize = 14.sp)
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/** Archived Chats, opened from client settings; rows restore or open the Chat. */
 @Composable
-private fun NavRow(indent: Dp = 14.dp, enabled: Boolean = true,
-    interactions: MutableInteractionSource = remember { MutableInteractionSource() },
-    onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 2.dp).height(48.dp)
-        .zorkPressable(enabled = enabled, interactionSource = interactions, onClick = onClick, onLongClick = onLongClick)
-        .padding(start = indent, end = 14.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        content()
+internal fun ArchivedChatsList(home: HomeNavigation, open: (JSONObject) -> Unit, archive: (String, String, Boolean, Long) -> Unit,
+    modifier: Modifier = Modifier) {
+    val actions = remember(open, archive) { WorkbenchActions(session = open, archiveChat = archive) }
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        if (home.archivedTotal > home.archived.size) item(key = "total") {
+            Text("最近 ${home.archived.size} / ${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+        }
+        if (home.archived.isEmpty()) item(key = "empty") {
+            Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
+        }
+        items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
+    }
+}
+
+@Composable
+private fun HomeChatRow(chat: HomeChat, actions: WorkbenchActions, modifier: Modifier = Modifier) {
+    val archive = { actions.archiveChat(chat.peer, chat.id, !chat.archived, chat.messageCount) }
+    val archiveLabel = if (chat.archived) "取消归档" else "归档聊天"
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
+            .zorkPressable(onLongClick = if (chat.archivePending) null else archive) { actions.session(chat.session()) }
+            .semantics { if (!chat.archivePending) customActions = listOf(CustomAccessibilityAction(archiveLabel) { archive(); true }) }
+            .padding(start = 20.dp, end = if (chat.archived) 8.dp else 20.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            DeviceMark(chat.peerName, 32.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(chat.title, Modifier.weight(1f), fontSize = 15.sp, color = ZorkColors.Ink,
+                        fontWeight = if (chat.unread) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (chat.unread) Box(Modifier.size(8.dp).background(ZorkColors.Ink, CircleShape).semantics { contentDescription = "未读" })
+                    else chatTime(chat.updatedAtMs)?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1) }
+                }
+                Text(chatPreview(chat), fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (chat.archived) ZorkIconButton("取消归档", enabled = !chat.archivePending, onClick = archive) {
+                Glyph(R.drawable.ic_archive_restore, 18.dp, ZorkColors.Muted)
+            }
+        }
+        chat.archiveError?.let {
+            Text(it, color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(start = 64.dp, end = 20.dp, bottom = 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun NewChatButton(modifier: Modifier, onClick: () -> Unit) {
+    Row(modifier.height(52.dp).shadow(6.dp, ZorkShapes.Control).clip(ZorkShapes.Control).background(ZorkColors.Ink)
+        .zorkPressable(onClick = onClick).padding(start = 18.dp, end = 22.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Glyph(R.drawable.ic_plus, 20.dp, ZorkColors.Paper)
+        Text("新建 Chat", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Paper)
+    }
+}
+
+private fun sectionTitle(section: String) = when (section) {
+    "unread" -> "未读"
+    "today" -> "今天"
+    "yesterday" -> "昨天"
+    "week" -> "本周"
+    else -> "更早"
+}
+
+private fun chatPreview(chat: HomeChat): String =
+    listOf(chat.description, chat.model).firstOrNull { it.isNotBlank() }?.let { "${chat.peerName}：$it" } ?: chat.peerName
+
+private fun chatTime(ms: Long?): String? {
+    if (ms == null) return null
+    val zone = java.time.ZoneId.systemDefault()
+    val at = java.time.Instant.ofEpochMilli(ms).atZone(zone)
+    val days = java.time.temporal.ChronoUnit.DAYS.between(at.toLocalDate(), java.time.LocalDate.now(zone))
+    return when {
+        days <= 0L -> at.format(DateTimeFormatter.ofPattern("HH:mm"))
+        days == 1L -> "昨天"
+        days < 7L -> "周" + "一二三四五六日"[at.dayOfWeek.value - 1]
+        else -> at.format(DateTimeFormatter.ofPattern("M月d日"))
     }
 }
 
 @Composable
 internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions, showBack: Boolean) {
-    Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 8.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    var menu by remember { mutableStateOf(false) }
+    var files by remember { mutableStateOf(false) }
+    val chat = state.conversation
+    val session = chat?.let { current ->
+        (state.activePeer?.let { state.deviceTrees[it.id]?.sessions }.orEmpty() + state.sessions)
+            .firstOrNull { it.text("chat_id") == current.id }
+    }
+    Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 8.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (showBack) IconAction(R.drawable.ic_arrow_left, "返回对话列表", onClick = actions.back)
-        Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (state.participants.isNotEmpty()) state.participants.take(3).forEach { member ->
-                Box(Modifier.size(44.dp, 44.dp)
-                    .historyPress(enabled = member.text("session_id").isNotBlank(), radius = 12.dp) { actions.history(member.text("session_id"), member.text("name")) }
-                    .semantics { contentDescription = "${member.text("name")} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Text(member.text("name").take(2), fontSize = 12.sp, color = ZorkColors.Ink,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            } else state.conversation?.let {
-                Box(Modifier.size(44.dp, 44.dp).historyPress(radius = 12.dp) { actions.history(it.id, it.title) }
-                    .semantics { contentDescription = "${it.title} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Text(it.title.take(2), fontSize = 12.sp, color = ZorkColors.Ink,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f).padding(start = if (showBack) 0.dp else 8.dp)) {
+            Text(chat?.title.orEmpty().ifBlank { "对话" }, fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The member capsule already names the device; repeat it only when there is none.
+            if (state.participants.isEmpty() && chat == null) state.activePeer?.let {
+                Text(it.name, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        // Members open their execution history: the first as a named capsule,
+        // the rest by their mark alone.
+        val members = if (state.participants.isNotEmpty()) state.participants.take(3).map { it.text("name") to it.text("session_id") }
+            else chat?.let { listOf((state.activePeer?.name ?: it.title) to it.id) }.orEmpty()
+        members.forEachIndexed { index, (name, target) ->
+            val open = { actions.history(target, name) }
+            if (index == 0) Row(Modifier.widthIn(max = 148.dp).heightIn(min = 44.dp)
+                .historyPress(enabled = target.isNotBlank(), radius = UiTokens.PillRadius, label = "$name · 执行历史", onClick = open)
+                .background(ZorkColors.Prompt, ZorkShapes.Control).padding(start = 10.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DeviceMark(name, 18.dp)
+                Text(name, fontSize = 13.sp, color = ZorkColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                Glyph(R.drawable.history_history, 16.dp, ZorkColors.Muted)
+            } else Box(Modifier.size(44.dp)
+                .historyPress(enabled = target.isNotBlank(), radius = UiTokens.PillRadius, label = "$name · 执行历史", onClick = open),
+                contentAlignment = Alignment.Center) { DeviceMark(name, 22.dp) }
+        }
+        Box {
+            IconAction(R.drawable.ic_more, "更多", glyphSize = 20.dp) { menu = true }
+            PlainMenu("更多", menu, { menu = false }, 180.dp) {
+                HeaderMenuItem(R.drawable.ic_file, "文件") { menu = false; files = true }
+                HeaderMenuItem(R.drawable.ic_node, "设备设置") { menu = false; actions.deviceSettings() }
+                val peer = state.activePeer
+                if (session != null && peer != null) {
+                    val archived = session.optBoolean("archived")
+                    HeaderMenuItem(if (archived) R.drawable.ic_archive_restore else R.drawable.ic_archive, if (archived) "取消归档" else "归档",
+                        enabled = !session.optBoolean("archive_pending")) {
+                        menu = false
+                        actions.archiveChat(peer.id, session.text("chat_id"), !archived, session.optLong("message_count"))
+                    }
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        val deviceInteraction = remember { MutableInteractionSource() }
-        val devicePressed by deviceInteraction.collectIsPressedAsState()
-        Row(Modifier.clip(RoundedCornerShape(6.dp)).background(if (devicePressed) ZorkColors.Pressed else Color.Transparent)
-            .clickable(interactionSource = deviceInteraction, indication = null, onClick = actions.deviceSettings).heightIn(min = 44.dp).padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Glyph(R.drawable.ic_node, 17.dp, tint = ZorkColors.Ink)
-            Text(state.activePeer?.name.orEmpty(), fontSize = 13.sp, color = ZorkColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    if (files) ChatFilesSheet(state.messages, state.files, actions) { files = false }
+}
+
+@Composable
+private fun HeaderMenuItem(icon: Int, text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth().heightIn(min = 44.dp)
+        .historyPress(enabled = enabled, radius = PlainMenuStyle.RowRadius, onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Glyph(icon, 18.dp, if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
+        Text(text, fontSize = 14.sp, color = if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
+    }
+}
+
+/** Files attached to or delivered in the messages loaded so far. */
+@Composable
+private fun ChatFilesSheet(messages: List<ChatMessage>, state: FileAvailability, actions: WorkbenchActions, dismiss: () -> Unit) {
+    val attached = messages.flatMap { it.files }
+    val delivered = messages.flatMap { row -> row.deliveredFiles.map { row.id to it } }
+    SettingsSheet("文件", dismiss = dismiss) {
+        if (attached.isEmpty() && delivered.isEmpty())
+            Text("已加载的消息里没有文件。", fontSize = 13.sp, color = ZorkColors.Muted)
+        else Column {
+            attached.forEach { FileCard(it) { actions.file(it) } }
+            delivered.forEach { (message, file) -> DeliveredFileCard(file, state, { actions.chatFile(message, file.id) },
+                { actions.saveChatFile(message, file.id) }) }
+            Text("只列出已加载的消息中的文件。", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 12.dp))
         }
     }
-    HorizontalDivider(color = ZorkColors.Border, thickness = 0.5.dp)
 }
 
 private class MessageTailAnchor(var activityCursor: Long) {
@@ -366,7 +476,6 @@ private fun ConversationRefreshRate() {
 
 @Composable
 internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, listState: LazyListState = rememberLazyListState()) {
-    val messagePreviewHeight = LocalMessagePreviewHeight.current
     ConversationRefreshRate()
     LaunchedEffect(state.conversation?.id, state.conversationEntry) {
         withFrameNanos { }
@@ -439,7 +548,8 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
     val messageActions = remember {
         WorkbenchActions(resend = { latestActions.value.resend(it) }, deleteFailed = { latestActions.value.deleteFailed(it) },
             chatFile = { message, file -> latestActions.value.chatFile(message, file) },
-            file = { latestActions.value.file(it) }, message = { latestActions.value.message(it) }, older = { latestActions.value.older() },
+            saveChatFile = { message, file -> latestActions.value.saveChatFile(message, file) },
+            file = { latestActions.value.file(it) }, older = { latestActions.value.older() },
             comment = { row, quote -> latestActions.value.comment(row, quote) }, newer = { latestActions.value.newer() },
             interaction = { id, choice, values -> latestActions.value.interaction(id, choice, values) })
     }
@@ -465,15 +575,21 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             trackTail = beganAtTail || following,
             follow = following && !touching && scrollJob?.isActive != true,
             tailIndex = rows.size + 1,
-            previewHeight = messagePreviewHeight,
             overlay = {
                 Column(Modifier.fillMaxWidth()) {
-                    if (unread > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Text("有新消息", fontSize = 12.sp, color = ZorkColors.Ink,
-                            modifier = Modifier.background(ZorkColors.Canvas, RoundedCornerShape(20.dp))
-                                .clickable { following = true; followTail() }.padding(horizontal = 14.dp, vertical = 8.dp))
+                    // Reading history while new messages arrive: nothing scrolls, the pill only fades in.
+                    androidx.compose.animation.AnimatedVisibility(unread > 0, enter = zorkFadeIn(), exit = zorkFadeOut()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        Box(Modifier.heightIn(min = 44.dp).clip(ZorkShapes.Control)
+                            .clickable(role = androidx.compose.ui.semantics.Role.Button) { following = true; followTail() },
+                            contentAlignment = Alignment.Center) {
+                            Text("有新消息", fontSize = 12.sp, color = ZorkColors.Ink,
+                                modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
+                                    .border(UiTokens.Border, UiTokens.Outline, ZorkShapes.Control).padding(horizontal = 14.dp, vertical = 8.dp))
+                        }
                     }
-                    if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 10.sp,
+                    }
+                    if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 12.sp,
                         modifier = Modifier.padding(start = gutter + 10.dp, end = gutter, bottom = 5.dp))
                     val commentLimit = (availableHeight * .25f).coerceAtMost(160.dp)
                     if (state.comments.isNotEmpty()) CommentTray(state.comments, actions, commentLimit)
@@ -504,9 +620,6 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     listState.requestScrollToItem(rows.size + 1)
                 }
             }
-            // IME/composer resize changes the viewport, not message geometry.
-            // A moving limit retruncates native TextViews on every inset frame.
-            val messageLimit = (messagePreviewHeight.takeIf { it in 80..720 } ?: 192).dp
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize().pointerInput(listState) {
                     awaitPointerEventScope {
                         while (true) {
@@ -525,10 +638,8 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                 contentPadding = bottomPadding, verticalArrangement = Arrangement.Top) {
                 item {
                     val firstDate = messageState.firstDate
-                    if (firstDate.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(13.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                        HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
-                        Text(messageDate(firstDate), color = ZorkColors.Muted, fontSize = 12.sp)
-                        HorizontalDivider(Modifier.width(34.dp), color = ZorkColors.Border, thickness = 0.5.dp)
+                    if (firstDate.isNotBlank()) Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                        Text(messageDate(firstDate), color = ZorkColors.Subtle, fontSize = 12.sp)
                     }
                     if (messageState.older) ZorkButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
                 }
@@ -537,7 +648,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Spacer(Modifier.height(22.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
                             Column {
-                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
+                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, state.files, messageActions.saveChatFile) { quote -> messageActions.comment(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -580,7 +691,7 @@ private class ConversationBodySlot {
 }
 
 @Composable
-private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int, previewHeight: Int,
+private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int,
     overlay: @Composable () -> Unit, content: @Composable (Dp) -> Unit) {
     val geometry = remember { intArrayOf(-1, -1, -1, -1) }
     val slot = remember { ConversationBodySlot() }
@@ -589,12 +700,11 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
         val overlayHeight = controls.maxOfOrNull { it.height } ?: 0
         val baseHeight = overlayHeight - presence.extentPixels(density)
         val reservedHeight = baseHeight + (presence.targetExtent * density).toInt()
-        if (geometry[0] != constraints.maxWidth || geometry[1] != reservedHeight || geometry[2] != constraints.maxHeight || geometry[3] != previewHeight) {
+        if (geometry[0] != constraints.maxWidth || geometry[1] != reservedHeight || geometry[2] != constraints.maxHeight) {
             if (follow) listState.requestScrollToItem(tailIndex)
             geometry[0] = constraints.maxWidth
             geometry[1] = reservedHeight
             geometry[2] = constraints.maxHeight
-            geometry[3] = previewHeight
         }
         if (slot.content == null || slot.base != baseHeight || slot.parent !== content) {
             val base = baseHeight.toDp()
@@ -618,25 +728,29 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
 }
 
 @Composable
-private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
+private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit,
+    fileState: FileAvailability, saveFile: (String, String) -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
-            if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
-                ZorkCard(color = ZorkColors.Bubble, radius = 20.dp) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                        if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
+            // Sent files stand above the bubble, images at their own ratio.
+            if (row.deliveredFiles.isNotEmpty()) Box(Modifier.padding(bottom = 6.dp)) {
+                MessageFiles(row.id, row.deliveredFiles, true, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
+            }
+            if (row.content.isNotBlank() || row.files.isNotEmpty()) {
+                ZorkCard(color = ZorkColors.Bubble, outlined = false, shape = ZorkShapes.Bubble) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 11.dp)) {
+                        if (row.content.isNotBlank()) MessageBody(row, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
-            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
                     }
                 }
             }
             val time = messageTime(row.createdAt)
-            if (time.isNotEmpty()) Text(time, fontSize = 11.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
+            if (time.isNotEmpty()) Text(time, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
             if (row.pending) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (row.deliveryStatus.isNotBlank()) Column(Modifier.weight(1f, fill = false)) {
-                    Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 10.sp, color = ZorkColors.Muted)
+                    Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 12.sp, color = ZorkColors.Muted)
                     if (row.deliveryStatus == "failed" && row.deliveryError.isNotBlank())
-                        Text(row.deliveryError, fontSize = 10.sp, color = ZorkColors.Muted)
+                        Text(row.deliveryError, fontSize = 12.sp, color = ZorkColors.Muted)
                 }
                 if (row.deliveryStatus == "failed") {
                     ZorkButton("重发", quiet = true, onClick = { resend(row.requestId.ifBlank { row.id }) },
@@ -658,11 +772,11 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(device.ifBlank { row.author }, modifier = Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val detail = listOf(row.model, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
-                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
+            if (row.content.isNotBlank()) MessageBody(row, comment)
             row.files.forEach { FileCard(it) { file(it) } }
-            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
+            MessageFiles(row.id, row.deliveredFiles, false, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
         }
     }
 }
@@ -684,42 +798,51 @@ private fun ComposerPlate(presence: ComposerPresence, modifier: Modifier, histor
 
 @Composable
 private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
-    val command = remember(state.draft, state.comments.size, state.attachments.size, state.running, state.connected, state.busy, state.conversation) {
+    val attached = state.comments.size + state.attachments.size + state.draftFiles.size
+    val command = remember(state.draft, attached, state.running, state.connected, state.busy, state.conversation) {
         JSONObject(NativeBridge.composerState(JSONObject().put("text", state.draft)
-            .put("attachments", state.comments.size + state.attachments.size).put("can_send", state.conversation?.canSend != false)
+            .put("attachments", attached).put("can_send", state.conversation?.canSend != false)
             .put("can_stop", state.conversation?.canStop == true).put("running", state.running)
             .put("online", state.connected).put("busy", state.busy).toString()))
     }
     val canSend = command.optBoolean("editable")
     val stop = command.optBoolean("stop")
-    val enabled = command.optBoolean("enabled")
+    // Sending waits until core holds every picked file.
+    val enabled = command.optBoolean("enabled") && (stop || state.attaching.none { it.error == null })
     val draft = state.draft
     val attachments = remember(state.attachments) { state.attachments }
     val latest = rememberUpdatedState(actions)
     val latestSend = rememberUpdatedState(send)
     val controls = remember {
         WorkbenchActions(draft = { latest.value.draft(it) }, attach = { latest.value.attach() },
-            removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() })
+            removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() },
+            openDraftFile = { latest.value.openDraftFile(it) }, removeFile = { latest.value.removeFile(it) },
+            dismissPendingFile = { latest.value.dismissPendingFile(it) })
     }
-    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history)
+    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history,
+        files = state.draftFiles, pending = state.attaching)
 }
 
 @Composable
 internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
     stop: Boolean, enabled: Boolean, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp,
-    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true) {
+    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true,
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
     ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f), history) {
-        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach)
+        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach, files, pending)
     }
 }
 
 @Composable
 private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>, canSend: Boolean,
-    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true) {
+    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true,
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
     val sendInteractions = remember { MutableInteractionSource() }
     val sendPressed by sendInteractions.collectIsPressedAsState()
         Column(Modifier.graphicsLayer().heightIn(max = heightLimit).padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
             Column(Modifier.weight(1f, fill = false)) {
+            // Draft files sit above the editor, inside the composer.
+            DraftFileChips(files, pending, actions.openDraftFile, actions.removeFile, actions.dismissPendingFile)
             // BasicTextField owns vertical scrolling and cursor visibility. Do not
             // wrap the editor in another scroller or cap/truncate its draft value.
             BasicTextField(draft, actions.draft, Modifier.fillMaxWidth().padding(start=12.dp,end=12.dp,top=4.dp)
@@ -733,7 +856,7 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
                     }
                 })
             if (attachments.isNotEmpty()) Column(Modifier.weight(1f, fill = false).heightIn(max=120.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                attachments.forEach { file -> Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(ZorkColors.Paper,RoundedCornerShape(20.dp)).padding(start=12.dp,end=4.dp),verticalAlignment=Alignment.CenterVertically) {
+                attachments.forEach { file -> Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(ZorkColors.Paper,ZorkShapes.Block).padding(start=16.dp,end=4.dp),verticalAlignment=Alignment.CenterVertically) {
                     Glyph(R.drawable.ic_result,16.dp,ZorkColors.Muted)
                     Text(file.name,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f).padding(horizontal=8.dp))
                     IconAction(R.drawable.ic_x,"移除 ${file.name}",glyphSize=16.dp,onClick={actions.removeAttachment(file.id)})
@@ -741,13 +864,19 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
             }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文本附件",enabled=canSend,glyphSize=16.dp,onClick = actions.attach)
+                if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文件",enabled=canSend,glyphSize=18.dp,onClick = actions.attach)
                 Spacer(Modifier.weight(1f))
-                Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,onClick=if(stop)actions.stop else actions.send)
+                Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,role=androidx.compose.ui.semantics.Role.Button,onClick=if(stop)actions.stop else actions.send)
                     .semantics { contentDescription=if(stop) "停止" else "发送" },contentAlignment=Alignment.Center) {
-                    Box(Modifier.size(32.dp).background(if(!enabled)ZorkColors.SendDisabled else if(sendPressed)ZorkColors.SendPressed else ZorkColors.Ink,CircleShape),contentAlignment=Alignment.Center) {
+                    // Send is the one persimmon action; stopping a run stays ink.
+                    val fill = when {
+                        !enabled -> ZorkColors.SendDisabled
+                        stop -> if (sendPressed) ZorkColors.SendPressed else ZorkColors.Ink
+                        else -> if (sendPressed) ZorkColors.AccentPressed else ZorkColors.Accent
+                    }
+                    Box(Modifier.size(32.dp).background(fill,CircleShape),contentAlignment=Alignment.Center) {
                         if(stop) Box(Modifier.size(10.dp).background(ZorkColors.Canvas,RoundedCornerShape(2.dp)))
-                        else Glyph(R.drawable.ic_arrow_up,16.dp,tint=ZorkColors.Canvas)
+                        else Glyph(R.drawable.ic_arrow_up,16.dp,tint=if(enabled) Color.White else ZorkColors.Canvas)
                     }
                 }
             }
@@ -766,19 +895,31 @@ internal fun IconAction(resource: Int, description: String, enabled: Boolean = t
 }
 
 @Composable
+private fun AnimatedNotice(message: String?, busy: Boolean, retry: () -> Unit) {
+    // Notices come down 8 dp from the region's top edge; the last text stays while fading out.
+    val last = remember { arrayOfNulls<String>(1) }
+    if (message != null) last[0] = message
+    androidx.compose.animation.AnimatedVisibility(message != null, enter = zorkNoticeIn(), exit = zorkFadeOut(ZorkMotion.SURFACE)) {
+        last[0]?.let { Notice(it, busy, retry) }
+    }
+}
+
+@Composable
 private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
     Row(Modifier.fillMaxWidth().background(ZorkColors.Paper).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(message, fontSize = 11.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(message, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         ZorkButton("重试", quiet = true, onClick = retry, enabled = !busy)
     }
 }
+private val messageClockFormat = DateTimeFormatter.ofPattern("HH:mm")
+private val messageDateFormat = DateTimeFormatter.ofPattern("M月d日")
 private fun messageTime(value: String): String = runCatching {
-    OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern("HH:mm"))
+    OffsetDateTime.parse(value).format(messageClockFormat)
 }.getOrDefault("")
 
 private fun messageDate(value: String): String = runCatching {
     val date = OffsetDateTime.parse(value).toLocalDate()
-    if (date == java.time.LocalDate.now()) "今天" else date.format(DateTimeFormatter.ofPattern("M月d日"))
+    if (date == java.time.LocalDate.now()) "今天" else date.format(messageDateFormat)
 }.getOrDefault("")
 
 @Composable
@@ -786,11 +927,10 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
     ZorkCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("待发送评论 · ${comments.size}", fontSize = 11.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
+                Text("待发送评论 · ${comments.size}", fontSize = 12.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
             }
             comments.forEach { comment ->
-                HorizontalDivider(Modifier.padding(top = 5.dp), color = ZorkColors.Border, thickness = 0.5.dp)
-                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).zorkPressable() { actions.editComment(comment) }) {
                         Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))
@@ -809,13 +949,13 @@ private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchAction
 
 @Composable
 private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
-    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = 10.dp) {
+    ZorkCard(Modifier.fillMaxWidth().padding(top = 12.dp), color = ZorkColors.Bubble, radius = UiTokens.CompactRadius) {
         Row(Modifier.heightIn(min = 64.dp).zorkPressable(onClick = save).padding(horizontal = 11.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Glyph(R.drawable.ic_result, 22.dp)
             Column(Modifier.weight(1f)) {
                 Text(file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text(file.caption, fontSize = 11.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 4.dp))
+                Text(file.caption, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 4.dp))
             }
             Glyph(R.drawable.ic_download, 19.dp)
         }

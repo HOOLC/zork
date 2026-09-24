@@ -9,6 +9,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
+/** Mirrors core's per-file limit so a picked file stops copying early. */
+private const val ATTACHMENT_LIMIT = 300L * 1024 * 1024
+
 internal interface NativeObserver {
     fun onReady(handle: Long, generation: Long, urgentHint: Boolean, sourceClosed: Boolean)
 }
@@ -30,6 +33,7 @@ internal object NativeBridge {
     external fun call(root: String, request: String): String
     external fun observe(root: String, request: String): String
     external fun chatFileBytes(root: String, key: String): ByteArray
+    external fun fileThumbnail(root: String, peer: String, session: String, message: String, file: String): ByteArray
     external fun saveChatFile(root: String, ticket: String, descriptor: Int): String
     external fun watch(root: String, handle: Long, generation: Long, observer: NativeObserver): String
 }
@@ -49,23 +53,7 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
 
     init { NativeBridge.initialize(context.applicationContext) }
 
-    // Android supplies URI bytes; the core decides encoding, limits and draft membership.
-    suspend fun attachText(uri: android.net.Uri, peer: String, session: String) {
-        val (name, bytes) = withContext(Dispatchers.IO) {
-            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) it.getString(0) else null
-            } ?: "attachment.txt"
-            val bytes = ByteArray(NativeBridge.textAttachmentLimit() + 1)
-            val length = requireNotNull(resolver.openInputStream(uri)).use { input ->
-                var used = 0
-                while (used < bytes.size) { val n = input.read(bytes, used, bytes.size - used); if (n < 0) break; used += n }
-                used
-            }
-            name to bytes.copyOf(length)
-        }
-        command("draft_action", "peer" to peer, "session" to session, "operation" to JSONObject().put("action", "attach_text")
-            .put("name", name).put("bytes", org.json.JSONArray(bytes.map { it.toInt() and 255 })))
-    }
+    // Legacy text attachments in old messages can still be exported; new files go through attachFile.
     suspend fun exportText(uri: android.net.Uri, content: String) = withContext(Dispatchers.IO) {
         requireNotNull(resolver.openOutputStream(uri)).use { it.write(content.toByteArray(Charsets.UTF_8)) }
     }
@@ -88,6 +76,7 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     fun settingsEvents(peer: String) = observations.settings(peer)
     fun newChatEvents(peer: String) = observations.newChat(peer)
     fun notificationEvents() = observations.notifications()
+    fun navigationEvents() = observations.navigation()
     fun adbEvents() = observations.adb()
     fun accountEvents() = observations.account()
     fun dataResetEvents() = observations.dataReset()
@@ -99,11 +88,65 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     fun resourceEvents(selection: ResourceSelection) = observations.resources(selection)
     fun chatFileEvents() = observations.chatFiles()
     suspend fun chatPreviewBytes(key: String): ByteArray = withContext(Dispatchers.IO) { NativeBridge.chatFileBytes(root, key) }
+    /** Verified image bytes for a thumbnail; a null [message] selects a draft file. */
+    suspend fun fileThumbnail(peer: String, session: String, message: String?, file: String): ByteArray =
+        withContext(Dispatchers.IO) { NativeBridge.fileThumbnail(root, peer, session, message.orEmpty(), file) }
+
+    /**
+     * Copies a picked or shared URI into a private file, then hands it to core,
+     * which snapshots the bytes into the draft; the copy is removed afterwards.
+     */
+    suspend fun attachFile(uri: android.net.Uri, peer: String, session: String): JSONObject {
+        val staged = withContext(Dispatchers.IO) {
+            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "附件"
+            val directory = applicationContext.cacheDir.resolve("attach").apply { mkdirs() }
+            val copy = File.createTempFile("pick-", ".tmp", directory)
+            try {
+                requireNotNull(resolver.openInputStream(uri)) { "无法读取所选文件" }.use { input ->
+                    copy.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024); var total = 0L
+                        while (true) {
+                            val n = input.read(buffer); if (n < 0) break
+                            total += n
+                            check(total <= ATTACHMENT_LIMIT) { "单个附件不能超过 300 MiB" }
+                            output.write(buffer, 0, n)
+                        }
+                    }
+                }
+            } catch (e: Throwable) { copy.delete(); throw e }
+            name to copy
+        }
+        val (name, copy) = staged
+        return try { command("attach_file", "peer" to peer, "session" to session, "path" to copy.absolutePath, "name" to name) }
+        finally { withContext(Dispatchers.IO) { copy.delete() } }
+    }
+
+    /** A file the camera writes before it is attached. */
+    fun cameraTarget(): android.net.Uri {
+        // Only the latest shot is kept; attaching snapshots it into core.
+        val directory = applicationContext.cacheDir.resolve("camera").apply { deleteRecursively(); mkdirs() }
+        val name = "IMG_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ROOT).format(java.util.Date()) + ".jpg"
+        return androidx.core.content.FileProvider.getUriForFile(applicationContext, "${applicationContext.packageName}.files", directory.resolve(name))
+    }
     suspend fun saveChatFile(uri: android.net.Uri, ticket: String) = withContext(Dispatchers.IO) {
         requireNotNull(resolver.openFileDescriptor(uri, "w")).use { destination ->
             val result = JSONObject(NativeBridge.saveChatFile(root, ticket, destination.fd))
             check(result.optBoolean("ok")) { result.text("error", "保存副本失败") }
         }
+    }
+    /** Writes a prepared copy into the private cache and returns a shareable URI for another app. */
+    suspend fun openChatFileCopy(ticket: String, name: String): android.net.Uri = withContext(Dispatchers.IO) {
+        val directory = applicationContext.cacheDir.resolve("open").apply { deleteRecursively(); mkdirs() }
+        val safe = name.replace(Regex("[/\\\\:]"), "_").ifBlank { "file" }
+        val target = directory.resolve(safe)
+        android.os.ParcelFileDescriptor.open(target, android.os.ParcelFileDescriptor.MODE_CREATE or
+            android.os.ParcelFileDescriptor.MODE_TRUNCATE or android.os.ParcelFileDescriptor.MODE_WRITE_ONLY).use { destination ->
+            val result = JSONObject(NativeBridge.saveChatFile(root, ticket, destination.fd))
+            check(result.optBoolean("ok")) { result.text("error", "无法打开文件") }
+        }
+        androidx.core.content.FileProvider.getUriForFile(applicationContext, "${applicationContext.packageName}.files", target)
     }
     fun directoryEvents() = observations.directory()
     fun historyEvents(peer: String, session: String) = observations.history(peer, session)
@@ -116,6 +159,14 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     suspend fun older(peer: String, session: String) = observations.older(peer, session)
     suspend fun newer(peer: String, session: String) = observations.newer(peer, session)
     suspend fun windowAnchor(peer: String, session: String, anchor: String?) = observations.windowAnchor(peer, session, anchor)
+    /** Local catalog commands whose `data` may be an array as well as an object. */
+    suspend fun catalog(op: String, fields: JSONObject): Any? = localGate.withLock {
+        withContext(Dispatchers.IO) {
+            val response = JSONObject(NativeBridge.call(root, JSONObject(fields.toString()).put("op", op).toString()))
+            check(response.optBoolean("ok")) { response.optString("error", "操作未完成") }
+            response.opt("data")
+        }
+    }
     // Preserve ordering among local edits/sends, without waiting for a slow
     // network operation. The Rust store also serializes flush vs withdrawal.
     suspend fun command(op: String, vararg fields: Pair<String, Any?>): JSONObject {

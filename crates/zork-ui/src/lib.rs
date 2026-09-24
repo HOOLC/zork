@@ -8,6 +8,7 @@ pub mod controls;
 pub mod design;
 pub mod history;
 pub mod modal;
+pub mod motion;
 pub mod navigation;
 pub mod network;
 pub mod onboarding;

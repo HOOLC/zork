@@ -1,6 +1,7 @@
 package ing.zork.android
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -12,6 +13,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
 /** Presentation of the shared Rust DeviceStatus, without readiness inference. */
@@ -42,22 +44,40 @@ internal fun compactDeviceName(name: String, status: DeviceStatusUi) = "$name ${
     else -> "○"
 }}"
 
+/** Status never relies on color alone: online is a filled dot, relay a ring
+ * with a center dot, offline a ring, failure a cross; anything but the normal
+ * state also carries its short wording. */
 @Composable
-internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier = Modifier) {
+internal fun DeviceStatusBadge(status: DeviceStatusUi, modifier: Modifier = Modifier) {
+    val normal = status.state in listOf("direct", "connected")
     val color = when (status.state) {
         "direct", "connected" -> ZorkColors.Online
         "mesh_failed", "revoked" -> ZorkColors.Danger
-        "relay", "mesh_preparing", "connecting" -> ZorkColors.Warning
-        else -> ZorkColors.Muted
+        "relay" -> ZorkColors.Warning
+        else -> ZorkColors.Subtle
     }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        when (status.state) {
+            "mesh_preparing", "mesh_stopping", "connecting" ->
+                CircularProgressIndicator(Modifier.size(12.dp), color = color, strokeWidth = 1.5.dp)
+            "direct", "connected" -> Box(Modifier.size(8.dp).background(color, CircleShape))
+            "relay" -> Box(Modifier.size(9.dp).border(1.5.dp, color, CircleShape), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(3.dp).background(color, CircleShape))
+            }
+            "mesh_failed", "revoked" -> Glyph(R.drawable.ic_x, 11.dp, color)
+            else -> Box(Modifier.size(8.dp).border(1.5.dp, color, CircleShape))
+        }
+        if (!normal) Text(deviceStatusText(status), color = color, fontSize = 12.sp, maxLines = 1)
+    }
+}
+
+@Composable
+internal fun DeviceName(name: String, status: DeviceStatusUi, modifier: Modifier = Modifier) {
     val description = deviceNameSummary(name, status) + (status.error?.let { "：$it" } ?: "")
     Row(modifier.semantics(mergeDescendants = true) { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        DeviceMark(name, 18.dp)
         Text(name, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (status.state in listOf("mesh_preparing", "mesh_stopping", "connecting")) {
-            CircularProgressIndicator(Modifier.size(12.dp), color = color, strokeWidth = 1.dp)
-        } else {
-            Box(Modifier.size(7.dp).background(color, CircleShape))
-        }
+        DeviceStatusBadge(status)
     }
 }

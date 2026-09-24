@@ -7,6 +7,8 @@ pub struct NotificationData {
     pub sound: bool,
     pub current_muted: Option<bool>,
     pub permission_label: String,
+    /// The system blocks notifications; only then does the page mention permission.
+    pub permission_denied: bool,
     pub busy: bool,
     pub system_settings: bool,
     pub error: Option<String>,
@@ -25,6 +27,8 @@ pub enum NotificationAction {
 
 /// Complete notification settings. Parameters and intent handling are the only
 /// difference between a platform settings page and its Playground specimen.
+/// Switches carry no descriptions; the page checks permission when it opens
+/// and speaks up only when the system blocks delivery.
 pub fn notifications<V: 'static>(
     data: NotificationData,
     focus: &[FocusHandle; 4],
@@ -34,34 +38,70 @@ pub fn notifications<V: 'static>(
 ) -> Div {
     let action = Rc::new(action);
     let p = ZORK_UI.palette;
-    let mut content = div().flex().flex_col().gap_3();
+    let switch_row = |title: String, info: Option<(&'static str, String)>, control: gpui::AnyElement| {
+        div()
+            .w_full()
+            .flex()
+            .items_center()
+            .gap_2()
+            .min_h(px(40.))
+            .child(div().text_size(px(14.)).child(title))
+            .children(info.map(|(id, text)| crate::components::disclosure::info(id, text)))
+            .child(div().flex_1())
+            .child(control)
+    };
+    let mut content = div().flex().flex_col();
+    if data.permission_denied {
+        let open = action.clone();
+        content = content.child(
+            div()
+                .id("notifications-permission-status")
+                .mb_3()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .flex_1()
+                        .child(ui::status_notice(
+                            data.permission_label.clone(),
+                            ui::NoticeKind::Warning,
+                        )),
+                )
+                .when(data.system_settings, |v| {
+                    v.child(
+                        ui::button(
+                            "notifications-system-settings",
+                            text("notification_system_settings"),
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            open(view, NotificationAction::SystemSettings, cx)
+                        }))
+                        .automation(AutomationRole::Button, text("notification_system_settings")),
+                    )
+                })
+                .automation(AutomationRole::Status, data.permission_label.clone()),
+        );
+    }
     for (index, (id, title, detail, selected)) in [
-        (
-            "notifications-toggle",
-            "notification_enabled",
-            "notification_enabled_detail",
-            data.enabled,
-        ),
+        ("notifications-toggle", "notification_enabled", None, data.enabled),
         (
             "notifications-preview",
             "notification_preview",
-            "notification_preview_detail",
+            Some(("notifications-preview-info", "notification_preview_detail")),
             data.preview,
         ),
-        (
-            "notifications-sound",
-            "notification_sound",
-            "notification_sound_detail",
-            data.sound,
-        ),
+        ("notifications-sound", "notification_sound", None, data.sound),
     ]
     .into_iter()
     .enumerate()
     {
         let change = action.clone();
-        content = content.child(row(
+        content = content.child(switch_row(
             text(title),
-            text(detail),
+            detail.map(|(id, key)| (id, text(key))),
             ui::switch(
                 id,
                 text(title),
@@ -80,14 +120,15 @@ pub fn notifications<V: 'static>(
                         cx,
                     );
                 },
-            ),
+            )
+            .into_any_element(),
         ));
     }
     if let Some(muted) = data.current_muted {
         let change = action.clone();
-        content = content.child(row(
+        content = content.child(switch_row(
             text("notification_mute"),
-            text("notification_mute_detail"),
+            None,
             ui::switch(
                 "notification-mute-current",
                 text("notification_mute"),
@@ -96,80 +137,31 @@ pub fn notifications<V: 'static>(
                 &focus[3],
                 cx,
                 move |view, on, cx| change(view, NotificationAction::Mute(on), cx),
-            ),
+            )
+            .into_any_element(),
         ));
     }
-    let refresh = action.clone();
     let test = action.clone();
     let enabled = data.enabled && !data.busy;
     content
         .child(
-            row(
-                text("notification_system_permission"),
-                data.permission_label.clone(),
-                ui::button(
-                    "notifications-permission-refresh",
-                    text("notification_check_permission"),
-                    false,
-                    true,
+            div().mt_3().flex().items_start().child(
+                ui::quiet_button(
+                    "notifications-test",
+                    text("notification_test"),
+                    enabled,
+                    ui::IconButtonSize::Compact,
                 )
+                .ml(px(-12.))
                 .on_click(cx.listener(move |view, _, _, cx| {
-                    refresh(view, NotificationAction::RefreshPermission, cx)
+                    if enabled {
+                        test(view, NotificationAction::Test, cx);
+                    }
                 }))
-                .automation(
-                    AutomationRole::Button,
-                    text("notification_check_permission"),
-                ),
-            )
-            .id("notifications-permission-status")
-            .automation(AutomationRole::Status, data.permission_label),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap_2()
-                .child(
-                    ui::button(
-                        "notifications-test",
-                        text("notification_test"),
-                        false,
-                        enabled,
-                    )
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        if enabled {
-                            test(view, NotificationAction::Test, cx);
-                        }
-                    }))
-                    .automation_enabled(
-                        enabled,
-                        AutomationRole::Button,
-                        text("notification_test"),
-                    ),
-                )
-                .when(data.system_settings, |v| {
-                    v.child(
-                        ui::button(
-                            "notifications-system-settings",
-                            text("notification_system_settings"),
-                            false,
-                            true,
-                        )
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            action(view, NotificationAction::SystemSettings, cx)
-                        }))
-                        .automation(AutomationRole::Button, text("notification_system_settings")),
-                    )
-                }),
-        )
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(rgb(p.muted))
-                .child(text("notification_permission_detail")),
+                .automation_enabled(enabled, AutomationRole::Button, text("notification_test")),
+            ),
         )
         .when_some(data.error, |content, error| {
-            content.child(div().text_color(rgb(p.danger)).child(error))
+            content.child(div().mt_2().text_color(rgb(p.danger)).child(error))
         })
 }

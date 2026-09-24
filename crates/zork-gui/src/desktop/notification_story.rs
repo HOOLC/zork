@@ -21,6 +21,7 @@ impl NotificationStory {
                         "notification_permission_allowed"
                     })
                     .into(),
+                permission_denied: state == "denied",
                 busy: state == "busy",
                 system_settings: true,
                 error: (state == "error").then(|| "通知服务暂时不可用。".into()),

@@ -6,11 +6,25 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
+pub mod archived;
 pub mod data;
 mod notifications;
 pub use notifications::{notifications, NotificationAction, NotificationData};
 pub fn row(
     title: impl Into<gpui::SharedString>,
+    detail: impl Into<gpui::SharedString>,
+    control: impl IntoElement,
+) -> Div {
+    titled_row(
+        ui::text_role(title, crate::design::TextRole::SectionTitle),
+        detail,
+        control,
+    )
+}
+
+/// A settings row whose title is an element, such as a device label.
+pub fn titled_row(
+    title: impl IntoElement,
     detail: impl Into<gpui::SharedString>,
     control: impl IntoElement,
 ) -> Div {
@@ -20,9 +34,7 @@ pub fn row(
         .flex_wrap()
         .items_center()
         .gap_4()
-        .py(px(14.))
-        .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
+        .py(px(12.))
         .child(
             div()
                 .flex_1()
@@ -31,7 +43,7 @@ pub fn row(
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(ui::text_role(title, crate::design::TextRole::SectionTitle))
+                .child(title)
                 .child(ui::text_role(detail, crate::design::TextRole::Description)),
         )
         .child(div().flex_shrink_0().child(control))
@@ -56,115 +68,156 @@ pub struct AccountData {
     pub signing_out: bool,
     pub notice: Option<String>,
 }
+/// A row that leads with its value: the primary fact at full contrast, an
+/// optional muted line and trailing controls.
+fn value_row(primary: impl IntoElement, meta: Option<String>, control: impl IntoElement) -> Div {
+    div()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_4()
+        .py(px(12.))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(primary)
+                .when_some(meta, |v, meta| {
+                    v.child(crate::components::disclosure::meta(meta))
+                }),
+        )
+        .child(div().flex_shrink_0().flex().items_center().gap_2().child(control))
+}
+
 pub fn account<V: 'static>(
     data: AccountData,
-    cx: &Context<V>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
     action: impl Fn(&mut V, AccountAction, &mut Context<V>) + 'static,
 ) -> Div {
+    use crate::components::{disclosure, standard_menu::Item};
     let action = Rc::new(action);
     let login = action.clone();
     let cancel = action.clone();
-    let logout = action.clone();
+    let menu = action.clone();
     let copy = action.clone();
     let signed = data.name.is_some();
+    let primary = div()
+        .text_size(px(14.))
+        .font_weight(FontWeight::MEDIUM)
+        .child(if signed {
+            data.email.clone().or(data.name.clone()).unwrap_or_default()
+        } else {
+            "未登录".into()
+        });
+    let control = if signed {
+        let items = vec![
+            if data.busy {
+                Item::new("zork-account-login", "重新验证").disabled()
+            } else {
+                Item::new("zork-account-login", "重新验证")
+            },
+            if data.busy {
+                Item::new("zork-account-logout", "退出账号").disabled()
+            } else {
+                Item::new("zork-account-logout", "退出账号")
+            },
+        ];
+        div()
+            .flex()
+            .gap_2()
+            .when(data.busy && !data.signing_out, |v| {
+                v.child(
+                    ui::button("zork-account-cancel", "取消", false, true)
+                        .on_click(
+                            cx.listener(move |v, _, _, cx| cancel(v, AccountAction::Cancel, cx)),
+                        )
+                        .automation(AutomationRole::Button, "取消登录"),
+                )
+            })
+            .child(disclosure::more_menu(
+                "zork-account-more",
+                items,
+                !data.signing_out,
+                window,
+                cx,
+                move |v, key, _, cx| match key.as_str() {
+                    "zork-account-login" => menu(v, AccountAction::Login, cx),
+                    "zork-account-logout" => menu(v, AccountAction::Logout, cx),
+                    _ => {}
+                },
+            ))
+            .into_any_element()
+    } else {
+        div()
+            .flex()
+            .gap_2()
+            .child(
+                ui::button(
+                    "zork-account-login",
+                    if data.busy {
+                        "等待登录…"
+                    } else {
+                        "使用 Google 登录"
+                    },
+                    true,
+                    !data.busy,
+                )
+                .on_click(cx.listener(move |v, _, _, cx| login(v, AccountAction::Login, cx)))
+                .automation_enabled(!data.busy, AutomationRole::Button, "使用 Google 登录"),
+            )
+            .when(data.busy, |v| {
+                v.child(
+                    ui::button("zork-account-cancel", "取消", false, true)
+                        .on_click(
+                            cx.listener(move |v, _, _, cx| cancel(v, AccountAction::Cancel, cx)),
+                        )
+                        .automation(AutomationRole::Button, "取消登录"),
+                )
+            })
+            .into_any_element()
+    };
+    let technical = data.identity.clone().map(|identity| {
+        disclosure::expander(
+            "client-identity-details",
+            "技术信息",
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(12.))
+                        .text_color(rgb(ZORK_UI.palette.muted))
+                        .font_family(crate::assets::CODE_FONT_FAMILY)
+                        .child(format!("客户端身份 {identity}")),
+                )
+                .child(
+                    ui::quiet_button("client-identity-copy", "复制", true, ui::IconButtonSize::Compact)
+                        .on_click(
+                            cx.listener(move |v, _, _, cx| copy(v, AccountAction::CopyIdentity, cx)),
+                        )
+                        .automation(AutomationRole::Button, "复制客户端身份"),
+                ),
+            window,
+            cx,
+        )
+    });
     div()
         .flex()
         .flex_col()
         .child(header("账号"))
-        .child(
-            div()
-                .text_size(px(11.))
-                .text_color(rgb(ZORK_UI.palette.muted))
-                .child("云端账号为可选项；Mesh 连接无需登录。"),
-        )
-        .child(row(
-            "账号",
-            data.name
-                .clone()
-                .map(|name| {
-                    format!(
-                        "{}{}",
-                        name,
-                        data.email
-                            .as_ref()
-                            .map(|e| format!(" · {e}"))
-                            .unwrap_or_default()
-                    )
-                })
-                .unwrap_or("使用 Google 账号登录 Zork 云端服务。".into()),
-            div()
-                .flex()
-                .gap_2()
-                .child(
-                    ui::button(
-                        "zork-account-login",
-                        if data.signing_out {
-                            "正在退出…"
-                        } else if data.busy {
-                            "等待登录…"
-                        } else if signed {
-                            "重新验证"
-                        } else {
-                            "使用 Google 登录"
-                        },
-                        false,
-                        !data.busy,
-                    )
-                    .on_click(cx.listener(move |v, _, _, cx| login(v, AccountAction::Login, cx)))
-                    .automation_enabled(
-                        !data.busy,
-                        AutomationRole::Button,
-                        "使用 Google 登录",
-                    ),
-                )
-                .when(data.busy && !data.signing_out, |v| {
-                    v.child(
-                        ui::button("zork-account-cancel", "取消", false, true)
-                            .on_click(
-                                cx.listener(move |v, _, _, cx| {
-                                    cancel(v, AccountAction::Cancel, cx)
-                                }),
-                            )
-                            .automation(AutomationRole::Button, "取消登录"),
-                    )
-                })
-                .when(signed, |v| {
-                    v.child(
-                        ui::button("zork-account-logout", "退出账号", false, !data.busy)
-                            .on_click(
-                                cx.listener(move |v, _, _, cx| {
-                                    logout(v, AccountAction::Logout, cx)
-                                }),
-                            )
-                            .automation_enabled(!data.busy, AutomationRole::Button, "退出账号"),
-                    )
-                }),
+        .child(value_row(
+            primary,
+            signed.then(|| if data.signing_out { "正在退出…" } else { "Google 账号" }.into()),
+            control,
         ))
-        .when(data.identity.is_some(), |view| {
-            view.child(row(
-                "客户端身份",
-                data.identity
-                    .clone()
-                    .unwrap_or("正在准备客户端身份…".into()),
-                ui::button(
-                    "client-identity-copy",
-                    "复制身份",
-                    false,
-                    data.identity.is_some(),
-                )
-                .on_click(cx.listener(move |v, _, _, cx| copy(v, AccountAction::CopyIdentity, cx)))
-                .automation_enabled(
-                    data.identity.is_some(),
-                    AutomationRole::Button,
-                    "复制客户端身份",
-                ),
-            ))
-        })
-        .child(row(
-            "配置归属",
-            "模型连接保存在所属设备中，供对话选择。",
-            div(),
-        ))
+        .children(technical)
         .when_some(data.notice, |v, text| {
             v.child(div().mt_4().child(ui::feedback(text)))
         })
@@ -178,6 +231,9 @@ pub enum DeviceAction {
     ToggleRunning,
     Background(bool),
     StartAtLogin(bool),
+    /// Entry rows: this device's services and its model connections.
+    Services,
+    Connections,
 }
 #[derive(Clone)]
 pub struct DeviceData {
@@ -194,22 +250,22 @@ pub struct DeviceData {
     pub start_at_login: bool,
     pub busy: bool,
     pub notice: Option<String>,
+    /// Muted counts for the entry rows, such as "2 个运行中"; `None` hides the row.
+    pub services: Option<String>,
+    pub connections: Option<String>,
 }
 pub fn device<V: 'static>(
     data: DeviceData,
     focus: &[FocusHandle; 2],
-    cx: &Context<V>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
     action: impl Fn(&mut V, DeviceAction, &mut Context<V>) + 'static,
 ) -> Div {
+    use crate::components::{disclosure, standard_menu::Item};
     let action = Rc::new(action);
-    let refresh = action.clone();
-    let rename = action.clone();
-    let check_update = action.clone();
+    let menu_action = action.clone();
     let upgrade = action.clone();
-    let toggle = action.clone();
     let background = action.clone();
-    let login = action.clone();
-    let p = ZORK_UI.palette;
     let has_update = data
         .latest_version
         .as_ref()
@@ -217,30 +273,85 @@ pub fn device<V: 'static>(
     let show_updates = !data.local || data.background;
     let can_update = show_updates && data.update_supported && !data.busy;
     let version_label = if data.version.starts_with(|c: char| c.is_ascii_digit()) {
-        format!("v{}", data.version)
+        format!("版本 {}", data.version)
     } else {
         data.version.clone()
     };
-    let update_button = ui::button("device-check-update", "检查更新", false, can_update)
-        .on_click(cx.listener(move |v, _, _, cx| {
-            if can_update {
-                check_update(v, DeviceAction::CheckUpdate, cx)
-            }
-        }))
-        .automation_enabled(can_update, AutomationRole::Button, "检查更新");
-    let update_button = if !data.update_supported {
-        crate::components::tooltip::hint(
-            update_button,
-            "node-update",
-            data.update_reason
-                .clone()
-                .unwrap_or_else(|| "当前设备不支持在线更新。".into()),
-        )
-        .into_any_element()
+    let enabled = |item: Item, on: bool| if on { item } else { item.disabled() };
+    // Rare and maintenance actions live in 更多; the page shows state only.
+    let mut items = vec![
+        enabled(Item::new("device-rename", "重命名"), !data.busy),
+        enabled(Item::new("device-refresh", "刷新状态"), !data.busy),
+    ];
+    if data.local && data.background {
+        items.push(enabled(
+            Item::new("local-node-login", "登录系统后自动启动").check(data.start_at_login),
+            !data.busy,
+        ));
+    }
+    if show_updates {
+        let check = enabled(Item::new("device-check-update", "检查更新"), can_update);
+        items.push(match (&data.update_reason, data.update_supported) {
+            (Some(reason), false) => check.detail(reason.clone()),
+            _ => check,
+        });
+    }
+    if data.local {
+        items.push(enabled(
+            Item::new(
+                "local-node-toggle",
+                if data.running { "停止设备" } else { "启动设备" },
+            ),
+            !data.busy,
+        ));
+    }
+    items.push(Item::new("device-version", version_label).disabled());
+    let login_on = data.start_at_login;
+    let more = disclosure::more_menu(
+        "device-more",
+        items,
+        true,
+        window,
+        cx,
+        move |v, key, _, cx| {
+            let event = match key.as_str() {
+                "device-rename" => DeviceAction::Rename,
+                "device-refresh" => DeviceAction::Refresh,
+                "device-check-update" => DeviceAction::CheckUpdate,
+                "local-node-toggle" => DeviceAction::ToggleRunning,
+                "local-node-login" => DeviceAction::StartAtLogin(!login_on),
+                _ => return,
+            };
+            menu_action(v, event, cx)
+        },
+    );
+    let connection = crate::device_name::status_text(&data.status, None);
+    let state = Some(if data.busy {
+        "正在处理…".to_owned()
+    } else if data.local {
+        format!("{} · {connection}", if data.running { "运行中" } else { "已停止" })
     } else {
-        update_button.into_any_element()
+        connection
+    });
+    let services = action.clone();
+    let connections = action.clone();
+    let entry = move |id: &'static str, title: &'static str, meta: String| {
+        ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
+            .w_full()
+            .h(px(40.))
+            .mx(px(-12.))
+            .justify_start()
+            .child(div().text_size(px(14.)).child(title))
+            .when(!meta.is_empty(), |v| v.child(disclosure::meta(meta)))
+            .child(div().flex_1())
+            .child(
+                ui::icon("interface/chevron-down.svg", 14.)
+                    .text_color(rgb(ZORK_UI.palette.subtle))
+                    .with_transformation(gpui::Transformation::rotate(gpui::radians(
+                        -std::f32::consts::FRAC_PI_2,
+                    ))),
+            )
     };
-    // Hallmark · settings hierarchy: operational state → run mode → maintenance.
     div()
         .flex()
         .flex_col()
@@ -249,233 +360,79 @@ pub fn device<V: 'static>(
                 .id("device-runtime-summary")
                 .flex()
                 .items_center()
-                .gap_4()
-                .p_5()
-                .rounded(px(ui::CARD_RADIUS))
-                .bg(rgb(p.sidebar))
-                .child(
-                    div()
-                        .size(px(44.))
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(ui::FIELD_RADIUS))
-                        .bg(rgb(p.canvas))
-                        .child(ui::icon("icons/node.svg", 24.).text_color(rgb(p.muted))),
-                )
+                .gap_3()
+                .pb(px(12.))
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .flex()
                         .flex_col()
-                        .gap_2()
+                        .gap_1()
                         .child(
                             div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
                                 .min_w_0()
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .truncate()
-                                        .text_size(px(16.))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .child(crate::device_name::label(
-                                            "settings-device-name",
-                                            data.name.clone(),
-                                            &data.status,
-                                            None,
-                                        )),
-                                )
-                                .child(crate::components::tooltip::hint(
-                                    ui::icon_button("device-rename", !data.busy)
-                                        .flex_shrink_0()
-                                        .child(
-                                            ui::icon("icons/edit.svg", 14.)
-                                                .text_color(rgb(p.muted)),
-                                        )
-                                        .on_click(cx.listener(move |v, _, _, cx| {
-                                            rename(v, DeviceAction::Rename, cx)
-                                        }))
-                                        .automation_enabled(
-                                            !data.busy,
-                                            AutomationRole::Button,
-                                            "修改设备名称",
-                                        ),
-                                    "device-rename",
-                                    "修改设备名称",
+                                .truncate()
+                                .text_size(px(17.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(crate::device_name::label(
+                                    "settings-device-name",
+                                    data.name.clone(),
+                                    &data.status,
+                                    None,
                                 )),
                         )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .text_size(px(11.))
-                                .text_color(rgb(p.muted))
-                                .when(data.local, |v| {
-                                    v.child("·").child(if data.busy {
-                                        "正在处理…"
-                                    } else if data.running {
-                                        "运行中"
-                                    } else {
-                                        "已停止"
-                                    })
-                                })
-                                .child("·")
-                                .child(version_label),
-                        ),
+                        .when_some(state, |v, state| v.child(disclosure::meta(state))),
                 )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .flex_shrink_0()
-                        .child(crate::components::tooltip::hint(
-                            ui::icon_button("device-refresh", !data.busy)
-                                .child(ui::icon("icons/reload.svg", 14.))
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    refresh(v, DeviceAction::Refresh, cx)
-                                }))
-                                .automation_enabled(
-                                    !data.busy,
-                                    AutomationRole::Button,
-                                    "刷新设备状态",
-                                ),
-                            "device-refresh",
-                            "刷新设备状态",
-                        ))
-                        .when(data.local, |v| {
-                            v.child(
-                                ui::button(
-                                    "local-node-toggle",
-                                    if data.running {
-                                        "停止设备"
-                                    } else {
-                                        "启动设备"
-                                    },
-                                    !data.running,
-                                    !data.busy,
-                                )
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    toggle(v, DeviceAction::ToggleRunning, cx)
-                                }))
-                                .automation_enabled(
-                                    !data.busy,
-                                    AutomationRole::Button,
-                                    "切换本机设备运行",
-                                ),
-                            )
-                        }),
-                ),
+                .child(more),
         )
         .when(data.local, |v| {
-            v.child(
-                div()
-                    .mt_6()
-                    .mb_3()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .child("运行方式"),
-            )
-            .child(crate::components::widgets::controls::deferred_segmented(
-                "local-node-mode",
-                [
-                    ("local-node-foreground", "随客户端"),
-                    ("local-node-background", "后台运行"),
-                ]
-                .into_iter()
-                .map(
-                    |(id, label)| crate::components::widgets::controls::Segment {
-                        id: id.into(),
-                        label: label.into(),
-                        disabled: false,
-                    },
-                )
-                .collect(),
-                vec![
-                    Some("关闭客户端时，设备一同停止。".into()),
-                    Some("退出客户端后，设备继续运行。".into()),
-                ],
-                Some(usize::from(data.background)),
-                crate::components::widgets::controls::SegmentKind::Choice,
-                !data.busy,
-                p.canvas,
-                cx.listener(move |v, index: &usize, _, cx| {
-                    background(v, DeviceAction::Background(*index == 1), cx)
-                }),
+            v.child(value_row(
+                div().text_size(px(14.)).child("退出客户端后保持运行"),
+                None,
+                ui::switch(
+                    "local-node-background",
+                    "退出客户端后保持运行",
+                    data.background,
+                    !data.busy,
+                    &focus[0],
+                    cx,
+                    move |v, on, cx| background(v, DeviceAction::Background(on), cx),
+                ),
             ))
-            .when(data.background, |v| {
-                v.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .mt_3()
-                        .min_h(px(40.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_size(px(13.))
-                                .child("登录系统后自动启动"),
-                        )
-                        .child(ui::switch(
-                            "local-node-login",
-                            "登录系统后自动启动",
-                            data.start_at_login,
-                            !data.busy,
-                            &focus[1],
-                            cx,
-                            move |v, on, cx| login(v, DeviceAction::StartAtLogin(on), cx),
-                        )),
-                )
-            })
         })
-        .when(show_updates, |v| {
+        .when_some(data.services.clone(), |v, meta| {
             v.child(
-                div()
-                    .mt_6()
-                    .pt_4()
-                    .border_t(gpui::px(crate::design::BORDER_WIDTH))
-                    .border_color(rgb(p.border))
-                    .flex()
-                    .items_center()
-                    .justify_end()
-                    .gap_3()
-                    .when(has_update, |v| {
-                        v.child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_size(px(11.))
-                                .text_color(rgb(p.warning))
-                                .child(format!(
-                                    "可升级至 {} · 将重启设备",
-                                    data.latest_version.as_deref().unwrap_or_default()
-                                )),
-                        )
-                    })
-                    .child(update_button)
-                    .when(has_update, |v| {
-                        v.child(
-                            ui::button("device-upgrade", "升级并重启", true, can_update)
-                                .on_click(cx.listener(move |v, _, _, cx| {
-                                    if can_update {
-                                        upgrade(v, DeviceAction::Upgrade, cx)
-                                    }
-                                }))
-                                .automation_enabled(
-                                    can_update,
-                                    AutomationRole::Button,
-                                    "升级并重启",
-                                ),
-                        )
-                    }),
+                entry("device-services", "服务", meta)
+                    .on_click(cx.listener(move |v, _, _, cx| services(v, DeviceAction::Services, cx)))
+                    .automation(AutomationRole::Button, "服务"),
             )
+        })
+        .when_some(data.connections.clone(), |v, meta| {
+            v.child(
+                entry("device-connections", "模型连接", meta)
+                    .on_click(
+                        cx.listener(move |v, _, _, cx| connections(v, DeviceAction::Connections, cx)),
+                    )
+                    .automation(AutomationRole::Button, "模型连接"),
+            )
+        })
+        // The update row appears only when there is something to install.
+        .when(has_update && show_updates, |v| {
+            v.child(value_row(
+                div().text_size(px(14.)).child(format!(
+                    "可更新到 {}",
+                    data.latest_version.as_deref().unwrap_or_default()
+                )),
+                Some("更新时会重启设备".into()),
+                ui::button("device-upgrade", "更新", true, can_update)
+                    .on_click(cx.listener(move |v, _, _, cx| {
+                        if can_update {
+                            upgrade(v, DeviceAction::Upgrade, cx)
+                        }
+                    }))
+                    .automation_enabled(can_update, AutomationRole::Button, "更新并重启"),
+            ))
         })
         .when_some(data.notice, |v, text| {
             v.child(div().mt_3().child(ui::feedback(text)))
@@ -492,6 +449,7 @@ pub struct SettingsStory {
     family: String,
     data: DeviceData,
     account: AccountData,
+    archived: Option<Vec<archived::ArchivedChat>>,
     focus: [FocusHandle; 2],
 }
 #[cfg(feature = "stories")]
@@ -532,6 +490,8 @@ impl SettingsStory {
                 start_at_login: false,
                 busy: state == "loading",
                 notice: (state == "error").then(|| "暂时无法读取设备状态，请重试。".into()),
+                services: Some("2 个运行中".into()),
+                connections: Some("3 个".into()),
             },
             account: AccountData {
                 name: (state == "signed-in").then(|| text("name")),
@@ -541,6 +501,31 @@ impl SettingsStory {
                 signing_out: false,
                 notice: (state == "error").then(|| "登录未完成。请检查连接后重试。".into()),
             },
+            archived: state.starts_with("archived").then(|| {
+                if state == "archived-empty" {
+                    return vec![];
+                }
+                [
+                    ("mini1", "旧版导航方案", "2026-09-18T10:00:00Z", false),
+                    ("studio", "评估 Qwen 方案", "2026-09-12T10:00:00Z", true),
+                    ("mini1", "整理品牌资源", "2026-08-30T10:00:00Z", false),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (device, title, at, pending))| archived::ArchivedChat {
+                    node: device.into(),
+                    device: device.into(),
+                    chat: zork_client_types::navigation::NavigationChat {
+                        chat_id: format!("archived-{i}"),
+                        title: title.into(),
+                        updated_at: at.into(),
+                        archived: true,
+                        archive_pending: pending,
+                        ..Default::default()
+                    },
+                })
+                .collect()
+            }),
             focus: [cx.focus_handle(), cx.focus_handle()],
         }
     }
@@ -557,8 +542,30 @@ impl gpui::Render for SettingsStory {
             .rename_modal
             .retain("device-rename-dialog", self.rename_open.then_some(()), cx)
             .is_some();
-        let page = if self.family == "client" {
-            account(self.account.clone(), cx, |v, event, cx| {
+        let page = if let Some(chats) = self.archived.clone() {
+            let text = crate::resources::Text(Rc::new(|key| {
+                match key {
+                    "chat_unarchive" => "取消归档",
+                    "chat_archive_empty" => "没有已归档的 Chat",
+                    _ => "未命名 Chat",
+                }
+                .into()
+            }));
+            div()
+                .flex()
+                .flex_col()
+                .gap_5()
+                .child(ui::page_title("已归档的 Chat"))
+                .child(archived::list(chats, &text, cx, |v, action, cx| {
+                    if let archived::Action::Restore { node, chat, .. } = action {
+                        if let Some(list) = &mut v.archived {
+                            list.retain(|item| item.node != node || item.chat.chat_id != chat);
+                        }
+                    }
+                    cx.notify();
+                }))
+        } else if self.family == "client" {
+            account(self.account.clone(), window, cx, |v, event, cx| {
                 match event {
                     AccountAction::Login => {
                         v.account.name = Some("Zork 用户".into());
@@ -581,7 +588,7 @@ impl gpui::Render for SettingsStory {
                 cx.notify();
             })
         } else {
-            device(self.data.clone(), &self.focus, cx, |v, event, cx| {
+            device(self.data.clone(), &self.focus, window, cx, |v, event, cx| {
                 match event {
                     DeviceAction::Rename => {
                         v.rename_input
@@ -620,6 +627,7 @@ impl gpui::Render for SettingsStory {
                         }
                     }
                     DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
+                    DeviceAction::Services | DeviceAction::Connections => {}
                 }
                 cx.notify();
             })

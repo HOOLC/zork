@@ -14,9 +14,14 @@ internal data class HistoryIdentity(val id: String, val name: String, val role: 
 internal data class HistorySubject(val label: String, val agent: HistoryIdentity? = null, val conversation: HistoryDestination? = null) {
     val actionable: Boolean get() = agent != null || conversation != null
 }
+/** A received message as core resolved it: names only, Markdown text and file names. */
+internal data class HistoryMessage(val sender: String?, val device: String?, val text: String,
+    val files: List<String>, val reply: Boolean, val structured: Boolean) {
+    val truncated get() = text.endsWith("…")
+}
 internal data class HistoryRow(val id: String, val title: String, val preview: String, val kind: String,
     val lane: Int, val visible: Boolean, val start: Long?, val end: Long?, val state: String,
-    val subject: HistorySubject?, val model: String, val requestedWait: Long?) {
+    val subject: HistorySubject?, val model: String, val requestedWait: Long?, val message: HistoryMessage? = null) {
     val failed get() = state == "failed" || state == "timed_out"
     val status get() = historyStateLabel(state)
     fun duration(now: Long): Long? = start?.let { first -> (end ?: now.takeIf { state == "running" })?.let { (it - first).coerceAtLeast(0) } }
@@ -45,7 +50,6 @@ internal class SessionHistoryState(val peer: String, val session: String, val na
     var blocks by mutableStateOf<List<HistoryBlock>?>(null)
         private set
     val expanded = mutableStateMapOf<String, Boolean>()
-    val timeline = HistoryTimelineState()
     var highlightedId by mutableStateOf<String?>(null)
     var status by mutableStateOf(HistoryStatus())
     var overview by mutableStateOf<HistoryOverview?>(null)
@@ -130,7 +134,11 @@ private fun historyRow(value: JSONObject): HistoryRow = HistoryRow(value.text("i
         HistorySubject(subject.text("label"), subject.optJSONObject("agent")?.let { a ->
             HistoryIdentity(a.text("id"), a.text("name"), a.text("role"), a.text("model"), a.text("profile"), a.text("thinking"))
         }, subject.optJSONObject("conversation")?.let { c -> HistoryDestination(c.text("id"), c.text("title"), c.optBoolean("can_send"), c.optBoolean("can_stop")) })
-    }, value.text("model"), value.longOrNull("requested_wait_ms"))
+    }, value.text("model"), value.longOrNull("requested_wait_ms"), value.optJSONObject("message")?.let { m ->
+        val files = m.optJSONArray("files") ?: JSONArray()
+        HistoryMessage(m.text("sender").ifBlank { null }, m.text("device").ifBlank { null }, m.text("text"),
+            (0 until files.length()).map(files::getString), m.optBoolean("reply"), m.optBoolean("structured"))
+    })
 
 private fun historyOverview(value: JSONObject): HistoryOverview {
     fun count(key: String) = value.longOrNull(key)?.let(::compactTokens) ?: "—"
@@ -159,6 +167,8 @@ private fun historyDetail(value: JSONObject): HistoryDetail {
     fun section(title: String, text: String, code: Boolean = false) = HistorySection(title, text, historyTextChunks(text), code)
     val sections = buildList {
         value.text("summary").takeIf(String::isNotBlank)?.let { add(section("内容", it)) }
+        value.optJSONArray("files")?.let { files -> (0 until files.length()).map(files::getString) }
+            ?.takeIf { it.isNotEmpty() }?.let { add(section("附件", it.joinToString("\n"))) }
         value.text("outcome").takeIf { it.isNotBlank() && it != value.text("summary") }?.let { add(section("结果", it)) }
         val stages = value.optJSONArray("stages").objects()
         stages.forEachIndexed { index, stage ->
@@ -189,14 +199,14 @@ internal fun historyStateLabel(state: String) = when (state) {
     "received" -> "已接收"; "cancelled", "canceled", "interrupted" -> "已取消"; else -> state
 }
 internal fun historyTitle(action: String, kind: String): String = when (kind) {
-    "input", "received" -> "收到输入"; "output" -> "模型回复"; "thinking" -> "思考中"
+    "input", "received" -> "收到消息"; "output" -> "模型回复"; "thinking" -> "思考中"
     "send_message" -> "发送消息"; "send_file" -> "发送文件"; "notify" -> "发送通知"
     "assign" -> "分配任务"; "rework" -> "要求返工"; "workers" -> "查询队员"; "tasks" -> "查询任务"
     "read" -> "读取文件"; "write" -> "写入文件"; "edit" -> "编辑文件"; "shell" -> "执行命令"
     "browser" -> "浏览器操作"; "wait" -> "等待"; "end" -> "结束执行"; "cancel" -> "取消任务"
     "help" -> "查询工具"; "history" -> "查询执行历史"; "chat_history" -> "查询聊天历史"; "job" -> "后台任务"
     "error" -> "执行错误"; "notice" -> "通知"
-    else -> when (action) { "input" -> "收到输入"; "model", "model_call" -> "模型请求"; else -> action.ifBlank { "执行记录" } }
+    else -> when (action) { "input" -> "收到消息"; "model", "model_call" -> "模型请求"; else -> action.ifBlank { "执行记录" } }
 }
 internal fun historyDuration(ms: Long): String = when {
     ms < 1000 -> "${ms}ms"

@@ -5,8 +5,189 @@
 //! geometry live here so regressions do not silently turn the app back into a
 //! generic dashboard.
 
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
+/// The brand persimmon of the mark. Interface accents read `INTERACTION.accent`,
+/// which each theme tunes for its surfaces.
 pub const BRAND_ACCENT: u32 = 0xE9643B;
-pub const UI_OUTLINE: u32 = 0xB6BABD;
+/// Keyboard focus is an independent ring outside the outline (`INTERACTION.focus_ring`).
+pub const FOCUS_RING_ALPHA: f32 = 0.6;
+
+/// Light or dark rendering. Colors are read through the themed statics below,
+/// so ordinary reads such as `ZORK_UI.palette.text` follow the current theme.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Theme {
+    Light,
+    Dark,
+}
+static DARK: AtomicBool = AtomicBool::new(false);
+pub fn theme() -> Theme {
+    if DARK.load(Ordering::Relaxed) {
+        Theme::Dark
+    } else {
+        Theme::Light
+    }
+}
+pub fn set_theme(theme: Theme) {
+    DARK.store(theme == Theme::Dark, Ordering::Relaxed);
+}
+impl Theme {
+    pub fn appearance(self) -> gpui::WindowAppearance {
+        match self {
+            Theme::Light => gpui::WindowAppearance::Light,
+            Theme::Dark => gpui::WindowAppearance::Dark,
+        }
+    }
+    pub fn for_appearance(appearance: gpui::WindowAppearance) -> Theme {
+        match appearance {
+            gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark => Theme::Dark,
+            _ => Theme::Light,
+        }
+    }
+}
+/// The saved appearance preference: 0 follows the system, 1 light, 2 dark.
+static PREFERRED: AtomicU8 = AtomicU8::new(0);
+/// Records the client's saved theme; `None` follows the system.
+pub fn set_preferred_theme(theme: Option<Theme>) {
+    let value = match theme {
+        None => 0,
+        Some(Theme::Light) => 1,
+        Some(Theme::Dark) => 2,
+    };
+    PREFERRED.store(value, Ordering::Relaxed);
+}
+/// `ZORK_THEME=light|dark` pins the theme first, then the saved preference;
+/// otherwise it follows the system.
+pub fn pinned_theme() -> Option<Theme> {
+    let env = std::env::var("ZORK_THEME").ok().map(|v| v.to_ascii_lowercase());
+    match env.as_deref() {
+        Some("light") => return Some(Theme::Light),
+        Some("dark") => return Some(Theme::Dark),
+        _ => {}
+    }
+    match PREFERRED.load(Ordering::Relaxed) {
+        1 => Some(Theme::Light),
+        2 => Some(Theme::Dark),
+        _ => None,
+    }
+}
+/// Applies a changed preference at runtime: pins the window chrome and palette,
+/// or hands both back to the system appearance.
+pub fn prefer_theme(theme: Option<Theme>, cx: &mut gpui::App) {
+    set_preferred_theme(theme);
+    let pinned = pinned_theme();
+    cx.set_window_appearance(pinned.map(Theme::appearance));
+    apply_theme(
+        pinned.unwrap_or_else(|| Theme::for_appearance(cx.window_appearance())),
+        cx,
+    );
+    if pinned.is_none() {
+        // Clearing the override updates the app's effective appearance
+        // asynchronously, and no appearance event fires when the system look
+        // already matched the pin. Re-read it once AppKit has settled.
+        cx.spawn(async move |cx| {
+            for delay in [16, 120, 500] {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(delay))
+                    .await;
+                let _ = cx.update(|cx| {
+                    if pinned_theme().is_none() {
+                        apply_theme(Theme::for_appearance(cx.window_appearance()), cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
+}
+/// Switches palettes and the component library to `theme`, then repaints.
+pub fn apply_theme(theme: Theme, cx: &mut gpui::App) {
+    if self::theme() == theme {
+        return;
+    }
+    set_theme(theme);
+    init_component_theme(cx);
+    crate::components::region::invalidate_every(cx);
+    cx.refresh_windows();
+}
+/// Keeps a window's theme in step with the system appearance, unless pinned.
+pub fn follow_appearance(window: &gpui::Window) -> gpui::Subscription {
+    window.observe_window_appearance(|window, cx| {
+        if pinned_theme().is_none() {
+            apply_theme(Theme::for_appearance(window.appearance()), cx);
+        }
+    })
+}
+
+/// A value with a light and a dark variant; dereferences to the current one.
+pub struct Themed<T: 'static> {
+    light: T,
+    dark: T,
+}
+impl<T> Themed<T> {
+    pub const fn new(light: T, dark: T) -> Self {
+        Self { light, dark }
+    }
+    pub fn get(&self, theme: Theme) -> &T {
+        match theme {
+            Theme::Light => &self.light,
+            Theme::Dark => &self.dark,
+        }
+    }
+}
+impl<T> std::ops::Deref for Themed<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.get(theme())
+    }
+}
+
+/// Corner radii by role. Controls are capsules; containers grow so a capsule
+/// sits concentric inside them (inner radius = outer radius - padding).
+/// Corners render as continuous-curvature curves in the GPUI renderer.
+pub struct Radii {
+    /// Inline code, key caps and skeleton lines.
+    pub inline: f32,
+    /// Buttons, fields, rows, menu items: a capsule at the 32 px control height.
+    pub control: f32,
+    /// Embedded blocks that can grow: code blocks, attachments, multi-line fields.
+    pub block: f32,
+    /// Cards, menus, popovers and banners.
+    pub container: f32,
+    /// Dialogs, the composer and other large surfaces.
+    pub surface: f32,
+    /// Message bubbles; the folded corner echoes the brand mark.
+    pub bubble: f32,
+    pub fold: f32,
+}
+pub const RADIUS: Radii = Radii {
+    inline: 6.,
+    control: 16.,
+    block: 16.,
+    container: 24.,
+    surface: 32.,
+    bubble: 24.,
+    fold: 8.,
+};
+
+/// Stable identity hues for devices. They mark which device a Chat or message
+/// belongs to and never express status; status keeps its own shape and text.
+/// Both themes share lightness and chroma within the set; dark lifts it a step.
+pub static DEVICE_HUES: Themed<[u32; 5]> = Themed::new(
+    [0x5E8B6B, 0x56759A, 0xA27A2B, 0x87618F, 0x3E8787],
+    [0x6E9D7B, 0x6C8BB0, 0xB8903E, 0x9D78A6, 0x52A0A0],
+);
+/// Selected text in inputs and messages (RGBA).
+pub static TEXT_SELECTION: Themed<u32> = Themed::new(0xC9DCF5CC, 0x35507ACC);
+/// Inline code ink inside prose.
+pub static CODE_INK: Themed<u32> = Themed::new(0x7C3FA0, 0xC9A2E8);
+pub fn device_hue(key: &str) -> u32 {
+    let hash = key
+        .bytes()
+        .fold(0x811C9DC5u32, |hash, byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193));
+    let hues = *DEVICE_HUES;
+    hues[hash as usize % hues.len()]
+}
 pub const BORDER_WIDTH: f32 = 0.5;
 
 pub struct InteractionPalette {
@@ -19,18 +200,43 @@ pub struct InteractionPalette {
     pub danger_hover: u32,
     pub danger_pressed: u32,
     pub focus_border: u32,
+    /// Persimmon for work in progress and sending; never failure, unread or offline.
+    pub accent: u32,
+    /// A selected row keeps its identity under the pointer: hover deepens it.
+    pub selected_hover: u32,
+    pub focus_ring: u32,
 }
-pub const INTERACTION: InteractionPalette = InteractionPalette {
-    neutral_hover: 0xEFEEEA,
-    neutral_pressed: 0xEAE7E1,
-    primary_hover: 0x41464C,
-    primary_pressed: 0x1B1E21,
-    accent_hover: 0xDB572F,
-    accent_pressed: 0xC84A27,
-    danger_hover: 0xA61B24,
-    danger_pressed: 0x8F1720,
-    focus_border: 0x646970,
-};
+pub static INTERACTION: Themed<InteractionPalette> = Themed::new(
+    InteractionPalette {
+        neutral_hover: 0xEDEAE3,
+        neutral_pressed: 0xE5E1D8,
+        primary_hover: 0x3B3F44,
+        primary_pressed: 0x4C5157,
+        accent_hover: 0xDB572F,
+        accent_pressed: 0xC84A27,
+        danger_hover: 0x9E252C,
+        danger_pressed: 0x8A1D23,
+        focus_border: 0x24272B,
+        accent: 0xE9643B,
+        selected_hover: 0xDCD6CA,
+        focus_ring: 0xE9643B,
+    },
+    // Dark states move away from the surface in lightness, never to pure black or white.
+    InteractionPalette {
+        neutral_hover: 0x2A2C2F,
+        neutral_pressed: 0x323539,
+        primary_hover: 0xDAD6CE,
+        primary_pressed: 0xC8C3BA,
+        accent_hover: 0xF48A66,
+        accent_pressed: 0xF59C7C,
+        danger_hover: 0xF59599,
+        danger_pressed: 0xF8ADB0,
+        focus_border: 0xECE9E3,
+        accent: 0xF0764E,
+        selected_hover: 0x3A3D41,
+        focus_ring: 0xF0764E,
+    },
+);
 
 /// Apply the same palette to complete library components and our Base wrappers.
 /// Initialize after gpui-component, before constructing any product windows.
@@ -45,27 +251,28 @@ pub(crate) fn init_component_theme(cx: &mut gpui::App) {
     theme.radius_lg = px(crate::controls::CARD_RADIUS);
     theme.background = rgb(p.canvas).into();
     theme.foreground = rgb(p.text).into();
-    theme.border = rgb(UI_OUTLINE).into();
-    theme.input = rgb(UI_OUTLINE).into();
-    theme.ring = rgb(FORM.focus_border).into();
+    theme.border = rgb(FORM.outline).into();
+    theme.input = rgb(FORM.outline).into();
+    theme.ring = rgb(INTERACTION.focus_ring).into();
     theme.caret = rgb(p.text).into();
     theme.muted = rgb(p.selected).into();
     theme.muted_foreground = rgb(p.muted).into();
     theme.accent = rgb(INTERACTION.neutral_hover).into();
     theme.accent_foreground = rgb(p.text).into();
-    theme.primary = rgb(BRAND_ACCENT).into();
+    theme.primary = rgb(p.text).into();
     theme.primary_foreground = rgb(p.canvas).into();
-    theme.primary_hover = rgb(INTERACTION.accent_hover).into();
-    theme.primary_active = rgb(INTERACTION.accent_pressed).into();
+    theme.primary_hover = rgb(INTERACTION.primary_hover).into();
+    theme.primary_active = rgb(INTERACTION.primary_pressed).into();
     theme.secondary = rgb(p.selected).into();
     theme.secondary_foreground = rgb(p.text).into();
-    theme.popover = rgb(p.canvas).into();
+    theme.popover = rgb(p.elevated).into();
     theme.popover_foreground = rgb(p.text).into();
     theme.colors.list = rgb(p.canvas).into();
     theme.list_hover = rgb(INTERACTION.neutral_hover).into();
     theme.list_active = rgb(p.selected).into();
-    theme.list_active_border = rgb(FORM.focus_border).into();
-    theme.slider_bar = rgb(BRAND_ACCENT).into();
+    // Menus mark the highlighted row with its fill, not a second outline.
+    theme.list_active_border = rgb(p.selected).into();
+    theme.slider_bar = rgb(p.text).into();
     theme.slider_thumb = rgb(p.canvas).into();
     theme.switch = rgb(FORM.switch_off).into();
     theme.switch_thumb = rgb(p.canvas).into();
@@ -96,17 +303,37 @@ pub struct FormPalette {
     pub success_surface: u32,
     pub warning_surface: u32,
     pub switch_off: u32,
+    /// Resting outline of fields, outlined buttons and popovers.
+    pub outline: u32,
+    /// Text and glyphs of disabled controls; disabled surfaces use `palette.prompt`.
+    pub disabled_text: u32,
 }
-pub const FORM: FormPalette = FormPalette {
-    hover_border: 0x9A9EA3,
-    focus_border: INTERACTION.focus_border,
-    error_border: 0xC9837E,
-    error_focus_border: ZORK_UI.palette.danger,
-    error_surface: 0xFFFAFA,
-    success_surface: 0xECFDF3,
-    warning_surface: 0xFFFAEB,
-    switch_off: 0xC1C4C9,
-};
+pub static FORM: Themed<FormPalette> = Themed::new(
+    FormPalette {
+        hover_border: 0xA9A398,
+        focus_border: 0x24272B,
+        error_border: 0xC9837E,
+        error_focus_border: 0xB42E35,
+        error_surface: 0xFFFAFA,
+        success_surface: 0xE6F2EA,
+        warning_surface: 0xFBF1DE,
+        switch_off: 0xCCC7BD,
+        outline: 0xCCC7BD,
+        disabled_text: 0xB9B5AD,
+    },
+    FormPalette {
+        hover_border: 0x6A6E75,
+        focus_border: 0xECE9E3,
+        error_border: 0x9E4E52,
+        error_focus_border: 0xF27E83,
+        error_surface: 0x2A1E20,
+        success_surface: 0x1B2D23,
+        warning_surface: 0x332919,
+        switch_off: 0x4A4E54,
+        outline: 0x4A4E54,
+        disabled_text: 0x5E6166,
+    },
+);
 
 #[derive(Clone, Copy)]
 pub enum TextRole {
@@ -125,7 +352,7 @@ impl TextRole {
             Self::Body => (13., 20., 400),
             Self::Label => (12., 18., 500),
             Self::Description => (12., 20., 400),
-            Self::Metadata => (11., 17., 400),
+            Self::Metadata => (12., 16., 400),
         }
     }
 }
@@ -353,26 +580,26 @@ pub struct ZorkUiSpec {
     pub task_rows: TaskRowSpec,
 }
 
-pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
+pub const LIGHT_UI: ZorkUiSpec = ZorkUiSpec {
     force_light_window_chrome: true,
     // sRGB values sampled from the approved HTML design tokens in a browser.
     palette: Palette {
-        window: 0xF6F5F1,
+        window: 0xF4F2ED,
         canvas: 0xFFFFFF,
-        sidebar: 0xF6F5F1,
-        sidebar_hover: 0xEFEEEA,
-        selected: 0xEAE7E1,
+        sidebar: 0xF4F2ED,
+        sidebar_hover: 0xEDEAE3,
+        selected: 0xE4DFD4,
         elevated: 0xFFFFFF,
-        prompt: 0xF5F5F5,
-        border: 0xEEEDEA,
-        border_strong: 0xDEDFDF,
+        prompt: 0xF1EEE8,
+        border: 0xE7E3DB,
+        border_strong: 0xD8D3C9,
         text: 0x24272B,
-        muted: 0x646970,
-        subtle: 0x73787D,
-        accent: 0x24282B,
-        success: 0x006A3F,
-        warning: 0x7F5306,
-        danger: 0xA12F35,
+        muted: 0x575C62,
+        subtle: 0x676C72,
+        accent: 0x24272B,
+        success: 0x1F7A4D,
+        warning: 0x935800,
+        danger: 0xB42E35,
     },
     layout: LayoutSpec {
         rail_width: 75.0,
@@ -393,8 +620,7 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         activity: TranscriptTreatment::InlineActivity,
     },
     composer: ComposerSpec {
-        surface_radius: crate::controls::IconButtonSize::Small.extent() / 2.0
-            + crate::components::composer_layout::ACTION_INSET,
+        surface_radius: RADIUS.container,
         minimum_editor_height: 40.0,
         home_max_editor_height: 120.0,
         thread_max_editor_height: 60.0,
@@ -407,14 +633,14 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         toolbar_height: 48.0,
         footer_height: 46.0,
         inline_inset: 8.0,
-        row_height: 36.0,
-        row_radius: 12.0,
+        row_height: 32.0,
+        row_radius: RADIUS.control,
         item_font_size: 13.0,
         item_line_height: 20.0,
         section_label_font_size: 12.0,
         section_label_line_height: 18.0,
         section_label_weight: 500,
-        selected_fill: 0xDFE0E2,
+        selected_fill: 0xE4DFD4,
         has_hard_divider: false,
     },
     home: HomeSpec {
@@ -435,10 +661,10 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         user_line_height: 20.0,
         user_max_width: 500.0,
         user_left_clearance: 42.0,
-        user_padding_x: 16.0,
-        user_padding_y: 10.0,
-        user_radius: 20.0,
-        user_fill: 0xF6F5F1,
+        user_padding_x: 18.0,
+        user_padding_y: 11.0,
+        user_radius: RADIUS.bubble,
+        user_fill: 0xF1EEE8,
     },
     task_rows: TaskRowSpec {
         group_by_workspace: true,
@@ -449,6 +675,40 @@ pub const ZORK_UI: ZorkUiSpec = ZorkUiSpec {
         workspace_uses_icon_asset: true,
     },
 };
+
+/// Dark shares every geometry of light; only colors change.
+pub const DARK_UI: ZorkUiSpec = ZorkUiSpec {
+    force_light_window_chrome: false,
+    palette: Palette {
+        window: 0x18191B,
+        canvas: 0x1F2023,
+        sidebar: 0x18191B,
+        sidebar_hover: 0x27292C,
+        selected: 0x303236,
+        elevated: 0x26282B,
+        prompt: 0x2B2D31,
+        border: 0x2E3034,
+        border_strong: 0x3A3D42,
+        text: 0xECE9E3,
+        muted: 0xB7B3AB,
+        subtle: 0x9C988F,
+        accent: 0xECE9E3,
+        success: 0x5FC08C,
+        warning: 0xE3A84A,
+        danger: 0xF27E83,
+    },
+    sidebar: SidebarSpec {
+        selected_fill: 0x303236,
+        ..LIGHT_UI.sidebar
+    },
+    thread: ThreadSpec {
+        user_fill: 0x2B2D31,
+        ..LIGHT_UI.thread
+    },
+    ..LIGHT_UI
+};
+/// The current theme's specification.
+pub static ZORK_UI: Themed<ZorkUiSpec> = Themed::new(LIGHT_UI, DARK_UI);
 
 pub const LEADER_SIDEBAR_WIDTH: f32 = 264.;
 

@@ -33,6 +33,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
     var port by rememberSaveable(savedPort) { mutableStateOf(savedPort?.toString().orEmpty()) }
     var overlay by rememberSaveable { mutableStateOf<String?>(null) }
     var advanced by rememberSaveable(overlay) { mutableStateOf(false) }
+    var showNote by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val stations = snapshot?.optJSONArray("stations")?.let { rows ->
@@ -68,10 +69,10 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
             ZorkIconButton("返回设置", onClick = actions.back) {
                 Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp))
             }
-            Text("安卓调试", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            if (page?.optBoolean("show_details") == true) ZorkButton("详情", quiet = true, onClick = { overlay = "details" })
+            Text("安卓调试", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (page?.optBoolean("show_details") == true) ZorkButton("技术信息", quiet = true, onClick = { overlay = "details" })
         }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
             if (page == null) {
                 Text("正在读取调试状态…", color = ZorkColors.Muted, fontSize = 14.sp)
             } else {
@@ -81,29 +82,35 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
                     Text(page.text("status").orEmpty(), color = tone, fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(16.dp))
-                Text(page.text("title").orEmpty(), color = ZorkColors.Ink, fontSize = 23.sp, lineHeight = 33.sp, fontWeight = FontWeight.SemiBold)
+                Text(page.text("title").orEmpty(), color = ZorkColors.Ink, fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(12.dp))
-                Text(page.text("message").orEmpty(), color = ZorkColors.Muted, fontSize = 15.sp, lineHeight = 24.sp)
+                Text(page.text("message").orEmpty(), color = ZorkColors.Muted, fontSize = 14.sp, lineHeight = 21.sp)
                 page.optJSONObject("primary_action")?.let { action ->
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(20.dp))
                     AdbButton(action.text("label").orEmpty(), primary = true, enabled = !busy) { perform(action) }
                 }
                 if (page.optBoolean("show_connections")) {
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(20.dp))
                     if (stations.isEmpty()) Text(page.text("empty_message").orEmpty(), color = ZorkColors.Muted, fontSize = 13.sp)
                     else {
-                        Text("Station 连接", color = ZorkColors.Muted, fontSize = 13.sp)
-                        stations.forEach { station ->
-                            AdbStationRow(station, !busy) { error = null; overlay = "station:${station.text("peer")}" }
+                        Text("Station 连接", color = ZorkColors.Subtle, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+                        SettingsListGroup {
+                            stations.forEachIndexed { index, station ->
+                                if (index > 0) SettingsListDivider()
+                                AdbStationRow(station, !busy) { error = null; overlay = "station:${station.text("peer")}" }
+                            }
                         }
                     }
                 }
-                page.text("note")?.let {
-                    Spacer(Modifier.height(24.dp))
-                    Text(it, color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 21.sp)
+                // Supporting notes are available on demand, not in the first glance.
+                page.text("note")?.let { note ->
+                    Spacer(Modifier.height(12.dp))
+                    ZorkButton(if (showNote) "收起说明" else "ⓘ 说明", quiet = true, onClick = { showNote = !showNote })
+                    ZorkExpand(showNote) { Text(note, color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 20.sp) }
                 }
                 page.optJSONObject("secondary_action")?.let { action ->
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(20.dp))
                     AdbButton(action.text("label").orEmpty(), enabled = !busy) { perform(action) }
                 }
             }
@@ -137,7 +144,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
         }
         help.text("note")?.let { Text(it, color = ZorkColors.Muted, fontSize = 13.sp) }
     } }
-    ZorkRetained(Unit.takeIf { details }) { _, open, closed -> SettingsSheet("调试详情", dismiss = { overlay = null }, open = open, onClosed = closed) {
+    ZorkRetained(Unit.takeIf { details }) { _, open, closed -> SettingsSheet("技术信息", dismiss = { overlay = null }, open = open, onClosed = closed) {
         stations.forEach { station ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
@@ -147,10 +154,8 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
                 }
             }
         }
-        HorizontalDivider(color = ZorkColors.Border)
-        Text("连接方式 · Zork Mesh", color = ZorkColors.Muted, fontSize = 14.sp)
-        savedPort?.let { Text("手机端口 · $it", color = ZorkColors.Muted, fontSize = 14.sp) }
-        Text("各台 Station 可以同时连接，手机和 Station 无需处于同一网络。", color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 21.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(listOfNotNull("经 Zork Mesh 连接", savedPort?.let { "手机端口 $it" }).joinToString(" · "), color = ZorkColors.Muted, fontSize = 13.sp)
     } }
 }
 
@@ -161,19 +166,13 @@ private fun AdbButton(label: String, primary: Boolean = false, enabled: Boolean 
 
 @Composable
 private fun AdbStationRow(station: JSONObject, enabled: Boolean, help: () -> Unit) {
-    Column {
-        Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(42.dp).background(ZorkColors.Paper, SettingsStyle.Field), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.ic_node), null, Modifier.size(22.dp), tint = ZorkColors.Ink)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(station.text("state_label").orEmpty(), color = adbTone(station.text("tone")), fontSize = 13.sp)
-            }
-            if (station.optJSONObject("help") != null) ZorkButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { DeviceMark(station.text("name").orEmpty(), 28.dp) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(station.text("name").orEmpty(), color = ZorkColors.Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(station.text("state_label").orEmpty(), color = adbTone(station.text("tone")), fontSize = 13.sp)
         }
-        HorizontalDivider(color = ZorkColors.Border)
+        if (station.optJSONObject("help") != null) ZorkButton(station.text("help_label").orEmpty(), quiet = true, onClick = help, enabled = enabled)
     }
 }
 

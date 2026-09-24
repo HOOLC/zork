@@ -1,4 +1,4 @@
-use gpui::{prelude::*, px, size, AnyWindowHandle, App, Bounds, WindowAppearance};
+use gpui::{prelude::*, px, size, AnyWindowHandle, App, Bounds};
 use gpui_platform::application;
 use zork_gui::assets::EmbeddedAssets;
 use zork_gui::automation::{AutomationRoot, DevAutomation, DEFAULT_DEV_PORT};
@@ -216,6 +216,7 @@ fn main() {
             std::process::exit(1);
         });
         DesktopRoot::install_startup(startup, cx);
+        DesktopRoot::restore_theme(cx);
         #[cfg(target_os = "macos")]
         cx.spawn(async move |cx| {
             if terminate.await.is_ok() {
@@ -230,7 +231,8 @@ fn main() {
         zork_client_core::desktop::trace_startup("gui.components_ready");
         #[cfg(target_os = "macos")]
         app_menu::install(cx, AppKind::Client);
-        cx.set_window_appearance(Some(WindowAppearance::Light));
+        // Follow the system appearance unless ZORK_THEME or the saved theme pins it.
+        cx.set_window_appearance(zork_ui::design::pinned_theme().map(|theme| theme.appearance()));
         let window_options = gpui::WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -238,6 +240,10 @@ fn main() {
                 cx,
             ))),
             titlebar: Some(native_titlebar_options()),
+            // The app owns the titlebar strip: AppKit neither drags nor zooms
+            // from it, so presses on controls there stay clicks. Empty strip
+            // space is a `WindowControlArea::Drag` that GPUI moves and zooms.
+            app_owns_titlebar_drag: true,
             window_min_size: Some(size(px(900.0), px(600.0))),
             ..Default::default()
         };
@@ -251,6 +257,7 @@ fn main() {
                     cx.quit();
                     true
                 });
+                zork_ui::design::follow_appearance(window).detach();
                 let root = cx.new(DesktopRoot::new);
                 cx.new(|_| AutomationRoot::new(root))
             })
@@ -262,6 +269,7 @@ fn main() {
                     cx.quit();
                     true
                 });
+                zork_ui::design::follow_appearance(window).detach();
                 cx.new(DesktopRoot::new)
             })
             .expect("failed to open window")

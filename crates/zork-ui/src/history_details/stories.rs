@@ -11,7 +11,7 @@ impl Story {
         let presentation = if state == "agent" {
             Presentation::Agent {
                 id: "leader".into(),
-                name: "产品领队".into(),
+                name: "Studio".into(),
                 role: Some("整理产品需求与研究资料".into()),
             }
         } else {

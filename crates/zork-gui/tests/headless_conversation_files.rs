@@ -157,15 +157,21 @@ fn main() -> anyhow::Result<()> {
     )?;
     for _ in 0..60 {
         pump(&mut cx)?;
-        if view.read_with(&cx, |v, _| v.benchmark_file_fan_state().2) >= 3 {
+        if view.read_with(&cx, |v, _| v.benchmark_file_thumbnails()) >= 2 {
             break;
         }
     }
     anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_file_fan_state().2) >= 1,
+        view.read_with(&cx, |v, _| v.benchmark_file_thumbnails()) >= 1,
         "real thumbnail did not load"
     );
-    anyhow::ensure!(!view.read_with(&cx, |v, _| v.benchmark_file_fan_state().0));
+    anyhow::ensure!(
+        view.read_with(&cx, |v, _| v.benchmark_file_geometry())["band"]
+            .as_f64()
+            .unwrap_or_default()
+            > 0.,
+        "draft files did not reserve their row inside the composer"
+    );
     anyhow::ensure!(
         driver
             .snapshot(false)
@@ -188,12 +194,12 @@ fn main() -> anyhow::Result<()> {
         .save(output.join("draft-wide.png"))?;
     image::imageops::crop_imm(&cx.capture_screenshot(window.into())?, 500, 735, 1336, 455)
         .to_image()
-        .save(output.join("fan-collapsed-component.png"))?;
+        .save(output.join("draft-files-component.png"))?;
     let closeup =
         image::imageops::crop_imm(&cx.capture_screenshot(window.into())?, 1316, 803, 387, 216)
             .to_image();
     image::imageops::resize(&closeup, 580, 324, image::imageops::FilterType::Triangle)
-        .save(output.join("fan-pocket-closeup.png"))?;
+        .save(output.join("draft-chip-closeup.png"))?;
     if std::env::var_os("ZORK_FILES_VISUAL_ONLY").is_some() {
         let out = output.parent().unwrap().join(if mixed_assets.is_some() {
             "mixed-types"
@@ -221,14 +227,7 @@ fn main() -> anyhow::Result<()> {
             for _ in 0..4 {
                 pump(&mut cx)?;
             }
-            for state in ["closed", "open"] {
-                if state == "open" {
-                    act(
-                        &mut cx,
-                        json!({"type":"click","target":{"element_id":"draft-file-fan-toggle"}}),
-                    )?;
-                    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-                }
+            for state in ["row"] {
                 let snapshot = driver.snapshot(false);
                 let composer = snapshot
                     .elements
@@ -247,74 +246,58 @@ fn main() -> anyhow::Result<()> {
                 image::imageops::crop_imm(
                     &image,
                     ((composer.x + 370.) * 2.) as u32,
-                    ((composer.y - 12. - 90.) * 2.) as u32,
+                    (composer.y * 2.) as u32,
                     520,
                     228,
                 )
                 .to_image()
                 .save(out.join(format!("native-{count}-{state}-detail.png")))?;
                 measurements.push(json!({"count":count,"state":state,"geometry":view.read_with(&cx,|v,_|v.benchmark_file_geometry())}));
-                if state == "open" {
-                    act(
-                        &mut cx,
-                        json!({"type":"click","target":{"element_id":"draft-file-fan-toggle"}}),
-                    )?;
-                }
             }
         }
         std::fs::write(
             out.join("native-geometry.json"),
             serde_json::to_vec_pretty(&measurements)?,
         )?;
-        println!("PASS: one/two/three-file attachment ribbon captures and core-backed geometry");
+        println!("PASS: one/two/three-file attachment row captures and core-backed geometry");
         return Ok(());
     }
     if std::env::var_os("ZORK_FILES_STATIC_ONLY").is_some() {
-        println!("PASS: native static attachment ribbon with three real previews");
+        println!("PASS: native static attachment row with three real previews");
         return Ok(());
     }
-    act(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":format!("draft-preview-{}",file.id)}}),
-    )?;
+    // Draft files sit inside the composer surface and keep their remove
+    // action visible without hover.
+    {
+        let snapshot = driver.snapshot(false);
+        let bounds = |id: &str| {
+            snapshot
+                .elements
+                .iter()
+                .find(|e| e.id == id)
+                .map(|e| e.bounds)
+                .ok_or_else(|| anyhow::anyhow!("missing {id}"))
+        };
+        let composer = bounds("composer-surface")?;
+        let chip = bounds(&format!("draft-preview-{}", file.id))?;
+        let input = bounds("composer-input")?;
+        anyhow::ensure!(
+            chip.y >= composer.y && chip.y + chip.height <= input.y + 0.5,
+            "draft file row is not inside the composer above the editor"
+        );
+        anyhow::ensure!(
+            snapshot.elements.iter().any(|e| e.id == format!("remove-{}", file.id)),
+            "remove action is hidden until hover"
+        );
+    }
     std::fs::write(
-        output.join("hover-geometry.json"),
+        output.join("row-geometry.json"),
         serde_json::to_vec_pretty(&view.read_with(&cx, |v, _| v.benchmark_file_geometry()))?,
     )?;
     cx.capture_screenshot(window.into())?
-        .save(output.join("hover.png"))?;
-    anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_file_fan_state().0),
-        "hover did not unfold fan"
-    );
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    anyhow::ensure!(
-        !view.read_with(&cx, |v, _| v.benchmark_file_fan_state().0),
-        "hover fan did not close on exit"
-    );
-    act(
-        &mut cx,
-        json!({"type":"click","target":{"element_id":"draft-file-fan-toggle"}}),
-    )?;
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    anyhow::ensure!(
-        view.read_with(&cx, |v, _| v.benchmark_file_fan_state().1),
-        "click did not pin fan"
-    );
-    pump(&mut cx)?;
-    pump(&mut cx)?;
-    cx.capture_screenshot(window.into())?
-        .save(output.join("fan-expanded-wide.png"))?;
-    image::imageops::crop_imm(&cx.capture_screenshot(window.into())?, 500, 640, 1336, 550)
-        .to_image()
-        .save(output.join("fan-expanded-component.png"))?;
+        .save(output.join("draft-row-wide.png"))?;
     core.edit_draft("render-fixture", String::new())?;
     pump(&mut cx)?;
-    act(&mut cx, json!({"type":"key","keystroke":"escape"}))?;
-    anyhow::ensure!(
-        !view.read_with(&cx, |v, _| v.benchmark_file_fan_state().0),
-        "Escape did not close fan"
-    );
     act(
         &mut cx,
         json!({"type":"move","target":{"element_id":format!("draft-preview-{}",file.id)}}),
@@ -481,16 +464,7 @@ fn main() -> anyhow::Result<()> {
             element.id
         );
     }
-    // The preview ribbon follows the current core attachment list directly.
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    let image_id = core.draft("render-fixture").files[0].id.clone();
-    act(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":format!("draft-preview-{image_id}")}}),
-    )?;
-    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 1.);
-    act(&mut cx, json!({"type":"move","target":{"x":600,"y":80}}))?;
-    anyhow::ensure!(view.read_with(&cx, |v, _| v.benchmark_file_fan_progress()) == 0.);
+    // The draft row follows the current core attachment list directly.
     for file in &core.draft("render-fixture").files {
         core.remove_file("render-fixture", &file.id)?;
     }
@@ -507,15 +481,7 @@ fn main() -> anyhow::Result<()> {
     let second = core.attach_file("render-fixture", "second.png", chart_bytes.get_ref())?;
     pump(&mut cx)?;
     let two = geometry(&cx);
-    anyhow::ensure!(
-        two["files"].as_array().unwrap().len() == 2
-            && two["width"].as_f64().unwrap() >= single["width"].as_f64().unwrap()
-    );
-    act(
-        &mut cx,
-        json!({"type":"move","target":{"element_id":format!("draft-preview-{}",first.id)}}),
-    )?;
-    anyhow::ensure!(geometry(&cx)["expanded"] == 1.);
+    anyhow::ensure!(two["files"].as_array().unwrap().len() == 2);
     act(
         &mut cx,
         json!({"type":"click","target":{"element_id":format!("remove-{}",first.id)}}),
@@ -531,7 +497,7 @@ fn main() -> anyhow::Result<()> {
         pump(&mut cx)?;
     }
     let after = view.read_with(&cx, |v, cx| v.benchmark_region_counts(cx));
-    anyhow::ensure!(stable == after, "static attachment ribbon kept redrawing");
+    anyhow::ensure!(stable == after, "static attachment row kept redrawing");
     let mut timings = cx.update_window(window.into(), |_, w, _| w.frame_duration_snapshot())?;
     timings
         .draw_duration_histogram
@@ -579,12 +545,8 @@ fn main() -> anyhow::Result<()> {
     for _ in 0..3 {
         pump(&mut cx)?;
     }
-    act(
-        &mut cx,
-        json!({"type":"click","target":{"element_id":"draft-file-fan-toggle"}}),
-    )?;
     let maximum = geometry(&cx);
-    anyhow::ensure!(maximum["files"].as_array().unwrap().len() == 16 && maximum["expanded"] == 1.);
+    anyhow::ensure!(maximum["files"].as_array().unwrap().len() == 16);
     let controls = driver
         .snapshot(true)
         .elements
@@ -605,34 +567,37 @@ fn main() -> anyhow::Result<()> {
             control.id
         );
     }
-    let last = core
-        .draft("render-fixture")
-        .files
-        .last()
-        .unwrap()
-        .id
-        .clone();
-    let fan_center = driver
+    let draft = core.draft("render-fixture").files.clone();
+    let last = draft.last().unwrap().id.clone();
+    let row_center = driver
         .snapshot(false)
         .elements
         .iter()
-        .find(|element| element.id == "draft-file-fan-toggle")
+        .find(|element| element.id == format!("draft-preview-{}", draft[0].id))
         .unwrap()
         .center;
     act(
         &mut cx,
-        json!({"type":"scroll","target":{"x":fan_center.x,"y":fan_center.y},"delta_x":-2000.,"delta_y":0.}),
+        json!({"type":"scroll","target":{"x":row_center.x,"y":row_center.y},"delta_x":-10000.,"delta_y":0.}),
     )?;
+    let after = driver.snapshot(false).elements;
+    let found = after.iter().find(|element| element.id == format!("remove-{last}"));
     anyhow::ensure!(
-        driver.snapshot(false).elements.iter().any(|element| {
-            element.id == format!("remove-{last}")
-                && element.visible
-                && element.bounds == element.visible_bounds
-        }),
-        "last attachment remove button is unreachable by horizontal scrolling"
+        found.is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
+        "last attachment remove button is unreachable by horizontal scrolling: {:?} row {:?} seen {:?}",
+        found.map(|e| (e.visible, e.bounds, e.visible_bounds)),
+        after
+            .iter()
+            .find(|e| e.id == format!("draft-preview-{}", draft[0].id))
+            .map(|e| (e.bounds, e.visible_bounds)),
+        after
+            .iter()
+            .filter(|e| e.id.starts_with("remove-") || e.id.starts_with("draft-preview-") || e.id.starts_with("composer"))
+            .map(|e| (e.id.clone(), e.visible, e.bounds))
+            .collect::<Vec<_>>()
     );
     cx.capture_screenshot(window.into())?
-        .save(output.join("count-16-ribbon.png"))?;
-    println!("PASS: attachment ribbon, core membership, preview controls, clipboard, and compact layouts");
+        .save(output.join("count-16-row.png"))?;
+    println!("PASS: attachment row, core membership, preview controls, clipboard, and compact layouts");
     Ok(())
 }

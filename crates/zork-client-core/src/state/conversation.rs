@@ -843,6 +843,24 @@ pub struct Conversation {
     message_bytes: std::sync::atomic::AtomicUsize,
     cache_generation: u64,
 }
+impl Conversation {
+    /// Session members take their device's name; the station may only know an
+    /// id or the generic "Session" for them.
+    fn named(&self, mut participants: Vec<ParticipantStatus>) -> Vec<ParticipantStatus> {
+        let device = self
+            .device
+            .upgrade()
+            .and_then(|device| device.display_name());
+        for participant in &mut participants {
+            participant.name = crate::device_label::member_label(
+                &participant.id,
+                &participant.name,
+                device.as_deref(),
+            );
+        }
+        participants
+    }
+}
 impl Drop for Conversation {
     fn drop(&mut self) {
         for task in [
@@ -1471,7 +1489,7 @@ impl Conversation {
                             .map(|execution| execution.overview())
                             .unwrap_or_else(super::SessionOverview::unavailable),
                     );
-                    state.participants = Arc::new(snapshot.participants);
+                    state.participants = Arc::new(self.named(snapshot.participants));
                     state.activity = None;
                     if let Some(status) = snapshot.status {
                         let state = &mut state.data;
@@ -1567,7 +1585,7 @@ impl Conversation {
                     .iter()
                     .find(|p| p.session_id == self.id)
                     .and_then(|p| p.activity.clone());
-                s.participants = Arc::new(participants);
+                s.participants = Arc::new(self.named(participants));
             }),
             DecodedSseEvent::HistoryChanged => {
                 self.commit(|s| s.history_revision = s.history_revision.wrapping_add(1));

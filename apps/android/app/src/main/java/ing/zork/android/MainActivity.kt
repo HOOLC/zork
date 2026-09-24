@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,12 +48,10 @@ class MainActivity : ComponentActivity() {
         model.localScripts.attach(this)
         intent.getStringExtra("notification_tag")?.let { model.openNotification(it); intent.removeExtra("notification_tag") }
         configureZorkSystemBars()
-        setContent { ZorkTheme {
+        setContent { ZorkTheme(model.theme) {
             val lightPage = model.conversation != null || model.settings != null || model.newChat != null
-            CompositionLocalProvider(LocalMessagePreviewHeight provides model.messagePreviewHeight) {
-                ZorkPageBackground(lightPage) { ClientScreen(model) }
-                LocalScriptPanel(model.localScripts)
-            }
+            ZorkPageBackground(lightPage) { ClientScreen(model) }
+            LocalScriptPanel(model.localScripts)
         } }
     }
     override fun onDestroy() { model.localScripts.detach(this); super.onDestroy() }
@@ -83,13 +83,21 @@ internal fun ClientScreen(model: ClientViewModel) {
     var addDevice by rememberSaveable { mutableStateOf(false) }
 
     var editingComment by remember { mutableStateOf<DraftCommentUi?>(null) }
-    var fullMessage by remember(model.activePeer?.id, model.conversation?.id) { mutableStateOf<ChatMessage?>(null) }
     var attachmentPeer by rememberSaveable { mutableStateOf<String?>(null) }
     var attachmentSession by rememberSaveable { mutableStateOf<String?>(null) }
+    var attachSheet by remember { mutableStateOf(false) }
+    var cameraShot by rememberSaveable { mutableStateOf<Uri?>(null) }
     var exporting by remember { mutableStateOf<TextAttachmentUi?>(null) }
-    val pickFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+    // Files are attached to the conversation they were picked for, even if the user moves on.
+    val attachPicked = { uris: List<Uri> ->
         val peer = attachmentPeer; val session = attachmentSession
-        if (uri != null && peer != null && session != null) model.addTextAttachment(uri, peer, session)
+        if (uris.isNotEmpty() && peer != null && session != null) model.attachFiles(uris, peer, session)
+    }
+    val pickFiles = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { attachPicked(it) }
+    val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(16)) { attachPicked(it) }
+    val takePicture = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { taken ->
+        val shot = cameraShot; cameraShot = null
+        if (taken && shot != null) attachPicked(listOf(shot))
     }
     val saveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         val file = exporting; if (uri != null && file != null) model.exportTextAttachment(uri, file)
@@ -100,52 +108,90 @@ internal fun ClientScreen(model: ClientViewModel) {
         chatSaveTicket?.let { model.saveChatFile(uri, it) }
         chatSaveTicket = null
     }
-    LaunchedEffect(model.chatFile?.saveTicket) {
-        model.chatFile?.let { file ->
-            file.saveTicket?.let { ticket ->
-                if (chatSaveTicket != ticket) { chatSaveTicket = ticket; chatSaveFile.launch(file.name) }
+    LaunchedEffect(model.chatSaveTicket) {
+        val ticket = model.chatSaveTicket ?: return@LaunchedEffect
+        val file = model.chatFile ?: return@LaunchedEffect
+        if (chatSaveTicket != ticket) { chatSaveTicket = ticket; chatSaveFile.launch(file.name) }
+    }
+    LaunchedEffect(model.externalFile) {
+        val (uri, mime) = model.externalFile ?: return@LaunchedEffect
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { context.startActivity(Intent.createChooser(view, "用其他应用打开")) }
+            .onFailure { model.showNotice("没有可以打开这个文件的应用") }
+        model.externalFileOpened()
+    }
+    model.chatFile?.takeIf { model.chatFileVisible }?.let { file ->
+        val index = model.previewSequence.indexOfFirst { it.second.id == file.fileId }.coerceAtLeast(0)
+        FilePreviewPage(file.copy(saved = file.saved && !model.externalCopy), model.previewSequence.getOrNull(index)?.second,
+            model.chatFileImage, index, model.previewSequence.size.coerceAtLeast(1),
+            step = model::stepChatFile, close = model::closeChatFile, save = model::saveOpenChatFile,
+            openExternal = model::openChatFileExternally)
+    }
+    model.draftPreview?.let { file ->
+        CompositionLocalProvider(LocalFileImages provides model::fileImage) { DraftFilePreview(file) { model.openDraftFile(null) } }
+    }
+    if (attachSheet) AttachSheet({ attachSheet = false },
+        photos = { pickMedia.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+        camera = { runCatching { model.cameraTarget() }.onSuccess { cameraShot = it; takePicture.launch(it) }
+            .onFailure { model.showNotice("无法打开相机") } },
+        files = { pickFiles.launch(arrayOf("*/*")) })
+    // Predictive back: pages that pop a route follow the finger, then continue from
+    // where it let go. Leaving a conversation is handled inside the workbench.
+    var backProgress by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val backScope = rememberCoroutineScope()
+    androidx.activity.compose.PredictiveBackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) { events ->
+        val follows = (model.sessionHistory != null && model.sessionHistory?.selectedId == null) || model.settings != null ||
+            (model.newChat != null && model.settings == null)
+        try {
+            events.collect { if (follows) backProgress = it.progress }
+            if (model.sessionHistory != null) {
+                if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
+            } else if (model.settings != null) model.backSettings() else model.back()
+            // The new route's slide reads the progress on its first frame; then clear it.
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            backProgress = 0f
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Cancelled: ease the page back into place from where the finger left it.
+            val from = backProgress
+            backScope.launch {
+                androidx.compose.animation.core.animate(from, 0f, animationSpec = ZorkMotion.move(ZorkMotion.FAST)) { value, _ -> backProgress = value }
             }
+            throw e
         }
     }
-    model.chatFile?.let { file ->
-        ChatFilePreview(file, model.chatFileImage,
-            close = { model.chatFileAction("close", "key" to file.key) },
-            save = { model.chatFileAction("prepare_save", "key" to file.key) })
-    }
-    BackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
-        if (model.sessionHistory != null) {
-            if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
-        } else if (fullMessage != null) fullMessage = null else if (model.settings != null) model.backSettings() else model.back()
+    // "连接设备" acts at once: signed out, it starts the Google sign-in the sheet
+    // would otherwise offer as its only button; the sheet then shows progress.
+    val connectDevice = {
+        val account = model.account
+        if (account?.text("subject").isNullOrBlank() && (account?.text("phase", "idle") ?: "idle") == "idle") model.accountAction("login")
+        addDevice = true
     }
     val retained = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val currentSettings = model.settings
     val workbenchState = WorkbenchState(model.messageRevision, model.peers, model.activePeer, model.conversation, model.leaders, model.sessions,
             model.tasksByLeader, model.messages, model.pending, model.draft, model.olderCursor != null,
             model.busy || model.loadingOlder, model.ready, model.connected, model.notice, model.activity, model.running,
-            model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer)
+            model.comments, model.participants, model.deviceTrees, model.attachments,
+            draftFiles = model.draftFiles, attaching = model.attaching.filter { it.session == model.conversation?.id },
+            files = FileAvailability(model.activePeer?.name.orEmpty(), model.connected, model.activePeer?.status?.state == "revoked",
+                model.chatFile?.takeIf { it.loading || it.saving }?.fileId),
+            historyLoading = model.historyLoading, conversationEntry = model.conversationEntry, messageActivity = model.messageActivity, newer = model.hasNewer, home = model.home)
     val history = model.sessionHistory
     val draftChat = model.newChat
-    val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: fullMessage?.let { "message:${it.id}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
-    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage, history, draftChat), routeKey, if (history != null || fullMessage != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
+    val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
+    PageSlide(ClientPage(currentSettings, workbenchState, history, draftChat), routeKey, if (history != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
         if (currentSettings != null || model.conversation != null || draftChat != null) ZorkColors.Canvas else ZorkColors.Paper,
-        Modifier.safeDrawingPadding().imePadding()) { shown, active ->
+        Modifier.safeDrawingPadding().imePadding(), backProgress = { backProgress }) { shown, active ->
     if (shown.history != null) {
         SessionHistoryPage(shown.history, if (!active) HistoryActions() else HistoryActions(
             model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory, model::retryHistory, model::historyDetail, model::historyAnchor, model::historyNavigate))
-    } else if (shown.message != null) {
-        FullMessagePage(shown.message, { fullMessage = null }) { quote ->
-            model.conversation?.let { conversation ->
-                val row = shown.message
-                editingComment = DraftCommentUi(NativeBridge.newId(), conversation.id, row.id,
-                    row.author, row.authorAgentId.ifBlank { null }, quote, "")
-            }
-        }
     } else if (shown.settings != null) {
         retained.SaveableStateProvider(settingsRouteKey(shown.settings)) {
             MobileSettings(shown.settings, shown.workbench.peers, if (!active) SettingsActions() else SettingsActions(model::backSettings, { model.showDevice(it) },
-                model::settingsPage, model::settingsProfile, model::assistSettings, model::checkUpdate,
-                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction,
-                messagePreviewHeight = model.messagePreviewHeight, saveMessagePreviewHeight = model::saveMessagePreviewHeight,
+                model::settingsPage, model::settingsProfile, model::assistSettings, model::openConnection, model::addConnection, model::checkUpdate,
+                connectDevice, refresh = model::refreshSettings, perform = model::settingsAction, catalog = model::catalog,
+                theme = model.theme, saveTheme = model::saveTheme,
                 resource = model::inspectResource,
                 notifications = model.notificationSettings, notificationError = model.notificationError,
                 notificationTarget = model.activePeer?.id?.let { peer -> model.conversation?.id?.let { peer to it } },
@@ -153,15 +199,17 @@ internal fun ClientScreen(model: ClientViewModel) {
                 notificationRefresh = model::refreshNotificationDelivery,
                 adb = model.adbSettings, adbError = model.adbError, adbAction = model::adbAction, adbRefresh = model::refreshAdb,
                 account = model.account, accountError = model.accountError, accountAction = model::accountAction,
-                dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData))
+                dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData,
+                home = shown.workbench.home, openChat = model::openArchivedChat, archiveChat = model::archiveChat))
         }
     } else if (shown.newChat != null) {
         NewChatPage(shown.newChat, if (active) model::back else ({}),
-            if (active) model::newChatAction else ({ _, _ -> }), if (active) model::newChatModels else ({}))
-    } else retained.SaveableStateProvider("workbench") { Workbench(
+            if (active) model::newChatAction else ({ _, _ -> }), if (active) model::newChatModels else ({}),
+            model.peers, if (active) model::openNewChat else ({}))
+    } else retained.SaveableStateProvider("workbench") { CompositionLocalProvider(LocalFileImages provides model::fileImage) { Workbench(
         shown.workbench,
         if (!active) WorkbenchActions() else WorkbenchActions(model::selectPeer, model::openLeader, model::openSession, model::back,
-            { addDevice = true }, model::showSettings, model::retry, model::editDraft,
+            connectDevice, model::showSettings, model::retry, model::editDraft,
             model::send, model::stop, model::older, model::withdraw,
             resend = model::resend, deleteFailed = model::deleteFailed,
             comment = { row, quote -> model.conversation?.let { conversation ->
@@ -169,10 +217,12 @@ internal fun ClientScreen(model: ClientViewModel) {
                     row.author, row.authorAgentId.ifBlank { null }, quote, "")
             } }, editComment = { editingComment = it }, removeComment = model::removeComment,
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
-            attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
-            removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
-    ) }
+            attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; attachSheet = true },
+            saveChatFile = model::saveMessageFile, openDraftFile = model::openDraftFile, removeFile = model::removeDraftFile,
+            dismissPendingFile = model::dismissPendingFile,
+            removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown,
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat, device = { model.showDevice(it) }),
+    ) } }
     }
     ZorkRetained(editingComment) { comment, open, closed ->
         CommentDialog(comment, open, closed, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
@@ -184,7 +234,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     }
 }
 
-private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState, val message: ChatMessage? = null,
+private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState,
     val history: SessionHistoryState? = null, val newChat: NewChatUi? = null)
 
 @Composable
@@ -200,11 +250,14 @@ internal fun PlainMessage(content: String, modifier: Modifier = Modifier, previe
         }.apply {
             gravity = android.view.Gravity.CENTER_VERTICAL
             typeface = ResourcesCompat.getFont(ctx, R.font.inter)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels); includeFontPadding = false; setTextColor(ZorkColors.Ink.toArgb()); setLinkTextColor(ZorkColors.Ink.toArgb())
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels); includeFontPadding = false
             setTextIsSelectable(true); setLineHeight((textPixels * 1.7f).toInt())
         }
     }, update = { view ->
         view.preview = preview
+        // Colors are read here, not in factory, so a theme switch recolors the view.
+        view.setTextColor(ZorkColors.Ink.toArgb()); view.setLinkTextColor(ZorkColors.Ink.toArgb())
+        view.highlightColor = ZorkColors.Selected.toArgb()
         if (view.textSize != textPixels) {
             view.invalidatePreview()
             view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels)
@@ -233,7 +286,7 @@ private fun CommentDialog(comment: DraftCommentUi, open: Boolean, closed: () -> 
     var text by remember(comment.id) { mutableStateOf(comment.text) }
     SettingsSheet(if (comment.text.isBlank()) "评论所选片段" else "编辑评论", dismiss = dismiss, open = open, onClosed = closed) {
         Text(comment.quote, fontSize = 13.sp, lineHeight = 21.sp, modifier = Modifier.fillMaxWidth()
-            .background(ZorkColors.Paper, RoundedCornerShape(8.dp)).padding(12.dp))
+            .background(ZorkColors.Paper, ZorkShapes.Block).padding(horizontal = 16.dp, vertical = 12.dp))
         Text("你的评论", fontSize = 12.sp, color = ZorkColors.Muted)
         FormField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3,
             placeholder = { Text("对这段内容有什么想法？", fontSize = 16.sp) })
@@ -254,9 +307,12 @@ internal fun FormField(value: String, onValueChange: (String) -> Unit, modifier:
             Spacer(Modifier.height(7.dp))
         }
         androidx.compose.foundation.text.BasicTextField(value, onValueChange,
+            // Stable surface; the outline deepens on focus. Single-line fields are capsules.
             modifier = Modifier.fillMaxWidth().heightIn(min = if (minLines > 1) 96.dp else 44.dp)
-                .background(if (focused) androidx.compose.ui.graphics.Color(0xFFEEECE6) else androidx.compose.ui.graphics.Color(0xFFF6F5F1), RoundedCornerShape(9.dp))
-                .onFocusChanged { focused = it.isFocused }.padding(horizontal = 12.dp, vertical = 11.dp),
+                .background(ZorkColors.Canvas, if (singleLine || minLines == 1 && maxLines == 1) ZorkShapes.Control else ZorkShapes.Block)
+                .border(if (focused) 1.5.dp else 1.dp, if (focused) ZorkColors.Ink else ZorkColors.FieldBorder,
+                    if (singleLine || minLines == 1 && maxLines == 1) ZorkShapes.Control else ZorkShapes.Block)
+                .onFocusChanged { focused = it.isFocused }.padding(horizontal = 16.dp, vertical = 11.dp),
             singleLine = singleLine, minLines = minLines, maxLines = maxLines,
             textStyle = androidx.compose.ui.text.TextStyle(fontFamily = ZorkFonts.Body, fontSize = 16.sp, lineHeight = 24.sp, color = ZorkColors.Ink),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(ZorkColors.Ink),

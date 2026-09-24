@@ -22,10 +22,7 @@ fn main() -> anyhow::Result<()> {
         cx.set_reduce_motion(true);
         HeadlessAutomation::install(cx)
     });
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "interaction-form")
-        .unwrap();
+    let story = stories::fixture("interaction-form").unwrap();
     let window = cx.open_window(gpui::size(px(800.), px(760.)), |_, cx| {
         let host = cx.new(|cx| StoryHost::new(story, cx));
         cx.new(|_| AutomationRoot::new(host))
@@ -226,10 +223,7 @@ fn main() -> anyhow::Result<()> {
     cx.capture_screenshot(window.into())?
         .save(output.join("saved.png"))?;
     cx.update_window(window.into(), |_, w, _| w.remove_window())?;
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "dropdown-long-list")
-        .unwrap();
+    let story = stories::fixture("dropdown-long-list").unwrap();
     let window = cx.open_window(gpui::size(px(800.), px(760.)), |_, cx| {
         let host = cx.new(|cx| StoryHost::new(story, cx));
         cx.new(|_| AutomationRoot::new(host))

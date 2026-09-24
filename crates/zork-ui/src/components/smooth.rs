@@ -119,10 +119,8 @@ impl Element for RoundedViewport {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let width = bounds.size.width.as_f32();
-        let height = bounds.size.height.as_f32();
         let radius = if self.radius.is_finite() {
-            self.radius.max(0.).min(width / 2.).min(height / 2.)
+            self.radius.max(0.)
         } else {
             0.
         };
@@ -151,6 +149,30 @@ impl Element for RoundedViewport {
     }
 }
 
+/// Mirrors `smooth_corner` in the GPUI Metal shader: the curve starts
+/// `SMOOTH_EXTENT` radii from the corner and follows a superellipse of
+/// exponent 3, approximated by a cubic whose handles are 0.783 of the extent
+/// (0.5523 is the circle). Corners at the capsule limit relax to a circle.
+const SMOOTH_EXTENT: f32 = 1.45;
+const CIRCLE_HANDLE: f32 = 0.552_284_8;
+const SMOOTH_HANDLE: f32 = 0.783_2;
+
+pub fn smooth_corner(radius: f32, half_min: f32) -> (f32, f32) {
+    if radius <= 0. {
+        return (0., CIRCLE_HANDLE);
+    }
+    let limit = half_min.max(0.);
+    let wanted = radius * SMOOTH_EXTENT;
+    if wanted <= limit {
+        return (wanted, SMOOTH_HANDLE);
+    }
+    let t = ((limit - radius) / (wanted - radius).max(1e-3)).clamp(0., 1.);
+    (
+        (radius + (wanted - radius) * t).min(limit),
+        CIRCLE_HANDLE + (SMOOTH_HANDLE - CIRCLE_HANDLE) * t,
+    )
+}
+
 fn rounded_path(bounds: Bounds<Pixels>, radius: f32) -> Option<Path<Pixels>> {
     let x = bounds.origin.x.as_f32();
     let y = bounds.origin.y.as_f32();
@@ -159,8 +181,8 @@ fn rounded_path(bounds: Bounds<Pixels>, radius: f32) -> Option<Path<Pixels>> {
     if !w.is_finite() || !h.is_finite() || w <= 0. || h <= 0. {
         return None;
     }
-    let r = radius;
-    let k = 0.552_284_8 * r;
+    let (r, handle) = smooth_corner(radius, w.min(h) / 2.);
+    let k = handle * r;
     let mut path = PathBuilder::fill();
     if r == 0. {
         path.move_to(point(px(x), px(y)));

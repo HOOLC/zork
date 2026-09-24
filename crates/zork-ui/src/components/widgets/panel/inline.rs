@@ -14,5 +14,5 @@ pub fn inline(id: impl Into<SharedString>) -> InlinePanel {
         .rounded(px(crate::controls::CARD_RADIUS))
         .bg(rgb(crate::design::ZORK_UI.palette.canvas))
         .border(px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
+        .border_color(rgb(crate::design::FORM.outline))
 }

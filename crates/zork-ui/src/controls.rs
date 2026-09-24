@@ -1,10 +1,15 @@
 //! Shared compact native controls and approved Zork identity assets.
-pub use super::modal::{detail_modal, detail_modal_with_title_action, modal, ModalState};
+pub use super::modal::{
+    detail_modal, detail_modal_sized, detail_modal_with_title_action, modal, modal_sized, ModalState,
+};
+/// Anchored popover for menus that app crates build from controls.
+pub use gpui_component::popover::Popover;
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
     design::{TextRole, FORM, INTERACTION, ZORK_UI},
 };
+use crate::motion::MotionExt;
 use gpui::{div, prelude::*, px, rgb, svg, Div, Entity, FontWeight, Stateful};
 
 pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
@@ -15,29 +20,66 @@ pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
         .text_color(rgb(ZORK_UI.palette.muted))
 }
 /// Shared desktop geometry, also exercised by the offscreen visual checks.
-pub const SETTINGS_COLUMN_WIDTH: f32 = 790.;
-pub const SETTINGS_GUTTER: f32 = 34.;
-pub const DIALOG_WIDTH: f32 = 540.;
+/// Settings and detail content: a centred reading column, min(760, 100% − 64).
+pub const SETTINGS_COLUMN_WIDTH: f32 = 760.;
+pub const SETTINGS_GUTTER: f32 = 32.;
+/// Dialog widths by content: a short confirmation, a form, rich details.
+pub const DIALOG_CONFIRM_WIDTH: f32 = 400.;
+pub const DIALOG_FORM_WIDTH: f32 = 480.;
+/// Multi-step forms whose choices are laid out as cards.
+pub const DIALOG_STEP_WIDTH: f32 = 520.;
+pub const DIALOG_RICH_WIDTH: f32 = 560.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
-pub const BUTTON_FOCUS_BACKGROUND: u32 = INTERACTION.primary_hover;
+#[allow(non_snake_case)]
+pub fn BUTTON_FOCUS_BACKGROUND() -> u32 {
+    INTERACTION.primary_hover
+}
 pub const DROPDOWN_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_RADIUS: f32 = 999.;
-pub const CARD_RADIUS: f32 = 12.;
-pub const COMPACT_CARD_RADIUS: f32 = 12.;
-pub const FIELD_RADIUS: f32 = 10.;
-pub const ICON_BUTTON_RADIUS: f32 = 10.;
+pub const CARD_RADIUS: f32 = crate::design::RADIUS.container;
+pub const COMPACT_CARD_RADIUS: f32 = crate::design::RADIUS.block;
+/// A capsule at the control height; taller multi-line fields keep a block corner.
+pub const FIELD_RADIUS: f32 = crate::design::RADIUS.control;
+pub const ICON_BUTTON_RADIUS: f32 = crate::design::RADIUS.control;
 pub const BUTTON_PADDING_X: f32 = 16.;
-pub const MODAL_RADIUS: f32 = CARD_RADIUS;
-pub const MENU_RADIUS: f32 = COMPACT_CARD_RADIUS;
-/// Ordinary Codex-style popup geometry, independent of field and card radii.
-pub const PLAIN_POPOVER_RADIUS: f32 = 16.;
+pub const MODAL_RADIUS: f32 = crate::design::RADIUS.surface;
+/// Confirmations and forms read as containers; rich dialogs keep the surface corner.
+pub fn dialog_radius(width: f32) -> f32 {
+    if width >= DIALOG_RICH_WIDTH {
+        MODAL_RADIUS
+    } else {
+        crate::design::RADIUS.container
+    }
+}
+pub const MENU_RADIUS: f32 = PLAIN_POPOVER_RADIUS;
+/// Menus and popovers: MENU_PADDING inside keeps capsule items concentric.
+pub const PLAIN_POPOVER_RADIUS: f32 = crate::design::RADIUS.container;
 pub const MENU_OUTSET: f32 = 4.;
 pub const MENU_GAP: f32 = 6.;
 pub const MENU_PADDING: f32 = 8.;
-pub const FIELD_HOVER_BORDER: u32 = FORM.hover_border;
-pub const FIELD_FOCUS_BORDER: u32 = FORM.focus_border;
+#[allow(non_snake_case)]
+pub fn FIELD_HOVER_BORDER() -> u32 {
+    FORM.hover_border
+}
+#[allow(non_snake_case)]
+pub fn FIELD_FOCUS_BORDER() -> u32 {
+    FORM.focus_border
+}
+/// Optical padding: an icon carries its own inset, so its side of a button is narrower.
+pub const ICON_SIDE_PADDING_X: f32 = BUTTON_PADDING_X - 4.;
+/// The shared keyboard-focus ring, drawn outside the control outline.
+pub fn focus_ring() -> Vec<gpui::BoxShadow> {
+    let [r, g, b] = [16u32, 8, 0].map(|shift| ((crate::design::INTERACTION.focus_ring >> shift) & 0xFF) as f32 / 255.);
+    vec![gpui::BoxShadow {
+        color: gpui::Rgba { r, g, b, a: crate::design::FOCUS_RING_ALPHA }.into(),
+        offset: gpui::point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(2.),
+        inset: false,
+    }]
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
@@ -46,14 +88,16 @@ pub enum Selection {
     Actions,
 }
 
+/// Height of the app-owned titlebar strip, where the traffic lights sit.
+pub const TITLEBAR_HEIGHT: f32 = 48.;
 pub fn settings_content(content: impl IntoElement) -> impl IntoElement {
     div()
         .id("desktop-settings-column")
         .w_full()
-        .max_w(px(SETTINGS_COLUMN_WIDTH))
+        .max_w(px(SETTINGS_COLUMN_WIDTH + 2. * SETTINGS_GUTTER))
         .mx_auto()
         .px(px(SETTINGS_GUTTER))
-        .pt(px(30.))
+        .pt(px(32.))
         .pb_8()
         .child(content)
         .automation(AutomationRole::Status, "设置内容列")
@@ -112,13 +156,15 @@ pub fn page_action(id: impl Into<gpui::ElementId>, text: impl Into<gpui::SharedS
         ZORK_UI.palette.canvas,
     )
     .h(px(BUTTON_HEIGHT))
-    .text_size(px(11.))
+    .text_size(px(12.))
 }
 
 pub fn heading(
     title: impl Into<gpui::SharedString>,
     description: impl Into<gpui::SharedString>,
 ) -> Div {
+    // An empty description adds no line.
+    let description: gpui::SharedString = description.into();
     div()
         .flex()
         .flex_col()
@@ -130,13 +176,13 @@ pub fn heading(
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(title.into()),
         )
-        .child(
+        .when(!description.is_empty(), |v| v.child(
             div()
                 .text_size(px(13.))
                 .line_height(px(20.))
                 .text_color(rgb(ZORK_UI.palette.muted))
-                .child(description.into()),
-        )
+                .child(description),
+        ))
 }
 pub fn label(text: impl Into<gpui::SharedString>) -> Div {
     text_role(text, TextRole::Label)
@@ -157,8 +203,6 @@ pub fn section() -> Div {
         .flex_col()
         .gap_4()
         .py_5()
-        .border_t(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
 }
 use crate::components::widgets::controls::adaptive_action;
 /// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
@@ -222,8 +266,8 @@ impl IconButtonSize {
     pub const fn radius(self) -> f32 {
         match self {
             Self::Standard => ICON_BUTTON_RADIUS,
-            Self::Compact => 10.,
-            Self::Small => 8.,
+            Self::Compact => ICON_BUTTON_RADIUS,
+            Self::Small => ICON_BUTTON_RADIUS,
         }
     }
 }
@@ -274,7 +318,7 @@ pub fn quiet_button(
     .min_h_0()
     .py_0()
     .w_auto()
-    .px_2()
+    .px(px(12.))
     .gap_1()
 }
 
@@ -328,7 +372,7 @@ pub fn field_with_error(
                     .flex()
                     .items_start()
                     .gap(px(5.))
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .line_height(px(17.))
                     .text_color(rgb(ZORK_UI.palette.danger))
                     .child(
@@ -520,7 +564,7 @@ pub fn provider_icon(provider: &str, size: f32) -> gpui::Div {
         .flex_shrink_0()
         // Embedded provider marks are monochrome currentColor SVGs. Drawing them
         // directly keeps the first presentation independent of image-loader wakeups.
-        .child(svg().path(path).size(px(size)).text_color(rgb(0x000000)))
+        .child(svg().path(path).size(px(size)).text_color(rgb(ZORK_UI.palette.text)))
 }
 
 /// Controlled switch with the same compact geometry in native and Web renderers.
@@ -560,16 +604,26 @@ pub enum NoticeKind {
 pub fn status_notice(message: String, kind: NoticeKind) -> Div {
     use crate::components::widgets::primitives::{feedback, surface};
     let (_, fill) = feedback::colors(kind);
+    // A new notice drops in from its region's top edge; the same message
+    // re-rendering keeps its animation state and does not replay.
+    let enter = gpui::SharedString::from(format!("status-notice-enter-{message}"));
     div().w_full().child(
-        surface("status-notice-surface", FIELD_RADIUS, fill, false)
+        // A banner is a container: its corner and insets grow together.
+        surface("status-notice-surface", crate::design::RADIUS.container, fill, false)
             .w_full()
-            .px_3()
-            .py_2()
+            .pl(px(18.))
+            .pr(px(12.))
+            .py(px(12.))
             .child(feedback::notice_content(
                 "status-notice",
                 message,
                 kind,
                 None,
-            )),
+            ))
+            .appear(
+                enter,
+                crate::motion::SURFACE,
+                -crate::motion::NOTICE_OFFSET,
+            ),
     )
 }

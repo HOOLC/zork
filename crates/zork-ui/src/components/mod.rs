@@ -1,9 +1,10 @@
 pub mod activity;
-pub mod attachment_fan;
+pub mod attachment_row;
 pub mod attachments;
 pub mod brand;
 pub(crate) mod choice_menu;
 pub mod comments;
+pub mod disclosure;
 pub mod flyout;
 pub mod frame_delivery;
 pub mod geometry;

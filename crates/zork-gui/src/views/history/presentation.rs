@@ -109,6 +109,16 @@ impl RootView {
         a: &Activity,
         e: &Entry,
     ) -> (Option<String>, Option<Jump>) {
+        // Names a received message carried, or the device it came from; an
+        // identifier is never a name.
+        let message = a.message.as_deref();
+        let carried = message
+            .and_then(|m| m.name.clone())
+            .filter(|name| !zork_client_core::device_label::is_id_like(name));
+        let device = message
+            .and_then(|m| m.origin.as_deref())
+            .and_then(|origin| self.mesh_status.peers.iter().find(|p| p.origin == origin))
+            .map(|peer| zork_client_core::device_label::device_label(&peer.name));
         if a.kind == Kind::Input && a.subject.is_none() {
             let receipt = activity::input(e).and_then(|input| input["request_id"].as_str());
             if receipt.is_some_and(|id| id.starts_with("assignment-") || id.starts_with("rework-"))
@@ -155,12 +165,19 @@ impl RootView {
                 );
             }
             return (
-                Some(self.locale.text("history_source_unknown").into()),
+                Some(
+                    carried
+                        .or(device)
+                        .unwrap_or_else(|| self.locale.text("history_source_unknown").into()),
+                ),
                 None,
             );
         }
         match &a.subject {
-            Some(Subject::User) => (Some(self.locale.text("history_user").into()), None),
+            Some(Subject::User) => (
+                Some(carried.unwrap_or_else(|| self.locale.text("history_user").into())),
+                None,
+            ),
             Some(Subject::Conversation) => {
                 let session = self
                     .history
@@ -182,7 +199,10 @@ impl RootView {
                     .and_then(|a| a["name"].as_str())
                     .map(str::to_owned)
                     .or_else(|| participant.map(|p| p.name.clone()))
-                    .unwrap_or_else(|| id.clone());
+                    .filter(|name| !zork_client_core::device_label::is_id_like(name))
+                    .or(carried)
+                    .or(device)
+                    .unwrap_or_else(|| "Session".into());
                 (
                     Some(name),
                     (agent.is_some() || participant.is_some()).then(|| Jump::Agent(id.clone())),
@@ -265,7 +285,8 @@ impl RootView {
                 name: agent
                     .and_then(|a| a["name"].as_str())
                     .or_else(|| participant.map(|p| p.name.as_str()))
-                    .unwrap_or(id)
+                    .filter(|name| !zork_client_core::device_label::is_id_like(name))
+                    .unwrap_or("Session")
                     .to_owned(),
                 role: agent.and_then(|a| a["role"].as_str()).map(str::to_owned),
             })

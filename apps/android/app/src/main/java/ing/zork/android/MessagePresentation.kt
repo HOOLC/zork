@@ -11,7 +11,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,17 +31,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-internal data class MessageExcerpt(val text: String, val more: Boolean)
-internal fun messageExcerpt(text: String): MessageExcerpt {
-    var end = 0; var count = 0; var lines = 0
-    while (end < text.length && count < 4096 && lines < 64) {
-        val code = text.codePointAt(end)
-        if (code == 10) lines++
-        end += Character.charCount(code); count++
-    }
-    return MessageExcerpt(text.substring(0, end), end < text.length)
-}
 
 /** The measure result is read by SubcomposeLayout in the same pass, not posted
  * as state for a later frame. Hidden text is removed from the selectable view. */
@@ -97,58 +85,34 @@ internal open class MessageTextView(context: Context) : TextView(context) {
     }
 }
 
+/** Messages always show in full; very long ones render in independent chunks
+ * so no single native text view holds the whole body. */
 @Composable
-internal fun MessageBodyPreview(row: ChatMessage, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
-    val excerpt = remember(row.content) { messageExcerpt(row.content) }
-    val pixels = with(LocalDensity.current) { limit.roundToPx() }
-    val result = remember(excerpt, pixels) { MessagePreviewMeasure(pixels, Int.MAX_VALUE) }
-    val bodyContent: @Composable () -> Unit = remember(row.user, excerpt, result, comment) {
-        {
-            val background = if (row.user) ZorkColors.Bubble else ZorkColors.Canvas
-            Box(Modifier.fillMaxWidth().drawWithContent {
-                drawContent()
-                if (excerpt.more || result.more) {
-                    drawRect(Brush.verticalGradient(listOf(background.copy(alpha = 0f), background),
-                        startY = (size.height - 48.dp.toPx()).coerceAtLeast(0f), endY = size.height))
-                }
-            }) {
-                if (row.user) PlainMessage(excerpt.text, Modifier.fillMaxWidth().clipToBounds(), result, comment)
-                else Markdown(excerpt.text, Modifier.fillMaxWidth().clipToBounds(), result, comment)
-            }
-
-        }
-    }
-    SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
-        val body = subcompose("body", bodyContent).single().measure(constraints.copy(minHeight = 0, maxHeight = pixels))
-        val footer = if (excerpt.more || result.more) subcompose("more") {
-            Column(Modifier.fillMaxWidth().clickable(onClick = open)
-                .semantics { contentDescription = "查看完整消息" }) {
-                HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
-                Row(Modifier.fillMaxWidth().heightIn(min = 46.dp), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("长消息预览", color = ZorkColors.Muted, fontSize = 12.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("打开全文", color = ZorkColors.Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.width(4.dp)); Glyph(R.drawable.ic_arrow_right, 14.dp, ZorkColors.Ink)
-                    }
-                }
-            }
-        }.single().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)) else null
-        layout(constraints.maxWidth, body.height + (footer?.height ?: 0)) {
-            body.placeRelative(0, 0); footer?.placeRelative(0, body.height)
+internal fun MessageBody(row: ChatMessage, comment: (String) -> Unit) {
+    val parts = remember(row.id, row.content) { messageReaderParts(row.content, row.user) }
+    Column(Modifier.fillMaxWidth()) {
+        parts.forEach { part ->
+            if (row.user) PlainMessage(part, Modifier.fillMaxWidth(), onComment = comment)
+            else Markdown(part, Modifier.fillMaxWidth(), onComment = comment)
         }
     }
 }
 
 @Composable
 internal fun MessageEntry(start: Long?, user: Boolean, content: @Composable () -> Unit) {
-    val enabled = start != null && android.os.SystemClock.uptimeMillis() - start < 220 && ValueAnimator.areAnimatorsEnabled()
+    // Only rows core has just accepted animate: fade in while rising 6 dp. Rows
+    // present at load, and text streaming into an existing row, never animate.
+    val reduced = LocalReducedMotion.current
+    val enabled = start != null && android.os.SystemClock.uptimeMillis() - start < ZorkMotion.SURFACE && ValueAnimator.areAnimatorsEnabled()
     val progress = remember(start) { Animatable(if (enabled) 0f else 1f) }
-    val distance = with(LocalDensity.current) { (if (user) 8.dp else (-8).dp).toPx() }
+    val distance = with(LocalDensity.current) { ZorkMotion.RiseShift.toPx() }
     LaunchedEffect(start) {
-        if (enabled) progress.animateTo(1f, tween(180, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+        if (enabled) progress.animateTo(1f, if (reduced) tween(ZorkMotion.REDUCED_FADE) else ZorkMotion.enter(ZorkMotion.BASE))
     }
-    Box(Modifier.fillMaxWidth().graphicsLayer { alpha = progress.value; translationX = distance * (1f - progress.value) }) { content() }
+    Box(Modifier.fillMaxWidth().graphicsLayer {
+        alpha = progress.value
+        if (!reduced) translationY = distance * (1f - progress.value)
+    }) { content() }
 }
 
 /** Split only for the independent reader; copy-full continues to use the source.
@@ -179,26 +143,4 @@ internal fun messageReaderParts(text: String, plain: Boolean): List<String> {
     }
     if (current.isNotEmpty()) parts += current.toString()
     return parts
-}
-
-@Composable
-internal fun FullMessagePage(row: ChatMessage, close: () -> Unit, comment: (String) -> Unit) {
-    BackHandler(onBack = close)
-    val clipboard = LocalClipboardManager.current
-    val parts = remember(row.id, row.content) { messageReaderParts(row.content, row.user) }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction(R.drawable.ic_arrow_left, "返回对话", onClick = close)
-            Text("完整消息", fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Text("复制全文", color = ZorkColors.Muted, fontSize = 12.sp,
-                modifier = Modifier.clickable { clipboard.setText(AnnotatedString(row.content)) }.padding(10.dp))
-        }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text(row.author, fontSize = 12.sp, color = ZorkColors.Muted) }
-            itemsIndexed(parts) { _, part ->
-                if (row.user) PlainMessage(part, Modifier.fillMaxWidth(), onComment = comment)
-                else Markdown(part, Modifier.fillMaxWidth(), onComment = comment)
-            }
-        }
-    }
 }

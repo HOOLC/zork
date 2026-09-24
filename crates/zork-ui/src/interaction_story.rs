@@ -40,7 +40,7 @@ impl Render for InteractionStory {
                     div()
                         .w_full()
                         .p_4()
-                        .rounded(px(20.))
+                        .rounded(px(crate::design::RADIUS.surface))
                         .border(gpui::px(crate::design::BORDER_WIDTH))
                         .border_color(rgb(p.border_strong))
                         .bg(rgb(color))
@@ -147,7 +147,7 @@ impl Render for InteractionStory {
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(12.))
                                                     .text_color(rgb(p.muted))
                                                     .child(label),
                                             )

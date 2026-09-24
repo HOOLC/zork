@@ -26,7 +26,7 @@ Model requests go to the providers you configure.
 
 - **Build an agent mesh.** Connect stations and clients with invitations and
   explicit permissions. Let agents communicate and delegate across devices.
-- **Share capabilities across devices.** Reuse skills, call another Station's
+- **Share capabilities across devices.** Call another Station's
   MCP tools, access shared services and exchange files through the mesh.
 - **Work through conversations.** Choose agents and models, send messages and
   files, follow progress, and manage work from a native client.
@@ -112,14 +112,14 @@ Each owning Station checks the permissions it has granted:
 
 | Resource     | Across the mesh                                                                   |
 | ------------ | --------------------------------------------------------------------------------- |
-| **Skills**   | Share a fixed package revision, then bind it to an agent on the target Station.   |
+| **Skills**   | Local to each Station: bundled guidance plus user Skills; not shared.             |
 | **MCP**      | Discover and call tools on the Station that hosts the connection and credentials. |
 | **Services** | Open explicitly shared applications through their hosting Station.                |
 | **Files**    | Exchange selected attachments and artifacts; receivers keep their own snapshots.  |
 
 Each Station keeps its own state and workspace. Sharing is explicit; joining the
 mesh does not automatically replicate entire directories. See
-[device and skill tools](docs/design/external-capabilities.md), [Mesh MCP](docs/design/external-capabilities.md#mcp),
+[device tools](docs/design/external-capabilities.md), [Agent Skills](docs/design/agent-skills.md), [Mesh MCP](docs/design/external-capabilities.md#mcp),
 [service sharing](docs/design/external-capabilities.md#services) and [file sharing](docs/design/shared-files.md#attachments).
 
 ## Development

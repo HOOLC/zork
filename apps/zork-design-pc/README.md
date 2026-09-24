@@ -1,6 +1,6 @@
 # zork-design-pc
 
-原生 Zork 设计应用由 `crates/zork-gui` 的 `zork-design-pc` 可执行程序提供。左侧目录同时浏览真实 Rust/GPUI 组件、首次使用流程、设计规范和素材；应用与桌面客户端共用 `zork-ui` 的控件实现。
+原生 Zork Design 由 `crates/zork-gui` 的 `zork-design-pc` 可执行程序提供，用于开发时快速查看某个组件在某个状态下的效果。它只呈现真实 Rust/GPUI 组件与模拟数据，与桌面客户端共用 `zork-ui` 的控件实现；设计规范在本目录的 Markdown 中阅读和修改，不在应用内浏览。
 
 在仓库根运行：
 
@@ -14,4 +14,4 @@ python3 scripts/design-pc/build.py --package-app '.tmp/Zork Design PC.app'
 
 打包入口使用 `crates/zork-ui/assets/app/icon-design.svg` 生成的 `ZorkDesign.icns`，只写入不存在的目标路径，保留原有 App 供比较或回退。
 
-新增组件时，先在 `zork-ui` 或对应客户端页面实现完整控件，再在原生设计应用的故事目录中用相同入口提供隔离参数。更新本目录素材后运行 `python3 scripts/design-pc/generate_assets.py`，让可执行程序嵌入最新的获选资源。
+新增组件时，先在 `zork-ui` 或对应客户端页面实现完整控件，再在 `crates/zork-gui/src/desktop/stories.rs` 的目录中登记它的产品区域、状态与源码路径。

@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -41,43 +42,55 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
     val scope = rememberCoroutineScope()
     val latestActions by rememberUpdatedState(actions)
     val rows by remember(state) { derivedStateOf { state.visibleRows() } }
-    val latestRows by rememberUpdatedState(rows)
     // Reuse vector drawing caches across rows with the same icon and tint.
-    // New visible records do not need a fresh painter for an already drawn glyph.
     val iconResources = remember(state, state.revision) { state.entries.map { historyIcon(it.kind) to it.failed }.distinct() }
     val icons = iconResources.associateWith { (resource, failed) -> key(resource, failed) { painterResource(resource) } }
-    val timeline = state.timeline
     var clock by remember(state) { mutableLongStateOf(System.currentTimeMillis()) }
-    var reveal by remember(state) { mutableStateOf<Pair<String, Long>?>(null) }
     var identity by remember(state) { mutableStateOf<HistoryIdentity?>(null) }
     var profileOpen by remember(state) { mutableStateOf(false) }
+    var usageOpen by remember(state) { mutableStateOf(false) }
     LaunchedEffect(state) { while (true) { delay(30_000); clock = System.currentTimeMillis() } }
     val now = clock + status.clockOffset
+    // Loading shows only when it lasts past 300 ms, then stays at least 400 ms.
+    val showLoading = rememberDeferredLoading(status.loading)
     fun pin() { state.entries.firstOrNull()?.id?.let { latestActions.anchor(it) } }
     fun page(action: () -> Unit) {
         scope.launch { scroll.scrollToItem(0) }
-        timeline.fit(); action()
+        action()
     }
-    LaunchedEffect(reveal) {
-        val id = reveal?.first ?: return@LaunchedEffect
-        withFrameNanos { }
-        val index = latestRows.indexOfFirst { it.entry?.id == id }
-        if (index >= 0) scroll.animateScrollToItem(index + if (state.status.older) 1 else 0)
-    }
-    BoxWithConstraints(Modifier.fillMaxSize().background(ZorkColors.Canvas)) {
-        val footerLimit = maxHeight * .48f
+    // The page reads like the member's agent session: Markdown output leads,
+    // tool calls and messages sit between it. There is no timeline chart.
+    Box(Modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 HistoryIconAction(R.drawable.ic_arrow_left, "返回对话", onClick = actions.back)
-                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                    Text("执行历史", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(state.name, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.weight(1f).padding(horizontal = 6.dp)
+                    .semantics { contentDescription = "执行历史 · ${state.name}" }) {
+                    Text(state.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val overview = state.overview
+                    // One line: model and total tokens. Cache and context are in the usage menu.
+                    val line = overview?.let { listOf(it.model, it.tokens).filter(String::isNotBlank).joinToString(" · ") }
+                    Text(line ?: "执行历史", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = if (overview?.profile != null) Modifier.historyPress(label = "模型连接与额度") { profileOpen = true } else Modifier)
+                }
+                val overview = state.overview
+                if (overview != null && (overview.cache.isNotBlank() || overview.context.isNotBlank())) Box {
+                    ZorkButton("用量", quiet = true, onClick = { usageOpen = true })
+                    PlainMenu("用量", usageOpen, { usageOpen = false }, 200.dp) {
+                        listOf("上下文" to overview.context, "Token" to overview.tokens, "缓存" to overview.cache).filter { it.second.isNotBlank() }.forEach { (label, value) ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
+                                Text(value, fontSize = 13.sp, color = ZorkColors.Ink)
+                            }
+                        }
+                    }
                 }
                 HistoryIconAction(R.drawable.ic_reload, "刷新执行历史", !status.loading && !status.revoked, actions.retry)
             }
-            HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
-            if (status.error != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (status.error != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                .background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
                 Glyph(R.drawable.ic_attention, 16.dp, ZorkColors.Danger)
                 Text(status.error, Modifier.weight(1f).padding(horizontal = 8.dp), color = ZorkColors.Danger, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 if (!status.revoked) HistoryAction("重试", !status.loading, label = "重试加载") { actions.retry() }
@@ -92,55 +105,39 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
                             if (event.changes.any { it.pressed && !it.previousPressed }) pin()
                         }
                     }
-                }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                }, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 88.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (status.older) item(key = "older") {
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             HistoryAction("加载更早记录", !status.loading, label = "更早记录") { page(actions.older) }
                         }
                     }
-                    items(rows, key = { it.key }, contentType = { if (it.group != null) "group" else "entry" }) { item ->
+                    items(rows, key = { it.key }, contentType = { it.group?.let { "group" } ?: it.entry?.kind ?: "entry" }) { item ->
                         val motion = Modifier.animateItem(placementSpec = spring<IntOffset>(dampingRatio = 1f, stiffness = 406f))
                         if (item.group != null) HistoryGroupRow(item.group, state.isExpanded(item.group), now, motion) { state.toggle(item.group) }
-                        else item.entry?.let { entry -> HistoryEntryRow(entry, item.child, entry.id == state.highlightedId, now, icons.getValue(historyIcon(entry.kind) to entry.failed), motion,
+                        else item.entry?.let { entry -> HistoryEntryRow(entry, item.child, entry.id == state.highlightedId, now,
+                            icons.getValue(historyIcon(entry.kind) to entry.failed), motion,
                             open = { actions.detail(entry.id) }, subject = { target ->
                                 if (target.agent != null) identity = target.agent
                                 else target.conversation?.let(actions.navigate)
                             }) }
                     }
-                    if (status.newer) item(key = "newer") {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                            HistoryAction("较新记录", !status.loading) { page(actions.newer) }
-                            HistoryAction("最新记录", !status.loading) { page(actions.latest) }
-                        }
-                    }
                 }
                 if (rows.isEmpty()) Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    if (status.loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = ZorkColors.Muted)
-                    else if (status.error == null && status.loaded) Text(if (state.entries.isEmpty()) "暂无执行记录" else "模型请求可在时间轴中查看",
-                        color = ZorkColors.Muted, fontSize = 13.sp)
+                    if (showLoading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = ZorkColors.Muted)
+                    else if (status.error == null && status.loaded) Text("暂无执行记录", color = ZorkColors.Muted, fontSize = 13.sp)
                 }
-            }
-            if (status.loading && state.entries.isNotEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = ZorkColors.Muted)
-            if (!status.revoked) {
-                HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
-                // Large accessibility text gets its own scrollable footer while
-                // keeping at least half of the available height for records.
-                Column(Modifier.fillMaxWidth().heightIn(max = footerLimit).verticalScroll(rememberScrollState())) {
-                    state.overview?.let { overview ->
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(overview.model, Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                overview.profile?.let { profile -> HistoryAction(profile.name, modifier = Modifier.widthIn(max = 160.dp), label = "模型连接与额度") { profileOpen = true } }
-                            }
-                            Text(overview.context, fontSize = 11.sp, color = ZorkColors.Muted)
-                            Text(overview.tokens, fontSize = 11.sp, color = ZorkColors.Muted)
-                            Text(overview.cache, fontSize = 11.sp, color = ZorkColors.Muted)
-                        }
+                // "回到最新" only fades; nothing scrolls on its own.
+                androidx.compose.animation.AnimatedVisibility(status.newer, Modifier.align(Alignment.BottomCenter),
+                    enter = zorkFadeIn(), exit = zorkFadeOut()) { Box(Modifier.padding(bottom = 24.dp)) {
+                    Row(Modifier.heightIn(min = 44.dp).background(ZorkColors.Ink, ZorkShapes.Control)
+                        .historyPress(enabled = !status.loading, radius = 22.dp, label = "回到最新") { page(actions.latest) }
+                        .padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("回到最新", color = ZorkColors.Canvas, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
-                    if (state.entries.isNotEmpty()) HistoryTimeline(state.entries, state.revision, now, state.highlightedId, timeline,
-                        select = { id -> pin(); state.reveal(id); reveal = id to ((reveal?.second ?: 0L) + 1) }, detail = { actions.detail(it) })
-                }
+                } }
             }
+            if (showLoading && state.entries.isNotEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = ZorkColors.Muted)
         }
     }
     ZorkRetained(state.takeIf { it.selectedId != null }) { shown, open, closed ->
@@ -155,80 +152,89 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
     LaunchedEffect(status.revoked) { if (status.revoked) { identity = null; profileOpen = false } }
 }
 
+private fun truncatedPreview(text: String) = text.length >= 500 || text.endsWith("…")
+
 @Composable
 private fun HistoryEntryRow(entry: HistoryRow, child: Boolean, selected: Boolean, now: Long,
     icon: Painter, modifier: Modifier, open: () -> Unit, subject: (HistorySubject) -> Unit) {
     val elapsed = entry.duration(now)?.let(::historyDuration)
-    val whenText = if (entry.start == null && entry.end == null) "—" else historyRelative(entry.start ?: entry.end, now)
-    val caption = entry.preview.takeUnless { it == entry.subject?.label }.orEmpty()
-        .ifBlank { listOf(entry.model, entry.status, elapsed.orEmpty()).filter(String::isNotBlank).joinToString(" · ") }
-    val subjectBelow = entry.subject != null && androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.4f
-    val firstLine = with(androidx.compose.ui.platform.LocalDensity.current) { 20.sp.toDp().coerceAtLeast(24.dp) }
-        .coerceAtLeast(if (entry.subject?.actionable == true && !subjectBelow) 44.dp else 24.dp)
-    androidx.compose.ui.layout.Layout(modifier = modifier.fillMaxWidth().heightIn(min = 60.dp)
-        .historyPress(selected = selected, label = "${entry.title} · ${entry.status} · ${historyRelative(entry.start ?: entry.end, now)} · ${entry.preview}", onClick = open), content = {
-        Icon(icon, contentDescription = null, Modifier.size(16.dp), tint = if (entry.failed) ZorkColors.Danger else ZorkColors.Muted)
-        Text(entry.title, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            color = if (entry.failed) ZorkColors.Danger else ZorkColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        entry.subject?.let { target ->
-            if (target.actionable) HistorySubjectLink(target) { subject(target) }
-            else Text(target.label, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val whenText = if (entry.start == null && entry.end == null) "" else historyClock(entry.start ?: entry.end)
+    val label = "${entry.title} · ${entry.status} · ${historyRelative(entry.start ?: entry.end, now)} · ${entry.preview}"
+    when (entry.kind) {
+        // Model output is the body of the page: Markdown at reading size.
+        "output" -> Column(modifier.fillMaxWidth().padding(vertical = 8.dp)
+            .semantics { contentDescription = label }) {
+            if (whenText.isNotBlank()) Text(whenText, fontSize = 12.sp, color = ZorkColors.Muted)
+            Markdown(entry.preview, Modifier.fillMaxWidth())
+            if (truncatedPreview(entry.preview)) Text("查看全文", fontSize = 13.sp, color = ZorkColors.Muted,
+                modifier = Modifier.heightIn(min = 44.dp).historyPress(label = "查看全文", onClick = open).wrapContentHeight())
         }
-        Text(whenText, fontSize = 10.sp, color = ZorkColors.Muted, maxLines = 1)
-        Text(caption, fontSize = 12.sp, lineHeight = 18.sp,
-            color = if (entry.failed) ZorkColors.Danger else ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }) { children, constraints ->
-        // Each piece is measured once. Scrolling only moves this compact layout,
-        // instead of revisiting nested weighted rows for every visible record.
-        val start = (if (child) 28.dp else 8.dp).roundToPx()
-        val top = 6.dp.roundToPx()
-        val textLeft = start + 26.dp.roundToPx()
-        val width = (constraints.maxWidth - textLeft - 8.dp.roundToPx()).coerceAtLeast(0)
-        val gap = 6.dp.roundToPx()
-        val hasSubject = entry.subject != null
-        val timeIndex = if (hasSubject) 3 else 2
-        fun measure(index: Int, maxWidth: Int, fill: Boolean = false) = children[index].measure(
-            androidx.compose.ui.unit.Constraints(minWidth = if (fill) maxWidth else 0, maxWidth = maxWidth))
-        val icon = children[0].measure(androidx.compose.ui.unit.Constraints.fixed(16.dp.roundToPx(), 16.dp.roundToPx()))
-        val time = measure(timeIndex, width)
-        val inlineSubject = hasSubject && !subjectBelow
-        val availableTitle = (width - time.width - gap * if (inlineSubject) 2 else 1).coerceAtLeast(0)
-        val title = measure(1, if (inlineSubject) minOf(110.dp.roundToPx(), availableTitle) else availableTitle, !inlineSubject)
-        val subjectWidth = if (subjectBelow) ((width - gap).coerceAtLeast(0) * .45f).toInt()
-            else (width - title.width - time.width - gap * 2).coerceAtLeast(0)
-        val target = if (hasSubject) measure(2, subjectWidth, true) else null
-        val preview = measure(timeIndex + 1, if (subjectBelow) (width - subjectWidth - gap).coerceAtLeast(0) else width, true)
-        val firstHeight = maxOf(firstLine.roundToPx(), title.height, time.height, if (inlineSubject) target!!.height else 0)
-        val secondHeight = maxOf(preview.height, if (subjectBelow) target!!.height else 0)
-        layout(constraints.maxWidth, constraints.constrainHeight(top * 2 + firstHeight + secondHeight)) {
-            icon.place(start + 1.dp.roundToPx(), top + (firstHeight - icon.height) / 2)
-            title.place(textLeft, top + (firstHeight - title.height) / 2)
-            time.place(textLeft + width - time.width, top + (firstHeight - time.height) / 2)
-            target?.let {
-                if (subjectBelow) it.place(textLeft, top + firstHeight + (secondHeight - it.height) / 2)
-                else it.place(textLeft + title.width + gap, top + (firstHeight - it.height) / 2)
+        // Received message: a quote under its sender, the text in Markdown and
+        // files by name. A structured payload's source stays in the detail.
+        "input", "received" -> {
+            val message = entry.message
+            val sender = message?.sender ?: entry.subject?.label
+            val from = listOfNotNull(sender?.let { "来自 $it" } ?: entry.title,
+                message?.device?.takeIf { it != sender }, whenText.ifBlank { null }).joinToString(" · ")
+            val text = message?.text ?: entry.preview
+            Row(modifier.fillMaxWidth().padding(vertical = 8.dp)
+                .historyPress(selected = selected, label = "$from · ${entry.preview}", onClick = open)) {
+                Box(Modifier.width(3.dp).heightIn(min = 40.dp).background(ZorkColors.FieldBorder, ZorkShapes.Control))
+                Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(if (message?.reply == true) "$from · 回复" else from,
+                        fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (text.isNotBlank()) Markdown(text, Modifier.fillMaxWidth())
+                    else if (message?.files.isNullOrEmpty()) Text(if (message?.structured == true) "结构化消息，详情中查看原始内容" else "无文字内容",
+                        fontSize = 14.sp, color = ZorkColors.Subtle)
+                    message?.files?.takeIf { it.isNotEmpty() }?.let { files ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Glyph(R.drawable.history_attachment, 14.dp, ZorkColors.Muted)
+                            Text(files.joinToString("、"), fontSize = 13.sp, color = ZorkColors.Muted,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (message?.truncated == true) Text("查看全文", fontSize = 13.sp, color = ZorkColors.Muted,
+                        modifier = Modifier.heightIn(min = 44.dp).historyPress(label = "查看全文", onClick = open).wrapContentHeight())
+                }
             }
-            preview.place(textLeft + if (subjectBelow) subjectWidth + gap else 0,
-                top + firstHeight + (secondHeight - preview.height) / 2)
+        }
+        // A message posted to the Chat: what the member said outside itself.
+        "send_message" -> Column(modifier.fillMaxWidth().padding(vertical = 6.dp)
+            .background(ZorkColors.Accent.copy(alpha = if (ZorkColors.dark) .16f else .10f), ZorkShapes.Block)
+            .historyPress(selected = selected, radius = 16.dp, label = label, onClick = open)
+            .padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(entry.subject?.label?.let { "发送到 Chat「$it」" } ?: entry.title, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                color = ZorkColors.AccentPressed, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(entry.preview, fontSize = 14.sp, lineHeight = 21.sp, color = ZorkColors.Ink, maxLines = 6, overflow = TextOverflow.Ellipsis)
+        }
+        // Tool calls and other steps: compact, quiet lines between the prose.
+        else -> Row(modifier.fillMaxWidth().heightIn(min = 44.dp)
+            .historyPress(selected = selected, label = label, onClick = open)
+            .padding(start = if (child) 22.dp else 0.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(icon, contentDescription = null, Modifier.size(14.dp), tint = if (entry.failed) ZorkColors.Danger else ZorkColors.Muted)
+            Text(entry.title, fontSize = 13.sp, color = if (entry.failed) ZorkColors.Danger else ZorkColors.Muted, maxLines = 1)
+            val target = entry.subject
+            if (target != null && target.actionable) Box(Modifier.weight(1f)) { HistorySubjectLink(target) { subject(target) } }
+            else Text(target?.label ?: entry.preview, Modifier.weight(1f), fontSize = 13.sp,
+                color = if (entry.failed) ZorkColors.Danger else ZorkColors.Subtle, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontFamily = if (entry.kind == "shell") ZorkFonts.Mono else null)
+            Text(if (entry.state == "running") entry.status else elapsed.orEmpty(), fontSize = 12.sp,
+                color = if (entry.failed) ZorkColors.Danger else ZorkColors.Subtle, maxLines = 1)
         }
     }
 }
 
 @Composable
 private fun HistoryGroupRow(block: HistoryBlock, expanded: Boolean, now: Long, modifier: Modifier, toggle: () -> Unit) {
-    val firstLine = with(androidx.compose.ui.platform.LocalDensity.current) { 20.sp.toDp().coerceAtLeast(24.dp) }
-    Row(modifier.fillMaxWidth().heightIn(min = 60.dp)
+    Row(modifier.fillMaxWidth().heightIn(min = 44.dp)
         .historyPress(label = "${block.members.size} 项常规操作 · ${block.title}", onClick = toggle)
         .semantics { stateDescription = if (expanded) "已展开" else "已折叠" }
-        .padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-        Box(Modifier.width(18.dp).height(firstLine), contentAlignment = Alignment.Center) { Glyph(R.drawable.history_operations, 16.dp, ZorkColors.Muted) }
-        Column(Modifier.weight(1f)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = firstLine), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(block.title.ifBlank { "${block.members.size} 项常规操作" }, Modifier.weight(1f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (expanded) "收起" else "展开", fontSize = 11.sp, color = ZorkColors.Muted)
-            }
-            Text(block.summary.ifBlank { historyRelative(block.start, now) }, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        .padding(end = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Glyph(R.drawable.history_operations, 14.dp, ZorkColors.Muted)
+        Text(block.title.ifBlank { "${block.members.size} 项常规操作" }, Modifier.weight(1f), fontSize = 13.sp,
+            color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(painterResource(R.drawable.ic_chevron_down), contentDescription = null,
+            Modifier.size(14.dp).graphicsLayer { rotationZ = if (expanded) 180f else 0f }, tint = ZorkColors.Subtle)
     }
 }

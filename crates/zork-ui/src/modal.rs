@@ -178,10 +178,57 @@ pub fn modal<V: 'static>(
         Some(footer.into_any_element()),
         notice,
         state,
+        ui::DIALOG_FORM_WIDTH,
         window,
         cx,
         dismissible,
         close,
+    )
+}
+/// A form dialog at an explicit width tier, with fixed actions.
+pub fn modal_sized<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    title: impl Into<gpui::SharedString>,
+    body: impl IntoElement,
+    footer: impl IntoElement,
+    notice: Option<String>,
+    state: &ModalState,
+    width: f32,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    dismissible: bool,
+    close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
+    modal_surface(
+        id,
+        title,
+        None,
+        body,
+        Some(footer.into_any_element()),
+        notice,
+        state,
+        width,
+        window,
+        cx,
+        dismissible,
+        close,
+    )
+}
+/// Details that are short, such as an enrollment step, use the form width.
+pub fn detail_modal_sized<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    title: impl Into<gpui::SharedString>,
+    body: impl IntoElement,
+    notice: Option<String>,
+    state: &ModalState,
+    width: f32,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    dismissible: bool,
+    close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
+    modal_surface(
+        id, title, None, body, None, notice, state, width, window, cx, dismissible, close,
     )
 }
 pub fn detail_modal<V: 'static>(
@@ -203,6 +250,7 @@ pub fn detail_modal<V: 'static>(
         None,
         notice,
         state,
+        ui::DIALOG_RICH_WIDTH,
         window,
         cx,
         dismissible,
@@ -239,6 +287,7 @@ pub fn detail_modal_with_title_action<V: 'static>(
         None,
         notice,
         state,
+        ui::DIALOG_RICH_WIDTH,
         window,
         cx,
         dismissible,
@@ -308,16 +357,16 @@ fn modal_preview_with_title_action<V: 'static>(
         dismissible,
         close,
     );
-    crate::components::smooth::surface(id, ui::MODAL_RADIUS)
+    crate::components::smooth::surface(id, ui::dialog_radius(ui::DIALOG_FORM_WIDTH))
         .occlude()
-        .w(px(ui::DIALOG_WIDTH).min(viewport.width - px(40.)))
+        .w(px(ui::DIALOG_FORM_WIDTH).min(viewport.width - px(40.)))
         .max_w_full()
         .max_h(max_height)
         .flex()
         .flex_col()
         .bg(rgb(ZORK_UI.palette.canvas))
         .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(crate::design::UI_OUTLINE))
+        .border_color(rgb(crate::design::FORM.outline))
         .child(contents)
         .automation(AutomationRole::Status, title.to_string())
         .into_any_element()
@@ -355,9 +404,10 @@ pub(crate) fn panel_contents_with_title_action(
     let has_footer = footer.is_some();
     let close_key = close.clone();
     let header = div()
-        .h(px(76.))
         .flex_shrink_0()
-        .px(px(24.))
+        .pt(px(20.))
+        .pl(px(24.))
+        .pr(px(16.))
         .flex()
         .items_center()
         .justify_between()
@@ -373,7 +423,8 @@ pub(crate) fn panel_contents_with_title_action(
                     div()
                         .min_w_0()
                         .truncate()
-                        .text_size(px(20.))
+                        .text_size(px(17.))
+                        .line_height(px(24.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(title.clone())
                         .into_any_element()
@@ -429,22 +480,22 @@ pub(crate) fn panel_contents_with_title_action(
         })
         .child(header)
         .when_some(notice, |v, notice| {
-            v.child(div().px(px(24.)).pb_3().child(ui::feedback(notice)))
+            v.child(div().px(px(24.)).pt_3().child(ui::feedback(notice)))
         })
         .child(
             div()
                 .id(format!("{id}-body"))
                 .min_h_0()
-                .max_h(max_height - px(if has_footer { 160. } else { 90. }))
+                .max_h(max_height - px(if has_footer { 120. } else { 64. }))
                 .overflow_y_scroll()
                 .px(px(24.))
-                .pt_1()
-                .pb(px(if has_footer { 12. } else { 24. }))
+                .pt(px(12.))
+                .pb(px(if has_footer { 0. } else { 24. }))
                 .child(body),
         )
         .when_some(footer, |v, footer| {
             v.child(
-                div().flex_shrink_0().px(px(24.)).pt_5().pb_6().child(
+                div().flex_shrink_0().px(px(24.)).pt(px(20.)).pb(px(20.)).child(
                     div()
                         .id(format!("{id}-footer"))
                         .w_full()
@@ -464,6 +515,7 @@ fn modal_surface<V: 'static>(
     footer: Option<gpui::AnyElement>,
     notice: Option<String>,
     state: &ModalState,
+    width: f32,
     window: &mut Window,
     cx: &mut Context<V>,
     dismissible: bool,
@@ -477,6 +529,7 @@ fn modal_surface<V: 'static>(
         footer,
         notice,
         dismissible,
+        width,
         window,
         cx,
         close,

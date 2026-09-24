@@ -54,7 +54,7 @@ pub trait Host: Sized + 'static {
                 if data.nodes.is_empty() {
                     "开启本机设备，或连接一台已有设备。"
                 } else {
-                    "选择运行对话的设备。"
+                    ""
                 },
             ))
             .child(
@@ -62,11 +62,11 @@ pub trait Host: Sized + 'static {
                     .flex()
                     .items_center()
                     .gap_4()
-                    .py_4()
+                    .py_2()
                     .child(
                         div()
                             .size(px(44.))
-                            .rounded(px(12.))
+                            .rounded(px(crate::design::RADIUS.block))
                             .bg(rgb(p.selected))
                             .flex()
                             .items_center()
@@ -128,18 +128,12 @@ pub trait Host: Sized + 'static {
                         .automation(AutomationRole::Button, "重试启动本机设备"),
                 )
             })
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(p.muted))
-                    .pb_4()
-                    .child(if data.background{"Station 由后台服务管理，退出客户端后继续运行。"}else{"由客户端启动的 Station 随客户端退出。连接已有的独立 Station 不改变它的运行方式。"}),
-            )
             .when(enabled||running,|v|{
                 let background=data.background;let at_login=data.start_at_login;
                 v.child(ui::section()
                     .child(div().flex().items_center().justify_between().gap_4()
-                        .child(div().flex_1().child("退出客户端后保持 Station 运行"))
+                        .child(div().flex_1().flex().items_center().gap_1().child("退出客户端后保持运行")
+                            .child(crate::components::disclosure::info("local-node-background-info", "切换不会重启任务。关闭设备会停止它的 Station，其他设备暂时无法访问。")))
                         .child(ui::button("local-node-background",if background{"已开启"}else{"开启"},false,!data.busy)
                             .on_click(cx.listener(move|v,_,_,cx|v.node_action(Action::Background { enabled: !background, at_login }, cx)))
                             .automation_enabled(!data.busy,AutomationRole::Button,if background{"关闭后台运行"}else{"开启后台运行"})))
@@ -148,7 +142,7 @@ pub trait Host: Sized + 'static {
                         .child(ui::button("local-node-login",if at_login{"已开启"}else{"开启"},false,!data.busy)
                             .on_click(cx.listener(move|v,_,_,cx|v.node_action(Action::Background { enabled: true, at_login: !at_login }, cx)))
                             .automation_enabled(!data.busy,AutomationRole::Button,"登录系统后自动启动"))))
-                    .child(div().pt_3().text_size(px(12.)).text_color(rgb(p.muted)).child("切换后台运行不会重启任务。关闭设备会停止此设备的 Station，其他设备将暂时无法访问它。")))
+                    )
             })
             .child(
                 ui::section()
@@ -180,14 +174,17 @@ pub trait Host: Sized + 'static {
                                     .items_center()
                                     .gap_3()
                                     .py_2()
-                                    .child(ui::icon("icons/node.svg", 18.))
                                     .child(
                                         div()
                                             .flex_1()
                                             .min_w_0()
                                             .text_ellipsis()
-                                            .child(crate::device_name::label(format!("directory-name-{}", node.id),
-node.name.clone(), &node.status, None)),
+                                            .child(crate::device_name::label(
+                                                format!("directory-name-{}", node.id),
+                                                node.name.clone(),
+                                                &node.status,
+                                                None,
+                                            )),
                                     )
                                     .child(
                                         ui::button(
@@ -293,7 +290,7 @@ node.name.clone(), &node.status, None)),
                     data.nodes.clone().into_iter().map(|node| {
                         ui::button(
                             format!("browse-node-{}", node.id),
-                            format!("浏览 {}", crate::device_name::summary(&node.name, &node.status, None)),
+                            format!("浏览 {}", node.name),
                             false,
                             true,
                         )

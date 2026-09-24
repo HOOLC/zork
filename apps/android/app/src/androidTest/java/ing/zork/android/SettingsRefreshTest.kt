@@ -54,7 +54,7 @@ class SettingsRefreshTest {
                 if(screen=="profile") assertNull(find("从提供商获取模型"))
                 capture(screen)
                 if(width==0 && screen=="device") {
-                    click("修改设备名称");capture("rename")
+                    click("更多");click("重命名");capture("rename")
                     click("保存");scenario.onActivity{assertEquals("rename_device",it.lastAction)}
                 }
                 if(width==0 && screen=="models") {click("添加");capture("connection-editor")}

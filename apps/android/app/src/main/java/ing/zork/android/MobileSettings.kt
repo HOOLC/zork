@@ -8,21 +8,18 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
-import kotlinx.coroutines.launch
 
 internal data class MobileSettingsState(
     val page: String = "home", val device: Peer? = null, val fromChat: Boolean = false,
@@ -37,8 +34,14 @@ internal data class MobileSettingsState(
     val authorizationError: String? = null, val operation: JSONObject? = null,
     val authorizationComplete: Boolean = false,
     val selectedProfileId: String? = null,
+    /** Opened from the global model connections list; back returns there. */
+    val fromConnections: Boolean = false,
+    /** Open the new-connection editor once this device's page is usable. */
+    val addConnection: Boolean = false,
+    /** Core's per-device model connections; `null` until first read. */
+    val connections: List<JSONObject>? = null,
     val connectionState: String = "connecting",
-    val command: JSONObject? = null, val updateCheck: JSONObject? = null,
+    val command: JSONObject? = null, val updateCheck: JSONObject? = null, val update: JSONObject? = null,
     val profileRefreshing: Set<String> = emptySet(), val profileFailed: Set<String> = emptySet(),
     val resource: ResourceSelection? = null, val resourceData: JSONObject? = null,
     val resourceDepth: Int = 0,
@@ -46,11 +49,15 @@ internal data class MobileSettingsState(
 internal class SettingsActions(
     val back: () -> Unit = {}, val device: (Peer) -> Unit = {}, val page: (String) -> Unit = {},
     val profile: (JSONObject) -> Unit = {}, val assist: (JSONObject) -> Unit = {},
+    val connection: (String, JSONObject) -> Unit = { _, _ -> },
+    val addConnection: (String) -> Unit = {},
     val checkUpdate: () -> Unit = {}, val addDevice: () -> Unit = {},
     val refresh: () -> Unit = {},
     val perform: suspend (String, JSONObject) -> JSONObject = { _,_ -> error("设备未连接") },
-    val messagePreviewHeight: Int = 0,
-    val saveMessagePreviewHeight: suspend (Int) -> Unit = {},
+    /** Local core commands for the built-in model catalog; returns core's `data`. */
+    val catalog: suspend (String, JSONObject) -> Any? = { _, _ -> null },
+    val theme: String = "system",
+    val saveTheme: suspend (String) -> Unit = {},
     val resource: (ResourceSelection) -> Unit = {},
     val notifications: JSONObject? = null,
     val notificationError: String? = null,
@@ -68,6 +75,10 @@ internal class SettingsActions(
     val dataReset: JSONObject? = null,
     val dataResetError: String? = null,
     val clearData: () -> Unit = {},
+    /** Archived Chats live in client settings; opening one leaves settings. */
+    val home: HomeNavigation? = null,
+    val openChat: (JSONObject) -> Unit = {},
+    val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
 )
 
 @Composable
@@ -82,6 +93,10 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
         ResourceSettings(state, actions, modifier)
         return
     }
+    if (state.page == "model-connections") {
+        ModelConnectionsPage(state, peers, actions, modifier)
+        return
+    }
     if (state.page in listOf("models", "profile")) {
         ModelSettingsPage(state, actions, modifier)
         return
@@ -90,103 +105,121 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
         AppearanceSettings(actions, modifier)
         return
     }
+    if (state.page == "archived") {
+        ArchivedSettings(actions, modifier)
+        return
+    }
     var editor by rememberSaveable(state.device?.id) { mutableStateOf<String?>(null) }
     var editingJson by rememberSaveable(state.device?.id) { mutableStateOf<String?>(null) }
     val editing = editingJson?.let(::JSONObject)
-    val scope = rememberCoroutineScope()
-    var updateBusy by remember { mutableStateOf(false) }
-    var updateError by remember { mutableStateOf<String?>(null) }
-    val latest = state.updateCheck?.text("latest_version").orEmpty()
+    // Version comparison and the running check come from core's `update`.
+    val update = state.update
+    val latest = update?.text("latest").orEmpty()
     val upgrading = state.operation?.optBoolean("running") == true
-    val info = state.info
-    val supported = info?.optJSONObject("update")?.optBoolean("supported") == true
-    val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "models" -> "大模型"; else -> "连接详情" }
+    val title = if (state.page == "home") "设置" else "设备"
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             ZorkIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (state.page != "home") SettingsRefreshButton(state.loading, actions.refresh)
         }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            if (state.page in listOf("models","profile")) state.profileMessage?.let { Text(it,color=ZorkColors.Danger,fontSize=13.sp) }
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.page == "home") {
-                SettingsListGroup {
-                }
                 SectionTitle("客户端")
                 SettingsListGroup {
-                    SettingsListRow("Zork 账号", R.drawable.ic_settings, subtext = "Google 登录与公网连接", action = { actions.page("account") })
-                    SettingsListDivider()
-                    SettingsListRow("外观", R.drawable.ic_settings, subtext = "消息折叠高度", action = { actions.page("appearance") })
-                    SettingsListDivider()
-                    SettingsListRow("通知", R.drawable.ic_settings, subtext = "消息提醒、免打扰与后台连接", action = { actions.page("notifications") })
-                    SettingsListDivider()
-                    SettingsListRow("安卓调试", R.drawable.ic_settings, subtext = "通过 Mesh 安装应用和调试", action = { actions.page("adb") })
+                    val account = actions.account
+                    SettingsListRow("Zork 账号", R.drawable.ic_settings,
+                        value = account?.text("email")?.takeIf { it.isNotBlank() && !account.text("subject").isNullOrBlank() } ?: "未登录",
+                        action = { actions.page("account") })
+                    SettingsListRow("外观", R.drawable.ic_settings_three,
+                        value = when (actions.theme) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" },
+                        action = { actions.page("appearance") })
+                    SettingsListRow("通知", R.drawable.ic_attention,
+                        value = actions.notifications?.let { if (it.optBoolean("enabled")) "已开启" else "已关闭" },
+                        action = { actions.page("notifications") })
+                    SettingsListRow("已归档的 Chat", R.drawable.ic_archive,
+                        value = actions.home?.archivedTotal?.takeIf { it > 0 }?.toString(),
+                        action = { actions.page("archived") })
                 }
-                SectionTitle("设备", peers.size.toString())
-                if (peers.isNotEmpty()) SettingsListGroup {
-                    peers.forEachIndexed { index, peer ->
-                        if (index > 0) SettingsListDivider()
-                        SettingsListRow(compactDeviceName(peer.name, peer.status), R.drawable.ic_node, action = { actions.device(peer) })
-                    }
-                }
-                SettingsButton("连接设备", click = actions.addDevice)
-                SectionTitle("数据")
-                ClearDataSettings(actions)
-            } else if (state.page == "device") {
-                Column(Modifier.fillMaxWidth().background(ZorkColors.Paper, SettingsStyle.Card).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(44.dp).background(ZorkColors.Canvas, SettingsStyle.Field), contentAlignment = Alignment.Center) { Glyph(R.drawable.ic_node, 25.dp, ZorkColors.Muted) }
-                        DeviceName(state.device?.name.orEmpty(), state.device?.status ?: DeviceStatusUi(), Modifier.weight(1f))
-                        if (state.online) ZorkIconButton("修改设备名称", opensPanel = true, onClick = { editor = "rename" }, enabled = !state.loading) { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(18.dp)) }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.size(6.dp).background(if (state.online) ZorkColors.Online else ZorkColors.Muted, androidx.compose.foundation.shape.CircleShape))
-                        Text(if (state.online) "在线" else if (state.connectionState == "connecting") "连接中" else "离线", fontSize = 12.sp, color = ZorkColors.Muted)
-                        Text("·", color = ZorkColors.Muted)
-                        Text(info?.optJSONObject("station")?.let { "v"+it.text("release_version",it.text("version","—")) } ?: "版本待获取", fontSize = 12.sp, color = ZorkColors.Muted)
-                    }
-                }
-                SectionTitle("管理")
+                SectionTitle("Mesh")
                 SettingsListGroup {
-                    SettingsListRow("大模型", R.drawable.ic_mesh, value = if(state.profilesReady) state.profiles.size.toString() else "—", subtext = "连接账号，管理可用模型", action = { actions.page("models") })
-                    SettingsListDivider()
-                    SettingsListRow("服务", R.drawable.ic_node, subtext = "运行状态、共享信息与日志", action = { actions.page("services") })
+                    SettingsListRow("模型连接", R.drawable.ic_mesh, value = connectionCount(state), action = { actions.page("model-connections") })
+                    peers.forEach { peer ->
+                        SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
+                            trailing = { if (peer.status.state !in listOf("direct", "connected")) DeviceStatusBadge(peer.status) },
+                            action = { actions.device(peer) })
+                    }
+                    SettingsListRow("连接设备", R.drawable.ic_plus, action = actions.addDevice)
                 }
-                if (supported && state.online) {
-                SectionTitle("版本更新")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsButton(if(updateBusy) "正在处理…" else "检查更新", enabled = supported && state.online && !updateBusy && !upgrading) {
-                        scope.launch { updateBusy=true; updateError=null; try { actions.perform("check_update", JSONObject()) } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) { updateError=e.message } finally { updateBusy=false } }
+                SectionTitle("高级")
+                SettingsListGroup {
+                    SettingsListRow("安卓调试", R.drawable.ic_node, action = { actions.page("adb") })
+                    ClearDataSettings(actions)
+                }
+            } else if (state.page == "device") {
+                val device = state.device
+                val status = device?.status ?: DeviceStatusUi()
+                val current = update?.text("current")?.takeIf { it.isNotBlank() }
+                    ?: state.info?.optJSONObject("station")?.let { it.text("release_version", it.text("version")) }?.takeIf { it.isNotBlank() }
+                val checking = update?.optBoolean("checking") == true
+                val available = update?.optBoolean("available") == true && state.online
+                var more by remember { mutableStateOf(false) }
+                // First glance: who and whether it is reachable. Name, version and checks live in "更多".
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    DeviceMark(device?.name.orEmpty(), 40.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(device?.name.orEmpty(), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DeviceStatusBadge(status)
+                            if (status.state in listOf("direct", "connected")) Text(deviceStatusText(status), fontSize = 12.sp, color = ZorkColors.Muted)
+                        }
+                    }
+                    Box {
+                        IconAction(R.drawable.ic_more, "更多", enabled = !state.loading) { more = true }
+                        PlainMenu("设备操作", more, { more = false }, 200.dp) {
+                            ZorkMenuItem("重命名", false, enabled = state.online, onClick = { more = false; editor = "rename" })
+                            if (update?.optBoolean("supported") == true && state.online && !available)
+                                ZorkMenuItem(if (checking) "正在检查…" else "检查更新", false, enabled = !checking && !upgrading,
+                                    onClick = { more = false; actions.checkUpdate() })
+                            Text("版本 ${current?.let { "v$it" } ?: "—"}", fontSize = 12.sp, color = ZorkColors.Subtle,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+                        }
                     }
                 }
-                if (latest.isNotBlank()) {
-                    val version=info?.optJSONObject("station")?.let { it.text("release_version",it.text("version")) }
-                    if (latest == version) Text("已是最新版本", color=ZorkColors.Muted, fontSize=13.sp)
-                    else { Text("可升级至 $latest",fontSize=13.sp); SettingsButton("升级并重启",primary=true,enabled=supported && !updateBusy && !upgrading) { editor="upgrade" } }
+                // The update row exists only when there is something to install.
+                if (available) SettingsListRow("可更新到 $latest", R.drawable.ic_reload,
+                    trailing = { ZorkButton("更新", primary = true, enabled = !checking && !upgrading, onClick = { editor = "upgrade" }) })
+                SettingsListGroup {
+                    SettingsListRow("服务", R.drawable.ic_node, action = { actions.page("services") })
+                    SettingsListRow("模型连接", R.drawable.ic_mesh, value = if (state.profilesReady) state.profiles.size.toString() else "—",
+                        action = { actions.page("models") })
                 }
-                info?.optJSONObject("update")?.optJSONObject("status")?.text("message")?.takeIf { it.isNotBlank() }?.let { Text(it,fontSize=13.sp,color=ZorkColors.Muted) }
-                updateError?.let { Text(it,color=ZorkColors.Danger,fontSize=13.sp) }
-                }
+                update?.text("error")?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
                 state.operation?.let { operation ->
                     val message = operation.text("error").ifBlank { operation.text("message").ifBlank {
                         if (operation.optBoolean("completed")) "设备升级完成" else if (operation.optBoolean("running")) "正在升级，等待设备恢复连接…" else ""
                     } }
-                    if (message.isNotBlank()) Text(message, fontSize = 13.sp,
+                    if (message.isNotBlank()) Text(message, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp),
                         color = if (operation.text("error").isNotBlank()) ZorkColors.Danger else ZorkColors.Muted)
                 }
             }
-            state.message?.takeIf{it.isNotBlank()}?.let { Text(it,fontSize=13.sp,color=ZorkColors.Danger) }
+            state.message?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 13.sp, color = ZorkColors.Danger, modifier = Modifier.padding(horizontal = 8.dp)) }
         }
     }
     ZorkRetained(editor?.let { it to editing }) { (type, source), open, closed -> key(type, source?.text("id")) {
-        SettingsEditor(type,source,state,actions,latest,{editor=null},{editor=null;actions.refresh()},
-            open=open, onClosed=closed)
+        SettingsEditor(type, source, state, actions, latest, { editor = null }, { editor = null; actions.refresh() },
+            open = open, onClosed = closed)
     } }
 }
 @Composable
-internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
+internal fun SettingsRefreshButton(rawLoading: Boolean, refresh: () -> Unit) {
+    val loading = rememberDeferredLoading(rawLoading)
     val angle = remember { Animatable(0f) }
-    LaunchedEffect(loading) {
+    val reduced = LocalReducedMotion.current
+    LaunchedEffect(loading, reduced) {
+        // Reduced motion: no loops, the icon stays still.
+        if (reduced) { angle.snapTo(0f); return@LaunchedEffect }
         if (!loading && angle.value == 0f) return@LaunchedEffect
         // Finish the current turn when loading ends; never jump back to zero.
         do {
@@ -195,17 +228,24 @@ internal fun SettingsRefreshButton(loading: Boolean, refresh: () -> Unit) {
             angle.snapTo(0f) // 360° and 0° render identically.
         } while (loading)
     }
-    ZorkIconButton(if (loading) "正在刷新" else "刷新", onClick = refresh, enabled = !loading) {
+    ZorkIconButton(if (rawLoading) "正在刷新" else "刷新", onClick = refresh, enabled = !rawLoading) {
         Icon(painterResource(R.drawable.ic_reload), null,
             Modifier.size(18.dp).graphicsLayer { rotationZ = angle.value }, tint = ZorkColors.Ink)
     }
 }
 
-@Composable private fun PageHeading(title:String, detail:String, action:String, enabled:Boolean, click:()->Unit) {
-    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)){if(title != "大模型") Text(title,fontSize=24.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(detail,fontSize=12.sp,color=ZorkColors.Muted)}
-        if(enabled) SettingsButton(action,click=click)
+@Composable
+private fun ArchivedSettings(actions: SettingsActions, modifier: Modifier) {
+    Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            ZorkIconButton("返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
+            Text("已归档的 Chat", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        }
+        ArchivedChatsList(actions.home ?: HomeNavigation(), actions.openChat, actions.archiveChat, Modifier.weight(1f))
     }
 }
-@Composable private fun SectionTitle(title:String,count:String?=null) { Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){Text(title,fontSize=13.sp,fontWeight=FontWeight.Medium);count?.let{Text(it,fontSize=12.sp,color=ZorkColors.Muted)}} }
-@Composable private fun EmptySettings(title:String,detail:String){Column(Modifier.fillMaxWidth().padding(vertical=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(title,fontSize=16.sp,fontWeight=FontWeight.Medium);Text(detail,fontSize=13.sp,lineHeight=21.sp,color=ZorkColors.Muted)}}
+
+@Composable private fun SectionTitle(title: String) {
+    Text(title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
+        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 2.dp))
+}

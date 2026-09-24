@@ -5,7 +5,7 @@ pub mod feedback;
 
 use crate::{
     components::smooth,
-    design::{UI_OUTLINE, ZORK_UI},
+    design::{FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 
@@ -20,7 +20,7 @@ pub fn surface(
         .bg(rgb(fill))
         .when(outlined, |v| {
             v.border(px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(UI_OUTLINE))
+                .border_color(rgb(FORM.outline))
         })
 }
 

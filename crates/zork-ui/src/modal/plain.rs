@@ -12,25 +12,57 @@ use gpui::{
     MouseButton, SharedString, Window,
 };
 
-#[derive(Default)]
+/// A time-based opacity tween. Reversing mid-flight continues from the current
+/// value, so a quick open → close never flashes.
 struct Fade {
     alpha: f32,
+    from: f32,
+    target: f32,
+    start: std::time::Instant,
+    enter_ms: u64,
 }
 impl Fade {
+    fn new(enter_ms: u64) -> Self {
+        Self {
+            alpha: 0.,
+            from: 0.,
+            target: 0.,
+            start: std::time::Instant::now(),
+            enter_ms,
+        }
+    }
     fn opacity(&self) -> f32 {
         self.alpha
     }
-    fn advance(&mut self, open: bool, dt: f64, reduced: bool) -> bool {
+    /// `now` comes from the app executor so tests on a virtual clock advance it.
+    fn advance(&mut self, open: bool, reduced: crate::motion::Mode, now: std::time::Instant) -> bool {
+        use crate::motion;
         let target = if open { 1. } else { 0. };
-        if reduced {
-            self.alpha = target;
+        if target != self.target {
+            self.from = self.alpha;
+            self.target = target;
+            self.start = now;
+        }
+        // Enter eases in over the surface token; exit leaves in two thirds of it.
+        // Reduced motion keeps a short fade.
+        let (ms, curve): (u64, Box<dyn Fn(f32) -> f32>) = if open {
+            (self.enter_ms, Box::new(motion::bezier(0.2, 0.7, 0.2, 1.0)))
         } else {
-            let step = (dt as f32 / 0.16).clamp(0., 1.);
-            self.alpha = if open {
-                (self.alpha + step).min(1.)
-            } else {
-                (self.alpha - step).max(0.)
-            };
+            (motion::exit(self.enter_ms), Box::new(motion::bezier(0.4, 0.0, 1.0, 1.0)))
+        };
+        let ms = match reduced {
+            motion::Mode::Full => ms,
+            motion::Mode::Short => ms.min(motion::REDUCED_FADE),
+            motion::Mode::Static => {
+                self.alpha = target;
+                return false;
+            }
+        };
+        let total = motion::duration(ms).as_secs_f32().max(0.001);
+        let t = (now.saturating_duration_since(self.start).as_secs_f32() / total).clamp(0., 1.);
+        self.alpha = self.from + (self.target - self.from) * curve(t);
+        if t >= 1. {
+            self.alpha = target;
         }
         self.alpha != target
     }
@@ -56,8 +88,8 @@ impl PlainDialog {
             focus: FocusScope::new(cx),
             content_id: None,
             open: false,
-            reveal: Default::default(),
-            backdrop: Default::default(),
+            reveal: Fade::new(crate::motion::SURFACE),
+            backdrop: Fade::new(crate::motion::SCRIM),
             seen_open: false,
             initial_focus: None,
             focus_pending: false,
@@ -174,11 +206,11 @@ impl PlainDialog {
         self.focus.sync(open.then_some("dialog"), window, cx);
         self.content_id = Some(id.clone());
 
-        let reduced = cx.reduce_motion();
-        let dt = if reduced { 1. } else { 1. / 60. };
+        let reduced = crate::motion::mode(cx);
         let was_alive = self.alive();
-        let content_moving = self.reveal.advance(open, dt, reduced);
-        let backdrop_moving = self.backdrop.advance(open, dt, reduced);
+        let now = cx.background_executor().now();
+        let content_moving = self.reveal.advance(open, reduced, now);
+        let backdrop_moving = self.backdrop.advance(open, reduced, now);
         let moving = content_moving || backdrop_moving;
         // Redraw until the fade reaches its endpoint, including the final
         // frame that releases a retained dialog payload.
@@ -209,7 +241,13 @@ impl PlainDialog {
         }
 
         let viewport = window.viewport_size();
-        let width = ui::DIALOG_WIDTH.min(viewport.width.as_f32() - 40.).max(2.);
+        let wanted = options.width.unwrap_or(if self.alert {
+            ui::DIALOG_CONFIRM_WIDTH
+        } else {
+            ui::DIALOG_FORM_WIDTH
+        });
+        let radius = ui::dialog_radius(wanted);
+        let width = wanted.min(viewport.width.as_f32() - 40.).max(2.);
         let max_height = (viewport.height.as_f32() - 64.).clamp(2., 660.);
         let contents = panel_contents_with_title_action(
             id.clone(),
@@ -229,7 +267,7 @@ impl PlainDialog {
             close.clone(),
         );
 
-        let panel = smooth::surface(id.clone(), ui::MODAL_RADIUS)
+        let panel = smooth::surface(id.clone(), radius)
             .occlude()
             .w(px(width))
             .max_h(px(max_height))
@@ -237,7 +275,7 @@ impl PlainDialog {
             .flex_col()
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::design::UI_OUTLINE))
+            .border_color(rgb(crate::design::FORM.outline))
             .opacity(alpha)
             .child(contents)
             .automation(AutomationRole::Status, title.to_string());

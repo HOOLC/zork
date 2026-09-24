@@ -22,6 +22,10 @@ impl DataSettings {
     pub fn new(data: Data, text: Text, cx: &mut Context<Self>) -> Self {
         let mut alert = AlertDialog::new(cx).destructive();
         alert.cancel_label(text.text("client_data_cancel"));
+        alert.details(
+            text.text("client_clear_data_details_label"),
+            text.text("client_clear_data_details"),
+        );
         Self {
             data,
             text,
@@ -36,6 +40,10 @@ impl DataSettings {
         self.text = text;
         self.alert
             .cancel_label(self.text.text("client_data_cancel"));
+        self.alert.details(
+            self.text.text("client_clear_data_details_label"),
+            self.text.text("client_clear_data_details"),
+        );
         if changed {
             cx.notify();
         }

@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::widgets::controls::{action_focus, adaptive_action, ActionStyle},
     controls::{self as ui, Selection},
-    design::{BORDER_WIDTH, UI_OUTLINE, ZORK_UI},
+    design::{BORDER_WIDTH, FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -76,9 +76,9 @@ impl ListDelegate for Options {
             item: ListItem::new(row.id.clone())
                 .disabled(!self.enabled)
                 .h(px(32.))
-                .px(px(10.))
+                .px(px(14.))
                 .py_0()
-                .rounded(px(10.))
+                .rounded(px(crate::design::RADIUS.control))
                 .text_size(px(12.))
                 .role(match self.selection {
                     Selection::Single => Role::RadioButton,
@@ -171,6 +171,36 @@ pub(crate) fn render<V: 'static>(
             icon: option_icons.get(i).copied().flatten(),
         })
         .collect();
+    // The open menu fits its longest option (row padding, icon, check mark,
+    // panel inset and border) so option names are not cut short.
+    // Presence keeps a closed menu on screen for its exit fade.
+    let frame = crate::motion::presence(
+        SharedString::from(format!("{id}-menu-presence")),
+        open,
+        crate::motion::POPOVER,
+        window,
+        cx,
+    );
+    let menu_width = if frame.is_some() {
+        rows.iter()
+            .map(|row| {
+                crate::components::widgets::overlay::measure_label_with_weight(
+                    &row.label,
+                    12.,
+                    FontWeight::NORMAL,
+                    window,
+                )
+                .ceil()
+                    + if row.icon.is_some() { 22. } else { 0. }
+            })
+            .fold(0., f32::max)
+            + 28.
+            + 22.
+            + 12.
+            + 2.
+    } else {
+        0.
+    };
     let entry = rows.iter().position(|v| v.checked).unwrap_or(0);
     let trigger_focus = action_focus(format!("{id}-trigger"), window, cx);
     let owner = cx.entity().downgrade();
@@ -310,25 +340,32 @@ pub(crate) fn render<V: 'static>(
         .w_full()
         .h_full()
         .child(trigger);
-    if open {
+    if let Some(frame) = frame {
         let height = (window.viewport_size().height.as_f32() - 24.).clamp(32., 320.);
         let edge_list = list.clone();
         let panel = div()
-            .id(format!("{id}-menu"))
-            .occlude()
-            .w(px(control_width.max(160.)))
+            .w(px(control_width.max(160.).max(menu_width.min(360.))))
             .max_h(px(height))
             .p(px(6.))
             .rounded(px(ui::PLAIN_POPOVER_RADIUS))
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(BORDER_WIDTH))
-            .border_color(rgb(UI_OUTLINE))
+            .border_color(rgb(FORM.outline))
             .shadow_sm()
             .child(crate::components::smooth::rounded_viewport(
                 format!("{id}-viewport"),
                 ui::PLAIN_POPOVER_RADIUS - 6.,
                 List::new(&list).small().max_h(px(height - 13.)),
-            ))
+            ));
+        // A leaving menu takes no input and is not part of the automation tree.
+        let panel = if frame.closing {
+            panel
+                .id(SharedString::from(format!("{id}-menu-leaving")))
+                .into_any_element()
+        } else {
+            panel
+            .id(format!("{id}-menu"))
+            .occlude()
             .on_key_down(move |e: &KeyDownEvent, w, app| {
                 if !matches!(e.keystroke.key.as_str(), "home" | "end") {
                     return;
@@ -345,7 +382,16 @@ pub(crate) fn render<V: 'static>(
                 app.stop_propagation();
             })
             .on_mouse_down_out(move |_, w, cx| close(w, cx))
-            .automation(AutomationRole::ScrollArea, label);
+            .automation(AutomationRole::ScrollArea, label)
+            .into_any_element()
+        };
+        // Opens below its trigger: fade in while moving away from it; the exit
+        // only fades. A plain wrapper moves so the panel keeps its own id.
+        let panel = div()
+            .relative()
+            .top(px(-crate::motion::POPOVER_OFFSET * frame.travel))
+            .opacity(frame.opacity)
+            .child(panel);
         select = select.child(
             deferred(
                 gpui_base::Positioner::side(anchor.get())

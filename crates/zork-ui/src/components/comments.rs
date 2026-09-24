@@ -57,7 +57,7 @@ pub fn queue<V: 'static>(
                 .gap_2()
                 .px_2()
                 .py_2()
-                .rounded(px(6.))
+                .rounded(px(crate::design::RADIUS.inline))
                 .child(
                     div()
                         .flex_1()
@@ -67,7 +67,7 @@ pub fn queue<V: 'static>(
                         .gap_1()
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .truncate()
                                 .child(format!(

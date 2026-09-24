@@ -13,7 +13,7 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class MessagePresentationTest {
-    @Test fun previewReaderAndAnimatedTail() {
+    @Test fun longMessagesShowInFullAndTailAnimates() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val automation = instrumentation.uiAutomation
         fun node(label: String): AccessibilityNodeInfo? {
@@ -46,25 +46,10 @@ class MessagePresentationTest {
             }
             scenario.onActivity { it.appendLong() }
             Thread.sleep(500); instrumentation.waitForIdleSync()
-            await("查看完整消息")
-            assertNull("Full body leaked into message list", node("FULL-MESSAGE-END"))
-            capture("preview.png")
-            var before = 0
-            scenario.onActivity { before = it.scroll.firstVisibleItemIndex }
-            val target = await("查看完整消息")
-            val bounds = android.graphics.Rect().also { target.getBoundsInScreen(it) }
-            val down = SystemClock.uptimeMillis()
-            for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
-                val event = android.view.MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, bounds.exactCenterX(), bounds.exactCenterY(), 0)
-                assertTrue(automation.injectInputEvent(event, true))
-                event.recycle()
-            }
-            await("完整消息"); Thread.sleep(300); capture("full-message.png")
-            assertNotNull(node("复制全文"))
-            assertTrue(await("返回对话").performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            Thread.sleep(350); instrumentation.waitForIdleSync()
-            scenario.onActivity { assertEquals("Returning moved reading anchor", before, it.scroll.firstVisibleItemIndex) }
-            capture("returned.png")
+            // Messages are never folded: the end of a long body is in the list itself.
+            await("FULL-MESSAGE-END")
+            assertNull("Folding entry must not exist", node("查看完整消息"))
+            capture("long-message.png")
         }
     }
 }

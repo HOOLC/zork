@@ -20,14 +20,14 @@ fn key(file: &FileRef) -> String {
 }
 
 impl PreviewCache {
-    fn missing(&self, files: &[FileRef]) -> bool {
+    pub(super) fn missing(&self, files: &[FileRef]) -> bool {
         self.loading < 2
             && files.iter().any(|f| {
                 super::content::kind(&f.name, "").has_thumbnail()
                     && !self.entries.contains_key(&key(f))
             })
     }
-    fn image(
+    pub(super) fn image(
         &mut self,
         file: &FileRef,
         session: &str,
@@ -45,6 +45,9 @@ impl PreviewCache {
         entry.used = self.clock;
         entry.image.clone()
     }
+    pub(in crate::views) fn image_count(&self) -> usize {
+        self.entries.values().filter(|e| e.image.is_some()).count()
+    }
     pub(super) fn release(&mut self, cx: &mut gpui::App) {
         self.waiting_rows.clear();
         for (_, entry) in self.entries.drain() {
@@ -56,7 +59,7 @@ impl PreviewCache {
 }
 
 impl RootView {
-    fn ensure_message_previews(
+    pub(super) fn ensure_message_previews(
         &mut self,
         files: &[FileRef],
         session: &str,
@@ -158,7 +161,7 @@ impl RootView {
                             view.transcript_list.remeasure_items(row..row + 1);
                         }
                     }
-                    zork_ui::components::region::invalidate(cx, &["transcript"])
+                    zork_ui::components::region::invalidate(cx, &["transcript", "composer"])
                 });
             })
             .detach();
@@ -176,7 +179,8 @@ pub(in crate::views) fn render(
     cache: Rc<RefCell<PreviewCache>>,
     cx: &mut gpui::App,
 ) -> Div {
-    let group_width = width.clamp(140., 300.);
+    use zork_ui::components::attachments as ui_files;
+    let group_width = width.clamp(140., ui_files::IMAGE_LONG_EDGE);
     if cache.borrow().missing(&files) {
         let (files, root) = (files.clone(), root.clone());
         let session = session.to_owned();
@@ -186,54 +190,100 @@ pub(in crate::views) fn render(
             });
         });
     }
-    let mut rows = Vec::new();
+    let is_image = |f: &FileRef| super::content::kind(&f.name, "").is_image();
+    let opener = |selected: usize| {
+        let (root, group, session) = (root.clone(), files.clone(), session.to_owned());
+        move |_: &gpui::ClickEvent, window: &mut Window, cx: &mut gpui::App| {
+            cx.stop_propagation();
+            let _ = root.update(cx, |v, cx| {
+                v.open_message_files(group.clone(), selected, &session, window, cx)
+            });
+        }
+    };
+    let mut blocks: Vec<gpui::AnyElement> = Vec::new();
     let mut cursor = 0;
     while cursor < files.len() {
         let first = cursor;
-        let is_image = super::content::kind(&files[first].name, "").is_image();
-        let columns = if is_image
-            && files
-                .get(first + 1)
-                .is_some_and(|f| super::content::kind(&f.name, "").is_image())
-        {
-            2
-        } else {
-            1
-        };
-        let item_width = (group_width - 12. * (columns - 1) as f32) / columns as f32;
-        let mut row = div().flex().gap_3();
-        for selected in first..first + columns {
-            let file = &files[selected];
-            let id = format!("message-file-{index}-{}", file.id);
-            let item = if is_image {
-                zork_ui::components::attachments::message_image_with_padding(
-                    id,
+        if !is_image(&files[first]) {
+            let file = &files[first];
+            blocks.push(
+                ui_files::message_file_block(
+                    format!("message-file-{index}-{}", file.id),
+                    file.name.clone(),
+                    super::draft::meta(file),
+                    group_width,
+                )
+                .on_click(opener(first))
+                .automation(AutomationRole::Button, file.name.clone())
+                .into_any_element(),
+            );
+            cursor += 1;
+            continue;
+        }
+        // Consecutive images form one grid: two columns with a 4 px gap,
+        // rounded only on the grid's outer corners.
+        let mut end = first;
+        while end < files.len() && is_image(&files[end]) {
+            end += 1;
+        }
+        cursor = end;
+        if end - first == 1 {
+            let file = &files[first];
+            blocks.push(
+                ui_files::message_image_with_padding(
+                    format!("message-file-{index}-{}", file.id),
                     cache.borrow_mut().image(file, session, index),
-                    item_width,
+                    group_width,
                     1.,
                 )
-            } else {
-                zork_ui::components::attachments::message_document_with_preview(
-                    id,
-                    file.name.clone(),
-                    image::kind(&file.name),
-                    group_width,
-                    cache.borrow_mut().image(file, session, index),
-                )
-            };
-            let (root, group, session) = (root.clone(), files.clone(), session.to_owned());
-            row = row.child(
-                item.on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    let _ = root.update(cx, |v, cx| {
-                        v.open_message_files(group.clone(), selected, &session, window, cx)
-                    });
-                })
-                .automation(AutomationRole::Button, file.name.clone()),
+                .on_click(opener(first))
+                .automation(AutomationRole::Button, file.name.clone())
+                .into_any_element(),
             );
+            continue;
         }
-        rows.push(row);
-        cursor += columns;
+        let gap = ui_files::IMAGE_GRID_GAP;
+        let radius = px(zork_ui::design::RADIUS.block);
+        let cell = (group_width - gap) / 2.;
+        let rows = (end - first).div_ceil(2);
+        let mut grid = div().flex().flex_col().gap(px(gap));
+        for row in 0..rows {
+            let top = row == 0;
+            let bottom = row + 1 == rows;
+            let mut line = div().flex().gap(px(gap));
+            let members: Vec<usize> = (first + row * 2..(first + row * 2 + 2).min(end)).collect();
+            let alone = members.len() == 1;
+            for (column, selected) in members.into_iter().enumerate() {
+                let file = &files[selected];
+                let left = column == 0;
+                let right = alone || column == 1;
+                let corners = gpui::Corners {
+                    top_left: if top && left { radius } else { px(0.) },
+                    top_right: if top && right { radius } else { px(0.) },
+                    bottom_left: if bottom && left { radius } else { px(0.) },
+                    bottom_right: if bottom && right { radius } else { px(0.) },
+                };
+                let (w, h) = if alone {
+                    (group_width, group_width * 0.5625)
+                } else {
+                    (cell, cell * 0.75)
+                };
+                line = line.child(
+                    ui_files::message_image_tile(
+                        format!("message-file-{index}-{}", file.id),
+                        cache.borrow_mut().image(file, session, index),
+                        w,
+                        h,
+                        corners,
+                        1.,
+                    )
+                    .on_click(opener(selected))
+                    .automation(AutomationRole::Button, file.name.clone()),
+                );
+            }
+            grid = grid.child(line);
+        }
+        blocks.push(grid.into_any_element());
     }
     div()
         .w(px(width))
@@ -246,7 +296,8 @@ pub(in crate::views) fn render(
                 .w(px(group_width))
                 .flex()
                 .flex_col()
-                .gap_3()
-                .children(rows),
+                .when(user, |v| v.items_end())
+                .gap_2()
+                .children(blocks),
         )
 }

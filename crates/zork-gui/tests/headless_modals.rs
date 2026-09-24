@@ -144,8 +144,16 @@ impl<V: Render + 'static> Fixture<V> {
             );
         }
         anyhow::ensure!(
-            (card.bounds.width - 540.).abs() < 1.,
-            "modal width drifted from the shared desktop design"
+            [
+                zork_ui::controls::DIALOG_CONFIRM_WIDTH,
+                zork_ui::controls::DIALOG_FORM_WIDTH,
+                zork_ui::controls::DIALOG_STEP_WIDTH,
+                zork_ui::controls::DIALOG_RICH_WIDTH,
+            ]
+            .iter()
+            .any(|tier| (card.bounds.width - tier).abs() < 1.),
+            "modal width {} is not one of the shared width tiers",
+            card.bounds.width
         );
         let footer = self
             .element(&format!("{id}-footer"))
@@ -236,17 +244,15 @@ fn main() -> anyhow::Result<()> {
         f.modal("profile-create-dialog", width, height)?;
         f.screenshot(&format!("connection-{width}.png"))?;
         anyhow::ensure!(
-            (f.element("profile-id").unwrap().bounds.height - 32.).abs() < 0.1,
-            "field height drift"
+            f.element("profile-provider-card-0").is_some(),
+            "step 1 did not list providers"
         );
-        f.click("profile-id")?;
-        f.action(json!({"type":"type_text","text":"固定连接"}))?;
+        f.click("profile-next")?;
         anyhow::ensure!(
-            f.view
-                .read_with(&f.cx, |v, cx| v.headless_connection_name(cx))
-                == "固定连接",
-            "modal field did not receive input"
+            f.element("profile-signin").is_some() || f.element("profile-key").is_some(),
+            "step 2 did not ask for a sign-in or key"
         );
+        f.screenshot(&format!("connection-step-2-{width}.png"))?;
         f.key("escape")?;
         anyhow::ensure!(
             f.element("profile-create-dialog").is_none(),
@@ -265,6 +271,7 @@ fn main() -> anyhow::Result<()> {
         f.modal("model-editor-dialog", width, height)?;
         f.click("profile-model")?;
         f.action(json!({"type":"type_text","text":"copied-model"}))?;
+        f.click("model-params-toggle")?;
         f.click("model-copy-select")?;
         f.click("model-copy-0")?;
         anyhow::ensure!(
@@ -302,7 +309,18 @@ fn main() -> anyhow::Result<()> {
             "close button did not dismiss model editor"
         );
         f.click("model-edit-fixture-model")?;
-        f.modal("model-editor-dialog", width, height)?;
+        anyhow::ensure!(
+            f.element("model-inline-editor").is_some(),
+            "editing a model did not expand in place: {:?}",
+            f.driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .filter(|e| e.id.starts_with("model") || e.id.starts_with("profile-model"))
+                .map(|e| (&e.id, e.visible))
+                .collect::<Vec<_>>()
+        );
+        f.screenshot(&format!("model-inline-{width}.png"))?;
         f.key("escape")?;
     }
     paint_node_checks()?;
@@ -513,12 +531,14 @@ impl Render for EnrollmentFrame {
                     .child(self.navigation.clone()),
             )
             .when(visible, |frame| {
+                // Opening starts a command right away; the only button left
+                // in the dialog is "重新生成" after an invitation expired.
                 let data = zork_ui::network::EnrollmentData {
                     available: true,
                     busy: false,
                     command: String::new(),
-                    status: String::new(),
-                    status_label: String::new(),
+                    status: "expired".into(),
+                    status_label: "安装链接已过期，请重新生成。".into(),
                     notice: None,
                 };
                 frame.child(zork_ui::network::enrollment_dialog(
@@ -556,6 +576,8 @@ fn settle_enrollment(
     });
     let mut samples = Vec::new();
     let mut minimum_ink = usize::MAX;
+    // Quiet icon sources draw only their glyph, so compare with the first frame.
+    let mut baseline: Option<usize> = None;
     loop {
         f.cx.advance_clock(Duration::from_millis(16));
         f.cx.update_window(f.window.into(), |_, window, cx| {
@@ -605,9 +627,10 @@ fn settle_enrollment(
                     serde_json::to_vec_pretty(&samples)?,
                 )?;
             }
+            let first = *baseline.get_or_insert(ink);
             anyhow::ensure!(
-                ink > 500,
-                "source button stopped drawing: {name}, ink={ink}, state={state}"
+                ink > 20 && ink * 2 >= first,
+                "source button stopped drawing: {name}, ink={ink} of {first}, state={state}"
             );
         }
         let alpha = if open { 1. } else { 0. };

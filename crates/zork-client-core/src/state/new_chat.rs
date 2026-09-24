@@ -190,6 +190,11 @@ impl NewChat {
             &state.thinking,
             &state.profile,
         );
+        if let Some(name) = self.device.upgrade().and_then(|d| d.display_name()) {
+            for option in &mut view.model.options {
+                option.device = Some(name.clone());
+            }
+        }
         view.busy = state.busy;
         view.uncertain = state.pending.is_some() && !state.busy;
         view.editable = !state.busy && state.pending.is_none();
@@ -231,6 +236,7 @@ impl NewChat {
             Action::Model { value } => self.choose(value, s.thinking.clone(), s.profile.clone()),
             Action::Thinking { value } => self.choose(s.model.clone(), value, s.profile.clone()),
             Action::Profile { value } => self.choose(s.model.clone(), s.thinking.clone(), value),
+            Action::Select { profile, model } => self.choose(model, s.thinking.clone(), profile),
             Action::Submit { text } => self.submit_text(text),
         }
     }

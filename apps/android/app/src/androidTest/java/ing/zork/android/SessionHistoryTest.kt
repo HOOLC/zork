@@ -156,195 +156,6 @@ class SessionHistoryTest {
         await(label)
     }
 
-    @Test fun timelineTimeMappingAndBoundaryGeometry() {
-        fun row(id: String, start: Long?, end: Long?, state: String = "succeeded") = HistoryRow(
-            id, "模型请求", "", "", 1, false, start, end, state, null, "", null)
-        val compressed = HistoryAxis(listOf(row("a", 0, 100), row("b", 1100, 1300)), 1300)
-        assertEquals(listOf(100L to 1100L), compressed.gaps)
-        assertEquals(300.0, compressed.duration, 0.0)
-        assertEquals(0L, compressed.timeAt(0.0))
-        assertEquals(1300L, compressed.timeAt(1.0))
-        assertEquals(1250L, compressed.timeAt(compressed.position(1250)))
-        val points = HistoryAxis(listOf(row("first", 0, 0), row("middle", 1000, 1000), row("last", null, 4000, "failed")), 4000)
-        assertTrue(points.gaps.isEmpty())
-        assertEquals(.25, points.position(1000), .00001)
-        val view = HistoryTimelineState()
-        val bars = historyBars(points, view, 300f, listOf(28f, 28f, 28f), 1f)
-        assertEquals(3, bars.size)
-        assertEquals(300f, bars.last().bounds.right, .001f)
-        assertEquals(2f, bars.last().bounds.width, .001f)
-        view.transform(4.0, anchor = .25)
-        assertEquals(listOf("middle"), historyBars(points, view, 300f, listOf(28f, 28f, 28f), 1f).map { it.span.row.id })
-        val running = HistoryAxis(listOf(row("running", 0, null, "running"), row("done", 3000, 3100)), 4000)
-        assertTrue(running.gaps.isEmpty())
-        assertEquals(4000L, running.spans.first().end)
-        assertTrue(historyAxisClock(1125, 2000).endsWith(".125"))
-        assertFalse(historyAxisClock(1125, 20000).contains('.'))
-    }
-
-    @Test fun timelineUsesDesktopColorsAndCompactTracks() {
-        val file = instrumentation.targetContext.filesDir.resolve("session-history-pc.json")
-        instrumentation.context.assets.open("session-history-pc.json").use { input -> file.outputStream().use { input.copyTo(it) } }
-        val intent = Intent(instrumentation.targetContext, SessionHistoryPreviewActivity::class.java).putExtra("fixture_file", file.absolutePath)
-        ActivityScenario.launch<SessionHistoryPreviewActivity>(intent).use { scenario ->
-            click("阿狸 · 执行历史")
-            val plot = bounds("执行时间轴")
-            val density = instrumentation.targetContext.resources.displayMetrics.density
-            assertTrue("Desktop timeline tracks must stay compact", plot.height() / density <= 60)
-            assertTrue("Touch surface remains accessible", plot.height() / density >= 44)
-            scenario.onActivity { assertEquals(14, it.history!!.entries.size) }
-            val image = automation.takeScreenshot()!!
-            val counts = mutableMapOf(0x2878CE to 0, 0x8056C4 to 0, 0x21865B to 0, 0xD43D45 to 0)
-            for (y in plot.top until plot.bottom) for (x in plot.left until plot.right) {
-                val color = image.getPixel(x, y) and 0xffffff
-                if (color in counts) counts[color] = counts.getValue(color) + 1
-            }
-            image.recycle()
-            counts.forEach { (color, count) -> assertTrue("Missing desktop timeline accent ${color.toString(16)}", count > 20) }
-            assertTrue("Model duration must be a long solid bar", counts.getValue(0x8056C4) > plot.width() * 6)
-            assertTrue("Wait duration must be a solid tool bar", counts.getValue(0x21865B) > plot.width() * 2)
-            capture("desktop-reference.png")
-            click("放大时间轴")
-            capture("desktop-reference-zoomed.png")
-        }
-    }
-
-    @Test fun timelineInstantEventsStayVisibleAndSelectable() {
-        ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
-            click("阿狸 · 执行历史")
-            scenario.onActivity { activity ->
-                val current = activity.history!!
-                val base = 1789200000000L
-                val entries = org.json.JSONArray(listOf(0L, 1000L, 4000L).mapIndexed { index, at -> JSONObject()
-                    .put("id", "point-$index").put("lane", 1).put("action", "").put("state", "failed")
-                    .put("visible", false).put("start", JSONObject.NULL).put("end", base + at) })
-                current.apply(HistoryFrame.decode(JSONObject().put("peer", current.peer).put("session", current.session)
-                    .put("entries", entries).put("blocks", org.json.JSONArray())))
-            }
-            Thread.sleep(450)
-            capture("instant-events.png")
-            val chart = bounds("执行时间轴")
-            drag(chart, .998f, .5f, .998f, .5f)
-            scenario.onActivity { assertEquals("point-2", it.history!!.highlightedId) }
-            capture("last-event-selected.png")
-        }
-    }
-
-    @Test fun concurrentTracksScrollWithoutPanningTime() {
-        ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
-            click("阿狸 · 执行历史")
-            scenario.onActivity { activity ->
-                val current = activity.history!!
-                val entries = org.json.JSONArray((0 until 20).map { index -> JSONObject()
-                    .put("id", "parallel-$index").put("lane", 1).put("action", "").put("state", "succeeded")
-                    .put("visible", false).put("start", 1789200000000L).put("end", 1789200060000L) })
-                current.apply(HistoryFrame.decode(JSONObject().put("peer", current.peer).put("session", current.session)
-                    .put("entries", entries).put("blocks", org.json.JSONArray())))
-            }
-            Thread.sleep(400)
-            fun scrollActions(): Set<Int> {
-                var node: AccessibilityNodeInfo? = await("执行时间轴").first()
-                while (node != null && !node.isScrollable) node = node.parent
-                assertNotNull("Concurrent tracks need a scrollable viewport", node)
-                return node!!.actionList.map { it.id }.toSet()
-            }
-            val backward = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id
-            assertFalse(scrollActions().contains(backward))
-            val before = bounds("执行时间轴")
-            drag(before, .5f, .4f, .5f, .05f)
-            Thread.sleep(350)
-            capture("concurrent-tracks.png")
-            // Accessibility bounds are clipped to the viewport and therefore
-            // stay fixed as the content scrolls. The backward action reflects
-            // its actual applied scroll offset.
-            assertTrue("Vertical drag must scroll the concurrent tracks", scrollActions().contains(backward))
-            scenario.onActivity { assertEquals(0.0, it.history!!.timeline.offset, 0.0) }
-        }
-    }
-
-    @Test fun groupsTimelineSelectionAndNestedTargets() {
-        ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
-            click("阿狸 · 执行历史"); await("执行历史")
-            var groupLabel = ""
-            var firstMember = ""
-            scenario.onActivity {
-                val history = it.history!!
-                val group = history.blocks!!.first { it.grouped }
-                groupLabel = "${group.members.size} 项常规操作"
-                firstMember = group.members.first()
-                assertFalse(history.isExpanded(group))
-                assertTrue(history.visibleRows().none { row -> row.entry?.id == firstMember })
-            }
-            capture("collapsed.png")
-            click(groupLabel)
-            scenario.onActivity { assertTrue(it.history!!.visibleRows().any { row -> row.entry?.id == firstMember }) }
-            // Retarget expansion before the placement spring settles.
-            repeat(4) { await(groupLabel).first().performAction(AccessibilityNodeInfo.ACTION_CLICK); Thread.sleep(25) }
-            Thread.sleep(650)
-            scenario.onActivity { assertTrue(it.history!!.visibleRows().any { row -> row.entry?.id == firstMember }) }
-            capture("expanded.png")
-            click("选择时间轴记录"); await("时间轴记录"); click("模型请求")
-            scenario.onActivity {
-                val history = it.history!!
-                val chosen = history.entries.first { row -> row.id == history.highlightedId }
-                assertEquals(1, chosen.lane)
-                assertFalse(chosen.visible)
-                assertNull(history.selectedId)
-            }
-            click("查看时间轴记录详情"); capture("model-detail.png")
-            scrollToLabel("开始 JSON · 1"); click("开始 JSON · 1")
-            assertTrue("Expanded source JSON is missing", screenContains("step_started"))
-            capture("model-source.png")
-            click("开始 JSON · 1")
-            assertFalse("Collapsed JSON remained visible", screenContains("step_started"))
-            click("关闭记录详情")
-            click("选择时间轴记录"); click("读取文件")
-            scenario.onActivity {
-                assertEquals(firstMember, it.history!!.highlightedId)
-                assertTrue(it.history!!.visibleRows().any { row -> row.entry?.id == firstMember })
-            }
-            // A real touch on the input lane's first point selects that input,
-            // independently of the model and tool chooser paths.
-            val chart = bounds("执行时间轴")
-            val dpi = instrumentation.targetContext.resources.displayMetrics.density
-            val tap = android.graphics.Rect(chart.left + (2 * dpi).toInt(), chart.top + (8 * dpi).toInt(), chart.left + (4 * dpi).toInt(), chart.top + (10 * dpi).toInt())
-            drag(tap, .5f, .5f, .5f, .5f)
-            scenario.onActivity { assertEquals(0, it.history!!.entries.first { row -> row.id == it.history!!.highlightedId }.lane) }
-            click("放大时间轴")
-            scenario.onActivity { assertEquals(2.0, it.history!!.timeline.zoom, .001) }
-            val before = doubleArrayOf(0.0)
-            scenario.onActivity { before[0] = it.history!!.timeline.offset }
-            drag(bounds("执行时间轴"), .75f, .5f, .35f, .5f)
-            scenario.onActivity { assertTrue(it.history!!.timeline.offset > before[0]) }
-            pinch(bounds("执行时间轴"))
-            scenario.onActivity { assertTrue(it.history!!.timeline.zoom > 2) }
-            click("选择时间范围")
-            drag(bounds("执行时间轴"), .2f, .8f, .8f, .8f)
-            scenario.onActivity { assertTrue(it.history!!.timeline.range!!.let { range -> range.first != range.second }) }
-            capture("range.png")
-            click("适配全部时间")
-            scenario.onActivity { assertEquals(1.0, it.history!!.timeline.zoom, .001); assertNull(it.history!!.timeline.range) }
-            scenario.onActivity {
-                val prior = it.history!!.blocks!!.first { block -> firstMember in block.members }
-                assertTrue(it.history!!.isExpanded(prior))
-                it.prepend()
-                val next = it.history!!.blocks!!.first { block -> firstMember in block.members }
-                assertNotEquals(prior.id, next.id)
-                assertTrue(it.history!!.isExpanded(next))
-            }
-            click("选择时间轴记录"); scrollToLabel("分配任务"); click("分配任务")
-            click("小熊"); await("身份"); capture("identity.png"); click("关闭记录详情")
-            click("选择时间轴记录"); scrollToLabel("发送消息"); click("发送消息")
-            click("工作对话")
-            scenario.onActivity { assertEquals(listOf("session-a"), it.destinations); assertNull(it.history!!.selectedId) }
-            click("模型连接与额度"); await("测试连接"); capture("quota.png"); click("关闭记录详情")
-            Thread.sleep(1000)
-            scenario.onActivity { synchronized(it.frameTimes) { it.frameTimes.clear() } }
-            Thread.sleep(350)
-            scenario.onActivity { assertTrue("Settled UI kept drawing: ${it.frameTimes}", synchronized(it.frameTimes) { it.frameTimes.size } <= 2) }
-        }
-    }
-
     @Test fun configuredWidthTouchTargetsAndLongContent() {
         ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent(long = true)).use { scenario ->
             await("阿狸 · 执行历史"); Thread.sleep(450)
@@ -362,31 +173,6 @@ class SessionHistoryTest {
             var label = ""
             scenario.onActivity { label = "${it.history!!.blocks!!.first { group -> group.grouped }.members.size} 项常规操作" }
             click(label); capture("expanded.png")
-            if (instrumentation.targetContext.resources.configuration.fontScale > 1.4f) {
-                drag(bounds("选择时间轴记录"), .8f, .5f, .8f, -6f)
-                Thread.sleep(350)
-            }
-            val labels = mutableListOf<android.graphics.Rect>()
-            fun collectTicks(node: AccessibilityNodeInfo?) {
-                if (node == null) return
-                if (node.isVisibleToUser && node.text?.toString()?.matches(Regex("\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?")) == true) {
-                    val rect = android.graphics.Rect().also { node.getBoundsInScreen(it) }
-                    var parent = node.parent
-                    while (parent != null) {
-                        val viewport = android.graphics.Rect().also { parent!!.getBoundsInScreen(it) }
-                        assertTrue("Time tick is clipped: $rect outside $viewport", viewport.contains(rect))
-                        parent = parent.parent
-                    }
-                    labels.add(rect)
-                }
-                for (i in 0 until node.childCount) collectTicks(node.getChild(i))
-            }
-            automation.clearCache(); collectTicks(automation.rootInActiveWindow)
-            assertTrue("Time ticks must be visible at this width and font size", labels.size >= 2)
-            labels.forEachIndexed { index, rect -> labels.drop(index + 1).forEach {
-                assertFalse("Time tick labels overlap: $rect / $it", android.graphics.Rect.intersects(rect, it))
-            } }
-            capture("timeline.png")
             click("读取文件"); await("复制结果")
             capture("long-detail.png")
             click("复制结果")
@@ -399,8 +185,8 @@ class SessionHistoryTest {
                 assertEquals(result.text, clipboard.primaryClip!!.getItemAt(0).text.toString())
             }
             click("关闭记录详情")
-            click("选择时间轴记录"); click("模型请求"); click("查看时间轴记录详情")
-            capture("model-detail.png")
+            click("读取文件"); await("复制结果")
+            capture("reopened-detail.png")
             // Actual system Back dismisses the sheet and retains the reader.
             automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             await("执行历史")
@@ -409,7 +195,54 @@ class SessionHistoryTest {
                 .put("density", density).put("font_scale", instrumentation.targetContext.resources.configuration.fontScale)
                 .put("targets", org.json.JSONArray(targets.map { "${it.width() / density}x${it.height() / density}" }))
             val case = InstrumentationRegistry.getArguments().getString("capture_case") ?: "default"
-            instrumentation.targetContext.filesDir.resolve("session-history-complete/$case/geometry.json").writeText(report.toString())
+            instrumentation.targetContext.filesDir.resolve("session-history-complete/$case/geometry.json")
+                .apply { parentFile?.mkdirs() }.writeText(report.toString())
+        }
+    }
+    @Test fun receivedChatMessageReadsAsAMessageNotJson() {
+        ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
+            click("阿狸 · 执行历史", last = true); await("执行历史")
+            scrollToLabel("来自 小熊")
+            // The sender is the member name, the body is rendered Markdown and
+            // the attachment reads by name; the Station envelope never shows.
+            assertTrue(screenContains("窄屏截图见附件"))
+            assertFalse(screenContains("**窄屏截图**"))
+            assertTrue(screenContains("narrow.png"))
+            assertFalse(screenContains("\"source\""))
+            assertFalse(screenContains("worker-1"))
+            scenario.onActivity { activity ->
+                val row = activity.history!!.entries.first { it.id == "wake-input" }
+                assertEquals("小熊", row.message!!.sender)
+                assertEquals(listOf("narrow.png"), row.message!!.files)
+            }
+            capture("received-message.png")
+            // The Markdown body stays selectable; the sender line opens the record.
+            val header = android.graphics.Rect().also { rect ->
+                automation.clearCache()
+                fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (node == null) return null
+                    if (node.isVisibleToUser && node.text?.startsWith("来自 小熊") == true) return node
+                    return (0 until node.childCount).firstNotNullOfOrNull { find(node.getChild(it)) }
+                }
+                find(automation.rootInActiveWindow)!!.getBoundsInScreen(rect)
+            }
+            val down = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, header.exactCenterX(), header.exactCenterY(), 0).let {
+                    assertTrue(automation.injectInputEvent(it, true)); it.recycle()
+                }
+                Thread.sleep(40)
+            }
+            instrumentation.waitForIdleSync(); Thread.sleep(650)
+            await("附件")
+            scenario.onActivity { activity ->
+                val detail = activity.history!!.detail!!
+                assertTrue(detail.sections.first { it.title == "内容" }.text.startsWith("检查完成，继续整理报告。"))
+                assertEquals("narrow.png", detail.sections.first { it.title == "附件" }.text)
+                // The envelope is only in the raw event section.
+                assertTrue(detail.sections.any { it.code && it.text.contains("\\\"source\\\":\\\"chat\\\"") })
+            }
+            capture("received-message-detail.png")
         }
     }
     @Test fun keyboardFocusInputDismissalAndEmptyState() {
@@ -456,7 +289,11 @@ class SessionHistoryTest {
             click("阿狸 · 执行历史")
             await("执行历史")
             scenario.onActivity { assertEquals("session-a", it.history?.session) }
-            await("总计 27500 · 输入 24K · 输出 3500")
+            // The header's one line reads "model · total tokens".
+            val tokens = "总计 27500 · 输入 24K · 输出 3500"
+            val tokensBy = SystemClock.uptimeMillis() + 6000
+            while (!screenContains(tokens) && SystemClock.uptimeMillis() < tokensBy) Thread.sleep(40)
+            assertTrue("Missing $tokens in the header", screenContains(tokens))
             capture("history.png")
             click("执行命令")
             await("原始 JSON"); await("/workspace/zork")

@@ -41,7 +41,7 @@ pub fn skin(
     _cx: &mut App,
 ) -> Stateful<Div> {
     let border = if colors.focused {
-        Some(crate::controls::FIELD_FOCUS_BORDER)
+        Some(crate::controls::FIELD_FOCUS_BORDER())
     } else {
         colors.border
     };

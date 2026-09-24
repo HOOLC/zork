@@ -23,7 +23,7 @@ impl DetailsTooltip {
                 .map(|line| super::widgets::overlay::measure_label(line, size, window))
                 .fold(0., f32::max)
         };
-        let header = 42. + measure(&self.title, 13., window).max(measure(&self.kind, 10., window));
+        let header = 42. + measure(&self.title, 13., window).max(measure(&self.kind, 12., window));
         let description: String = self.description.trim().chars().take(320).collect();
         let mut content = header.max(measure(&description, 12., window));
         for (label, value) in self
@@ -31,10 +31,12 @@ impl DetailsTooltip {
             .iter()
             .filter(|(_, value)| !value.trim().is_empty())
         {
-            content = content.max(60. + 8. + measure(value, 11., window));
-            content = content.max(measure(label, 11., window) + 8. + measure(value, 11., window));
+            content = content.max(60. + 8. + measure(value, 12., window));
+            content = content.max(measure(label, 12., window) + 8. + measure(value, 12., window));
         }
-        (content.ceil() + 32.)
+        // Measured at the rendered sizes, plus slack so a line that fits
+        // exactly does not wrap its last glyph.
+        (content.ceil() + 32. + 4.)
             .min(320.)
             .min((window.viewport_size().width.as_f32() - 24.).max(2.))
     }
@@ -58,7 +60,7 @@ impl DetailsTooltip {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(12.))
+                            .rounded(px(crate::design::RADIUS.block))
                             .bg(rgb(p.prompt))
                             .child(ui::icon("icons/checklist.svg", 18.)),
                     )
@@ -76,7 +78,7 @@ impl DetailsTooltip {
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(12.))
                                     .line_height(px(16.))
                                     .text_color(rgb(p.muted))
                                     .child(self.kind.clone()),
@@ -102,7 +104,7 @@ impl DetailsTooltip {
                                 .flex()
                                 .items_start()
                                 .gap(px(8.))
-                                .text_size(px(11.))
+                                .text_size(px(12.))
                                 .line_height(px(17.))
                                 .child(
                                     div()

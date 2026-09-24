@@ -27,7 +27,8 @@ float quarter_ellipse_sdf(float2 point, float2 radii);
 float pick_corner_radius(float2 center_to_point, Corners_ScaledPixels corner_radii);
 float quad_sdf(float2 point, Bounds_ScaledPixels bounds,
                Corners_ScaledPixels corner_radii);
-float quad_sdf_impl(float2 center_to_point, float corner_radius);
+float quad_sdf_impl(float2 center_to_point, float corner_radius, float exponent);
+void smooth_corner(float radius, float half_min, thread float &extent, thread float &exponent);
 float gaussian(float x, float sigma);
 float2 erf(float2 x);
 float blur_along_x(float x, float y, float sigma, float corner,
@@ -127,8 +128,11 @@ fragment float4 quad_fragment(QuadFragmentInput input [[stage_in]],
   // minimum distance between the center of the pixel and the edge.
   const float antialias_threshold = 0.5;
 
-  // Radius of the nearest corner
-  float corner_radius = pick_corner_radius(center_to_point, quad.corner_radii);
+  // Radius of the nearest corner, widened into a continuous-curvature corner.
+  float corner_exponent;
+  float corner_radius;
+  smooth_corner(pick_corner_radius(center_to_point, quad.corner_radii),
+                min(half_size.x, half_size.y), corner_radius, corner_exponent);
 
   // Width of the nearest borders
   float2 border = float2(
@@ -179,7 +183,7 @@ fragment float4 quad_fragment(QuadFragmentInput input [[stage_in]],
   }
 
   // Signed distance of the point to the outside edge of the quad's border
-  float outer_sdf = quad_sdf_impl(corner_center_to_point, corner_radius);
+  float outer_sdf = quad_sdf_impl(corner_center_to_point, corner_radius, corner_exponent);
 
   // Approximate signed distance of the point to the inside edge of the quad's
   // border. It is negative outside this edge (within the border), and
@@ -1065,17 +1069,59 @@ float quad_sdf(float2 point, Bounds_ScaledPixels bounds,
     float2 half_size = float2(bounds.size.width, bounds.size.height) / 2.0;
     float2 center = float2(bounds.origin.x, bounds.origin.y) + half_size;
     float2 center_to_point = point - center;
-    float corner_radius = pick_corner_radius(center_to_point, corner_radii);
+    float corner_exponent;
+    float corner_radius;
+    smooth_corner(pick_corner_radius(center_to_point, corner_radii),
+                  min(half_size.x, half_size.y), corner_radius, corner_exponent);
     float2 corner_to_point = fabs(center_to_point) - half_size;
     float2 corner_center_to_point = corner_to_point + corner_radius;
-    return quad_sdf_impl(corner_center_to_point, corner_radius);
+    return quad_sdf_impl(corner_center_to_point, corner_radius, corner_exponent);
+}
+
+// Zork uses continuous-curvature (superellipse) corners instead of circular
+// arcs, so the curve eases into the straight edge without a visible seam.
+// The curve starts CORNER_SMOOTH_EXTENT radii from the corner; with
+// CORNER_SMOOTH_EXPONENT = 3 its 45-degree inset stays close to the circular
+// corner of the same radius. A corner that reaches half of the short side
+// relaxes back to a circle, so capsules keep round ends.
+constant float CORNER_SMOOTH_EXTENT = 1.45;
+constant float CORNER_SMOOTH_EXPONENT = 3.0;
+
+void smooth_corner(float radius, float half_min, thread float &extent, thread float &exponent) {
+    if (radius <= 0.0) {
+        extent = 0.0;
+        exponent = 2.0;
+        return;
+    }
+    float limit = max(half_min, 0.0);
+    float wanted = radius * CORNER_SMOOTH_EXTENT;
+    if (wanted <= limit) {
+        extent = wanted;
+        exponent = CORNER_SMOOTH_EXPONENT;
+        return;
+    }
+    float t = clamp((limit - radius) / max(wanted - radius, 1e-3), 0.0, 1.0);
+    extent = min(mix(radius, wanted, t), limit);
+    exponent = mix(2.0, CORNER_SMOOTH_EXPONENT, t);
 }
 
 // Implementation of quad signed distance field
-float quad_sdf_impl(float2 corner_center_to_point, float corner_radius) {
+float quad_sdf_impl(float2 corner_center_to_point, float corner_radius, float exponent) {
     if (corner_radius == 0.0) {
         // Fast path for unrounded corners
         return max(corner_center_to_point.x, corner_center_to_point.y);
+    } else if (exponent > 2.001) {
+        // Superellipse corner: |x|^n + |y|^n = r^n. The L^n length divided by
+        // its gradient length is a first-order distance, which is what the
+        // antialiasing threshold needs.
+        float2 q = max(float2(0.0), corner_center_to_point) / corner_radius;
+        float inside = min(0.0, max(corner_center_to_point.x, corner_center_to_point.y));
+        if (q.x <= 0.0 && q.y <= 0.0) {
+            return inside - corner_radius;
+        }
+        float norm = pow(pow(q.x, exponent) + pow(q.y, exponent), 1.0 / exponent);
+        float2 gradient = pow(q, float2(exponent - 1.0)) / pow(norm, exponent - 1.0);
+        return (norm - 1.0) * corner_radius / max(length(gradient), 1e-4) + inside;
     } else {
         // Signed distance of the point from a quad that is inset by corner_radius
         // It is negative inside this quad, and positive outside

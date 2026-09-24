@@ -84,7 +84,7 @@ impl FloatingPanel {
             .rounded(px(style.radius))
             .bg(rgb(crate::design::ZORK_UI.palette.canvas))
             .border(px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(crate::design::UI_OUTLINE))
+            .border_color(rgb(crate::design::FORM.outline))
             .occlude()
             .children(content.sections);
         if let Some(hover) = hover {

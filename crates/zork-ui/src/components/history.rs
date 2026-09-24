@@ -12,17 +12,24 @@ pub const SEND_COLOR: u32 = 0x536779;
 pub const RECEIVE_COLOR: u32 = 0x5A6D62;
 pub const MODEL_COLOR: u32 = 0x92969D;
 
-/// History activity accents use utility ramp step 700: a received row
-/// is utility blue, a sent row utility purple, a wait utility warning and a
-/// failure utility error. The timeline keeps its own neutral accents.
-pub const ACTIVITY_RECEIVE_COLOR: u32 = 0x175CD3;
-pub const ACTIVITY_SEND_COLOR: u32 = 0x5925DC;
-pub const ACTIVITY_WAIT_COLOR: u32 = 0xB54708;
-pub const ACTIVITY_ERROR_COLOR: u32 = 0xB42318;
-
-/// The 12% accent tint behind a row icon fills its 20px box.
-fn accent_chip(color: u32) -> gpui::Rgba {
-    rgba((color << 8) | 0x1F)
+/// History activity accents come from the unified palette: a received
+/// message reads in the primary ink, a sent one in persimmon, a wait in
+/// warning and a failure in danger. The timeline keeps its own neutral accents.
+#[allow(non_snake_case)]
+pub fn ACTIVITY_RECEIVE_COLOR() -> u32 {
+    crate::design::ZORK_UI.palette.text
+}
+#[allow(non_snake_case)]
+pub fn ACTIVITY_SEND_COLOR() -> u32 {
+    crate::design::INTERACTION.accent
+}
+#[allow(non_snake_case)]
+pub fn ACTIVITY_WAIT_COLOR() -> u32 {
+    crate::design::ZORK_UI.palette.warning
+}
+#[allow(non_snake_case)]
+pub fn ACTIVITY_ERROR_COLOR() -> u32 {
+    crate::design::ZORK_UI.palette.danger
 }
 
 /// Tabular figures for clocks, waits
@@ -31,8 +38,8 @@ pub fn tabular_nums() -> gpui::FontFeatures {
     gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".to_owned(), 1)]))
 }
 
-/// Rows with an observable activity kind carry the accent chip and the
-/// accented label; ordinary operation rows stay neutral.
+/// Rows with an observable activity kind tint their icon and label; ordinary
+/// operation rows stay neutral.
 pub fn activity_accent(kind: Kind) -> bool {
     matches!(
         kind,
@@ -79,8 +86,6 @@ pub fn activity_header<V: 'static>(
     navigate: impl Fn(&mut V, &mut gpui::Window, &mut Context<V>) + 'static,
 ) -> impl IntoElement {
     let icon = header.icon;
-    // The full chip needs 20px, while the row's text keeps its former start.
-    let label_inset = if icon.is_some() { -4. } else { 0. };
     let open = std::rc::Rc::new(open);
     let navigate = std::rc::Rc::new(navigate);
     let id = id.into();
@@ -100,26 +105,26 @@ pub fn activity_header<V: 'static>(
     let label_color = if header.accent {
         header.color
     } else if !header.tail && !header.group_summary {
-        0x4C4C4C
+        crate::design::ZORK_UI.palette.muted
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     // The row icon is tertiary; an accent row tints it with the action
     // colour, a failed tool paints it error and a live row without an activity
     // kind reads primary.
     let icon_color = if header.failed {
-        ACTIVITY_ERROR_COLOR
+        ACTIVITY_ERROR_COLOR()
     } else if header.accent {
         header.color
     } else if header.live {
-        0x1B1B1B
+        crate::design::ZORK_UI.palette.text
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     let status_color = if header.failed {
-        ACTIVITY_ERROR_COLOR
+        ACTIVITY_ERROR_COLOR()
     } else {
-        0x5E5E5E
+        crate::design::ZORK_UI.palette.subtle
     };
     div()
         .id(id)
@@ -129,14 +134,11 @@ pub fn activity_header<V: 'static>(
         .items_center()
         .gap(px(8.))
         .w_full()
-        .min_h(px(if header.tail || header.group_summary {
-            26.
-        } else {
-            30.
-        }))
+        // A tool call is a quiet 13px line between the transcript's bodies.
+        .min_h(px(26.))
         .min_w_0()
-        .text_size(px(12.))
-        .text_color(rgb(0x4C4C4C))
+        .text_size(px(13.))
+        .text_color(rgb(crate::design::ZORK_UI.palette.muted))
         .cursor_pointer()
         .focus_visible(|v| v.bg(rgb(ZORK_UI.palette.sidebar_hover)))
         .on_click(cx.listener(move |v, _, window, cx| {
@@ -146,25 +148,12 @@ pub fn activity_header<V: 'static>(
         .when_some(icon, |v, path| {
             v.child(
                 div()
-                    .relative()
-                    .w(px(20.))
+                    .w(px(14.))
                     .h(px(26.))
                     .flex_shrink_0()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .when(header.accent, |v| {
-                        v.child(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .top(px(3.))
-                                .w(px(20.))
-                                .h(px(20.))
-                                .rounded(px(5.))
-                                .bg(accent_chip(header.color)),
-                        )
-                    })
                     .child(if header.live {
                         div()
                             .text_color(rgb(icon_color))
@@ -184,20 +173,18 @@ pub fn activity_header<V: 'static>(
             // The group summary shrinks and ellipsises its counts.
             true => div()
                 .min_w_0()
-                .ml(px(label_inset))
-                .text_size(px(11.))
+                .text_size(px(13.))
                 .text_color(rgb(label_color))
                 .whitespace_nowrap()
                 .truncate()
                 .when(header.tabular, |v| v.font_features(tabular_nums()))
                 .child(header.action),
-            // The activity label is `flex: none` at 11px, medium when accented.
+            // The activity label is `flex: none` at 13px, medium when accented.
             false => div()
                 .min_w_0()
-                .ml(px(label_inset))
                 .when(header.tail, |v| v.flex_shrink_0())
                 .when(!header.tail, |v| v.truncate())
-                .text_size(px(11.))
+                .text_size(px(13.))
                 .font_weight(if header.accent {
                     FontWeight::MEDIUM
                 } else {
@@ -211,7 +198,7 @@ pub fn activity_header<V: 'static>(
         .when(header.chevron, |v| {
             v.child(
                 crate::controls::icon("interface/chevron-down.svg", 12.)
-                    .text_color(rgb(0x5E5E5E))
+                    .text_color(rgb(crate::design::ZORK_UI.palette.subtle))
                     .flex_shrink_0(),
             )
         })
@@ -220,11 +207,11 @@ pub fn activity_header<V: 'static>(
             // long target ellipsises instead of pushing the status off the line.
             let subject = div()
                 .min_w_0()
-                .text_size(px(11.))
+                .text_size(px(13.))
                 .text_color(rgb(if header.clickable_subject {
-                    0x1B1B1B
+                    crate::design::ZORK_UI.palette.text
                 } else {
-                    0x4C4C4C
+                    crate::design::ZORK_UI.palette.muted
                 }))
                 .truncate()
                 .child(text);
@@ -259,7 +246,7 @@ pub fn activity_header<V: 'static>(
                         .overflow_hidden()
                         .justify_end()
                         .text_size(px(12.))
-                        .text_color(rgb(0x4C4C4C))
+                        .text_color(rgb(crate::design::ZORK_UI.palette.muted))
                         .child(
                             div()
                                 .flex_none()
@@ -271,8 +258,8 @@ pub fn activity_header<V: 'static>(
                         .child(div().absolute().left_0().top_0().bottom_0().w(px(12.)).bg(
                             gpui::linear_gradient(
                                 90.,
-                                gpui::linear_color_stop(rgb(0xFFFFFF), 0.),
-                                gpui::linear_color_stop(rgba(0xFFFFFF00), 1.),
+                                gpui::linear_color_stop(rgb(crate::design::ZORK_UI.palette.canvas), 0.),
+                                gpui::linear_color_stop(rgba(crate::design::ZORK_UI.palette.canvas << 8), 1.),
                             ),
                         )),
                 );
@@ -280,8 +267,8 @@ pub fn activity_header<V: 'static>(
             v.child(
                 div()
                     .min_w_0()
-                    .text_size(px(11.))
-                    .text_color(rgb(0x4C4C4C))
+                    .text_size(px(12.))
+                    .text_color(rgb(crate::design::ZORK_UI.palette.subtle))
                     .truncate()
                     .child(header.summary),
             )
@@ -290,7 +277,7 @@ pub fn activity_header<V: 'static>(
             v.child(
                 div()
                     .flex_shrink_0()
-                    .text_size(px(10.))
+                    .text_size(px(12.))
                     .text_color(rgb(status_color))
                     .child(text),
             )
@@ -348,13 +335,13 @@ pub fn metrics(entry: &Entry, input_label: &str, output_label: &str, cache_label
 }
 pub fn activity_color(kind: Kind, state: &str) -> u32 {
     if matches!(state, "failed" | "timed_out") {
-        return ACTIVITY_ERROR_COLOR;
+        return ACTIVITY_ERROR_COLOR();
     }
     match kind {
-        Kind::Input => ACTIVITY_RECEIVE_COLOR,
-        Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR,
-        Kind::Wait => ACTIVITY_WAIT_COLOR,
-        Kind::Error => ACTIVITY_ERROR_COLOR,
+        Kind::Input => ACTIVITY_RECEIVE_COLOR(),
+        Kind::SendMessage | Kind::SendFile | Kind::Notify => ACTIVITY_SEND_COLOR(),
+        Kind::Wait => ACTIVITY_WAIT_COLOR(),
+        Kind::Error => ACTIVITY_ERROR_COLOR(),
         // Output, thinking and ordinary operations read neutral, as the history page's
         // text-tertiary icon and secondary label do.
         _ => ZORK_UI.palette.subtle,

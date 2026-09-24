@@ -2,9 +2,18 @@
 use crate::design::ZORK_UI;
 use gpui::{prelude::*, px, rgb, svg};
 
-pub const PANEL_BACKGROUND: u32 = ZORK_UI.palette.canvas;
-pub const ICON_COLOR: u32 = ZORK_UI.palette.muted;
-pub const DISABLED_COLOR: u32 = ZORK_UI.palette.subtle;
+#[allow(non_snake_case)]
+pub fn PANEL_BACKGROUND() -> u32 {
+    ZORK_UI.palette.canvas
+}
+#[allow(non_snake_case)]
+pub fn ICON_COLOR() -> u32 {
+    ZORK_UI.palette.muted
+}
+#[allow(non_snake_case)]
+pub fn DISABLED_COLOR() -> u32 {
+    ZORK_UI.palette.subtle
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShellRoute {
@@ -42,8 +51,8 @@ pub fn icon_button(
     zork_ui::controls::icon_button_sized(id, enabled, zork_ui::controls::IconButtonSize::Compact)
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(svg().path(icon).size(px(16.)).text_color(rgb(if enabled {
-            ICON_COLOR
+            ICON_COLOR()
         } else {
-            DISABLED_COLOR
+            DISABLED_COLOR()
         })))
 }

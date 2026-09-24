@@ -29,6 +29,7 @@ use crate::{
     views::RootView,
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, Entity, Window};
+use zork_ui::motion::MotionExt;
 use node::LocalNode;
 use std::sync::Arc;
 use store::{ClientStore, SavedNode};
@@ -75,6 +76,8 @@ pub struct DesktopRoot {
     mesh_views: std::collections::HashMap<String, (u64, Entity<mesh_settings::MeshSettings>)>,
     device_info: std::collections::HashMap<String, serde_json::Value>,
     management_tab: usize,
+    /// The device page's 服务 entry row expands the services list in place.
+    device_services_open: bool,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
     active_node_name: Option<String>,
     account_state: Arc<zork_client_core::relay_account::controller::Snapshot>,
@@ -151,6 +154,15 @@ impl DesktopRoot {
             v.navigate_device(action.clone(), cx);
         })
         .detach();
+        cx.subscribe(&navigation, |v, _, _: &navigation::Changed, cx| {
+            if v.managing
+                && v.management_tab == 4
+                && v.client_settings.page == client_settings::Page::Archived
+            {
+                cx.notify();
+            }
+        })
+        .detach();
         cx.subscribe(&navigation, |v, _, event: &navigation::Preview, cx| {
             v.preview_chat(event, cx);
         })
@@ -198,6 +210,7 @@ impl DesktopRoot {
             mesh_views: Default::default(),
             device_info: Default::default(),
             management_tab: 0,
+            device_services_open: false,
             mesh_settings: None,
             active_node_name: None,
             account_state,
@@ -362,6 +375,8 @@ impl DesktopRoot {
             if let Some(mesh) = &self.mesh_settings {
                 mesh.update(cx, |v, cx| {
                     v.enrollment_only = true;
+                    // Opening "连接设备" is the request: no second click to generate.
+                    v.request_invite(cx);
                     cx.notify();
                 });
             }
@@ -851,7 +866,7 @@ impl DesktopRoot {
         .detach();
         cx.notify();
     }
-    fn render_device(&self, cx: &mut Context<Self>) -> Div {
+    fn render_device(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{DeviceAction, DeviceData};
         let Some(node) = self
             .nodes
@@ -906,7 +921,10 @@ impl DesktopRoot {
                         .or(i["update"]["status"]["message"].as_str())
                 })
                 .map(str::to_owned),
+            services: Some(String::new()),
+            connections: Some(String::new()),
         };
+        let services_open = self.device_services_open;
         div()
             .flex()
             .flex_col()
@@ -914,6 +932,7 @@ impl DesktopRoot {
             .child(zork_ui::settings::device(
                 data,
                 &self.device_switch_focus,
+                window,
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
@@ -933,16 +952,26 @@ impl DesktopRoot {
                         cx,
                     ),
                     DeviceAction::StartAtLogin(on) => v.set_node_background(true, on, cx),
+                    DeviceAction::Services => {
+                        v.device_services_open = !v.device_services_open;
+                        cx.notify();
+                    }
+                    // Model connections live on their own settings tab.
+                    DeviceAction::Connections => {
+                        v.management_tab = 0;
+                        cx.notify();
+                    }
                 },
             ))
             .when_some(
                 self.service_views
                     .get(&node.id)
+                    .filter(|_| services_open)
                     .map(|(_, view)| view.clone()),
                 |body, view| body.child(view),
             )
     }
-    fn render_account(&self, cx: &mut Context<Self>) -> Div {
+    fn render_account(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{AccountAction, AccountData};
         zork_ui::settings::account(
             AccountData {
@@ -961,6 +990,7 @@ impl DesktopRoot {
                         .then(|| "已退出本机，正在等待服务器确认撤销。".into())
                 }),
             },
+            window,
             cx,
             |v, action, cx| match action {
                 AccountAction::Login => v.login_account(cx),
@@ -1091,6 +1121,19 @@ impl Render for DesktopRoot {
                 cx.listener(|v, _, _, cx| {
                     v.navigation.update(cx, |n, cx| n.finish_resize(cx));
                 }),
+            )
+            // The titlebar strip under everything: empty space drags the window
+            // and double-click runs the system titlebar action. Controls drawn
+            // over it take their presses; see `Window::window_control_area_at_mouse`.
+            .child(
+                div()
+                    .id("window-titlebar")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(zork_ui::controls::TITLEBAR_HEIGHT))
+                    .window_control_area(gpui::WindowControlArea::Drag),
             );
         let content = if self.startup_state.onboarding.is_some() {
             self.render_onboarding(cx)
@@ -1141,9 +1184,7 @@ impl Render for DesktopRoot {
                                 div()
                                     .h(px(48.))
                                     .pl(px(64.))
-                                    .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                                        window.start_window_move()
-                                    })
+                                    .window_control_area(gpui::WindowControlArea::Drag)
                                     .child(window.use_keyed_state(
                                         "management-header-brand",
                                         cx,
@@ -1189,26 +1230,27 @@ impl Render for DesktopRoot {
                                     .min_h_0()
                                     .overflow_y_scroll()
                                     .child(self.render_client_settings_navigation(tab == 4, cx))
-                                    .child(
-                                        self.settings_tabs
-                                            .tab("settings-models".into(), tab == 0)
-                                            .child(ui::icon("icons/models.svg", 20.))
-                                            .child("模型设置")
-                                            .on_click(cx.listener(|v, _, _, cx| {
-                                                v.apply_navigation(
-                                                    navigation::Destination::Manage(0),
-                                                    cx,
-                                                )
-                                            }))
-                                            .automation(AutomationRole::Button, "模型设置"),
-                                    )
+                                    // Mesh: model connections, devices, connect a device.
                                     .child(
                                         self.settings_tabs
                                             .section(
-                                                "device-settings-heading",
+                                                "mesh-settings-heading",
                                                 self.client_settings
                                                     .locale
-                                                    .text("device_settings_title"),
+                                                    .text("settings_mesh_title"),
+                                            )
+                                            .child(
+                                                self.settings_tabs
+                                                    .tab("settings-models".into(), tab == 0)
+                                                    .child(ui::icon("icons/models.svg", 20.))
+                                                    .child("模型连接")
+                                                    .on_click(cx.listener(|v, _, _, cx| {
+                                                        v.apply_navigation(
+                                                            navigation::Destination::Manage(0),
+                                                            cx,
+                                                        )
+                                                    }))
+                                                    .automation(AutomationRole::Button, "模型连接"),
                                             )
                                             .children(self.nodes.clone().into_iter().map(|node| {
                                                 let selected =
@@ -1220,7 +1262,7 @@ impl Render for DesktopRoot {
                                                             format!("settings-device-{}", node.id),
                                                             selected && tab == 3,
                                                         )
-                                                        .child(ui::icon("icons/node.svg", 20.))
+                                                        // The device mark is the row's only icon.
                                                         .child(
                                                             div().flex_1().min_w_0().child(
                                                                 zork_ui::device_name::label(
@@ -1271,7 +1313,8 @@ impl Render for DesktopRoot {
                                                     }))
                                                     .automation(AutomationRole::Button, "连接设备"),
                                             ),
-                                    ),
+                                    )
+                                    .child(self.render_advanced_settings_navigation(tab == 4, cx)),
                             )
                             .child(
                                 div()
@@ -1303,15 +1346,22 @@ impl Render for DesktopRoot {
                                     .w_full()
                                     .flex()
                                     .flex_col()
-                                    .when(tab == 3, |v| v.child(self.render_device(cx)))
-                                    .when(tab == 4, |v| v.child(self.render_client_settings(cx)))
+                                    .when(tab == 3, |v| v.child(self.render_device(window, cx)))
+                                    .when(tab == 4, |v| v.child(self.render_client_settings(window, cx)))
                                     .when(tab == 0, |v| {
                                         v.when_some(self.model_settings.clone(), |v, e| v.child(e))
                                     })
                                     .when(tab == 2, |v| {
                                         v.when_some(self.mesh_settings.clone(), |v, e| v.child(e))
                                     })
-                                    .when_some(self.error.clone(), |v, e| v.child(ui::feedback(e))),
+                                    .when_some(self.error.clone(), |v, e| v.child(ui::feedback(e)))
+                                    // Switching pages fades only the content column; the
+                                    // sidebar and title bar stay still.
+                                    .appear(
+                                        gpui::SharedString::from(format!("settings-page-{tab}")),
+                                        zork_ui::motion::DESKTOP_PAGE,
+                                        0.,
+                                    ),
                             )),
                     ),
                 )

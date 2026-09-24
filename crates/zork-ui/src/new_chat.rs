@@ -14,7 +14,6 @@ use gpui_component::popover::Popover;
 use std::rc::Rc;
 use zork_client_types::new_chat::{Action, Snapshot};
 mod picker;
-use picker::PickerMode;
 
 const RAIL_INSET: f32 = 13.;
 const RAIL_CONTENT_INSET: f32 = 12.;
@@ -33,10 +32,12 @@ pub struct Page {
     input: Entity<ComposerInput>,
     device_menu: bool,
     picker_open: bool,
-    picker_mode: PickerMode,
     picker_focus: FocusHandle,
     picker_trigger_focus: FocusHandle,
-    thinking_preview: Option<usize>,
+    picker_scroll: ScrollHandle,
+    picker_search: Entity<ComposerInput>,
+    /// Model row last scrolled into view; cleared when the panel closes.
+    picker_revealed: std::cell::Cell<Option<usize>>,
     width: f32,
     scene: composer::Scene,
     focus_pending: bool,
@@ -50,6 +51,12 @@ impl Page {
     }
     pub fn new(text: Text, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| ComposerInput::new(text.text("composer_placeholder"), cx));
+        let picker_search = cx.new(|cx| ComposerInput::new("搜索模型", cx).single_line());
+        cx.subscribe(&picker_search, |view: &mut Self, _, _: &ComposerEdited, cx| {
+            view.picker_revealed.set(None);
+            cx.notify();
+        })
+        .detach();
         cx.subscribe(&input, |view, _, _: &ComposerEdited, cx| {
             cx.emit(Event::Intent(Action::Edit {
                 text: view.input.read(cx).value().into(),
@@ -72,10 +79,11 @@ impl Page {
             input,
             device_menu: false,
             picker_open: false,
-            picker_mode: PickerMode::Strength,
             picker_focus: cx.focus_handle(),
             picker_trigger_focus: cx.focus_handle(),
-            thinking_preview: None,
+            picker_scroll: ScrollHandle::new(),
+            picker_search,
+            picker_revealed: Default::default(),
             width: 480.,
             scene: Default::default(),
             focus_pending: true,
@@ -90,9 +98,6 @@ impl Page {
     }
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
         self.text = text;
-        if self.data.model != data.model || self.data.thinking != data.thinking || !data.editable {
-            self.thinking_preview = None;
-        }
         if !data.editable {
             self.picker_open = false;
             self.device_menu = false;
@@ -118,7 +123,75 @@ impl Page {
         self.focus_pending = true;
         cx.notify();
     }
+    /// Up to four targets show as tabs: every device's mark, name and
+    /// reachability stay visible, and one click chooses it.
+    fn device_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+        let choice = &self.data.device;
+        let editable = self.data.editable;
+        div()
+            .id("new-chat-device-tabs")
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .min_w_0()
+            .overflow_hidden()
+            .children(choice.options.iter().enumerate().map(|(i, option)| {
+                let selected = option.value == choice.value;
+                let value = option.value.clone();
+                let content = match &option.status {
+                    Some(status) => crate::device_name::label(
+                        format!("new-chat-device-name-{i}"),
+                        option.label.clone(),
+                        status,
+                        Some(&self.text),
+                    )
+                    .into_any_element(),
+                    None => div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .min_w_0()
+                        .child(crate::device_name::mark(&option.label, 18.))
+                        .child(div().min_w_0().text_ellipsis().child(option.label.clone()))
+                        .into_any_element(),
+                };
+                crate::components::widgets::controls::adaptive_action(
+                    format!("new-chat-device-{i}"),
+                    "",
+                    crate::components::widgets::controls::ActionStyle {
+                        quiet: true,
+                        icon_only: Some(false),
+                        selected,
+                        disabled: !editable,
+                        ..Default::default()
+                    },
+                    ZORK_UI.palette.sidebar_hover,
+                )
+                .h(px(28.))
+                .min_h(px(28.))
+                .pl(px(6.))
+                .pr(px(12.))
+                // Narrow windows shrink every tab and ellipsize its name
+                // instead of clipping the last device.
+                .min_w_0()
+                .flex_shrink_1()
+                .font_weight(FontWeight::NORMAL)
+                .child(content)
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    if view.data.editable {
+                        cx.emit(Event::SelectDevice(value.clone()));
+                        view.device_menu = false;
+                        cx.notify();
+                    }
+                }))
+                .automation_enabled(editable, AutomationRole::Button, option.label.clone())
+            }))
+            .into_any_element()
+    }
     fn device_selector(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.data.device.options.len() <= 4 {
+            return self.device_tabs(cx);
+        }
         let choice = &self.data.device;
         let current = choice
             .options
@@ -230,37 +303,46 @@ impl Render for Page {
             .selected_thinking_index()
             .and_then(|index| self.data.thinking.options.get(index))
             .filter(|_| !self.data.model.value.is_empty())
-            .map(|option| format!("{} · {}", model_label, self.thinking_label(&option.value)))
-            .unwrap_or(model_label);
-        let label = trigger_label;
+            .map(|option| self.thinking_label(&option.value));
+        let model_part = model_label.clone();
+        let thinking_part = trigger_label.clone();
+        let label = match &trigger_label {
+            Some(thinking) => format!("{model_label} · {thinking}"),
+            None => model_label,
+        };
         let picker_owner = cx.entity().downgrade();
         let change_owner = picker_owner.clone();
-        let popup_width = (if self.picker_mode == PickerMode::Models {
-            480_f32
-        } else {
-            284_f32
-        })
-        .min((window.viewport_size().width.as_f32() - 24.).max(2.));
+        let popup_width = 380_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let trigger = Popover::new("new-chat-options-panel")
-            .rounded(px(24.))
+            .rounded(px(crate::design::RADIUS.container))
             .trigger(
-                ui::quiet_button(
-                    "new-chat-options",
-                    label.clone(),
-                    self.data.editable,
-                    ui::IconButtonSize::Small,
-                )
+                ui::quiet_button("new-chat-options", "", self.data.editable, ui::IconButtonSize::Small)
                 .h(px(28.))
-                .font_weight(FontWeight::NORMAL)
+                .font_weight(FontWeight::MEDIUM)
                 .radius(14.)
-                .bg(rgb(ZORK_UI.palette.canvas))
                 .track_focus(&self.picker_trigger_focus)
-                .child(ui::icon("icons/chevron-down.svg", 12.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .when_some(self.selected_provider(cx), |v, provider| {
+                            v.child(ui::provider_icon(&provider, 16.))
+                        })
+                        .child(div().text_color(rgb(ZORK_UI.palette.text)).child(model_part))
+                        .when_some(thinking_part, |v, thinking| {
+                            v.child(
+                                div()
+                                    .text_color(rgb(ZORK_UI.palette.muted))
+                                    .child(format!("· {thinking}")),
+                            )
+                        })
+                        .child(ui::icon("icons/chevron-down.svg", 12.)),
+                )
                 .on_click(cx.listener(|view, event: &ClickEvent, window, cx| {
                     if matches!(event, ClickEvent::Keyboard(_)) && view.data.editable {
                         view.picker_open = true;
                         view.device_menu = false;
-                        view.picker_mode = PickerMode::Strength;
                         window.focus(&view.picker_focus, cx);
                         cx.notify();
                     }
@@ -276,10 +358,12 @@ impl Render for Page {
             .on_open_change(move |open, window, app| {
                 let _ = change_owner.update(app, |view, cx| {
                     view.picker_open = *open;
+                    view.picker_revealed.set(None);
+                    if *open {
+                        window.focus(&view.picker_focus, cx);
+                    }
                     view.device_menu = false;
-                    view.picker_mode = PickerMode::Strength;
                     if !open {
-                        view.thinking_preview = None;
                         window.focus(&view.picker_trigger_focus, cx);
                     }
                     cx.notify();
@@ -309,7 +393,9 @@ impl Render for Page {
                         .flex()
                         .items_center()
                         .gap_1()
-                        .child(ui::icon("icons/node.svg", 14.))
+                        .when(self.data.device.options.len() > 4, |v| {
+                            v.child(ui::icon("icons/node.svg", 14.))
+                        })
                         .child(device),
                 )
                 .automation(AutomationRole::Status, "设备选择栏")
@@ -322,8 +408,6 @@ impl Render for Page {
                 height: body_height,
                 editor: &self.input,
                 snapshot: &snapshot,
-                fan_expanded: false,
-                fan_pinned: false,
                 handler,
                 action_size: 28.,
                 accessory_band: 0.,
@@ -337,7 +421,7 @@ impl Render for Page {
                     editor_id: "new-chat-input".into(),
                     attach_id: "new-chat-attach".into(),
                     primary_id: "new-chat-send".into(),
-                    fan: None,
+                    files: None,
                     busy: self.data.busy,
                     editor_label: self.text.text("composer_placeholder").into(),
                     attach_label: String::new().into(),
@@ -369,7 +453,10 @@ impl Render for Page {
             .flex()
             .flex_col()
             .items_center()
-            .justify_end()
+            // Without a greeting the composer sits in the middle of the page
+            // instead of under an empty field.
+            .when(self.welcome, |v| v.justify_end())
+            .when(!self.welcome, |v| v.justify_center())
             .px_6()
             .pb(px(ZORK_UI.layout.composer_bottom_inset))
             .when(self.welcome, |v| {
@@ -400,67 +487,76 @@ impl Render for Page {
                         .automation(AutomationRole::Status, self.text.text("onboarding_ready")),
                 )
             })
-            .when(self.data.loading, |v| {
-                v.child(
-                    div()
-                        .w(px(self.width))
-                        .mb_2()
-                        .child(crate::components::loading::status(
-                            "new-chat-loading",
-                            self.text.text("new_chat_loading"),
-                        )),
-                )
-            })
-            .when(self.data.needs_model, |v| {
-                v.child(
-                    div().w(px(self.width)).mb_2().child(
-                        ui::button(
-                            "new-chat-model-settings",
-                            self.text.text("new_chat_add_model"),
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::ConfigureModels))),
-                    ),
-                )
-            })
-            .when_some(note, |v, note| {
-                v.child(
-                    div()
-                        .w(px(self.width))
-                        .mb_2()
-                        .text_size(px(12.))
-                        .text_color(rgb(ZORK_UI.palette.muted))
-                        .child(note),
-                )
-            })
-            .when_some(self.data.error.clone(), |v, error| {
-                v.child(
-                    div()
-                        .id("new-chat-error")
-                        .w(px(self.width))
-                        .mb_2()
-                        .text_size(px(12.))
-                        .text_color(rgb(ZORK_UI.palette.danger))
-                        .child(error.clone())
-                        .automation(AutomationRole::Status, error),
-                )
-            })
+            // Notices and the composer form one block; stories crop to it.
             .child(
                 div()
-                    .relative()
-                    .w(px(self.width))
-                    .h(px(height))
-                    .when_some(rail, |wrapper, rail| wrapper.child(rail))
+                    .id("new-chat-form")
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .when(self.data.loading, |v| {
+                        v.child(
+                            div()
+                                .w(px(self.width))
+                                .mb_2()
+                                .child(crate::components::loading::status(
+                                    "new-chat-loading",
+                                    self.text.text("new_chat_loading"),
+                                )),
+                        )
+                    })
+                    .when(self.data.needs_model, |v| {
+                        v.child(
+                            div().w(px(self.width)).mb_2().child(
+                                ui::button(
+                                    "new-chat-model-settings",
+                                    self.text.text("new_chat_add_model"),
+                                    true,
+                                    true,
+                                )
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::ConfigureModels))),
+                            ),
+                        )
+                    })
+                    .when_some(note, |v, note| {
+                        v.child(
+                            div()
+                                .w(px(self.width))
+                                .mb_2()
+                                .text_size(px(12.))
+                                .text_color(rgb(ZORK_UI.palette.muted))
+                                .child(note),
+                        )
+                    })
+                    .when_some(self.data.error.clone(), |v, error| {
+                        v.child(
+                            div()
+                                .id("new-chat-error")
+                                .w(px(self.width))
+                                .mb_2()
+                                .text_size(px(12.))
+                                .text_color(rgb(ZORK_UI.palette.danger))
+                                .child(error.clone())
+                                .automation(AutomationRole::Status, error),
+                        )
+                    })
                     .child(
                         div()
-                            .absolute()
-                            .left(px(0.))
-                            .top(px(rail_offset))
+                            .relative()
                             .w(px(self.width))
-                            .h(px(body_height))
-                            .child(composer),
-                    ),
+                            .h(px(height))
+                            .when_some(rail, |wrapper, rail| wrapper.child(rail))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left(px(0.))
+                                    .top(px(rail_offset))
+                                    .w(px(self.width))
+                                    .h(px(body_height))
+                                    .child(composer),
+                            ),
+                    )
+                    .automation(AutomationRole::Status, "new-chat-form"),
             )
             .automation(AutomationRole::Status, self.text.text("new_chat"))
     }

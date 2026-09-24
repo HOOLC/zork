@@ -3,7 +3,7 @@ use super::{skin, SurfaceColors};
 use crate::{
     components::text_input::ComposerInput,
     controls::CONTROL_HEIGHT,
-    design::{BRAND_ACCENT, INTERACTION, UI_OUTLINE, ZORK_UI},
+    design::{FORM, INTERACTION, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 mod adaptive;
@@ -254,9 +254,9 @@ fn render_segmented(
     let mut row = div()
         .absolute()
         .left(px(SEGMENT_INSET))
-        .top_0()
+        .top(px(SEGMENT_INSET))
         .w(px(width - 2. * SEGMENT_INSET))
-        .h(px(CONTROL_HEIGHT))
+        .h(px(CONTROL_HEIGHT - 2. * SEGMENT_INSET))
         .flex()
         .gap(px(SEGMENT_GAP));
     for (
@@ -316,10 +316,6 @@ fn render_segmented(
                     v.cursor_pointer().focus_visible(|v| v.underline())
                 })
                 .when(!enabled, |v| v.opacity(0.4).cursor_default())
-                .when(checked, |v| {
-                    v.rounded(px(CONTROL_HEIGHT / 2. - SEGMENT_INSET))
-                        .bg(rgb(p.accent))
-                })
                 .child(
                     div()
                         .text_color(rgb(if checked { p.canvas } else { p.text }))
@@ -358,11 +354,35 @@ fn render_segmented(
             width,
             CONTROL_HEIGHT,
             CONTROL_HEIGHT / 2.,
-            SurfaceColors::outlined(UI_OUTLINE, parent),
+            SurfaceColors::outlined(FORM.outline, parent),
             div(),
             window,
             cx,
         ))
+        .when_some(selected.filter(|i| *i < count), |v, index| {
+            // One capsule slides between segments; its spring keeps the
+            // current position when the selection changes mid-flight.
+            let segment = ((width - 2. * SEGMENT_INSET - SEGMENT_GAP * (count - 1) as f32)
+                / count as f32)
+                .max(2.);
+            v.child(
+                div()
+                    .absolute()
+                    .top(px(SEGMENT_INSET))
+                    .w(px(segment))
+                    .h(px(CONTROL_HEIGHT - 2. * SEGMENT_INSET))
+                    .rounded(px(CONTROL_HEIGHT / 2. - SEGMENT_INSET))
+                    .bg(rgb(p.accent))
+                    .when(!enabled, |v| v.opacity(0.4))
+                    .with_spring(
+                        SharedString::from(format!("{id}-selection")),
+                        crate::motion::spring(crate::motion::BASE).to(index as f32),
+                        move |v, x: f32| {
+                            v.left(px(SEGMENT_INSET + x * (segment + SEGMENT_GAP)))
+                        },
+                    ),
+            )
+        })
         .child(row)
         .on_key_down(move |event: &KeyDownEvent, window, cx| {
             if active.is_empty() {
@@ -435,9 +455,12 @@ fn render_toggle(
     let track = if checked {
         ZORK_UI.palette.accent
     } else {
-        ZORK_UI.palette.selected
+        FORM.switch_off
     };
-    let thumb = if enabled {
+    // A dark resting thumb would sink into the dark off track.
+    let thumb = if enabled && !checked && crate::design::theme() == crate::design::Theme::Dark {
+        ZORK_UI.palette.muted
+    } else if enabled {
         ZORK_UI.palette.elevated
     } else {
         ZORK_UI.palette.border_strong
@@ -452,7 +475,10 @@ fn render_toggle(
         .w(px(48.))
         .h(px(32.))
         .when(enabled, |v| v.cursor_pointer())
-        .child(
+        .child({
+            // The track colour follows the thumb's spring so a quick double
+            // toggle never flashes the far colour.
+            let (on, off) = (rgb(ZORK_UI.palette.accent), rgb(FORM.switch_off));
             div()
                 .absolute()
                 .left(px(4.))
@@ -460,22 +486,27 @@ fn render_toggle(
                 .w(px(41.))
                 .h(px(24.))
                 .rounded(px(12.))
-                .bg(rgb(track)),
-        )
+                .bg(rgb(track))
+                .when(focused, |v| v.shadow(crate::controls::focus_ring()))
+                .with_spring(
+                    SharedString::from(format!("{id}-track-motion")),
+                    crate::motion::toggle(crate::motion::SWITCH, checked),
+                    move |v, phase| v.bg(phase.interpolate_clamped(off, on)),
+                )
+        })
         .child(
             div()
                 .absolute()
                 .top(px(7.))
-                .left(px(if checked { 24. } else { 7. }))
                 .size(px(18.))
                 .rounded(px(9.))
-                .bg(rgb(thumb)),
-        )
-        .when(focused, |v| {
-            v.border(px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(INTERACTION.focus_border))
-                .rounded(px(16.))
-        });
+                .bg(rgb(thumb))
+                .with_spring(
+                    SharedString::from(format!("{id}-thumb-motion")),
+                    crate::motion::toggle(crate::motion::SWITCH, checked),
+                    |v, phase| v.left(px(phase.interpolate_clamped(7., 24.))),
+                ),
+        );
     div().id(id).w(px(48.)).h(px(32.)).child(switch)
 }
 
@@ -558,6 +589,8 @@ pub struct ActionStyle {
     pub icon_only: Option<bool>,
     /// Rich rows can retain their own corner family at any measured height.
     pub radius: Option<f32>,
+    /// A primary action that starts work (sending) keeps the persimmon accent.
+    pub accent: bool,
 }
 
 impl ActionStyle {
@@ -602,7 +635,7 @@ fn action_ink(_label: &str, style: ActionStyle) -> u32 {
     let style = style.resolved();
     let p = ZORK_UI.palette;
     if style.disabled {
-        p.subtle
+        crate::design::FORM.disabled_text
     } else if style.primary && !style.select_trigger {
         p.canvas
     } else {

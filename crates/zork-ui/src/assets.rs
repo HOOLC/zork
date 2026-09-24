@@ -14,6 +14,7 @@ impl AssetSource for EmbeddedAssets {
                 Some(include_bytes!("../assets/icons/archive-restore.svg"))
             }
             "icons/copy.svg" => Some(include_bytes!("../assets/icons/copy.svg")),
+            "icons/info.svg" => Some(include_bytes!("../assets/icons/info.svg")),
             "icons/message-square.svg" => {
                 Some(include_bytes!("../assets/icons/message-square.svg"))
             }

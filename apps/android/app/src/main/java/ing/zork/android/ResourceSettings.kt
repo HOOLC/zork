@@ -34,13 +34,13 @@ internal fun ResourceSettings(state: MobileSettingsState, actions: SettingsActio
     var factsOpen by rememberSaveable(selection.query) { mutableStateOf(false) }
     val loading = data == null || devices.any { it.optBoolean("loading") } || inspection?.optBoolean("loading") == true
     SettingsPageFrame(selection.title, actions.back, loading, actions.refresh, modifier) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 if (loading) Text("正在读取…", color = ZorkColors.Muted, fontSize = 13.sp)
                 state.message?.let { Text(it, color = ZorkColors.Danger) }
                 devices.forEach { device ->
-                    device.text("error").takeIf { it.isNotBlank() }?.let { Text("${compactDeviceName(device.text("name"), device.deviceStatus())} · $it", color = ZorkColors.Danger) }
-                    device.optJSONArray("issues").objects().forEach { Text("${compactDeviceName(device.text("name"), device.deviceStatus())} · ${it.text("error")}", color = ZorkColors.Danger) }
+                    device.text("error").takeIf { it.isNotBlank() }?.let { Text("${device.text("name")} · $it", color = ZorkColors.Danger, fontSize = 13.sp) }
+                    device.optJSONArray("issues").objects().forEach { Text("${device.text("name")} · ${it.text("error")}", color = ZorkColors.Danger, fontSize = 13.sp) }
                 }
                 inspection?.text("error")?.takeIf { it.isNotBlank() }?.let { Text(it, color = ZorkColors.Danger) }
             }
@@ -90,7 +90,7 @@ internal fun ResourceSettings(state: MobileSettingsState, actions: SettingsActio
                     }
                     items(rows, key = { (device, row) -> "${device.text("id")}:${row.text("id")}" }) { (device, row) ->
                         SettingsListGroup {
-                            SettingsListRow(row.text("name"), subtext = "${compactDeviceName(device.text("name"), device.deviceStatus())} · ${resourceStatus(row.text("status"))}", detail = row.text("description"), action = {
+                            SettingsListRow(row.text("name"), subtext = resourceStatus(row.text("status")), detail = row.text("description"), action = {
                                 val query = JSONObject().put("service", JSONObject().put("id", row.text("id")))
                                 actions.resource(selection.copy(peer = device.text("id"), query = query.toString(), title = row.text("name")))
                             })
@@ -117,13 +117,13 @@ private fun resourceFactLabel(key: String) = when (key) {
 }
 
 @Composable
-internal fun SettingsPageFrame(title: String, back: () -> Unit, loading: Boolean, refresh: () -> Unit,
+internal fun SettingsPageFrame(title: String, back: () -> Unit, loading: Boolean, refresh: (() -> Unit)?,
     modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = back)
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 2)
-            SettingsRefreshButton(loading, refresh)
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            refresh?.let { SettingsRefreshButton(loading, it) }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) { content() }
     }

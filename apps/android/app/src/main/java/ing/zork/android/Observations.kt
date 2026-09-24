@@ -53,6 +53,7 @@ internal class Observations(private val root: String) {
     fun history(peer: String, session: String) = frames("history", peer, session)
     fun directory() = frames("directory", "", null)
     fun notifications() = frames("notifications", "", null, frameAligned = false)
+    fun navigation() = frames("navigation", "", null, JSONObject().put("projection", "navigation"))
     fun localScripts() = frames("local_scripts", "", null, JSONObject().put("projection", "local_scripts"), frameAligned = false)
     fun adb() = frames("adb", "", null, JSONObject().put("projection", "adb"), frameAligned = false)
     fun account() = frames("account", "", null, JSONObject().put("projection", "account"), frameAligned = false)

@@ -36,7 +36,7 @@ internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.te
     createdAt = it.text("created_at"), device = it.text("device"), model = it.text("model"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),
     deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard),
-    deliveredFiles = it.optJSONArray("files").objects().map { file -> ChatFileUi(file.getString("id"), file.getString("name"), file.getLong("byte_len")) })
+    deliveredFiles = it.fileViews())
 
 internal data class TextAttachmentUi(val id: String, val name: String, val content: String, val caption: String = "文本附件") {
     fun json(): JSONObject = JSONObject().put("id", id).put("name", name).put("content", content)
@@ -51,6 +51,27 @@ internal data class DraftCommentUi(val id: String, val session: String, val mess
         JSONObject().put("session_id", session).put("message_id", messageId ?: JSONObject.NULL)
             .put("author", author).put("author_agent_id", authorAgentId ?: JSONObject.NULL).put("quote", quote))
 }
+/** One row of the home list. Order, unread and section come from the core's
+ * merged navigation projection; the UI never re-sorts them. */
+internal data class HomeChat(val peer: String, val peerName: String, val id: String, val title: String,
+    val description: String, val model: String, val unread: Boolean, val archived: Boolean,
+    val archivePending: Boolean, val archiveError: String?, val messageCount: Long,
+    val updatedAtMs: Long?, val section: String, val canSend: Boolean, val canStop: Boolean) {
+    fun session(): JSONObject = JSONObject().put("_peer", peer).put("chat_id", id).put("title", title)
+        .put("can_send", canSend).put("can_stop", canStop)
+}
+internal data class HomeNavigation(val chats: List<HomeChat> = emptyList(), val archived: List<HomeChat> = emptyList(),
+    val archivedTotal: Int = 0, val loaded: Boolean = false)
+internal fun parseHomeChat(it: JSONObject) = HomeChat(it.text("peer"), it.text("peer_name", it.text("peer")),
+    it.text("chat_id"), it.text("title", "对话"), it.text("description"), it.text("model"), it.optBoolean("unread"),
+    it.optBoolean("archived"), it.optBoolean("archive_pending"), it.text("archive_error").ifBlank { null },
+    it.optLong("message_count"), if (it.isNull("updated_at_ms")) null else it.optLong("updated_at_ms"),
+    it.text("section", "earlier"), it.optBoolean("can_send", true), it.optBoolean("can_stop"))
+internal fun parseHomeNavigation(value: JSONObject) = HomeNavigation(
+    value.optJSONArray("chats").objects().map(::parseHomeChat),
+    value.optJSONArray("archived").objects().map(::parseHomeChat),
+    value.optInt("archived_total"), loaded = true)
+
 internal data class DeviceTree(val leaders: List<JSONObject>, val sessions: List<JSONObject>,
     val tasksByLeader: Map<String, List<JSONObject>>, val online: Boolean = false)
 
@@ -84,17 +105,28 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     var attachments by mutableStateOf(emptyList<TextAttachmentUi>())
         private set
+    /** Files core holds in the current draft. */
+    var draftFiles by mutableStateOf(emptyList<ChatFileUi>())
+        private set
+    /** Picked files still being copied into core, or failed with a reason. */
+    var attaching by mutableStateOf(emptyList<PendingFileUi>())
+        private set
     var participants by mutableStateOf(emptyList<JSONObject>())
         private set
     var deviceTrees by mutableStateOf(emptyMap<String, DeviceTree>())
         private set
+    /** Every device's Chats, merged and ordered by the core. */
+    var home by mutableStateOf(HomeNavigation())
+        private set
+    private var navigationWatch: Job? = null
     var settings by mutableStateOf<MobileSettingsState?>(null)
         private set
     var newChat by mutableStateOf<NewChatUi?>(null)
         private set
     private var newChatWatch: Job? = null
     private var newChatGeneration = 0L
-    var messagePreviewHeight by mutableIntStateOf(0)
+    /** "system", "light" or "dark", persisted by the client core. */
+    var theme by mutableStateOf("system")
         private set
     var running by mutableStateOf(false)
         private set
@@ -186,7 +218,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     init {
         viewModelScope.launch {
             try {
-                messagePreviewHeight = repo.command("preferences").optInt("message_preview_height")
+                theme = repo.command("preferences").text("theme", "system")
                 notificationSettings = repo.command("notification_settings")
             }
             catch (e: CancellationException) { throw e }
@@ -194,11 +226,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
-    suspend fun saveMessagePreviewHeight(height: Int) {
-        // Keep the committed setting visible even if the user leaves the
+    suspend fun catalog(op: String, fields: JSONObject): Any? = repo.catalog(op, fields)
+    suspend fun saveTheme(value: String) {
+        // Keep the committed theme visible even if the user leaves the
         // appearance page while its local write is completing.
         viewModelScope.async {
-            messagePreviewHeight = repo.command("preferences", "message_preview_height" to height).getInt("message_preview_height")
+            theme = repo.command("preferences", "theme" to value).text("theme", "system")
         }.await()
     }
 
@@ -209,6 +242,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         live?.cancel()
         historyWatch?.cancel()
         directoryWatch?.cancel()
+        navigationWatch?.cancel()
         if (value) { watchDataReset(); watchAccount() }
         if (value) action {
             adbPlatform.start()
@@ -218,6 +252,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             refreshNotificationDelivery()
             watchAdb()
             watchDirectory()
+            watchNavigation()
             reportVisibleConversation()
             pendingNotification?.let { openNotification(it) }
             settings?.device?.id?.let { watchSettings(it) }
@@ -380,6 +415,16 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    private fun watchNavigation() {
+        navigationWatch?.cancel()
+        navigationWatch = viewModelScope.launch {
+            try {
+                repo.navigationEvents().collect { frame -> home = parseHomeNavigation(frame.value.getJSONObject("snapshot")) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { notice = error.message ?: "Chat 列表暂时不可用" }
+        }
+    }
+
     private fun applySnapshot(value: JSONObject) {
         identity = value.text("identity")
         directOnly = value.optJSONObject("network")?.optBoolean("direct_only") ?: false
@@ -398,11 +443,90 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
-    fun openChatFile(message: String, file: String) {
+    /** What the open core file selection is for: a visible preview, a direct save, or another app. */
+    private enum class FileIntent { Preview, Save, External }
+    private var fileIntent by mutableStateOf(FileIntent.Preview)
+    /** File whose selection should continue into a prepared copy once core opens it. */
+    private var copyFollowUp: String? = null
+    private var copyStarted = false
+    private var externalTicket: String? = null
+    /** The files of the message whose preview is open; the page steps through them. */
+    var previewSequence by mutableStateOf(emptyList<Pair<String, ChatFileUi>>())
+        private set
+    /** A private copy handed to another app, with its type. MainActivity starts the viewer. */
+    var externalFile by mutableStateOf<Pair<android.net.Uri, String>?>(null)
+        private set
+    var externalCopy by mutableStateOf(false)
+        private set
+    val chatFileVisible get() = chatFile != null && fileIntent != FileIntent.Save
+    /** A prepared copy for the system save dialog; copies for other apps never go there. */
+    val chatSaveTicket: String? get() = chatFile?.saveTicket?.takeIf { fileIntent != FileIntent.External }
+
+    fun openChatFile(message: String, file: String) = openMessageFile(message, file, FileIntent.Preview)
+    /** Saves without showing the preview; core still fetches and verifies the bytes. */
+    fun saveMessageFile(message: String, file: String) = openMessageFile(message, file, FileIntent.Save)
+    private fun openMessageFile(message: String, file: String, intent: FileIntent) {
         val peer = activePeer?.id ?: return
         val session = conversation?.id ?: return
+        val files = messages.find { it.id == message }?.deliveredFiles.orEmpty()
+        previewSequence = files.map { message to it }
+        fileIntent = intent
+        externalCopy = false
+        copyStarted = false
+        copyFollowUp = file.takeIf { intent == FileIntent.Save }
         watchChatFiles()
         chatFileAction("open", "peer" to peer, "session" to session, "message" to message, "file" to file)
+    }
+    fun stepChatFile(delta: Int) {
+        val current = chatFile ?: return
+        val index = previewSequence.indexOfFirst { it.second.id == current.fileId }
+        val next = previewSequence.getOrNull(index + delta) ?: return
+        openMessageFile(next.first, next.second.id, FileIntent.Preview)
+    }
+    fun closeChatFile() {
+        chatFile?.let { chatFileAction("close", "key" to it.key) }
+        previewSequence = emptyList(); fileIntent = FileIntent.Preview; copyFollowUp = null
+    }
+    fun saveOpenChatFile() {
+        val file = chatFile ?: return
+        fileIntent = FileIntent.Preview; externalCopy = false; copyStarted = true
+        chatFileAction("prepare_save", "key" to file.key)
+    }
+    fun openChatFileExternally() {
+        val file = chatFile ?: return
+        fileIntent = FileIntent.External; externalCopy = true; copyStarted = true
+        chatFileAction("prepare_save", "key" to file.key)
+    }
+    fun externalFileOpened() { externalFile = null }
+
+    /** Continues a save-only or open-elsewhere selection as core's snapshot advances. */
+    private fun followChatFile(next: ChatFilePreviewUi?) {
+        if (next == null) { copyFollowUp = null; return }
+        if (copyFollowUp == next.fileId && next.error != null && fileIntent == FileIntent.Save) {
+            notice = next.error; closeChatFile(); return
+        }
+        if (copyFollowUp == next.fileId && !next.loading && !next.saving && next.saveTicket == null && next.error == null) {
+            copyFollowUp = null; copyStarted = true
+            chatFileAction("prepare_save", "key" to next.key)
+            return
+        }
+        val ticket = next.saveTicket
+        if (fileIntent == FileIntent.External && ticket != null && externalTicket != ticket) {
+            externalTicket = ticket
+            val mime = previewSequence.firstOrNull { it.second.id == next.fileId }?.second?.mime ?: next.mime
+            viewModelScope.launch {
+                try { externalFile = repo.openChatFileCopy(ticket, next.name) to mime }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { notice = e.message; chatFileAction("cancel_save", "ticket" to ticket) }
+                finally { fileIntent = FileIntent.Preview }
+            }
+        }
+        // A save-only selection ends once its copy is written, cancelled or failed.
+        if (fileIntent == FileIntent.Save && copyStarted && !next.saving && ticket == null) {
+            next.error?.let { notice = it }
+            if (next.saved) notice = "已保存 ${next.name}"
+            closeChatFile()
+        }
     }
     fun chatFileAction(action: String, vararg fields: Pair<String, Any?>) {
         val operation = JSONObject().put("action", action)
@@ -419,6 +543,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
                 repo.chatFileEvents().collect { frame ->
                     val next = frame.value.getJSONObject("snapshot").optJSONObject("preview")?.let(::parseChatFilePreview)
                     chatFile = next
+                    followChatFile(next)
                     val key = next?.key?.takeIf { next.mime.startsWith("image/") && next.contentReady }
                     if (chatImageKey != key) {
                         chatImageKey = key
@@ -498,13 +623,25 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun archiveChat(peer: String, chat: String, archived: Boolean, expectedMessageCount: Long) {
-        if (activePeer?.id != peer) peers.find { it.id == peer }?.let(::selectPeer)
+        // The home list observes every device, so archiving never switches devices.
         action { repo.command("archive_chat", "peer" to peer, "chat" to chat, "archived" to archived, "expected_message_count" to expectedMessageCount) }
+    }
+
+    /** Opens a Chat from the archived list in settings, leaving settings. */
+    fun openArchivedChat(session: JSONObject) {
+        settings = null
+        openSession(session)
     }
 
     fun openSession(session: JSONObject) {
         rememberConversation()
-        peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) { live?.cancel(); activePeer = peer; conversation = null; connected = false } }
+        peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) {
+            // The home list mixes devices: select the Chat's device first, as
+            // the core remembers it as the last-used device.
+            live?.cancel(); activePeer = peer; conversation = null; connected = false
+            leaders = emptyList(); sessions = emptyList(); tasksByLeader = emptyMap(); participants = emptyList()
+            viewModelScope.launch { runCatching { repo.command("select_peer", "peer" to peer.id) } }
+        } }
         openConversation(Conversation(session.text("chat_id").ifBlank { session.text("session_id") }, session.text("title", "对话"),
             canSend = session.optBoolean("can_send", true), canStop = session.optBoolean("can_stop")))
     }
@@ -522,6 +659,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         historyLoading = cached?.historyReady != true
         replaceMessages(cached?.messages.orEmpty()); pending = cached?.pending.orEmpty()
         comments = cached?.comments.orEmpty(); attachments = cached?.attachments.orEmpty()
+        draftFiles = emptyList(); attaching = emptyList(); previewSequence = emptyList()
         participants = cached?.participants.orEmpty(); draft = cached?.draft.orEmpty()
         olderCursor = cached?.olderCursor; activity = ""
         val peerId = activePeer?.id
@@ -547,6 +685,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (peer != activePeer || current != conversation) return
         draft = result.text("draft")
         attachments = result.textAttachments()
+        draftFiles = result.fileViews()
         comments = result.optJSONArray("comments").objects().map { c ->
             val source = c.getJSONObject("source")
             DraftCommentUi(c.text("id"), source.text("session_id"), source.text("message_id").ifBlank { null },
@@ -657,7 +796,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (snapshot.optBoolean("revoked")) {
             settings = current.copy(info = null, agents = emptyList(), profiles = emptyList(), providers = emptyList(), profile = null,
                 authorization = null, authorizationBusy = false, authorizationComplete = false, authorizationError = null, operation = null,
-                command = null, updateCheck = null, resourceData = null,
+                command = null, updateCheck = null, update = null, resourceData = null,
                 loading = false, online = false, connectionState = "revoked", profilesReady = false, message = "设备访问权限已撤销")
             return
         }
@@ -673,7 +812,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         settings = current.copy(authorization = snapshot.optJSONObject("authorization"), authorizationComplete = snapshot.optBoolean("authorization_complete"),
             authorizationBusy = snapshot.optBoolean("authorization_busy"), authorizationError = snapshot.text("authorization_error").takeIf { it.isNotBlank() },
             operation = snapshot.optJSONObject("operation"), info = info, device = name?.let { current.device?.copy(name = it) } ?: current.device,
-            command = snapshot.optJSONObject("command"), updateCheck = snapshot.optJSONObject("update_check"),
+            command = snapshot.optJSONObject("command"), updateCheck = snapshot.optJSONObject("update_check"), update = snapshot.optJSONObject("update"),
             connectionState = snapshot.text("connection_state", if (snapshot.optBoolean("online")) "online" else "offline"),
             profileRefreshing = snapshot.optJSONArray("profile_refreshing")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty(),
             profileFailed = snapshot.optJSONArray("profile_failed")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty(),
@@ -683,11 +822,55 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             profile = profiles.find { it.text("profile_id") == selectedId }, loading = refreshing,
             online = snapshot.optBoolean("online", false), message = snapshot.text("error").takeIf { it.isNotBlank() })
     }
-    fun showSettings() { settings = MobileSettingsState() }
-    fun showDevice(peer: Peer, fromChat: Boolean = false) {
+    fun showSettings() { showSettingsHome() }
+    private fun showSettingsHome() {
+        settingsWatch?.cancel()
+        settings = MobileSettingsState(connections = settings?.connections)
+        loadModelConnections(refresh = false)
+    }
+    private fun showModelConnections() {
+        settingsWatch?.cancel()
+        settings = MobileSettingsState(page = "model-connections", connections = settings?.connections)
+        loadModelConnections(refresh = true)
+    }
+    private var connectionsJob: Job? = null
+    /** Every device's connections from core: the cache first, then one read per device. */
+    private fun loadModelConnections(refresh: Boolean) {
+        connectionsJob?.cancel()
+        connectionsJob = viewModelScope.launch {
+            fun show(result: JSONObject, loading: Boolean) {
+                val current = settings?.takeIf { it.device == null && it.page in listOf("home", "model-connections") } ?: return
+                settings = current.copy(connections = result.optJSONArray("devices").objects(), loading = loading)
+            }
+            if (refresh) settings = settings?.copy(loading = true, message = null)
+            try {
+                show(repo.command("model_connections", "cached_only" to true), refresh)
+                if (refresh) show(repo.command("model_connections"), false)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (settings?.device == null) settings = settings?.copy(loading = false, message = e.message)
+            }
+        }
+    }
+    /** Opens one device's connection from the global list; back returns there. */
+    fun openConnection(peerId: String, profile: JSONObject) {
+        val peer = peers.find { it.id == peerId } ?: return
+        showDevice(peer, fromConnections = true)
+        settingsProfile(profile)
+    }
+    /** The add flow picks the device first, then opens that device's editor. */
+    fun addConnection(peerId: String) {
+        val peer = peers.find { it.id == peerId } ?: return
+        showDevice(peer, fromConnections = true)
+        settings = settings?.copy(page = "models", addConnection = true)
+        if (settings?.online == true) action { settingsAction("open_models", JSONObject()) }
+    }
+    fun showDevice(peer: Peer, fromChat: Boolean = false, fromConnections: Boolean = false) {
+        connectionsJob?.cancel()
         val tree = deviceTrees[peer.id]
-        settings = MobileSettingsState(page = "device", device = peer, fromChat = fromChat,
-            online = tree?.online ?: false, agents = tree?.leaders.orEmpty(), loading = true, profilesReady = false)
+        settings = MobileSettingsState(page = "device", device = peer, fromChat = fromChat, fromConnections = fromConnections,
+            online = tree?.online ?: false, agents = tree?.leaders.orEmpty(), loading = true, profilesReady = false,
+            connections = settings?.connections)
         refreshSettings()
         watchSettings(peer.id)
     }
@@ -703,6 +886,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
     fun refreshSettings() {
         val previous = settings ?: return
+        if (previous.page == "model-connections") { loadModelConnections(refresh = true); return }
         previous.resource?.let { refreshResources(it); return }
         val peer = previous.device ?: return
         settings = previous.copy(loading = true, message = null)
@@ -721,15 +905,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         resourceTrail.clear(); resourcesWatch?.cancel()
         when (page) {
             "models" -> if (settings?.online == true) action { settingsAction("open_models", JSONObject()) }
-            "connections", "services" -> {
-                val selection = ResourceSelection(if (page == "services") settings?.device?.id else null,
-                    "service", title = "服务")
-                showResource(selection)
-            }
+            "model-connections" -> showModelConnections()
+            "services" -> showResource(ResourceSelection(settings?.device?.id, "service", title = "服务"))
         }
     }
     fun settingsProfile(profile: JSONObject) {
-        settings = settings?.copy(page = "profile", profile = profile, selectedProfileId = profile.text("profile_id"))
+        settings = settings?.copy(page = "profile", profile = profile, selectedProfileId = profile.text("profile_id"), addConnection = false)
         if (settings?.online == true) action { settingsAction("open_profile", JSONObject().put("profile", profile.text("profile_id"))) }
     }
     private var resourcesWatch: Job? = null
@@ -763,18 +944,24 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
         resourcesWatch?.cancel()
         settings = settings?.copy(resource = null, resourceData = null)
-        settings = when (settings?.page) {
-            "home" -> null
-            "appearance", "display", "connections", "notifications", "adb" -> MobileSettingsState()
-            "device" -> if (settings?.fromChat == true) null else MobileSettingsState()
-            "profile" -> settings?.copy(page = "models")
-            else -> settings?.copy(page = "device")
+        val current = settings
+        when {
+            current?.page == "home" -> settings = null
+            current?.fromConnections == true && current.page in listOf("models", "profile") -> showModelConnections()
+            current?.page in listOf("appearance", "notifications", "adb", "account", "model-connections", "archived") -> showSettingsHome()
+            current?.page == "device" -> if (current.fromChat) settings = null else showSettingsHome()
+            current?.page == "profile" -> settings = current.copy(page = "models")
+            else -> settings = current?.copy(page = "device")
         }
     }
-    fun checkUpdate() = action {
-        val peer = settings?.device ?: return@action
-        val result = repo.command("settings_action", "peer" to peer.id, "operation" to JSONObject().put("action", "check_update"))
-        if (settings?.device?.id == peer.id) settings = settings?.copy(message = result.text("latest_version").takeIf { it.isNotBlank() }?.let { "最新版本：$it" } ?: "尚未获得版本信息")
+    /** Core tracks the check: its running state and outcome arrive as the snapshot's `update`. */
+    fun checkUpdate() {
+        if (settings?.device == null) return
+        viewModelScope.launch {
+            try { settingsAction("check_update", JSONObject().put("_request_id", NativeBridge.newId())) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* Reported through update.error. */ }
+        }
     }
     fun assistSettings(leader: JSONObject) = action {
         val targetDevice = settings?.device ?: return@action
@@ -786,9 +973,52 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             preparedDraft = "帮我看看 ${targetDevice.name} 的设备配置。")
     }
 
-    fun addTextAttachment(uri: android.net.Uri, peer: String, session: String) = action {
-        repo.attachText(uri, peer, session)
+    /**
+     * Picked, shot or shared files. Each shows as a reading chip until core has
+     * snapshotted it into the draft of the conversation it was picked for.
+     */
+    fun attachFiles(uris: List<android.net.Uri>, peer: String, session: String) {
+        uris.forEach { uri ->
+            val pending = PendingFileUi(NativeBridge.newId(), uri.lastPathSegment?.substringAfterLast('/') ?: "文件", session = session)
+            attaching = attaching + pending
+            viewModelScope.launch {
+                try {
+                    repo.attachFile(uri, peer, session)
+                    attaching = attaching.filterNot { it.key == pending.key }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    attaching = attaching.map { if (it.key == pending.key) it.copy(error = e.message ?: "无法添加文件") else it }
+                }
+            }
+        }
     }
+    fun dismissPendingFile(key: String) { attaching = attaching.filterNot { it.key == key } }
+    fun showNotice(text: String) { notice = text }
+    fun removeDraftFile(id: String) = action {
+        val peer = activePeer ?: return@action
+        val current = conversation ?: return@action
+        repo.command("remove_file", "peer" to peer.id, "session" to current.id, "id" to id)
+    }
+    fun cameraTarget(): android.net.Uri = repo.cameraTarget()
+
+    private val fileImages = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(32)
+    /** Verified bytes come from core; decoding stays bounded and cached per size. */
+    suspend fun fileImage(message: String?, file: ChatFileUi, maxSide: Int): androidx.compose.ui.graphics.ImageBitmap? {
+        if (!file.thumbnail) return null
+        val peer = activePeer?.id ?: return null
+        val session = conversation?.id ?: return null
+        val key = "$peer/$session/${message.orEmpty()}/${file.id}/$maxSide"
+        fileImages.get(key)?.let { return it }
+        val image = decodeFileImage(repo.fileThumbnail(peer, session, message, file.id), maxSide) ?: return null
+        fileImages.put(key, image)
+        return image
+    }
+
+    /** Draft file shown in the preview page; draft bytes never leave core except to decode. */
+    var draftPreview by mutableStateOf<ChatFileUi?>(null)
+        private set
+    fun openDraftFile(file: ChatFileUi?) { draftPreview = file }
+
     fun removeAttachment(id: String) = draftAction(JSONObject().put("action", "remove_attachment").put("id", id))
     fun exportTextAttachment(uri: android.net.Uri, file: TextAttachmentUi) = action {
         repo.exportText(uri, file.content)
@@ -1000,6 +1230,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (state.has("newer_available")) hasNewer = state.optBoolean("newer_available")
         state.optJSONObject("draft_document")?.let { document ->
             attachments = document.textAttachments()
+            draftFiles = document.fileViews()
             comments = document.optJSONArray("comments").objects().map { c ->
                 val source = c.getJSONObject("source")
                 DraftCommentUi(c.text("id"), source.text("session_id"), source.text("message_id").ifBlank { null },

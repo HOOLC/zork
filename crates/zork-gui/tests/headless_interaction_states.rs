@@ -28,10 +28,7 @@ fn main() -> anyhow::Result<()> {
         cx.set_reduce_motion(true);
         HeadlessAutomation::install(cx)
     });
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "interaction-overview")
-        .unwrap();
+    let story = stories::fixture("interaction-overview").unwrap();
     let window = cx.open_window(gpui::size(px(800.), px(620.)), |_, cx| {
         let host = cx.new(|cx| StoryHost::new(story, cx));
         cx.new(|_| AutomationRoot::new(host))
@@ -95,8 +92,13 @@ fn main() -> anyhow::Result<()> {
                     )
                     .0)
             };
+            let rgb = |c: u32| [(c >> 16) as u8, (c >> 8) as u8, c as u8];
+            let tokens = &zork_ui::design::INTERACTION;
             let hover = sample(&mut cx)?;
-            anyhow::ensure!(hover[..3] == [239, 238, 234], "{id}: hover is {hover:?}");
+            anyhow::ensure!(
+                hover[..3] == rgb(tokens.neutral_hover),
+                "{id}: hover is {hover:?}"
+            );
             let position = gpui::point(
                 px(initial.bounds.x as f32 + 14.),
                 px(initial.bounds.y as f32 + 14.),
@@ -116,7 +118,7 @@ fn main() -> anyhow::Result<()> {
             pump(&mut cx)?;
             let pressed = sample(&mut cx)?;
             anyhow::ensure!(
-                pressed[..3] == [234, 231, 225],
+                pressed[..3] == rgb(tokens.neutral_pressed),
                 "{id}: pressed is {pressed:?}"
             );
             cx.capture_screenshot(window.into())?

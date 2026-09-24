@@ -147,32 +147,4 @@ class MessageViewportTest {
             assertFalse("Clipping left an extra empty line", view.text.endsWith("\n"))
         }
     }
-
-    @Test fun configuredPreviewHeightShowsMoreTextWithoutKeyboardRetruncation() {
-        launch().use { scenario ->
-            settle(); scenario.onActivity { it.appendLong() }; settle()
-            var originalHeight = 0
-            var originalLength = 0
-            scenario.onActivity {
-                val view = texts(it.window.decorView).last { view -> view.text.contains("完整方案") }
-                originalHeight = view.height; originalLength = view.text.length
-                it.previewHeight = 360
-            }
-            settle()
-            var expandedText = ""
-            scenario.onActivity {
-                val view = texts(it.window.decorView).last { view -> view.text.contains("完整方案") }
-                assertTrue("Height setting did not resize body", view.height > originalHeight)
-                assertTrue("Old eight-line limit still hides content", view.text.length > originalLength)
-                assertFalse("Changing preview preference lost the tail", it.scroll.canScrollForward)
-                expandedText = view.text.toString(); it.keyboardInset = 250
-            }
-            settle()
-            scenario.onActivity {
-                val view = texts(it.window.decorView).last { view -> view.text.contains("完整方案") }
-                assertEquals(expandedText, view.text.toString())
-                assertFalse("Larger preview covered the tail", it.scroll.canScrollForward)
-            }
-        }
-    }
 }

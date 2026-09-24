@@ -343,7 +343,17 @@ fn paint_morph(
 impl Render for Brand {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(target_os = "macos")]
-        cx.set_reduce_motion(system_reduce_motion());
+        {
+            // Startup seeds the preference; afterwards follow its changes
+            // only, so an explicit setting (tests, exported stills) stays.
+            use std::sync::atomic::{AtomicU8, Ordering};
+            static SEEN: AtomicU8 = AtomicU8::new(2);
+            let system = system_reduce_motion();
+            let seen = SEEN.swap(system as u8, Ordering::Relaxed);
+            if seen != 2 && seen != system as u8 {
+                cx.set_reduce_motion(system);
+            }
+        }
         if matches!(self.mode, BrandMotion::Header) {
             return self.render_header(cx);
         }
@@ -467,12 +477,15 @@ impl Render for Brand {
                     .h(px(28.))
                     .overflow_hidden()
                     .child(
-                        gpui::img("brand/zork-wordmark.svg")
+                        // Tinted like the mark: the asset's own ink fill vanishes in dark.
+                        gpui::svg()
+                            .path("brand/zork-wordmark.svg")
                             .relative()
                             .left(px(-left * 0.6))
                             .w(px(81.6))
                             .h(px(26.4))
-                            .flex_shrink_0(),
+                            .flex_shrink_0()
+                            .text_color(rgb(crate::design::ZORK_UI.palette.text)),
                     );
                 // Letter wrappers share one contiguous wordmark. Translation never changes layout.
                 let element = if animated {

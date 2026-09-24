@@ -4,6 +4,7 @@ mod adb;
 mod chat_files;
 mod conversation;
 mod history;
+mod navigation;
 mod new_chat;
 mod notifications;
 mod resources;
@@ -27,6 +28,8 @@ pub enum Key {
     Adb,
     ChatFiles,
     Notifications,
+    /// Every known device's Chats merged by message time; see `navigation.rs`.
+    Navigation,
     Resources {
         peer: Option<String>,
         kind: crate::resources::ResourceKind,
@@ -57,6 +60,7 @@ impl Key {
             | Self::Adb
             | Self::Directory
             | Self::Notifications
+            | Self::Navigation
             | Self::ChatFiles => "",
             Self::Resources { peer, .. } => peer.as_deref().unwrap_or(""),
             Self::Conversation { peer, .. }
@@ -104,6 +108,7 @@ enum Projection {
     Adb(adb::AdbWire),
     ChatFiles(chat_files::ChatFilesWire),
     Notifications(notifications::NotificationsWire),
+    Navigation(navigation::NavigationWire),
     Resources(resources::ResourcesWire),
     Directory(snapshot::SnapshotWire),
     Conversation(conversation::ConversationWire),
@@ -177,6 +182,18 @@ impl WireSubscription {
             applied: 0,
         })
     }
+    pub(crate) fn from_navigation(
+        directory: Arc<zork_observe::ValueSource<Value>>,
+        store: Arc<ClientStore>,
+    ) -> Self {
+        Self {
+            projection: Projection::Navigation(navigation::NavigationWire::new(directory, store)),
+            device: None,
+            prepared: None,
+            sequence: 0,
+            applied: 0,
+        }
+    }
     pub(crate) fn from_resources(
         source: Arc<crate::resources::Resources>,
         store: Arc<ClientStore>,
@@ -215,6 +232,7 @@ impl WireSubscription {
             | Key::Adb
             | Key::Directory
             | Key::Notifications
+            | Key::Navigation
             | Key::ChatFiles
             | Key::Resources { .. } => {
                 anyhow::bail!("projection uses a client-owned source")
@@ -245,6 +263,7 @@ impl WireSubscription {
             Projection::Adb(p) => p.wire.signals(),
             Projection::ChatFiles(p) => p.signals(),
             Projection::Notifications(p) => p.wire.signals(),
+            Projection::Navigation(p) => p.wire.signals(),
             Projection::Resources(p) => p.signals(),
             Projection::Directory(p) | Projection::LocalScripts(p) => p.signals(),
             Projection::Conversation(p) => p.signals(),
@@ -267,6 +286,7 @@ impl WireSubscription {
             Projection::Adb(p) => p.valid(),
             Projection::ChatFiles(p) => p.valid(),
             Projection::Notifications(p) => p.valid(),
+            Projection::Navigation(p) => p.valid(),
             Projection::Resources(p) => p.valid(),
             Projection::Directory(p) | Projection::LocalScripts(p) => p.valid(),
             Projection::Conversation(p) => p.valid(),
@@ -290,6 +310,7 @@ impl WireSubscription {
             Projection::Adb(p) => p.prepare()?,
             Projection::ChatFiles(p) => p.prepare()?,
             Projection::Notifications(p) => p.prepare()?,
+            Projection::Navigation(p) => p.prepare()?,
             Projection::Resources(p) => p.prepare()?,
             Projection::Directory(p) | Projection::LocalScripts(p) => p.prepare()?,
             Projection::Conversation(p) => p.prepare()?,
@@ -321,6 +342,7 @@ impl WireSubscription {
             Projection::DataReset(p) => p.finish(applied && valid),
             Projection::Adb(p) => p.wire.finish(applied && valid),
             Projection::Notifications(p) => p.wire.finish(applied && valid),
+            Projection::Navigation(p) => p.wire.finish(applied && valid),
             Projection::Resources(p) => p.finish(applied && valid),
             Projection::Directory(p) | Projection::LocalScripts(p) => p.finish(applied && valid),
             Projection::ChatFiles(p) => p.finish(applied && valid),

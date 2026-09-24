@@ -30,23 +30,24 @@ pub fn render<V: 'static>(
         .right(px(right))
         .children(members.into_iter().map(|member| {
             let open = open.clone();
-            div()
-                .id(format!("header-member-{}", member.id))
-                .w(px(30.))
-                .h(px(26.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(8.))
-                .bg(rgb(ZORK_UI.palette.canvas))
-                .cursor_pointer()
-                .text_size(px(11.))
-                .child(member.name.chars().take(2).collect::<String>())
-                .on_click(cx.listener(move |v, _, _, cx| open(v, member.id.clone(), cx)))
-                .automation(
-                    AutomationRole::Button,
-                    format!("{} · {}", member.name, history_label),
-                )
+            // The member entry opens that member's execution history.
+            crate::components::widgets::controls::adaptive_action(
+                format!("header-member-{}", member.id),
+                member.name.clone(),
+                crate::components::widgets::controls::ActionStyle {
+                    quiet: true,
+                    icon_only: Some(false),
+                    trailing: Some("icons/history.svg"),
+                    ..Default::default()
+                },
+                ZORK_UI.palette.canvas,
+            )
+            .max_w(px(220.))
+            .on_click(cx.listener(move |v, _, _, cx| open(v, member.id.clone(), cx)))
+            .automation(
+                AutomationRole::Button,
+                format!("{} · {}", member.name, history_label),
+            )
         }))
         .child(contents)
 }

@@ -5,6 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -31,9 +35,9 @@ internal fun ZorkCard(
     color: Color = ZorkColors.Canvas,
     outlined: Boolean = true,
     radius: Dp = UiTokens.CompactRadius,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(radius),
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(radius)
     Surface(modifier, shape = shape, color = color,
         border = if (outlined) androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline) else null) {
         Box(content = content)
@@ -47,6 +51,7 @@ internal fun ZorkButton(
     primary: Boolean = false,
     enabled: Boolean = true,
     quiet: Boolean = false,
+    danger: Boolean = false,
     onClick: () -> Unit,
     leading: (@Composable () -> Unit)? = null,
 ) {
@@ -55,9 +60,10 @@ internal fun ZorkButton(
         Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
     }
     val colors = ButtonDefaults.buttonColors(
-        containerColor = if (primary) UiTokens.Accent else if (quiet) Color.Transparent else ZorkColors.Canvas,
-        contentColor = if (primary) ZorkColors.Canvas else ZorkColors.Ink,
-        disabledContainerColor = if (primary) ZorkColors.Pressed else Color.Transparent,
+        // Primary actions are ink; persimmon is reserved for sending and work in progress.
+        containerColor = if (danger) ZorkColors.Danger else if (primary) ZorkColors.Ink else if (quiet) Color.Transparent else ZorkColors.Canvas,
+        contentColor = if (primary || danger) ZorkColors.Canvas else ZorkColors.Ink,
+        disabledContainerColor = if (primary || danger) ZorkColors.Pressed else Color.Transparent,
         disabledContentColor = ZorkColors.Disabled,
     )
     val shape = RoundedCornerShape(UiTokens.PillRadius)
@@ -65,7 +71,7 @@ internal fun ZorkButton(
         colors = colors, content = content)
     else Button(onClick, modifier.heightIn(min = 48.dp), enabled = enabled, shape = shape,
         colors = colors,
-        border = if (primary) null else androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline),
+        border = if (primary || danger) null else androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline),
         content = content)
 }
 
@@ -139,7 +145,7 @@ internal fun Modifier.zorkPressable(
     onClick: () -> Unit,
 ): Modifier = this.combinedClickable(
     interactionSource = interactionSource ?: remember { MutableInteractionSource() },
-    indication = ripple(), enabled = enabled, role = role,
+    indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = role,
     onLongClick = onLongClick, onClick = onClick)
 
 @Composable
@@ -166,23 +172,60 @@ internal fun ZorkTextField(
     }
 }
 
+/**
+ * The switch thumb and track colour move on the move curve; state never animates
+ * on first composition. Reduced motion jumps straight to the new position.
+ */
 @Composable
 internal fun ZorkSwitch(
     checked: Boolean, change: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
 ) {
-    Switch(checked, change, modifier.sizeIn(minWidth = 56.dp, minHeight = 48.dp), enabled = enabled)
+    val reduced = LocalReducedMotion.current
+    val position by androidx.compose.animation.core.animateFloatAsState(if (checked) 1f else 0f,
+        if (reduced) androidx.compose.animation.core.snap() else ZorkMotion.move(ZorkMotion.FAST), label = "switch")
+    val track = androidx.compose.ui.graphics.lerp(ZorkColors.Border, ZorkColors.Ink, position)
+    Box(modifier.sizeIn(minWidth = 56.dp, minHeight = 48.dp)
+        .toggleableSwitch(checked, enabled, change), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp, 26.dp).background(if (enabled) track else ZorkColors.Border, ZorkShapes.Control)) {
+            Box(Modifier.padding(3.dp).size(20.dp)
+                .graphicsLayer { translationX = position * 18.dp.toPx() }
+                .background(ZorkColors.Canvas, androidx.compose.foundation.shape.CircleShape))
+        }
+    }
 }
 
+private fun Modifier.toggleableSwitch(checked: Boolean, enabled: Boolean, change: (Boolean) -> Unit) =
+    this.then(Modifier.toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = change))
+
+/**
+ * Segmented choice: the selected capsule slides between options on the move curve.
+ * Options share the width equally, so positions come from the index alone.
+ */
 @Composable
 internal fun ZorkSegments(
     options: List<Pair<String, String>>, selected: String, choose: (String) -> Unit,
     modifier: Modifier = Modifier, enabled: Boolean = true,
 ) {
     if (options.isEmpty()) return
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        options.forEach { (id, label) ->
-            FilterChip(id == selected, onClick = { choose(id) }, label = { Text(label, maxLines = 1) },
-                modifier = Modifier.weight(1f), enabled = enabled)
+    val reduced = LocalReducedMotion.current
+    val index = options.indexOfFirst { it.first == selected }
+    val slot by androidx.compose.animation.core.animateFloatAsState(index.coerceAtLeast(0).toFloat(),
+        if (reduced) androidx.compose.animation.core.snap() else ZorkMotion.move(ZorkMotion.BASE), label = "segment")
+    BoxWithConstraints(modifier.fillMaxWidth().heightIn(min = 48.dp).background(ZorkColors.Prompt, ZorkShapes.Control).padding(3.dp)) {
+        val width = maxWidth / options.size
+        if (index >= 0) Box(Modifier.width(width).fillMaxHeight().heightIn(min = 42.dp)
+            .graphicsLayer { translationX = slot * width.toPx() }
+            .background(ZorkColors.Canvas, ZorkShapes.Control))
+        Row(Modifier.fillMaxWidth()) {
+            options.forEach { (id, label) ->
+                val on = id == selected
+                Box(Modifier.weight(1f).heightIn(min = 42.dp).clip(ZorkShapes.Control)
+                    .selectable(on, enabled = enabled, role = Role.RadioButton) { if (!on) choose(id) },
+                    contentAlignment = Alignment.Center) {
+                    Text(label, maxLines = 1, fontSize = 14.sp, fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal,
+                        color = if (!enabled) ZorkColors.Disabled else if (on) ZorkColors.Ink else ZorkColors.Muted)
+                }
+            }
         }
     }
 }

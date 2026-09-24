@@ -27,7 +27,7 @@ class Nav7PreviewActivity : ComponentActivity() {
     var lastAction = ""
     var lastBody: JSONObject? = null
     var lastProfile: JSONObject? = null
-    var previewHeight by mutableIntStateOf(0)
+    var previewTheme by mutableStateOf("system")
     var failNextRequest = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); configureZorkSystemBars()
@@ -53,17 +53,28 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     actions.put(intent);lastBody=intent;snapshot=project()
                                 }, {})
                             }
-                            else if (route in listOf("home","appearance","device","models","profile","connections","services","notifications")) {
+                            else if (route in listOf("home","appearance","device","models","profile","model-connections","services","notifications","archived")) {
                                 var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
+                                var archivedHome by remember { mutableStateOf(fixtureHome()) }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
                                     if(resourceTrail.isNotEmpty()) {
                                         val selected=resourceTrail.removeAt(resourceTrail.lastIndex)
                                         settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))
-                                    } else settings=settings.copy(page=if(settings.page=="profile")"models" else "home",resource=null,resourceData=null)
+                                    } else settings=settings.copy(page=when {
+                                        settings.fromConnections && settings.page in listOf("models","profile") -> "model-connections"
+                                        settings.page=="profile" -> "models"
+                                        else -> "home"
+                                    },resource=null,resourceData=null,fromConnections=false,addConnection=false)
                                 }, device={settings=settings.copy(page="device",device=it,resource=null,resourceData=null)},
-                                    messagePreviewHeight=previewHeight, saveMessagePreviewHeight={previewHeight=it},
+                                    connection={_,profile->lastAction="open-connection:${profile.text("profile_id")}";settings=settings.copy(page="profile",profile=profile,fromConnections=true)},
+                                    addConnection={peer->lastAction="add-connection:$peer";settings=settings.copy(page="models",fromConnections=true,addConnection=true)},
+                                    theme=previewTheme, saveTheme={previewTheme=it},
                                     clearData={lastAction="clear-data"},
+                                    addDevice={lastAction="add-device"},
+                                    home=archivedHome, openChat={lastAction="open-chat:${it.optString("_peer")}/${it.text("chat_id")}"},
+                                    archiveChat={peer,chat,archived,_->lastAction="archive:$peer/$chat/$archived"
+                                        archivedHome=archivedHome.copy(archived=archivedHome.archived.filterNot{it.peer==peer&&it.id==chat},archivedTotal=archivedHome.archivedTotal-1)},
                                     notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
                                     resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
                                     page={settings=settingsFixturePage(settings,it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->
@@ -90,7 +101,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     else -> JSONObject()
                                 }}))
                             }
-                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.text("chat_id")}" }))
+                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.optString("_peer")}/${it.text("chat_id")}" }, device = { lastAction = "device:${it.id}" }))
                         }
                     }
                 }
@@ -126,10 +137,26 @@ private fun fixture(route: String): WorkbenchState {
             ChatMessage("own","","移动端也沿用这套品牌，\n阅读和回复要轻一点。",true,createdAt="2026-09-07T10:24:00+08:00"),
             ChatMessage("product","产品 Leader","收到。导航和群聊分开，\n手机上一次专注一件事。",false,createdAt="2026-09-07T10:25:00+08:00",device="mini1",model="gpt-6"),
             ChatMessage("designer","设计 Worker","三屏稿整理好了，可以先看整体。",false,createdAt="2026-09-07T10:27:00+08:00",device="mini2",model="gpt-6",files=listOf(TextAttachmentUi("notes","zork-mobile-notes.md","# Zork 移动端设计说明", "设计说明 · Markdown"))),
-            ChatMessage("illustrator","插画 Worker","头像直接复用，保留已知作者的辨识度。",false,createdAt="2026-09-07T10:28:00+08:00",device="mini2",model="gpt-6")),
+            ChatMessage("illustrator","插画 Worker","头像直接复用，保留已知作者的辨识度。",false,createdAt="2026-09-07T10:28:00+08:00",device="mini2",model="gpt-6",
+                deliveredFiles=listOf(ChatFileUi("file-report","首页改版对比.pdf",2_516_582,"application/octet-stream","file","PDF","2.4 MB"),
+                    ChatFileUi("file-recording","录屏.mov",18_874_368,"application/octet-stream","file","MOV","18 MB")))),
         draft=if(route=="composer") "整理一下这些资料。\n先确认范围，再给出方案。\n保留需要我决定的问题。\n附件里是当前要求。" else "",
-        attachments=if(route=="composer") listOf(TextAttachmentUi("draft-file","requirements.md","# 当前要求")) else emptyList(),
-        comments=listOf(DraftCommentUi("comment","brand","product","产品 Leader",null,"导航和群聊分开","切换后保留阅读位置。")))
+        draftFiles=if(route=="composer") listOf(ChatFileUi("file-draft","requirements.md",14_336,"text/plain","text","MD","14 KB"),
+            ChatFileUi("file-shot","首页草图.png",1_258_291,"image/png","image","PNG","1.2 MB",thumbnail=true)) else emptyList(),
+        attaching=if(route=="composer") listOf(PendingFileUi("pending-failed","设计稿.sketch","无法读取 · 权限被拒绝")) else emptyList(),
+        comments=listOf(DraftCommentUi("comment","brand","product","产品 Leader",null,"导航和群聊分开","切换后保留阅读位置。")),
+        home=fixtureHome())
+}
+private fun fixtureHome(): HomeNavigation {
+    val now=System.currentTimeMillis(); val hour=3_600_000L
+    fun chat(peer:String,id:String,title:String,description:String,section:String,at:Long,unread:Boolean=false,archived:Boolean=false)=
+        HomeChat(peer,peer,id,title,description,"gpt-6",unread,archived,false,null,3,at,section,true,false)
+    return HomeNavigation(listOf(
+        chat("mini2","guide","品牌规范整理","把导航和群聊分开","unread",now-2*hour,unread=true),
+        chat("mini1","brand","品牌资源接入","头像直接复用","today",now-hour),
+        chat("mini2","mobile","移动端交互调研","三屏稿整理好了","today",now-3*hour),
+        chat("mini1","offline","离线恢复怎么处理","","week",now-72*hour)),
+        listOf(chat("mini1","old","旧版导航","","earlier",now-400*hour,archived=true)),archivedTotal=1,loaded=true)
 }
 private fun fixtureSettings(): MobileSettingsState {
     val models=org.json.JSONArray().put(obj("id" to "fixture-model","api" to "openai-responses","enabled" to true,"default" to true,"default_thinking" to "off","thinking" to org.json.JSONArray().put("off"),
@@ -141,7 +168,12 @@ private fun fixtureSettings(): MobileSettingsState {
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to 72,"resets_at" to 1789002000)),"balance" to org.json.JSONArray().put(0).put("USD")),"checkedAt" to "2026-09-10T01:00:00Z"),
         obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()))
     val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))))
-    return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,
+    val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray())
+    val connections=listOf(
+        obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),
+        obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
+            "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter"))))
+    return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
 

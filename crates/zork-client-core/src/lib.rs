@@ -16,6 +16,7 @@ mod client_directory;
 pub mod delivery;
 #[cfg(feature = "desktop")]
 pub mod desktop;
+pub mod device_label;
 mod device_metadata;
 pub mod device_status;
 pub mod file_io;
@@ -24,7 +25,9 @@ pub mod live;
 pub mod local_scripts;
 pub mod locale;
 pub mod mesh_enrollment;
+pub mod model_catalog;
 pub mod model_edit;
+mod model_connections;
 pub mod new_chat;
 pub mod notifications;
 pub mod pages;
@@ -39,6 +42,7 @@ pub use zork_observe as observe;
 pub mod store;
 pub mod subscriptions;
 pub mod sync;
+pub mod thinking;
 pub mod transcript;
 pub mod transport;
 

@@ -1,16 +1,16 @@
 //! Composer layout on ordinary GPUI surfaces.
-//! Hosts supply core capabilities and handle intents. Editor, hover, focus and
-//! fan expansion are presentation state; this module contains no send policy.
-use super::Pose;
+//! Hosts supply core capabilities and handle intents. Editor, hover and focus
+//! are presentation state; this module contains no send policy. Draft files sit
+//! in a row of capsules at the top of the surface, above the editor.
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::{
-        attachment_fan as fan_geometry, composer_layout as spec, text_input::ComposerInput,
+        attachment_row as row_geometry, composer_layout as spec, text_input::ComposerInput,
     },
 };
 use gpui::{prelude::*, *};
 use std::rc::Rc;
-pub mod fan;
+pub mod files;
 mod scene;
 pub use scene::Scene;
 pub use zork_client_types::composer::{Capabilities, Snapshot};
@@ -24,8 +24,6 @@ pub enum Action {
     Primary,
     FocusEditor,
     ChooseFiles,
-    FanHover(bool),
-    ToggleFan,
     RemoveFile(u64),
     OpenFile(u64),
 }
@@ -58,6 +56,7 @@ fn action(
         size,
         super::controls::ActionStyle {
             primary: !attach,
+            accent: !attach && !stop,
             icon: Some(if attach {
                 "icons/paperclip.svg"
             } else if stop {
@@ -69,7 +68,7 @@ fn action(
             busy: !attach && busy,
             ..Default::default()
         },
-        spec::SURFACE_COLOR,
+        spec::SURFACE_COLOR(),
         window,
         cx,
     )
@@ -92,7 +91,9 @@ pub struct Presentation {
     pub editor_id: String,
     pub attach_id: String,
     pub primary_id: String,
-    pub fan: Option<AnyElement>,
+    /// Host-rendered draft file row (see [`files::render`]); it occupies
+    /// [`row_geometry::FILES_BAND`] at the top of the surface.
+    pub files: Option<AnyElement>,
     pub busy: bool,
     pub editor_label: SharedString,
     pub attach_label: SharedString,
@@ -107,8 +108,6 @@ pub struct Props<'a> {
     pub height: f32,
     pub editor: &'a Entity<ComposerInput>,
     pub snapshot: &'a Snapshot,
-    pub fan_expanded: bool,
-    pub fan_pinned: bool,
     pub handler: Handler,
     pub action_size: f32,
     pub presentation: Option<Presentation>,
@@ -125,8 +124,6 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
         height,
         editor,
         snapshot,
-        fan_expanded,
-        fan_pinned,
         handler,
         action_size,
         mut presentation,
@@ -135,23 +132,29 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     } = props;
     let p = scene.body();
     let c = snapshot.capabilities;
-    let editor_height =
-        (p.h as f32 - spec::TOP_EXTENSION - spec::COMPOSER_CHROME - accessory_band.max(0.))
-            .clamp(0., EDITOR_MAX);
+    let custom_files = presentation.as_mut().and_then(|p| p.files.take());
+    let has_files = custom_files.is_some() || !snapshot.files.is_empty();
+    let band = if has_files { row_geometry::FILES_BAND } else { 0. };
+    let editor_height = (p.h as f32
+        - band
+        - spec::TOP_EXTENSION
+        - spec::COMPOSER_CHROME
+        - accessory_band.max(0.))
+    .clamp(0., EDITOR_MAX);
     let input = editor.clone();
     let editor_id = presentation
         .as_ref()
         .map_or_else(|| format!("{id}-editor"), |p| p.editor_id.clone());
     let editor_view = positioned(
         p.left() + TEXT_INSET as f64,
-        p.top() + spec::TOP_EXTENSION as f64 + spec::EDITOR_TOP_INSET as f64,
+        p.top() + (band + spec::TOP_EXTENSION + spec::EDITOR_TOP_INSET) as f64,
         p.w - 2. * TEXT_INSET as f64,
         editor_height as f64,
     )
     .id(editor_id)
     .text_size(px(13.))
     .line_height(px(20.))
-    .text_color(rgb(spec::TEXT_COLOR))
+    .text_color(rgb(spec::TEXT_COLOR()))
     .overflow_hidden()
     .when(c.editable, |v| {
         v.child(input.clone())
@@ -168,9 +171,9 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
     let plate = positioned(p.left(), p.top(), p.w, p.h)
         .id(format!("{id}-surface"))
         .rounded(px(spec::SURFACE_RADIUS))
-        .bg(rgb(spec::SURFACE_COLOR))
+        .bg(rgb(spec::SURFACE_COLOR()))
         .border(px(spec::BORDER_WIDTH))
-        .border_color(rgb(spec::BORDER_COLOR))
+        .border_color(rgb(spec::BORDER_COLOR()))
         .occlude()
         .on_mouse_down(MouseButton::Left, move |_, w, cx| {
             if c.editable {
@@ -274,92 +277,60 @@ pub fn render(props: Props<'_>, window: &mut Window, cx: &mut App) -> AnyElement
             .children(accessories),
         );
     }
-    let custom_fan = presentation.as_mut().and_then(|p| p.fan.take());
-    let has_custom_fan = custom_fan.is_some();
+    let inset = spec::ACTION_INSET as f64;
+    let row_width = (p.w - 2. * inset).max(2.);
+    let files_row = custom_files.or_else(|| {
+        (!snapshot.files.is_empty()).then(|| render_files(id, snapshot, row_width as f32, handler))
+    });
     div()
         .relative()
         .w(px(width))
         .h(px(height))
         .child(content)
-        .children(custom_fan)
-        .when(!has_custom_fan && !snapshot.files.is_empty(), |v| {
-            v.child(render_fan(
-                id,
-                p,
-                snapshot,
-                fan_expanded,
-                fan_pinned,
-                handler,
-                window,
-                cx,
-            ))
+        .when_some(files_row, |v, row| {
+            v.child(
+                positioned(
+                    p.left() + inset,
+                    p.top() + inset,
+                    row_width,
+                    row_geometry::CHIP_HEIGHT as f64,
+                )
+                .child(row),
+            )
         })
         .into_any_element()
 }
 
-fn render_fan(
-    id: &str,
-    body: Pose,
-    state: &Snapshot,
-    expanded: bool,
-    pinned: bool,
-    handler: Handler,
-    _: &mut Window,
-    _: &mut App,
-) -> AnyElement {
-    let available = (body.w as f32 - 24.).max(100.);
-    let (width, height) =
-        fan_geometry::dimensions(state.files.len().min(fan_geometry::MAX_FILES), available);
-    let center = (body.left() + body.w - width as f64 / 2. - 12.).max(body.cx);
-    let ids = fan::Ids {
-        root: format!("{id}-fan"),
-        toggle: format!("{id}-fan-toggle"),
+fn render_files(id: &str, state: &Snapshot, width: f32, handler: Handler) -> AnyElement {
+    let ids = files::Ids {
+        root: format!("{id}-files"),
         file_prefix: format!("{id}-file-"),
         remove_prefix: format!("{id}-remove-"),
     };
-    let frame = fan::Frame {
-        files: state
-            .files
-            .iter()
-            .map(|file| fan::File {
-                id: file.id.to_string(),
-                name: file.name.clone(),
-                image: None,
-                removable: pinned && expanded,
-            })
-            .collect(),
-        width,
-        height,
-        expanded,
-    };
+    let entries = state
+        .files
+        .iter()
+        .map(|file| files::File {
+            id: file.id.to_string(),
+            name: file.name.clone(),
+            meta: crate::components::attachments::file_badge(&file.name),
+            image: None,
+            state: files::State::Ready,
+            removable: true,
+        })
+        .collect();
     let handler = Rc::new(move |action, w: &mut Window, cx: &mut App| match action {
-        fan::Action::Hover(hover) => handler(Action::FanHover(hover), w, cx),
-        fan::Action::Toggle => handler(Action::ToggleFan, w, cx),
-        fan::Action::Open(id) => {
-            if pinned {
-                if let Ok(id) = id.parse() {
-                    handler(Action::OpenFile(id), w, cx);
-                }
-            } else {
-                handler(Action::ToggleFan, w, cx);
+        files::Action::Open(id) => {
+            if let Ok(id) = id.parse() {
+                handler(Action::OpenFile(id), w, cx);
             }
         }
-        fan::Action::Remove(id) => {
+        files::Action::Remove(id) => {
             if let Ok(id) = id.parse() {
                 handler(Action::RemoveFile(id), w, cx);
             }
         }
-        fan::Action::Highlight(_, _) => {}
+        files::Action::Retry(_) => {}
     });
-    fan::render(
-        ids,
-        frame,
-        "展开或固定附件预览".into(),
-        "移除附件".into(),
-        handler,
-    )
-    .absolute()
-    .left(px(center as f32 - width / 2.))
-    .top(px(body.top() as f32 - height))
-    .into_any_element()
+    files::render(ids, entries, width, "移除附件".into(), handler).into_any_element()
 }

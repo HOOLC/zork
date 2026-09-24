@@ -5,7 +5,7 @@ pub struct Story {
     messages: Vec<MessageDocument>,
     text: crate::resources::Text,
     placeholder: Option<String>,
-    composer: Option<Entity<crate::component_story::ComposerExample>>,
+    composer: Option<Entity<crate::component_story::ConversationComposer>>,
 }
 impl Story {
     pub fn new(state: &str, text: crate::resources::Text, cx: &mut Context<Self>) -> Self {
@@ -38,7 +38,7 @@ impl Story {
                 .map(str::to_owned),
             composer: state
                 .starts_with("composer")
-                .then(|| cx.new(crate::component_story::ComposerExample::new)),
+                .then(|| cx.new(crate::component_story::ConversationComposer::new)),
         }
     }
 }
@@ -75,7 +75,7 @@ impl Render for Story {
                     document,
                     content_width: width,
                     selection: None,
-                    author_name: (index != 0).then(|| "产品领队".into()),
+                    author_name: (index != 0).then(|| "Studio".into()),
                     device: Some("演示设备".into()),
                     model: (index != 0).then(|| "gpt-6".into()),
                     time: Some("10:24".into()),

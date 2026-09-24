@@ -109,10 +109,25 @@ impl Render for Details {
                 .into_any_element(),
             Presentation::Entry(entry) => {
                 let projection = crate::history::activity::Projection::new([entry]);
-                let file = projection
-                    .activities
-                    .first()
-                    .and_then(|a| a.details.files.first());
+                let activity = projection.activities.first();
+                let file = activity.and_then(|a| a.details.files.first());
+                // A received message reads as its text and files, never as
+                // the delivery envelope it arrived in.
+                let message = activity.filter(|a| a.kind == crate::history::activity::Kind::Input);
+                let summary = message.map_or_else(
+                    || entry.summary.clone(),
+                    |a| {
+                        let files = a.message.as_deref().map_or(&[][..], |m| &m.files[..]);
+                        let mut text = a.details.text.clone();
+                        if !files.is_empty() {
+                            if !text.is_empty() {
+                                text.push_str("\n\n");
+                            }
+                            text.push_str(&files.join("、"));
+                        }
+                        text
+                    },
+                );
                 div()
                     .id("history-detail-scroll")
                     .max_h(px((window.viewport_size().height.as_f32() - 180.).max(120.)))
@@ -155,7 +170,7 @@ impl Render for Details {
                                     .child(file.content.clone()),
                             )
                     } else {
-                        div().mb_3().child(entry.summary.clone())
+                        div().mb_3().child(summary)
                     })
                     .when_some(data.resource.clone(), |body, resource| {
                         let open = resource.open;

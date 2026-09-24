@@ -2,7 +2,7 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::widgets::controls::ControlElement,
-    design::{BORDER_WIDTH, UI_OUTLINE, ZORK_UI},
+    design::{BORDER_WIDTH, FORM, ZORK_UI},
 };
 use gpui::{prelude::*, *};
 use gpui_base::{Align, Placement, Positioner};
@@ -26,6 +26,7 @@ pub struct Flyout {
     initial_focus: Rc<RefCell<Option<FocusHandle>>>,
     above: Cell<bool>,
     align_end: Cell<bool>,
+    presence: RefCell<crate::motion::Presence>,
 }
 
 impl Flyout {
@@ -38,13 +39,15 @@ impl Flyout {
             initial_focus: Default::default(),
             above: Cell::new(false),
             align_end: Cell::new(false),
+            presence: RefCell::new(crate::motion::Presence::new(crate::motion::POPOVER)),
         }
     }
     pub fn is_open(&self) -> bool {
         self.state.borrow().open
     }
+    /// Also true while a closed panel is still fading out.
     pub fn alive(&self) -> bool {
-        self.is_open()
+        self.is_open() || self.presence.borrow().visible()
     }
     pub fn visible(&self) -> bool {
         self.is_open()
@@ -132,9 +135,14 @@ impl Flyout {
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Option<AnyElement> {
-        if !self.is_open() {
-            return None;
+        // Presence keeps a closed panel on screen for its exit fade.
+        let now = cx.background_executor().now();
+        let mode = crate::motion::mode(cx);
+        let (frame, moving) = self.presence.borrow_mut().step(self.is_open(), now, mode);
+        if moving {
+            window.request_animation_frame();
         }
+        let frame = frame?;
         let id = id.into();
         let title = title.into();
         let viewport = window.viewport_size();
@@ -149,50 +157,60 @@ impl Flyout {
         let source_bounds = self.anchor.clone();
         let content = body(true, (width - 2. * padding).max(2.), window, cx);
         let panel = div()
-            .id(id)
-            .role(Role::Dialog)
-            .aria_label(title.clone())
             .w(px(width))
             .max_h(px((viewport.height.as_f32() - 24.).max(2.)))
-            .overflow_y_scroll()
             .rounded(px(crate::controls::CARD_RADIUS))
             .bg(rgb(ZORK_UI.palette.canvas))
             .border(px(BORDER_WIDTH))
-            .border_color(rgb(UI_OUTLINE))
+            .border_color(rgb(FORM.outline))
             .p(px(padding))
-            .occlude()
-            .track_focus(&focus)
-            .tab_group()
-            .on_key_down(cx.listener(move |_, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key == "escape" {
-                    let mut state = state.borrow_mut();
-                    state.open = false;
-                    if let Some(source) = &state.source {
-                        window.focus(source, cx);
+            .child(content);
+        // A leaving panel takes no input and is not part of the automation tree.
+        let panel = if frame.closing {
+            panel
+                .id(SharedString::from(format!("{id}-leaving")))
+                .overflow_y_scroll()
+                .into_any_element()
+        } else {
+            panel
+                .id(id)
+                .role(Role::Dialog)
+                .aria_label(title.clone())
+                .overflow_y_scroll()
+                .occlude()
+                .track_focus(&focus)
+                .tab_group()
+                .on_key_down(cx.listener(move |_, event: &KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "escape" {
+                        let mut state = state.borrow_mut();
+                        state.open = false;
+                        if let Some(source) = &state.source {
+                            window.focus(source, cx);
+                        }
+                        cx.notify();
+                        cx.stop_propagation();
                     }
-                    cx.notify();
-                    cx.stop_propagation();
-                }
-            }))
-            .on_mouse_down_out(cx.listener(move |_, event: &MouseDownEvent, _, cx| {
-                if !source_bounds.get().contains(&event.position)
-                    && !panel_bounds.get().contains(&event.position)
-                {
-                    outside.borrow_mut().open = false;
-                    cx.notify();
-                }
-            }))
-            .child(content)
-            .child(
-                canvas(
-                    move |bounds, _, _| measured_panel.set(bounds),
-                    |_, _, _, _| {},
+                }))
+                .on_mouse_down_out(cx.listener(move |_, event: &MouseDownEvent, _, cx| {
+                    if !source_bounds.get().contains(&event.position)
+                        && !panel_bounds.get().contains(&event.position)
+                    {
+                        outside.borrow_mut().open = false;
+                        cx.notify();
+                    }
+                }))
+                .child(
+                    canvas(
+                        move |bounds, _, _| measured_panel.set(bounds),
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
                 )
-                .absolute()
-                .inset_0(),
-            )
-            .automation(AutomationRole::Status, title);
-        if self.state.borrow_mut().focus_pending {
+                .automation(AutomationRole::Status, title)
+                .into_any_element()
+        };
+        if !frame.closing && self.state.borrow().focus_pending {
             self.state.borrow_mut().focus_pending = false;
             let initial = self.initial_focus.borrow().clone();
             let focus = self.focus.clone();
@@ -208,6 +226,17 @@ impl Flyout {
         } else {
             Placement::Bottom
         };
+        // Enter travels away from the anchor; the exit only fades.
+        let travel = if self.above.get() {
+            crate::motion::POPOVER_OFFSET
+        } else {
+            -crate::motion::POPOVER_OFFSET
+        };
+        let panel = div()
+            .relative()
+            .top(px(travel * frame.travel))
+            .opacity(frame.opacity)
+            .child(panel);
         let align = if self.align_end.get() {
             Align::End
         } else {

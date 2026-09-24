@@ -35,8 +35,9 @@ pub fn image_viewport(
     .into_any_element()
 }
 
-/// Show ordinary images at their natural aspect ratio. Only extreme panoramas
-/// and long captures are cropped; portrait images shrink in width to stay compact.
+/// Show ordinary images at their natural aspect ratio, long edge at most
+/// [`IMAGE_LONG_EDGE`]. Only extreme panoramas and long captures are cropped;
+/// portrait images shrink in width to stay compact.
 pub fn message_image(
     id: impl Into<gpui::ElementId>,
     image: Option<std::sync::Arc<gpui::RenderImage>>,
@@ -63,10 +64,10 @@ pub fn message_image_with_padding(
         })
         .unwrap_or(1.)
         .clamp(1. / 3., 3.);
-    let height = (width / ratio).min(300.);
+    let height = (width.min(IMAGE_LONG_EDGE) / ratio).min(IMAGE_LONG_EDGE);
     let width = height * ratio;
     ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
-        .radius(ui::CARD_RADIUS)
+        .radius(crate::design::RADIUS.block)
         .p_0()
         .w(px(width))
         .h(px(height))
@@ -99,86 +100,149 @@ pub fn message_image_with_padding(
         })
 }
 
-/// Non-image attachments use the same quiet 48 px file identity as other
-/// message controls, with an explicit whole-row opening affordance.
-pub fn message_document(
+/// Longest edge of an image shown inline in a message.
+pub const IMAGE_LONG_EDGE: f32 = 320.;
+/// Gap between images that share a message grid.
+pub const IMAGE_GRID_GAP: f32 = 4.;
+
+/// One image in a multi-image grid: covers its cell, cropping the long side.
+/// `corners` rounds only the cells on the grid's outer edge, so the grid reads
+/// as one block with the block radius. `padding` is the duplicated source
+/// gutter, as in [`message_image_with_padding`].
+pub fn message_image_tile(
     id: impl Into<gpui::ElementId>,
-    name: String,
-    kind: String,
+    image: Option<std::sync::Arc<gpui::RenderImage>>,
     width: f32,
-) -> ui::Action {
-    message_document_with_preview(id, name, kind, width, None)
+    height: f32,
+    corners: gpui::Corners<gpui::Pixels>,
+    padding: f32,
+) -> gpui::Stateful<gpui::Div> {
+    let p = ZORK_UI.palette;
+    div()
+        .id(id)
+        .w(px(width))
+        .h(px(height))
+        .flex_shrink_0()
+        .cursor_pointer()
+        .when(image.is_none(), |v| {
+            v.bg(rgb(p.sidebar))
+                .rounded_tl(corners.top_left)
+                .rounded_tr(corners.top_right)
+                .rounded_bl(corners.bottom_left)
+                .rounded_br(corners.bottom_right)
+        })
+        .when_some(image, |v, image| {
+            v.child(
+                gpui::canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        let source = image.size(0);
+                        let source_width = (i32::from(source.width) as f32 - padding * 2.).max(1.);
+                        let source_height =
+                            (i32::from(source.height) as f32 - padding * 2.).max(1.);
+                        let scale = (bounds.size.width.as_f32() / source_width)
+                            .max(bounds.size.height.as_f32() / source_height);
+                        let size = gpui::size(
+                            px((source_width + padding * 2.) * scale),
+                            px((source_height + padding * 2.) * scale),
+                        );
+                        let image_bounds = gpui::Bounds::new(
+                            bounds.center() - gpui::point(size.width / 2., size.height / 2.),
+                            size,
+                        );
+                        let _ = window.paint_image(bounds, image_bounds, corners, image.clone(), 0, false);
+                    },
+                )
+                .size_full(),
+            )
+        })
 }
 
-pub fn message_document_with_preview(
+/// Short type badge for a file block: the extension, "MD" for Markdown.
+pub fn file_badge(name: &str) -> String {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    match ext.as_str() {
+        "MARKDOWN" => "MD".into(),
+        "" => "FILE".into(),
+        _ => ext.chars().take(4).collect(),
+    }
+}
+
+/// Non-image attachments as a file block: type badge, name and "type · size".
+/// The whole block opens the preview; there is no second expand step.
+pub fn message_file_block(
     id: impl Into<gpui::ElementId>,
     name: String,
-    kind: String,
+    meta: String,
     width: f32,
-    preview: Option<std::sync::Arc<gpui::RenderImage>>,
 ) -> ui::Action {
+    let p = ZORK_UI.palette;
+    let badge = file_badge(&name);
+    let document = badge == "PDF";
+    let block = crate::design::RADIUS.block;
+    let inset = 10.;
     ui::button(id, "", false, true)
-        .radius(ui::COMPACT_CARD_RADIUS)
+        .radius(block)
         .font_weight(gpui::FontWeight::NORMAL)
         .w(px(width))
         .max_w_full()
-        .h(px(if preview.is_some() { 72. } else { 48. }))
-        .px_3()
+        .h(px(40. + 2. * inset))
+        .p(px(inset))
         .flex()
         .items_center()
+        .justify_start()
         .gap_3()
-        .when(preview.is_none(), |v| {
-            v.child(ui::icon("icons/file.svg", 20.))
-        })
-        .when_some(preview, |v, image| {
-            let source = image.size(0);
-            let ratio = (i32::from(source.width) - 2).max(1) as f32
-                / (i32::from(source.height) - 2).max(1) as f32;
-            let height = 52.;
-            let width = (height * ratio).min(44.);
-            v.child(
-                div()
-                    .w(px(44.))
-                    .h(px(52.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        gpui::canvas(
-                            |_, _, _| (),
-                            move |bounds, _, window, _| {
-                                let gutter =
-                                    bounds.size.width / (i32::from(source.width) - 2).max(1) as f32;
-                                let image_bounds = gpui::Bounds::new(
-                                    bounds.origin - gpui::point(gutter, gutter),
-                                    bounds.size + gpui::size(gutter * 2., gutter * 2.),
-                                );
-                                let _ = window.paint_image(
-                                    bounds,
-                                    image_bounds,
-                                    gpui::Corners::all(px(3.)),
-                                    image.clone(),
-                                    0,
-                                    false,
-                                );
-                            },
-                        )
-                        .w(px(width))
-                        .h(px(width / ratio)),
-                    ),
-            )
-        })
+        .child(
+            div()
+                .size(px(40.))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                // A step below the block radius, so the badge reads as a
+                // tile rather than a pill inside the 10 px inset.
+                .rounded(px(block - 6.))
+                .bg(if document {
+                    gpui::rgba((p.danger << 8) | 0x1F)
+                } else {
+                    rgb(p.prompt).into()
+                })
+                .text_color(rgb(if document { p.danger } else { p.muted }))
+                .text_size(px(12.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child(badge),
+        )
         .child(
             div()
                 .flex_1()
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .child(ui::text_role(name.clone(), crate::design::TextRole::Label).truncate())
-                .child(ui::text_role(kind, crate::design::TextRole::Metadata).truncate()),
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .line_height(px(18.))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(rgb(p.text))
+                        .truncate()
+                        .child(name),
+                )
+                .child(ui::text_role(meta, crate::design::TextRole::Metadata).truncate()),
         )
-        .child(ui::icon("icons/arrow-right.svg", 14.))
+}
+
+/// Kept for component examples: a file block labelled with its kind.
+pub fn message_document(
+    id: impl Into<gpui::ElementId>,
+    name: String,
+    kind: String,
+    width: f32,
+) -> ui::Action {
+    message_file_block(id, name, kind, width)
 }
 
 /// A compact file row for an on-demand list, without the attachment-chip outline.
@@ -217,7 +281,7 @@ pub fn row<V: 'static>(
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(12.))
                         .line_height(px(14.))
                         .text_color(rgb(p.muted))
                         .child(meta),
@@ -322,7 +386,7 @@ pub fn card<V: 'static>(
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(12.))
                         .line_height(px(14.))
                         .text_color(rgb(p.muted))
                         .truncate()

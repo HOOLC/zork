@@ -816,6 +816,13 @@ pub struct Hitbox {
     pub behavior: HitboxBehavior,
     /// Live eligibility inherited from retained interaction scopes.
     pub interaction_gates: Option<Arc<[crate::InteractionGate]>>,
+    /// The element does not take presses: it has no mouse-down, click or drag
+    /// handlers (hover, scroll and tooltip only). A window drag area below a
+    /// passive hitbox still receives the press; any other hitbox consumes it.
+    pub passive: bool,
+    /// The window control this hitbox stands for, kept with the hitbox so a
+    /// cached view that replays its hitboxes keeps its drag areas.
+    pub window_control: Option<WindowControlArea>,
 }
 
 impl Hitbox {
@@ -1163,6 +1170,11 @@ pub struct Window {
     display_id: Option<DisplayId>,
     is_resizable: bool,
     is_minimizable: bool,
+    /// The app draws its own titlebar (macOS `app_owns_titlebar_drag`): GPUI
+    /// moves and zooms the window from [`WindowControlArea::Drag`] hitboxes.
+    app_owns_titlebar_drag: bool,
+    /// A press on a drag area that becomes a window move once the mouse moves.
+    titlebar_press: bool,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
@@ -1871,6 +1883,8 @@ impl Window {
             display_id,
             is_resizable,
             is_minimizable,
+            app_owns_titlebar_drag,
+            titlebar_press: false,
             sprite_atlas,
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
@@ -5324,6 +5338,18 @@ impl Window {
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
+        self.insert_hitbox_with(bounds, behavior, false, None)
+    }
+
+    /// [`Window::insert_hitbox`] for a hitbox that is `passive` (takes no
+    /// presses) or that stands for a window control area.
+    pub fn insert_hitbox_with(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        behavior: HitboxBehavior,
+        passive: bool,
+        window_control: Option<WindowControlArea>,
+    ) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
         let content_mask = self.content_mask();
@@ -5335,6 +5361,8 @@ impl Window {
             content_mask,
             behavior,
             interaction_gates: self.interaction_gates.clone(),
+            passive,
+            window_control,
         };
         self.next_frame.hitboxes.push(hitbox.clone());
         hitbox
@@ -5835,6 +5863,59 @@ impl Window {
         // Auto-release pointer capture on mouse up
         if event.is::<MouseUpEvent>() && self.captured_hitbox.is_some() {
             self.captured_hitbox = None;
+        }
+
+        if self.app_owns_titlebar_drag {
+            self.handle_titlebar_drag(event, cx);
+        }
+    }
+
+    /// The window control area that takes a press at the mouse position: the
+    /// topmost hitbox that is a control area, unless a hitbox that takes
+    /// presses (a button, a toggle, a field) is above it. Passive hitboxes
+    /// (hover, scroll, tooltips) let the press through to the area below.
+    pub fn window_control_area_at_mouse(&self) -> Option<WindowControlArea> {
+        let hit_test = &self.mouse_hit_test;
+        for id in hit_test.ids.iter().take(hit_test.hover_hitbox_count) {
+            let Some(hitbox) = self.rendered_frame.hitboxes.iter().rev().find(|h| h.id == *id)
+            else {
+                continue;
+            };
+            if hitbox.window_control.is_some() {
+                return hitbox.window_control;
+            }
+            if !hitbox.passive {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Windows that own their titlebar move on a drag and run the titlebar
+    /// double-click action only from an uncovered drag area. A press that an
+    /// element consumed or stopped never reaches the window.
+    fn handle_titlebar_drag(&mut self, event: &dyn Any, cx: &mut App) {
+        if let Some(down) = event.downcast_ref::<crate::MouseDownEvent>() {
+            self.titlebar_press = false;
+            if down.button == MouseButton::Left
+                && cx.propagate_event
+                && self.window_control_area_at_mouse() == Some(WindowControlArea::Drag)
+            {
+                if down.click_count == 2 {
+                    self.titlebar_double_click();
+                } else if down.click_count == 1 {
+                    self.titlebar_press = true;
+                }
+            }
+        } else if let Some(moved) = event.downcast_ref::<MouseMoveEvent>() {
+            if self.titlebar_press {
+                self.titlebar_press = false;
+                if moved.pressed_button == Some(MouseButton::Left) && cx.propagate_event {
+                    self.start_window_move();
+                }
+            }
+        } else if event.is::<MouseUpEvent>() {
+            self.titlebar_press = false;
         }
     }
 

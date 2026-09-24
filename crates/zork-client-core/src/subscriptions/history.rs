@@ -324,13 +324,67 @@ impl HistoryWire {
 fn row(entry: &Entry, metadata: &state::DeviceData, session: &str) -> Value {
     let projection = activity::Projection::new(std::iter::once(entry));
     let activity = projection.activities.first();
+    let message = activity
+        .filter(|a| a.kind == activity::Kind::Input)
+        .map(|a| message_value(a, metadata));
+    let mut subject = activity
+        .and_then(|a| a.subject.as_ref())
+        .map(|subject| subject_value(subject, metadata, session));
+    // An Agent this device does not know keeps the name its message carried.
+    if let (Some(subject), Some(sender)) = (
+        subject.as_mut().filter(|s| s.get("agent").is_none()),
+        message.as_ref().and_then(|m| m["sender"].as_str()),
+    ) {
+        subject["label"] = json!(sender);
+    }
     json!({"id":entry.id,"action":entry.action,"state":entry.state,"lane":entry.lane,
         "visible":activity.is_some(),
         "kind":activity.map(|a| a.kind),
-        "subject":activity.and_then(|a| a.subject.as_ref()).map(|subject| subject_value(subject, metadata, session)),
+        "subject":subject,
+        "message":message,
         "requested_wait_ms":activity.and_then(|a| a.requested_wait_ms),
         "preview":activity::preview(activity.map_or(entry.summary.as_str(), |a| a.summary.as_str())),
         "start":entry.start,"end":entry.end,"model":entry.model})
+}
+
+/// Characters of message Markdown carried by a row; the complete text is only
+/// sent for the selected record.
+const MESSAGE_PREVIEW: usize = 512;
+
+/// A received message as both clients read it: a sender name (never an id),
+/// the device it came from when that is another device, Markdown text and
+/// file names. Station payloads never reach the row as JSON.
+fn message_value(a: &activity::Activity, data: &state::DeviceData) -> Value {
+    let message = a.message.as_deref();
+    let named = |name: &str| (!crate::device_label::is_id_like(name)).then(|| name.to_owned());
+    let device = message
+        .and_then(|m| m.origin.as_deref())
+        .and_then(|origin| data.mesh.peers.iter().find(|p| p.origin == origin))
+        .map(|peer| crate::device_label::device_label(&peer.name));
+    let carried = message.and_then(|m| m.name.as_deref()).and_then(named);
+    let sender = match &a.subject {
+        Some(activity::Subject::Agent(id)) => data
+            .agents
+            .iter()
+            .find(|agent| agent["id"] == *id)
+            .and_then(|agent| agent["name"].as_str())
+            .and_then(named)
+            .or(carried)
+            .or_else(|| device.clone())
+            .or_else(|| Some("成员".into())),
+        Some(activity::Subject::User) => Some(carried.unwrap_or_else(|| "用户".into())),
+        Some(activity::Subject::Source(label)) => named(label),
+        _ => carried.or_else(|| device.clone()),
+    };
+    let text = &a.details.text;
+    let mut preview = text.chars().take(MESSAGE_PREVIEW).collect::<String>();
+    if preview.len() < text.len() {
+        preview.push('…');
+    }
+    json!({"sender":sender,"device":device,"text":preview,
+        "files":message.map_or(&[][..], |m| &m.files[..]),
+        "reply":message.is_some_and(|m| m.reply_to.is_some()),
+        "structured":message.is_some_and(|m| m.raw.is_some())})
 }
 
 fn blocks(entries: &List<Entry>) -> Value {
@@ -357,13 +411,22 @@ fn blocks(entries: &List<Entry>) -> Value {
 
 fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session: &str) -> Value {
     use activity::Subject;
+    // Ids are never labels: fall back to a word when nothing names the subject.
+    let readable = |id: &str, fallback: &str| {
+        if crate::device_label::is_id_like(id) {
+            fallback.to_owned()
+        } else {
+            id.to_owned()
+        }
+    };
     let conversation = |id: &str| {
         data.sessions.iter().find(|s| s.session_id == id).map(|s| {
             let name = s
                 .title
                 .as_deref()
                 .or_else(|| s.task.as_ref().map(|t| t.title.as_str()))
-                .unwrap_or(id);
+                .map(str::to_owned)
+                .unwrap_or_else(|| readable(id, "未命名 Chat"));
             json!({"label":name,"conversation":{"id":s.session_id,"title":name,
             "can_send":crate::conversation::can_send(s),"can_stop":crate::composer::can_stop(s)}})
         })
@@ -378,11 +441,11 @@ fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session:
             .iter()
             .find(|a| a["id"] == *id)
             .map(|agent| {
-                json!({"label":agent["name"].as_str().unwrap_or(id),"agent":{
+                json!({"label":agent["name"].as_str().map(str::to_owned).unwrap_or_else(|| readable(id, "Session")),"agent":{
                 "id":id,"name":agent["name"],"avatar":agent["avatar"],"role":agent["role"],
                 "model":agent["model"],"profile":agent["profile_id"],"thinking":agent["thinking"]}})
             })
-            .unwrap_or_else(|| json!({"label":id})),
+            .unwrap_or_else(|| json!({"label":readable(id, "Session")})),
         Subject::Task(id) => data
             .tasks
             .values()
@@ -391,7 +454,7 @@ fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session:
             .map(|task| {
                 conversation(&task.conversation_id).unwrap_or_else(|| json!({"label":task.title}))
             })
-            .unwrap_or_else(|| json!({"label":id})),
+            .unwrap_or_else(|| json!({"label":readable(id, "任务")})),
         Subject::Slack { channel, thread } => json!({"label":format!("{channel} · {thread}")}),
         Subject::Source(label)
         | Subject::File(label)
@@ -402,8 +465,19 @@ fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session:
 }
 
 fn detail(entry: &Entry) -> Value {
+    // A received message reads as its text and files; the envelope stays in
+    // the raw stages below.
+    let projection = activity::Projection::new(std::iter::once(entry));
+    let message = projection
+        .activities
+        .first()
+        .filter(|a| a.kind == activity::Kind::Input);
+    let summary = message.map_or(entry.summary.as_str(), |a| a.details.text.as_str());
+    let files = message
+        .and_then(|a| a.message.as_deref())
+        .map_or(&[][..], |m| &m.files[..]);
     json!({"id":entry.id,"action":entry.action,"state":entry.state,"lane":entry.lane,
-        "summary":entry.summary,"outcome":entry.outcome_summary,"model":entry.model,
+        "summary":summary,"files":files,"outcome":entry.outcome_summary,"model":entry.model,
         "start":entry.start,"end":entry.end,"usage":entry.usage,
         "stages":entry.raw.iter().map(|raw| json!({
             "kind":if raw.get("arguments").is_some() {"request"} else if raw.get("outcome").is_some() {"result"}
@@ -522,6 +596,77 @@ mod tests {
     }
 
     #[test]
+    fn received_messages_name_their_sender_and_device_never_ids() {
+        let chat = |target: &str, author: Value, text: &str| Entry {
+            id: "input".into(),
+            lane: 0,
+            action: "input".into(),
+            summary:
+                json!({"source":"chat","target":target,"message":{"message_id":"m","chat_id":"c",
+                "author":author,"text":text,"attachments":[],"mentions":[],"created_at":"t"}})
+                .to_string(),
+            start: Some(1),
+            end: Some(1),
+            state: "received".into(),
+            raw: vec![json!({"event":{"kind":"input_appended","input":{
+                "position":{"source":"chat-0123456789abcdef01234567","sequence":1}}}})],
+            usage: None,
+            model: None,
+            outcome_summary: None,
+        };
+        let mut data = state::DeviceData::default();
+        data.mesh = Arc::new(crate::api::MeshStatus {
+            peers: vec![crate::api::MeshPeer {
+                origin: "key:peer-origin".into(),
+                name: "Mac Studio".into(),
+                online: true,
+                last_seen_at: None,
+                execute_workspaces: vec![],
+            }],
+            ..Default::default()
+        });
+        let remote = row(
+            &chat(
+                "key:peer-origin",
+                json!({"id":"01J9Z3XK8Q2M4N6P8R0T2V4W6Y","kind":"agent"}),
+                "远端**完成**",
+            ),
+            &data,
+            "chat",
+        );
+        assert_eq!(remote["message"]["sender"], "Mac Studio");
+        assert_eq!(remote["message"]["device"], "Mac Studio");
+        assert_eq!(remote["subject"]["label"], "Mac Studio");
+        assert_eq!(remote["message"]["text"], "远端**完成**");
+        let user = row(
+            &chat("local", json!({"id":"local-user","kind":"user"}), "你好"),
+            &data,
+            "chat",
+        );
+        assert_eq!(user["message"]["sender"], "用户");
+        assert!(user["message"]["device"].is_null());
+        let long = row(
+            &chat(
+                "local",
+                json!({"id":"local-user","kind":"user"}),
+                &"长".repeat(900),
+            ),
+            &data,
+            "chat",
+        );
+        assert!(long["message"]["text"].as_str().unwrap().ends_with('…'));
+        let mut unknown = chat("local", json!({}), "");
+        unknown.summary = json!({"opaque":{"nested":1}}).to_string();
+        unknown.raw = vec![json!({"event":{"kind":"input_appended","input":{}}})];
+        let unknown = row(&unknown, &data, "chat");
+        assert_eq!(unknown["preview"], "");
+        assert_eq!(unknown["message"]["structured"], true);
+        assert!(
+            detail(&chat("local", json!({"id":"u","kind":"user"}), "正文"))["summary"] == "正文"
+        );
+    }
+
+    #[test]
     fn complete_mobile_fixture_uses_the_real_ledger_and_wire_projection() {
         let now = 1_789_200_060_000_i64;
         let start = now - 60_000;
@@ -611,8 +756,20 @@ mod tests {
         for (i, (tool, arguments, outcome)) in tools.iter().enumerate() {
             let time = start + i as i64 * 2000 + 500;
             if i == 7 {
-                records.push(Record {event_id:"wake-input".into(),metadata:Default::default(),
-                    event:json!({"kind":"input_appended","input":{"input_id":"wake-input","content":"检查完成，继续整理报告。","received_at_ms":time-100}})});
+                // Station's Chat delivery envelope, as the ordered mailbox appends it.
+                let message = json!({"source":"chat","target":"local","message":{
+                    "message_id":"msg-01J9Z3XK8Q2M4N6P8R0T2V4W6Y","chat_id":"chat-01J9Z3",
+                    "author":{"id":"worker-1","kind":"agent","name":"小熊"},
+                    "text":"检查完成，继续整理报告。\n\n- 边界条件已复查\n- **窄屏截图**见附件",
+                    "attachments":[{"id":"file-narrow","name":"narrow.png","byte_len":2048,"content_root":"a".repeat(64)}],
+                    "mentions":[],"reply_to":"msg-01J9Z3XK8Q2M4N6P8R0T2V4W00","created_at":"2026-09-12T08:00:00Z"}});
+                records.push(Record {
+                    event_id: "wake-input".into(),
+                    metadata: Default::default(),
+                    event: json!({"kind":"input_appended","input":{"input_id":"wake-input",
+                        "position":{"source":"chat-4f1c2a9be07d35c8a1b2c3d4","sequence":3},
+                        "content":message.to_string(),"received_at_ms":time-100}}),
+                });
             }
             for (suffix, event) in [
                 (
@@ -699,6 +856,28 @@ mod tests {
             .iter()
             .map(|entry| (entry.id.clone(), detail(entry)))
             .collect::<serde_json::Map<_, _>>();
+        let received = history["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == "input:wake-input" || e["id"] == "wake-input")
+            .expect("received chat message row");
+        assert_eq!(received["kind"], "input");
+        assert_eq!(received["subject"]["label"], "小熊");
+        assert_eq!(received["message"]["sender"], "小熊");
+        assert_eq!(received["message"]["files"], json!(["narrow.png"]));
+        assert_eq!(received["message"]["reply"], true);
+        assert!(received["message"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("\n- **窄屏截图**见附件"));
+        assert!(!received["preview"].as_str().unwrap().contains('{'));
+        let received_detail = &details[received["id"].as_str().unwrap()];
+        assert!(received_detail["summary"]
+            .as_str()
+            .unwrap()
+            .starts_with("检查完成"));
+        assert_eq!(received_detail["files"], json!(["narrow.png"]));
         let blocks = history["blocks"].as_array().unwrap();
         // The history page reads the assistant's text as its own row, so that reply breaks
         // the routine run between two operations: every operation stands alone

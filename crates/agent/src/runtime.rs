@@ -105,6 +105,11 @@ impl AgentRuntime {
         anyhow::ensure!(!data_root.as_os_str().is_empty(), "data_root is required");
         let store = Arc::new(StreamStore::open(data_root)?);
         zork_config::startup::mark("agent.store_opened");
+        // Bundled Skills are guidance, not a startup dependency.
+        if let Err(error) = crate::skills::provision_bundled(data_root) {
+            tracing::warn!(%error, "bundled Skill provisioning failed");
+        }
+        zork_config::startup::mark("agent.skills_provisioned");
         Ok(PreparedAgent {
             root: data_root.to_owned(),
             store,
@@ -121,6 +126,10 @@ impl AgentRuntime {
         mut options: AgentOptions,
         store: Arc<StreamStore>,
     ) -> anyhow::Result<Self> {
+        if options.service.runner.skill_catalog.is_none() {
+            options.service.runner.skill_catalog =
+                Some(crate::skills::catalog_source(options.data_root.clone()));
+        }
         let query = Arc::new(FileSessionQuery::open(&options.data_root));
         let provider: Arc<dyn ModelExecutor> = if options.fake_agent {
             Arc::new(FakeProvider)

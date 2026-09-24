@@ -24,6 +24,8 @@ pub(super) fn prepare(language: Option<&str>, code: &str) -> Rc<Presentation> {
         state: Rc::new(RefCell::new(State {
             language: language.unwrap_or_default().into(),
             ready: (!eligible(language, code)).then(Vec::new),
+            eligible: eligible(language, code),
+            theme: crate::design::theme(),
             queued: false,
             windows: Vec::new(),
         })),
@@ -35,6 +37,9 @@ pub(super) fn prepare(language: Option<&str>, code: &str) -> Rc<Presentation> {
 struct State {
     language: String,
     ready: Option<Runs>,
+    eligible: bool,
+    /// The theme `ready` was highlighted for; a theme switch recomputes it.
+    theme: crate::design::Theme,
     queued: bool,
     windows: Vec<AnyWindowHandle>,
 }
@@ -53,6 +58,12 @@ const MAX_PENDING: usize = 64;
 impl Presentation {
     pub(super) fn highlights(&self, window: &mut Window, cx: &mut App) -> Runs {
         let mut state = self.state.borrow_mut();
+        let theme = crate::design::theme();
+        if state.eligible && state.theme != theme {
+            state.ready = None;
+            state.queued = false;
+            state.theme = theme;
+        }
         if let Some(runs) = &state.ready {
             return runs.clone();
         }
@@ -94,17 +105,21 @@ fn pump(cx: &mut App) {
         }
     };
     let language = request.state.upgrade().unwrap().borrow().language.clone();
+    let theme = crate::design::theme();
     worker.running = true;
     let work = cx
         .background_executor()
-        .spawn(async move { highlights(Some(&language), &request.text) });
+        .spawn(async move { highlights_for(Some(&language), &request.text, theme) });
     cx.spawn(async move |cx| {
         let runs = work.await;
         let _ = cx.update(|cx| {
             if let Some(state) = request.state.upgrade() {
                 let windows = {
                     let mut state = state.borrow_mut();
-                    state.ready = Some(runs);
+                    // A late result for an earlier theme is dropped; the next paint requeues.
+                    if state.theme == theme {
+                        state.ready = Some(runs);
+                    }
                     state.queued = false;
                     std::mem::take(&mut state.windows)
                 };
@@ -134,7 +149,7 @@ pub(super) fn parse_count() -> usize {
 struct Highlighter {
     syntaxes: SyntaxSet,
     themes: ThemeSet,
-    cache: VecDeque<(String, String, Runs)>,
+    cache: VecDeque<(crate::design::Theme, String, String, Runs)>,
 }
 static HIGHLIGHTER: LazyLock<Mutex<Highlighter>> = LazyLock::new(|| {
     Mutex::new(Highlighter {
@@ -145,6 +160,11 @@ static HIGHLIGHTER: LazyLock<Mutex<Highlighter>> = LazyLock::new(|| {
 });
 
 pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
+    highlights_for(language, code, crate::design::theme())
+}
+
+/// Syntax colors come from a light or dark syntect theme to match the surface.
+fn highlights_for(language: Option<&str>, code: &str, theme: crate::design::Theme) -> Runs {
     let Some(language) = language.filter(|s| !s.is_empty()) else {
         return Vec::new();
     };
@@ -167,10 +187,12 @@ pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
         if let Some(index) = state
             .cache
             .iter()
-            .position(|(lang, source, _)| lang == &token && source == code)
+            .position(|(cached, lang, source, _)| {
+                *cached == theme && lang == &token && source == code
+            })
         {
             let entry = state.cache.remove(index).unwrap();
-            let runs = entry.2.clone();
+            let runs = entry.3.clone();
             state.cache.push_back(entry);
             return runs;
         }
@@ -179,7 +201,11 @@ pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
         };
         #[cfg(test)]
         PARSES.with(|count| count.set(count.get() + 1));
-        let mut highlighter = HighlightLines::new(syntax, &state.themes.themes["InspiredGitHub"]);
+        let theme_name = match theme {
+            crate::design::Theme::Light => "InspiredGitHub",
+            crate::design::Theme::Dark => "base16-ocean.dark",
+        };
+        let mut highlighter = HighlightLines::new(syntax, &state.themes.themes[theme_name]);
         let mut offset = 0;
         let mut runs: Runs = Vec::new();
         for line in LinesWithEndings::from(code) {
@@ -210,7 +236,7 @@ pub(super) fn highlights(language: Option<&str>, code: &str) -> Runs {
         }
         state
             .cache
-            .push_back((token, code.to_owned(), runs.clone()));
+            .push_back((theme, token, code.to_owned(), runs.clone()));
         runs
     }
 }

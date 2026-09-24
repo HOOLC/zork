@@ -55,6 +55,8 @@ impl RunnerObserver for NoopRunnerObserver {}
 pub struct RunnerOptions {
     pub configuration_source: Option<ConfigurationSource>,
     pub selection_source: Option<SelectionSource>,
+    /// Lists local Skills before each conversation request. None disables Skills.
+    pub skill_catalog: Option<crate::skills::SkillCatalogSource>,
     pub auto_wait: Duration,
     pub provider_retry_limit: u32,
     pub context_attempt_limit: u32,
@@ -72,6 +74,7 @@ impl Default for RunnerOptions {
         Self {
             configuration_source: None,
             selection_source: None,
+            skill_catalog: None,
             auto_wait: Duration::from_secs(60),
             provider_retry_limit: 10,
             context_attempt_limit: 10,
@@ -646,6 +649,30 @@ impl SessionRunner {
             {
                 if let Some(confirmation) = &self.state.end_turn_confirmation {
                     notices.push(format!("[runtime.end_confirmation] {confirmation}"));
+                }
+            }
+            if let Some(source) = self.dependencies.options.skill_catalog.clone() {
+                let catalog = tokio::task::spawn_blocking(move || source().notice())
+                    .await
+                    .map_err(|error| infrastructure_failure("skills.discover", error))?;
+                // Only a changed catalog is recorded; compaction and handoff
+                // start a new generation, which receives the current catalog.
+                let previous = self
+                    .state
+                    .generation
+                    .entries
+                    .iter()
+                    .rev()
+                    .find_map(|entry| match entry {
+                        GenerationEntry::Notice { message }
+                            if message.starts_with(crate::skills::CATALOG_NOTICE) =>
+                        {
+                            Some(message)
+                        }
+                        _ => None,
+                    });
+                if previous != Some(&catalog) {
+                    notices.push(catalog);
                 }
             }
         }

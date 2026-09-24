@@ -452,7 +452,7 @@ impl Render for ComposerInput {
             foreground: color,
             caret: color,
             muted_foreground: gpui::rgb(crate::design::ZORK_UI.palette.subtle).into(),
-            selection: rgba(0x339CFF30).into(),
+            selection: rgba(*crate::design::TEXT_SELECTION).into(),
             ..Default::default()
         };
         edit!(self, cx, |state, _scx| state.set_editor_style(style));

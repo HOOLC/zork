@@ -2,7 +2,10 @@
 use super::{message::MessageDocument, selection::SelectionContext};
 use crate::design::ZORK_UI;
 use gpui::{prelude::*, *};
-const DIM: u32 = ZORK_UI.palette.muted;
+#[allow(non_snake_case)]
+fn DIM() -> u32 {
+    ZORK_UI.palette.muted
+}
 
 pub struct Row<'a> {
     pub index: usize,
@@ -78,6 +81,7 @@ impl Row<'_> {
                                     div()
                                         .w_full()
                                         .rounded(px(ZORK_UI.thread.user_radius))
+                                        .rounded_br(px(crate::design::RADIUS.fold))
                                         .bg(rgb(ZORK_UI.thread.user_fill))
                                         .px(px(ZORK_UI.thread.user_padding_x))
                                         .py(px(ZORK_UI.thread.user_padding_y))
@@ -87,7 +91,7 @@ impl Row<'_> {
                                 )
                                 .when_some(time, |v, time| {
                                     v.child(
-                                        div().text_size(px(10.)).text_color(rgb(DIM)).child(time),
+                                        div().text_size(px(12.)).text_color(rgb(DIM())).child(time),
                                     )
                                 }),
                         ),
@@ -109,6 +113,9 @@ impl Row<'_> {
                                     .flex()
                                     .items_center()
                                     .gap_2()
+                                    .when_some(device.clone(), |v, device| {
+                                        v.child(crate::device_name::mark(&device, 18.))
+                                    })
                                     .when_some(device.or(author_name), |v, device| {
                                         v.child(
                                             div()
@@ -125,8 +132,8 @@ impl Row<'_> {
                                                 div()
                                                     .min_w_0()
                                                     .truncate()
-                                                    .text_size(px(11.))
-                                                    .text_color(rgb(DIM))
+                                                    .text_size(px(12.))
+                                                    .text_color(rgb(DIM()))
                                                     .child(model),
                                             )
                                         },
@@ -135,8 +142,8 @@ impl Row<'_> {
                                         v.child(
                                             div()
                                                 .flex_shrink_0()
-                                                .text_size(px(10.))
-                                                .text_color(rgb(DIM))
+                                                .text_size(px(12.))
+                                                .text_color(rgb(DIM()))
                                                 .child(time),
                                         )
                                     }),

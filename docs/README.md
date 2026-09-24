@@ -6,7 +6,7 @@
 
 `design/` 说明系统应当怎样工作，以及不能破坏的语义；不代表每项设计均已完成实现。
 
-- **执行与配置**：[Agent 运行时](design/agent-runtime.md)、[模型连接与账号](design/model-connections.md)。
+- **执行与配置**：[Agent 运行时](design/agent-runtime.md)、[模型连接与账号](design/model-connections.md)、[Agent Skill](design/agent-skills.md)。
 - **协作与事实**：[Chat](design/chat.md)、[活动与执行历史](design/execution-history.md)、[用户参与](design/user-participation.md)。
 - **数据与能力**：[设备身份和生命周期](design/devices.md)、[外部能力与授权](design/external-capabilities.md)、[聊天附件](design/shared-files.md)、[同步与恢复](design/synchronization.md)。
 - **客户端**：[core/UI 边界](design/client-core.md)、[状态订阅](design/state-subscriptions.md)、[系统通知](design/notifications.md)、[界面与组件设计](design/interface.md)。

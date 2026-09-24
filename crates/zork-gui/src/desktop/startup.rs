@@ -240,9 +240,7 @@ impl DesktopRoot {
                 div()
                     .h(px(48.))
                     .flex_shrink_0()
-                    .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                        window.start_window_move()
-                    }),
+                    .window_control_area(gpui::WindowControlArea::Drag),
             )
             .child(
                 div()

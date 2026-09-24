@@ -293,7 +293,7 @@ impl Host {
             tokio::time::sleep(Duration::from_millis(150)).await;
         }
         ensure!(
-            std::fs::read_to_string(self.identity.root.join("skills/android-debugging/SKILL.md"))?
+            std::fs::read_to_string(self.identity.root.join("skills/bundled/android-debugging/SKILL.md"))?
                 .contains("adb devices -l"),
             "bundled Android Skill missing"
         );

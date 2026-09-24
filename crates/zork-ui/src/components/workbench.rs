@@ -3,13 +3,16 @@
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
-    design::{TextRole, UI_OUTLINE, ZORK_UI},
+    design::{FORM, TextRole, ZORK_UI},
 };
 use gpui::{
     div, prelude::*, px, rgb, Context, Div, ElementId, Font, SharedString, Stateful, Window,
 };
 
-pub const CANVAS: u32 = ZORK_UI.palette.canvas;
+#[allow(non_snake_case)]
+pub fn CANVAS() -> u32 {
+    ZORK_UI.palette.canvas
+}
 
 pub const GAP: f32 = 24.;
 pub const PREVIEW_PADDING: f32 = 18.;
@@ -98,15 +101,11 @@ pub fn section_title(title: impl Into<SharedString>, help: impl Into<SharedStrin
 pub fn separated(content: impl IntoElement, spacing: f32) -> Div {
     div()
         .pt(px(spacing))
-        .border_t(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
         .child(content)
 }
 pub fn toolbar() -> Div {
     column(12.)
         .pb_5()
-        .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
 }
 pub fn setting(
     label: impl Into<SharedString>,
@@ -198,7 +197,7 @@ pub fn stepper<V: 'static>(
         100.,
         32.,
         ui::FIELD_RADIUS,
-        super::widgets::SurfaceColors::outlined(UI_OUTLINE, ZORK_UI.palette.canvas),
+        super::widgets::SurfaceColors::outlined(FORM.outline, ZORK_UI.palette.canvas),
         content,
         window,
         cx,
@@ -216,8 +215,6 @@ pub fn header(
         .flex_shrink_0()
         .px(px(gutter))
         .justify_between()
-        .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
         .child(
             row(8.)
                 .child(gpui::img("brand/mark.svg").size(px(22.)).flex_shrink_0())
@@ -247,14 +244,7 @@ pub fn rail(
         .flex_shrink_0()
         .overflow_y_scroll()
         .p(px(if is_navigation { 12. } else { 16. }))
-        .border_color(rgb(ZORK_UI.palette.border))
-        .when(is_navigation, |v| {
-            v.bg(rgb(ZORK_UI.palette.sidebar))
-                .border_r(gpui::px(crate::design::BORDER_WIDTH))
-        })
-        .when(!is_navigation, |v| {
-            v.border_l(gpui::px(crate::design::BORDER_WIDTH))
-        })
+        .when(is_navigation, |v| v.bg(rgb(ZORK_UI.palette.sidebar)))
         .child(content)
 }
 pub fn body() -> Div {
@@ -291,7 +281,7 @@ pub fn viewport(id: impl Into<ElementId>, gutter: f32, content: impl IntoElement
         .min_h_0()
         .overflow_y_scroll()
         .p(px(gutter))
-        .bg(rgb(CANVAS))
+        .bg(rgb(CANVAS()))
         .child(content)
 }
 pub fn shell(

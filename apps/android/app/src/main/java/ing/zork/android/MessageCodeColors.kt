@@ -14,6 +14,15 @@ internal object MessageCodeColors {
     private const val Number = 0xFF0086B3.toInt()
     private const val Function = 0xFF63A35C.toInt()
     private data class Token(val start: Int, val end: Int, val color: Int)
+    /** Cached tokens keep the light colors as kinds; dark surfaces get lighter inks. */
+    private fun onDark(color: Int): Int = when (color) {
+        Keyword -> 0xFFF28FAD.toInt()
+        StringColor -> 0xFF9CC9F5.toInt()
+        Comment -> 0xFF8A8F95.toInt()
+        Number -> 0xFF7FD4E6.toInt()
+        Function -> 0xFFA6D48A.toInt()
+        else -> color
+    }
     private val cache = MarkdownBoundedCache<Pair<String, String>, List<Token>>(96, 4 * 1024 * 1024)
     var tokenizations = 0L; private set
     val cachedEntries get() = cache.size
@@ -45,7 +54,8 @@ internal object MessageCodeColors {
         // Android identifies spans by object identity. Reusing the same span in
         // two identical blocks would move its first occurrence to the second.
         return SpannableString(source).apply {
-            tokens.forEach { setSpan(ForegroundColorSpan(it.color), it.start, it.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            val dark = ZorkColors.dark
+            tokens.forEach { setSpan(ForegroundColorSpan(if (dark) onDark(it.color) else it.color), it.start, it.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
     }
     private fun color(language: String, source: String): List<Token> {

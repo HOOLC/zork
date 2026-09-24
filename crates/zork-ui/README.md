@@ -50,11 +50,13 @@ Sidebar navigation uses ordinary GPUI rows through `navigation::TabGroup`; selec
 
 ## Component contract
 
+Check component changes in `zork-design-pc`: every state is a production component with fixture data, grouped by product area, and the app switches between light and dark and 360/600/900 px widths. `docs/design/interface.md` remains the visual authority.
+
 The approved rules start at [`docs/design/interface.md`](../../docs/design/interface.md), with the [state contract](../../docs/design/interface.md#interaction). `design::INTERACTION`, `design::FORM` and `TextRole` own common feedback and typography. Use the semantic controls rather than overriding ordinary state colors in application views. Platform-specific navigation and touch geometry remain explicit.
 
 The component gallery uses the same library components as its examples. Read the [component reuse contract](../../docs/design/interface.md#component-gallery) before extending it; gallery startup and diagnostics are below.
 
-`interaction-overview` exercises action feedback; `interaction-form` combines production fields, a select, a switch, text actions and local save/error/busy states. Existing model/connection stories render the actual settings view against isolated fixtures. Fixed state swatches are reference samples; input-driven checks provide behavioral evidence.
+The hidden `interaction-overview` and `interaction-form` fixtures (`stories::fixtures`) back headless state tests; `interaction-overview` exercises action feedback and `interaction-form` combines production fields, a select, a switch, text actions and local save/error/busy states. Existing model/connection stories render the actual settings view against isolated fixtures. Fixed state swatches are reference samples; input-driven checks provide behavioral evidence.
 
 <a id="playground"></a>
 

@@ -43,11 +43,26 @@ mod new_chat;
 mod panel_layout;
 mod session_activity;
 
-const BG: u32 = ZORK_UI.palette.canvas;
-const PROMPT: u32 = ZORK_UI.palette.prompt;
-const BORDER: u32 = ZORK_UI.palette.border;
-const TEXT: u32 = ZORK_UI.palette.text;
-const DIM: u32 = ZORK_UI.palette.muted;
+#[allow(non_snake_case)]
+fn BG() -> u32 {
+    ZORK_UI.palette.canvas
+}
+#[allow(non_snake_case)]
+fn PROMPT() -> u32 {
+    ZORK_UI.palette.prompt
+}
+#[allow(non_snake_case)]
+fn BORDER() -> u32 {
+    ZORK_UI.palette.border
+}
+#[allow(non_snake_case)]
+fn TEXT() -> u32 {
+    ZORK_UI.palette.text
+}
+#[allow(non_snake_case)]
+fn DIM() -> u32 {
+    ZORK_UI.palette.muted
+}
 
 #[cfg(test)]
 use crate::api::SseEvent;
@@ -93,6 +108,8 @@ pub struct RootView {
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
     session_activity_preview: Option<session_activity::SessionActivityPreview>,
+    /// Whether the activity band above the composer rendered last frame.
+    session_activity_shown: bool,
     client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
@@ -396,6 +413,7 @@ impl RootView {
             history: history::HistoryState::default(),
             chat_histories: HashMap::new(),
             session_activity_preview: None,
+            session_activity_shown: false,
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
                 let device =
@@ -532,6 +550,8 @@ impl RootView {
             self.agent_online = state.online == Some(true);
             self.access_revoked = state.revoked;
             self.connection_error = state.connection_error.clone();
+            // Reconnecting settles a preview that was kept while unreachable.
+            self.sync_session_activity(cx);
             if let Some(ms) = state.confirmed_at_ms {
                 self.last_confirmed_at =
                     chrono::DateTime::from_timestamp_millis(ms as i64).map(|t| t.to_rfc3339());
@@ -941,9 +961,6 @@ impl Render for RootView {
             self.start_background(cx);
         }
         self.measure_composer_geometry(window, cx);
-        if self.draft_state.files.is_empty() {
-            self.file_ui.draft = Default::default();
-        }
         if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();
@@ -1020,26 +1037,14 @@ impl Render for RootView {
                     cx.stop_propagation();
                     return;
                 }
-                if event.keystroke.key == "escape" && view.file_ui.draft.open() {
-                    view.close_draft_fan(cx);
-                    cx.stop_propagation(); return;
-                }
                 if event.keystroke.modifiers.platform && !event.keystroke.modifiers.shift && event.keystroke.key == "b" {
                     view.shell.rail_open = !view.shell.rail_open;
                     zork_ui::components::region::invalidate_all(cx);
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_down(
-                gpui::MouseButton::Left,
-                cx.listener(|v, _, _, cx| {
-                    if v.file_ui.draft.pinned {
-                        v.close_draft_fan(cx);
-                    }
-                }),
-            )
             .bg(rgb(ZORK_UI.palette.window))
-            .text_color(rgb(TEXT))
+            .text_color(rgb(TEXT()))
             .font_family("Inter Variable")
             .text_size(px(13.))
             .child(self.panel_resize_events(cx))
@@ -1075,7 +1080,7 @@ impl Render for RootView {
                             .flex()
                             .relative()
                             .bg(rgb({
-                                BG
+                                BG()
                             }))
                             .overflow_hidden()
                             .child(
@@ -1107,21 +1112,23 @@ impl Render for RootView {
                                                     )
                                                     .px_4()
                                                     .py_2()
-                                                    .text_size(px(11.))
-                                                    .text_color(rgb(DIM))
+                                                    .text_size(px(12.))
+                                                    .text_color(rgb(DIM()))
                                                     .border_b(gpui::px(zork_ui::design::BORDER_WIDTH))
-                                                    .border_color(rgb(BORDER))
+                                                    .border_color(rgb(BORDER()))
                                                     .child(self.connection_hint())
                                                     .when(self.access_revoked, |v| {
                                                         v.child(
-                                                            div()
-                                                                .id("device-reconnect")
-                                                                .px_2()
-                                                                .cursor_pointer()
-                                                                .child(
-                                                                    self.locale
-                                                                        .text("device_reconnect"),
-                                                                )
+                                                            zork_ui::controls::button(
+                                                                "device-reconnect",
+                                                                self.locale
+                                                                    .text("device_reconnect")
+                                                                    .to_string(),
+                                                                false,
+                                                                true,
+                                                            )
+                                                            .h(px(28.))
+                                                            .min_h(px(28.))
                                                                 .on_click(cx.listener(
                                                                     |v, _, _, cx| {
                                                                         v.access_revoked = false;
@@ -1154,7 +1161,7 @@ impl Render for RootView {
                                     let content = self.active_content_kind(cx);
                                     let width = self.browser.read(cx).panel_width();
                                     return v.child(div().id("page-workspace").relative().w(px(width)).h_full().overflow_hidden()
-                                        .border_l(gpui::px(zork_ui::design::BORDER_WIDTH)).border_color(rgb(BORDER))
+                                        .border_l(gpui::px(zork_ui::design::BORDER_WIDTH)).border_color(rgb(BORDER()))
                                         .flex_shrink_0().flex().flex_col().min_h_0()
                                         .child(self.browser.clone())
                                         .when(native, |v| v.child(self.regions.element("history",
@@ -1324,23 +1331,6 @@ impl RootView {
         let file_previews = self.file_ui.message_previews.clone();
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
-        let activity = self.activity_presentations();
-        let animate_activity = !self.scroll_active && !cx.reduce_motion();
-        let session_activity = self.session_activity_preview.as_ref().and_then(|preview| {
-            (!preview.rows.is_empty() && !activity.iter().any(|item| item.failed)).then(|| {
-                (
-                    preview.session.clone(),
-                    preview.name.clone(),
-                    preview.stopped,
-                    preview.leaving,
-                    preview.expanded,
-                    preview.rows.clone(),
-                )
-            })
-        });
-        let activity_in_transcript = !activity.is_empty() || session_activity.is_some();
-        let has_activity = activity_in_transcript;
-        let activity_root = cx.entity().downgrade();
 
         self.transcript_selection.borrow_mut().begin_frame();
         let selection_state = self.transcript_selection.clone();
@@ -1382,7 +1372,7 @@ impl RootView {
         let loading_older = self.loading_older;
         let older_root = cx.entity().downgrade();
         let bottom_inset = if self.can_send_selected() {
-            self.composer_overlay_height + self.file_fan_dimensions().1 + 8.
+            self.composer_overlay_height + 8.
         } else {
             0.
         };
@@ -1444,7 +1434,7 @@ impl RootView {
                                         .items_center()
                                         .justify_center()
                                         .text_size(px(12.))
-                                        .text_color(rgb(DIM))
+                                        .text_color(rgb(DIM()))
                                         .child(if loading_older {
                                             loading::status(
                                                 "messages-older-loading",
@@ -1452,19 +1442,19 @@ impl RootView {
                                             )
                                             .into_any_element()
                                         } else {
-                                            div()
-                                                .id("load-older")
-                                                .px_3()
-                                                .py_1()
-                                                .rounded_lg()
-                                                .cursor_pointer()
-                                                .hover(|style| style.bg(rgb(PROMPT)))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::button(
+                                                "load-older",
+                                                locale.text("load_earlier").to_string(),
+                                                false,
+                                                true,
+                                            )
+                                            .h(px(28.))
+                                            .min_h(px(28.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = older_root.update(cx, |v, cx| {
                                                         v.load_older(cx);
                                                     });
                                                 })
-                                                .child(locale.text("load_earlier"))
                                                 .automation(
                                                     AutomationRole::Button,
                                                     locale.text("load_earlier"),
@@ -1518,10 +1508,21 @@ impl RootView {
                                     .w(px(content_width))
                                     .mx_auto()
                                     .flex()
+                                    .items_center()
                                     .justify_end()
                                     .gap_2()
-                                    .text_size(px(11.))
-                                    .text_color(rgb(DIM))
+                                    .text_size(px(12.))
+                                    .text_color(rgb(if message.status == "failed" {
+                                        ZORK_UI.palette.danger
+                                    } else {
+                                        DIM()
+                                    }))
+                                    .when(message.status == "failed", |row| {
+                                        row.child(
+                                            zork_ui::controls::icon("icons/attention.svg", 14.)
+                                                .text_color(rgb(ZORK_UI.palette.danger)),
+                                        )
+                                    })
                                     .child(
                                         match message.status.as_str() {
                                             "failed" => delivery_locale.text("delivery_failed"),
@@ -1531,11 +1532,15 @@ impl RootView {
                                     )
                                     .when(message.status == "failed", |row| {
                                         row.child(
-                                            div()
-                                                .id(format!("retry-queued-{retry_id}"))
-                                                .cursor_pointer()
-                                                .child(delivery_locale.text("delivery_resend"))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::button(
+                                                format!("retry-queued-{retry_id}"),
+                                                delivery_locale.text("delivery_resend").to_string(),
+                                                false,
+                                                true,
+                                            )
+                                            .h(px(28.))
+                                            .min_h(px(28.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = retry_root.update(cx, |v, cx| {
                                                         v.resend_queued(&retry_id, cx)
                                                     });
@@ -1546,11 +1551,14 @@ impl RootView {
                                                 ),
                                         )
                                         .child(
-                                            div()
-                                                .id(format!("delete-queued-{delete_id}"))
-                                                .cursor_pointer()
-                                                .child(delivery_locale.text("delivery_delete"))
-                                                .on_click(move |_, _, cx| {
+                                            zork_ui::controls::quiet_button(
+                                                format!("delete-queued-{delete_id}"),
+                                                delivery_locale.text("delivery_delete").to_string(),
+                                                true,
+                                                zork_ui::controls::IconButtonSize::Compact,
+                                            )
+                                            .px(px(12.))
+                                            .on_click(move |_, _, cx| {
                                                     let _ = delete_root.update(cx, |v, cx| {
                                                         v.delete_failed_queued(&delete_id, cx)
                                                     });
@@ -1565,93 +1573,43 @@ impl RootView {
                         },
                     )
                     .map(|row| {
-                        use gpui::AnimationExt;
+                        // A new message fades in and rises into place; with reduced
+                        // motion it only fades briefly. The clock is the arrival
+                        // time, so a row re-mounted by virtualization continues
+                        // instead of restarting.
+                        use zork_ui::motion::{self, Mode};
+                        let (ms, offset) = match motion::mode(cx) {
+                            Mode::Full => (motion::BASE, motion::ROW_OFFSET),
+                            Mode::Short => (motion::REDUCED_FADE, 0.),
+                            Mode::Static => (0, 0.),
+                        };
+                        let total = motion::duration(ms);
                         if let Some(started) = metadata
                             .id
                             .as_ref()
                             .and_then(|id| arrivals.get(id))
                             .copied()
-                            .filter(|time| {
-                                time.elapsed() < Duration::from_millis(200) && !cx.reduce_motion()
-                            })
+                            .filter(|time| time.elapsed() < total)
                         {
-                            let direction = if *role == Role::User { 8. } else { -8. };
-                            row.with_animation(
-                                format!(
-                                    "message-enter-{}",
-                                    metadata.id.as_deref().unwrap_or_default()
-                                ),
-                                gpui::Animation::new(Duration::from_millis(180))
-                                    .with_easing(|t| 1. - (1. - t).powi(3))
-                                    .with_max_fps(60.),
-                                move |row, _| {
-                                    let t = (started.elapsed().as_secs_f32() / 0.18).min(1.);
-                                    let t = 1. - (1. - t).powi(3);
-                                    row.relative().left(px(direction * (1. - t))).opacity(t)
-                                },
-                            )
-                            .into_any_element()
+                            let t = (started.elapsed().as_secs_f32()
+                                / total.as_secs_f32().max(0.001))
+                            .min(1.);
+                            let t = motion::bezier(0.2, 0.7, 0.2, 1.0)(t);
+                            window.request_animation_frame();
+                            row.relative()
+                                .top(px(offset * (1. - t)))
+                                .opacity(t)
+                                .into_any_element()
                         } else {
                             row.into_any_element()
                         }
                     })
-            } else if activity_in_transcript {
-                let compact = session_activity.as_ref().map(
-                    |(session, name, stopped, leaving, expanded, rows)| {
-                        let expand_root = activity_root.clone();
-                        let open_root = activity_root.clone();
-                        let session = session.clone();
-                        zork_ui::components::activity::render_session(
-                            name,
-                            *stopped,
-                            *leaving,
-                            animate_activity,
-                            *expanded,
-                            rows,
-                            locale.text("session_activity_more"),
-                            locale.text("session_activity_less"),
-                            locale.text(if *stopped {
-                                "session_activity_stopped"
-                            } else {
-                                "history_running"
-                            }),
-                            Rc::new(move |cx| {
-                                let _ = expand_root.update(cx, |view, cx| {
-                                    if let Some(preview) = view.session_activity_preview.as_mut() {
-                                        preview.expanded = !preview.expanded;
-                                        view.transcript_list.remeasure_items(
-                                            view.lines.len()..view.lines.len() + 1,
-                                        );
-                                        zork_ui::components::region::invalidate(
-                                            cx,
-                                            &["transcript"],
-                                        );
-                                    }
-                                });
-                            }),
-                            Rc::new(move |id, cx| {
-                                let _ = open_root.update(cx, |view, cx| {
-                                    view.open_history_entry(&session, id, cx);
-                                });
-                            }),
-                        )
-                    },
-                );
-                div()
-                    .w(px(content_width))
-                    .mx_auto()
-                    .child(match compact {
-                        Some(compact) => compact.into_any_element(),
-                        None => crate::components::activity::render(&activity, animate_activity)
-                            .into_any_element(),
-                    })
-                    .into_any()
             } else {
                 div().h_0().into_any()
             }
         });
 
-        let history = if item_count == 0 && !has_activity {
+        let history = if item_count == 0 {
             zork_ui::components::message_placeholder::render(
                 zork_ui::components::message_placeholder::Data {
                     loading: self.messages_loading,
@@ -1710,7 +1668,6 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
-        let fan_extent = self.file_fan_dimensions().1;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
             .relative()
@@ -1741,17 +1698,21 @@ impl RootView {
                     .automation(AutomationRole::Button, self.locale.text("messages_new")),
                 )
             })
+            .group(composer_surface::COMPOSER_DROP_GROUP)
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
                 v.attach_paths(paths.paths().to_vec(), cx);
             }))
+            // Session activity sits directly above the composer, at its width;
+            // it is a separate surface, never part of the composer itself.
+            .children(self.render_session_activity(window, cx))
             .child(self.render_composer_extras(window, cx))
             .child(composer)
             .child(
                 gpui::canvas(
                     move |bounds, _, cx| {
-                        // Retain only the static editor/extras measurement.
-                        // The attachment fan contributes its measured height.
-                        let height = bounds.size.height.as_f32() - fan_extent;
+                        // The draft file row is inside the surface, so the
+                        // measured frame is the whole overlay height.
+                        let height = bounds.size.height.as_f32();
                         let root = root.clone();
                         cx.defer(move |cx| {
                             let _ = root.update(cx, |view, cx| {
@@ -1878,7 +1839,7 @@ impl RootView {
                         div()
                             .pb_2()
                             .text_size(px(12.))
-                            .text_color(rgb(DIM))
+                            .text_color(rgb(DIM()))
                             .child(text),
                     )
                 })

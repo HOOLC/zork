@@ -92,8 +92,25 @@ class Nav7VisualTest {
                     val hit=android.graphics.Rect();send!!.getBoundsInScreen(hit)
                     assertTrue("Send hit target remains touch sized",hit.width()>=44 && hit.height()>=44)
                 }
+                if(screen=="composer") {
+                    fun described(node:android.view.accessibility.AccessibilityNodeInfo?,label:String):android.view.accessibility.AccessibilityNodeInfo? {
+                        if(node==null)return null;if(node.contentDescription?.toString()==label)return node
+                        for(i in 0 until node.childCount)described(node.getChild(i),label)?.let{return it};return null
+                    }
+                    val root=instrumentation.uiAutomation.rootInActiveWindow
+                    for(label in listOf("添加文件","移除 requirements.md")) {
+                        val node=described(root,label); assertNotNull("$label exists",node)
+                        val hit=android.graphics.Rect();node!!.getBoundsInScreen(hit)
+                        assertTrue("$label is touch sized",hit.width()>=44 && hit.height()>=40)
+                    }
+                    fun visibleText(node:android.view.accessibility.AccessibilityNodeInfo?):List<String> =
+                        if(node==null) emptyList() else listOfNotNull(node.text?.toString())+(0 until node.childCount).flatMap{visibleText(node.getChild(it))}
+                    val text=visibleText(root)
+                    assertTrue("Draft files show core sizes; visible=$text",text.any{it.contains("14 KB")})
+                    assertTrue("A failed copy explains why; visible=$text",text.any{it.contains("权限被拒绝")})
+                }
                 if (screen == "navigation") {
-                    val x = bounds.left + 352f; val y = bounds.top + 154f
+                    val x = bounds.left + 352f; val y = bounds.top + 190f
                     val down = android.os.SystemClock.uptimeMillis()
                     fun pointer(action: Int, px: Float = x, py: Float = y) {
                         val event = android.view.MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), action, px, py, 0)
@@ -104,12 +121,12 @@ class Nav7VisualTest {
                     val pressed = Bitmap.createBitmap(390, 844, Bitmap.Config.ARGB_8888); val ready = CountDownLatch(1)
                     scenario.onActivity { android.view.PixelCopy.request(it.window, bounds, pressed, { ready.countDown() }, android.os.Handler(android.os.Looper.getMainLooper())) }
                     assertTrue(ready.await(5, TimeUnit.SECONDS))
-                    assertEquals("Leader press feedback covers the full row", pressed.getPixel(12,154), pressed.getPixel(378,154))
-                    assertNotEquals("Press feedback must be visible", crop.getPixel(12,154), pressed.getPixel(12,154))
+                    assertEquals("Chat press feedback covers the full row", pressed.getPixel(12,190), pressed.getPixel(378,190))
+                    assertNotEquals("Press feedback must be visible", crop.getPixel(12,190), pressed.getPixel(12,190))
                     File(folder,"navigation-pressed-390.png").outputStream().use { pressed.compress(Bitmap.CompressFormat.PNG,100,it) }; pressed.recycle()
                     pointer(android.view.MotionEvent.ACTION_UP)
                     instrumentation.waitForIdleSync()
-                    scenario.onActivity { assertEquals("Right edge belongs to the same leader row", "leader:product", it.lastAction) }
+                    scenario.onActivity { assertEquals("Right edge opens the first home Chat on its own device", "session:mini2/guide", it.lastAction) }
                 }
                 crop.recycle()
             }

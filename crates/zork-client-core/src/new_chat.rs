@@ -2,7 +2,7 @@
 use crate::api::ProfileInfo;
 use zork_client_types::device::DeviceStatus;
 pub use zork_client_types::new_chat::{Action, Choice};
-use zork_client_types::new_chat::{OptionItem, Snapshot};
+use zork_client_types::new_chat::{ConnectionRef, OptionItem, Snapshot};
 
 pub fn selectable(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
     profiles
@@ -40,7 +40,19 @@ pub fn present(
     let option = |value: &str, label: &str| OptionItem {
         value: value.into(),
         label: label.into(),
-        status: None,
+        ..Default::default()
+    };
+    // Which connections offer each model, so pickers can group by connection.
+    let connections = |id: &str| -> Vec<ConnectionRef> {
+        profiles
+            .iter()
+            .filter(|p| p.models.iter().any(|m| m.id == id))
+            .map(|p| ConnectionRef {
+                profile: p.profile_id.clone(),
+                name: p.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| p.profile_id.clone()),
+                provider: p.provider.clone(),
+            })
+            .collect()
     };
     Snapshot {
         text: text.into(),
@@ -51,7 +63,10 @@ pub fn present(
                 .into_iter()
                 .flatten()
                 .filter_map(|m| m["id"].as_str())
-                .map(|id| option(id, id))
+                .map(|id| OptionItem {
+                    connections: connections(id),
+                    ..option(id, id)
+                })
                 .collect(),
         },
         thinking: Choice {
@@ -61,7 +76,7 @@ pub fn present(
                 .into_iter()
                 .flatten()
                 .filter_map(|v| v.as_str())
-                .map(|id| option(id, id))
+                .map(|id| option(id, &crate::thinking::value_label(id)))
                 .collect(),
         },
         profile: Choice {
@@ -172,6 +187,7 @@ impl Fixture {
                     } else {
                         DeviceStatus::MeshPreparing
                     }),
+                    ..Default::default()
                 })
                 .collect(),
         };
@@ -213,6 +229,9 @@ impl Fixture {
                 self.selection =
                     choose(&self.profiles, &self.selection.0, &self.selection.1, &value)
             }
+            Action::Select { profile, model } if self.snapshot().editable => {
+                self.selection = choose(&self.profiles, &model, &self.selection.1, &profile)
+            }
             Action::Submit { text } if self.snapshot().can_submit => {
                 self.text = text;
                 self.scenario = "creating".into();
@@ -225,6 +244,31 @@ impl Fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_options_name_the_connections_that_offer_them() {
+        let fixture = Fixture::new("draft");
+        let snapshot = present(&fixture.profiles, "", "", "", "auto");
+        let connections = |id: &str| {
+            snapshot
+                .model
+                .options
+                .iter()
+                .find(|o| o.value == id)
+                .unwrap()
+                .connections
+                .iter()
+                .map(|c| (c.profile.as_str(), c.name.as_str()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(connections("Demo model"), [("personal", "个人账号"), ("api", "API")]);
+        assert_eq!(connections("Demo fast"), [("personal", "个人账号")]);
+        // Other choices stay unchanged on the wire.
+        let json = serde_json::to_value(&snapshot.thinking).unwrap();
+        assert!(json["options"][0].get("connections").is_none());
+        // Older payloads without the new fields still parse.
+        let old: OptionItem = serde_json::from_value(serde_json::json!({"value":"m","label":"m"})).unwrap();
+        assert!(old.connections.is_empty() && old.device.is_none());
+    }
     #[test]
     fn model_depth_and_optional_profile_choices_respect_actual_capabilities() {
         let fixture = Fixture::new("draft");

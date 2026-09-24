@@ -41,6 +41,18 @@ pub enum Command {
     ChatFiles {
         operation: chat_files::Action,
     },
+    /// Adds a platform-provided private copy to the draft under its display name.
+    AttachFile {
+        peer: String,
+        session: String,
+        path: String,
+        name: String,
+    },
+    RemoveFile {
+        peer: String,
+        session: String,
+        id: String,
+    },
     NotificationSettings {
         operation: Option<notifications::mobile::Action>,
     },
@@ -140,12 +152,35 @@ pub enum Command {
         cached_only: bool,
     },
     Preferences {
-        message_preview_height: Option<u32>,
+        #[serde(default)]
+        theme: Option<preferences::Theme>,
     },
     Settings {
         peer: String,
         #[serde(default)]
         cached_only: bool,
+    },
+    ModelConnections {
+        #[serde(default)]
+        cached_only: bool,
+    },
+    /// Built-in defaults for a model id, plus `input` with its empty fields filled.
+    ModelCatalogRecognize {
+        id: String,
+        #[serde(default)]
+        provider: Option<String>,
+        #[serde(default)]
+        input: Option<crate::model_edit::ModelInput>,
+    },
+    /// Values of one field across popular models, recognized model first.
+    ModelCatalogReferences {
+        field: crate::model_catalog::Field,
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// Row summaries ("128K · 输出 8K · 思考开关") for stored models.
+    ModelCatalogSummary {
+        models: Vec<Value>,
     },
     Request {
         peer: String,
@@ -206,6 +241,8 @@ impl Command {
                 | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
                 | Self::ChatFiles { .. }
+                | Self::AttachFile { .. }
+                | Self::RemoveFile { .. }
                 | Self::TestNotification
                 | Self::NotificationReceipt { .. }
                 | Self::OpenNotification { .. }
@@ -231,6 +268,10 @@ impl Command {
                     cached_only: true,
                     ..
                 }
+                | Self::ModelConnections { cached_only: true }
+                | Self::ModelCatalogRecognize { .. }
+                | Self::ModelCatalogReferences { .. }
+                | Self::ModelCatalogSummary { .. }
                 | Self::Read {
                     cached_only: true,
                     ..
@@ -287,6 +328,12 @@ impl LocalClient {
         }
         if matches!(key, subscriptions::Key::Notifications) {
             return subscriptions::WireSubscription::from_notifications(self.store.clone());
+        }
+        if matches!(key, subscriptions::Key::Navigation) {
+            return Ok(subscriptions::WireSubscription::from_navigation(
+                self.directory.clone(),
+                self.store.clone(),
+            ));
         }
         if let subscriptions::Key::Resources { peer, kind, query } = key {
             if let Some(peer) = &peer {
@@ -348,6 +395,29 @@ impl LocalClient {
     fn peer(&self, peer: &str) -> Result<SavedNode> {
         find_peer(&self.store, peer)
     }
+
+    /// Bounded image bytes for an inline thumbnail: a draft file when `message`
+    /// is absent, otherwise a file of that cached message.
+    pub async fn file_preview(
+        &self,
+        peer: &str,
+        session: &str,
+        message: Option<&str>,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        self.peer(peer)?;
+        valid_session(session)?;
+        let device = self
+            .device_state(peer)
+            .context("客户端连接已暂停，请重新连接")?;
+        match message {
+            None => device.draft_file_bytes(session, file),
+            Some(message) => {
+                chat_files::inline_bytes(&self.store, device, peer, session, message, file).await
+            }
+        }
+    }
+
     pub fn execute(&self, command: Command) -> Result<Value> {
         match command {
             Command::Account { operation } => {
@@ -361,6 +431,29 @@ impl LocalClient {
                     self.device_state(peer)
                 } else { None };
                 self.chat_files.apply(operation, device)?;
+                Ok(json!({}))
+            }
+            Command::AttachFile {
+                peer,
+                session,
+                path,
+                name,
+            } => {
+                self.peer(&peer)?;
+                valid_session(&session)?;
+                let device = self
+                    .device_state(&peer)
+                    .context("请先打开对话，再添加文件")?;
+                let file = device.attach_named_path(&session, Path::new(&path), &name)?;
+                Ok(serde_json::to_value(file_io::view(&file))?)
+            }
+            Command::RemoveFile { peer, session, id } => {
+                self.peer(&peer)?;
+                valid_session(&session)?;
+                let device = self
+                    .device_state(&peer)
+                    .context("请先打开对话，再移除文件")?;
+                device.remove_file(&session, &id)?;
                 Ok(json!({}))
             }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
@@ -525,11 +618,9 @@ impl LocalClient {
                 self.services.close(&view_id);
                 Ok(json!({"ok":true}))
             }
-            Command::Preferences {
-                message_preview_height,
-            } => {
-                let value = match message_preview_height {
-                    Some(height) => preferences::save_message_preview_height(&self.store, height)?,
+            Command::Preferences { theme } => {
+                let value = match theme {
+                    Some(theme) => preferences::save_theme(&self.store, theme)?,
                     None => preferences::read(&self.store),
                 };
                 Ok(serde_json::to_value(value)?)
@@ -618,7 +709,7 @@ impl LocalClient {
                     })
                     .collect();
                 Ok(
-                    json!({"draft":draft,"comments":comments,"attachments":attachments,"files":files,"outbox":outbox}),
+                    json!({"draft":draft,"comments":comments,"attachments":attachments,"file_views":file_io::views(&files),"files":files,"outbox":outbox}),
                 )
             }
             Command::Enqueue {
@@ -677,6 +768,25 @@ impl LocalClient {
                 self.peer(&peer)?;
                 settings::snapshot(&self.store, &peer)
             }
+            Command::ModelConnections { cached_only: true } => {
+                model_connections::cached(&self.store)
+            }
+            Command::ModelCatalogRecognize {
+                id,
+                provider,
+                input,
+            } => Ok(crate::model_catalog::recognition(
+                &id,
+                provider.as_deref(),
+                input,
+            )),
+            Command::ModelCatalogReferences { field, id } => Ok(serde_json::to_value(
+                crate::model_catalog::references(field, id.as_deref()),
+            )?),
+            Command::ModelCatalogSummary { models } => Ok(json!(models
+                .iter()
+                .map(crate::model_catalog::model_summary)
+                .collect::<Vec<_>>())),
             Command::Read {
                 peer,
                 path,
@@ -1162,6 +1272,13 @@ impl Client {
                 }
                 settings::refresh(self.station(&peer)?, self.store.clone(), &peer).await
             }
+            Command::ModelConnections { cached_only } => {
+                if cached_only {
+                    return model_connections::cached(&self.store);
+                }
+                self.directory.refresh().await?;
+                model_connections::refresh(self.store.clone(), |peer| self.station(peer)).await
+            }
             Command::Read {
                 peer,
                 path,
@@ -1264,12 +1381,17 @@ impl Client {
             command @ (Command::SelectPeer { .. }
             | Command::RestoreNavigation { .. }
             | Command::DraftAction { .. }
+            | Command::AttachFile { .. }
+            | Command::RemoveFile { .. }
             | Command::SubmitDraft { .. }
             | Command::ArchiveChat { .. }
             | Command::NewChat { .. }
             | Command::RespondToInteraction { .. }
             | Command::CachedMessages { .. }
             | Command::Preferences { .. }
+            | Command::ModelCatalogRecognize { .. }
+            | Command::ModelCatalogReferences { .. }
+            | Command::ModelCatalogSummary { .. }
             | Command::NotificationSettings { .. }
             | Command::TestNotification
             | Command::NotificationReceipt { .. }
@@ -1394,6 +1516,53 @@ mod tests {
             })
             .unwrap();
         peer
+    }
+
+    #[tokio::test]
+    async fn picked_copies_attach_preview_and_remove_through_commands() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut client = Client::open(root.path())?;
+        let peer = add_peer(&client);
+        let copy = root.path().join("pick-1.tmp");
+        std::fs::write(&copy, b"\x89PNG picked")?;
+        let attach = || Command::AttachFile {
+            peer: peer.clone(),
+            session: "chat".into(),
+            path: copy.to_string_lossy().into_owned(),
+            name: "截图.png".into(),
+        };
+        ensure!(client.execute(attach()).await.is_err(), "no open conversation");
+        let _device = state::Device::open(
+            Arc::new(api::StationClient::new("http://127.0.0.1:9", None)),
+            Some((client.store.clone(), peer.clone())),
+            true,
+        );
+        let view = client.execute(attach()).await?;
+        ensure!(view["name"] == "截图.png" && view["kind"] == "image" && view["thumbnail"] == true);
+        let id = view["id"].as_str().unwrap().to_owned();
+        std::fs::remove_file(&copy)?;
+        fn send<T: Send>(value: T) -> T {
+            value
+        }
+        let local = client.local();
+        let bytes = send(local.file_preview(&peer, "chat", None, &id)).await?;
+        ensure!(bytes == b"\x89PNG picked");
+        let conversation = client
+            .execute(Command::Conversation {
+                peer: peer.clone(),
+                session: "chat".into(),
+            })
+            .await?;
+        ensure!(conversation["file_views"][0]["badge"] == "PNG");
+        client
+            .execute(Command::RemoveFile {
+                peer: peer.clone(),
+                session: "chat".into(),
+                id: id.clone(),
+            })
+            .await?;
+        ensure!(local.file_preview(&peer, "chat", None, &id).await.is_err());
+        Ok(())
     }
 
     #[tokio::test]

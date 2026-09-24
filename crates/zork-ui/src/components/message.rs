@@ -23,11 +23,26 @@ mod code;
 #[path = "message_text.rs"]
 mod text_cache;
 
-const TEXT: u32 = crate::design::ZORK_UI.palette.text;
-const MUTED: u32 = crate::design::ZORK_UI.palette.muted;
-const BORDER: u32 = crate::design::ZORK_UI.palette.border;
-const CODE_FILL: u32 = crate::design::ZORK_UI.palette.sidebar;
-const LINK: u32 = crate::design::ZORK_UI.palette.accent;
+#[allow(non_snake_case)]
+fn TEXT() -> u32 {
+    crate::design::ZORK_UI.palette.text
+}
+#[allow(non_snake_case)]
+fn MUTED() -> u32 {
+    crate::design::ZORK_UI.palette.muted
+}
+#[allow(non_snake_case)]
+fn BORDER() -> u32 {
+    crate::design::ZORK_UI.palette.border
+}
+#[allow(non_snake_case)]
+fn CODE_FILL() -> u32 {
+    crate::design::ZORK_UI.palette.sidebar
+}
+#[allow(non_snake_case)]
+fn LINK() -> u32 {
+    crate::design::ZORK_UI.palette.accent
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InlineStyle {
@@ -298,7 +313,7 @@ impl MessageDocument {
             let run = gpui::TextRun {
                 len: text.len(),
                 font: font.clone(),
-                color: rgb(TEXT).into(),
+                color: rgb(TEXT()).into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
@@ -752,7 +767,7 @@ fn render_block<'a>(
                                     marker.font_family(crate::assets::CODE_FONT_FAMILY)
                                 })
                                 .flex_shrink_0()
-                                .text_color(rgb(MUTED))
+                                .text_color(rgb(MUTED()))
                                 .child(marker),
                         )
                         .child(div().flex_1().min_w_0().child(render_blocks(
@@ -774,9 +789,9 @@ fn render_block<'a>(
         MessageBlock::BlockQuote(children) => div()
             .w_full()
             .border_l(gpui::px(crate::design::BORDER_WIDTH))
-            .border_color(rgb(BORDER))
+            .border_color(rgb(BORDER()))
             .pl_3()
-            .text_color(rgb(MUTED))
+            .text_color(rgb(MUTED()))
             .child(render_blocks(
                 &format!("{id}-quote"),
                 children,
@@ -788,7 +803,7 @@ fn render_block<'a>(
             .w_full()
             .h(px(1.))
             .my_1()
-            .bg(rgb(BORDER))
+            .bg(rgb(BORDER()))
             .into_any_element(),
         MessageBlock::Table { rows } => {
             let rendered_rows = rows
@@ -806,7 +821,7 @@ fn render_block<'a>(
                                 .py_1()
                                 .when(cell_index + 1 < row.len(), |cell| {
                                     cell.border_r(gpui::px(crate::design::BORDER_WIDTH))
-                                        .border_color(rgb(BORDER))
+                                        .border_color(rgb(BORDER()))
                                 })
                                 .child(render_inline(
                                     &format!("{id}-row-{row_index}-cell-{cell_index}"),
@@ -820,7 +835,7 @@ fn render_block<'a>(
                         .flex()
                         .when(row_index + 1 < rows.len(), |row| {
                             row.border_b(gpui::px(crate::design::BORDER_WIDTH))
-                                .border_color(rgb(BORDER))
+                                .border_color(rgb(BORDER()))
                         })
                         .children(cells)
                 })
@@ -828,8 +843,8 @@ fn render_block<'a>(
             div()
                 .w_full()
                 .border(gpui::px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(BORDER))
-                .rounded_lg()
+                .border_color(rgb(BORDER()))
+                .rounded(px(crate::design::RADIUS.block))
                 .children(rendered_rows)
                 .into_any_element()
         }
@@ -861,21 +876,21 @@ fn render_inline(
         if segment.style.strikethrough {
             highlight.strikethrough = Some(StrikethroughStyle {
                 thickness: px(1.0),
-                color: Some(rgb(MUTED).into()),
+                color: Some(rgb(MUTED()).into()),
             });
         }
         if segment.style.code {
-            highlight.color = Some(rgb(0x7C3FA0).into());
+            highlight.color = Some(rgb(*crate::design::CODE_INK).into());
             code_ranges.push((
                 range.clone(),
                 SharedString::from(crate::assets::CODE_FONT_FAMILY),
             ));
         }
         if let Some(url) = segment.style.link.as_ref() {
-            highlight.color = Some(rgb(LINK).into());
+            highlight.color = Some(rgb(LINK()).into());
             highlight.underline = Some(UnderlineStyle {
                 thickness: px(1.0),
-                color: Some(rgb(LINK).into()),
+                color: Some(rgb(LINK()).into()),
                 wavy: false,
             });
             link_ranges.push(range.clone());
@@ -1049,21 +1064,21 @@ fn render_code_ready(
     div()
         .w_full()
         .min_w_0()
-        .rounded(px(8.))
+        .rounded(px(crate::design::RADIUS.block))
         .overflow_hidden()
         .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(BORDER))
-        .bg(rgb(CODE_FILL))
+        .border_color(rgb(BORDER()))
+        .bg(rgb(CODE_FILL()))
         .when_some(language.filter(|s| !s.is_empty()), |block, language| {
             block.child(
                 div()
                     .px_3()
                     .py_1()
                     .border_b(gpui::px(crate::design::BORDER_WIDTH))
-                    .border_color(rgb(BORDER))
-                    .text_size(px(11.))
+                    .border_color(rgb(BORDER()))
+                    .text_size(px(12.))
                     .line_height(px(18.))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(MUTED()))
                     .child(language.to_owned()),
             )
         })
@@ -1083,7 +1098,7 @@ fn render_code_ready(
                         .font_family(crate::assets::CODE_FONT_FAMILY)
                         .text_size(px(12.))
                         .line_height(px(20.))
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(TEXT()))
                         .child(body),
                 ),
         )
@@ -1161,11 +1176,11 @@ mod selection_style_tests {
     #[test]
     fn selection_overlay_covers_unstyled_gaps_without_overlapping_code_runs() {
         let styled = HighlightStyle {
-            color: Some(rgb(0x7C3FA0).into()),
+            color: Some(rgb(*crate::design::CODE_INK).into()),
             ..Default::default()
         };
         let selected = HighlightStyle {
-            background_color: Some(rgba(0xC9DCF5CC).into()),
+            background_color: Some(rgba(*crate::design::TEXT_SELECTION).into()),
             ..Default::default()
         };
         let runs = (0..4096)
@@ -1192,7 +1207,7 @@ mod selection_style_tests {
             ..Default::default()
         };
         let selected = HighlightStyle {
-            background_color: Some(rgba(0xC9DCF5CC).into()),
+            background_color: Some(rgba(*crate::design::TEXT_SELECTION).into()),
             ..Default::default()
         };
         let ranges = merge_selection_highlight(vec![(0..6, bold)], (3..9, selected));
