@@ -23,30 +23,32 @@ pub(super) enum Mode {
     Single,
 }
 
-/// Which themes the canvas shows. The palette is a process-wide global, so
-/// only the current app theme can be live; "both" pairs the live specimen
-/// with an offscreen render of the other theme.
+/// The whole app, specimens included, shows one theme at a time.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum View {
     Light,
     Dark,
-    Both,
 }
 impl View {
     fn key(self) -> &'static str {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
-            Self::Both => "both",
         }
     }
+    /// Retired values, such as the old side-by-side "both", are ignored.
     fn parse(value: &str) -> Option<Self> {
         Some(match value {
             "light" => Self::Light,
             "dark" => Self::Dark,
-            "both" => Self::Both,
             _ => return None,
         })
+    }
+    fn current() -> Self {
+        match zork_ui::design::theme() {
+            Theme::Light => Self::Light,
+            Theme::Dark => Self::Dark,
+        }
     }
 }
 
@@ -122,7 +124,6 @@ pub(super) struct Gallery {
     catalog: Vec<Story>,
     selected: usize,
     mode: Mode,
-    view: View,
     width: Width,
     interaction: Interaction,
     sessions: HashMap<String, Session>,
@@ -235,7 +236,6 @@ impl Gallery {
             catalog,
             selected,
             mode: Mode::Single,
-            view: View::Both,
             width: Width::Window,
             interaction: Interaction::Rest,
             sessions: HashMap::new(),
@@ -269,12 +269,14 @@ impl Gallery {
     }
 
     pub(super) fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
-        self.view = view;
-        match view {
-            View::Light => zork_ui::design::prefer_theme(Some(Theme::Light), cx),
-            View::Dark => zork_ui::design::prefer_theme(Some(Theme::Dark), cx),
-            View::Both => {}
-        }
+        // Pin the Design app to the chosen theme; the palette switches live.
+        zork_ui::design::prefer_theme(
+            Some(match view {
+                View::Light => Theme::Light,
+                View::Dark => Theme::Dark,
+            }),
+            cx,
+        );
         self.persist();
         cx.notify();
     }
@@ -456,13 +458,9 @@ impl Gallery {
         zork_ui::design::theme()
     }
 
-    /// Themes the overview and side-by-side canvas need as stills.
+    /// Overview stills follow the current theme and are cached per theme.
     fn still_themes(&self) -> Vec<&'static str> {
-        match self.view {
-            View::Light => vec!["light"],
-            View::Dark => vec!["dark"],
-            View::Both => vec!["light", "dark"],
-        }
+        vec![theme_key(Self::current_theme())]
     }
 
     fn queue_stills(&mut self, cx: &mut Context<Self>) {
@@ -473,9 +471,6 @@ impl Gallery {
         let width = self.width.key();
         let themes: Vec<&'static str> = if self.mode == Mode::Overview {
             self.still_themes()
-        } else if self.view == View::Both {
-            let live = theme_key(Self::current_theme());
-            vec![if live == "light" { "dark" } else { "light" }]
         } else {
             vec![]
         };
@@ -562,11 +557,7 @@ impl Gallery {
 
     fn command(&self) -> String {
         let mut command = format!("zork-design-pc --story {}", self.story().id);
-        match self.view {
-            View::Light => command.push_str(" --theme light"),
-            View::Dark => command.push_str(" --theme dark"),
-            View::Both => {}
-        }
+        command.push_str(&format!(" --theme {}", View::current().key()));
         if let Some(px) = self.width.pixels() {
             command.push_str(&format!(" --width {px}"));
         }
@@ -626,7 +617,7 @@ impl Gallery {
         let state = json!({
             "story": self.story().id,
             "mode": if self.mode == Mode::Overview { "overview" } else { "single" },
-            "view": self.view.key(),
+            "view": View::current().key(),
             "width": self.width.key(),
             "sidebar": self.sidebar_open,
             "inspector": self.inspector_open,
@@ -961,19 +952,17 @@ impl Gallery {
             vec![
                 ("design-view-light".into(), "浅色".into()),
                 ("design-view-dark".into(), "深色".into()),
-                ("design-view-both".into(), "并排".into()),
             ],
-            match self.view {
+            match View::current() {
                 View::Light => 0,
                 View::Dark => 1,
-                View::Both => 2,
             },
             true,
             p.canvas,
             window,
             cx,
             |v, index, cx| {
-                v.set_view([View::Light, View::Dark, View::Both][index], cx);
+                v.set_view([View::Light, View::Dark][index], cx);
             },
         );
         let width = segmented(
@@ -1162,7 +1151,6 @@ impl Gallery {
         let p = ZORK_UI.palette;
         let story = self.story();
         let session = self.session();
-        let live_theme = theme_key(Self::current_theme());
         let caption = |text: String| {
             div()
                 .text_size(px(12.))
@@ -1182,44 +1170,12 @@ impl Gallery {
             .overflow_hidden()
             .child(session.host.clone())
             .automation(AutomationRole::Status, "当前组件画布");
-        let live_label = if live_theme == "light" { "浅色" } else { "深色" };
-        let mut frames = div()
+        let frames = div()
             .flex()
-            .gap(px(20.))
-            .items_start()
+            .flex_col()
             .when(self.canvas_width().is_none(), |v| v.size_full())
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .when(self.canvas_width().is_none(), |v| v.flex_1().h_full())
-                    .child(caption(format!("{live_label} · {size_text} · 实时")))
-                    .child(live),
-            );
-        if self.view == View::Both {
-            let other = if live_theme == "light" { "dark" } else { "light" };
-            let label = if other == "light" { "浅色" } else { "深色" };
-            frames = frames.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(caption(format!("{label} · 快照")))
-                    .child(
-                        div()
-                            .min_w(px(self.canvas_width().unwrap_or(400.)))
-                            .min_h(px(120.))
-                            .flex()
-                            .items_start()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .rounded(px(RADIUS.container))
-                                    .overflow_hidden()
-                                    .child(self.still_frame(self.still(&story.id, other), 1600., 1600.)),
-                            ),
-                    ),
-            );
-        }
+            .child(caption(size_text))
+            .child(live);
         div()
             .id("story-preview-scroll")
             .flex_1()

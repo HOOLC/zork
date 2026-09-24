@@ -50,7 +50,7 @@ Sidebar navigation uses ordinary GPUI rows through `navigation::TabGroup`; selec
 
 ## Component contract
 
-Check component changes in `zork-design-pc`: every state is a production component with fixture data, grouped by product area, and each state can be compared in light and dark and at 360/600/900 px widths. `docs/design/interface.md` remains the visual authority.
+Check component changes in `zork-design-pc`: every state is a production component with fixture data, grouped by product area, and the app switches between light and dark and 360/600/900 px widths. `docs/design/interface.md` remains the visual authority.
 
 The approved rules start at [`docs/design/interface.md`](../../docs/design/interface.md), with the [state contract](../../docs/design/interface.md#interaction). `design::INTERACTION`, `design::FORM` and `TextRole` own common feedback and typography. Use the semantic controls rather than overriding ordinary state colors in application views. Platform-specific navigation and touch geometry remain explicit.
 
