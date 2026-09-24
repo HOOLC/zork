@@ -303,19 +303,20 @@ fn main() -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "model-add-device-laptop" && e.visible),
-        "Adding a connection did not open the device chooser"
+            .any(|e| e.id == "profile-target-select" && e.visible),
+        "Adding a connection did not offer the save-to device choice"
     );
     cx.capture_screenshot(window.into())?
-        .save(output.join("add-device.png"))?;
-    click("model-add-device-laptop", &mut cx)?;
+        .save(output.join("add-connection-step-1.png"))?;
+    click("profile-target-select", &mut cx)?;
+    click("profile-target-1", &mut cx)?;
     anyhow::ensure!(
         driver
             .snapshot(false)
             .elements
             .iter()
             .any(|e| e.id == "profile-close-form" && e.visible),
-        "Selecting a device did not open the connection dialog"
+        "Choosing another device did not keep the connection dialog open"
     );
     click("profile-close-form", &mut cx)?;
 

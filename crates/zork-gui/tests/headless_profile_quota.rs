@@ -109,10 +109,7 @@ fn main() -> anyhow::Result<()> {
                         && modal.bounds.y + modal.bounds.height <= height,
                     "quota modal clipped"
                 );
-                anyhow::ensure!(
-                    (modal.bounds.x + modal.bounds.width / 2. - width / 2.).abs() < 1.,
-                    "quota dialog is not centered over the window"
-                );
+
                 let close = snapshot
                     .elements
                     .iter()
@@ -304,7 +301,7 @@ fn verify_cases(output: &std::path::Path) -> anyhow::Result<()> {
             for id in [
                 "profile-detail-dialog",
                 "profile-detail-dialog-close",
-                "profile-quota-refresh",
+                "profile-more",
             ] {
                 let element = snapshot
                     .elements

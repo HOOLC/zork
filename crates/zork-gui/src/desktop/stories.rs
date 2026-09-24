@@ -415,7 +415,7 @@ fn raw_catalog() -> Vec<Story> {
             "大模型",
             "provider",
             "profile-create-dialog",
-            vec![click("profile-add"), click("profile-provider-select")],
+            vec![click("profile-add"), click("profile-next")],
             "connection-provider",
         ),
         (
@@ -448,6 +448,14 @@ fn raw_catalog() -> Vec<Story> {
             "model-editor-dialog",
             vec![click("profile-model-add"), click("model-api-select")],
             "model-protocol",
+        ),
+        (
+            "model",
+            "模型配置",
+            "inline",
+            "profile-detail-dialog",
+            vec![],
+            "model-detail",
         ),
         (
             "model",
@@ -610,6 +618,13 @@ fn raw_catalog() -> Vec<Story> {
     }
     for story in &mut items {
         if story.family != "model" || story.state.starts_with("detail") {
+            continue;
+        }
+        if story.state.starts_with("inline") {
+            story.actions = vec![
+                click("model-edit-fixture-model"),
+                click("model-params-toggle"),
+            ];
             continue;
         }
         // Typing a known id fills every parameter; later states open them.
