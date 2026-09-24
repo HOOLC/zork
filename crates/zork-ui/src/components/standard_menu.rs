@@ -222,7 +222,20 @@ impl Menu {
             popup
         };
         Some(
-            deferred(gpui_base::Positioner::corner(Anchor::TopLeft, position).child(popup))
+            deferred(
+                gpui_base::Positioner::corner(Anchor::TopLeft, position).child(
+                    // Context menus open at the pointer and drop away from it.
+                    div().child(popup).with_animation(
+                        "standard-menu-enter",
+                        crate::motion::enter(crate::motion::POPOVER),
+                        |menu, t| {
+                            menu.opacity(t)
+                                .relative()
+                                .top(px(-crate::motion::POPOVER_OFFSET * (1. - t)))
+                        },
+                    ),
+                ),
+            )
                 .with_priority(350)
                 .into_any_element(),
         )

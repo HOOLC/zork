@@ -444,6 +444,12 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                             AutomationRole::Button,
                                             self.history_text().text("history_latest"),
                                         ),
+                                )
+                                // Appears only when reading history; fades in, never slides.
+                                .with_animation(
+                                    "history-follow-latest-enter",
+                                    crate::motion::enter(crate::motion::BASE),
+                                    |pill, t| pill.opacity(t),
                                 ),
                         )
                     }),

@@ -102,7 +102,7 @@ impl Render for Clock {
         let reduced = cx.reduce_motion() || !self.animate;
         let elapsed = (cx.background_executor().now() - self.started).as_secs_f32();
         // Reserve the slot immediately, but suppress flashes for quick requests.
-        let visible = !self.delay || elapsed >= 0.2;
+        let visible = !self.delay || elapsed >= crate::motion::LOADING_DELAY as f32 / 1000.;
         let angle = if reduced {
             0.
         } else {

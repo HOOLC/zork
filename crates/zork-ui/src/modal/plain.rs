@@ -12,25 +12,51 @@ use gpui::{
     MouseButton, SharedString, Window,
 };
 
-#[derive(Default)]
+/// A time-based opacity tween. Reversing mid-flight continues from the current
+/// value, so a quick open → close never flashes.
 struct Fade {
     alpha: f32,
+    from: f32,
+    target: f32,
+    start: std::time::Instant,
+    enter_ms: u64,
 }
 impl Fade {
+    fn new(enter_ms: u64) -> Self {
+        Self {
+            alpha: 0.,
+            from: 0.,
+            target: 0.,
+            start: std::time::Instant::now(),
+            enter_ms,
+        }
+    }
     fn opacity(&self) -> f32 {
         self.alpha
     }
-    fn advance(&mut self, open: bool, dt: f64, reduced: bool) -> bool {
+    fn advance(&mut self, open: bool, reduced: bool) -> bool {
+        use crate::motion;
         let target = if open { 1. } else { 0. };
+        if target != self.target {
+            self.from = self.alpha;
+            self.target = target;
+            self.start = std::time::Instant::now();
+        }
         if reduced {
             self.alpha = target;
+            return false;
+        }
+        // Enter eases in over the surface token; exit leaves in two thirds of it.
+        let (ms, curve): (u64, Box<dyn Fn(f32) -> f32>) = if open {
+            (self.enter_ms, Box::new(motion::bezier(0.2, 0.7, 0.2, 1.0)))
         } else {
-            let step = (dt as f32 / 0.16).clamp(0., 1.);
-            self.alpha = if open {
-                (self.alpha + step).min(1.)
-            } else {
-                (self.alpha - step).max(0.)
-            };
+            (motion::exit(self.enter_ms), Box::new(motion::bezier(0.4, 0.0, 1.0, 1.0)))
+        };
+        let total = motion::duration(ms).as_secs_f32().max(0.001);
+        let t = (self.start.elapsed().as_secs_f32() / total).clamp(0., 1.);
+        self.alpha = self.from + (self.target - self.from) * curve(t);
+        if t >= 1. {
+            self.alpha = target;
         }
         self.alpha != target
     }
@@ -56,8 +82,8 @@ impl PlainDialog {
             focus: FocusScope::new(cx),
             content_id: None,
             open: false,
-            reveal: Default::default(),
-            backdrop: Default::default(),
+            reveal: Fade::new(crate::motion::SURFACE),
+            backdrop: Fade::new(crate::motion::SCRIM),
             seen_open: false,
             initial_focus: None,
             focus_pending: false,
@@ -175,10 +201,9 @@ impl PlainDialog {
         self.content_id = Some(id.clone());
 
         let reduced = cx.reduce_motion();
-        let dt = if reduced { 1. } else { 1. / 60. };
         let was_alive = self.alive();
-        let content_moving = self.reveal.advance(open, dt, reduced);
-        let backdrop_moving = self.backdrop.advance(open, dt, reduced);
+        let content_moving = self.reveal.advance(open, reduced);
+        let backdrop_moving = self.backdrop.advance(open, reduced);
         let moving = content_moving || backdrop_moving;
         // Redraw until the fade reaches its endpoint, including the final
         // frame that releases a retained dialog payload.

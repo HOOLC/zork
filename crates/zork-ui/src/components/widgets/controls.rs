@@ -316,10 +316,6 @@ fn render_segmented(
                     v.cursor_pointer().focus_visible(|v| v.underline())
                 })
                 .when(!enabled, |v| v.opacity(0.4).cursor_default())
-                .when(checked, |v| {
-                    v.rounded(px(CONTROL_HEIGHT / 2. - SEGMENT_INSET))
-                        .bg(rgb(p.accent))
-                })
                 .child(
                     div()
                         .text_color(rgb(if checked { p.canvas } else { p.text }))
@@ -363,6 +359,30 @@ fn render_segmented(
             window,
             cx,
         ))
+        .when_some(selected.filter(|i| *i < count), |v, index| {
+            // One capsule slides between segments; its spring keeps the
+            // current position when the selection changes mid-flight.
+            let segment = ((width - 2. * SEGMENT_INSET - SEGMENT_GAP * (count - 1) as f32)
+                / count as f32)
+                .max(2.);
+            v.child(
+                div()
+                    .absolute()
+                    .top(px(SEGMENT_INSET))
+                    .w(px(segment))
+                    .h(px(CONTROL_HEIGHT - 2. * SEGMENT_INSET))
+                    .rounded(px(CONTROL_HEIGHT / 2. - SEGMENT_INSET))
+                    .bg(rgb(p.accent))
+                    .when(!enabled, |v| v.opacity(0.4))
+                    .with_spring(
+                        SharedString::from(format!("{id}-selection")),
+                        crate::motion::spring(crate::motion::BASE).to(index as f32),
+                        move |v, x: f32| {
+                            v.left(px(SEGMENT_INSET + x * (segment + SEGMENT_GAP)))
+                        },
+                    ),
+            )
+        })
         .child(row)
         .on_key_down(move |event: &KeyDownEvent, window, cx| {
             if active.is_empty() {
@@ -455,7 +475,10 @@ fn render_toggle(
         .w(px(48.))
         .h(px(32.))
         .when(enabled, |v| v.cursor_pointer())
-        .child(
+        .child({
+            // The track colour follows the thumb's spring so a quick double
+            // toggle never flashes the far colour.
+            let (on, off) = (rgb(ZORK_UI.palette.accent), rgb(FORM.switch_off));
             div()
                 .absolute()
                 .left(px(4.))
@@ -464,18 +487,26 @@ fn render_toggle(
                 .h(px(24.))
                 .rounded(px(12.))
                 .bg(rgb(track))
-                .when(focused, |v| v.shadow(crate::controls::focus_ring())),
-        )
+                .when(focused, |v| v.shadow(crate::controls::focus_ring()))
+                .with_spring(
+                    SharedString::from(format!("{id}-track-motion")),
+                    crate::motion::toggle(crate::motion::SWITCH, checked),
+                    move |v, phase| v.bg(phase.interpolate_clamped(off, on)),
+                )
+        })
         .child(
             div()
                 .absolute()
                 .top(px(7.))
-                .left(px(if checked { 24. } else { 7. }))
                 .size(px(18.))
                 .rounded(px(9.))
-                .bg(rgb(thumb)),
-        )
-;
+                .bg(rgb(thumb))
+                .with_spring(
+                    SharedString::from(format!("{id}-thumb-motion")),
+                    crate::motion::toggle(crate::motion::SWITCH, checked),
+                    |v, phase| v.left(px(phase.interpolate_clamped(7., 24.))),
+                ),
+        );
     div().id(id).w(px(48.)).h(px(32.)).child(switch)
 }
 

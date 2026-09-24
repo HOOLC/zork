@@ -136,6 +136,7 @@ impl Flyout {
             return None;
         }
         let id = id.into();
+        let enter_id = SharedString::from(format!("{id}-enter"));
         let title = title.into();
         let viewport = window.viewport_size();
         let width = width.min((viewport.width.as_f32() - 24.).max(2.));
@@ -190,8 +191,7 @@ impl Flyout {
                 )
                 .absolute()
                 .inset_0(),
-            )
-            .automation(AutomationRole::Status, title);
+            );
         if self.state.borrow_mut().focus_pending {
             self.state.borrow_mut().focus_pending = false;
             let initial = self.initial_focus.borrow().clone();
@@ -208,6 +208,19 @@ impl Flyout {
         } else {
             Placement::Bottom
         };
+        // Enter: fade in while travelling away from the anchor. A fresh mount
+        // replays it; closing removes the panel at once.
+        let travel = if self.above.get() {
+            crate::motion::POPOVER_OFFSET
+        } else {
+            -crate::motion::POPOVER_OFFSET
+        };
+        let panel = panel.with_animation(
+            enter_id,
+            crate::motion::enter(crate::motion::POPOVER),
+            move |panel, t| panel.opacity(t).relative().top(px(travel * (1. - t))),
+        )
+        .automation(AutomationRole::Status, title);
         let align = if self.align_end.get() {
             Align::End
         } else {

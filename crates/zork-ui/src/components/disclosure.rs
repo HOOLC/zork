@@ -6,7 +6,7 @@ use crate::{
     controls as ui,
     design::ZORK_UI,
 };
-use gpui::{div, prelude::*, px, rgb, AnyElement, Context, SharedString, Window};
+use gpui::{div, prelude::*, px, rgb, AnimationExt, AnyElement, Context, SharedString, Window};
 
 /// A quiet "更多" icon button with its menu. Items that are unavailable are
 /// passed disabled; an empty list renders nothing.
@@ -66,16 +66,20 @@ pub fn expander<V: 'static>(
                 .text_color(rgb(p.muted))
                 .child(label.clone()),
         )
-        .child({
-            let icon = ui::icon("interface/chevron-down.svg", 12.).text_color(rgb(p.muted));
-            if open {
-                icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                    std::f32::consts::PI,
-                )))
-            } else {
-                icon
-            }
-        })
+        .child(
+            // The chevron turns with the same move curve as the disclosure.
+            ui::icon("interface/chevron-down.svg", 12.)
+                .text_color(rgb(p.muted))
+                .with_spring(
+                    SharedString::from(format!("{id}-chevron")),
+                    crate::motion::toggle(crate::motion::BASE, open),
+                    |icon, phase| {
+                        icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
+                            std::f32::consts::PI * phase.0.clamp(0., 1.),
+                        )))
+                    },
+                ),
+        )
         .aria_expanded(open)
         .on_click(move |_, _, cx| {
             state.update(cx, |open, cx| {
@@ -89,7 +93,17 @@ pub fn expander<V: 'static>(
         .flex_col()
         .items_start()
         .child(toggle)
-        .when(open, |v| v.child(div().w_full().pt_1().child(content)))
+        .when(open, |v| {
+            // Content appears after the toggle: fade in while settling 4 px.
+            // GPUI lays out auto heights in one pass, so the height itself snaps.
+            v.child(
+                div().w_full().pt_1().child(content).with_animation(
+                    SharedString::from(format!("{id}-content")),
+                    crate::motion::enter(crate::motion::BASE),
+                    |body, t| body.opacity(t).relative().top(px(-4. * (1. - t))),
+                ),
+            )
+        })
         .into_any_element()
 }
 

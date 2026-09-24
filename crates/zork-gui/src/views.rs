@@ -1592,22 +1592,29 @@ impl RootView {
                             .and_then(|id| arrivals.get(id))
                             .copied()
                             .filter(|time| {
-                                time.elapsed() < Duration::from_millis(200) && !cx.reduce_motion()
+                                time.elapsed() < zork_ui::motion::duration(zork_ui::motion::BASE)
+                                    && !cx.reduce_motion()
                             })
                         {
-                            let direction = if *role == Role::User { 8. } else { -8. };
+                            // A new message fades in and rises into place. The clock is
+                            // the arrival time, so a row re-mounted by virtualization
+                            // continues instead of restarting.
+                            let total = zork_ui::motion::duration(zork_ui::motion::BASE);
+                            let curve = zork_ui::motion::bezier(0.2, 0.7, 0.2, 1.0);
                             row.with_animation(
                                 format!(
                                     "message-enter-{}",
                                     metadata.id.as_deref().unwrap_or_default()
                                 ),
-                                gpui::Animation::new(Duration::from_millis(180))
-                                    .with_easing(|t| 1. - (1. - t).powi(3))
-                                    .with_max_fps(60.),
+                                zork_ui::motion::enter(zork_ui::motion::BASE).with_max_fps(60.),
                                 move |row, _| {
-                                    let t = (started.elapsed().as_secs_f32() / 0.18).min(1.);
-                                    let t = 1. - (1. - t).powi(3);
-                                    row.relative().left(px(direction * (1. - t))).opacity(t)
+                                    let t = (started.elapsed().as_secs_f32()
+                                        / total.as_secs_f32().max(0.001))
+                                    .min(1.);
+                                    let t = curve(t);
+                                    row.relative()
+                                        .top(px(zork_ui::motion::ROW_OFFSET * (1. - t)))
+                                        .opacity(t)
                                 },
                             )
                             .into_any_element()

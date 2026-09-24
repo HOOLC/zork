@@ -367,6 +367,17 @@ pub(crate) fn render<V: 'static>(
                 app.stop_propagation();
             })
             .on_mouse_down_out(move |_, w, cx| close(w, cx))
+            // Opens below its trigger: fade in while moving away from it.
+            .with_animation(
+                SharedString::from(format!("{id}-menu-enter")),
+                crate::motion::enter(crate::motion::POPOVER),
+                |panel, t| {
+                    panel
+                        .opacity(t)
+                        .relative()
+                        .top(px(-crate::motion::POPOVER_OFFSET * (1. - t)))
+                },
+            )
             .automation(AutomationRole::ScrollArea, label);
         select = select.child(
             deferred(
