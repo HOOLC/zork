@@ -164,6 +164,24 @@ pub enum Command {
         #[serde(default)]
         cached_only: bool,
     },
+    /// Built-in defaults for a model id, plus `input` with its empty fields filled.
+    ModelCatalogRecognize {
+        id: String,
+        #[serde(default)]
+        provider: Option<String>,
+        #[serde(default)]
+        input: Option<crate::model_edit::ModelInput>,
+    },
+    /// Values of one field across popular models, recognized model first.
+    ModelCatalogReferences {
+        field: crate::model_catalog::Field,
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// Row summaries ("128K · 输出 8K · 思考开关") for stored models.
+    ModelCatalogSummary {
+        models: Vec<Value>,
+    },
     Request {
         peer: String,
         method: String,
@@ -251,6 +269,9 @@ impl Command {
                     ..
                 }
                 | Self::ModelConnections { cached_only: true }
+                | Self::ModelCatalogRecognize { .. }
+                | Self::ModelCatalogReferences { .. }
+                | Self::ModelCatalogSummary { .. }
                 | Self::Read {
                     cached_only: true,
                     ..
@@ -750,6 +771,22 @@ impl LocalClient {
             Command::ModelConnections { cached_only: true } => {
                 model_connections::cached(&self.store)
             }
+            Command::ModelCatalogRecognize {
+                id,
+                provider,
+                input,
+            } => Ok(crate::model_catalog::recognition(
+                &id,
+                provider.as_deref(),
+                input,
+            )),
+            Command::ModelCatalogReferences { field, id } => Ok(serde_json::to_value(
+                crate::model_catalog::references(field, id.as_deref()),
+            )?),
+            Command::ModelCatalogSummary { models } => Ok(json!(models
+                .iter()
+                .map(crate::model_catalog::model_summary)
+                .collect::<Vec<_>>())),
             Command::Read {
                 peer,
                 path,
@@ -1352,6 +1389,9 @@ impl Client {
             | Command::RespondToInteraction { .. }
             | Command::CachedMessages { .. }
             | Command::Preferences { .. }
+            | Command::ModelCatalogRecognize { .. }
+            | Command::ModelCatalogReferences { .. }
+            | Command::ModelCatalogSummary { .. }
             | Command::NotificationSettings { .. }
             | Command::TestNotification
             | Command::NotificationReceipt { .. }

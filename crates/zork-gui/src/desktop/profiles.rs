@@ -629,7 +629,10 @@ impl ProfilesView {
         let Some(detail) = &self.detail else {
             return;
         };
-        self.apply_model_input(crate::api::model_form(detail, &self.catalog, model), cx);
+        self.apply_model_input(
+            crate::api::model_form_with_catalog(detail, &self.catalog, model),
+            cx,
+        );
         self.copy_model_open = false;
         self.api_open = false;
         self.model_form_open = true;
@@ -934,6 +937,7 @@ impl ProfilesView {
             thinking: self.thinking_levels.read(cx).value().into(),
             default_thinking: self.default_thinking.read(cx).value().into(),
             images: self.model_image_input,
+            thinking_scheme: None,
         }
     }
     fn model_errors(&self, cx: &gpui::App) -> Vec<(String, String)> {

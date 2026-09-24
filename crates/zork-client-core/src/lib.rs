@@ -25,6 +25,7 @@ pub mod live;
 pub mod local_scripts;
 pub mod locale;
 pub mod mesh_enrollment;
+pub mod model_catalog;
 pub mod model_edit;
 mod model_connections;
 pub mod new_chat;
@@ -41,6 +42,7 @@ pub use zork_observe as observe;
 pub mod store;
 pub mod subscriptions;
 pub mod sync;
+pub mod thinking;
 pub mod transcript;
 pub mod transport;
 
