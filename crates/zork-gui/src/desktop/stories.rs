@@ -139,6 +139,7 @@ fn label(family: &str, state: &str) -> String {
         ("brand", "linked") => "品牌 · 组合标志".into(),
         ("brand", state) => format!("品牌 · {}", state_label(state)),
         ("conversation", "history") => "执行历史".into(),
+        ("button" | "field" | "dropdown" | "choice", "disabled") => "禁用".into(),
         _ => state_label(state),
     }
 }

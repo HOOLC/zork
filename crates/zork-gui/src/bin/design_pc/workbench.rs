@@ -857,7 +857,13 @@ impl Gallery {
                     .px(px(20.))
                     .pt_1()
                     .pb_3()
-                    .child(gpui::img("brand/mark.svg").size(px(20.)).flex_shrink_0())
+                    .child(
+                        gpui::svg()
+                            .path("brand/mark.svg")
+                            .size(px(20.))
+                            .flex_shrink_0()
+                            .text_color(rgb(p.text)),
+                    )
                     .child(
                         div()
                             .text_size(px(15.))
