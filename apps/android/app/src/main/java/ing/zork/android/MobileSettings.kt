@@ -54,6 +54,8 @@ internal class SettingsActions(
     val checkUpdate: () -> Unit = {}, val addDevice: () -> Unit = {},
     val refresh: () -> Unit = {},
     val perform: suspend (String, JSONObject) -> JSONObject = { _,_ -> error("设备未连接") },
+    /** Local core commands for the built-in model catalog; returns core's `data`. */
+    val catalog: suspend (String, JSONObject) -> Any? = { _, _ -> null },
     val theme: String = "system",
     val saveTheme: suspend (String) -> Unit = {},
     val resource: (ResourceSelection) -> Unit = {},

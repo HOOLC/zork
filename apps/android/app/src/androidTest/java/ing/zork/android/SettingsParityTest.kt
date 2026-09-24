@@ -35,10 +35,10 @@ class SettingsParityTest {
     }
     @Test fun modelDraftSurvivesActivityRecreation() {
         launch("profile").use { scenario ->
-            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); field("上下文 token 上限","256K")
+            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); click("调整参数"); field("上下文","256K")
             scenario.recreate(); settle(); await("添加模型")
             assertEquals("saved-draft-model", editable("模型 ID")!!.text.toString())
-            assertEquals("256K", editable("上下文 token 上限")!!.text.toString())
+            assertEquals("256K", editable("上下文")!!.text.toString())
             capture("model-recreated")
         }
     }
@@ -164,14 +164,14 @@ class SettingsParityTest {
 
     @Test fun copyingModelSettingsPreservesIdentityAndEnforcesLimits() {
         launch("profile").use { scenario ->
-            settle(); await("工作室订阅"); click("unconfigured-model")
+            settle(); await("工作室订阅"); click("unconfigured-model"); click("调整参数")
             click("复制已有模型配置"); click("工作室订阅 · fixture-model")
             val idField = editable("模型 ID") ?: error(nodes().joinToString("\n") { "${it.className} text=${it.text} description=${it.contentDescription} editable=${it.isEditable} children=${it.childCount}" })
             assertEquals("unconfigured-model", idField.text.toString())
-            field("输出 token 上限", "1M"); click("保存模型")
+            field("最长输出", "1M"); click("保存模型")
             scenario.onActivity { assertEquals("Invalid form sent a request: ${it.lastBody}", "", it.lastAction) }
-            field("输出 token 上限", "4K")
-            click("可读取图片"); click("保存模型")
+            field("最长输出", "4K")
+            click("读取图片"); click("保存模型")
             scenario.onActivity {
                 assertEquals("save_model", it.lastAction)
                 val input = it.lastBody!!.getJSONObject("input")

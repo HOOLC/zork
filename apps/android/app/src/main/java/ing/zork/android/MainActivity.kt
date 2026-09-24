@@ -162,7 +162,7 @@ internal fun ClientScreen(model: ClientViewModel) {
         retained.SaveableStateProvider(settingsRouteKey(shown.settings)) {
             MobileSettings(shown.settings, shown.workbench.peers, if (!active) SettingsActions() else SettingsActions(model::backSettings, { model.showDevice(it) },
                 model::settingsPage, model::settingsProfile, model::assistSettings, model::openConnection, model::addConnection, model::checkUpdate,
-                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction,
+                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction, catalog = model::catalog,
                 theme = model.theme, saveTheme = model::saveTheme,
                 resource = model::inspectResource,
                 notifications = model.notificationSettings, notificationError = model.notificationError,

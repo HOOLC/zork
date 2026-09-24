@@ -226,6 +226,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    suspend fun catalog(op: String, fields: JSONObject): Any? = repo.catalog(op, fields)
     suspend fun saveTheme(value: String) {
         // Keep the committed theme visible even if the user leaves the
         // appearance page while its local write is completing.
