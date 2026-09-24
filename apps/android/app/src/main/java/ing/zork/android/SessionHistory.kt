@@ -48,6 +48,7 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
     var clock by remember(state) { mutableLongStateOf(System.currentTimeMillis()) }
     var identity by remember(state) { mutableStateOf<HistoryIdentity?>(null) }
     var profileOpen by remember(state) { mutableStateOf(false) }
+    var usageOpen by remember(state) { mutableStateOf(false) }
     LaunchedEffect(state) { while (true) { delay(30_000); clock = System.currentTimeMillis() } }
     val now = clock + status.clockOffset
     fun pin() { state.entries.firstOrNull()?.id?.let { latestActions.anchor(it) } }
@@ -66,9 +67,22 @@ internal fun SessionHistoryPage(state: SessionHistoryState, actions: HistoryActi
                     .semantics { contentDescription = "执行历史 · ${state.name}" }) {
                     Text(state.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val overview = state.overview
-                    val line = overview?.let { listOf(it.model, it.tokens, it.cache).filter(String::isNotBlank).joinToString(" · ") }
+                    // One line: model and total tokens. Cache and context are in the usage menu.
+                    val line = overview?.let { listOf(it.model, it.tokens).filter(String::isNotBlank).joinToString(" · ") }
                     Text(line ?: "执行历史", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = if (overview?.profile != null) Modifier.historyPress(label = "模型连接与额度") { profileOpen = true } else Modifier)
+                }
+                val overview = state.overview
+                if (overview != null && (overview.cache.isNotBlank() || overview.context.isNotBlank())) Box {
+                    ZorkButton("用量", quiet = true, onClick = { usageOpen = true })
+                    PlainMenu("用量", usageOpen, { usageOpen = false }, 200.dp) {
+                        listOf("上下文" to overview.context, "Token" to overview.tokens, "缓存" to overview.cache).filter { it.second.isNotBlank() }.forEach { (label, value) ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
+                                Text(value, fontSize = 13.sp, color = ZorkColors.Ink)
+                            }
+                        }
+                    }
                 }
                 HistoryIconAction(R.drawable.ic_reload, "刷新执行历史", !status.loading && !status.revoked, actions.retry)
             }

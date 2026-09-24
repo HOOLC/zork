@@ -374,7 +374,9 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
         Column(Modifier.weight(1f).padding(start = if (showBack) 0.dp else 8.dp)) {
             Text(chat?.title.orEmpty().ifBlank { "对话" }, fontSize = 17.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            state.activePeer?.let { Text(it.name, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            // The member capsule already names the device; repeat it only when there is none.
+            if (state.participants.isEmpty() && chat == null) state.activePeer?.let {
+                Text(it.name, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         // Members open their execution history: the first as a named capsule,
         // the rest by their mark alone.

@@ -87,6 +87,10 @@ internal fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
     }
 }
 
+/** The tightest quota window's remaining share (0–100), for a thin list bar; null without quota. */
+internal fun quotaRemaining(profile: JSONObject): Float? =
+    quotaUi(profile).takeIf { !it.failed }?.windows?.minOfOrNull { it.remaining }
+
 /** "400K · 128K · low–xhigh": a model's limits and thinking range as one muted line. */
 internal fun modelSummary(model: JSONObject): String {
     val limits = model.optJSONObject("limits") ?: return "待配置"

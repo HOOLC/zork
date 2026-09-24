@@ -221,7 +221,8 @@ internal fun FileBlock(file: ChatFileUi, state: FileAvailability, open: () -> Un
     val fetching = state.fetching == file.id
     Row(modifier.heightIn(min = 64.dp).clip(ZorkShapes.Block).background(ZorkColors.Canvas)
         .border(UiTokens.Border, if (state.revoked) ZorkColors.DangerSoft else ZorkColors.Border, ZorkShapes.Block)
-        .zorkPressable(enabled = !state.revoked, onClick = open).semantics { contentDescription = "${file.name} · ${file.size}" }
+        .zorkPressable(enabled = !state.revoked, onClick = open)
+        .semantics { contentDescription = listOfNotNull(file.name, file.size, availabilityText(state)).joinToString(" · ") }
         .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (save != null) 4.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FileBadge(file.badge)
@@ -235,10 +236,13 @@ internal fun FileBlock(file: ChatFileUi, state: FileAvailability, open: () -> Un
                     LinearProgressIndicator(Modifier.padding(top = 6.dp).fillMaxWidth().height(3.dp).clip(ZorkShapes.Control),
                         color = ZorkColors.Ink, trackColor = ZorkColors.Border)
                 }
+                // A short status pill; the full reason is read out with the block.
                 reason != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (!state.revoked) Box(Modifier.size(8.dp).border(1.5.dp, ZorkColors.Muted, CircleShape))
-                    Text(reason, fontSize = 12.sp, color = if (state.revoked) ZorkColors.Danger else ZorkColors.Muted,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(file.size, fontSize = 12.sp, color = ZorkColors.Muted)
+                    Text(if (state.revoked) "已吊销" else "离线", fontSize = 12.sp, maxLines = 1,
+                        color = if (state.revoked) ZorkColors.Danger else ZorkColors.Muted,
+                        modifier = Modifier.background(if (state.revoked) ZorkColors.DangerSoft else ZorkColors.Prompt, ZorkShapes.Control)
+                            .padding(horizontal = 8.dp, vertical = 1.dp))
                 }
                 else -> Text(file.size, fontSize = 12.sp, color = ZorkColors.Muted)
             }
