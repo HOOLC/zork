@@ -104,6 +104,26 @@ impl Page {
             .position(|(p, m)| m == &self.data.model.value && p == profile)
             .or_else(|| pairs.iter().position(|(_, m)| m == &self.data.model.value))
     }
+    /// Scrolls the model list so the current choice is in view.
+    pub(super) fn reveal_selected_model(&self) {
+        let Some(selected) = self.selected_pair() else {
+            return;
+        };
+        // Children alternate a group title with its model rows.
+        let mut child = 0;
+        let mut row = 0;
+        for group in self.groups() {
+            child += 1;
+            for _ in &group.models {
+                if row == selected {
+                    self.picker_scroll.scroll_to_item(child);
+                    return;
+                }
+                row += 1;
+                child += 1;
+            }
+        }
+    }
     fn select(&mut self, profile: String, model: String, cx: &mut Context<Self>) {
         cx.emit(Event::Intent(Action::Select { profile, model }));
         cx.notify();
@@ -117,7 +137,14 @@ impl Page {
         let p = ZORK_UI.palette;
         let enabled = self.picker_open && self.data.editable;
         let selected = self.selected_pair();
-        let mut list = div().flex().flex_col().gap(px(2.));
+        let mut list = div()
+            .id("new-chat-model-list")
+            .max_h(px(320.))
+            .overflow_y_scroll()
+            .track_scroll(&self.picker_scroll)
+            .flex()
+            .flex_col()
+            .gap(px(2.));
         let device = self
             .data
             .model
@@ -266,6 +293,7 @@ impl Page {
                         };
                         let (profile, model) = pairs[next].clone();
                         view.select(profile, model, cx);
+                        view.reveal_selected_model();
                     }
                     "left" | "right" => {
                         let levels = &view.data.thinking.options;

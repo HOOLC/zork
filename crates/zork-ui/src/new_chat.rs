@@ -34,6 +34,7 @@ pub struct Page {
     picker_open: bool,
     picker_focus: FocusHandle,
     picker_trigger_focus: FocusHandle,
+    picker_scroll: ScrollHandle,
     width: f32,
     scene: composer::Scene,
     focus_pending: bool,
@@ -71,6 +72,7 @@ impl Page {
             picker_open: false,
             picker_focus: cx.focus_handle(),
             picker_trigger_focus: cx.focus_handle(),
+            picker_scroll: ScrollHandle::new(),
             width: 480.,
             scene: Default::default(),
             focus_pending: true,
@@ -340,6 +342,10 @@ impl Render for Page {
             .on_open_change(move |open, window, app| {
                 let _ = change_owner.update(app, |view, cx| {
                     view.picker_open = *open;
+                    if *open {
+                        view.reveal_selected_model();
+                        window.focus(&view.picker_focus, cx);
+                    }
                     view.device_menu = false;
                     if !open {
                         window.focus(&view.picker_trigger_focus, cx);

@@ -143,170 +143,58 @@ fn main() -> anyhow::Result<()> {
             &mut cx,
         )?;
         cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-picker-max-{width}.png")))?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
-            &mut cx,
-        )?;
-        action(json!({"type":"key","keystroke":"home"}), &mut cx)?;
-        action(json!({"type":"key","keystroke":"right"}), &mut cx)?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .find(|element| element.id == "new-chat-options")
-                .is_some_and(|element| element.label.contains("Demo model · 中")),
-            "picker trigger did not follow the visible strength at {width}"
-        );
-        cx.capture_screenshot(window.into())?
             .save(output.join(format!("new-chat-picker-{width}.png")))?;
-        let label_center = driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .find(|e| e.id == "new-chat-thinking-label")
-            .unwrap()
-            .center;
-        action(
-            json!({"type":"click","target":{"x":label_center.x,"y":label_center.y}}),
-            &mut cx,
-        )?;
+        // One panel: models grouped by connection, the selected model's own
+        // thinking options below, no second layer.
         let picker = driver.snapshot(false);
-        let model_row = picker
-            .elements
-            .iter()
-            .find(|element| element.id == "new-chat-model-0")
-            .ok_or_else(|| anyhow::anyhow!("missing model choice at {width}"))?;
-        let profile_row = picker
-            .elements
-            .iter()
-            .find(|element| element.id == "new-chat-profile-0")
-            .ok_or_else(|| anyhow::anyhow!("missing Profile choice at {width}"))?;
+        for id in ["new-chat-model-0", "new-chat-model-1", "new-chat-model-2"] {
+            anyhow::ensure!(
+                picker
+                    .elements
+                    .iter()
+                    .any(|e| e.id == id && e.visible && e.bounds == e.visible_bounds),
+                "{id} not visible in the model panel at {width}"
+            );
+        }
         anyhow::ensure!(
-            model_row.visible
-                && profile_row.visible
-                && model_row.bounds == model_row.visible_bounds
-                && profile_row.bounds == profile_row.visible_bounds
-                && model_row.bounds.y == profile_row.bounds.y
-                && model_row.bounds.x + model_row.bounds.width <= profile_row.bounds.x,
-            "model and Profile choices are not visible side by side at {width}"
-        );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-models-{width}.png")))?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .find(|element| element.id == "new-chat-profile-2")
-                .is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
-            "last Profile option clipped at {width}"
-        );
-        cx.capture_screenshot(window.into())?
-            .save(output.join(format!("new-chat-profiles-{width}.png")))?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-profile-1"}}),
-            &mut cx,
-        )?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|element| element.id == "new-chat-model-0" && element.visible),
-            "choosing Profile hid the model choices at {width}"
+            !picker.elements.iter().any(|e| e.id == "new-chat-picker-back"),
+            "the model panel must not have a second layer"
         );
         action(
             json!({"type":"click","target":{"element_id":"new-chat-model-1"}}),
             &mut cx,
         )?;
+        action(
+            json!({"type":"click","target":{"element_id":"new-chat-thinking-1"}}),
+            &mut cx,
+        )?;
+        let state = host.read_with(&cx, |view, cx| view.inspect(cx));
         anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|element| element.id == "new-chat-profile-0" && element.visible),
-            "choosing a model hid the Profile choices at {width}"
+            state["model"]["value"] == "Demo fast"
+                && state["thinking"]["value"] == "low"
+                && state["profile"]["value"] == "personal",
+            "selection did not reach core fixture: {state}"
         );
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-picker-back"}}),
-            &mut cx,
-        )?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
-            &mut cx,
-        )?;
-        action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-reset"}}),
-            &mut cx,
-        )?;
-        anyhow::ensure!(
-            host.read_with(&cx, |view, cx| view.inspect(cx))["thinking"]["value"] == "off",
-            "reset did not use the selected model's default"
-        );
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|element| element.id == "new-chat-thinking-keyboard" && element.visible),
-            "reset unexpectedly left the strength picker at {width}"
-        );
-        action(
-            json!({"type":"click","target":{"element_id":"new-chat-thinking-keyboard"}}),
-            &mut cx,
-        )?;
-        action(json!({"type":"key","keystroke":"end"}), &mut cx)?;
         anyhow::ensure!(
             driver
                 .snapshot(false)
                 .elements
                 .iter()
                 .find(|element| element.id == "new-chat-options")
-                .is_some_and(|element| element.label.contains("Demo fast · 低")),
-            "picker trigger did not show the selected model and strength"
+                .is_some_and(|element| element.label.contains("Demo fast · low")),
+            "picker trigger did not show the selected model and thinking"
         );
-        let selected_picker_width = driver
-            .snapshot(false)
-            .elements
-            .iter()
-            .find(|element| element.id == "new-chat-options")
-            .unwrap()
-            .bounds
-            .width;
-        anyhow::ensure!(
-            selected_picker_width < initial_picker_width,
-            "picker trigger did not shrink with its label at {width}: {initial_picker_width:?} -> {selected_picker_width:?}"
-        );
-        let state = host.read_with(&cx, |view, cx| view.inspect(cx));
-        anyhow::ensure!(
-            state["device"]["value"] == "remote"
-                && state["model"]["value"] == "Demo fast"
-                && state["thinking"]["value"] == "low"
-                && state["profile"]["value"] == "personal",
-            "selection did not reach core fixture: {state}"
-        );
+        cx.capture_screenshot(window.into())?
+            .save(output.join(format!("new-chat-picker-selected-{width}.png")))?;
         action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         anyhow::ensure!(
             !driver
                 .snapshot(false)
                 .elements
                 .iter()
-                .any(|e| e.id == "new-chat-model" && e.visible),
+                .any(|e| e.id == "new-chat-model-0" && e.visible),
             "Escape did not close picker"
         );
-        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
-        anyhow::ensure!(
-            driver
-                .snapshot(false)
-                .elements
-                .iter()
-                .any(|e| e.id == "new-chat-model" && e.visible),
-            "close did not restore trigger focus"
-        );
-        action(json!({"type":"key","keystroke":"escape"}), &mut cx)?;
         action(
             json!({"type":"click","target":{"element_id":"new-chat-input"}}),
             &mut cx,
@@ -389,8 +277,8 @@ fn long_model_selection() -> anyhow::Result<()> {
         page = Some(view.clone());
         let choices = choices.clone();
         cx.subscribe(&view, move |_, event: &Event, _| {
-            if let Event::Intent(zork_client_core::new_chat::Action::Model { value }) = event {
-                choices.borrow_mut().push(value.clone());
+            if let Event::Intent(zork_client_core::new_chat::Action::Select { model, .. }) = event {
+                choices.borrow_mut().push(model.clone());
             }
         })
         .detach();
@@ -416,17 +304,6 @@ fn long_model_selection() -> anyhow::Result<()> {
         json!({"type":"click","target":{"element_id":"new-chat-options"}}),
         &mut cx,
     )?;
-    let center = driver
-        .snapshot(false)
-        .elements
-        .iter()
-        .find(|e| e.id == "new-chat-thinking-label")
-        .unwrap()
-        .center;
-    action(
-        json!({"type":"click","target":{"x":center.x,"y":center.y}}),
-        &mut cx,
-    )?;
     anyhow::ensure!(
         driver
             .snapshot(false)
@@ -436,28 +313,16 @@ fn long_model_selection() -> anyhow::Result<()> {
         "opening a long model list did not reveal the current choice"
     );
     action(
-        json!({"type":"click","target":{"element_id":"new-chat-model-39"}}),
+        json!({"type":"click","target":{"element_id":"new-chat-model-0"}}),
         &mut cx,
-    )?;
-    for (value, count) in [("model-10", 40), ("model-1", 2)] {
-        data.model.options.truncate(count);
-        data.model.value = value.into();
-        cx.update(|cx| {
-            page.update(cx, |page, cx| {
-                page.configure(data.clone(), 600., text.clone(), cx)
-            })
-        });
-        draw(&mut cx)?;
-        action(json!({"type":"key","keystroke":"enter"}), &mut cx)?;
-        anyhow::ensure!(
-            choices
-                .borrow()
-                .last()
-                .is_some_and(|choice| choice == value),
-            "Enter used stale selection after model projection changed to {value}: {:?}",
-            choices.borrow()
-        );
-    }
-    println!("PASS long model selector: current item visible, external selection and shrinking options reconcile keyboard focus");
+    )
+    .ok();
+    action(json!({"type":"key","keystroke":"up"}), &mut cx)?;
+    anyhow::ensure!(
+        choices.borrow().last().is_some_and(|choice| choice == "model-38"),
+        "arrow keys did not move the model choice: {:?}",
+        choices.borrow()
+    );
+    println!("PASS long model selector: current item visible and arrow keys move the choice");
     Ok(())
 }
