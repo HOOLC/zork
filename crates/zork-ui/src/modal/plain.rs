@@ -267,8 +267,10 @@ impl PlainDialog {
             close.clone(),
         );
 
+        // A closing dialog is only a picture fading out: it must not take
+        // clicks or hovers meant for the page underneath.
         let panel = smooth::surface(id.clone(), radius)
-            .occlude()
+            .when(open, |v| v.occlude())
             .w(px(width))
             .max_h(px(max_height))
             .flex()
@@ -295,35 +297,42 @@ impl PlainDialog {
                     .relative()
                     .w(viewport.width)
                     .h(viewport.height)
-                    .occlude()
+                    .when(open, |v| {
+                        v.occlude()
+                            .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                    })
                     .flex()
                     .items_center()
                     .justify_center()
-                    .on_mouse_move(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
                             .id(format!("{id}-backdrop"))
                             .absolute()
                             .inset_0()
-                            .occlude()
                             .bg(gpui::hsla(0., 0., 0., 0.45 * backdrop_alpha))
-                            .on_mouse_down(MouseButton::Left, {
-                                let close = close_outside.clone();
-                                move |_, window, cx| {
-                                    if dismiss_outside {
-                                        close(window, cx);
+                            .when(open, |v| {
+                                v.occlude().on_mouse_down(MouseButton::Left, {
+                                    let close = close_outside.clone();
+                                    move |_, window, cx| {
+                                        if dismiss_outside {
+                                            close(window, cx);
+                                        }
+                                        cx.stop_propagation();
                                     }
-                                    cx.stop_propagation();
-                                }
+                                })
                             }),
                     )
                     .child(
                         div()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .when(open, |v| {
+                                v.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            })
                             .child(panel),
                     )
+                    // Bubble phase: controls inside the dialog (suggestion lists,
+                    // popovers) close first and stop Escape before it gets here.
                     .when(open, |el| {
-                        el.capture_key_down({
+                        el.on_key_down({
                             let close = close.clone();
                             let dismissible = dismissible;
                             move |e: &gpui::KeyDownEvent, window, cx| {

@@ -375,6 +375,27 @@ impl Profiles {
         }
         Ok(())
     }
+    /// Ids the provider lists for this connection right now, without changing
+    /// it: the model editor offers the ones not added yet. Connections without
+    /// a model-list API return an empty list.
+    pub async fn available_models(&self, id: &str) -> anyhow::Result<Vec<String>> {
+        crate::model_edit::valid_id(id)?;
+        let value = self
+            .client
+            .node_request(
+                http::Method::GET,
+                format!("/v1/node/profiles/{id}/discovered-models"),
+                None,
+            )
+            .await?;
+        Ok(value["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item["id"].as_str())
+            .map(str::to_owned)
+            .collect())
+    }
     /// Imports the provider's model list. New models the catalog recognizes
     /// get their preset values right away (disabled until the user turns them
     /// on); the rest stay 待配置. The result adds `preset`, `pending` and a

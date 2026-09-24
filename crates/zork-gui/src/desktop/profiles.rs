@@ -1,7 +1,7 @@
 use super::{profile_quota::QuotaPresentation, ui};
 #[cfg(feature = "headless-bench")]
 use crate::api::StationClient;
-use crate::api::{compact_tokens, ConnectionInput, ModelInput, MODEL_APIS};
+use crate::api::ConnectionInput;
 use crate::i18n::Locale;
 use crate::{
     api::ProfileInfo,
@@ -13,7 +13,7 @@ use gpui::{div, prelude::*, px, rgb, Context, Entity, Task, Window};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use zork_ui::controls::{provider_icon, provider_path};
+use zork_ui::controls::provider_icon;
 
 mod editor;
 mod page;
@@ -47,41 +47,24 @@ pub struct ProfilesView {
     model_switch_focus: HashMap<String, gpui::FocusHandle>,
     #[cfg(feature = "headless-bench")]
     model_rows_built: usize,
-    model_form_open: bool,
-    model_params_open: bool,
-    params_touched: bool,
-    thinking_scheme: crate::api::thinking::ThinkingScheme,
-    recognized: Option<(String, String)>,
-    reference_open: Option<crate::api::model_catalog::Field>,
-    model_attempted: bool,
-    editing_model: Option<String>,
-    model_original: Option<Value>,
+    /// The open model editor (add dialog or inline edit), if any.
+    editor: Option<editor::Editor>,
+    editor_inputs: editor::Inputs,
+    /// Ids each connection's provider lists, fetched once per page visit.
+    reported: HashMap<String, Vec<String>>,
+    notice_clear: Option<Task<()>>,
     renaming: bool,
     name: Entity<ComposerInput>,
-    model_api: usize,
-    model_image_input: bool,
-    model_image_focus: gpui::FocusHandle,
-    api_open: bool,
-    copy_model_open: bool,
-    copied_model: Option<Value>,
-    thinking_levels: Entity<ComposerInput>,
-    default_thinking: Entity<ComposerInput>,
     billing: usize,
     id: Entity<ComposerInput>,
     key: Entity<ComposerInput>,
     base_url: Entity<ComposerInput>,
-    model: Entity<ComposerInput>,
-    context_limit: Entity<ComposerInput>,
-    output_limit: Entity<ComposerInput>,
     callback: Entity<ComposerInput>,
     form_open: bool,
     busy: bool,
     discovering: bool,
     message: Option<String>,
     attempt: Option<Value>,
-    api_touched: bool,
-    thinking_focus: gpui::FocusHandle,
-    budget_input: Entity<ComposerInput>,
     page_focus: gpui::FocusHandle,
     page_focus_pending: bool,
     menu_open: Option<String>,
@@ -122,7 +105,7 @@ impl ProfilesView {
     }
     pub fn add_connection(&mut self, cx: &mut Context<Self>) {
         self.detail_request += 1;
-        self.model_form_open = false;
+        self.editor = None;
         self.detail = None;
         self.form_open = true;
         self.create_step = 1;
@@ -150,12 +133,8 @@ impl ProfilesView {
         let id = field("例如：my-openai");
         let key = field("API Key");
         let base_url = field("兼容接口地址（可选）");
-        let model = field("供应商提供的模型标识");
         let callback = field("粘贴浏览器返回的授权码或地址");
-        let thinking_levels = field("推理级别，以逗号分隔");
-        let default_thinking = field("默认推理级别");
-        let context_limit = field("上下文 token 上限");
-        let output_limit = field("输出 token 上限");
+        let editor_inputs = editor::Inputs::new(cx);
         let name = cx.new(|cx| ComposerInput::new("名称", cx).single_line());
         cx.subscribe(
             &name,
@@ -173,30 +152,6 @@ impl ProfilesView {
             },
         )
         .detach();
-        cx.subscribe(
-            &model,
-            |view, _, _: &crate::components::text_input::ComposerEdited, cx| view.recognize(cx),
-        )
-        .detach();
-        for limit in [&context_limit, &output_limit] {
-            cx.subscribe(
-                limit,
-                |view, _, _: &crate::components::text_input::ComposerEdited, _| {
-                    view.params_touched = true
-                },
-            )
-            .detach();
-        }
-        let budget_input = cx.new(|cx| ComposerInput::new("自定义 K", cx).single_line());
-        cx.subscribe(
-            &budget_input,
-            |view, _, _: &crate::components::text_input::ComposerEdited, cx| {
-                view.apply_budget_input(cx)
-            },
-        )
-        .detach();
-        context_limit.update(cx, |v, cx| v.set_value("32K", cx));
-        output_limit.update(cx, |v, cx| v.set_value("4.096K", cx));
         key.update(cx, |input, cx| input.set_secret(true, cx));
         callback.update(cx, |input, cx| input.set_secret(true, cx));
         Self {
@@ -226,41 +181,22 @@ impl ProfilesView {
             model_switch_focus: HashMap::new(),
             #[cfg(feature = "headless-bench")]
             model_rows_built: 0,
-            model_form_open: false,
-            model_params_open: false,
-            params_touched: false,
-            thinking_scheme: crate::api::thinking::ThinkingScheme::Unsupported,
-            recognized: None,
-            reference_open: None,
-            model_attempted: false,
-            editing_model: None,
-            model_original: None,
+            editor: None,
+            editor_inputs,
+            reported: HashMap::new(),
+            notice_clear: None,
             renaming: false,
             name,
-            model_api: 0,
-            model_image_input: false,
-            model_image_focus: cx.focus_handle(),
-            api_open: false,
-            copy_model_open: false,
-            copied_model: None,
-            thinking_levels,
-            default_thinking,
             billing: 0,
             id,
             key,
             base_url,
-            model,
-            context_limit,
-            output_limit,
             callback,
             form_open: false,
             busy: false,
             discovering: false,
             message: None,
             attempt: None,
-            api_touched: false,
-            thinking_focus: cx.focus_handle(),
-            budget_input,
             page_focus: cx.focus_handle(),
             page_focus_pending: false,
             menu_open: None,
@@ -278,9 +214,45 @@ impl ProfilesView {
         Self::fixture(detail, cx)
     }
 
+    /// The model editor fixture: one connection with a model per list state
+    /// (unrecognized, as preset, changed from preset, 待配置). `custom` makes
+    /// it a custom-base-URL connection.
+    #[cfg(feature = "headless-bench")]
+    pub fn headless_model_fixture(custom: bool, cx: &mut Context<Self>) -> Self {
+        let mut fixture = zork_ui::stories::page_fixture();
+        let configured = |id: &str, context: u64, output: u64, thinking: Value, default: &str, image: bool, enabled: bool| {
+            json!({"id": id, "api": if custom { "openai-completions" } else { "openai-codex-responses" },
+                "enabled": enabled, "limits": {"context_window_tokens": context, "max_output_tokens": output},
+                "thinking": thinking, "default_thinking": default,
+                "capabilities": {"input": if image { json!(["text", "image"]) } else { json!(["text"]) }}})
+        };
+        let mut models = vec![
+            configured("fixture-model", 32000, 4096, json!(["off"]), "off", false, true),
+            configured("gpt-5", 400000, 128000, json!(["minimal", "low", "medium", "high"]), "medium", true, true),
+            configured("gpt-5-mini", 400000, 128000, json!(["minimal", "low", "medium", "high"]), "low", true, false),
+            json!({"id": "internal-preview", "api": "openai-codex-responses", "enabled": false,
+                "thinking": ["off"], "default_thinking": "off", "capabilities": {"input": ["text"]}}),
+        ];
+        models[0]["default"] = json!(true);
+        if custom {
+            fixture["profile"]["profile_id"] = json!("vllm");
+            fixture["profile"]["name"] = json!("本地 vLLM");
+            fixture["profile"]["provider"] = json!("openai-compatible");
+            fixture["profile"]["billing"] = json!("usage");
+            models = vec![configured("qwen3-32b", 128000, 16000, json!(["off", "high"]), "high", false, true)];
+            models[0]["default"] = json!(true);
+        }
+        fixture["profile"]["models"] = json!(models);
+        Self::fixture_from(fixture, true, cx)
+    }
+
     #[cfg(feature = "headless-bench")]
     fn fixture(detail: bool, cx: &mut Context<Self>) -> Self {
-        let fixture = zork_ui::stories::page_fixture();
+        Self::fixture_from(zork_ui::stories::page_fixture(), detail, cx)
+    }
+
+    #[cfg(feature = "headless-bench")]
+    fn fixture_from(fixture: Value, detail: bool, cx: &mut Context<Self>) -> Self {
         let client = Arc::new(StationClient::fixture(
             fixture.clone(),
             serde_json::from_str(include_str!("../../tests/fixtures/provider_catalog.json"))
@@ -330,8 +302,13 @@ impl ProfilesView {
     #[cfg(feature = "headless-bench")]
     pub fn headless_state(&self, cx: &gpui::App) -> Value {
         json!({"connection_name":self.id.read(cx).value(),"provider":self.catalog.get(self.provider).map(|p|p["id"].clone()),
-            "model_id":self.model.read(cx).value(),"context_window":self.context_limit.read(cx).value(),"max_output_tokens":self.output_limit.read(cx).value(),
-            "device":self.device_name,"model_form":self.model_form_open,"detail":self.detail.as_ref().map(|d|d["profile_id"].clone())})
+            "device":self.device_name,"model_form":self.editor.is_some(),"detail":self.detail.as_ref().map(|d|d["profile_id"].clone()),
+            "editor":self.editor.as_ref().map(|e|json!({"state":e.state,"view":e.view,"suggestions_open":e.suggest_open,
+                "suggestion":e.suggest_hl,"sources_open":e.sources.is_some(),"level_open":e.level_open,"budget_open":e.budget_open,
+                "busy":e.busy,"error":e.error,"level_highlight":e.level_hl,
+                "source_items":e.sources.as_ref().map(|s| s.groups.iter().flat_map(|g| g.items.iter().map(|i| i.label.clone())).collect::<Vec<_>>())})),
+            "notice":self.discovered.as_ref().map(|d|d["message"].clone()),
+            "busy":self.busy,"message":self.message})
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_connection_name(&self, cx: &gpui::App) -> String {
@@ -399,6 +376,9 @@ impl ProfilesView {
         if let Some(detail) = self.detail.take() {
             self.detail = Some(self.source.detail(detail));
         }
+        // The open editor follows changes made elsewhere (or closes if its
+        // model is gone).
+        self.refresh_editor(cx);
         if let Some(id) = self.created.clone().filter(|_| !self.discovering) {
             self.created_detail = Some(self.source.detail(json!({"profile_id": id})));
         }
@@ -606,21 +586,10 @@ impl ProfilesView {
                         v.menu_open = None;
                         v.renaming = false;
                         v.form_open = false;
-                        v.model_form_open = false;
+                        v.editor = None;
                         v.discovered = None;
-                        v.model.update(cx, |m, cx| m.clear(cx));
                         if let Some(model) = &model {
-                            if let Some(value) = v
-                                .detail
-                                .as_ref()
-                                .and_then(|detail| detail["models"].as_array())
-                                .and_then(|models| {
-                                    models.iter().find(|value| value["id"] == *model)
-                                })
-                                .cloned()
-                            {
-                                v.edit_model(Some(value), cx);
-                            }
+                            v.open_edit_model(model, cx);
                         }
                     }
                     Err(e) => v.message = Some(e.to_string()),
@@ -701,55 +670,6 @@ impl ProfilesView {
             .automation(AutomationRole::TextInput, self.locale.text("profile_name"))
             .into_any_element()
     }
-    fn edit_model(&mut self, model: Option<Value>, cx: &mut Context<Self>) {
-        let Some(detail) = &self.detail else {
-            return;
-        };
-        self.apply_model_input(
-            crate::api::model_form_with_catalog(detail, &self.catalog, model),
-            cx,
-        );
-        self.copy_model_open = false;
-        self.api_open = false;
-        self.model_params_open = false;
-        self.reference_open = None;
-        self.params_touched = self.editing_model.is_some();
-        self.api_touched = self.editing_model.is_some();
-        self.model_form_open = true;
-        self.model_attempted = false;
-        self.message = None;
-        zork_ui::components::region::invalidate_all(cx);
-    }
-    fn apply_model_input(&mut self, input: ModelInput, cx: &mut Context<Self>) {
-        self.thinking_scheme = input.scheme();
-        self.editing_model = input
-            .previous
-            .as_ref()
-            .and_then(|m| m["id"].as_str())
-            .map(str::to_owned);
-        self.model_original = input.previous;
-        self.copied_model = input.copied;
-        self.model_api = MODEL_APIS
-            .iter()
-            .position(|a| a.0 == input.api)
-            .unwrap_or(0);
-        self.model_image_input = input.images;
-        self.recognized = self.recognition_line(&input.id);
-        self.model.update(cx, |v, cx| v.set_value(input.id, cx));
-        self.context_limit
-            .update(cx, |v, cx| v.set_value(input.context, cx));
-        self.output_limit
-            .update(cx, |v, cx| v.set_value(input.output, cx));
-        self.thinking_levels
-            .update(cx, |v, cx| v.set_value(input.thinking, cx));
-        self.default_thinking
-            .update(cx, |v, cx| v.set_value(input.default_thinking, cx));
-    }
-    fn copy_model_configuration(&mut self, source: Value, cx: &mut Context<Self>) {
-        self.apply_model_input(crate::api::copy_form(self.model_input(cx), source), cx);
-        zork_ui::components::region::invalidate_all(cx);
-    }
-
     fn discover_models(&mut self, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -774,24 +694,10 @@ impl ProfilesView {
                 v.discovering = false;
                 match result {
                     Ok(value) => {
-                        let count = value["added"].as_u64().unwrap_or(0);
-                        let configured = value["configured"].as_u64().unwrap_or(0);
-                        let mut text = if count > 0 {
-                            v.locale
-                                .text("models_added")
-                                .replace("{count}", &count.to_string())
-                        } else if configured > 0 {
-                            v.locale
-                                .text("models_configured")
-                                .replace("{count}", &configured.to_string())
-                        } else {
-                            v.locale.text("models_up_to_date").to_owned()
-                        };
-                        if value["truncated"] == true {
-                            text.push_str(v.locale.text("models_partial"));
-                        }
-                        v.discovered =
-                            Some(json!({"message":text,"truncated":value["truncated"]==true}));
+                        // Core already applied presets to recognized models and
+                        // phrased the result.
+                        let text = value["message"].as_str().unwrap_or_default().to_owned();
+                        v.show_notice(text, cx);
                         v.message = None;
                         v.refresh(cx);
                     }
@@ -834,107 +740,6 @@ impl ProfilesView {
         zork_ui::components::region::invalidate_all(cx);
     }
 
-    fn remove_model(&mut self, id: &str, cx: &mut Context<Self>) {
-        if self.busy {
-            return;
-        }
-        let Some(detail) = &self.detail else {
-            return;
-        };
-        let Some(model) = detail["models"]
-            .as_array()
-            .and_then(|m| m.iter().find(|m| m["id"] == id))
-            .cloned()
-        else {
-            return;
-        };
-        let profile = detail["profile_id"].as_str().unwrap_or_default().to_owned();
-        let source = self.source.clone();
-        self.busy = true;
-        cx.spawn(async move |this, cx| {
-            let result = source.remove_model(&profile, model).await;
-            let _ = this.update(cx, |view, cx| {
-                view.busy = false;
-                view.message = result.err().map(|e| e.to_string());
-                zork_ui::components::region::invalidate_all(cx);
-            });
-        })
-        .detach();
-        zork_ui::components::region::invalidate_all(cx);
-    }
-    fn model_input(&self, cx: &gpui::App) -> ModelInput {
-        ModelInput {
-            previous: self.model_original.clone(),
-            copied: self.copied_model.clone(),
-            id: self.model.read(cx).value().into(),
-            api: MODEL_APIS[self.model_api].0.into(),
-            context: self.context_limit.read(cx).value().into(),
-            output: self.output_limit.read(cx).value().into(),
-            thinking: self.thinking_scheme.encode().0.join(", "),
-            default_thinking: self.thinking_scheme.encode().1,
-            images: self.model_image_input,
-            thinking_scheme: Some(self.thinking_scheme.clone()),
-        }
-    }
-    fn model_errors(&self, cx: &gpui::App) -> Vec<(String, String)> {
-        let id = self
-            .detail
-            .as_ref()
-            .and_then(|d| d["profile_id"].as_str())
-            .unwrap_or_default();
-        self.source
-            .model_errors(id, &self.model_input(cx))
-            .into_iter()
-            .map(|e| (e.field, e.message))
-            .collect()
-    }
-    fn save_model(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy {
-            return;
-        }
-        self.model_attempted = true;
-        self.message = None;
-        if let Some((field, _)) = self.model_errors(cx).first() {
-            self.model_params_open = field != "profile-model";
-            let input = match field.as_str() {
-                "profile-context-limit" => &self.context_limit,
-                "profile-output-limit" => &self.output_limit,
-                "profile-default-thinking" => &self.default_thinking,
-                _ => &self.model,
-            };
-            window.focus(&input.read(cx).focus_handle(), cx);
-            zork_ui::components::region::invalidate_all(cx);
-            return;
-        }
-        let Some(id) = self
-            .detail
-            .as_ref()
-            .and_then(|d| d["profile_id"].as_str())
-            .map(str::to_owned)
-        else {
-            return;
-        };
-        let input = self.model_input(cx);
-        let source = self.source.clone();
-        self.busy = true;
-        cx.spawn(async move |this, cx| {
-            let result = source.save_model(&id, input).await;
-            let _ = this.update(cx, |view, cx| {
-                view.busy = false;
-                match result {
-                    Ok(()) => {
-                        view.model_form_open = false;
-                        view.editing_model = None;
-                        view.model_original = None;
-                    }
-                    Err(error) => view.message = Some(error.to_string()),
-                }
-                zork_ui::components::region::invalidate_all(cx);
-            });
-        })
-        .detach();
-        zork_ui::components::region::invalidate_all(cx);
-    }
     fn cancel(&mut self, cx: &mut Context<Self>) {
         let source = self.source.clone();
         cx.spawn(async move |_, _| {
@@ -1032,10 +837,8 @@ impl ProfilesView {
         if self.busy && self.attempt.is_none() {
             return;
         }
-        if self.model_form_open {
-            self.model_form_open = false;
-            self.editing_model = None;
-            self.api_open = false;
+        if self.editor.is_some() {
+            self.close_editor(cx);
         } else if self.detail.is_some() {
             self.detail = None;
             self.discovered = None;
@@ -1061,14 +864,7 @@ impl ProfilesView {
         input: &Entity<ComposerInput>,
         cx: &gpui::App,
     ) -> gpui::Div {
-        let error = self
-            .model_attempted
-            .then(|| self.model_errors(cx))
-            .unwrap_or_default()
-            .into_iter()
-            .find(|(field, _)| *field == id)
-            .map(|(_, error)| error);
-        ui::field_with_error(id, label, input, error, cx)
+        ui::field_with_error(id, label, input, None, cx)
     }
 }
 impl Render for ProfilesView {
@@ -1083,9 +879,10 @@ impl Render for ProfilesView {
         );
         self.id
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        self.prepare_fields(window, cx);
         let paged = self.detail.clone();
         let show = paged.is_none() && (self.form_open || self.attempt.is_some());
-        let model_dialog = self.model_form_open && paged.is_some() && !self.inline_editing();
+        let model_dialog = self.editor.is_some() && paged.is_some() && !self.inline_editing();
         let modal_key = if model_dialog {
             Some("model-editor-dialog")
         } else if show {
@@ -1100,22 +897,48 @@ impl Render for ProfilesView {
             .is_some();
         let model_visible = self.modal.retain(
             "model-editor-dialog",
-            model_dialog.then(|| self.editing_model.clone()),
+            model_dialog.then(|| {
+                self.editor
+                    .as_ref()
+                    .map(|e| e.view.title.clone())
+                    .unwrap_or_default()
+            }),
             cx,
         );
-        let model_dialog_element = model_visible.map(|editing| {
-            let body = self.model_editor_body(window, cx);
-            let actions = self.model_editor_actions(cx);
-            ui::modal(
+        if self
+            .editor
+            .as_ref()
+            .is_some_and(|e| e.state.mode == crate::api::model_editor::Mode::Add)
+        {
+            self.modal.initial_focus(
                 "model-editor-dialog",
-                if editing.is_some() { "编辑模型" } else { "添加模型" },
+                self.editor_inputs.id.read(cx).focus_handle(),
+            );
+        }
+        // While closing, the dialog keeps its last frame without an editor.
+        let model_dialog_element = model_visible.map(|title| {
+            // A closing dialog keeps its frame but never shows an editor that
+            // now lives elsewhere (e.g. inline after “去编辑它”).
+            let (body, footer) = if model_dialog {
+                (
+                    self.editor_body(true, window, cx),
+                    self.editor_footer(true, cx),
+                )
+            } else {
+                (div().into_any_element(), div().into_any_element())
+            };
+            let busy = self.editor.as_ref().is_some_and(|e| e.busy);
+            ui::modal_sized(
+                "model-editor-dialog",
+                title,
                 body,
-                actions,
-                self.message.clone(),
+                footer,
+                self.editor.as_ref().and_then(|e| e.error.clone()),
                 &self.modal,
+                ui::DIALOG_RICH_WIDTH,
                 window,
                 cx,
-                !self.busy,
+                !busy,
                 |v, _, cx| v.close_dialog(cx),
             )
         });
