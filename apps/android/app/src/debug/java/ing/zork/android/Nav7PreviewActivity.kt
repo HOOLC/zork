@@ -163,7 +163,7 @@ private fun fixtureSettings(): MobileSettingsState {
     val connections=listOf(
         obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),
         obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
-            "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter")))))
+            "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter"))))
     return MobileSettingsState(page="device",device=Peer("mini1","工作室的 MacBook Air",""),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
