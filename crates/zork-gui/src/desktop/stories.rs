@@ -157,9 +157,9 @@ fn organize(items: Vec<Story>) -> Vec<Story> {
                 continue;
             }
         }
-        if let Some(base) = story.state.strip_suffix("-compact") {
-            story.state = base.to_owned();
+        if let Some(base) = story.state.strip_suffix("-compact").map(str::to_owned) {
             story.id = format!("{}-{base}", story.family);
+            story.state = base;
         }
         let Some((group, entry, title)) = placement(&story.family) else {
             continue;
