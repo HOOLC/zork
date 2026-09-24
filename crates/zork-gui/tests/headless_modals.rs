@@ -144,8 +144,15 @@ impl<V: Render + 'static> Fixture<V> {
             );
         }
         anyhow::ensure!(
-            (card.bounds.width - 540.).abs() < 1.,
-            "modal width drifted from the shared desktop design"
+            [
+                zork_ui::controls::DIALOG_CONFIRM_WIDTH,
+                zork_ui::controls::DIALOG_FORM_WIDTH,
+                zork_ui::controls::DIALOG_RICH_WIDTH,
+            ]
+            .iter()
+            .any(|tier| (card.bounds.width - tier).abs() < 1.),
+            "modal width {} is not one of the shared width tiers",
+            card.bounds.width
         );
         let footer = self
             .element(&format!("{id}-footer"))
