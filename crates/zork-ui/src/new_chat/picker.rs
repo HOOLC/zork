@@ -163,6 +163,7 @@ impl Page {
             list = list.child(
                 div()
                     .h(px(30.))
+                    .flex_shrink_0()
                     .px(px(12.))
                     .mt(px(if g == 0 { 0. } else { 6. }))
                     .flex()
@@ -197,6 +198,7 @@ impl Page {
                     div()
                         .id(SharedString::from(row_id))
                         .h(px(36.))
+                        .flex_shrink_0()
                         .px(px(14.))
                         .flex()
                         .items_center()
