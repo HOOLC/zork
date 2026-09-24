@@ -132,9 +132,13 @@ private fun fixture(route: String): WorkbenchState {
             ChatMessage("own","","移动端也沿用这套品牌，\n阅读和回复要轻一点。",true,createdAt="2026-09-07T10:24:00+08:00"),
             ChatMessage("product","产品 Leader","收到。导航和群聊分开，\n手机上一次专注一件事。",false,createdAt="2026-09-07T10:25:00+08:00",device="mini1",model="gpt-6"),
             ChatMessage("designer","设计 Worker","三屏稿整理好了，可以先看整体。",false,createdAt="2026-09-07T10:27:00+08:00",device="mini2",model="gpt-6",files=listOf(TextAttachmentUi("notes","zork-mobile-notes.md","# Zork 移动端设计说明", "设计说明 · Markdown"))),
-            ChatMessage("illustrator","插画 Worker","头像直接复用，保留已知作者的辨识度。",false,createdAt="2026-09-07T10:28:00+08:00",device="mini2",model="gpt-6")),
+            ChatMessage("illustrator","插画 Worker","头像直接复用，保留已知作者的辨识度。",false,createdAt="2026-09-07T10:28:00+08:00",device="mini2",model="gpt-6",
+                deliveredFiles=listOf(ChatFileUi("file-report","首页改版对比.pdf",2_516_582,"application/octet-stream","file","PDF","2.4 MB"),
+                    ChatFileUi("file-recording","录屏.mov",18_874_368,"application/octet-stream","file","MOV","18 MB")))),
         draft=if(route=="composer") "整理一下这些资料。\n先确认范围，再给出方案。\n保留需要我决定的问题。\n附件里是当前要求。" else "",
-        attachments=if(route=="composer") listOf(TextAttachmentUi("draft-file","requirements.md","# 当前要求")) else emptyList(),
+        draftFiles=if(route=="composer") listOf(ChatFileUi("file-draft","requirements.md",14_336,"text/plain","text","MD","14 KB"),
+            ChatFileUi("file-shot","首页草图.png",1_258_291,"image/png","image","PNG","1.2 MB",thumbnail=true)) else emptyList(),
+        attaching=if(route=="composer") listOf(PendingFileUi("pending-failed","设计稿.sketch","无法读取 · 权限被拒绝")) else emptyList(),
         comments=listOf(DraftCommentUi("comment","brand","product","产品 Leader",null,"导航和群聊分开","切换后保留阅读位置。")),
         home=fixtureHome())
 }

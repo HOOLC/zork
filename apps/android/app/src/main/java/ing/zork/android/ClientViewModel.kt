@@ -36,7 +36,7 @@ internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.te
     createdAt = it.text("created_at"), device = it.text("device"), model = it.text("model"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),
     deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard),
-    deliveredFiles = it.optJSONArray("files").objects().map { file -> ChatFileUi(file.getString("id"), file.getString("name"), file.getLong("byte_len")) })
+    deliveredFiles = it.fileViews())
 
 internal data class TextAttachmentUi(val id: String, val name: String, val content: String, val caption: String = "文本附件") {
     fun json(): JSONObject = JSONObject().put("id", id).put("name", name).put("content", content)
@@ -104,6 +104,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     var comments by mutableStateOf(emptyList<DraftCommentUi>())
         private set
     var attachments by mutableStateOf(emptyList<TextAttachmentUi>())
+        private set
+    /** Files core holds in the current draft. */
+    var draftFiles by mutableStateOf(emptyList<ChatFileUi>())
+        private set
+    /** Picked files still being copied into core, or failed with a reason. */
+    var attaching by mutableStateOf(emptyList<PendingFileUi>())
         private set
     var participants by mutableStateOf(emptyList<JSONObject>())
         private set
@@ -436,11 +442,90 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
-    fun openChatFile(message: String, file: String) {
+    /** What the open core file selection is for: a visible preview, a direct save, or another app. */
+    private enum class FileIntent { Preview, Save, External }
+    private var fileIntent by mutableStateOf(FileIntent.Preview)
+    /** File whose selection should continue into a prepared copy once core opens it. */
+    private var copyFollowUp: String? = null
+    private var copyStarted = false
+    private var externalTicket: String? = null
+    /** The files of the message whose preview is open; the page steps through them. */
+    var previewSequence by mutableStateOf(emptyList<Pair<String, ChatFileUi>>())
+        private set
+    /** A private copy handed to another app, with its type. MainActivity starts the viewer. */
+    var externalFile by mutableStateOf<Pair<android.net.Uri, String>?>(null)
+        private set
+    var externalCopy by mutableStateOf(false)
+        private set
+    val chatFileVisible get() = chatFile != null && fileIntent != FileIntent.Save
+    /** A prepared copy for the system save dialog; copies for other apps never go there. */
+    val chatSaveTicket: String? get() = chatFile?.saveTicket?.takeIf { fileIntent != FileIntent.External }
+
+    fun openChatFile(message: String, file: String) = openMessageFile(message, file, FileIntent.Preview)
+    /** Saves without showing the preview; core still fetches and verifies the bytes. */
+    fun saveMessageFile(message: String, file: String) = openMessageFile(message, file, FileIntent.Save)
+    private fun openMessageFile(message: String, file: String, intent: FileIntent) {
         val peer = activePeer?.id ?: return
         val session = conversation?.id ?: return
+        val files = messages.find { it.id == message }?.deliveredFiles.orEmpty()
+        previewSequence = files.map { message to it }
+        fileIntent = intent
+        externalCopy = false
+        copyStarted = false
+        copyFollowUp = file.takeIf { intent == FileIntent.Save }
         watchChatFiles()
         chatFileAction("open", "peer" to peer, "session" to session, "message" to message, "file" to file)
+    }
+    fun stepChatFile(delta: Int) {
+        val current = chatFile ?: return
+        val index = previewSequence.indexOfFirst { it.second.id == current.fileId }
+        val next = previewSequence.getOrNull(index + delta) ?: return
+        openMessageFile(next.first, next.second.id, FileIntent.Preview)
+    }
+    fun closeChatFile() {
+        chatFile?.let { chatFileAction("close", "key" to it.key) }
+        previewSequence = emptyList(); fileIntent = FileIntent.Preview; copyFollowUp = null
+    }
+    fun saveOpenChatFile() {
+        val file = chatFile ?: return
+        fileIntent = FileIntent.Preview; externalCopy = false; copyStarted = true
+        chatFileAction("prepare_save", "key" to file.key)
+    }
+    fun openChatFileExternally() {
+        val file = chatFile ?: return
+        fileIntent = FileIntent.External; externalCopy = true; copyStarted = true
+        chatFileAction("prepare_save", "key" to file.key)
+    }
+    fun externalFileOpened() { externalFile = null }
+
+    /** Continues a save-only or open-elsewhere selection as core's snapshot advances. */
+    private fun followChatFile(next: ChatFilePreviewUi?) {
+        if (next == null) { copyFollowUp = null; return }
+        if (copyFollowUp == next.fileId && next.error != null && fileIntent == FileIntent.Save) {
+            notice = next.error; closeChatFile(); return
+        }
+        if (copyFollowUp == next.fileId && !next.loading && !next.saving && next.saveTicket == null && next.error == null) {
+            copyFollowUp = null; copyStarted = true
+            chatFileAction("prepare_save", "key" to next.key)
+            return
+        }
+        val ticket = next.saveTicket
+        if (fileIntent == FileIntent.External && ticket != null && externalTicket != ticket) {
+            externalTicket = ticket
+            val mime = previewSequence.firstOrNull { it.second.id == next.fileId }?.second?.mime ?: next.mime
+            viewModelScope.launch {
+                try { externalFile = repo.openChatFileCopy(ticket, next.name) to mime }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { notice = e.message; chatFileAction("cancel_save", "ticket" to ticket) }
+                finally { fileIntent = FileIntent.Preview }
+            }
+        }
+        // A save-only selection ends once its copy is written, cancelled or failed.
+        if (fileIntent == FileIntent.Save && copyStarted && !next.saving && ticket == null) {
+            next.error?.let { notice = it }
+            if (next.saved) notice = "已保存 ${next.name}"
+            closeChatFile()
+        }
     }
     fun chatFileAction(action: String, vararg fields: Pair<String, Any?>) {
         val operation = JSONObject().put("action", action)
@@ -457,6 +542,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
                 repo.chatFileEvents().collect { frame ->
                     val next = frame.value.getJSONObject("snapshot").optJSONObject("preview")?.let(::parseChatFilePreview)
                     chatFile = next
+                    followChatFile(next)
                     val key = next?.key?.takeIf { next.mime.startsWith("image/") && next.contentReady }
                     if (chatImageKey != key) {
                         chatImageKey = key
@@ -566,6 +652,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         historyLoading = cached?.historyReady != true
         replaceMessages(cached?.messages.orEmpty()); pending = cached?.pending.orEmpty()
         comments = cached?.comments.orEmpty(); attachments = cached?.attachments.orEmpty()
+        draftFiles = emptyList(); attaching = emptyList(); previewSequence = emptyList()
         participants = cached?.participants.orEmpty(); draft = cached?.draft.orEmpty()
         olderCursor = cached?.olderCursor; activity = ""
         val peerId = activePeer?.id
@@ -591,6 +678,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (peer != activePeer || current != conversation) return
         draft = result.text("draft")
         attachments = result.textAttachments()
+        draftFiles = result.fileViews()
         comments = result.optJSONArray("comments").objects().map { c ->
             val source = c.getJSONObject("source")
             DraftCommentUi(c.text("id"), source.text("session_id"), source.text("message_id").ifBlank { null },
@@ -878,9 +966,52 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             preparedDraft = "帮我看看 ${targetDevice.name} 的设备配置。")
     }
 
-    fun addTextAttachment(uri: android.net.Uri, peer: String, session: String) = action {
-        repo.attachText(uri, peer, session)
+    /**
+     * Picked, shot or shared files. Each shows as a reading chip until core has
+     * snapshotted it into the draft of the conversation it was picked for.
+     */
+    fun attachFiles(uris: List<android.net.Uri>, peer: String, session: String) {
+        uris.forEach { uri ->
+            val pending = PendingFileUi(NativeBridge.newId(), uri.lastPathSegment?.substringAfterLast('/') ?: "文件", session = session)
+            attaching = attaching + pending
+            viewModelScope.launch {
+                try {
+                    repo.attachFile(uri, peer, session)
+                    attaching = attaching.filterNot { it.key == pending.key }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    attaching = attaching.map { if (it.key == pending.key) it.copy(error = e.message ?: "无法添加文件") else it }
+                }
+            }
+        }
     }
+    fun dismissPendingFile(key: String) { attaching = attaching.filterNot { it.key == key } }
+    fun showNotice(text: String) { notice = text }
+    fun removeDraftFile(id: String) = action {
+        val peer = activePeer ?: return@action
+        val current = conversation ?: return@action
+        repo.command("remove_file", "peer" to peer.id, "session" to current.id, "id" to id)
+    }
+    fun cameraTarget(): android.net.Uri = repo.cameraTarget()
+
+    private val fileImages = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(32)
+    /** Verified bytes come from core; decoding stays bounded and cached per size. */
+    suspend fun fileImage(message: String?, file: ChatFileUi, maxSide: Int): androidx.compose.ui.graphics.ImageBitmap? {
+        if (!file.thumbnail) return null
+        val peer = activePeer?.id ?: return null
+        val session = conversation?.id ?: return null
+        val key = "$peer/$session/${message.orEmpty()}/${file.id}/$maxSide"
+        fileImages.get(key)?.let { return it }
+        val image = decodeFileImage(repo.fileThumbnail(peer, session, message, file.id), maxSide) ?: return null
+        fileImages.put(key, image)
+        return image
+    }
+
+    /** Draft file shown in the preview page; draft bytes never leave core except to decode. */
+    var draftPreview by mutableStateOf<ChatFileUi?>(null)
+        private set
+    fun openDraftFile(file: ChatFileUi?) { draftPreview = file }
+
     fun removeAttachment(id: String) = draftAction(JSONObject().put("action", "remove_attachment").put("id", id))
     fun exportTextAttachment(uri: android.net.Uri, file: TextAttachmentUi) = action {
         repo.exportText(uri, file.content)
@@ -1092,6 +1223,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (state.has("newer_available")) hasNewer = state.optBoolean("newer_available")
         state.optJSONObject("draft_document")?.let { document ->
             attachments = document.textAttachments()
+            draftFiles = document.fileViews()
             comments = document.optJSONArray("comments").objects().map { c ->
                 val source = c.getJSONObject("source")
                 DraftCommentUi(c.text("id"), source.text("session_id"), source.text("message_id").ifBlank { null },

@@ -284,3 +284,79 @@ async fn attachment_read_finishing_after_revocation_cannot_restore_cached_bytes(
     server.abort();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inline_thumbnails_are_verified_images_only() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let store = Arc::new(ClientStore::open(root.path())?);
+    let bytes: &'static [u8] = b"\x89PNG inline";
+    let files = [
+        FileRef {
+            id: "file-image".into(),
+            name: "shot.png".into(),
+            byte_len: bytes.len(),
+            content_root: zork_mesh::content_root(bytes),
+        },
+        FileRef {
+            id: "file-doc".into(),
+            name: "report.pdf".into(),
+            byte_len: bytes.len(),
+            content_root: zork_mesh::content_root(bytes),
+        },
+    ];
+    store.cache_message_page(
+        "peer",
+        "chat",
+        &MessagePage {
+            source_epoch: Some("source".into()),
+            older_cursor: None,
+            items: vec![serde_json::from_value(
+                json!({"type":"message", "role":"assistant", "id":"message",
+                "content":crate::files::compose("看图", &files)}),
+            )?],
+        },
+        None,
+    )?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let client = Arc::new(StationClient::new(
+        format!("http://{}", listener.local_addr()?),
+        None,
+    ));
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            axum::Router::new().route(
+                "/v1/artifacts/{id}/content",
+                axum::routing::get(move || async move { bytes }),
+            ),
+        )
+        .await
+        .unwrap()
+    });
+    let device = Device::open(client, Some((store.clone(), "peer".into())), true);
+    let image = inline_bytes(
+        &store,
+        device.clone(),
+        "peer",
+        "chat",
+        "message",
+        "file-image",
+    )
+    .await?;
+    ensure!(image == bytes);
+    for missing in ["file-doc", "file-missing"] {
+        ensure!(
+            inline_bytes(&store, device.clone(), "peer", "chat", "message", missing)
+                .await
+                .is_err()
+        );
+    }
+    store.revoke_replica("peer")?;
+    ensure!(
+        inline_bytes(&store, device, "peer", "chat", "message", "file-image")
+            .await
+            .is_err()
+    );
+    server.abort();
+    Ok(())
+}

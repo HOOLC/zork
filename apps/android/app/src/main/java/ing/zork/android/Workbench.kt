@@ -85,6 +85,9 @@ internal data class WorkbenchState(
     val comments: List<DraftCommentUi> = emptyList(), val participants: List<JSONObject> = emptyList(),
     val deviceTrees: Map<String, DeviceTree> = emptyMap(),
     val attachments: List<TextAttachmentUi> = emptyList(),
+    val draftFiles: List<ChatFileUi> = emptyList(),
+    val attaching: List<PendingFileUi> = emptyList(),
+    val files: FileAvailability = FileAvailability(),
     val historyLoading: Boolean = false,
     val conversationEntry: Long = 0L,
     val messageActivity: MessageActivity = MessageActivity(),
@@ -108,6 +111,10 @@ internal class WorkbenchActions(
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
     val history: (String, String) -> Unit = { _, _ -> },
     val chatFile: (String, String) -> Unit = { _, _ -> },
+    val saveChatFile: (String, String) -> Unit = { _, _ -> },
+    val openDraftFile: (ChatFileUi) -> Unit = {},
+    val removeFile: (String) -> Unit = {},
+    val dismissPendingFile: (String) -> Unit = {},
     val newChat: (Peer) -> Unit = {},
     val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
     val device: (Peer) -> Unit = {},
@@ -405,7 +412,7 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
         }
     }
     HorizontalDivider(color = ZorkColors.Border, thickness = 0.5.dp)
-    if (files) ChatFilesSheet(state.messages, actions) { files = false }
+    if (files) ChatFilesSheet(state.messages, state.files, actions) { files = false }
 }
 
 @Composable
@@ -420,7 +427,7 @@ private fun HeaderMenuItem(icon: Int, text: String, enabled: Boolean = true, onC
 
 /** Files attached to or delivered in the messages loaded so far. */
 @Composable
-private fun ChatFilesSheet(messages: List<ChatMessage>, actions: WorkbenchActions, dismiss: () -> Unit) {
+private fun ChatFilesSheet(messages: List<ChatMessage>, state: FileAvailability, actions: WorkbenchActions, dismiss: () -> Unit) {
     val attached = messages.flatMap { it.files }
     val delivered = messages.flatMap { row -> row.deliveredFiles.map { row.id to it } }
     SettingsSheet("文件", dismiss = dismiss) {
@@ -428,7 +435,8 @@ private fun ChatFilesSheet(messages: List<ChatMessage>, actions: WorkbenchAction
             Text("已加载的消息里没有文件。", fontSize = 13.sp, color = ZorkColors.Muted)
         else Column {
             attached.forEach { FileCard(it) { actions.file(it) } }
-            delivered.forEach { (message, file) -> DeliveredFileCard(file) { actions.chatFile(message, file.id) } }
+            delivered.forEach { (message, file) -> DeliveredFileCard(file, state, { actions.chatFile(message, file.id) },
+                { actions.saveChatFile(message, file.id) }) }
             Text("只列出已加载的消息中的文件。", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 12.dp))
         }
     }
@@ -551,6 +559,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
     val messageActions = remember {
         WorkbenchActions(resend = { latestActions.value.resend(it) }, deleteFailed = { latestActions.value.deleteFailed(it) },
             chatFile = { message, file -> latestActions.value.chatFile(message, file) },
+            saveChatFile = { message, file -> latestActions.value.saveChatFile(message, file) },
             file = { latestActions.value.file(it) }, older = { latestActions.value.older() },
             comment = { row, quote -> latestActions.value.comment(row, quote) }, newer = { latestActions.value.newer() },
             interaction = { id, choice, values -> latestActions.value.interaction(id, choice, values) })
@@ -649,7 +658,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Spacer(Modifier.height(22.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
                             Column {
-                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile) { quote -> messageActions.comment(row, quote) }
+                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, state.files, messageActions.saveChatFile) { quote -> messageActions.comment(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -729,15 +738,19 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
 }
 
 @Composable
-private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, comment: (String) -> Unit) {
+private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit,
+    fileState: FileAvailability, saveFile: (String, String) -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
-            if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
+            // Sent files stand above the bubble, images at their own ratio.
+            if (row.deliveredFiles.isNotEmpty()) Box(Modifier.padding(bottom = 6.dp)) {
+                MessageFiles(row.id, row.deliveredFiles, true, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
+            }
+            if (row.content.isNotBlank() || row.files.isNotEmpty()) {
                 ZorkCard(color = ZorkColors.Bubble, outlined = false, shape = ZorkShapes.Bubble) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 11.dp)) {
                         if (row.content.isNotBlank()) MessageBody(row, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
-            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
                     }
                 }
             }
@@ -773,7 +786,7 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
             }
             if (row.content.isNotBlank()) MessageBody(row, comment)
             row.files.forEach { FileCard(it) { file(it) } }
-            row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
+            MessageFiles(row.id, row.deliveredFiles, false, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
         }
     }
 }
@@ -795,42 +808,51 @@ private fun ComposerPlate(presence: ComposerPresence, modifier: Modifier, histor
 
 @Composable
 private fun Composer(state: WorkbenchState, actions: WorkbenchActions, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
-    val command = remember(state.draft, state.comments.size, state.attachments.size, state.running, state.connected, state.busy, state.conversation) {
+    val attached = state.comments.size + state.attachments.size + state.draftFiles.size
+    val command = remember(state.draft, attached, state.running, state.connected, state.busy, state.conversation) {
         JSONObject(NativeBridge.composerState(JSONObject().put("text", state.draft)
-            .put("attachments", state.comments.size + state.attachments.size).put("can_send", state.conversation?.canSend != false)
+            .put("attachments", attached).put("can_send", state.conversation?.canSend != false)
             .put("can_stop", state.conversation?.canStop == true).put("running", state.running)
             .put("online", state.connected).put("busy", state.busy).toString()))
     }
     val canSend = command.optBoolean("editable")
     val stop = command.optBoolean("stop")
-    val enabled = command.optBoolean("enabled")
+    // Sending waits until core holds every picked file.
+    val enabled = command.optBoolean("enabled") && (stop || state.attaching.none { it.error == null })
     val draft = state.draft
     val attachments = remember(state.attachments) { state.attachments }
     val latest = rememberUpdatedState(actions)
     val latestSend = rememberUpdatedState(send)
     val controls = remember {
         WorkbenchActions(draft = { latest.value.draft(it) }, attach = { latest.value.attach() },
-            removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() })
+            removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() },
+            openDraftFile = { latest.value.openDraftFile(it) }, removeFile = { latest.value.removeFile(it) },
+            dismissPendingFile = { latest.value.dismissPendingFile(it) })
     }
-    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history)
+    DraftComposer(draft, attachments, canSend, stop, enabled, presence, modifier, heightLimit, controls, actions.history,
+        files = state.draftFiles, pending = state.attaching)
 }
 
 @Composable
 internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
     stop: Boolean, enabled: Boolean, presence: ComposerPresence, modifier: Modifier, heightLimit: Dp,
-    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true) {
+    actions: WorkbenchActions, history: (String, String) -> Unit = { _, _ -> }, showAttach: Boolean = true,
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
     ComposerPlate(presence, modifier.fillMaxWidth().preferredFrameRate(120f), history) {
-        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach)
+        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach, files, pending)
     }
 }
 
 @Composable
 private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>, canSend: Boolean,
-    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true) {
+    stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true,
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
     val sendInteractions = remember { MutableInteractionSource() }
     val sendPressed by sendInteractions.collectIsPressedAsState()
         Column(Modifier.graphicsLayer().heightIn(max = heightLimit).padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
             Column(Modifier.weight(1f, fill = false)) {
+            // Draft files sit above the editor, inside the composer.
+            DraftFileChips(files, pending, actions.openDraftFile, actions.removeFile, actions.dismissPendingFile)
             // BasicTextField owns vertical scrolling and cursor visibility. Do not
             // wrap the editor in another scroller or cap/truncate its draft value.
             BasicTextField(draft, actions.draft, Modifier.fillMaxWidth().padding(start=12.dp,end=12.dp,top=4.dp)
@@ -852,7 +874,7 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
             }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文本附件",enabled=canSend,glyphSize=16.dp,onClick = actions.attach)
+                if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文件",enabled=canSend,glyphSize=18.dp,onClick = actions.attach)
                 Spacer(Modifier.weight(1f))
                 Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,role=androidx.compose.ui.semantics.Role.Button,onClick=if(stop)actions.stop else actions.send)
                     .semantics { contentDescription=if(stop) "停止" else "发送" },contentAlignment=Alignment.Center) {

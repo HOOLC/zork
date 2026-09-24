@@ -107,6 +107,7 @@ pub fn stop_confirmed(online: bool, status: Option<crate::api::SessionStatus>) -
 pub fn project_payload(value: &mut serde_json::Value) {
     let raw = value["content"].as_str().unwrap_or_default().to_owned();
     let (raw, files) = zork_client_types::files::decode(&raw).unwrap_or((raw, vec![]));
+    value["file_views"] = serde_json::json!(crate::file_io::views(&files));
     value["files"] = serde_json::json!(files);
     if let Some((text, comments, attachments)) = crate::comments::decode_document(&raw) {
         value["display_content"] = serde_json::json!(crate::comments::display_text(

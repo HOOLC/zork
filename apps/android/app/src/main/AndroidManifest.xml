@@ -28,6 +28,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Zork">
         <profileable android:shell="${zorkProfileable}" />
+        <!-- Camera output and files handed to other apps; both live in the private cache. -->
+        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <service android:name=".ZorkNotificationService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".ZorkAdbService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <activity android:name=".MainActivity" android:exported="true"

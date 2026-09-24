@@ -84,10 +84,19 @@ internal fun ClientScreen(model: ClientViewModel) {
     var editingComment by remember { mutableStateOf<DraftCommentUi?>(null) }
     var attachmentPeer by rememberSaveable { mutableStateOf<String?>(null) }
     var attachmentSession by rememberSaveable { mutableStateOf<String?>(null) }
+    var attachSheet by remember { mutableStateOf(false) }
+    var cameraShot by rememberSaveable { mutableStateOf<Uri?>(null) }
     var exporting by remember { mutableStateOf<TextAttachmentUi?>(null) }
-    val pickFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+    // Files are attached to the conversation they were picked for, even if the user moves on.
+    val attachPicked = { uris: List<Uri> ->
         val peer = attachmentPeer; val session = attachmentSession
-        if (uri != null && peer != null && session != null) model.addTextAttachment(uri, peer, session)
+        if (uris.isNotEmpty() && peer != null && session != null) model.attachFiles(uris, peer, session)
+    }
+    val pickFiles = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { attachPicked(it) }
+    val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(16)) { attachPicked(it) }
+    val takePicture = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { taken ->
+        val shot = cameraShot; cameraShot = null
+        if (taken && shot != null) attachPicked(listOf(shot))
     }
     val saveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         val file = exporting; if (uri != null && file != null) model.exportTextAttachment(uri, file)
@@ -98,18 +107,33 @@ internal fun ClientScreen(model: ClientViewModel) {
         chatSaveTicket?.let { model.saveChatFile(uri, it) }
         chatSaveTicket = null
     }
-    LaunchedEffect(model.chatFile?.saveTicket) {
-        model.chatFile?.let { file ->
-            file.saveTicket?.let { ticket ->
-                if (chatSaveTicket != ticket) { chatSaveTicket = ticket; chatSaveFile.launch(file.name) }
-            }
-        }
+    LaunchedEffect(model.chatSaveTicket) {
+        val ticket = model.chatSaveTicket ?: return@LaunchedEffect
+        val file = model.chatFile ?: return@LaunchedEffect
+        if (chatSaveTicket != ticket) { chatSaveTicket = ticket; chatSaveFile.launch(file.name) }
     }
-    model.chatFile?.let { file ->
-        ChatFilePreview(file, model.chatFileImage,
-            close = { model.chatFileAction("close", "key" to file.key) },
-            save = { model.chatFileAction("prepare_save", "key" to file.key) })
+    LaunchedEffect(model.externalFile) {
+        val (uri, mime) = model.externalFile ?: return@LaunchedEffect
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { context.startActivity(Intent.createChooser(view, "用其他应用打开")) }
+            .onFailure { model.showNotice("没有可以打开这个文件的应用") }
+        model.externalFileOpened()
     }
+    model.chatFile?.takeIf { model.chatFileVisible }?.let { file ->
+        val index = model.previewSequence.indexOfFirst { it.second.id == file.fileId }.coerceAtLeast(0)
+        FilePreviewPage(file.copy(saved = file.saved && !model.externalCopy), model.previewSequence.getOrNull(index)?.second,
+            model.chatFileImage, index, model.previewSequence.size.coerceAtLeast(1),
+            step = model::stepChatFile, close = model::closeChatFile, save = model::saveOpenChatFile,
+            openExternal = model::openChatFileExternally)
+    }
+    model.draftPreview?.let { file ->
+        CompositionLocalProvider(LocalFileImages provides model::fileImage) { DraftFilePreview(file) { model.openDraftFile(null) } }
+    }
+    if (attachSheet) AttachSheet({ attachSheet = false },
+        photos = { pickMedia.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+        camera = { runCatching { model.cameraTarget() }.onSuccess { cameraShot = it; takePicture.launch(it) }
+            .onFailure { model.showNotice("无法打开相机") } },
+        files = { pickFiles.launch(arrayOf("*/*")) })
     BackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
         if (model.sessionHistory != null) {
             if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
@@ -120,7 +144,11 @@ internal fun ClientScreen(model: ClientViewModel) {
     val workbenchState = WorkbenchState(model.messageRevision, model.peers, model.activePeer, model.conversation, model.leaders, model.sessions,
             model.tasksByLeader, model.messages, model.pending, model.draft, model.olderCursor != null,
             model.busy || model.loadingOlder, model.ready, model.connected, model.notice, model.activity, model.running,
-            model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer, home = model.home)
+            model.comments, model.participants, model.deviceTrees, model.attachments,
+            draftFiles = model.draftFiles, attaching = model.attaching.filter { it.session == model.conversation?.id },
+            files = FileAvailability(model.activePeer?.name.orEmpty(), model.connected, model.activePeer?.status?.state == "revoked",
+                model.chatFile?.takeIf { it.loading || it.saving }?.fileId),
+            historyLoading = model.historyLoading, conversationEntry = model.conversationEntry, messageActivity = model.messageActivity, newer = model.hasNewer, home = model.home)
     val history = model.sessionHistory
     val draftChat = model.newChat
     val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
@@ -149,7 +177,7 @@ internal fun ClientScreen(model: ClientViewModel) {
         NewChatPage(shown.newChat, if (active) model::back else ({}),
             if (active) model::newChatAction else ({ _, _ -> }), if (active) model::newChatModels else ({}),
             model.peers, if (active) model::openNewChat else ({}))
-    } else retained.SaveableStateProvider("workbench") { Workbench(
+    } else retained.SaveableStateProvider("workbench") { CompositionLocalProvider(LocalFileImages provides model::fileImage) { Workbench(
         shown.workbench,
         if (!active) WorkbenchActions() else WorkbenchActions(model::selectPeer, model::openLeader, model::openSession, model::back,
             { addDevice = true }, model::showSettings, model::retry, model::editDraft,
@@ -160,10 +188,12 @@ internal fun ClientScreen(model: ClientViewModel) {
                     row.author, row.authorAgentId.ifBlank { null }, quote, "")
             } }, editComment = { editingComment = it }, removeComment = model::removeComment,
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
-            attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
+            attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; attachSheet = true },
+            saveChatFile = model::saveMessageFile, openDraftFile = model::openDraftFile, removeFile = model::removeDraftFile,
+            dismissPendingFile = model::dismissPendingFile,
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown,
             newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat, device = { model.showDevice(it) }),
-    ) }
+    ) } }
     }
     ZorkRetained(editingComment) { comment, open, closed ->
         CommentDialog(comment, open, closed, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
