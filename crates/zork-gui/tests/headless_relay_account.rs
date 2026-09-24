@@ -127,8 +127,8 @@ fn main() -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| e.id == "zork-account-logout"),
-        "signed-in page lacks logout"
+            .any(|e| e.id == "zork-account-more"),
+        "signed-in page lacks the account menu"
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("signed-in.png"))?;
@@ -152,7 +152,9 @@ fn main() -> anyhow::Result<()> {
         &|| output.join("relay-ready").exists(),
         "owned Station relay admission",
     )?;
-    click(&mut cx, "zork-account-logout")?;
+    // Sign-out is a rare action in the account's 更多 menu.
+    click(&mut cx, "zork-account-more")?;
+    click(&mut cx, "zork-account-more-menu-0-zork-account-logout")?;
     wait(
         &mut cx,
         &|| {

@@ -33,10 +33,14 @@ try:
     pid=int((client/'node/zork.pid').read_text())
     assert alive(pid)
     native.screenshot(artifacts/'running.png')
-    native.click('desktop-manage');ui.wait(lambda:native.element('manage-tab-3',True),'settings navigation');native.click('manage-tab-3');ui.wait(lambda:native.element('local-node-toggle',True),'node controls')
-    native.click('local-node-toggle');ui.wait(lambda:not alive(pid) and endpoints_closed(config),'explicit stop closes all node listeners')
-    ui.wait(lambda:native.element('local-node-toggle',True),'toggle reenabled')
-    native.click('local-node-toggle');ui.wait(lambda:native.element('desktop-manage'),'node reopened')
+    native.click('desktop-manage');ui.wait(lambda:native.element('manage-tab-3',True),'settings navigation');native.click('manage-tab-3');ui.wait(lambda:native.element('device-more',True),'node controls')
+    # Stop and start are rare device actions in the page's 更多 menu.
+    def device_toggle():
+        native.click('device-more');ui.wait(lambda:native.element('device-more-menu-0-local-node-toggle',True),'device menu')
+        native.click('device-more-menu-0-local-node-toggle')
+    device_toggle();ui.wait(lambda:not alive(pid) and endpoints_closed(config),'explicit stop closes all node listeners')
+    ui.wait(lambda:native.element('device-more',True),'toggle reenabled')
+    device_toggle();ui.wait(lambda:native.element('desktop-manage'),'node reopened')
     pid=int((client/'node/zork.pid').read_text())
     native.process.kill();native.process.wait();native.process=None
     ui.wait(lambda:not alive(pid) and endpoints_closed(config),'GUI crash closes owned node and all listeners')
