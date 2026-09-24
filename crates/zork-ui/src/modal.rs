@@ -185,6 +185,35 @@ pub fn modal<V: 'static>(
         close,
     )
 }
+/// A form dialog at an explicit width tier, with fixed actions.
+pub fn modal_sized<V: 'static>(
+    id: impl Into<gpui::SharedString>,
+    title: impl Into<gpui::SharedString>,
+    body: impl IntoElement,
+    footer: impl IntoElement,
+    notice: Option<String>,
+    state: &ModalState,
+    width: f32,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    dismissible: bool,
+    close: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
+) -> gpui::AnyElement {
+    modal_surface(
+        id,
+        title,
+        None,
+        body,
+        Some(footer.into_any_element()),
+        notice,
+        state,
+        width,
+        window,
+        cx,
+        dismissible,
+        close,
+    )
+}
 /// Details that are short, such as an enrollment step, use the form width.
 pub fn detail_modal_sized<V: 'static>(
     id: impl Into<gpui::SharedString>,

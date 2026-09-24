@@ -147,6 +147,7 @@ impl<V: Render + 'static> Fixture<V> {
             [
                 zork_ui::controls::DIALOG_CONFIRM_WIDTH,
                 zork_ui::controls::DIALOG_FORM_WIDTH,
+                zork_ui::controls::DIALOG_STEP_WIDTH,
                 zork_ui::controls::DIALOG_RICH_WIDTH,
             ]
             .iter()
@@ -243,17 +244,15 @@ fn main() -> anyhow::Result<()> {
         f.modal("profile-create-dialog", width, height)?;
         f.screenshot(&format!("connection-{width}.png"))?;
         anyhow::ensure!(
-            (f.element("profile-id").unwrap().bounds.height - 32.).abs() < 0.1,
-            "field height drift"
+            f.element("profile-provider-card-0").is_some(),
+            "step 1 did not list providers"
         );
-        f.click("profile-id")?;
-        f.action(json!({"type":"type_text","text":"固定连接"}))?;
+        f.click("profile-next")?;
         anyhow::ensure!(
-            f.view
-                .read_with(&f.cx, |v, cx| v.headless_connection_name(cx))
-                == "固定连接",
-            "modal field did not receive input"
+            f.element("profile-signin").is_some() || f.element("profile-key").is_some(),
+            "step 2 did not ask for a sign-in or key"
         );
+        f.screenshot(&format!("connection-step-2-{width}.png"))?;
         f.key("escape")?;
         anyhow::ensure!(
             f.element("profile-create-dialog").is_none(),
@@ -272,6 +271,7 @@ fn main() -> anyhow::Result<()> {
         f.modal("model-editor-dialog", width, height)?;
         f.click("profile-model")?;
         f.action(json!({"type":"type_text","text":"copied-model"}))?;
+        f.click("model-params-toggle")?;
         f.click("model-copy-select")?;
         f.click("model-copy-0")?;
         anyhow::ensure!(
@@ -309,7 +309,18 @@ fn main() -> anyhow::Result<()> {
             "close button did not dismiss model editor"
         );
         f.click("model-edit-fixture-model")?;
-        f.modal("model-editor-dialog", width, height)?;
+        anyhow::ensure!(
+            f.element("model-inline-editor").is_some(),
+            "editing a model did not expand in place: {:?}",
+            f.driver
+                .snapshot(false)
+                .elements
+                .iter()
+                .filter(|e| e.id.starts_with("model") || e.id.starts_with("profile-model"))
+                .map(|e| (&e.id, e.visible))
+                .collect::<Vec<_>>()
+        );
+        f.screenshot(&format!("model-inline-{width}.png"))?;
         f.key("escape")?;
     }
     paint_node_checks()?;
