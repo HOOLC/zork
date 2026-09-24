@@ -43,10 +43,14 @@ class ClientSettingsTest {
             if (name != "home-failure") {
                 assertTrue("status bar inset", barInsets.top > 0)
                 assertTrue("navigation bar inset", barInsets.bottom > 0)
+                // Status icons and the clock sit on the bar, so judge its background by
+                // the colour most of the row shows rather than one pixel.
+                fun background(y: Int) = (0 until image.width step 4).map { image.getPixel(it, y) }
+                    .groupingBy { it }.eachCount().maxBy { it.value }.key
                 assertEquals("$name status bar background", android.graphics.Color.WHITE,
-                    image.getPixel(image.width / 4, barInsets.top / 2))
+                    background(barInsets.top / 2))
                 assertEquals("$name navigation bar background", android.graphics.Color.WHITE,
-                    image.getPixel(image.width / 4, image.height - barInsets.bottom / 2))
+                    background(image.height - barInsets.bottom / 2))
             }
             File(folder, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
             image.recycle()

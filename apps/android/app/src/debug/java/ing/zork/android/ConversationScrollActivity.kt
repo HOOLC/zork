@@ -7,9 +7,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.boundsInWindow
@@ -50,7 +52,9 @@ class ConversationScrollActivity : ComponentActivity() {
                     scroll = rememberLazyListState()
                     val state = WorkbenchState(conversation=Conversation("scroll","滚动验证"),messages=rows,participants=members,historyLoading=loading,older=older)
                     val actions = WorkbenchActions(older = { olderLoads++; older = false; load(1) })
-                    Column(Modifier.requiredSize(390.dp,844.dp)) {
+                    // Pin the fixed viewport to the top-left: centred on a smaller
+                    // screen, its header and first items would sit above the window.
+                    Column(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(390.dp,844.dp)) {
                         if (intent.getBooleanExtra("header",false)) ConversationHeader(state,WorkbenchActions(),true)
                         Box(Modifier.weight(1f).onGloballyPositioned {
                             val bounds = it.boundsInWindow()

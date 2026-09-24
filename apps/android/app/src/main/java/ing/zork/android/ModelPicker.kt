@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -119,11 +120,13 @@ internal fun ModelPickerSheet(open: Boolean, model: PickerChoice, thinking: Pick
 }
 
 @Composable
-internal fun PickerChip(label: String, selected: Boolean, enabled: Boolean = true, click: () -> Unit) {
+internal fun PickerChip(label: String, selected: Boolean, enabled: Boolean = true, toggle: Boolean = false, click: () -> Unit) {
     val fill by androidx.compose.animation.animateColorAsState(if (selected) ZorkColors.Ink else ZorkColors.Prompt,
         androidx.compose.animation.core.tween(ZorkMotion.FAST), label = "chip")
     Box(Modifier.heightIn(min = 44.dp).background(fill, ZorkShapes.Control)
-        .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = click)
+        // A toggle must stay operable when on; a selected radio exposes no click.
+        .then(if (toggle) Modifier.toggleable(selected, enabled = enabled, role = Role.Checkbox) { click() }
+            else Modifier.selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = click))
         .padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
         Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
             color = if (selected) ZorkColors.Canvas else if (enabled) ZorkColors.Ink else ZorkColors.Disabled)

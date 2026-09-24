@@ -125,7 +125,7 @@ internal fun ModelEditor(source: JSONObject?, state: MobileSettingsState, action
                 }
             }
             ReferenceRow("能力", { reference = "capabilities" }) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { PickerChip("读取图片", images, !busy) { images = !images } }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { PickerChip("读取图片", images, !busy, toggle = true) { images = !images } }
             }
         } }
     }

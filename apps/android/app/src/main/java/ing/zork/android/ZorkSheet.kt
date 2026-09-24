@@ -71,9 +71,11 @@ internal fun ZorkSheet(
         mounted = false
         closed()
     }
-    // Enter once the panel has a height to slide from.
+    // Enter once the panel has a height to slide from. Re-keying this effect
+    // cancels an entry already in flight, so resume from the current value
+    // instead of skipping because the cancelled animation's target was 1.
     LaunchedEffect(open, height > 0) {
-        if (open && height > 0 && shown.value < 1f && shown.targetValue < 1f)
+        if (open && height > 0 && shown.value < 1f)
             shown.animateTo(1f, if (reduced) tween(ZorkMotion.REDUCED_FADE) else ZorkMotion.enter(ZorkMotion.PAGE))
     }
     if (!mounted) return
