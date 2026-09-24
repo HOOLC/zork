@@ -14,7 +14,7 @@
 
 ## 工具与身份
 
-Agent 先发现目标并检查可用能力，再准备依赖、安装和验证实际调用。工具操作手册由 `tool.help` 提供。产品不加载外部 Skill，也不托管 MCP 服务。
+Agent 先发现目标并检查可用能力，再准备依赖、安装和验证实际调用。工具操作手册由 `tool.help` 提供；判断与做法由本机 [Agent Skill](agent-skills.md) 提供。Skill 不跨设备共享，产品也不托管 MCP 服务。
 
 目标使用认证节点身份；名称、路径和程序属于该目标设备。调用者、Agent、Session 与 invocation 从可信上下文注入，模型不能指定另一个身份。实体 ID、配置 revision、工具 binding revision 和访问凭据分别使用。
 
