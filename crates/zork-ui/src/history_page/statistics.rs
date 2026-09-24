@@ -158,6 +158,15 @@ impl Statistics {
                         runtime.environment.clone().unwrap_or_default(),
                     ),
             );
+        // The toggle sits in the summary line and the panel opens below it,
+        // both driven by the same disclosure so the panel grows with it.
+        let (usage_toggle, usage_body) = crate::components::disclosure::expander_parts(
+            "history-usage-details",
+            text.text("history_usage_label"),
+            usage_panel,
+            window,
+            cx,
+        );
         div()
             .id("history-usage-overview")
             .w_full()
@@ -174,20 +183,9 @@ impl Statistics {
                     .items_center()
                     .gap_2()
                     .child(line)
-                    .child(crate::components::disclosure::expander(
-                        "history-usage-details",
-                        text.text("history_usage_label"),
-                        div(),
-                        window,
-                        cx,
-                    )),
+                    .child(usage_toggle),
             )
-            .when(
-                *window
-                    .use_keyed_state("history-usage-details-open", cx, |_, _| false)
-                    .read(cx),
-                |v| v.child(usage_panel),
-            )
+            .children(usage_body)
             .automation(
                 AutomationRole::Status,
                 format!(

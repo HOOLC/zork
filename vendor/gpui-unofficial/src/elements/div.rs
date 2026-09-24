@@ -2273,7 +2273,18 @@ impl Interactivity {
                         style.overflow_mask(bounds, window.rem_size()),
                         |window| {
                             let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+                                // Only presses make an element interactive for
+                                // the window's drag areas below it.
+                                let passive = self.mouse_down_listeners.is_empty()
+                                    && self.click_listeners.is_empty()
+                                    && self.aux_click_listeners.is_empty()
+                                    && self.drag_listener.is_none();
+                                Some(window.insert_hitbox_with(
+                                    bounds,
+                                    self.hitbox_behavior,
+                                    passive,
+                                    self.window_control,
+                                ))
                             } else {
                                 None
                             };

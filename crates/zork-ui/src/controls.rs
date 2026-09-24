@@ -88,6 +88,8 @@ pub enum Selection {
     Actions,
 }
 
+/// Height of the app-owned titlebar strip, where the traffic lights sit.
+pub const TITLEBAR_HEIGHT: f32 = 48.;
 pub fn settings_content(content: impl IntoElement) -> impl IntoElement {
     div()
         .id("desktop-settings-column")

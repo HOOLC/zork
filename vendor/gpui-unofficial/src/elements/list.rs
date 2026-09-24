@@ -1584,7 +1584,8 @@ impl Element for List {
         let mut style = Style::default();
         style.refine(&self.style);
 
-        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+        // The list itself only scrolls; its rows carry their own hitboxes.
+        let hitbox = window.insert_hitbox_with(bounds, HitboxBehavior::Normal, true, None);
 
         // If the width of the list has changed, invalidate all cached item heights
         if state
