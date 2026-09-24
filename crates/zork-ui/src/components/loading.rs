@@ -154,7 +154,9 @@ impl Render for Clock {
                     let delay = if visible {
                         Duration::from_millis(34)
                     } else {
-                        Duration::from_secs_f32((0.2 - elapsed).max(0.001))
+                        Duration::from_secs_f32(
+                            (crate::motion::LOADING_DELAY as f32 / 1000. - elapsed).max(0.001),
+                        )
                     };
                     window
                         .spawn(cx, async move |cx| {
@@ -173,4 +175,85 @@ impl Render for Clock {
             .inset_0(),
         )
     }
+}
+
+/// What a loading region shows right now; see [`delayed`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    /// Loading, but not long enough to show a placeholder; keep the slot quiet.
+    Waiting,
+    /// Show the loading placeholder.
+    Showing,
+    /// Show the content.
+    Ready,
+}
+
+#[derive(Default)]
+struct Gate {
+    since: Option<Instant>,
+    shown: Option<Instant>,
+    wake: Option<Instant>,
+}
+
+/// Gates a loading placeholder: nothing for the first 300 ms, and once shown it
+/// stays at least 400 ms even if loading finishes sooner, so it never flashes.
+/// The timing lives in window state under `id`; call it on every render.
+pub fn delayed(
+    id: impl Into<gpui::SharedString>,
+    loading: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Phase {
+    use crate::motion::{duration, LOADING_DELAY, LOADING_MIN};
+    let id: gpui::SharedString = id.into();
+    let state = window.use_keyed_state(
+        ElementId::Name(format!("{id}-loading-gate").into()),
+        cx,
+        |_, _| Gate::default(),
+    );
+    let now = cx.background_executor().now();
+    let (phase, wake) = state.update(cx, |g, _| {
+        let mut wake = None;
+        let phase = if loading {
+            let since = *g.since.get_or_insert(now);
+            if g.shown.is_none() && now.saturating_duration_since(since) >= duration(LOADING_DELAY) {
+                g.shown = Some(now);
+            }
+            if g.shown.is_some() {
+                Phase::Showing
+            } else {
+                wake = Some(since + duration(LOADING_DELAY));
+                Phase::Waiting
+            }
+        } else {
+            g.since = None;
+            match g.shown {
+                Some(shown) if now.saturating_duration_since(shown) < duration(LOADING_MIN) => {
+                    wake = Some(shown + duration(LOADING_MIN));
+                    Phase::Showing
+                }
+                _ => {
+                    g.shown = None;
+                    Phase::Ready
+                }
+            }
+        };
+        // Schedule one wake-up per deadline instead of animating every frame.
+        let wake = wake.filter(|at| g.wake != Some(*at));
+        if wake.is_some() {
+            g.wake = wake;
+        }
+        (phase, wake)
+    });
+    if let Some(at) = wake {
+        let view = window.current_view();
+        let delay = at.saturating_duration_since(now) + Duration::from_millis(1);
+        window
+            .spawn(cx, async move |cx| {
+                cx.background_executor().timer(delay).await;
+                let _ = cx.update(move |_, cx| cx.notify(view));
+            })
+            .detach();
+    }
+    phase
 }

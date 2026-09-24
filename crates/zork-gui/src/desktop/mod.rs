@@ -28,7 +28,8 @@ use crate::{
     design::ZORK_UI,
     views::RootView,
 };
-use gpui::{div, prelude::*, px, rgb, AnimationExt, Context, Div, Entity, Window};
+use gpui::{div, prelude::*, px, rgb, Context, Div, Entity, Window};
+use zork_ui::motion::MotionExt;
 use node::LocalNode;
 use std::sync::Arc;
 use store::{ClientStore, SavedNode};
@@ -1332,10 +1333,10 @@ impl Render for DesktopRoot {
                                     .when_some(self.error.clone(), |v, e| v.child(ui::feedback(e)))
                                     // Switching pages fades only the content column; the
                                     // sidebar and title bar stay still.
-                                    .with_animation(
+                                    .appear(
                                         gpui::SharedString::from(format!("settings-page-{tab}")),
-                                        zork_ui::motion::enter(zork_ui::motion::DESKTOP_PAGE),
-                                        |page, t| page.opacity(t),
+                                        zork_ui::motion::DESKTOP_PAGE,
+                                        0.,
                                     ),
                             )),
                     ),

@@ -173,7 +173,15 @@ pub(crate) fn render<V: 'static>(
         .collect();
     // The open menu fits its longest option (row padding, icon, check mark,
     // panel inset and border) so option names are not cut short.
-    let menu_width = if open {
+    // Presence keeps a closed menu on screen for its exit fade.
+    let frame = crate::motion::presence(
+        SharedString::from(format!("{id}-menu-presence")),
+        open,
+        crate::motion::POPOVER,
+        window,
+        cx,
+    );
+    let menu_width = if frame.is_some() {
         rows.iter()
             .map(|row| {
                 crate::components::widgets::overlay::measure_label_with_weight(
@@ -332,12 +340,10 @@ pub(crate) fn render<V: 'static>(
         .w_full()
         .h_full()
         .child(trigger);
-    if open {
+    if let Some(frame) = frame {
         let height = (window.viewport_size().height.as_f32() - 24.).clamp(32., 320.);
         let edge_list = list.clone();
         let panel = div()
-            .id(format!("{id}-menu"))
-            .occlude()
             .w(px(control_width.max(160.).max(menu_width.min(360.))))
             .max_h(px(height))
             .p(px(6.))
@@ -350,7 +356,16 @@ pub(crate) fn render<V: 'static>(
                 format!("{id}-viewport"),
                 ui::PLAIN_POPOVER_RADIUS - 6.,
                 List::new(&list).small().max_h(px(height - 13.)),
-            ))
+            ));
+        // A leaving menu takes no input and is not part of the automation tree.
+        let panel = if frame.closing {
+            panel
+                .id(SharedString::from(format!("{id}-menu-leaving")))
+                .into_any_element()
+        } else {
+            panel
+            .id(format!("{id}-menu"))
+            .occlude()
             .on_key_down(move |e: &KeyDownEvent, w, app| {
                 if !matches!(e.keystroke.key.as_str(), "home" | "end") {
                     return;
@@ -367,18 +382,16 @@ pub(crate) fn render<V: 'static>(
                 app.stop_propagation();
             })
             .on_mouse_down_out(move |_, w, cx| close(w, cx))
-            .automation(AutomationRole::ScrollArea, label);
-        // Opens below its trigger: fade in while moving away from it. A plain
-        // wrapper carries the animation so the panel keeps its own id.
-        let panel = div().child(panel).with_animation(
-            SharedString::from(format!("{id}-menu-enter")),
-            crate::motion::enter(crate::motion::POPOVER),
-            |wrap, t| {
-                wrap.opacity(t)
-                    .relative()
-                    .top(px(-crate::motion::POPOVER_OFFSET * (1. - t)))
-            },
-        );
+            .automation(AutomationRole::ScrollArea, label)
+            .into_any_element()
+        };
+        // Opens below its trigger: fade in while moving away from it; the exit
+        // only fades. A plain wrapper moves so the panel keeps its own id.
+        let panel = div()
+            .relative()
+            .top(px(-crate::motion::POPOVER_OFFSET * frame.travel))
+            .opacity(frame.opacity)
+            .child(panel);
         select = select.child(
             deferred(
                 gpui_base::Positioner::side(anchor.get())

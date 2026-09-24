@@ -1585,39 +1585,33 @@ impl RootView {
                         },
                     )
                     .map(|row| {
-                        use gpui::AnimationExt;
+                        // A new message fades in and rises into place; with reduced
+                        // motion it only fades briefly. The clock is the arrival
+                        // time, so a row re-mounted by virtualization continues
+                        // instead of restarting.
+                        use zork_ui::motion::{self, Mode};
+                        let (ms, offset) = match motion::mode(cx) {
+                            Mode::Full => (motion::BASE, motion::ROW_OFFSET),
+                            Mode::Short => (motion::REDUCED_FADE, 0.),
+                            Mode::Static => (0, 0.),
+                        };
+                        let total = motion::duration(ms);
                         if let Some(started) = metadata
                             .id
                             .as_ref()
                             .and_then(|id| arrivals.get(id))
                             .copied()
-                            .filter(|time| {
-                                time.elapsed() < zork_ui::motion::duration(zork_ui::motion::BASE)
-                                    && !cx.reduce_motion()
-                            })
+                            .filter(|time| time.elapsed() < total)
                         {
-                            // A new message fades in and rises into place. The clock is
-                            // the arrival time, so a row re-mounted by virtualization
-                            // continues instead of restarting.
-                            let total = zork_ui::motion::duration(zork_ui::motion::BASE);
-                            let curve = zork_ui::motion::bezier(0.2, 0.7, 0.2, 1.0);
-                            row.with_animation(
-                                format!(
-                                    "message-enter-{}",
-                                    metadata.id.as_deref().unwrap_or_default()
-                                ),
-                                zork_ui::motion::enter(zork_ui::motion::BASE).with_max_fps(60.),
-                                move |row, _| {
-                                    let t = (started.elapsed().as_secs_f32()
-                                        / total.as_secs_f32().max(0.001))
-                                    .min(1.);
-                                    let t = curve(t);
-                                    row.relative()
-                                        .top(px(zork_ui::motion::ROW_OFFSET * (1. - t)))
-                                        .opacity(t)
-                                },
-                            )
-                            .into_any_element()
+                            let t = (started.elapsed().as_secs_f32()
+                                / total.as_secs_f32().max(0.001))
+                            .min(1.);
+                            let t = motion::bezier(0.2, 0.7, 0.2, 1.0)(t);
+                            window.request_animation_frame();
+                            row.relative()
+                                .top(px(offset * (1. - t)))
+                                .opacity(t)
+                                .into_any_element()
                         } else {
                             row.into_any_element()
                         }

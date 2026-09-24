@@ -12,7 +12,13 @@ use gpui::App;
 pub fn init(cx: &mut App) {
     zork_ui::components::init(cx);
     #[cfg(target_os = "macos")]
-    cx.set_reduce_motion(zork_client_core::desktop::reduced_motion());
+    {
+        // The user's preference turns motion into short fades; tests and
+        // stills that force `reduce_motion` later get static end states.
+        let reduced = zork_client_core::desktop::reduced_motion();
+        zork_ui::motion::set_user_reduced(reduced);
+        cx.set_reduce_motion(reduced);
+    }
 }
 
 pub mod selection;

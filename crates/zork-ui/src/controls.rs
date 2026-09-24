@@ -5,7 +5,8 @@ use crate::{
     components::text_input::ComposerInput,
     design::{TextRole, FORM, INTERACTION, ZORK_UI},
 };
-use gpui::{div, prelude::*, px, rgb, svg, AnimationExt, Div, Entity, FontWeight, Stateful};
+use crate::motion::MotionExt;
+use gpui::{div, prelude::*, px, rgb, svg, Div, Entity, FontWeight, Stateful};
 
 pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
     svg()
@@ -611,15 +612,10 @@ pub fn status_notice(message: String, kind: NoticeKind) -> Div {
                 kind,
                 None,
             ))
-            .with_animation(
+            .appear(
                 enter,
-                crate::motion::enter(crate::motion::SURFACE),
-                |notice, t| {
-                    notice
-                        .opacity(t)
-                        .relative()
-                        .top(px(-crate::motion::NOTICE_OFFSET * (1. - t)))
-                },
+                crate::motion::SURFACE,
+                -crate::motion::NOTICE_OFFSET,
             ),
     )
 }

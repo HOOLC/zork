@@ -14,6 +14,7 @@ use crate::{
     design::ZORK_UI,
     resources::Text,
 };
+use crate::motion::MotionExt;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
@@ -446,10 +447,10 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                         ),
                                 )
                                 // Appears only when reading history; fades in, never slides.
-                                .with_animation(
+                                .appear(
                                     "history-follow-latest-enter",
-                                    crate::motion::enter(crate::motion::BASE),
-                                    |pill, t| pill.opacity(t),
+                                    crate::motion::BASE,
+                                    0.,
                                 ),
                         )
                     }),

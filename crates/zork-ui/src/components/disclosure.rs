@@ -6,7 +6,7 @@ use crate::{
     controls as ui,
     design::ZORK_UI,
 };
-use gpui::{div, prelude::*, px, rgb, AnimationExt, AnyElement, Context, SharedString, Window};
+use gpui::{div, prelude::*, px, rgb, AnyElement, Context, SharedString, Window};
 
 /// A quiet "更多" icon button with its menu. Items that are unavailable are
 /// passed disabled; an empty list renders nothing.
@@ -93,17 +93,14 @@ pub fn expander<V: 'static>(
         .flex_col()
         .items_start()
         .child(toggle)
-        .when(open, |v| {
-            // Content appears after the toggle: fade in while settling 4 px.
-            // GPUI lays out auto heights in one pass, so the height itself snaps.
-            v.child(
-                div().w_full().pt_1().child(content).with_animation(
-                    SharedString::from(format!("{id}-content")),
-                    crate::motion::enter(crate::motion::BASE),
-                    |body, t| body.opacity(t).relative().top(px(-4. * (1. - t))),
-                ),
-            )
-        })
+        // Height moves between the measured bounds; content fades after half.
+        .children(crate::motion::collapse(
+            id.clone(),
+            open,
+            || div().w_full().pt_1().child(content).into_any_element(),
+            window,
+            cx,
+        ))
         .into_any_element()
 }
 

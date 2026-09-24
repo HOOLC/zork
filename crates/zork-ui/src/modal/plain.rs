@@ -35,7 +35,7 @@ impl Fade {
         self.alpha
     }
     /// `now` comes from the app executor so tests on a virtual clock advance it.
-    fn advance(&mut self, open: bool, reduced: bool, now: std::time::Instant) -> bool {
+    fn advance(&mut self, open: bool, reduced: crate::motion::Mode, now: std::time::Instant) -> bool {
         use crate::motion;
         let target = if open { 1. } else { 0. };
         if target != self.target {
@@ -43,15 +43,20 @@ impl Fade {
             self.target = target;
             self.start = now;
         }
-        if reduced {
-            self.alpha = target;
-            return false;
-        }
         // Enter eases in over the surface token; exit leaves in two thirds of it.
+        // Reduced motion keeps a short fade.
         let (ms, curve): (u64, Box<dyn Fn(f32) -> f32>) = if open {
             (self.enter_ms, Box::new(motion::bezier(0.2, 0.7, 0.2, 1.0)))
         } else {
             (motion::exit(self.enter_ms), Box::new(motion::bezier(0.4, 0.0, 1.0, 1.0)))
+        };
+        let ms = match reduced {
+            motion::Mode::Full => ms,
+            motion::Mode::Short => ms.min(motion::REDUCED_FADE),
+            motion::Mode::Static => {
+                self.alpha = target;
+                return false;
+            }
         };
         let total = motion::duration(ms).as_secs_f32().max(0.001);
         let t = (now.saturating_duration_since(self.start).as_secs_f32() / total).clamp(0., 1.);
@@ -201,7 +206,7 @@ impl PlainDialog {
         self.focus.sync(open.then_some("dialog"), window, cx);
         self.content_id = Some(id.clone());
 
-        let reduced = cx.reduce_motion();
+        let reduced = crate::motion::mode(cx);
         let was_alive = self.alive();
         let now = cx.background_executor().now();
         let content_moving = self.reveal.advance(open, reduced, now);
