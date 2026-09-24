@@ -94,6 +94,8 @@ enum Interaction {
 
 struct Session {
     selected: usize,
+    /// Width the specimen was built at, for pages that lay out from it.
+    width: Option<f32>,
     host: Entity<StoryHost>,
     scroll: ScrollHandle,
     pending: Option<Vec<Value>>,
@@ -281,6 +283,17 @@ impl Gallery {
         self.width = width;
     }
 
+    /// Pages that lay out from the fixture width are rebuilt at a new width;
+    /// other specimens keep their edits across width changes.
+    fn relayout(&mut self, cx: &mut Context<Self>) {
+        let family = self.story().family.as_str();
+        if matches!(family, "new-chat" | "onboarding")
+            && self.session().width != self.width.pixels()
+        {
+            self.create_session(self.selected, None, cx);
+        }
+    }
+
     fn story(&self) -> &Story {
         &self.catalog[self.selected]
     }
@@ -303,7 +316,11 @@ impl Gallery {
     }
 
     fn create_session(&mut self, selected: usize, extra: Option<Vec<Value>>, cx: &mut Context<Self>) {
-        let story = self.catalog[selected].clone();
+        let mut story = self.catalog[selected].clone();
+        let width = self.width.pixels();
+        if let Some(width) = width {
+            story.width = width;
+        }
         let mut actions = story.actions.clone();
         actions.extend(extra.unwrap_or_default());
         let host = cx.new(|cx| StoryHost::new(story.clone(), cx));
@@ -311,6 +328,7 @@ impl Gallery {
             story.entry,
             Session {
                 selected,
+                width,
                 host,
                 scroll: ScrollHandle::new(),
                 pending: Some(actions),
@@ -1469,6 +1487,7 @@ impl Render for Gallery {
             });
         }
         if self.mode == Mode::Single {
+            self.relayout(cx);
             self.pending_actions(window, cx);
         }
         self.queue_stills(cx);
