@@ -3,6 +3,7 @@
     "input": {
       "action": "input",
       "end": 1789200000000,
+      "files": [],
       "id": "input",
       "lane": 0,
       "model": null,
@@ -1191,19 +1192,20 @@
     "wake-input": {
       "action": "input",
       "end": 1789200014400,
+      "files": ["narrow.png"],
       "id": "wake-input",
       "lane": 0,
       "model": null,
       "outcome": null,
       "stages": [
         {
-          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"检查完成，继续整理报告。\",\n      \"input_id\": \"wake-input\",\n      \"received_at_ms\": 1789200014400\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"wake-input\"\n}",
+          "json": "{\n  \"event\": {\n    \"input\": {\n      \"content\": \"{\\\"message\\\":{\\\"attachments\\\":[{\\\"byte_len\\\":2048,\\\"content_root\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"id\\\":\\\"file-narrow\\\",\\\"name\\\":\\\"narrow.png\\\"}],\\\"author\\\":{\\\"id\\\":\\\"worker-1\\\",\\\"kind\\\":\\\"agent\\\",\\\"name\\\":\\\"小熊\\\"},\\\"chat_id\\\":\\\"chat-01J9Z3\\\",\\\"created_at\\\":\\\"2026-09-12T08:00:00Z\\\",\\\"mentions\\\":[],\\\"message_id\\\":\\\"msg-01J9Z3XK8Q2M4N6P8R0T2V4W6Y\\\",\\\"reply_to\\\":\\\"msg-01J9Z3XK8Q2M4N6P8R0T2V4W00\\\",\\\"text\\\":\\\"检查完成，继续整理报告。\\\\n\\\\n- 边界条件已复查\\\\n- **窄屏截图**见附件\\\"},\\\"source\\\":\\\"chat\\\",\\\"target\\\":\\\"local\\\"}\",\n      \"input_id\": \"wake-input\",\n      \"position\": {\n        \"sequence\": 3,\n        \"source\": \"chat-4f1c2a9be07d35c8a1b2c3d4\"\n      },\n      \"received_at_ms\": 1789200014400\n    },\n    \"kind\": \"input_appended\"\n  },\n  \"event_id\": \"wake-input\"\n}",
           "kind": "event"
         }
       ],
       "start": 1789200014400,
       "state": "received",
-      "summary": "检查完成，继续整理报告。",
+      "summary": "检查完成，继续整理报告。\n\n- 边界条件已复查\n- **窄屏截图**见附件",
       "usage": null
     }
   },
@@ -1254,7 +1256,7 @@
         "read": 0,
         "shell": 0,
         "start": 1789200014400,
-        "summary": "检查完成，继续整理报告。",
+        "summary": "检查完成，继续整理报告。 - 边界条件已复查 - **窄屏截图**见附件",
         "written": 0
       },
       {
@@ -1445,7 +1447,7 @@
         "action": "input",
         "end": 1789200000000,
         "id": "input",
-        "kind": "received",
+        "kind": "input",
         "lane": 0,
         "model": null,
         "preview": "检查项目，整理报告并等待反馈。",
@@ -1453,7 +1455,15 @@
         "start": 1789200000000,
         "state": "received",
         "subject": null,
-        "visible": true
+        "visible": true,
+        "message": {
+          "device": null,
+          "files": [],
+          "reply": false,
+          "sender": null,
+          "structured": false,
+          "text": "检查项目，整理报告并等待反馈。"
+        }
       },
       {
         "action": "",
@@ -1663,15 +1673,34 @@
         "action": "input",
         "end": 1789200014400,
         "id": "wake-input",
-        "kind": "received",
+        "kind": "input",
         "lane": 0,
         "model": null,
-        "preview": "检查完成，继续整理报告。",
+        "preview": "检查完成，继续整理报告。 - 边界条件已复查 - **窄屏截图**见附件",
         "requested_wait_ms": null,
         "start": 1789200014400,
         "state": "received",
-        "subject": null,
-        "visible": true
+        "subject": {
+          "agent": {
+            "avatar": "bear",
+            "id": "worker-1",
+            "model": "fixture-model",
+            "name": "小熊",
+            "profile": "fixture",
+            "role": "worker",
+            "thinking": "high"
+          },
+          "label": "小熊"
+        },
+        "visible": true,
+        "message": {
+          "device": null,
+          "files": ["narrow.png"],
+          "reply": true,
+          "sender": "小熊",
+          "structured": false,
+          "text": "检查完成，继续整理报告。\n\n- 边界条件已复查\n- **窄屏截图**见附件"
+        }
       },
       {
         "action": "",
@@ -2302,7 +2331,7 @@
         "read": 0,
         "shell": 0,
         "start": 1789200014400,
-        "summary": "检查完成，继续整理报告。",
+        "summary": "检查完成，继续整理报告。 - 边界条件已复查 - **窄屏截图**见附件",
         "written": 0
       },
       {
