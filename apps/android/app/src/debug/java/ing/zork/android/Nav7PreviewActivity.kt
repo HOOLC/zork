@@ -36,7 +36,7 @@ class Nav7PreviewActivity : ComponentActivity() {
         val width = intent.getIntExtra("width",390)
         setContent {
             CompositionLocalProvider(LocalDensity provides if(width>0) Density(1f, 1f) else LocalDensity.current) {
-                ZorkTheme {
+                ZorkTheme(previewTheme) {
                     ZorkPageBackground(lightPage = route != "navigation") {
                         Box((if(width>0) Modifier.requiredSize(width.dp, 844.dp) else Modifier.fillMaxSize().safeDrawingPadding()).onGloballyPositioned {
                             val b = it.boundsInWindow(); contentBounds = Rect(b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt())
@@ -53,8 +53,9 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     actions.put(intent);lastBody=intent;snapshot=project()
                                 }, {})
                             }
-                            else if (route in listOf("home","appearance","device","models","profile","model-connections","services","notifications")) {
-                                var settings by remember { mutableStateOf(settingsFixturePage(fixtureSettings(), route)) }
+                            else if (route in listOf("home","appearance","device","models","profile","profile-custom","model-connections","services","notifications")) {
+                                var settings by remember { mutableStateOf(if (route == "profile-custom") fixtureSettings().let { it.copy(page="profile",profile=it.profiles.first { p -> p.text("profile_id")=="lab" }) }
+                                    else settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
                                     if(resourceTrail.isNotEmpty()) {
@@ -86,7 +87,11 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     action=="enable_model" -> updateProfile { profile ->
                                         profile.optJSONArray("models").objects().find{it.text("id")==body.getString("model")}!!.put("enabled",body!!.getBoolean("enabled"))
                                     }
-                                    action=="discover_models" -> JSONObject().put("profile",settings.profile).put("added",0).put("configured",0)
+                                    action=="discover_models" -> JSONObject().put("added",0).put("configured",0).put("preset",0).put("pending",0).put("message","没有新模型")
+                                    action=="remove_model" -> updateProfile { profile ->
+                                        val id=body.getJSONObject("model").getString("id")
+                                        profile.put("models",org.json.JSONArray(profile.optJSONArray("models").objects().filter{it.text("id")!=id}))
+                                    }
                                     action=="save_model" -> updateProfile { profile ->
                                         val result=JSONObject(NativeBridge.previewModels(body.getJSONObject("input").toString(),profile.getJSONArray("models").toString()))
                                         check(result.optBoolean("ok")){result.text("error")}
@@ -159,10 +164,15 @@ private fun fixtureSettings(): MobileSettingsState {
         .put(obj("id" to "unconfigured-model","api" to "openai-responses","enabled" to false,"thinking" to org.json.JSONArray().put("off"),"default_thinking" to "off"))
     val agents=listOf(obj("id" to "product","name" to "产品领队","role" to "leader","avatar" to "fox","profile_id" to "studio","model" to "fixture-model","thinking" to "off"),
         obj("id" to "designer","name" to "设计队员","role" to "worker","avatar" to "cat","profile_id" to "studio","model" to "fixture-model","thinking" to "off","allowed_leaders" to org.json.JSONArray().put("other/leader")))
+    val lab=obj("profile_id" to "lab","name" to "本地 vLLM","provider" to "openai-compatible","billing" to "usage","verified" to true,
+        "models" to org.json.JSONArray().put(obj("id" to "qwen3-32b","api" to "openai-completions","enabled" to true,"thinking" to org.json.JSONArray().put("off").put("high"),"default_thinking" to "high",
+            "limits" to obj("context_window_tokens" to 128000,"max_output_tokens" to 16000),"capabilities" to obj("input" to org.json.JSONArray().put("text")))))
     val profiles=listOf(obj("profile_id" to "studio","name" to "工作室订阅","provider" to "openai","billing" to "subscription","verified" to true,"models" to models,
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to 72,"resets_at" to 1789002000)),"balance" to org.json.JSONArray().put(0).put("USD")),"checkedAt" to "2026-09-10T01:00:00Z"),
-        obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()))
-    val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))))
+        obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray()), lab)
+    val providers=listOf(obj("id" to "openai","label" to "OpenAI","billing" to org.json.JSONArray().put(obj("id" to "subscription","label" to "ChatGPT 订阅","deviceCode" to true)).put(obj("id" to "usage","label" to "API","deviceCode" to false))),obj("id" to "anthropic","label" to "Anthropic","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false))),
+        obj("id" to "openai-compatible","label" to "OpenAI 兼容","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false,
+            "template" to obj("models" to org.json.JSONArray().put(obj("api" to "openai-completions")))))))
     val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray())
     val connections=listOf(
         obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),

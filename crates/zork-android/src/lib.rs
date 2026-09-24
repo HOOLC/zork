@@ -110,6 +110,20 @@ pub fn validate_model(input: &str, models: &str) -> Result<Value> {
     Ok(serde_json::to_value(input.errors(&models))?)
 }
 
+/// Pure list projection of a connection's models (`op: "model_rows"` without a client).
+pub fn model_rows(request: &str) -> Result<Value> {
+    #[derive(serde::Deserialize)]
+    struct Request {
+        profile: zork_client_core::model_catalog::ConnectionInfo,
+    }
+    let Request { profile } = serde_json::from_str(request)?;
+    Ok(json!(profile
+        .models
+        .iter()
+        .map(|m| zork_client_core::model_catalog::model_row(m, &profile.provider))
+        .collect::<Vec<_>>()))
+}
+
 #[cfg(debug_assertions)]
 pub fn preview_models(input: &str, models: &str) -> Result<Value> {
     let input: zork_client_core::model_edit::ModelInput = serde_json::from_str(input)?;
@@ -528,6 +542,20 @@ mod android {
             let value = serde_json::from_str(&request.to_string())
                 .map_err(anyhow::Error::from)
                 .and_then(zork_client_core::model_editor::handle_sources);
+            JString::from_str(env, super::envelope(value).to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// List rows for a connection's models: `{profile}` → `[ModelRow]` (pure).
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_modelRows<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = super::model_rows(&request.to_string());
             JString::from_str(env, super::envelope(value).to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
