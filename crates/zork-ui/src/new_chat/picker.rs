@@ -109,6 +109,10 @@ impl Page {
         let Some(selected) = self.selected_pair() else {
             return;
         };
+        if self.picker_revealed.get() == Some(selected) {
+            return;
+        }
+        self.picker_revealed.set(Some(selected));
         // Children alternate a group title with its model rows.
         let mut child = 0;
         let mut row = 0;
@@ -137,6 +141,8 @@ impl Page {
         let p = ZORK_UI.palette;
         let enabled = self.picker_open && self.data.editable;
         let selected = self.selected_pair();
+        // Keeps the current model in view when the panel opens or the choice moves.
+        self.reveal_selected_model();
         let mut list = div()
             .id("new-chat-model-list")
             .max_h(px(320.))
@@ -293,7 +299,6 @@ impl Page {
                         };
                         let (profile, model) = pairs[next].clone();
                         view.select(profile, model, cx);
-                        view.reveal_selected_model();
                     }
                     "left" | "right" => {
                         let levels = &view.data.thinking.options;

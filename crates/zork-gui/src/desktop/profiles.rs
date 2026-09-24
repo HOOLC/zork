@@ -1571,15 +1571,27 @@ impl Render for ProfilesView {
                                         detail["provider"].as_str().unwrap_or_default(),
                                         18.,
                                     ))
-                                    .child(div().truncate().child(format!(
-                                        "{} · {}",
-                                        provider_name,
-                                        self.locale.text(if verified {
-                                            "profile_verified"
-                                        } else {
-                                            "profile_unverified"
-                                        })
-                                    ))),
+                                    .child(div().truncate().child(if self.device_name.is_empty() {
+                                        provider_name.to_owned()
+                                    } else {
+                                        format!("{provider_name} · 保存在 {}", self.device_name)
+                                    }))
+                                    // Status only matters when it needs attention.
+                                    .when(!verified, |v| {
+                                        v.child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .h(px(22.))
+                                                .px(px(9.))
+                                                .flex()
+                                                .items_center()
+                                                .rounded_full()
+                                                .font_weight(gpui::FontWeight::MEDIUM)
+                                                .bg(gpui::rgba((p.warning << 8) | 0x1f))
+                                                .text_color(rgb(p.warning))
+                                                .child(self.locale.text("profile_unverified")),
+                                        )
+                                    }),
                             )
                             .when_some(
                                 self.quota.get(&profile_id).and_then(|q| q.checked.clone()),

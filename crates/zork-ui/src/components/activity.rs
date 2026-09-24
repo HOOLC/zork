@@ -75,6 +75,7 @@ pub fn render_session(
             )
     };
     let toggle_label = if expanded { less } else { more };
+    let latest_open = on_open.clone();
     let header = div()
         .h(px(36.))
         .flex_shrink_0()
@@ -103,7 +104,23 @@ pub fn render_session(
                 .child(name.to_owned()),
         )
         .map(|v| match (&latest, expanded) {
-            (Some(row), false) => v.child(step(row, true).flex_1()),
+            (Some(row), false) => {
+                let id = row.id.clone();
+                let open = latest_open.clone();
+                v.child(
+                    div()
+                        .id(format!("session-activity-{}", row.id))
+                        .flex_1()
+                        .min_w_0()
+                        .cursor_pointer()
+                        .on_click(move |_, _, cx| open(id.clone(), cx))
+                        .child(step(row, true))
+                        .automation(
+                            AutomationRole::Button,
+                            format!("{} {}", row.label, row.summary),
+                        ),
+                )
+            }
             _ => v.child(
                 div()
                     .min_w_0()

@@ -450,6 +450,22 @@ fn raw_catalog() -> Vec<Story> {
             "model-protocol",
         ),
         (
+            "model",
+            "模型配置",
+            "params",
+            "model-editor-dialog",
+            vec![],
+            "model-create",
+        ),
+        (
+            "model",
+            "模型配置",
+            "reference",
+            "model-editor-dialog",
+            vec![],
+            "model-create",
+        ),
+        (
             "conversation",
             "会话",
             "messages",
@@ -592,25 +608,39 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 700.;
         items.push(story);
     }
-    let form = zork_ui::stories::page_fixture()["model_form"].clone();
     for story in &mut items {
-        if story.family == "model"
-            && (story.state.starts_with("create") || story.state.starts_with("protocol"))
-        {
-            story.actions = vec![
-                click("profile-model-add"),
-                click("profile-context-limit"),
-                json!({"type":"type_text","text":form["context_window"].as_u64().unwrap().to_string()}),
-                click("profile-output-limit"),
-                json!({"type":"type_text","text":form["max_output_tokens"].as_u64().unwrap().to_string()}),
-                click(if story.state.starts_with("protocol") {
-                    "model-api-select"
-                } else {
-                    "profile-model"
-                }),
-            ];
+        if story.family != "model" || story.state.starts_with("detail") {
+            continue;
         }
+        // Typing a known id fills every parameter; later states open them.
+        let mut actions = vec![
+            click("profile-model-add"),
+            click("profile-model"),
+            json!({"type":"type_text","text":"deepseek-chat"}),
+        ];
+        let state = story.state.as_str();
+        if !state.starts_with("create") {
+            actions.push(click("model-params-toggle"));
+        }
+        if state.starts_with("reference") {
+            actions.push(click("model-reference-context"));
+        }
+        if state.starts_with("protocol") {
+            actions.push(click("model-api-select"));
+        }
+        story.actions = actions;
     }
+    let mut picker = Story::new(
+        "new-chat",
+        "新建 Chat",
+        "picker",
+        "crates/zork-ui/src/new_chat/picker.rs",
+        "new-chat",
+    );
+    picker.width = 900.;
+    picker.height = 700.;
+    picker.actions = vec![click("new-chat-options")];
+    items.push(picker);
     items
 }
 
