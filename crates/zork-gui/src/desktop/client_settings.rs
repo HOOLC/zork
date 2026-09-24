@@ -112,7 +112,6 @@ impl DesktopRoot {
                     }
                 }),
             ))
-            .child(note("client_appearance_note"))
             .when(env_pinned, |view| view.child(note("client_appearance_pinned")))
     }
     pub(super) fn watch_data_reset(&mut self, cx: &mut Context<Self>) {

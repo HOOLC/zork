@@ -154,6 +154,8 @@ pub fn heading(
     title: impl Into<gpui::SharedString>,
     description: impl Into<gpui::SharedString>,
 ) -> Div {
+    // An empty description adds no line.
+    let description: gpui::SharedString = description.into();
     div()
         .flex()
         .flex_col()
@@ -165,13 +167,13 @@ pub fn heading(
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(title.into()),
         )
-        .child(
+        .when(!description.is_empty(), |v| v.child(
             div()
                 .text_size(px(13.))
                 .line_height(px(20.))
                 .text_color(rgb(ZORK_UI.palette.muted))
-                .child(description.into()),
-        )
+                .child(description),
+        ))
 }
 pub fn label(text: impl Into<gpui::SharedString>) -> Div {
     text_role(text, TextRole::Label)
