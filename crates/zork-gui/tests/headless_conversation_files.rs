@@ -567,7 +567,7 @@ fn main() -> anyhow::Result<()> {
             control.id
         );
     }
-    let draft = core.draft("render-fixture").files;
+    let draft = core.draft("render-fixture").files.clone();
     let last = draft.last().unwrap().id.clone();
     let row_center = driver
         .snapshot(false)
