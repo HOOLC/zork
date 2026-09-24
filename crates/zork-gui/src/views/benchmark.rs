@@ -48,27 +48,16 @@ impl RootView {
     pub fn benchmark_transcript_len(&self) -> usize {
         self.lines.len()
     }
-    pub fn benchmark_file_fan_progress(&self) -> f32 {
-        if self.file_ui.draft.open() {
-            1.
-        } else {
-            0.
-        }
-    }
     pub fn benchmark_file_geometry(&self) -> serde_json::Value {
-        let frame = self.draft_file_frame();
         serde_json::json!({
-            "composer_width":self.composer_surface_width,"axis_x":self.file_fan_center(),
-            "expanded":frame.expanded,"width":frame.width,"height":frame.height,
-            "files":frame.files.iter().map(|v|serde_json::json!({"id":v.file.id})).collect::<Vec<_>>()
+            "composer_width":self.composer_surface_width,
+            "band":self.draft_files_band(),
+            "files":self.draft_state.files.iter().map(|f|serde_json::json!({"id":f.id})).collect::<Vec<_>>()
         })
     }
-    pub fn benchmark_file_fan_state(&self) -> (bool, bool, usize) {
-        (
-            self.file_ui.draft.open(),
-            self.file_ui.draft.pinned,
-            self.file_ui.previews.borrow().image_count(),
-        )
+    /// Draft/message thumbnails that finished decoding.
+    pub fn benchmark_file_thumbnails(&self) -> usize {
+        self.file_ui.message_previews.borrow().image_count()
     }
     pub fn benchmark_restore_draft(&mut self, cx: &mut Context<Self>) {
         self.restore_draft(cx);

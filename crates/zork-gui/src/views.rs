@@ -956,9 +956,6 @@ impl Render for RootView {
             self.start_background(cx);
         }
         self.measure_composer_geometry(window, cx);
-        if self.draft_state.files.is_empty() {
-            self.file_ui.draft = Default::default();
-        }
         if !self.focus_initialized && self.preview_original.is_none() {
             self.focus_initialized = true;
             let focus_handle = self.composer_input.read(cx).focus_handle();
@@ -1035,24 +1032,12 @@ impl Render for RootView {
                     cx.stop_propagation();
                     return;
                 }
-                if event.keystroke.key == "escape" && view.file_ui.draft.open() {
-                    view.close_draft_fan(cx);
-                    cx.stop_propagation(); return;
-                }
                 if event.keystroke.modifiers.platform && !event.keystroke.modifiers.shift && event.keystroke.key == "b" {
                     view.shell.rail_open = !view.shell.rail_open;
                     zork_ui::components::region::invalidate_all(cx);
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_down(
-                gpui::MouseButton::Left,
-                cx.listener(|v, _, _, cx| {
-                    if v.file_ui.draft.pinned {
-                        v.close_draft_fan(cx);
-                    }
-                }),
-            )
             .bg(rgb(ZORK_UI.palette.window))
             .text_color(rgb(TEXT()))
             .font_family("Inter Variable")
@@ -1399,7 +1384,7 @@ impl RootView {
         let loading_older = self.loading_older;
         let older_root = cx.entity().downgrade();
         let bottom_inset = if self.can_send_selected() {
-            self.composer_overlay_height + self.file_fan_dimensions().1 + 8.
+            self.composer_overlay_height + 8.
         } else {
             0.
         };
@@ -1745,7 +1730,6 @@ impl RootView {
 
     fn render_composer_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let root = cx.entity().downgrade();
-        let fan_extent = self.file_fan_dimensions().1;
         let composer = self.render_shared_composer(window, cx);
         let frame = div()
             .relative()
@@ -1776,6 +1760,7 @@ impl RootView {
                     .automation(AutomationRole::Button, self.locale.text("messages_new")),
                 )
             })
+            .group(composer_surface::COMPOSER_DROP_GROUP)
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
                 v.attach_paths(paths.paths().to_vec(), cx);
             }))
@@ -1784,9 +1769,9 @@ impl RootView {
             .child(
                 gpui::canvas(
                     move |bounds, _, cx| {
-                        // Retain only the static editor/extras measurement.
-                        // The attachment fan contributes its measured height.
-                        let height = bounds.size.height.as_f32() - fan_extent;
+                        // The draft file row is inside the surface, so the
+                        // measured frame is the whole overlay height.
+                        let height = bounds.size.height.as_f32();
                         let root = root.clone();
                         cx.defer(move |cx| {
                             let _ = root.update(cx, |view, cx| {

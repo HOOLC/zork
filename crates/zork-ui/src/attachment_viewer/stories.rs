@@ -52,9 +52,31 @@ impl Story {
             version: 2,
             created_at: "2026-09-15".into(),
         };
+        // The image view shows its switching strip, so it opens in a group of
+        // three: the image itself and two files without thumbnails.
+        let group = if image_view {
+            let sibling = |id: &str, name: &str| Info {
+                id: id.into(),
+                name: name.into(),
+                image_view: false,
+                ..info.clone()
+            };
+            vec![
+                info.clone(),
+                sibling("demo-file-2", "截图-2.png"),
+                sibling("demo-file-3", "设计说明.md"),
+            ]
+        } else {
+            vec![info.clone()]
+        };
+        let thumbnails = image
+            .as_ref()
+            .map(|image| vec![Some(image.rendered.clone()), None, None])
+            .unwrap_or_default();
         let data = Data {
             info: Some(info.clone()),
-            group: Arc::new(vec![info]),
+            group: Arc::new(group),
+            thumbnails: Arc::new(thumbnails),
             loaded: !matches!(state, "loading" | "error"),
             failed: state == "error",
             image,

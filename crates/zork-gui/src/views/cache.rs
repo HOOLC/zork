@@ -98,8 +98,6 @@ impl RootView {
         }
     }
     pub(super) fn restore_draft(&mut self, cx: &mut Context<Self>) {
-        self.file_ui.draft = Default::default();
-        self.file_ui.messages.borrow_mut().clear();
         self.comment_popover = None;
         self.comment_editor
             .update(cx, |editor, cx| editor.reset(cx));
@@ -115,7 +113,6 @@ impl RootView {
             .as_mut()
             .map(|changes| changes.snapshot())
             .unwrap_or_default();
-        self.file_ui.draft = Default::default();
         let text = self.draft_state.text.clone();
         self.composer_input
             .update(cx, |input, cx| input.reset_value(text, cx));

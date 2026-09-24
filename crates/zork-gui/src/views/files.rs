@@ -1,12 +1,10 @@
 pub(super) mod content;
-mod fan;
+mod draft;
 pub(super) mod image;
-mod layout;
 pub(super) mod message;
-mod preview;
 mod system_preview;
 use super::*;
-pub(super) use fan::UiState;
+pub(super) use draft::UiState;
 
 impl RootView {
     fn open_message_file(
@@ -78,7 +76,15 @@ impl RootView {
             .iter()
             .map(|f| self.message_file_artifact(f, session))
             .collect();
+        let thumbnails = {
+            let mut cache = self.file_ui.message_previews.borrow_mut();
+            files
+                .iter()
+                .map(|f| cache.image(f, session, usize::MAX))
+                .collect()
+        };
         self.open_artifact_group(artifacts, selected, window, cx);
+        self.set_preview_thumbnails(thumbnails);
     }
     pub(super) fn choose_files(&mut self, cx: &mut Context<Self>) {
         if !self.can_send_selected() {

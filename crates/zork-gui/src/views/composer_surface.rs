@@ -1,6 +1,10 @@
 //! Composer and attachment preview presentation. Session activity stays in the transcript.
 use super::*;
 use crate::api::ParticipantStatus;
+use zork_ui::design::{INTERACTION, ZORK_UI};
+
+/// Group on the composer frame whose file drags reveal the drop target.
+pub(super) const COMPOSER_DROP_GROUP: &str = "composer-drop";
 
 #[derive(Default)]
 pub(super) struct ComposerSurface {
@@ -18,13 +22,13 @@ impl RootView {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         use zork_ui::components::widgets::{composer as component, Pose};
-        let extent = self.file_fan_dimensions().1;
         let height = self.composer_editor_height
+            + self.draft_files_band()
             + zork_ui::components::composer_layout::TOP_EXTENSION
             + zork_ui::components::composer_layout::COMPOSER_CHROME;
         let body = Pose::rect(
             0.,
-            extent as f64,
+            0.,
             self.composer_surface_width.max(2.) as f64,
             height as f64,
             zork_ui::components::composer_layout::SURFACE_RADIUS as f64,
@@ -49,17 +53,10 @@ impl RootView {
             text: self.composer_input.read(cx).value().to_owned(),
             ..Default::default()
         };
-        let fan = (!self.draft_file_frame().files.is_empty()).then(|| {
-            div()
-                .absolute()
-                .top_0()
-                .w_full()
-                .h(px(
-                    extent + zork_ui::components::composer_layout::TOP_EXTENSION
-                ))
-                .child(self.render_draft_fan(cx))
-                .into_any_element()
-        });
+        let row_width = (self.composer_surface_width
+            - 2. * zork_ui::components::composer_layout::ACTION_INSET)
+            .max(2.);
+        let files = self.render_draft_files(row_width, cx);
         self.composer_surface.scene.frame(body);
         let root = cx.entity().downgrade();
         let handler = Rc::new(move |action, w: &mut Window, cx: &mut gpui::App| {
@@ -70,11 +67,9 @@ impl RootView {
                 id: "composer",
                 scene: &self.composer_surface.scene,
                 width: self.composer_surface_width,
-                height: extent + height,
+                height,
                 editor: &self.composer_input,
                 snapshot: &snapshot,
-                fan_expanded: self.file_ui.draft.open(),
-                fan_pinned: self.file_ui.draft.pinned,
                 handler,
                 action_size: 24.,
                 accessory_band: 0.,
@@ -84,7 +79,7 @@ impl RootView {
                     attach_id: "composer-options".into(),
                     show_attach: true,
                     primary_id: "send-button".into(),
-                    fan,
+                    files,
                     busy: self.canceling,
                     editor_label: self.locale.text("composer_placeholder").into(),
                     attach_label: self.locale.text("add_files").into(),
@@ -101,11 +96,48 @@ impl RootView {
             window,
             cx,
         );
+        // Files dragged over the composer show where they will land; the drop
+        // itself is handled by the surrounding frame (see `render_composer_frame`).
+        let p = ZORK_UI.palette;
+        let accent = INTERACTION.accent;
         div()
             .relative()
             .w(px(self.composer_surface_width))
-            .h(px(extent + height))
+            .h(px(height))
             .child(component)
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .rounded(px(zork_ui::components::composer_layout::SURFACE_RADIUS))
+                    .border(px(1.5))
+                    .border_dashed()
+                    .border_color(rgb(accent))
+                    .bg(gpui::rgba((accent << 8) | 0x1F))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_1()
+                    .text_color(rgb(accent))
+                    .opacity(0.)
+                    .group_drag_over::<gpui::ExternalPaths>(COMPOSER_DROP_GROUP, |style| {
+                        style.opacity(1.)
+                    })
+                    .child(zork_ui::controls::icon("icons/paperclip.svg", 18.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(self.locale.text("files_drop")),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(p.muted))
+                            .child(self.locale.text("files_drop_hint")),
+                    ),
+            )
             .into_any_element()
     }
 
@@ -142,10 +174,7 @@ impl RootView {
                 self.focus_composer(window, cx);
                 self.choose_files(cx);
             }
-            Action::FanHover(_)
-            | Action::ToggleFan
-            | Action::OpenFile(_)
-            | Action::RemoveFile(_) => {}
+            Action::OpenFile(_) | Action::RemoveFile(_) => {}
         }
     }
 }

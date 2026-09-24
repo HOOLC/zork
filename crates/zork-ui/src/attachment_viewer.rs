@@ -13,6 +13,9 @@ use crate::{
 };
 use gpui::{prelude::*, *};
 use std::{rc::Rc, sync::Arc};
+/// Image view top bar and thumbnail strip heights.
+const IMAGE_BAR: f32 = 52.;
+const STRIP: f32 = 36.;
 #[allow(non_snake_case)]
 fn BG() -> u32 {
     ZORK_UI.palette.canvas
@@ -52,6 +55,9 @@ pub struct Data {
     pub document: Option<MessageDocument>,
     pub source_document: Option<MessageDocument>,
     pub text_truncated: bool,
+    /// Thumbnails for `group`, by position, when the host already has them.
+    /// The image view shows them as a strip for switching files.
+    pub thumbnails: Arc<Vec<Option<Arc<RenderImage>>>>,
 }
 pub enum Action {
     Close,
@@ -291,8 +297,9 @@ impl Viewer {
         } else {
             24.
         };
+        let strip = image_view && self.viewer.group.len() > 1;
         let stage_height = if image_view {
-            (height - gutter * 2. - 96.).max(80.)
+            (height - gutter * 2. - IMAGE_BAR - 16. - if strip { STRIP + 16. } else { 0. }).max(80.)
         } else {
             (available.height.as_f32() - 240.).clamp(80., 440.)
         };
@@ -320,18 +327,22 @@ impl Viewer {
             subtitle
         };
         let can_save = self.data.loaded && !self.data.saving && !self.data.choosing_save;
-        let header = div().w_full().h(px(32.)).flex().justify_end().child(
-            preview_icon("drive-close-preview", true)
-                .child(ui::icon("icons/x.svg", 12.))
-                .on_click(cx.listener(|v, _, _, cx| v.close(cx)))
-                .automation(AutomationRole::Button, self.locale.text("close")),
-        );
+        let header = if image_view {
+            self.image_bar(&artifact, &subtitle, &menu_focus, cx)
+        } else {
+            div().w_full().h(px(32.)).flex().justify_end().child(
+                preview_icon("drive-close-preview", true)
+                    .child(ui::icon("icons/x.svg", 12.))
+                    .on_click(cx.listener(|v, _, _, cx| v.close(cx)))
+                    .automation(AutomationRole::Button, self.locale.text("close")),
+            )
+        };
         let body = self.preview_body(&artifact, stage_height, cx).automation(
             AutomationRole::ScrollArea,
             self.locale.text("drive_preview"),
         );
-        let footer = self.preview_footer(narrow, cx);
         if !image_view {
+            let footer = self.preview_footer(narrow, cx);
             let title_actions = div()
                 .flex()
                 .gap_1()
@@ -462,8 +473,8 @@ impl Viewer {
                 }
             }))
             .child(header)
-            .child(body)
-            .child(footer);
+            .child(self.image_stage(body, cx))
+            .when(strip, |v| v.child(self.image_strip(cx)));
         let panel = if image_view {
             self.viewer
                 .menu
@@ -495,6 +506,229 @@ impl Viewer {
             )
             .child(panel)
             .into_any_element()
+    }
+
+    /// Image view top bar: name with "i / n · type · size", zoom, more, close.
+    fn image_bar(
+        &self,
+        artifact: &Info,
+        subtitle: &str,
+        menu_focus: &FocusHandle,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let p = ZORK_UI.palette;
+        let v = &self.viewer;
+        let position = if v.group.len() > 1 {
+            format!("{} / {} · {subtitle}", v.index + 1, v.group.len())
+        } else {
+            subtitle.to_owned()
+        };
+        let mut bar = div()
+            .w_full()
+            .h(px(IMAGE_BAR))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap_1()
+            .pl_2()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .line_height(px(18.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(p.text))
+                            .truncate()
+                            .child(artifact.name.clone()),
+                    )
+                    .child(ui::text_role(position, crate::design::TextRole::Metadata).truncate()),
+            );
+        if v.image.is_some() && !v.source {
+            let scale = v.scale();
+            bar = bar
+                .child(
+                    preview_icon("preview-zoom-out", scale > 0.1)
+                        .child(ui::icon("icons/minus.svg", 14.))
+                        .on_click(cx.listener(|v, _, _, cx| {
+                            v.zoom_preview(Some(v.viewer.scale() / 1.25), cx)
+                        }))
+                        .automation(AutomationRole::Button, self.locale.text("preview_zoom_out")),
+                )
+                .child(
+                    preview_quiet(
+                        "preview-actual",
+                        format!("{:.0}%", scale * 100.),
+                        true,
+                        ui::IconButtonSize::Standard,
+                    )
+                    .w(px(56.))
+                    .on_click(cx.listener(|v, _, _, cx| v.zoom_preview(Some(1.), cx)))
+                    .automation(AutomationRole::Button, self.locale.text("preview_actual")),
+                )
+                .child(
+                    preview_icon("preview-zoom-in", scale < 20.)
+                        .child(ui::icon("icons/plus.svg", 14.))
+                        .on_click(cx.listener(|v, _, _, cx| {
+                            v.zoom_preview(Some(v.viewer.scale() * 1.25), cx)
+                        }))
+                        .automation(AutomationRole::Button, self.locale.text("preview_zoom_in")),
+                )
+                .child(
+                    preview_quiet(
+                        "preview-fit",
+                        self.locale.text("preview_fit"),
+                        true,
+                        ui::IconButtonSize::Standard,
+                    )
+                    .on_click(cx.listener(|v, _, _, cx| v.zoom_preview(None, cx)))
+                    .automation(AutomationRole::Button, self.locale.text("preview_fit")),
+                );
+        }
+        bar.child(
+            self.viewer
+                .menu
+                .trigger_element(
+                    preview_icon("preview-more", true)
+                        .child(ui::icon("icons/more-horizontal.svg", 16.)),
+                    menu_focus,
+                    true,
+                    cx,
+                )
+                .automation(AutomationRole::Button, self.locale.text("preview_more")),
+        )
+        .child(
+            preview_icon("drive-close-preview", true)
+                .child(ui::icon("icons/x.svg", 14.))
+                .on_click(cx.listener(|v, _, _, cx| v.close(cx)))
+                .automation(AutomationRole::Button, self.locale.text("close")),
+        )
+    }
+
+    /// The image stage with round previous/next buttons at its sides.
+    fn image_stage(&self, body: impl IntoElement, cx: &mut Context<Self>) -> Div {
+        let p = &self.viewer;
+        let mut stage = div().relative().w_full().flex_shrink_0().child(body);
+        if p.group.len() < 2 {
+            return stage;
+        }
+        for (step, id, icon, key) in [
+            (-1isize, "preview-previous", "icons/arrow-left.svg", "preview_previous"),
+            (1, "preview-next", "icons/arrow-right.svg", "preview_next"),
+        ] {
+            let enabled = if step < 0 {
+                p.index > 0
+            } else {
+                p.index + 1 < p.group.len()
+            };
+            let button = div()
+                .rounded_full()
+                .bg(rgb(ZORK_UI.palette.canvas))
+                .shadow(vec![BoxShadow {
+                    color: hsla(0., 0., 0., 0.12),
+                    offset: point(px(0.), px(2.)),
+                    blur_radius: px(8.),
+                    spread_radius: px(0.),
+                    inset: false,
+                }])
+                .child(
+                    preview_icon(id, enabled)
+                        .radius(ui::IconButtonSize::Standard.extent() / 2.)
+                        .child(ui::icon(icon, 16.))
+                        .on_click(cx.listener(move |v, _, _, cx| {
+                            if enabled {
+                                v.move_preview(step, cx)
+                            }
+                        }))
+                        .automation_enabled(enabled, AutomationRole::Button, self.locale.text(key)),
+                );
+            let rail = div().absolute().top_0().bottom_0().flex().items_center();
+            stage = stage.child(if step < 0 {
+                rail.left_2().child(button)
+            } else {
+                rail.right_2().child(button)
+            });
+        }
+        stage
+    }
+
+    /// Thumbnails of the message's files; the current one has an ink ring.
+    fn image_strip(&self, cx: &mut Context<Self>) -> Div {
+        let p = ZORK_UI.palette;
+        let current = self.viewer.index;
+        let mut strip = div()
+            .w_full()
+            .h(px(STRIP))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap_2();
+        for (index, info) in self.viewer.group.iter().enumerate() {
+            let selected = index == current;
+            let thumbnail = self.data.thumbnails.get(index).cloned().flatten();
+            let step = index as isize - current as isize;
+            let radius = px(8.);
+            let tile = div()
+                .id(SharedString::from(format!("preview-strip-{index}")))
+                .w(px(44.))
+                .h(px(32.))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(radius)
+                .bg(rgb(p.canvas))
+                .text_color(rgb(p.subtle))
+                .cursor_pointer()
+                .when(selected, |v| v.border_2().border_color(rgb(p.text)))
+                .when(!selected, |v| v.opacity(0.75).hover(|s| s.opacity(1.)))
+                .when_some(thumbnail, |v, image| {
+                    v.child(
+                        canvas(
+                            |_, _, _| (),
+                            move |bounds, _, window, _| {
+                                let source = image.size(0);
+                                let (w, h) = (
+                                    (i32::from(source.width) as f32).max(1.),
+                                    (i32::from(source.height) as f32).max(1.),
+                                );
+                                let scale = (bounds.size.width.as_f32() / w)
+                                    .max(bounds.size.height.as_f32() / h);
+                                let size = gpui::size(px(w * scale), px(h * scale));
+                                let image_bounds = Bounds::new(
+                                    bounds.center() - point(size.width / 2., size.height / 2.),
+                                    size,
+                                );
+                                let _ = window.paint_image(
+                                    bounds,
+                                    image_bounds,
+                                    Corners::all(px(6.)),
+                                    image.clone(),
+                                    0,
+                                    false,
+                                );
+                            },
+                        )
+                        .size_full(),
+                    )
+                })
+                .when(self.data.thumbnails.get(index).cloned().flatten().is_none(), |v| {
+                    v.child(ui::icon("icons/file.svg", 14.))
+                })
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    if step != 0 {
+                        v.move_preview(step, cx)
+                    }
+                }))
+                .automation(AutomationRole::Button, info.name.clone());
+            strip = strip.child(tile);
+        }
+        strip
     }
 
     fn preview_body(

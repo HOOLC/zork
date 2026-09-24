@@ -17,6 +17,7 @@ pub(super) struct PreviewState {
     return_focus: Option<FocusHandle>,
     epoch: u64,
     component: Option<Entity<zork_ui::attachment_viewer::Viewer>>,
+    thumbnails: Arc<Vec<Option<Arc<gpui::RenderImage>>>>,
 }
 impl PreviewState {
     fn reset_file(&mut self, _: &mut gpui::App) {
@@ -70,6 +71,15 @@ impl RootView {
     pub(super) fn reset_preview_group(&mut self, artifact: Artifact) {
         self.drive.viewer.group = Arc::new(vec![artifact]);
         self.drive.viewer.index = 0;
+        self.drive.viewer.thumbnails = Default::default();
+    }
+
+    /// Thumbnails for the open group, by position, for the viewer's strip.
+    pub(in crate::views) fn set_preview_thumbnails(
+        &mut self,
+        thumbnails: Vec<Option<Arc<gpui::RenderImage>>>,
+    ) {
+        self.drive.viewer.thumbnails = Arc::new(thumbnails);
     }
 
     pub(in crate::views) fn open_artifact_group(
@@ -85,6 +95,7 @@ impl RootView {
         self.drive.viewer.return_focus = window.focused(cx);
         self.drive.viewer.group = Arc::new(group);
         self.drive.viewer.index = index;
+        self.drive.viewer.thumbnails = Default::default();
         self.load_artifact_preview(artifact, cx);
     }
 
@@ -288,6 +299,7 @@ impl RootView {
             document: self.drive.viewer.document.clone(),
             source_document: self.drive.viewer.source_document.clone(),
             text_truncated: self.drive.viewer.text_truncated,
+            thumbnails: self.drive.viewer.thumbnails.clone(),
         };
         let focus = self.drive.viewer.return_focus.take();
         let locale = self.locale;
