@@ -233,12 +233,15 @@ impl ClientStore {
             .prepare("SELECT value FROM nodes ORDER BY rowid")?
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows.into_iter().map(|row| {
+        let mut nodes = rows.into_iter().map(|row| {
             let mut node:SavedNode=serde_json::from_str(&row)?;
             let name:Option<String>=conn.query_row("SELECT json_extract(value,'$.name') FROM replica_entities WHERE peer=?1 AND scope=?2 AND kind='device' AND id='self' AND value IS NOT NULL",params![node.id,zork_client_types::sync::Scope::Catalog{}.key()],|r|r.get(0)).optional()?.flatten();
-            if let Some(name)=name.filter(|name|!name.trim().is_empty()){node.name=name;}
+            if let Some(name)=name.filter(|name|!crate::device_label::is_id_like(name)){node.name=name;}
             Ok(node)
-        }).collect()
+        }).collect::<Result<Vec<_>>>()?;
+        // Every client reads device names from here, so they never show a key.
+        crate::device_label::label_devices(nodes.iter_mut().map(|n| (n.id.as_str(), &mut n.name)));
+        Ok(nodes)
     }
 
     pub(crate) fn replace_account_nodes(&self, candidates: &[SavedNode]) -> Result<Vec<String>> {

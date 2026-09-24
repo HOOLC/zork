@@ -357,13 +357,22 @@ fn blocks(entries: &List<Entry>) -> Value {
 
 fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session: &str) -> Value {
     use activity::Subject;
+    // Ids are never labels: fall back to a word when nothing names the subject.
+    let readable = |id: &str, fallback: &str| {
+        if crate::device_label::is_id_like(id) {
+            fallback.to_owned()
+        } else {
+            id.to_owned()
+        }
+    };
     let conversation = |id: &str| {
         data.sessions.iter().find(|s| s.session_id == id).map(|s| {
             let name = s
                 .title
                 .as_deref()
                 .or_else(|| s.task.as_ref().map(|t| t.title.as_str()))
-                .unwrap_or(id);
+                .map(str::to_owned)
+                .unwrap_or_else(|| readable(id, "未命名 Chat"));
             json!({"label":name,"conversation":{"id":s.session_id,"title":name,
             "can_send":crate::conversation::can_send(s),"can_stop":crate::composer::can_stop(s)}})
         })
@@ -378,11 +387,11 @@ fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session:
             .iter()
             .find(|a| a["id"] == *id)
             .map(|agent| {
-                json!({"label":agent["name"].as_str().unwrap_or(id),"agent":{
+                json!({"label":agent["name"].as_str().map(str::to_owned).unwrap_or_else(|| readable(id, "Session")),"agent":{
                 "id":id,"name":agent["name"],"avatar":agent["avatar"],"role":agent["role"],
                 "model":agent["model"],"profile":agent["profile_id"],"thinking":agent["thinking"]}})
             })
-            .unwrap_or_else(|| json!({"label":id})),
+            .unwrap_or_else(|| json!({"label":readable(id, "Session")})),
         Subject::Task(id) => data
             .tasks
             .values()
@@ -391,7 +400,7 @@ fn subject_value(subject: &activity::Subject, data: &state::DeviceData, session:
             .map(|task| {
                 conversation(&task.conversation_id).unwrap_or_else(|| json!({"label":task.title}))
             })
-            .unwrap_or_else(|| json!({"label":id})),
+            .unwrap_or_else(|| json!({"label":readable(id, "任务")})),
         Subject::Slack { channel, thread } => json!({"label":format!("{channel} · {thread}")}),
         Subject::Source(label)
         | Subject::File(label)

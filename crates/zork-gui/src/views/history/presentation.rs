@@ -182,7 +182,8 @@ impl RootView {
                     .and_then(|a| a["name"].as_str())
                     .map(str::to_owned)
                     .or_else(|| participant.map(|p| p.name.clone()))
-                    .unwrap_or_else(|| id.clone());
+                    .filter(|name| !zork_client_core::device_label::is_id_like(name))
+                    .unwrap_or_else(|| "Session".into());
                 (
                     Some(name),
                     (agent.is_some() || participant.is_some()).then(|| Jump::Agent(id.clone())),
@@ -265,7 +266,8 @@ impl RootView {
                 name: agent
                     .and_then(|a| a["name"].as_str())
                     .or_else(|| participant.map(|p| p.name.as_str()))
-                    .unwrap_or(id)
+                    .filter(|name| !zork_client_core::device_label::is_id_like(name))
+                    .unwrap_or("Session")
                     .to_owned(),
                 role: agent.and_then(|a| a["role"].as_str()).map(str::to_owned),
             })

@@ -16,6 +16,7 @@ mod client_directory;
 pub mod delivery;
 #[cfg(feature = "desktop")]
 pub mod desktop;
+pub mod device_label;
 mod device_metadata;
 pub mod device_status;
 pub mod file_io;

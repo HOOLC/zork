@@ -134,7 +134,7 @@ fn collect(
         let mut source = device.navigation();
         inputs.push(Input {
             peer: peer.into(),
-            name: node["name"].as_str().unwrap_or(peer).into(),
+            name: crate::device_label::device_label(node["name"].as_str().unwrap_or_default()),
             navigation: source.snapshot(),
         });
         sources.push(source);

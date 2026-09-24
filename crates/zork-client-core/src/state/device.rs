@@ -218,6 +218,11 @@ impl Drop for Device {
     }
 }
 impl Device {
+    /// The saved display name of this device, already labeled by the store.
+    pub(crate) fn display_name(&self) -> Option<String> {
+        let (store, id) = self.cache.as_ref()?;
+        store.nodes().ok()?.into_iter().find(|n| &n.id == id).map(|n| n.name)
+    }
     pub(crate) fn set_mesh_readiness(&self, readiness: zork_client_types::device::MeshReadiness) {
         self.commit(|data| data.mesh_readiness = Some(readiness));
     }

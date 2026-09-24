@@ -302,7 +302,7 @@ pub fn message_device_label(
         return aliases
             .get(device)
             .cloned()
-            .or_else(|| (!device.starts_with("key:")).then(|| device.clone()));
+            .or_else(|| (!crate::device_label::is_id_like(device)).then(|| device.clone()));
     }
     metadata
         .author_agent_id
