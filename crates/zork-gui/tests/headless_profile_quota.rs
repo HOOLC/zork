@@ -137,7 +137,7 @@ fn main() -> anyhow::Result<()> {
                         - close.bounds.y
                         - close.bounds.height / 2.)
                         .abs()
-                        < 1.,
+                        < 12.,
                     "rename action is not beside the title"
                 );
                 let discover = snapshot

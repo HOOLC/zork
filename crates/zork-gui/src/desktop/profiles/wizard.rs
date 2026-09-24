@@ -546,10 +546,12 @@ impl ProfilesView {
                     actions = actions
                         .child(
                             ui::button("profile-back", "上一步", false, enabled)
-                                .on_click(cx.listener(|v, _, _, cx| {
+                                .on_click(cx.listener(|v, _, window, cx| {
                                     if !v.busy {
                                         v.create_step = 1;
                                         v.message = None;
+                                        // The pressed button leaves; keep keys in the dialog.
+                                        window.focus(&v.modal.focus, cx);
                                         cx.notify();
                                     }
                                 }))
@@ -586,10 +588,11 @@ impl ProfilesView {
                     .child(cancel)
                     .child(
                         ui::button("profile-next", "下一步", true, enabled && !self.catalog.is_empty())
-                            .on_click(cx.listener(|v, _, _, cx| {
+                            .on_click(cx.listener(|v, _, window, cx| {
                                 if !v.busy {
                                     v.create_step = 2;
                                     v.message = None;
+                                    window.focus(&v.modal.focus, cx);
                                     cx.notify();
                                 }
                             }))
