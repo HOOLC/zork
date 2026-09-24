@@ -15,12 +15,12 @@ class DataResetHostTest {
         val root = context.noBackupFilesDir.resolve("client").absolutePath
         val proof = context.filesDir.resolve("data-reset-proof").apply { writeText("keep until confirmed") }
         context.getSharedPreferences("data-reset-proof", 0).edit().putString("value", "keep").commit()
-        val seeded = JSONObject(NativeBridge.call(root, "{\"op\":\"preferences\",\"message_preview_height\":360}"))
+        val seeded = JSONObject(NativeBridge.call(root, "{\"op\":\"preferences\",\"theme\":\"dark\"}"))
         assertTrue(seeded.optBoolean("ok"))
         assertFalse(JSONObject(NativeBridge.clearData(root, false, context)).optBoolean("ok"))
         assertFalse(JSONObject(NativeBridge.clearData(context.filesDir.absolutePath, true, context)).optBoolean("ok"))
         assertTrue(proof.exists())
         val preferences = JSONObject(NativeBridge.call(root, "{\"op\":\"preferences\"}"))
-        assertEquals(360, preferences.getJSONObject("data").getInt("message_preview_height"))
+        assertEquals("dark", preferences.getJSONObject("data").getString("theme"))
     }
 }

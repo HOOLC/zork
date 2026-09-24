@@ -16,16 +16,17 @@ import org.junit.runner.RunWith
 class SettingsParityTest {
     @Test fun clearingDataRequiresConfirmationAndCancellationKeepsData() {
         launch("home").use { scenario ->
-            settle(); click("清空数据"); await("清空客户端数据？")
+            settle(); click("清空本机数据"); await("清空这台手机上的 Zork 数据？")
             scenario.onActivity { assertEquals("", it.lastAction) }
             click("取消")
             scenario.onActivity { assertEquals("", it.lastAction) }
-            click("清空数据"); await("确认清空")
+            click("清空本机数据"); await("清空并退出")
             capture("clear-data-confirmation")
-            click("确认清空")
+            click("清空并退出")
             scenario.onActivity { assertEquals("clear-data", it.lastAction) }
         }
     }
+
     @Test fun resourceSettingsExposeServiceLogs() {
         launch("services").use {
             settle(); click("设计预览"); click("stdout.log"); await("preview server ready")
@@ -126,27 +127,14 @@ class SettingsParityTest {
         }
     }
 
-    @Test fun appearanceSavesHeightAndCanRestoreAutomatic() {
+    @Test fun appearanceChoosesThemeAndReturnsToSystem() {
         launch("home").use { scenario ->
-            settle(); await("外观"); click("外观")
-            val handle = await("拖动调整消息高度")
-            assertTrue(handle.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id, Bundle().apply {
-                putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 360f)
-            })); settle()
-            scenario.onActivity { assertEquals(360, it.previewHeight) }
-            capture("appearance-360")
-            click("恢复自动"); scenario.onActivity { assertEquals(0, it.previewHeight) }
-            val bounds = android.graphics.Rect().also { await("拖动调整消息高度").getBoundsInScreen(it) }
-            var density = 1f
-            scenario.onActivity { density = it.resources.displayMetrics.density }
-            val down = SystemClock.uptimeMillis()
-            for (step in 0..16) {
-                val action = when (step) { 0 -> android.view.MotionEvent.ACTION_DOWN; 16 -> android.view.MotionEvent.ACTION_UP; else -> android.view.MotionEvent.ACTION_MOVE }
-                val event = android.view.MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
-                    bounds.exactCenterX(), bounds.exactCenterY() + 72f * density * step / 16f, 0)
-                assertTrue(automation.injectInputEvent(event, true)); event.recycle(); Thread.sleep(16)
-            }
-            settle(); scenario.onActivity { assertTrue("Drag did not resize continuously: ${it.previewHeight}", it.previewHeight in 240..272) }
+            settle(); await("外观"); click("外观"); await("跟随系统")
+            click("深色"); settle()
+            scenario.onActivity { assertEquals("dark", it.previewTheme) }
+            capture("appearance-dark")
+            click("跟随系统"); settle()
+            scenario.onActivity { assertEquals("system", it.previewTheme) }
         }
     }
 

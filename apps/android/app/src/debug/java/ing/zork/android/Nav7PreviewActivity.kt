@@ -27,7 +27,7 @@ class Nav7PreviewActivity : ComponentActivity() {
     var lastAction = ""
     var lastBody: JSONObject? = null
     var lastProfile: JSONObject? = null
-    var previewHeight by mutableIntStateOf(0)
+    var previewTheme by mutableStateOf("system")
     var failNextRequest = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); configureZorkSystemBars()
@@ -62,7 +62,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                         settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))
                                     } else settings=settings.copy(page=if(settings.page=="profile")"models" else "home",resource=null,resourceData=null)
                                 }, device={settings=settings.copy(page="device",device=it,resource=null,resourceData=null)},
-                                    messagePreviewHeight=previewHeight, saveMessagePreviewHeight={previewHeight=it},
+                                    theme=previewTheme, saveTheme={previewTheme=it},
                                     clearData={lastAction="clear-data"},
                                     notifications=JSONObject("{\"enabled\":true,\"preview\":false,\"sound\":true,\"background\":false,\"muted\":[]}"),
                                     resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
