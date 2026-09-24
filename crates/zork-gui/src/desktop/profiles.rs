@@ -456,12 +456,13 @@ impl ProfilesView {
                 )
             })
             .children(quota.windows.iter().enumerate().map(|(index, window)| {
-                let color = if window.remaining == 0. {
+                // Ink by default; colour only when the window runs low.
+                let color = if window.remaining < 10. {
                     p.danger
-                } else if window.remaining < 20. {
+                } else if window.remaining < 30. {
                     p.warning
                 } else {
-                    p.success
+                    p.text
                 };
                 div()
                     .id(format!("profile-quota-window-{index}"))
@@ -2250,7 +2251,7 @@ impl ProfilesView {
                 }));
             }
             T::Toggle { on, default_on } => {
-                col = col.child(self.chip(
+                col = col.child(div().flex().child(self.chip(
                     "model-thinking-default-on",
                     if default_on { "默认开启" } else { "默认关闭" }.to_owned(),
                     default_on,
@@ -2264,7 +2265,7 @@ impl ProfilesView {
                             cx,
                         )
                     },
-                ));
+                )));
             }
             T::Always { .. } => {
                 col = col.child(
