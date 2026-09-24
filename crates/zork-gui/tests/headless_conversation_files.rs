@@ -584,12 +584,17 @@ fn main() -> anyhow::Result<()> {
     let found = after.iter().find(|element| element.id == format!("remove-{last}"));
     anyhow::ensure!(
         found.is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
-        "last attachment remove button is unreachable by horizontal scrolling: {:?} row {:?}",
+        "last attachment remove button is unreachable by horizontal scrolling: {:?} row {:?} seen {:?}",
         found.map(|e| (e.visible, e.bounds, e.visible_bounds)),
         after
             .iter()
             .find(|e| e.id == format!("draft-preview-{}", draft[0].id))
-            .map(|e| (e.bounds, e.visible_bounds))
+            .map(|e| (e.bounds, e.visible_bounds)),
+        after
+            .iter()
+            .filter(|e| e.id.starts_with("remove-") || e.id.starts_with("draft-preview-") || e.id.starts_with("composer"))
+            .map(|e| (e.id.clone(), e.visible, e.bounds))
+            .collect::<Vec<_>>()
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("count-16-row.png"))?;
