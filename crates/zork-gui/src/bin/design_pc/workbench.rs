@@ -1394,7 +1394,7 @@ impl Gallery {
     }
 
     /// Replays the story's gestures once the specimen has painted.
-    fn pending_actions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn pending_actions(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
         let entry = self.story().entry.clone();
         let Some(actions) = self.sessions.get_mut(&entry).and_then(|s| s.pending.take()) else {
             return;
