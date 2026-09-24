@@ -320,8 +320,8 @@ pub fn device<V: 'static>(
     );
     let state = if data.busy {
         Some("正在处理…".to_owned())
-    } else if data.local && !data.running {
-        Some("已停止".to_owned())
+    } else if data.local {
+        Some(if data.running { "运行中" } else { "已停止" }.to_owned())
     } else {
         None
     };

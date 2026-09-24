@@ -145,7 +145,7 @@ pub fn notifications<V: 'static>(
     let enabled = data.enabled && !data.busy;
     content
         .child(
-            div().mt_3().child(
+            div().mt_3().flex().items_start().child(
                 ui::quiet_button(
                     "notifications-test",
                     text("notification_test"),
