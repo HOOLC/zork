@@ -149,7 +149,8 @@ private fun ConnectionCard(connection: ConnectionUi, open: () -> Unit) {
         Spacer(Modifier.weight(1f))
         if (verification != "verified") VerificationPill(profile)
         else {
-            remaining?.let { share ->
+            remaining?.let { target ->
+                val share = animatedValue(target, "quota")
                 val tone = when { share < 10f -> ZorkColors.Danger; share < 30f -> ZorkColors.Warning; else -> ZorkColors.Ink }
                 Box(Modifier.width(48.dp).height(4.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
                     Box(Modifier.fillMaxWidth(share / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))

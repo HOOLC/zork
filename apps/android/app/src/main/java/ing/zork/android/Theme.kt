@@ -125,6 +125,8 @@ internal object ZorkColors {
     val Composer get() = palette.composer
     val Bubble get() = palette.bubble
     val Pressed get() = palette.pressed
+    /** Behind sheets and dialogs. */
+    val Scrim get() = if (dark) Color(0x8C000000) else Color(0x6118191B)
     val Prompt get() = palette.prompt
     val Selected get() = palette.selected
     val Online get() = palette.online
@@ -226,6 +228,9 @@ private fun scheme(dark: Boolean): ColorScheme {
     }
 }
 
+private val PressIndication = ZorkPressIndication { ZorkColors.Pressed }
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun ZorkTheme(preference: String = "system", content: @Composable () -> Unit) {
     val system = isSystemInDarkTheme()
@@ -243,9 +248,13 @@ internal fun ZorkTheme(preference: String = "system", content: @Composable () ->
             extraLarge = ZorkShapes.Surface,
         ),
     ) {
+        // Pressing shows a flat pressed fill everywhere, Material components included: no ripple.
         CompositionLocalProvider(
             LocalContentColor provides ZorkColors.Ink,
             LocalTextStyle provides TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp),
+            androidx.compose.foundation.LocalIndication provides PressIndication,
+            androidx.compose.material3.LocalRippleConfiguration provides null,
+            LocalReducedMotion provides rememberReducedMotion(),
         ) { content() }
     }
 }

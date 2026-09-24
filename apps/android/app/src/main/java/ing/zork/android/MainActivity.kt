@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,10 +135,30 @@ internal fun ClientScreen(model: ClientViewModel) {
         camera = { runCatching { model.cameraTarget() }.onSuccess { cameraShot = it; takePicture.launch(it) }
             .onFailure { model.showNotice("无法打开相机") } },
         files = { pickFiles.launch(arrayOf("*/*")) })
-    BackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
-        if (model.sessionHistory != null) {
-            if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
-        } else if (model.settings != null) model.backSettings() else model.back()
+    // Predictive back: pages that pop a route follow the finger, then continue from
+    // where it let go. Leaving a conversation is handled inside the workbench.
+    var backProgress by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val backScope = rememberCoroutineScope()
+    androidx.activity.compose.PredictiveBackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) { events ->
+        val follows = (model.sessionHistory != null && model.sessionHistory?.selectedId == null) || model.settings != null ||
+            (model.newChat != null && model.settings == null)
+        try {
+            events.collect { if (follows) backProgress = it.progress }
+            if (model.sessionHistory != null) {
+                if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
+            } else if (model.settings != null) model.backSettings() else model.back()
+            // The new route's slide reads the progress on its first frame; then clear it.
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            backProgress = 0f
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Cancelled: ease the page back into place from where the finger left it.
+            val from = backProgress
+            backScope.launch {
+                androidx.compose.animation.core.animate(from, 0f, animationSpec = ZorkMotion.move(ZorkMotion.FAST)) { value, _ -> backProgress = value }
+            }
+            throw e
+        }
     }
     val retained = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val currentSettings = model.settings
@@ -154,7 +175,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
     PageSlide(ClientPage(currentSettings, workbenchState, history, draftChat), routeKey, if (history != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
         if (currentSettings != null || model.conversation != null || draftChat != null) ZorkColors.Canvas else ZorkColors.Paper,
-        Modifier.safeDrawingPadding().imePadding()) { shown, active ->
+        Modifier.safeDrawingPadding().imePadding(), backProgress = { backProgress }) { shown, active ->
     if (shown.history != null) {
         SessionHistoryPage(shown.history, if (!active) HistoryActions() else HistoryActions(
             model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory, model::retryHistory, model::historyDetail, model::historyAnchor, model::historyNavigate))

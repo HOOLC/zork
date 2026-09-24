@@ -71,18 +71,19 @@ internal fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
     }
     val windows = if (summary) quota.windows.take(2) else quota.windows
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        windows.forEach { window ->
+        windows.forEach { window -> key(window.label) {
+            val shown = animatedValue(window.remaining, "quota")
             val tone = when { window.remaining < 10f -> ZorkColors.Danger; window.remaining < 30f -> ZorkColors.Warning; else -> ZorkColors.Ink }
             Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(window.label, fontSize = 13.sp, modifier = Modifier.width(64.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.weight(1f).height(6.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
-                    Box(Modifier.fillMaxWidth(window.remaining / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))
+                    Box(Modifier.fillMaxWidth(shown / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))
                 }
                 Text(window.value, fontSize = 12.sp, color = if (tone == ZorkColors.Ink) ZorkColors.Muted else tone)
                 if (!summary) window.reset?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Subtle) }
             }
-        }
+        } }
         quota.balance?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
     }
 }

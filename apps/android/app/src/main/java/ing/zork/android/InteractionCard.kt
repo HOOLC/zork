@@ -178,9 +178,11 @@ internal fun InteractionCard(card: InteractionCardUi, activate: (String, Map<Str
             // Request details stay available behind one expander.
             if (card.details.isNotEmpty()) {
                 ZorkButton(if (detailsOpen) "收起详情" else "详情", quiet = true, onClick = { detailsOpen = !detailsOpen })
-                if (detailsOpen) card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
-                    InteractionValue(value)
+                ZorkExpand(detailsOpen) { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    card.details.forEach { (label, value) -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
+                        InteractionValue(value)
+                    } }
                 } }
             }
             card.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }

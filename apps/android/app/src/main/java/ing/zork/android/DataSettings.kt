@@ -23,8 +23,8 @@ internal fun ClearDataSettings(actions: SettingsActions) {
             Text("本机的缓存、草稿和设置会删除并退出，无法撤销。", fontSize = 14.sp, lineHeight = 22.sp)
             var details by remember { mutableStateOf(false) }
             ZorkButton("电脑上的数据会受影响吗？", quiet = true, onClick = { details = !details })
-            if (details) Text("只删除这台手机上的消息、草稿、文件缓存、登录信息、配对和设置。电脑上的模型连接、对话和其他数据不受影响；重新打开后需要重新连接设备。",
-                fontSize = 13.sp, lineHeight = 20.sp, color = ZorkColors.Muted)
+            ZorkExpand(details) { Text("只删除这台手机上的消息、草稿、文件缓存、登录信息、配对和设置。电脑上的模型连接、对话和其他数据不受影响；重新打开后需要重新连接设备。",
+                fontSize = 13.sp, lineHeight = 20.sp, color = ZorkColors.Muted) }
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ZorkButton(if (busy) "正在清空…" else "清空并退出", Modifier.fillMaxWidth(), danger = true, enabled = !busy, onClick = actions.clearData)
                 ZorkButton("取消", Modifier.fillMaxWidth(), enabled = !busy, onClick = { open = false })

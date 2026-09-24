@@ -105,15 +105,17 @@ class SettingsParityTest {
         error("Cannot click $label")
     }
     private fun field(label: String, value: String) {
-        // Restore the sheet to its top before locating fields above the footer.
-        repeat(8) {
+        // Restore the sheet to its top before locating fields above the footer;
+        // fields further down (expanded parameters on a short screen) come after.
+        repeat(16) { attempt ->
             val field = editable(label)
             if (field != null) {
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
                 })); settle(); assertEquals("Edited the wrong field: $label", value, editable(label)?.text?.toString()); return
             }
-            nodes().lastOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            nodes().lastOrNull { it.isScrollable }?.performAction(
+                if (attempt < 8) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
             settle()
         }
         error("Missing editable $label")
@@ -165,7 +167,7 @@ class SettingsParityTest {
     @Test fun copyingModelSettingsPreservesIdentityAndEnforcesLimits() {
         launch("profile").use { scenario ->
             settle(); await("工作室订阅"); click("unconfigured-model"); click("调整参数")
-            click("复制已有模型配置"); click("工作室订阅 · fixture-model")
+            click("复制已有模型配置：请选择"); click("工作室订阅 · fixture-model")
             val idField = editable("模型 ID") ?: error(nodes().joinToString("\n") { "${it.className} text=${it.text} description=${it.contentDescription} editable=${it.isEditable} children=${it.childCount}" })
             assertEquals("unconfigured-model", idField.text.toString())
             field("最长输出", "1M"); click("保存模型")
@@ -236,7 +238,7 @@ class SettingsParityTest {
 
     @Test fun failedRenameKeepsTheDraftForRetry() {
         launch("profile").use { scenario ->
-            settle(); await("工作室订阅"); click("重命名连接"); field("名称", "重试后的名称")
+            settle(); await("工作室订阅"); click("更多"); click("重命名"); await("重命名连接"); field("名称", "重试后的名称")
             scenario.onActivity { it.failNextRequest = true }
             click("保存"); await("fixture request failed")
             assertEquals("重试后的名称", editable("名称")!!.text.toString())

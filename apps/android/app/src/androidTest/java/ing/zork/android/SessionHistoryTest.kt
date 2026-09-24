@@ -195,7 +195,8 @@ class SessionHistoryTest {
                 .put("density", density).put("font_scale", instrumentation.targetContext.resources.configuration.fontScale)
                 .put("targets", org.json.JSONArray(targets.map { "${it.width() / density}x${it.height() / density}" }))
             val case = InstrumentationRegistry.getArguments().getString("capture_case") ?: "default"
-            instrumentation.targetContext.filesDir.resolve("session-history-complete/$case/geometry.json").writeText(report.toString())
+            instrumentation.targetContext.filesDir.resolve("session-history-complete/$case/geometry.json")
+                .apply { parentFile?.mkdirs() }.writeText(report.toString())
         }
     }
     @Test fun keyboardFocusInputDismissalAndEmptyState() {
@@ -242,7 +243,11 @@ class SessionHistoryTest {
             click("阿狸 · 执行历史")
             await("执行历史")
             scenario.onActivity { assertEquals("session-a", it.history?.session) }
-            await("总计 27500 · 输入 24K · 输出 3500")
+            // The header's one line reads "model · total tokens".
+            val tokens = "总计 27500 · 输入 24K · 输出 3500"
+            val tokensBy = SystemClock.uptimeMillis() + 6000
+            while (!screenContains(tokens) && SystemClock.uptimeMillis() < tokensBy) Thread.sleep(40)
+            assertTrue("Missing $tokens in the header", screenContains(tokens))
             capture("history.png")
             click("执行命令")
             await("原始 JSON"); await("/workspace/zork")

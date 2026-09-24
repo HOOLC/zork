@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -26,10 +27,11 @@ internal fun ZorkChoiceField(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
         Box {
-            ZorkSelectTrigger(text, label, Modifier.fillMaxWidth(), enabled && options.isNotEmpty(),
-                expanded = expanded, onClick = { expanded = !expanded })
-            DropdownMenu(expanded, onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+            var width by remember { mutableStateOf(0.dp) }
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            ZorkSelectTrigger(text, label, Modifier.fillMaxWidth().onGloballyPositioned { width = with(density) { it.size.width.toDp() } },
+                enabled && options.isNotEmpty(), expanded = expanded, onClick = { expanded = !expanded })
+            PlainMenu(label, expanded, { expanded = false }, width) {
                 options.forEach { (id, name) ->
                     ZorkMenuItem(name, id in selected, enabled, choice = true,
                         multiple = !closeOnSelect, onClick = {

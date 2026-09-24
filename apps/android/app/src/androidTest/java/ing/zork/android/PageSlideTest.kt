@@ -57,13 +57,14 @@ class PageSlideTest {
             }
             settle()
             scenario.onActivity {
-                assertTrue("Returning page must come from the left: ${it.positions}",it.positions.any { x -> x < origin-2 })
-                assertEquals(origin,it.positions.last(),1f)
+                // The page below stays put; the leaving page moves 24 dp right while fading out.
+                assertTrue("Returning page stays in place: ${it.positions}",it.positions.all { x -> kotlin.math.abs(x-origin) < 1f })
                 val outgoing = it.outgoingPositions.toList()
+                val shift = 24f // PageSlideActivity composes at density 1
                 assertTrue("Must observe outgoing page: $outgoing", outgoing.size >= 3)
                 assertTrue("Outgoing page starts on screen: $outgoing", outgoing.first() < 100f)
                 assertTrue("Outgoing page slides right, without reversing: $outgoing", outgoing.zipWithNext().all { (a,b) -> b >= a - 1f })
-                assertTrue("Outgoing page must travel off to the right: $outgoing", outgoing.last() - outgoing.first() > 250f)
+                assertTrue("Outgoing page travels about 24 dp: $outgoing", outgoing.last() - outgoing.first() in shift * .5f..shift + 2f)
                 it.positions.clear();it.refresh()
             }
             settle()

@@ -118,15 +118,16 @@ class ConversationScrollTest {
             }
         }
     }
-    @Test fun headerAvatarKeepsItsPositionWhenParticipantsArrive() {
+    @Test fun headerMemberEntryKeepsItsPositionWhenParticipantsArrive() {
         val automation = instrumentation.uiAutomation
         val intent=Intent(instrumentation.targetContext,ConversationScrollActivity::class.java).putExtra("header",true)
         ActivityScenario.launch<ConversationScrollActivity>(intent).use { scenario ->
             settled()
-            fun avatarBounds():android.graphics.Rect {
+            fun entryBounds():android.graphics.Rect {
                 fun find(node:android.view.accessibility.AccessibilityNodeInfo?):android.view.accessibility.AccessibilityNodeInfo? {
                     if(node==null)return null
-                    if(node.contentDescription?.toString()=="滚动验证")return node
+                    // The header's member entry: device mark + name, opens execution history.
+                    if(node.contentDescription?.toString()=="滚动验证 · 执行历史")return node
                     for(i in 0 until node.childCount)find(node.getChild(i))?.let{return it}
                     return null
                 }
@@ -136,11 +137,11 @@ class ConversationScrollTest {
                     Thread.sleep(100)
                     node=find(automation.rootInActiveWindow)
                 }
-                assertNotNull("Header avatar missing",node)
+                assertNotNull("Header member entry missing",node)
                 return android.graphics.Rect().also { node!!.getBoundsInScreen(it) }
             }
-            val before=avatarBounds();scenario.onActivity { it.completeMembers() };settled()
-            assertEquals("Loading participants must not move the header avatar",before,avatarBounds())
+            val before=entryBounds();scenario.onActivity { it.completeMembers() };settled()
+            assertEquals("Loading participants must not move the header member entry",before,entryBounds())
         }
     }
     @Test fun loadingIndicatorIsReplacedByLoadedHistory() {
