@@ -668,6 +668,7 @@ impl ProfilesView {
         zork_ui::components::region::invalidate_all(cx);
     }
     fn apply_model_input(&mut self, input: ModelInput, cx: &mut Context<Self>) {
+        self.thinking_scheme = input.scheme();
         self.editing_model = input
             .previous
             .as_ref()
@@ -680,7 +681,6 @@ impl ProfilesView {
             .position(|a| a.0 == input.api)
             .unwrap_or(0);
         self.model_image_input = input.images;
-        self.thinking_scheme = input.scheme();
         self.recognized = self.recognition_line(&input.id);
         self.model.update(cx, |v, cx| v.set_value(input.id, cx));
         self.context_limit
@@ -2067,7 +2067,7 @@ impl ProfilesView {
             .map(|(i, r)| {
                 let value = r.value.clone();
                 self.chip(
-                    SharedString::from(format!("model-reference-{i}")),
+                    gpui::SharedString::from(format!("model-reference-{i}")),
                     format!("{} · {}", r.name, r.label),
                     r.recognized,
                     cx,
@@ -2077,7 +2077,7 @@ impl ProfilesView {
             .collect();
         Some(
             div()
-                .id(SharedString::from(
+                .id(gpui::SharedString::from(
                     format!("model-references-{field:?}").to_lowercase(),
                 ))
                 .pl(px(84.))
@@ -2105,7 +2105,7 @@ impl ProfilesView {
             .enumerate()
             .map(|(i, name)| {
                 self.chip(
-                    SharedString::from(format!("model-thinking-kind-{i}")),
+                    gpui::SharedString::from(format!("model-thinking-kind-{i}")),
                     (*name).to_owned(),
                     i == kind,
                     cx,
@@ -2159,7 +2159,7 @@ impl ProfilesView {
                         let on = values.contains(&name);
                         let (values, default) = (values.clone(), default.clone());
                         self.chip(
-                            SharedString::from(format!("model-thinking-level-{i}")),
+                            gpui::SharedString::from(format!("model-thinking-level-{i}")),
                             name.clone(),
                             on,
                             cx,
@@ -2281,7 +2281,7 @@ impl ProfilesView {
                 let make = make.clone();
                 let on = value == current;
                 self.chip(
-                    SharedString::from(format!("model-thinking-default-{i}")),
+                    gpui::SharedString::from(format!("model-thinking-default-{i}")),
                     label,
                     on,
                     cx,
