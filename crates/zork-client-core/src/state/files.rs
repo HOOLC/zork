@@ -35,6 +35,22 @@ impl Device {
     }
 
     pub fn attach_path(&self, session: &str, path: &std::path::Path) -> Result<FileRef> {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .context("invalid filename")?
+            .to_owned();
+        self.attach_named_path(session, path, &name)
+    }
+
+    /// Mobile pickers hand over a private copy whose file name is not the
+    /// user's; the display name travels separately.
+    pub fn attach_named_path(
+        &self,
+        session: &str,
+        path: &std::path::Path,
+        name: &str,
+    ) -> Result<FileRef> {
         use std::io::Read;
         let source = std::fs::File::open(path)?;
         let before = source.metadata()?;
@@ -54,13 +70,35 @@ impl Device {
                 && bytes.len() as u64 == after.len(),
             "文件读取期间发生变化，请重试"
         );
-        self.attach_file(
-            session,
-            path.file_name()
-                .and_then(|s| s.to_str())
-                .context("invalid filename")?,
-            &bytes,
-        )
+        self.attach_file(session, name, &bytes)
+    }
+
+    /// Bytes of a draft file for a bounded inline preview; never leaves the
+    /// snapshot stored when the file was attached.
+    pub fn draft_file_bytes(&self, session: &str, id: &str) -> Result<Vec<u8>> {
+        let file = self
+            .draft(session)
+            .files
+            .iter()
+            .find(|f| f.id == id)
+            .cloned()
+            .context("附件已不在草稿中")?;
+        ensure!(
+            file.byte_len <= crate::file_io::PREVIEW_BYTES,
+            "文件过大，无法预览"
+        );
+        let (store, node) = self
+            .cache
+            .as_ref()
+            .context("persistent file storage unavailable")?;
+        let bytes = store
+            .blob(node, &format!("upload:{}", file.id))?
+            .context("附件内容已丢失，请重新添加")?;
+        ensure!(
+            bytes.len() == file.byte_len && zork_mesh::content_root(&bytes) == file.content_root,
+            "附件内容与草稿引用不一致"
+        );
+        Ok(bytes)
     }
 
     pub fn remove_file(&self, session: &str, id: &str) -> Result<()> {
@@ -100,6 +138,33 @@ impl Device {
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn named_copies_keep_display_names_and_preview_the_snapshot() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(crate::store::ClientStore::open(root.path()).unwrap());
+        let device = Device::open(
+            Arc::new(crate::api::StationClient::new("http://127.0.0.1:9", None)),
+            Some((store, "node".into())),
+            true,
+        );
+        let copy = root.path().join("picker-3f9a.tmp");
+        std::fs::write(&copy, b"\x89PNG fixture").unwrap();
+        let file = device
+            .attach_named_path("leader", &copy, "首页草图.png")
+            .unwrap();
+        std::fs::remove_file(copy).unwrap();
+        assert_eq!(file.name, "首页草图.png");
+        assert_eq!(
+            device.draft_file_bytes("leader", &file.id).unwrap(),
+            b"\x89PNG fixture"
+        );
+        assert!(device.draft_file_bytes("other", &file.id).is_err());
+        device.remove_file("leader", &file.id).unwrap();
+        assert!(device.draft("leader").files.is_empty());
+        assert!(device.draft_file_bytes("leader", &file.id).is_err());
+    }
+
     #[test]
     fn snapshots_survive_source_deletion_navigation_and_restart() {
         let root = tempfile::tempdir().unwrap();

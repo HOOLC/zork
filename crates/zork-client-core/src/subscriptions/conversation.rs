@@ -204,6 +204,8 @@ impl ConversationWire {
         }
         if let Some(draft) = &draft {
             value["draft_document"] = json!(draft.snapshot.value);
+            value["draft_document"]["file_views"] =
+                json!(crate::file_io::views(&draft.snapshot.value.files));
         }
         if revoked {
             window.clear();

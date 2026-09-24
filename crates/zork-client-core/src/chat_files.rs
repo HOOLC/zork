@@ -49,6 +49,47 @@ pub enum Action {
     },
 }
 
+/// Verified bytes of one small message image for an inline thumbnail. The
+/// same authorization and content checks as an opened preview apply.
+pub async fn inline_bytes(
+    store: &ClientStore,
+    device: Arc<Device>,
+    peer: &str,
+    session: &str,
+    message: &str,
+    file: &str,
+) -> Result<Vec<u8>> {
+    ensure!(device.bound_peer() == Some(peer), "文件不属于当前设备");
+    let generation = store.replica_generation(peer)?;
+    let authorized = || {
+        !store.replica_revoked(peer).unwrap_or(true)
+            && store.replica_generation(peer).ok() == Some(generation)
+            && !device.snapshot().revoked
+    };
+    ensure!(authorized(), "设备访问权限已撤销");
+    let message = store
+        .cached_message_at(peer, session, message, generation)?
+        .context("消息已不可用，请重新打开会话")?;
+    let TranscriptMessage::Message { content, .. } = message;
+    let (_, files) = crate::files::decode(&content).context("消息不含文件")?;
+    let file = files
+        .into_iter()
+        .find(|entry| entry.id == file)
+        .context("文件不属于该消息")?;
+    ensure!(file.valid(), "无效的文件引用");
+    ensure!(
+        crate::file_io::view(&file).thumbnail,
+        "此文件不提供内联预览"
+    );
+    let bytes = device.artifact_content(&file.id).await?;
+    ensure!(authorized(), "设备访问权限已撤销");
+    ensure!(
+        bytes.len() == file.byte_len && zork_mesh::content_root(&bytes) == file.content_root,
+        "文件内容与消息引用不一致"
+    );
+    Ok(bytes)
+}
+
 struct Selection {
     preview: Preview,
     generation: u64,

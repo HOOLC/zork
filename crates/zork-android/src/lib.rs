@@ -634,6 +634,40 @@ mod android {
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }
 
+    /// Verified bytes for one inline thumbnail; empty when unavailable. A blank
+    /// `message` selects a draft file.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_fileThumbnail<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        root: JString<'a>,
+        peer: JString<'a>,
+        session: JString<'a>,
+        message: JString<'a>,
+        file: JString<'a>,
+    ) -> jni::objects::JByteArray<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let (peer, session, message, file) = (
+                peer.to_string(),
+                session.to_string(),
+                message.to_string(),
+                file.to_string(),
+            );
+            let bytes = super::host(std::path::Path::new(&root.to_string()))
+                .ok()
+                .and_then(|host| {
+                    let local = host.local.clone();
+                    let work = host.executor.spawn(async move {
+                        let message = (!message.is_empty()).then_some(message.as_str());
+                        local.file_preview(&peer, &session, message, &file).await
+                    });
+                    host.executor.block_on(work).ok()?.ok()
+                });
+            env.byte_array_from_slice(bytes.as_deref().unwrap_or_default())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_ing_zork_android_NativeBridge_saveChatFile<'a>(
         mut env: EnvUnowned<'a>,

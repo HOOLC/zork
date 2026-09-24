@@ -41,6 +41,18 @@ pub enum Command {
     ChatFiles {
         operation: chat_files::Action,
     },
+    /// Adds a platform-provided private copy to the draft under its display name.
+    AttachFile {
+        peer: String,
+        session: String,
+        path: String,
+        name: String,
+    },
+    RemoveFile {
+        peer: String,
+        session: String,
+        id: String,
+    },
     NotificationSettings {
         operation: Option<notifications::mobile::Action>,
     },
@@ -211,6 +223,8 @@ impl Command {
                 | Self::Adb { .. }
                 | Self::NotificationSettings { .. }
                 | Self::ChatFiles { .. }
+                | Self::AttachFile { .. }
+                | Self::RemoveFile { .. }
                 | Self::TestNotification
                 | Self::NotificationReceipt { .. }
                 | Self::OpenNotification { .. }
@@ -360,6 +374,29 @@ impl LocalClient {
     fn peer(&self, peer: &str) -> Result<SavedNode> {
         find_peer(&self.store, peer)
     }
+
+    /// Bounded image bytes for an inline thumbnail: a draft file when `message`
+    /// is absent, otherwise a file of that cached message.
+    pub async fn file_preview(
+        &self,
+        peer: &str,
+        session: &str,
+        message: Option<&str>,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        self.peer(peer)?;
+        valid_session(session)?;
+        let device = self
+            .device_state(peer)
+            .context("客户端连接已暂停，请重新连接")?;
+        match message {
+            None => device.draft_file_bytes(session, file),
+            Some(message) => {
+                chat_files::inline_bytes(&self.store, device, peer, session, message, file).await
+            }
+        }
+    }
+
     pub fn execute(&self, command: Command) -> Result<Value> {
         match command {
             Command::Account { operation } => {
@@ -373,6 +410,29 @@ impl LocalClient {
                     self.device_state(peer)
                 } else { None };
                 self.chat_files.apply(operation, device)?;
+                Ok(json!({}))
+            }
+            Command::AttachFile {
+                peer,
+                session,
+                path,
+                name,
+            } => {
+                self.peer(&peer)?;
+                valid_session(&session)?;
+                let device = self
+                    .device_state(&peer)
+                    .context("请先打开对话，再添加文件")?;
+                let file = device.attach_named_path(&session, Path::new(&path), &name)?;
+                Ok(serde_json::to_value(file_io::view(&file))?)
+            }
+            Command::RemoveFile { peer, session, id } => {
+                self.peer(&peer)?;
+                valid_session(&session)?;
+                let device = self
+                    .device_state(&peer)
+                    .context("请先打开对话，再移除文件")?;
+                device.remove_file(&session, &id)?;
                 Ok(json!({}))
             }
             Command::LocalScript { operation } => self.local_scripts.apply(operation),
@@ -628,7 +688,7 @@ impl LocalClient {
                     })
                     .collect();
                 Ok(
-                    json!({"draft":draft,"comments":comments,"attachments":attachments,"files":files,"outbox":outbox}),
+                    json!({"draft":draft,"comments":comments,"attachments":attachments,"file_views":file_io::views(&files),"files":files,"outbox":outbox}),
                 )
             }
             Command::Enqueue {
@@ -1284,6 +1344,8 @@ impl Client {
             command @ (Command::SelectPeer { .. }
             | Command::RestoreNavigation { .. }
             | Command::DraftAction { .. }
+            | Command::AttachFile { .. }
+            | Command::RemoveFile { .. }
             | Command::SubmitDraft { .. }
             | Command::ArchiveChat { .. }
             | Command::NewChat { .. }
@@ -1414,6 +1476,53 @@ mod tests {
             })
             .unwrap();
         peer
+    }
+
+    #[tokio::test]
+    async fn picked_copies_attach_preview_and_remove_through_commands() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut client = Client::open(root.path())?;
+        let peer = add_peer(&client);
+        let copy = root.path().join("pick-1.tmp");
+        std::fs::write(&copy, b"\x89PNG picked")?;
+        let attach = || Command::AttachFile {
+            peer: peer.clone(),
+            session: "chat".into(),
+            path: copy.to_string_lossy().into_owned(),
+            name: "截图.png".into(),
+        };
+        ensure!(client.execute(attach()).await.is_err(), "no open conversation");
+        let _device = state::Device::open(
+            Arc::new(api::StationClient::new("http://127.0.0.1:9", None)),
+            Some((client.store.clone(), peer.clone())),
+            true,
+        );
+        let view = client.execute(attach()).await?;
+        ensure!(view["name"] == "截图.png" && view["kind"] == "image" && view["thumbnail"] == true);
+        let id = view["id"].as_str().unwrap().to_owned();
+        std::fs::remove_file(&copy)?;
+        fn send<T: Send>(value: T) -> T {
+            value
+        }
+        let local = client.local();
+        let bytes = send(local.file_preview(&peer, "chat", None, &id)).await?;
+        ensure!(bytes == b"\x89PNG picked");
+        let conversation = client
+            .execute(Command::Conversation {
+                peer: peer.clone(),
+                session: "chat".into(),
+            })
+            .await?;
+        ensure!(conversation["file_views"][0]["badge"] == "PNG");
+        client
+            .execute(Command::RemoveFile {
+                peer: peer.clone(),
+                session: "chat".into(),
+                id: id.clone(),
+            })
+            .await?;
+        ensure!(local.file_preview(&peer, "chat", None, &id).await.is_err());
+        Ok(())
     }
 
     #[tokio::test]
