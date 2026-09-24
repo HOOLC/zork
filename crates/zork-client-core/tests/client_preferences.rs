@@ -10,18 +10,17 @@ fn platform_preferences_are_local_and_persist_without_a_connected_peer() {
         Client::open(root.path()).unwrap().local().execute(command)
     };
     assert_eq!(
-        execute(json!({"op":"preferences"})).unwrap()["message_preview_height"],
-        0
+        execute(json!({"op":"preferences"})).unwrap()["theme"],
+        "system"
     );
     assert_eq!(
-        execute(json!({"op":"preferences","message_preview_height":480})).unwrap()
-            ["message_preview_height"],
-        480
+        execute(json!({"op":"preferences","theme":"dark"})).unwrap()["theme"],
+        "dark"
     );
-    assert!(execute(json!({"op":"preferences","message_preview_height":999})).is_err());
+    assert!(serde_json::from_value::<Command>(json!({"op":"preferences","theme":"sepia"})).is_err());
     assert_eq!(
-        execute(json!({"op":"preferences"})).unwrap()["message_preview_height"],
-        480
+        execute(json!({"op":"preferences"})).unwrap()["theme"],
+        "dark"
     );
 }
 

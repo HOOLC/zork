@@ -1193,14 +1193,14 @@ impl Render for DesktopRoot {
                                         self.settings_tabs
                                             .tab("settings-models".into(), tab == 0)
                                             .child(ui::icon("icons/models.svg", 20.))
-                                            .child("模型设置")
+                                            .child("模型连接")
                                             .on_click(cx.listener(|v, _, _, cx| {
                                                 v.apply_navigation(
                                                     navigation::Destination::Manage(0),
                                                     cx,
                                                 )
                                             }))
-                                            .automation(AutomationRole::Button, "模型设置"),
+                                            .automation(AutomationRole::Button, "模型连接"),
                                     )
                                     .child(
                                         self.settings_tabs
