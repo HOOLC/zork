@@ -69,6 +69,13 @@ impl ModalState {
                 .clone()
         })
     }
+    /// Where focus goes when the dialog finishes opening, instead of the
+    /// dialog container (e.g. its first field). Call after [`Self::retain`].
+    pub fn initial_focus(&self, id: &str, focus: FocusHandle) {
+        if let Some(slot) = self.slots.borrow_mut().get_mut(id) {
+            slot.dialog.initial_focus(focus);
+        }
+    }
     pub fn presentation<T: Clone + 'static>(&self, id: &str) -> Option<T> {
         self.slots
             .borrow()
