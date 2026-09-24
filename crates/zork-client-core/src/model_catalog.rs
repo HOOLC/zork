@@ -58,22 +58,106 @@ pub fn entries() -> &'static [Entry] {
     })
 }
 
+/// Cloud and router namespaces that precede the model name with a dot, as in
+/// Bedrock's `us.anthropic.claude-…` or `meta.llama4-…`.
+const DOTTED_NAMESPACES: [&str; 20] = [
+    "us",
+    "eu",
+    "apac",
+    "ap",
+    "jp",
+    "au",
+    "ca",
+    "global",
+    "us-gov",
+    "anthropic",
+    "meta",
+    "mistral",
+    "deepseek",
+    "qwen",
+    "openai",
+    "moonshotai",
+    "minimax",
+    "zai",
+    "google",
+    "xai",
+];
+/// `:tag` suffixes that name a routing variant rather than a model size.
+const VARIANT_TAGS: [&str; 8] = [
+    "free", "beta", "extended", "nitro", "floor", "online", "exacto", "latest",
+];
+
 /// Reduces a provider-specific id to the bare model name: router prefixes
-/// (`openrouter/deepseek/…`, `models/…`) and variant tags (`:free`) go away.
+/// (`openrouter/deepseek/…`, `models/…`, `us.anthropic.`), variant tags
+/// (`:free`, Bedrock `:0`, Vertex `@20251001`) and version suffixes (`-v1`)
+/// go away. Ollama-style size tags (`qwen3:32b`) become part of the name, and
+/// Claude/Doubao dotted versions use the dashed form (`claude-sonnet-4.5` →
+/// `claude-sonnet-4-5`).
 pub fn normalize(id: &str) -> String {
     let id = id.trim().to_ascii_lowercase();
-    let id = id.rsplit('/').next().unwrap_or(&id);
-    let id = id.split(':').next().unwrap_or(id);
-    id.split('@').next().unwrap_or(id).to_owned()
+    let mut id = id.rsplit('/').next().unwrap_or(&id).to_owned();
+    if let Some(at) = id.find('@') {
+        id.truncate(at);
+    }
+    if let Some((name, tag)) = id.split_once(':') {
+        id = if tag.is_empty()
+            || VARIANT_TAGS.contains(&tag)
+            || tag.chars().all(|c| c.is_ascii_digit())
+        {
+            name.to_owned()
+        } else {
+            format!("{name}-{}", tag.replace(':', "-"))
+        };
+    }
+    while let Some((namespace, rest)) = id.split_once('.') {
+        if !DOTTED_NAMESPACES.contains(&namespace) || rest.is_empty() {
+            break;
+        }
+        id = rest.to_owned();
+    }
+    for suffix in ["-v1", "-v2"] {
+        if let Some(stripped) = id.strip_suffix(suffix) {
+            id = stripped.to_owned();
+        }
+    }
+    if id.starts_with("claude") || id.starts_with("doubao") {
+        id = id.replace('.', "-");
+    }
+    id
+}
+
+/// The normalized id followed by shorter forms without trailing `-latest`,
+/// `-preview`, `-exp` or date/snapshot segments, so `gpt-5.4-2026-03-05`
+/// can fall back to `gpt-5.4`.
+fn candidates(id: &str) -> Vec<String> {
+    let mut out = vec![id.to_owned()];
+    let mut parts: Vec<&str> = id.split('-').collect();
+    while parts.len() > 1 {
+        let last = parts[parts.len() - 1];
+        let snapshot = last.len() >= 2 && last.chars().all(|c| c.is_ascii_digit());
+        if !(snapshot || matches!(last, "latest" | "preview" | "exp")) {
+            break;
+        }
+        parts.pop();
+        out.push(parts.join("-"));
+    }
+    out
 }
 
 /// The catalog entry for a model id, if any. The longest matching id or prefix
 /// wins, so `gpt-5.1-codex` is Codex rather than GPT-5; `provider` breaks ties.
+/// When nothing matches, the id is retried without snapshot suffixes.
 pub fn recognize(id: &str, provider: Option<&str>) -> Option<&'static Entry> {
     let id = normalize(id);
     if id.is_empty() {
         return None;
     }
+    candidates(&id)
+        .iter()
+        .find_map(|candidate| best_match(candidate, provider))
+}
+
+fn best_match(id: &str, provider: Option<&str>) -> Option<&'static Entry> {
     entries()
         .iter()
         .filter_map(|entry| {
@@ -315,10 +399,20 @@ mod tests {
 
     #[test]
     fn catalog_loads_and_every_entry_is_valid() {
-        assert!(entries().len() >= 20);
+        assert!(entries().len() >= 100);
+        let mut keys = std::collections::HashSet::new();
+        let mut patterns = std::collections::HashMap::new();
         for entry in entries() {
-            assert!(!entry.verified, "{} has not been checked yet", entry.key);
-            assert!(!entry.source.is_empty(), "{} needs a source", entry.key);
+            assert!(
+                keys.insert(entry.key.as_str()),
+                "{} is listed twice",
+                entry.key
+            );
+            assert!(
+                entry.source.starts_with("https://"),
+                "{} needs a source",
+                entry.key
+            );
             assert!(
                 u64::from(entry.output) < entry.context,
                 "{} output must be below context",
@@ -333,47 +427,205 @@ mod tests {
             assert!(crate::model_edit::MODEL_APIS
                 .iter()
                 .any(|(api, _)| *api == entry.api));
+            let ids = entry.matching.ids.iter().map(|id| ("id", id));
+            let prefixes = entry.matching.prefixes.iter().map(|p| ("prefix", p));
+            for (kind, pattern) in ids.chain(prefixes) {
+                assert_eq!(
+                    pattern,
+                    &normalize(pattern),
+                    "{} {kind} {pattern} is not normalized",
+                    entry.key
+                );
+                if let Some(other) = patterns.insert((kind, pattern.as_str()), entry.key.as_str()) {
+                    panic!("{kind} {pattern} is claimed by {other} and {}", entry.key);
+                }
+            }
         }
+    }
+
+    fn key(id: &str) -> Option<&'static str> {
+        recognize(id, None).map(|entry| entry.key.as_str())
     }
 
     #[test]
     fn recognizes_exact_dated_and_routed_ids() {
-        assert_eq!(
-            recognize("deepseek-chat", None).unwrap().key,
-            "deepseek-chat"
-        );
-        assert_eq!(
-            recognize("claude-sonnet-4-5-20250929", None).unwrap().key,
-            "claude-sonnet"
-        );
-        assert_eq!(
-            recognize("claude-opus-4-5-20251101", None).unwrap().key,
-            "claude-opus-4-5"
-        );
-        assert_eq!(recognize("gpt-5-2025-08-07", None).unwrap().key, "gpt-5");
-        assert_eq!(
-            recognize("gpt-5.1-codex-mini", None).unwrap().key,
-            "gpt-5-codex"
-        );
-        assert_eq!(recognize("GPT-5-Mini", None).unwrap().key, "gpt-5-mini");
-        assert_eq!(
-            recognize("openrouter/deepseek/deepseek-chat-v3.1:free", None)
-                .unwrap()
-                .key,
-            "deepseek-chat"
-        );
+        for (id, expected) in [
+            ("deepseek-chat", "deepseek-chat"),
+            ("claude-sonnet-4-5-20250929", "claude-sonnet"),
+            ("claude-opus-4-5-20251101", "claude-opus-4-5"),
+            ("gpt-5-2025-08-07", "gpt-5"),
+            ("gpt-5.1-codex-mini", "gpt-5.1-codex-mini"),
+            ("GPT-5-Mini", "gpt-5-mini"),
+            (
+                "openrouter/deepseek/deepseek-chat-v3.1:free",
+                "deepseek-chat",
+            ),
+            ("models/gemini-2.5-pro", "gemini-2.5-pro"),
+            ("kimi-k2-thinking", "kimi-k2-thinking"),
+        ] {
+            assert_eq!(key(id), Some(expected), "{id}");
+        }
         assert_eq!(
             recognize("models/gemini-2.5-pro", Some("google"))
                 .unwrap()
                 .key,
             "gemini-2.5-pro"
         );
-        assert_eq!(
-            recognize("kimi-k2-thinking", None).unwrap().key,
-            "kimi-k2-thinking"
-        );
         assert!(recognize("my-private-model", None).is_none());
         assert!(recognize("", None).is_none());
+    }
+
+    #[test]
+    fn recognizes_popular_ids_across_providers() {
+        for (id, expected) in [
+            // OpenAI: siblings share prefixes, snapshots and routers vary.
+            ("gpt-5", "gpt-5"),
+            ("openai/gpt-5", "gpt-5"),
+            ("gpt-5-mini-2025-08-07", "gpt-5-mini"),
+            ("gpt-5-nano", "gpt-5-nano"),
+            ("gpt-5-pro-2025-10-06", "gpt-5-pro"),
+            ("gpt-5-codex", "gpt-5-codex"),
+            ("gpt-5.1-codex", "gpt-5-codex"),
+            ("gpt-5.1-codex-max", "gpt-5.1-codex-max"),
+            ("gpt-5-chat-latest", "gpt-5-chat"),
+            ("gpt-5.1-2025-11-13", "gpt-5.1"),
+            ("gpt-5.2", "gpt-5.2"),
+            ("gpt-5.2-pro-2025-12-11", "gpt-5.2-pro"),
+            ("gpt-5.3-codex", "gpt-5.3-codex"),
+            ("gpt-5.4-2026-03-05", "gpt-5.4"),
+            ("gpt-5.4-mini-2026-03-17", "gpt-5.4-mini"),
+            ("gpt-5.4-nano", "gpt-5.4-nano"),
+            ("openai/gpt-5.5", "gpt-5.5"),
+            ("gpt-5.5-pro-2026-04-23", "gpt-5.5-pro"),
+            ("gpt-5.6", "gpt-5.6-sol"),
+            ("gpt-5.6-terra", "gpt-5.6-terra"),
+            ("gpt-6-sol", "gpt-6-sol"),
+            ("gpt-6-astra", "gpt-6-astra"),
+            ("o3-2025-04-16", "o3"),
+            ("o3-pro", "o3-pro"),
+            ("o4-mini", "o4-mini"),
+            ("gpt-4.1-mini", "gpt-4.1"),
+            ("gpt-4o-2024-11-20", "gpt-4o"),
+            ("gpt-4o-mini", "gpt-4o-mini"),
+            ("gpt-oss:120b", "gpt-oss-120b"),
+            ("openai/gpt-oss-20b", "gpt-oss-20b"),
+            // Anthropic: dotted router ids, Bedrock and Vertex forms.
+            ("anthropic/claude-sonnet-4.5", "claude-sonnet"),
+            ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+            ("anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"),
+            ("claude-sonnet-5", "claude-sonnet-5"),
+            ("claude-opus-5-5", "claude-opus-5-5"),
+            ("claude-opus-5", "claude-opus-5"),
+            ("claude-opus-4-8", "claude-opus-4-8"),
+            ("us.anthropic.claude-opus-4-6-v1", "claude-opus-4-6"),
+            ("anthropic.claude-sonnet-4-5-20250929-v1:0", "claude-sonnet"),
+            ("global.anthropic.claude-opus-4-7", "claude-opus-4-7"),
+            ("claude-haiku-4-5@20251001", "claude-haiku"),
+            ("claude-opus-4-1-20250805", "claude-opus"),
+            ("claude-fable-5-1", "claude-fable-5-1"),
+            ("claude-fable-5", "claude-fable-5"),
+            ("claude-3-7-sonnet-latest", "claude-sonnet"),
+            // Google
+            ("google/gemini-3.5-flash", "gemini-3.5-flash"),
+            ("models/gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
+            ("gemini-3.8-flash", "gemini-3.8-flash"),
+            ("gemini-3.1-pro-preview-customtools", "gemini-3.1-pro"),
+            ("gemini-3-flash-preview", "gemini-3-flash"),
+            ("gemini-2.5-flash-lite", "gemini-2.5-flash-lite"),
+            ("gemini-2.5-flash", "gemini-2.5-flash"),
+            // xAI
+            ("x-ai/grok-4.7", "grok-4.7"),
+            ("grok-4.3-latest", "grok-4.3"),
+            ("grok-4.20-0309-reasoning", "grok-4.20"),
+            ("grok-4.20-0309-non-reasoning", "grok-4.20-non-reasoning"),
+            ("grok-4-0709", "grok-4"),
+            ("grok-code-fast-1", "grok-code-fast"),
+            // DeepSeek
+            ("deepseek-flash", "deepseek-flash"),
+            ("deepseek-v4-flash", "deepseek-flash"),
+            ("deepseek-ai/DeepSeek-V4-Pro", "deepseek-v4-pro"),
+            ("deepseek-ai/DeepSeek-V3.2", "deepseek-chat"),
+            ("deepseek-reasoner", "deepseek-reasoner"),
+            // Qwen: hosted and open-weight ids stay apart.
+            ("qwen3.8-max-0902", "qwen3.8-max"),
+            ("qwen3.7-plus-2026-05-26", "qwen3.7-plus"),
+            ("qwen/qwen3.6-plus", "qwen3.6-plus"),
+            ("qwen-plus-latest", "qwen-plus"),
+            ("qwen3-max", "qwen3-max"),
+            ("qwen3-coder-plus", "qwen3-coder"),
+            ("qwen3-coder-flash", "qwen3-coder-flash"),
+            ("Qwen/Qwen3-Coder-480B-A35B-Instruct", "qwen3-coder-open"),
+            ("Qwen/Qwen3-235B-A22B-Instruct-2507", "qwen3-instruct"),
+            ("qwen3-235b-a22b-thinking-2507", "qwen3-thinking"),
+            ("Qwen/Qwen3-32B", "qwen3-open"),
+            ("qwen3:32b", "qwen3-open"),
+            // Moonshot
+            ("kimi-k3", "kimi-k3"),
+            ("moonshotai/Kimi-K2.6", "kimi-k2.6"),
+            ("kimi-k2.7-code-highspeed", "kimi-k2.7-code"),
+            ("kimi-k2-0905-preview", "kimi-k2"),
+            ("moonshotai/Kimi-K2-Instruct-0905", "kimi-k2"),
+            // Zhipu
+            ("zai-org/GLM-4.6", "glm-4.6"),
+            ("glm-4.6v", "glm-4.6v"),
+            ("z-ai/glm-4.7", "glm-4.7"),
+            ("glm-5", "glm-5"),
+            ("glm-5-turbo", "glm-5"),
+            ("glm-5v-turbo", "glm-5v-turbo"),
+            ("glm-5.1", "glm-5.1"),
+            ("glm-5.3", "glm-5.3"),
+            // MiniMax
+            ("MiniMax-M3", "minimax-m3"),
+            ("MiniMaxAI/MiniMax-M2.5", "minimax-m2.5"),
+            ("MiniMax-M2.1-highspeed", "minimax-m2"),
+            // ByteDance
+            ("doubao-seed-2-0-pro-260215", "doubao-seed-2-0-pro"),
+            ("doubao-seed-2.0-lite", "doubao-seed-2-0-lite"),
+            ("doubao-seed-2-1-pro-260915", "doubao-seed-2-1-pro"),
+            ("doubao-seed-2-1-pro-260628", "doubao-seed-2-1-pro-260628"),
+            // Mistral
+            ("mistralai/mistral-large-2512", "mistral-large"),
+            ("mistral-medium-latest", "mistral-medium"),
+            ("codestral-2508", "codestral"),
+            ("devstral-2512", "devstral"),
+            // Meta
+            ("meta-llama/Llama-4-Scout-17B-16E-Instruct", "llama-4-scout"),
+            ("meta.llama4-maverick-17b-instruct-v1:0", "llama-4-maverick"),
+        ] {
+            assert_eq!(key(id), Some(expected), "{id}");
+        }
+    }
+
+    #[test]
+    fn unrelated_or_unknown_ids_stay_unrecognized() {
+        for id in [
+            "gpt-6",
+            "gpt-5.6-cyber",
+            "claude-opus",
+            "gemini",
+            "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+            "mistralai/Mistral-Large-Instruct-2411",
+            "deepseek-r1:70b",
+            "qwen-turbo",
+            "codex-something",
+            "glm-6",
+        ] {
+            assert_eq!(key(id), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn normalizes_router_and_cloud_forms() {
+        assert_eq!(
+            normalize(" us.anthropic.claude-sonnet-4-5-20250929-v1:0 "),
+            "claude-sonnet-4-5-20250929"
+        );
+        assert_eq!(normalize("anthropic/claude-opus-4.6"), "claude-opus-4-6");
+        assert_eq!(normalize("qwen3:32b"), "qwen3-32b");
+        assert_eq!(normalize("deepseek/deepseek-chat:free"), "deepseek-chat");
+        assert_eq!(normalize("gpt-5.1"), "gpt-5.1");
+        assert_eq!(normalize("qwen3.5-plus"), "qwen3.5-plus");
+        assert_eq!(normalize("claude-haiku-4-5@20251001"), "claude-haiku-4-5");
     }
 
     #[test]
