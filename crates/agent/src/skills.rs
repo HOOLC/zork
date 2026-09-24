@@ -401,21 +401,20 @@ fn remove_legacy(root: &Path) {
     }
 }
 
+/// Bundled files are read-only; their directories stay writable so that the
+/// data root can still be removed with ordinary tools. `read_only == false`
+/// also restores write access to directories (retired copies froze them).
 fn set_read_only(path: &Path, read_only: bool) -> Result<()> {
     let info = fs::symlink_metadata(path)?;
     if info.file_type().is_symlink() {
         return Ok(());
     }
     if info.is_dir() {
-        // Make a directory writable before visiting it, read-only afterwards.
         if !read_only {
             permissions(path, &info, false)?;
         }
         for entry in fs::read_dir(path)? {
             set_read_only(&entry?.path(), read_only)?;
-        }
-        if read_only {
-            permissions(path, &info, true)?;
         }
     } else {
         permissions(path, &info, read_only)?;
@@ -622,6 +621,10 @@ mod tests {
         let file = bundled_root(temp.path()).join("one/SKILL.md");
         assert!(fs::metadata(&file).unwrap().permissions().readonly());
         assert!(fs::write(&file, "edited").is_err());
+        assert!(!fs::metadata(file.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .readonly());
         let before = fs::metadata(&file).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         provision(temp.path(), &v1).unwrap();
