@@ -37,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
@@ -49,6 +51,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -85,6 +89,7 @@ internal data class WorkbenchState(
     val conversationEntry: Long = 0L,
     val messageActivity: MessageActivity = MessageActivity(),
     val newer: Boolean = false,
+    val home: HomeNavigation = HomeNavigation(),
 )
 internal class WorkbenchActions(
     val peer: (Peer) -> Unit = {}, val leader: (JSONObject) -> Unit = {},
@@ -105,6 +110,7 @@ internal class WorkbenchActions(
     val chatFile: (String, String) -> Unit = { _, _ -> },
     val newChat: (Peer) -> Unit = {},
     val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
+    val device: (Peer) -> Unit = {},
 )
 
 private class ConversationPresentation {
@@ -179,110 +185,170 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
 
 @Composable
 private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier) {
-    var details by remember { mutableStateOf<Pair<String,List<Pair<String,String>>>?>(null) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    Column(modifier.fillMaxHeight().background(ZorkColors.Paper)) {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Image(painterResource(R.drawable.ic_zork), null, Modifier.size(26.dp))
-            Image(painterResource(R.drawable.zork_wordmark), "Zork", Modifier.width(80.dp).height(26.dp))
+    val home = state.home
+    // A new Chat goes to the last-used device, else the one with the first listed Chat.
+    val target = state.activePeer?.let { active -> state.peers.find { it.id == active.id } }
+        ?: home.chats.firstOrNull()?.let { chat -> state.peers.find { it.id == chat.peer } }
+        ?: state.peers.firstOrNull()
+    Box(modifier.fillMaxHeight().background(ZorkColors.Paper)) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Image(painterResource(R.drawable.ic_zork), null, Modifier.size(24.dp))
+                Image(painterResource(R.drawable.zork_wordmark), "Zork", Modifier.width(74.dp).height(24.dp))
+                Spacer(Modifier.weight(1f))
+                IconAction(R.drawable.ic_settings, "设置", onClick = actions.settings)
+            }
+            if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
+            if (state.peers.isNotEmpty()) DeviceStrip(state.peers, actions.device)
+            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(ZorkColors.Canvas)) {
+                if (showArchived) ArchivedChats(home, actions, back = { showArchived = false })
+                else HomeChats(state, actions, openArchived = { showArchived = true })
+            }
         }
-        if (state.notice != null && state.conversation == null) Notice(state.notice, state.busy, actions.retry)
-        Spacer(Modifier.height(0.5.dp))
-        NavRow(onClick = { showArchived = !showArchived }) {
-            Text(if (showArchived) "返回 Chat" else "已归档", fontSize = 15.sp)
+        if (!showArchived && target != null) NewChatButton(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 28.dp)) {
+            actions.newChat(target)
         }
-        val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-        val expanded = remember { mutableStateMapOf<String, Boolean>() }
-        LazyColumn(state = rememberLazyListState(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 10.dp)) {
-            if (state.peers.isEmpty()) item {
+    }
+}
+
+/** Every device with its status; a chip opens that device's settings. */
+@Composable
+private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        peers.forEach { peer ->
+            Row(Modifier.height(44.dp).clip(ZorkShapes.Control).background(ZorkColors.Canvas)
+                .border(UiTokens.Border, ZorkColors.Border, ZorkShapes.Control)
+                .zorkPressable { open(peer) }
+                .semantics(mergeDescendants = true) { contentDescription = "${deviceNameSummary(peer.name, peer.status)} · 设备设置" }
+                .padding(start = 10.dp, end = 14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DeviceMark(peer.name, 20.dp)
+                Text(peer.name, fontSize = 14.sp, color = ZorkColors.Ink, maxLines = 1)
+                DeviceStatusBadge(peer.status)
+            }
+        }
+    }
+}
+
+/** The core's merged list, shown in its order; sections only label runs of rows. */
+@Composable
+private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions, openArchived: () -> Unit) {
+    val home = state.home
+    LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(top = 8.dp, bottom = 104.dp)) {
+        if (state.peers.isEmpty()) item(key = "empty") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (state.ready) "连接已有设备，开始新的 Chat。" else "正在准备连接…",
-                    fontSize = 13.sp, lineHeight = 21.sp, color = ZorkColors.Muted,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 20.dp))
+                    fontSize = 14.sp, lineHeight = 22.sp, color = ZorkColors.Muted)
+                if (state.ready) ZorkButton("连接设备", primary = true, onClick = actions.add)
             }
-            state.peers.forEach { peer ->
-                val active = state.activePeer?.id == peer.id
-                val tree = state.deviceTrees[peer.id] ?: if (active) DeviceTree(state.leaders, state.sessions, state.tasksByLeader, state.connected) else null
-                item(key = "device:${peer.id}") {
-                    if (peer != state.peers.firstOrNull()) Spacer(Modifier.height(0.5.dp))
-                    Spacer(Modifier.height(16.dp))
-                    NavRow(onClick = {
-                        collapsed[peer.id] = !(collapsed[peer.id] ?: false)
-                        if (!active) { collapsed[peer.id] = false; actions.peer(peer) }
-                    }) {
-                        Glyph(R.drawable.ic_node, 26.dp)
-                        DeviceName(peer.name, peer.status, Modifier.weight(1f))
-                    }
-                }
-                if (tree != null && collapsed[peer.id] != true) {
-                    item(key = "new-chat:${peer.id}") {
-                        NavRow(indent = 54.dp, onClick = { actions.newChat(peer) }) {
-                            Glyph(R.drawable.ic_plus, 20.dp)
-                            Text("新建 Chat", fontSize = 15.sp)
-                        }
-                    }
-                    val matching = tree.sessions.filter { it.optBoolean("archived") == showArchived }
-                    if (matching.isEmpty()) item {
-                        Text(if (showArchived) "没有已归档的 Chat" else if (tree.online) "还没有 Chat" else "等待设备连接…", fontSize = 12.sp,
-                            color = ZorkColors.Muted, modifier = Modifier.padding(horizontal = 54.dp, vertical = 10.dp))
-                    }
-                    val othersKey = "${peer.id}/unattributed"
-                    val others = matching.filter { showArchived || expanded[othersKey] == true || it.optBoolean("in_preview", true) || it.text("chat_id") == state.conversation?.id }
-                    items(others, key = { "unassigned:${peer.id}:${it.text("chat_id")}" }) { session ->
-                        NavRow(indent = 54.dp,
-                            onClick = { actions.session(JSONObject(session.toString()).put("_peer", peer.id)) }) {
-                            Text(session.text("title", "对话"), fontSize = 15.sp,
-                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            ZorkIconButton(if (session.optBoolean("archived")) "取消归档" else "归档聊天",
-                                enabled = !session.optBoolean("archive_pending"),
-                                onClick = { actions.archiveChat(peer.id, session.text("chat_id"), !session.optBoolean("archived"), session.optLong("message_count")) }) {
-                                Glyph(if (session.optBoolean("archived")) R.drawable.ic_archive_restore else R.drawable.ic_archive,
-                                    16.dp, ZorkColors.Ink.copy(alpha = 0.5f))
-                            }
-                            if (session.optBoolean("unread")) Box(Modifier.size(6.dp).background(ZorkColors.Ink, CircleShape))
-                        }
-                        if (!session.isNull("archive_error")) {
-                            Text(session.text("archive_error"), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 54.dp))
-                        }
-                    }
-                    if (!showArchived && (others.size < matching.size || expanded[othersKey] == true)) item(key = "more:$othersKey") {
-                        NavRow(indent = 54.dp, onClick = { expanded[othersKey] = expanded[othersKey] != true }) {
-                            Text(if (expanded[othersKey] == true) "收起" else "显示更多", fontSize = 13.sp, color = ZorkColors.Muted)
-                        }
-                    }
-                }
-                item { Spacer(Modifier.height(8.dp)) }
+        } else if (home.chats.isEmpty()) item(key = "empty") {
+            Text(if (home.loaded) "还没有 Chat" else "正在读取 Chat…", fontSize = 14.sp, color = ZorkColors.Muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp))
+        }
+        home.chats.forEachIndexed { index, chat ->
+            if (index == 0 || home.chats[index - 1].section != chat.section) item(key = "section:${chat.section}") {
+                Text(sectionTitle(chat.section), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Muted,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp))
+            }
+            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions) }
+        }
+        if (state.peers.isNotEmpty()) item(key = "archived") {
+            Row(Modifier.fillMaxWidth().height(52.dp).zorkPressable(onClick = openArchived).padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Glyph(R.drawable.ic_folder, 20.dp, ZorkColors.Muted)
+                Text("已归档", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
+                if (home.archivedTotal > 0) Text("${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Subtle)
+                Glyph(R.drawable.ic_arrow_right, 16.dp, ZorkColors.Subtle)
             }
         }
-        Spacer(Modifier.height(0.5.dp))
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            FooterAction("连接设备", R.drawable.ic_plus, Modifier.weight(1f), state.ready, actions.add)
-            FooterAction("设置", R.drawable.ic_settings, Modifier.weight(1f), true, actions.settings)
-        }
-    }
-    ZorkRetained(details) { (title,rows), open, closed -> SettingsSheet(title,dismiss={details=null}, open=open, onClosed=closed) {
-        rows.filter{it.second.isNotBlank()}.forEach{(label,value)->Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,fontSize=12.sp,color=ZorkColors.Muted);Text(value,fontSize=14.sp,lineHeight=22.sp)}}
-    }}
-}
-
-@Composable
-private fun FooterAction(label: String, icon: Int, modifier: Modifier, enabled: Boolean, action: () -> Unit) {
-    Row(modifier.height(48.dp).zorkPressable(enabled = enabled, onClick = action),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-        Glyph(icon, 22.dp); Text(label, fontSize = 14.sp)
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NavRow(indent: Dp = 14.dp, enabled: Boolean = true,
-    interactions: MutableInteractionSource = remember { MutableInteractionSource() },
-    onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 2.dp).height(48.dp)
-        .zorkPressable(enabled = enabled, interactionSource = interactions, onClick = onClick, onLongClick = onLongClick)
-        .padding(start = indent, end = 14.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        content()
+private fun ArchivedChats(home: HomeNavigation, actions: WorkbenchActions, back: () -> Unit) {
+    androidx.activity.compose.BackHandler(onBack = back)
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 8.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconAction(R.drawable.ic_arrow_left, "返回 Chat", onClick = back)
+            Text("已归档", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink, modifier = Modifier.weight(1f))
+            if (home.archivedTotal > home.archived.size) Text("最近 ${home.archived.size} / ${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Muted)
+        }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            if (home.archived.isEmpty()) item(key = "empty") {
+                Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
+            }
+            items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions) }
+        }
+    }
+}
+
+@Composable
+private fun HomeChatRow(chat: HomeChat, actions: WorkbenchActions) {
+    val archive = { actions.archiveChat(chat.peer, chat.id, !chat.archived, chat.messageCount) }
+    val archiveLabel = if (chat.archived) "取消归档" else "归档聊天"
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
+            .zorkPressable(onLongClick = if (chat.archivePending) null else archive) { actions.session(chat.session()) }
+            .semantics { if (!chat.archivePending) customActions = listOf(CustomAccessibilityAction(archiveLabel) { archive(); true }) }
+            .padding(start = 20.dp, end = if (chat.archived) 8.dp else 20.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            DeviceMark(chat.peerName, 32.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(chat.title, Modifier.weight(1f), fontSize = 15.sp, color = ZorkColors.Ink,
+                        fontWeight = if (chat.unread) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (chat.unread) Box(Modifier.size(8.dp).background(ZorkColors.Ink, CircleShape).semantics { contentDescription = "未读" })
+                    else chatTime(chat.updatedAtMs)?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1) }
+                }
+                Text(chatPreview(chat), fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (chat.archived) ZorkIconButton("取消归档", enabled = !chat.archivePending, onClick = archive) {
+                Glyph(R.drawable.ic_archive_restore, 18.dp, ZorkColors.Muted)
+            }
+        }
+        chat.archiveError?.let {
+            Text(it, color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(start = 64.dp, end = 20.dp, bottom = 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun NewChatButton(modifier: Modifier, onClick: () -> Unit) {
+    Row(modifier.height(52.dp).shadow(6.dp, ZorkShapes.Control).clip(ZorkShapes.Control).background(ZorkColors.Ink)
+        .zorkPressable(onClick = onClick).padding(start = 18.dp, end = 22.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Glyph(R.drawable.ic_plus, 20.dp, ZorkColors.Paper)
+        Text("新建 Chat", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Paper)
+    }
+}
+
+private fun sectionTitle(section: String) = when (section) {
+    "unread" -> "未读"
+    "today" -> "今天"
+    "yesterday" -> "昨天"
+    "week" -> "本周"
+    else -> "更早"
+}
+
+private fun chatPreview(chat: HomeChat): String =
+    listOf(chat.description, chat.model).firstOrNull { it.isNotBlank() }?.let { "${chat.peerName}：$it" } ?: chat.peerName
+
+private fun chatTime(ms: Long?): String? {
+    if (ms == null) return null
+    val zone = java.time.ZoneId.systemDefault()
+    val at = java.time.Instant.ofEpochMilli(ms).atZone(zone)
+    val days = java.time.temporal.ChronoUnit.DAYS.between(at.toLocalDate(), java.time.LocalDate.now(zone))
+    return when {
+        days <= 0L -> at.format(DateTimeFormatter.ofPattern("HH:mm"))
+        days == 1L -> "昨天"
+        days < 7L -> "周" + "一二三四五六日"[at.dayOfWeek.value - 1]
+        else -> at.format(DateTimeFormatter.ofPattern("M月d日"))
     }
 }
 

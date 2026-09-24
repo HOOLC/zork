@@ -93,7 +93,7 @@ class Nav7VisualTest {
                     assertTrue("Send hit target remains touch sized",hit.width()>=44 && hit.height()>=44)
                 }
                 if (screen == "navigation") {
-                    val x = bounds.left + 352f; val y = bounds.top + 154f
+                    val x = bounds.left + 352f; val y = bounds.top + 190f
                     val down = android.os.SystemClock.uptimeMillis()
                     fun pointer(action: Int, px: Float = x, py: Float = y) {
                         val event = android.view.MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), action, px, py, 0)
@@ -104,12 +104,12 @@ class Nav7VisualTest {
                     val pressed = Bitmap.createBitmap(390, 844, Bitmap.Config.ARGB_8888); val ready = CountDownLatch(1)
                     scenario.onActivity { android.view.PixelCopy.request(it.window, bounds, pressed, { ready.countDown() }, android.os.Handler(android.os.Looper.getMainLooper())) }
                     assertTrue(ready.await(5, TimeUnit.SECONDS))
-                    assertEquals("Leader press feedback covers the full row", pressed.getPixel(12,154), pressed.getPixel(378,154))
-                    assertNotEquals("Press feedback must be visible", crop.getPixel(12,154), pressed.getPixel(12,154))
+                    assertEquals("Chat press feedback covers the full row", pressed.getPixel(12,190), pressed.getPixel(378,190))
+                    assertNotEquals("Press feedback must be visible", crop.getPixel(12,190), pressed.getPixel(12,190))
                     File(folder,"navigation-pressed-390.png").outputStream().use { pressed.compress(Bitmap.CompressFormat.PNG,100,it) }; pressed.recycle()
                     pointer(android.view.MotionEvent.ACTION_UP)
                     instrumentation.waitForIdleSync()
-                    scenario.onActivity { assertEquals("Right edge belongs to the same leader row", "leader:product", it.lastAction) }
+                    scenario.onActivity { assertEquals("Right edge opens the first home Chat on its own device", "session:mini2/guide", it.lastAction) }
                 }
                 crop.recycle()
             }

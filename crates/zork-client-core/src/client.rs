@@ -294,6 +294,12 @@ impl LocalClient {
         if matches!(key, subscriptions::Key::Notifications) {
             return subscriptions::WireSubscription::from_notifications(self.store.clone());
         }
+        if matches!(key, subscriptions::Key::Navigation) {
+            return Ok(subscriptions::WireSubscription::from_navigation(
+                self.directory.clone(),
+                self.store.clone(),
+            ));
+        }
         if let subscriptions::Key::Resources { peer, kind, query } = key {
             if let Some(peer) = &peer {
                 self.peer(peer)?;

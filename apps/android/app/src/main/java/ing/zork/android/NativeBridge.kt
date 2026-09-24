@@ -88,6 +88,7 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     fun settingsEvents(peer: String) = observations.settings(peer)
     fun newChatEvents(peer: String) = observations.newChat(peer)
     fun notificationEvents() = observations.notifications()
+    fun navigationEvents() = observations.navigation()
     fun adbEvents() = observations.adb()
     fun accountEvents() = observations.account()
     fun dataResetEvents() = observations.dataReset()
