@@ -35,7 +35,6 @@ internal fun HistorySheet(title: String, dismiss: () -> Unit, open: Boolean, clo
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 HistoryIconAction(R.drawable.ic_x, "关闭记录详情", onClick = dismiss)
             }
-            HorizontalDivider(color = ZorkColors.Border, thickness = .5.dp)
             content()
         }
     }

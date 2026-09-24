@@ -68,7 +68,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
             ZorkIconButton("返回设置", onClick = actions.back) {
                 Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp))
             }
-            Text("安卓调试", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("安卓调试", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (page?.optBoolean("show_details") == true) ZorkButton("详情", quiet = true, onClick = { overlay = "details" })
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp)) {
@@ -151,7 +151,7 @@ internal fun AdbSettings(actions: SettingsActions, modifier: Modifier = Modifier
                 }
             }
         }
-        HorizontalDivider(color = ZorkColors.Border)
+        Spacer(Modifier.height(4.dp))
         Text("连接方式 · Zork Mesh", color = ZorkColors.Muted, fontSize = 14.sp)
         savedPort?.let { Text("手机端口 · $it", color = ZorkColors.Muted, fontSize = 14.sp) }
         Text("各台 Station 可以同时连接，手机和 Station 无需处于同一网络。", color = ZorkColors.Muted, fontSize = 13.sp, lineHeight = 21.sp)

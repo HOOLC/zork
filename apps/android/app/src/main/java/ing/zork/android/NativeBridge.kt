@@ -159,6 +159,14 @@ internal class ClientRepository(context: Context, dataDirectory: File = context.
     suspend fun older(peer: String, session: String) = observations.older(peer, session)
     suspend fun newer(peer: String, session: String) = observations.newer(peer, session)
     suspend fun windowAnchor(peer: String, session: String, anchor: String?) = observations.windowAnchor(peer, session, anchor)
+    /** Local catalog commands whose `data` may be an array as well as an object. */
+    suspend fun catalog(op: String, fields: JSONObject): Any? = localGate.withLock {
+        withContext(Dispatchers.IO) {
+            val response = JSONObject(NativeBridge.call(root, JSONObject(fields.toString()).put("op", op).toString()))
+            check(response.optBoolean("ok")) { response.optString("error", "操作未完成") }
+            response.opt("data")
+        }
+    }
     // Preserve ordering among local edits/sends, without waiting for a slow
     // network operation. The Rust store also serializes flush vs withdrawal.
     suspend fun command(op: String, vararg fields: Pair<String, Any?>): JSONObject {

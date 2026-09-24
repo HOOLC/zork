@@ -38,6 +38,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
     }
     val editable = data.optBoolean("editable")
     val switching = peers.size > 1
+    var picking by remember(state.peer.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = back)
@@ -63,14 +64,11 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 DraftComposer(text, emptyList(), editable, false, data.optBoolean("can_submit"), presence,
                     if (switching) Modifier.offset(y = (-12).dp) else Modifier, 180.dp,
                     WorkbenchActions(draft = { value -> text = value; action("edit", value) }, send = { action("submit", text) }), showAttach = false)
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    listOf("model" to "模型", "thinking" to "思考深度", "profile" to "Profile · 可选").forEach { (field, label) ->
-                        val choice = data.optJSONObject(field) ?: JSONObject()
-                        val options = choice.optJSONArray("options").objects().map {
-                            it.text("value") to if (field == "profile" && it.text("value") == "auto") "自动分配" else it.text("label")
-                        }
-                        SettingsSelect(label, choice.text("value"), options, editable && options.isNotEmpty()) { action(field, it) }
-                    }
+                val model = data.pickerChoice("model")
+                val thinking = data.pickerChoice("thinking")
+                val profile = data.pickerChoice("profile")
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (model.options.isNotEmpty()) ModelCapsule(model, thinking, editable) { picking = true }
                     when {
                         data.optBoolean("busy") -> "正在创建 Chat…"
                         data.optBoolean("uncertain") -> "创建结果尚未确认，重试会继续同一次创建"
@@ -79,6 +77,10 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                     }?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
                     if (data.optBoolean("needs_model")) SettingsButton("添加模型连接", primary = true, click = configureModels)
                     data.text("error").takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 13.sp, color = ZorkColors.Danger) }
+                }
+                ZorkRetained(Unit.takeIf { picking }) { _, open, closed ->
+                    ModelPickerSheet(open, model, thinking, profile, editable, { field, value -> action(field, value) },
+                        { picking = false }, onClosed = closed)
                 }
             }
         }

@@ -62,7 +62,7 @@ internal fun NotificationSettings(actions: SettingsActions, modifier: Modifier =
     SettingsPageFrame("通知", actions.back, busy, { allowed = NotificationPlatform.allowed(context); actions.notificationRefresh() }, modifier) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val enabled = preferences?.optBoolean("enabled") == true
-            SettingsListGroup { Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+            SettingsListGroup { Column(Modifier.padding(horizontal = 16.dp)) {
                 SettingsToggle("接收通知", enabled, !busy && preferences != null, "新回复、待验收和需要处理的任务") {
                     if (it) request("enabled") else change("enabled", false)
                 }
@@ -77,7 +77,7 @@ internal fun NotificationSettings(actions: SettingsActions, modifier: Modifier =
                     }
                 }
             } }
-            SettingsListGroup { Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+            SettingsListGroup { Column(Modifier.padding(horizontal = 16.dp)) {
                 SettingsToggle("离开应用后保持连接", preferences?.optBoolean("background") == true, !busy && enabled,
                     "保持设备连接以接收通知，会显示常驻通知并增加耗电。系统停止应用后需重新打开。") {
                     if (it) request("background") else change("background", false)

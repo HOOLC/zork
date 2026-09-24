@@ -35,10 +35,10 @@ class SettingsParityTest {
     }
     @Test fun modelDraftSurvivesActivityRecreation() {
         launch("profile").use { scenario ->
-            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); field("上下文 token 上限","256K")
+            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); click("调整参数"); field("上下文","256K")
             scenario.recreate(); settle(); await("添加模型")
             assertEquals("saved-draft-model", editable("模型 ID")!!.text.toString())
-            assertEquals("256K", editable("上下文 token 上限")!!.text.toString())
+            assertEquals("256K", editable("上下文")!!.text.toString())
             capture("model-recreated")
         }
     }
@@ -147,12 +147,12 @@ class SettingsParityTest {
                 assertEquals("enable_model", it.lastAction)
                 assertFalse(it.lastBody!!.getBoolean("enabled"))
             }
-            assertNotNull(reveal("待配置上下文与输出上限"))
-            click("更新模型"); await("模型已是最新")
+            assertNotNull(reveal("待配置"))
+            click("获取模型"); await("模型已是最新")
             scenario.onActivity { assertEquals("discover_models", it.lastAction) }
-            click("刷新额度")
+            click("更多"); click("刷新额度")
             scenario.onActivity { assertEquals("refresh_quota", it.lastAction) }
-            click("重命名连接"); field("名称", "手机可见的工作室账号"); click("保存")
+            click("更多"); click("重命名"); field("名称", "手机可见的工作室账号"); click("保存")
             await("手机可见的工作室账号")
             scenario.onActivity {
                 assertEquals("rename_profile", it.lastAction)
@@ -164,14 +164,14 @@ class SettingsParityTest {
 
     @Test fun copyingModelSettingsPreservesIdentityAndEnforcesLimits() {
         launch("profile").use { scenario ->
-            settle(); await("工作室订阅"); click("unconfigured-model")
+            settle(); await("工作室订阅"); click("unconfigured-model"); click("调整参数")
             click("复制已有模型配置"); click("工作室订阅 · fixture-model")
             val idField = editable("模型 ID") ?: error(nodes().joinToString("\n") { "${it.className} text=${it.text} description=${it.contentDescription} editable=${it.isEditable} children=${it.childCount}" })
             assertEquals("unconfigured-model", idField.text.toString())
-            field("输出 token 上限", "1M"); click("保存模型")
+            field("最长输出", "1M"); click("保存模型")
             scenario.onActivity { assertEquals("Invalid form sent a request: ${it.lastBody}", "", it.lastAction) }
-            field("输出 token 上限", "4K")
-            click("可读取图片"); click("保存模型")
+            field("最长输出", "4K")
+            click("读取图片"); click("保存模型")
             scenario.onActivity {
                 assertEquals("save_model", it.lastAction)
                 val input = it.lastBody!!.getJSONObject("input")
@@ -209,7 +209,7 @@ class SettingsParityTest {
             capture("model-connections")
             click("工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
-            await("刷新额度")
+            await("额度")
             click("返回"); await("OpenRouter")
             click("添加连接"); await("添加到哪台设备？"); click("mini1")
             scenario.onActivity { assertEquals("add-connection:mini1", it.lastAction) }
@@ -217,11 +217,11 @@ class SettingsParityTest {
     }
     @Test fun newChatUsesCoreChoicesAndSubmitsOnlyAfterSending() {
         launch("new-chat").use { scenario ->
-            settle(); await("新建 Chat"); await("Demo model")
+            settle(); await("新建 Chat"); await("选择模型")
             scenario.onActivity { assertFalse(it.newChatSnapshot!!.optBoolean("busy"));assertFalse(it.newChatSnapshot!!.optBoolean("can_submit")) }
-            click("Demo model"); click("Demo fast"); capture("new-chat-after-model")
+            click("选择模型"); click("Demo fast"); capture("new-chat-after-model")
             scenario.onActivity { assertEquals(it.newChatSnapshot.toString(),"off",it.newChatSnapshot!!.getJSONObject("thinking").getString("value")) }
-            reveal("off")
+            click("完成"); settle()
             val input=nodes().first { it.isEditable }
             assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"新建一个 Chat 🦊")}))
             settle(); capture("new-chat-input");click("发送")
