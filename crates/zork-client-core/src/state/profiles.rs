@@ -375,8 +375,16 @@ impl Profiles {
         }
         Ok(())
     }
+    /// Imports the provider's model list. New models the catalog recognizes
+    /// get their preset values right away (disabled until the user turns them
+    /// on); the rest stay 待配置. The result adds `preset`, `pending` and a
+    /// ready-to-show `message` to the station's `added`/`truncated`.
     pub async fn discover_models(&self, id: &str) -> anyhow::Result<Value> {
         crate::model_edit::valid_id(id)?;
+        let before = self.fetch_detail(id).await?["models"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         let mut value = self
             .client
             .node_request(
@@ -385,10 +393,35 @@ impl Profiles {
                 None,
             )
             .await?;
-        self.accept_profile(value["profile"].take())?;
-        if let Some(result) = self.refresh_replica().await {
-            result?;
+        let profile = value["profile"].take();
+        let provider = profile["provider"].as_str().unwrap_or_default().to_owned();
+        let expected = profile["models"].as_array().cloned().unwrap_or_default();
+        self.accept_profile(profile)?;
+        let mut models = expected.clone();
+        let mut counts = crate::model_catalog::import_presets(&before, &mut models, &provider);
+        let mut committed = false;
+        if counts.preset > 0 {
+            match self.commit_models(id, models, expected).await {
+                Ok(()) => committed = true,
+                Err(error) => {
+                    tracing::warn!(%error, "applying model presets after discovery failed");
+                    counts.pending += counts.preset;
+                    counts.preset = 0;
+                }
+            }
         }
+        if !committed {
+            if let Some(result) = self.refresh_replica().await {
+                result?;
+            }
+        }
+        let mut message = counts.message();
+        if value["truncated"] == true {
+            message.push_str("（仅返回部分结果）");
+        }
+        value["preset"] = serde_json::json!(counts.preset);
+        value["pending"] = serde_json::json!(counts.pending);
+        value["message"] = serde_json::json!(message);
         Ok(value)
     }
     pub async fn save_connection(

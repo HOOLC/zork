@@ -170,52 +170,123 @@ pub fn copyable(model: &Value) -> bool {
         .is_some_and(|(c, o)| o > 0 && c > o)
 }
 
+/// Validation failures are keyed by field: `profile-model` (id),
+/// `profile-api`, `profile-context-limit`, `profile-output-limit` and
+/// `profile-default-thinking` (the thinking scheme).
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct FieldError {
     pub field: String,
     pub message: String,
+    /// For a duplicate id: the existing model to edit instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplicate: Option<String>,
+    /// For thinking budgets not below the output limit: those presets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bad_budgets: Vec<u32>,
+}
+
+pub const FIELD_ID: &str = "profile-model";
+pub const FIELD_API: &str = "profile-api";
+pub const FIELD_CONTEXT: &str = "profile-context-limit";
+pub const FIELD_OUTPUT: &str = "profile-output-limit";
+pub const FIELD_THINKING: &str = "profile-default-thinking";
+const ID_MAX: usize = 200;
+
+/// Why typed context text is unusable, if it is.
+pub fn context_error(text: &str) -> Option<String> {
+    if text.trim().is_empty() {
+        Some("填写上下文长度".into())
+    } else if parse_tokens(text).is_none() {
+        Some("写成 128K 或 131072 这样的数字".into())
+    } else {
+        None
+    }
+}
+
+/// Why typed output text is unusable, if it is; `context` is the parsed context.
+pub fn output_error(text: &str, context: Option<u64>) -> Option<String> {
+    if text.trim().is_empty() {
+        return Some("填写最长输出".into());
+    }
+    let Some(output) = parse_tokens(text).filter(|o| u32::try_from(*o).is_ok()) else {
+        return Some("写成 8K 或 8192 这样的数字".into());
+    };
+    context
+        .filter(|c| output >= *c)
+        .map(|c| format!("需小于上下文 {}", compact_tokens(c)))
+}
+
+/// Id problems: empty, too long, whitespace, or already in the connection.
+pub fn id_error(id: &str, models: &[Value], previous: Option<&str>) -> Option<FieldError> {
+    let id = id.trim();
+    let message = if id.is_empty() {
+        "填写供应商提供的模型 ID".to_owned()
+    } else if id.chars().count() > ID_MAX {
+        format!("模型 ID 最多 {ID_MAX} 个字符")
+    } else if id.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        "模型 ID 不能包含空格".to_owned()
+    } else if models
+        .iter()
+        .any(|m| m["id"] == id && m["id"].as_str() != previous)
+    {
+        return Some(FieldError {
+            field: FIELD_ID.into(),
+            message: format!("这个连接里已经有 {id}"),
+            duplicate: Some(id.into()),
+            bad_budgets: vec![],
+        });
+    } else {
+        return None;
+    };
+    Some(FieldError {
+        field: FIELD_ID.into(),
+        message,
+        duplicate: None,
+        bad_budgets: vec![],
+    })
 }
 
 impl ModelInput {
     pub fn errors(&self, models: &[Value]) -> Vec<FieldError> {
         let mut errors = Vec::new();
-        let mut fail = |field: &str, message: &str| {
+        let mut fail = |field: &str, message: String| {
             errors.push(FieldError {
                 field: field.into(),
-                message: message.into(),
+                message,
+                duplicate: None,
+                bad_budgets: vec![],
             })
         };
         let previous = self.previous.as_ref().and_then(|v| v["id"].as_str());
-        let id = self.id.trim();
-        if id.is_empty() {
-            fail("profile-model", "填写供应商提供的模型 ID。");
-        } else if models
-            .iter()
-            .any(|m| m["id"] == id && m["id"].as_str() != previous)
-        {
-            fail("profile-model", "此 ID 已存在，请使用其他模型 ID。");
-        }
         if !MODEL_APIS.iter().any(|(api, _)| *api == self.api) {
-            fail("profile-api", "请选择支持的模型接口。");
+            fail(FIELD_API, "请选择支持的模型接口".into());
         }
-        let context = parse_tokens(&self.context).filter(|n| *n > 0);
-        let output = parse_tokens(&self.output)
-            .and_then(|n| u32::try_from(n).ok())
-            .filter(|n| *n > 0);
-        if context.is_none() {
-            fail("profile-context-limit", "请输入大于 0 的整数。");
+        let context = parse_tokens(&self.context);
+        if let Some(message) = context_error(&self.context) {
+            fail(FIELD_CONTEXT, message);
         }
-        if output.is_none() {
-            fail("profile-output-limit", "请输入大于 0 的整数。");
-        } else if context.zip(output).is_some_and(|(c, o)| u64::from(o) >= c) {
-            fail(
-                "profile-output-limit",
-                &format!("需小于上下文上限（{}）。", compact_tokens(context.unwrap())),
-            );
+        if let Some(message) = output_error(&self.output, context) {
+            fail(FIELD_OUTPUT, message);
         }
-        if let Some(message) = self.scheme().error(output) {
-            fail("profile-default-thinking", &message);
+        let output = parse_tokens(&self.output).and_then(|n| u32::try_from(n).ok());
+        errors.extend(id_error(&self.id, models, previous));
+        if let Some(problem) = self.scheme().problem(output) {
+            errors.push(FieldError {
+                field: FIELD_THINKING.into(),
+                message: problem.message,
+                duplicate: None,
+                bad_budgets: problem.bad_budgets,
+            });
         }
+        // Field order in the form: id, thinking, length, protocol.
+        let rank = |field: &str| match field {
+            FIELD_ID => 0,
+            FIELD_THINKING => 1,
+            FIELD_CONTEXT => 2,
+            FIELD_OUTPUT => 3,
+            _ => 4,
+        };
+        errors.sort_by_key(|e| rank(&e.field));
         errors
     }
     /// The thinking scheme this form describes.
@@ -303,33 +374,60 @@ pub fn remove_model(mut models: Vec<Value>, expected: &Value) -> anyhow::Result<
     Ok(models)
 }
 
+/// Token counts as people write them: `128K`, `1M` and `1.5M` when that is
+/// exact with at most one decimal (K = 1000, M = 1,000,000), otherwise the
+/// thousands-separated integer (`32,768`), never odd decimals like `32.768K`.
 pub fn compact_tokens(value: u64) -> String {
-    let (scale, digits, suffix) = if value >= 1_000_000 {
-        (1_000_000, 6, "M")
-    } else if value >= 1_000 {
-        (1_000, 3, "K")
-    } else {
-        return value.to_string();
-    };
-    let whole = value / scale;
-    let remainder = value % scale;
-    if remainder == 0 {
-        return format!("{whole}{suffix}");
+    for (scale, suffix) in [(1_000_000, "M"), (1_000, "K")] {
+        if value >= scale && value % (scale / 10) == 0 {
+            let whole = value / scale;
+            let tenth = value % scale / (scale / 10);
+            return if tenth == 0 {
+                format!("{whole}{suffix}")
+            } else {
+                format!("{whole}.{tenth}{suffix}")
+            };
+        }
+        if value >= scale {
+            break;
+        }
     }
-    let fraction = format!("{remainder:0digits$}");
-    format!("{whole}.{}{suffix}", fraction.trim_end_matches('0'))
+    exact_tokens(value)
 }
+
+/// The exact count with thousands separators, e.g. `128,000`.
+pub fn exact_tokens(value: u64) -> String {
+    let digits = value.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// Parses `128K`, `128k`, `131072`, `1M`, `1.5M`, `200 000` or `200,000`.
+/// The result must be a positive whole number of tokens after scaling, so
+/// `1.2345K`, `0`, negatives and other units (`128千`) are rejected.
 pub fn parse_tokens(value: &str) -> Option<u64> {
-    let value = value.trim();
+    let value: String = value
+        .chars()
+        .filter(|c| !(c.is_whitespace() || matches!(c, ',' | '_' | '\u{202f}')))
+        .collect();
     let (number, scale) = match value.as_bytes().last()? {
         b'k' | b'K' => (&value[..value.len() - 1], 1_000u128),
         b'm' | b'M' => (&value[..value.len() - 1], 1_000_000u128),
-        _ => (value, 1u128),
+        _ => (value.as_str(), 1u128),
     };
     let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
     if whole.is_empty()
+        || whole.len() > 20
+        || fraction.len() > 12
         || !whole.bytes().all(|b| b.is_ascii_digit())
         || !fraction.bytes().all(|b| b.is_ascii_digit())
+        || (number.contains('.') && fraction.is_empty())
     {
         return None;
     }
@@ -350,6 +448,15 @@ pub fn parse_tokens(value: &str) -> Option<u64> {
             .checked_add(fractional / denominator)?,
     )
     .ok()
+    .filter(|n| *n > 0)
+}
+
+/// Shows typed token text in its normal form once it parses (on blur/Enter);
+/// text that does not parse stays as typed.
+pub fn normalize_tokens(text: &str) -> String {
+    parse_tokens(text)
+        .map(compact_tokens)
+        .unwrap_or_else(|| text.trim().to_owned())
 }
 
 pub const MODEL_APIS: [(&str, &str); 4] = [
@@ -487,15 +594,166 @@ mod model_tests {
             (128000, "128K"),
             (1000000, "1M"),
             (1500000, "1.5M"),
-            (4096, "4.096K"),
-            (1048576, "1.048576M"),
+            (1200000, "1.2M"),
+            (32800, "32.8K"),
+            (4096, "4,096"),
+            (32768, "32,768"),
+            (131072, "131,072"),
+            (1048576, "1,048,576"),
+            (1250000, "1,250,000"),
+            (999, "999"),
+            (1000, "1K"),
         ] {
             assert_eq!(compact_tokens(value), label);
-            assert_eq!(parse_tokens(label), Some(value));
+            assert_eq!(parse_tokens(label), Some(value), "{label}");
         }
-        assert_eq!(parse_tokens("1.5m"), Some(1500000));
-        assert_eq!(parse_tokens("1.0011K"), None);
-        assert_eq!(parse_tokens("-1K"), None);
+        assert_eq!(exact_tokens(128000), "128,000");
+        assert_eq!(exact_tokens(1000000), "1,000,000");
+        assert_eq!(exact_tokens(7), "7");
+    }
+    #[test]
+    fn token_text_accepts_common_spellings_and_rejects_the_rest() {
+        for (text, value) in [
+            ("128K", 128_000),
+            ("128k", 128_000),
+            ("131072", 131_072),
+            ("1M", 1_000_000),
+            ("1m", 1_000_000),
+            ("1.5M", 1_500_000),
+            ("200 000", 200_000),
+            ("200,000", 200_000),
+            (" 8K ", 8_000),
+            ("1.5000K", 1_500),
+            ("4.096K", 4_096),
+            ("128 K", 128_000),
+        ] {
+            assert_eq!(parse_tokens(text), Some(value), "{text}");
+        }
+        for text in [
+            "",
+            " ",
+            "K",
+            "1.2345K",
+            "128千",
+            "-1K",
+            "-5",
+            "0",
+            "0K",
+            "0.0M",
+            "1.K",
+            ".5K",
+            "12x",
+            "1e5",
+            "1.0011K",
+            "128KK",
+            "99999999999999999999999",
+        ] {
+            assert_eq!(parse_tokens(text), None, "{text:?}");
+        }
+        assert_eq!(normalize_tokens("131072"), "131,072");
+        assert_eq!(normalize_tokens("128000"), "128K");
+        assert_eq!(normalize_tokens(" 1.50m "), "1.5M");
+        assert_eq!(normalize_tokens("12x "), "12x");
+    }
+    #[test]
+    fn validation_messages_follow_the_editor_wording() {
+        let models = vec![json!({"id":"deepseek-chat"})];
+        let base = ModelInput {
+            id: "m".into(),
+            api: "openai-completions".into(),
+            context: "128K".into(),
+            output: "8K".into(),
+            thinking_scheme: Some(crate::thinking::ThinkingScheme::Unsupported),
+            ..Default::default()
+        };
+        let message = |input: &ModelInput, field: &str| {
+            input
+                .errors(&models)
+                .into_iter()
+                .find(|e| e.field == field)
+                .map(|e| e.message)
+        };
+        assert!(base.errors(&models).is_empty());
+        let mut input = base.clone();
+        input.id = " ".into();
+        assert_eq!(
+            message(&input, FIELD_ID).unwrap(),
+            "填写供应商提供的模型 ID"
+        );
+        input.id = "deepseek-chat".into();
+        let duplicate = input.errors(&models).remove(0);
+        assert_eq!(duplicate.message, "这个连接里已经有 deepseek-chat");
+        assert_eq!(duplicate.duplicate.as_deref(), Some("deepseek-chat"));
+        input.id = "a b".into();
+        assert_eq!(message(&input, FIELD_ID).unwrap(), "模型 ID 不能包含空格");
+        input.id = "x".repeat(201);
+        assert!(message(&input, FIELD_ID).unwrap().contains("200"));
+        // Editing keeps its own id.
+        let mut editing = base.clone();
+        editing.id = "deepseek-chat".into();
+        editing.previous = Some(json!({"id":"deepseek-chat"}));
+        assert_eq!(message(&editing, FIELD_ID), None);
+
+        let mut input = base.clone();
+        input.context = "".into();
+        assert_eq!(message(&input, FIELD_CONTEXT).unwrap(), "填写上下文长度");
+        input.context = "128千".into();
+        assert_eq!(
+            message(&input, FIELD_CONTEXT).unwrap(),
+            "写成 128K 或 131072 这样的数字"
+        );
+        let mut input = base.clone();
+        input.output = "".into();
+        assert_eq!(message(&input, FIELD_OUTPUT).unwrap(), "填写最长输出");
+        input.output = "8千".into();
+        assert_eq!(
+            message(&input, FIELD_OUTPUT).unwrap(),
+            "写成 8K 或 8192 这样的数字"
+        );
+        input.output = "128K".into();
+        assert_eq!(message(&input, FIELD_OUTPUT).unwrap(), "需小于上下文 128K");
+        input.context = "131072".into();
+        input.output = "200K".into();
+        assert_eq!(
+            message(&input, FIELD_OUTPUT).unwrap(),
+            "需小于上下文 131,072"
+        );
+        input.output = "5000000000".into();
+        assert!(
+            message(&input, FIELD_OUTPUT).is_some(),
+            "output must fit u32"
+        );
+
+        let mut input = base.clone();
+        input.output = "16K".into();
+        input.thinking_scheme = Some(crate::thinking::ThinkingScheme::Budget {
+            presets: vec![4_000, 16_000, 32_000],
+            default: crate::thinking::BudgetChoice::Off,
+            dynamic: false,
+            allow_off: true,
+        });
+        let error = input
+            .errors(&models)
+            .into_iter()
+            .find(|e| e.field == FIELD_THINKING)
+            .unwrap();
+        assert_eq!(error.message, "预算需小于最长输出 16K");
+        assert_eq!(error.bad_budgets, vec![16_000, 32_000]);
+
+        // Errors come in form order: id, thinking, context, output.
+        let mut input = base.clone();
+        input.id = String::new();
+        input.context = String::new();
+        input.output = String::new();
+        input.thinking_scheme = Some(crate::thinking::ThinkingScheme::Levels {
+            values: vec![],
+            default: String::new(),
+        });
+        let fields: Vec<String> = input.errors(&[]).into_iter().map(|e| e.field).collect();
+        assert_eq!(
+            fields,
+            [FIELD_ID, FIELD_THINKING, FIELD_CONTEXT, FIELD_OUTPUT]
+        );
     }
     #[test]
     fn edit_preserves_other_models_and_prevents_duplicate_identity() {

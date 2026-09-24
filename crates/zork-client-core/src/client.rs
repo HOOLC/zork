@@ -182,6 +182,25 @@ pub enum Command {
     ModelCatalogSummary {
         models: Vec<Value>,
     },
+    /// List rows (`128K · 可开关`, 按预设, 待配置) for a connection's models.
+    ModelRows {
+        profile: crate::model_catalog::ConnectionInfo,
+    },
+    /// One step of the shared model editor; see `model_editor` for the shapes.
+    ModelEditor {
+        context: Value,
+        #[serde(default)]
+        state: Option<Value>,
+        action: Value,
+    },
+    /// Fill sources (你的模型 / 预设) for the model editor.
+    ModelEditorSources {
+        context: Value,
+        #[serde(default)]
+        state: Option<Value>,
+        #[serde(default)]
+        query: String,
+    },
     Request {
         peer: String,
         method: String,
@@ -272,6 +291,9 @@ impl Command {
                 | Self::ModelCatalogRecognize { .. }
                 | Self::ModelCatalogReferences { .. }
                 | Self::ModelCatalogSummary { .. }
+                | Self::ModelRows { .. }
+                | Self::ModelEditor { .. }
+                | Self::ModelEditorSources { .. }
                 | Self::Read {
                     cached_only: true,
                     ..
@@ -429,7 +451,9 @@ impl LocalClient {
                     self.peer(peer)?;
                     valid_session(session)?;
                     self.device_state(peer)
-                } else { None };
+                } else {
+                    None
+                };
                 self.chat_files.apply(operation, device)?;
                 Ok(json!({}))
             }
@@ -474,7 +498,8 @@ impl LocalClient {
                 if let Some(session) = &session {
                     valid_session(session)?;
                 }
-                self.chat_files.leave_conversation(peer.as_deref(), session.as_deref());
+                self.chat_files
+                    .leave_conversation(peer.as_deref(), session.as_deref());
                 let devices = self
                     .store
                     .1
@@ -559,14 +584,23 @@ impl LocalClient {
                     self.store.submit_current_draft(&peer, &session, text)?,
                 )?)
             }
-            Command::ArchiveChat { peer, chat, archived, expected_message_count } => {
+            Command::ArchiveChat {
+                peer,
+                chat,
+                archived,
+                expected_message_count,
+            } => {
                 self.peer(&peer)?;
-                self.device_state(&peer).context("客户端连接已暂停，请重新连接")?.set_chat_archived(&chat, archived, expected_message_count)?;
+                self.device_state(&peer)
+                    .context("客户端连接已暂停，请重新连接")?
+                    .set_chat_archived(&chat, archived, expected_message_count)?;
                 Ok(json!({}))
             }
-            Command::NewChat {peer,operation} => {
+            Command::NewChat { peer, operation } => {
                 self.peer(&peer)?;
-                let device=self.device_state(&peer).context("客户端连接已暂停，请重新连接")?;
+                let device = self
+                    .device_state(&peer)
+                    .context("客户端连接已暂停，请重新连接")?;
                 device.new_chat().apply(operation)?;
                 Ok(json!({}))
             }
@@ -787,6 +821,25 @@ impl LocalClient {
                 .iter()
                 .map(crate::model_catalog::model_summary)
                 .collect::<Vec<_>>())),
+            Command::ModelRows { profile } => Ok(json!(profile
+                .models
+                .iter()
+                .map(|m| crate::model_catalog::model_row(m, &profile.provider))
+                .collect::<Vec<_>>())),
+            Command::ModelEditor {
+                context,
+                state,
+                action,
+            } => crate::model_editor::handle(
+                json!({"context": context, "state": state, "action": action}),
+            ),
+            Command::ModelEditorSources {
+                context,
+                state,
+                query,
+            } => crate::model_editor::handle_sources(
+                json!({"context": context, "state": state, "query": query}),
+            ),
             Command::Read {
                 peer,
                 path,
@@ -950,7 +1003,10 @@ impl Client {
             self.directory
                 .set_mesh_readiness(device_status::MeshReadiness::Preparing);
             let started = async {
-                let network = self.store.get::<Network>("device", "network")?.unwrap_or_default();
+                let network = self
+                    .store
+                    .get::<Network>("device", "network")?
+                    .unwrap_or_default();
                 let config = self.config(&network)?;
                 let (mut runtime, identity) = transport::start(&self.root, &config).await?;
                 if let Err(error) = self.store.put("device", "identity", &identity) {
@@ -970,7 +1026,11 @@ impl Client {
                     return Err(error);
                 }
             };
-            self.account_devices = Some(relay_account::devices::start_client(&self.root, runtime.node(), self.store.clone())?);
+            self.account_devices = Some(relay_account::devices::start_client(
+                &self.root,
+                runtime.node(),
+                self.store.clone(),
+            )?);
             self.runtime = Some(runtime);
         }
         self.watch_devices().await?;
@@ -1012,11 +1072,13 @@ impl Client {
     }
 
     fn snapshot(&self) -> Result<Value> {
-        Ok(json!({"identity":self.store.get::<String>("device","identity")?,
+        Ok(
+            json!({"identity":self.store.get::<String>("device","identity")?,
             "running":self.runtime.as_ref().is_some_and(|r| !r.is_finished()),
             "nodes":self.store.nodes()?,
             "selected_peer":self.store.get::<Option<String>>("device","last-node")?.flatten(),
-            "network":self.store.get::<Network>("device","network")?.unwrap_or_default()}))
+            "network":self.store.get::<Network>("device","network")?.unwrap_or_default()}),
+        )
     }
 
     async fn request(
@@ -1392,6 +1454,9 @@ impl Client {
             | Command::ModelCatalogRecognize { .. }
             | Command::ModelCatalogReferences { .. }
             | Command::ModelCatalogSummary { .. }
+            | Command::ModelRows { .. }
+            | Command::ModelEditor { .. }
+            | Command::ModelEditorSources { .. }
             | Command::NotificationSettings { .. }
             | Command::TestNotification
             | Command::NotificationReceipt { .. }
@@ -1531,7 +1596,10 @@ mod tests {
             path: copy.to_string_lossy().into_owned(),
             name: "截图.png".into(),
         };
-        ensure!(client.execute(attach()).await.is_err(), "no open conversation");
+        ensure!(
+            client.execute(attach()).await.is_err(),
+            "no open conversation"
+        );
         let _device = state::Device::open(
             Arc::new(api::StationClient::new("http://127.0.0.1:9", None)),
             Some((client.store.clone(), peer.clone())),
