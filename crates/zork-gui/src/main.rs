@@ -240,6 +240,10 @@ fn main() {
                 cx,
             ))),
             titlebar: Some(native_titlebar_options()),
+            // The app owns the titlebar strip: AppKit neither drags nor zooms
+            // from it, so presses on controls there stay clicks. Empty strip
+            // space is a `WindowControlArea::Drag` that GPUI moves and zooms.
+            app_owns_titlebar_drag: true,
             window_min_size: Some(size(px(900.0), px(600.0))),
             ..Default::default()
         };

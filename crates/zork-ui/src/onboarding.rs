@@ -5,14 +5,14 @@ use crate::{
     controls::{self as ui, NoticeKind},
     design::TextRole,
 };
-use gpui::{div, prelude::*, px, rgb, Div, MouseButton, Role, SharedString};
+use gpui::{div, prelude::*, px, rgb, Div, Role, SharedString};
 
 pub fn frame() -> Div {
     div().size_full().flex().flex_col().child(
         div()
             .h(px(48.))
             .flex_shrink_0()
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move()),
+            .window_control_area(gpui::WindowControlArea::Drag),
     )
 }
 

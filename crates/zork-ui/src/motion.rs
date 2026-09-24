@@ -415,20 +415,213 @@ impl<E: Styled + IntoElement + 'static> Element for Appear<E> {
     }
 }
 
-struct Collapse {
-    open: bool,
-    start: Option<Instant>,
-    from: f32,
-    shown: f32,
-    measured: Rc<Cell<f32>>,
+/// One frame of a disclosure: the clamp height while moving, the content
+/// opacity and whether the content is on its way out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fold {
+    /// Height the container clamps and clips to; `None` once settled open, so
+    /// the content keeps its natural height.
+    pub height: Option<f32>,
+    pub opacity: f32,
+    /// The content is leaving: render it without input or automation.
+    pub closing: bool,
 }
 
-/// Height transition for disclosure content. The content's natural height is
-/// measured every frame; while moving, the container clamps and clips to a
-/// height between the previous and new bounds on the move curve, then releases
-/// the clamp. Opening fades the content in over the second half; closing fades
-/// it out over the first half and removes it at the end. With reduced motion
-/// the height snaps and the content fades in briefly.
+/// Height transition for disclosure content.
+///
+/// Every change of `open` continues from what is on screen: the height from
+/// the last rendered height and the opacity from the last rendered opacity, so
+/// reversing mid-way never jumps. Opening waits for the first measurement of
+/// the content before the clock starts, so the first frame never renders the
+/// target or a guessed height. Height moves on the move curve; opening fades
+/// the content in over the second half, closing fades it out over the first
+/// half and then removes it. Reduced motion snaps the height and keeps a short
+/// fade.
+pub struct CollapseState {
+    open: bool,
+    /// Waiting for a measurement before the transition clock starts.
+    pending: bool,
+    start: Option<Instant>,
+    from_height: f32,
+    from_opacity: f32,
+    shown: f32,
+    opacity: f32,
+}
+impl CollapseState {
+    /// `open` is the state on the first frame. A state created closed and
+    /// then stepped open animates in, which is how newly revealed rows enter.
+    pub fn new(open: bool) -> Self {
+        Self {
+            open,
+            pending: false,
+            start: None,
+            from_height: 0.,
+            from_opacity: 0.,
+            shown: 0.,
+            opacity: if open { 1. } else { 0. },
+        }
+    }
+    /// Advances to `now` given the content's last measured natural height
+    /// (`None` before it was ever laid out). Returns the frame to render (None
+    /// once closed) and whether another animation frame is needed.
+    pub fn step(
+        &mut self,
+        open: bool,
+        natural: Option<f32>,
+        now: Instant,
+        mode: Mode,
+    ) -> (Option<Fold>, bool) {
+        let settled_open = Fold {
+            height: None,
+            opacity: 1.,
+            closing: false,
+        };
+        if mode == Mode::Static {
+            self.open = open;
+            self.pending = false;
+            self.start = None;
+            self.opacity = if open { 1. } else { 0. };
+            self.shown = if open { natural.unwrap_or(0.) } else { 0. };
+            return (open.then_some(settled_open), false);
+        }
+        if open != self.open {
+            self.open = open;
+            self.from_height = self.shown;
+            self.from_opacity = self.opacity;
+            self.start = None;
+            self.pending = true;
+        }
+        if self.pending {
+            if open && natural.is_none() {
+                // Lay the content out once, clipped at the current height and
+                // invisible, before the clock starts.
+                return (
+                    Some(Fold {
+                        height: Some(self.shown),
+                        opacity: self.opacity,
+                        closing: false,
+                    }),
+                    true,
+                );
+            }
+            self.pending = false;
+            self.start = Some(now);
+        }
+        let Some(start) = self.start else {
+            if open {
+                self.shown = natural.unwrap_or(self.shown);
+                self.opacity = 1.;
+                return (Some(settled_open), false);
+            }
+            self.shown = 0.;
+            self.opacity = 0.;
+            return (None, false);
+        };
+        let reduced = mode == Mode::Short;
+        let th = if reduced { 1. } else { progress(start, now, BASE) };
+        let tf = progress(start, now, if reduced { REDUCED_FADE } else { BASE });
+        let target = if open { natural.unwrap_or(0.) } else { 0. };
+        let height = self.from_height + (target - self.from_height) * ease_move(th);
+        let opacity = if open {
+            let phase = if reduced { tf } else { ((tf - 0.5) * 2.).clamp(0., 1.) };
+            self.from_opacity + (1. - self.from_opacity) * ease_enter(phase)
+        } else {
+            let phase = if reduced { tf } else { (tf * 2.).clamp(0., 1.) };
+            self.from_opacity * (1. - phase)
+        };
+        if th >= 1. && tf >= 1. {
+            self.start = None;
+            self.shown = target;
+            self.opacity = if open { 1. } else { 0. };
+            return (open.then_some(settled_open), false);
+        }
+        self.shown = height;
+        self.opacity = opacity;
+        (
+            Some(Fold {
+                height: Some(height),
+                opacity,
+                closing: !open,
+            }),
+            true,
+        )
+    }
+}
+
+struct Collapse {
+    state: CollapseState,
+    measured: Rc<Cell<Option<f32>>>,
+}
+
+/// A disclosure frame to wrap content in; see [`fold`].
+pub struct FoldFrame {
+    pub fold: Fold,
+    measured: Rc<Cell<Option<f32>>>,
+}
+impl FoldFrame {
+    /// Clamps, clips and fades `content`, measuring its natural height for the
+    /// next frame.
+    pub fn wrap(self, content: impl IntoElement) -> AnyElement {
+        let measured = self.measured;
+        let body = div()
+            .w_full()
+            .flex_shrink_0()
+            .relative()
+            .opacity(self.fold.opacity)
+            .child(content)
+            .child(
+                gpui::canvas(
+                    move |bounds, _, _| measured.set(Some(bounds.size.height.as_f32())),
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            );
+        match self.fold.height {
+            Some(h) => div()
+                .w_full()
+                .h(px(h))
+                .overflow_hidden()
+                .child(body)
+                .into_any_element(),
+            None => body.into_any_element(),
+        }
+    }
+}
+
+/// Disclosure state kept in window state under `id`. Call it on every render,
+/// open or not, and render the content (through [`FoldFrame::wrap`]) only
+/// while it returns a frame. `initially_open` is the state the first frame
+/// assumes: pass `false` for content that should grow in when it first
+/// appears open (rows revealed by expanding a group).
+pub fn fold(
+    id: impl Into<SharedString>,
+    open: bool,
+    initially_open: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<FoldFrame> {
+    let id: SharedString = id.into();
+    let key = ElementId::Name(format!("{id}-collapse").into());
+    let state = window.use_keyed_state(key, cx, |_, _| Collapse {
+        state: CollapseState::new(initially_open),
+        measured: Rc::new(Cell::new(None)),
+    });
+    let now = cx.background_executor().now();
+    let mode = mode(cx);
+    let (fold, moving, measured) = state.update(cx, |s, _| {
+        let natural = s.measured.get();
+        let (fold, moving) = s.state.step(open, natural, now, mode);
+        (fold, moving, s.measured.clone())
+    });
+    if moving {
+        window.request_animation_frame();
+    }
+    fold.map(|fold| FoldFrame { fold, measured })
+}
+
+/// Height transition for disclosure content that is open or closed from its
+/// first frame; see [`CollapseState`] and [`fold`].
 pub fn collapse(
     id: impl Into<SharedString>,
     open: bool,
@@ -436,88 +629,15 @@ pub fn collapse(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let id: SharedString = id.into();
-    let key = ElementId::Name(format!("{id}-collapse").into());
-    let state = window.use_keyed_state(key, cx, |_, _| Collapse {
-        open,
-        start: None,
-        from: 0.,
-        shown: 0.,
-        measured: Rc::new(Cell::new(0.)),
-    });
-    let now = cx.background_executor().now();
-    let mode = mode(cx);
-    let reduced = mode != Mode::Full;
-    let fade_ms = match mode {
-        Mode::Full => BASE,
-        Mode::Short => REDUCED_FADE,
-        Mode::Static => 0,
-    };
-    let (height, opacity, moving, gone, measured) = state.update(cx, |s, _| {
-        if s.open != open {
-            s.open = open;
-            s.from = s.shown;
-            s.start = Some(now);
-        }
-        let natural = s.measured.get();
-        let Some(start) = s.start else {
-            // Settled: open renders at its natural height, closed renders nothing.
-            s.shown = if open { natural } else { 0. };
-            return (None, 1., false, !open, s.measured.clone());
-        };
-        let th = if reduced { 1. } else { progress(start, now, BASE) };
-        let tf = progress(start, now, fade_ms);
-        let target = if open { natural } else { 0. };
-        let h = s.from + (target - s.from) * ease_move(th);
-        let opacity = if !open {
-            1. - (tf * 2.).clamp(0., 1.)
-        } else if reduced {
-            ease_enter(tf)
-        } else {
-            ease_enter(((tf - 0.5) * 2.).clamp(0., 1.))
-        };
-        let done = th >= 1. && tf >= 1.;
-        if done {
-            s.start = None;
-        }
-        s.shown = h;
-        (
-            (!done).then_some(h),
-            opacity,
-            !done,
-            done && !open,
-            s.measured.clone(),
-        )
-    });
-    if moving {
-        window.request_animation_frame();
-    }
-    if gone {
-        return None;
-    }
-    let body = div()
-        .w_full()
-        .flex_shrink_0()
-        .relative()
-        .opacity(opacity)
-        .child(content())
-        .child(
-            gpui::canvas(
-                move |bounds, _, _| measured.set(bounds.size.height.as_f32()),
-                |_, _, _, _| {},
-            )
-            .absolute()
-            .inset_0(),
-        );
-    Some(match height {
-        Some(h) => div()
-            .w_full()
-            .h(px(h))
-            .overflow_hidden()
-            .child(body)
-            .into_any_element(),
-        None => body.into_any_element(),
-    })
+    fold(id, open, open, window, cx).map(|frame| frame.wrap(content()))
+}
+
+/// Tests that read motion durations hold this while another stretches them.
+#[cfg(test)]
+static CLOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+#[cfg(test)]
+fn clock() -> std::sync::MutexGuard<'static, ()> {
+    CLOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]
@@ -555,6 +675,7 @@ mod tests {
 
     #[test]
     fn exits_are_two_thirds_and_slow_stretches_tokens() {
+        let _clock = super::clock();
         assert_eq!(exit(SURFACE), 160);
         assert_eq!(exit(BASE), 120);
         set_slow(5.);
@@ -565,6 +686,7 @@ mod tests {
 
     #[test]
     fn presence_fades_out_and_drops() {
+        let _clock = super::clock();
         let t0 = Instant::now();
         let mut p = Presence::new(POPOVER);
         let (f, moving) = p.step(true, t0, Mode::Full);
@@ -583,6 +705,7 @@ mod tests {
 
     #[test]
     fn reduced_presence_is_a_short_fade_without_travel() {
+        let _clock = super::clock();
         let t0 = Instant::now();
         let mut p = Presence::new(SURFACE);
         let (f, _) = p.step(true, t0, Mode::Short);
@@ -599,11 +722,240 @@ mod tests {
         assert!(p.step(false, t0, Mode::Static).0.is_none());
     }
 
+    fn run(state: &mut CollapseState, open: bool, natural: f32, t0: Instant, from_ms: u64, to_ms: u64) -> Vec<Option<Fold>> {
+        (from_ms..=to_ms)
+            .step_by(8)
+            .map(|ms| state.step(open, Some(natural), t0 + Duration::from_millis(ms), Mode::Full).0)
+            .collect()
+    }
+
+    #[test]
+    fn collapse_opens_from_zero_after_measuring_and_never_jumps() {
+        let _clock = super::clock();
+        let t0 = Instant::now();
+        let mut s = CollapseState::new(false);
+        assert_eq!(s.step(false, None, t0, Mode::Full).0, None);
+        // First open frame: the content is unmeasured, so it lays out clipped at
+        // the current height and invisible; the clock has not started.
+        let (f, moving) = s.step(true, None, t0, Mode::Full);
+        let f = f.unwrap();
+        assert!(moving && f.height == Some(0.) && f.opacity == 0.);
+        let frames = run(&mut s, true, 120., t0 + Duration::from_millis(16), 0, 400);
+        let mut last = 0.;
+        for f in &frames {
+            let h = f.unwrap().height.unwrap_or(120.);
+            assert!(h + 1e-3 >= last, "height went back: {last} -> {h}");
+            assert!(h - last <= 0.2 * 120., "height jumped: {last} -> {h}");
+            last = h;
+        }
+        assert_eq!(frames.last().unwrap().unwrap().height, None);
+    }
+
+    #[test]
+    fn collapse_reverses_from_the_current_height_and_opacity() {
+        let _clock = super::clock();
+        let t0 = Instant::now();
+        let mut s = CollapseState::new(true);
+        s.step(true, Some(100.), t0, Mode::Full);
+        // Close, then reopen mid-way: both height and opacity continue.
+        let closing = run(&mut s, false, 100., t0, 0, 48);
+        let before = closing.last().unwrap().unwrap();
+        assert!(before.closing && before.height.unwrap() < 100. && before.opacity < 1.);
+        let t = t0 + Duration::from_millis(48);
+        let after = s.step(true, Some(100.), t, Mode::Full).0.unwrap();
+        assert!((after.height.unwrap() - before.height.unwrap()).abs() < 1e-3);
+        assert!((after.opacity - before.opacity).abs() < 1e-3);
+        // Close again mid-opening: still continuous.
+        let mid = s.step(true, Some(100.), t + Duration::from_millis(40), Mode::Full).0.unwrap();
+        let back = s.step(false, Some(100.), t + Duration::from_millis(40), Mode::Full).0.unwrap();
+        assert!((mid.height.unwrap() - back.height.unwrap()).abs() < 1e-3);
+        assert!((mid.opacity - back.opacity).abs() < 1e-3);
+        let (gone, moving) = s.step(false, Some(100.), t + Duration::from_millis(600), Mode::Full);
+        assert!(gone.is_none() && !moving);
+    }
+
+    #[test]
+    fn collapse_created_open_is_settled_and_static_jumps() {
+        let t0 = Instant::now();
+        let mut s = CollapseState::new(true);
+        let (f, moving) = s.step(true, None, t0, Mode::Full);
+        assert_eq!(f.unwrap().height, None);
+        assert!(!moving);
+        let mut s = CollapseState::new(false);
+        assert_eq!(s.step(true, Some(50.), t0, Mode::Static).0.unwrap().height, None);
+        assert!(s.step(false, Some(50.), t0, Mode::Static).0.is_none());
+    }
+
     #[test]
     fn delayed_stays_hidden_through_the_delay() {
+        let _clock = super::clock();
         let easing = delayed(LOADING_DELAY, 150).easing;
         assert_eq!(easing(0.5), 0.);
         assert!(easing(0.9) > 0.5);
         assert_eq!(easing(1.), 1.);
+    }
+}
+
+#[cfg(all(test, feature = "headless-bench"))]
+mod frame_tests {
+    use crate::components::region::Regions;
+    use gpui::{div, point, prelude::*, px, Context, Modifiers, TestAppContext, Window};
+    use std::{cell::Cell, rc::Rc, time::Duration};
+
+    struct Fx {
+        regions: Regions<Self>,
+        in_region: bool,
+        below: Rc<Cell<f32>>,
+    }
+    fn body(v: &mut Fx, window: &mut Window, cx: &mut Context<Fx>) -> gpui::AnyElement {
+        let below = v.below.clone();
+        div()
+            .w_full()
+            .pl(px(20.))
+            .flex()
+            .flex_col()
+            .child(crate::components::disclosure::expander(
+                "fx",
+                "技术信息",
+                div().w_full().h(px(120.)),
+                window,
+                cx,
+            ))
+            .child(
+                gpui::canvas(move |b, _, _| below.set(b.origin.y.as_f32()), |_, _, _, _| {})
+                    .w_full()
+                    .h(px(10.)),
+            )
+            .into_any_element()
+    }
+    impl Render for Fx {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let inner = if self.in_region {
+                self.regions.auto_height("fx", 300., cx, body)
+            } else {
+                body(self, window, cx)
+            };
+            div().size_full().flex().flex_col().child(inner)
+        }
+    }
+
+    /// Samples the top of the element under the expander every 8 ms frame
+    /// while it opens, closes, and reverses mid-way.
+    fn sample(in_region: bool) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        let mut cx = TestAppContext::single();
+        let below = Rc::new(Cell::new(-1.));
+        let b = below.clone();
+        let (_view, cx) = cx.add_window_view(move |_, _| Fx {
+            regions: Regions::default(),
+            in_region,
+            below: b,
+        });
+        let frame = |cx: &mut gpui::VisualTestContext| {
+            cx.executor().advance_clock(Duration::from_millis(8));
+            cx.update(|w, cx| {
+                w.simulate_next_frame(cx);
+            });
+            cx.run_until_parked();
+        };
+        let frames = |n: usize, cx: &mut gpui::VisualTestContext| {
+            let mut out = vec![below.get()];
+            for _ in 0..n {
+                frame(cx);
+                out.push(below.get());
+            }
+            out
+        };
+        frames(4, cx);
+        let toggle = point(px(34.), px(10.));
+        cx.simulate_click(toggle, Modifiers::none());
+        let open = frames(50, cx);
+        cx.simulate_click(toggle, Modifiers::none());
+        let close = frames(50, cx);
+        // Open, then close again after six frames.
+        cx.simulate_click(toggle, Modifiers::none());
+        let mut reverse = frames(6, cx);
+        cx.simulate_click(toggle, Modifiers::none());
+        reverse.extend(frames(50, cx).into_iter().skip(1));
+        (open, close, reverse)
+    }
+
+    fn assert_smooth(label: &str, frames: &[f32], total: f32) {
+        for pair in frames.windows(2) {
+            assert!(
+                (pair[1] - pair[0]).abs() <= 0.2 * total,
+                "{label}: jump {} -> {} in {frames:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+
+    #[test]
+    fn expander_height_moves_without_a_jump() {
+        let _clock = super::clock();
+        for in_region in [false, true] {
+            let (open, close, reverse) = sample(in_region);
+            let (low, high) = (open[0], *open.last().unwrap());
+            let total = high - low;
+            assert!(total > 100., "the expander did not open: {open:?}");
+            assert!(open.windows(2).all(|p| p[1] + 1e-3 >= p[0]), "not monotonic: {open:?}");
+            assert!(close.windows(2).all(|p| p[1] <= p[0] + 1e-3), "not monotonic: {close:?}");
+            assert_eq!(*close.last().unwrap(), low);
+            assert_smooth("open", &open, total);
+            assert_smooth("close", &close, total);
+            assert_smooth("reverse", &reverse, total);
+            assert_eq!(*reverse.last().unwrap(), low);
+        }
+    }
+
+    struct Titlebar;
+    impl Render for Titlebar {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .h(px(48.))
+                        .window_control_area(gpui::WindowControlArea::Drag),
+                )
+                .child(
+                    // A scroll area reaching into the strip only scrolls.
+                    div()
+                        .id("scroll")
+                        .absolute()
+                        .top_0()
+                        .left(px(200.))
+                        .size(px(200.))
+                        .overflow_y_scroll()
+                        .child(
+                            div()
+                                .id("toggle")
+                                .size(px(40.))
+                                .on_click(|_, _, _| {}),
+                        ),
+                )
+        }
+    }
+
+    #[test]
+    fn titlebar_controls_take_their_presses() {
+        let mut cx = TestAppContext::single();
+        let (_view, cx) = cx.add_window_view(|_, _| Titlebar);
+        let at = |cx: &mut gpui::VisualTestContext, x: f32, y: f32| {
+            cx.simulate_mouse_move(point(px(x), px(y)), None, Modifiers::none());
+            cx.update(|w, _| w.window_control_area_at_mouse())
+        };
+        // Empty strip: drag area. Over a scroll area: still the strip below.
+        assert_eq!(at(cx, 20., 20.), Some(gpui::WindowControlArea::Drag));
+        assert_eq!(at(cx, 300., 20.), Some(gpui::WindowControlArea::Drag));
+        // A clickable control over the strip takes the press.
+        assert_eq!(at(cx, 210., 20.), None);
+        // Below the strip nothing is a window control.
+        assert_eq!(at(cx, 20., 100.), None);
     }
 }

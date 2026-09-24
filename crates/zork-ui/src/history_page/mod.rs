@@ -87,6 +87,11 @@ pub struct State {
     /// Model rows whose Markdown body is expanded past its clipped preview.
     pub output_expanded: HashSet<String>,
     pub records_expanded: HashSet<String>,
+    /// Expanded groups whose members are folding away; they leave `expanded`
+    /// once the fold ends, unless the group is opened again first.
+    pub closing_groups: HashSet<String>,
+    /// When a group was expanded: members mounted shortly after grow in.
+    pub revealed_groups: HashMap<String, std::time::Instant>,
     pub following_latest: bool,
     pub follow_locked: bool,
     pub positioned: bool,
@@ -111,6 +116,8 @@ impl Default for State {
             expanded: Default::default(),
             output_expanded: Default::default(),
             records_expanded: Default::default(),
+            closing_groups: Default::default(),
+            revealed_groups: Default::default(),
             following_latest: true,
             follow_locked: false,
             positioned: false,
@@ -768,7 +775,47 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         }
         let live = entry.state == "running"
             && !matches!(a.kind, Kind::SendMessage | Kind::SendFile | Kind::Notify);
-        div()
+        // Record details fold open and closed from what is on screen.
+        let details = if group {
+            None
+        } else {
+            crate::motion::fold(
+                format!("history-details-{}", entry.id),
+                expanded,
+                expanded,
+                window,
+                cx,
+            )
+            .map(|fold| fold.wrap(self.render_history_details(index, a, entry, cx)))
+        };
+        // Members of an expanded group grow in when the group opens and fold
+        // away before the group closes.
+        let member = !group
+            && block.is_group()
+            && block.end - block.start - usize::from(block.active.is_some()) > 1
+            && block.active != Some(a_index);
+        let member_fold = if member {
+            let now = cx.background_executor().now();
+            let revealing = self
+                .history()
+                .revealed_groups
+                .get(&group_id)
+                .is_some_and(|at| now.saturating_duration_since(*at) < crate::motion::duration(crate::motion::BASE));
+            let open = !self.history().closing_groups.contains(&group_id);
+            match crate::motion::fold(
+                format!("history-member-{}", entry.id),
+                open,
+                !revealing,
+                window,
+                cx,
+            ) {
+                Some(fold) => Some(fold),
+                None => return gpui::Empty.into_any_element(),
+            }
+        } else {
+            None
+        };
+        let row = div()
             .id(("history-row", index))
             .when(
                 !group
@@ -833,10 +880,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 move |v, _, cx| {
                     v.history_mut().hold_disclosure(index);
                     if group {
-                        if !v.history_mut().expanded.remove(&group_id) {
-                            v.history_mut().expanded.insert(group_id.clone());
-                        }
-                        v.history_mut().rebuild_rows();
+                        v.toggle_history_group(&group_id, cx);
                     } else {
                         if !v.history_mut().records_expanded.remove(&id) {
                             v.history_mut().records_expanded.insert(id.clone());
@@ -851,10 +895,51 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                     }
                 },
             ))
-            .when(!group && expanded, |row| {
-                row.child(self.render_history_details(index, a, entry, cx))
-            })
-            .into_any_element()
+            .children(details);
+        match member_fold {
+            Some(fold) => fold.wrap(row),
+            None => row.into_any_element(),
+        }
+    }
+
+    /// Opening a group inserts its members, which grow in. Closing folds them
+    /// away first and removes them when the fold ends; opening again before
+    /// that reverses the fold from where it is.
+    fn toggle_history_group(&mut self, group_id: &str, cx: &mut Context<Self>) {
+        let now = cx.background_executor().now();
+        let state = self.history_mut();
+        if state.closing_groups.remove(group_id) {
+            return;
+        }
+        if !state.expanded.contains(group_id) {
+            state.expanded.insert(group_id.to_owned());
+            state.revealed_groups.insert(group_id.to_owned(), now);
+            state.rebuild_rows();
+            return;
+        }
+        if crate::motion::mode(cx) == crate::motion::Mode::Static {
+            state.expanded.remove(group_id);
+            state.revealed_groups.remove(group_id);
+            state.rebuild_rows();
+            return;
+        }
+        state.closing_groups.insert(group_id.to_owned());
+        let group_id = group_id.to_owned();
+        let wait = crate::motion::duration(crate::motion::BASE) + Duration::from_millis(32);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = this.update(cx, |v, cx| {
+                if v.history_mut().closing_groups.remove(&group_id) {
+                    v.history_mut().expanded.remove(&group_id);
+                    v.history_mut().revealed_groups.remove(&group_id);
+                    v.history_mut().rebuild_rows();
+                    crate::components::region::invalidate_all(cx);
+                    cx.emit(HistoryChanged::clock());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn toggle_history_record(&mut self, index: usize, id: &str, cx: &mut Context<Self>) {

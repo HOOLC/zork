@@ -53,6 +53,26 @@ pub fn expander<V: 'static>(
     window: &mut Window,
     cx: &mut Context<V>,
 ) -> AnyElement {
+    let (toggle, body) = expander_parts(id, label, content, window, cx);
+    div()
+        .flex()
+        .flex_col()
+        .items_start()
+        .child(toggle)
+        .children(body)
+        .into_any_element()
+}
+
+/// [`expander`] split into its toggle and its animated body, for layouts that
+/// place the toggle in a row and the content below that row. Render the body
+/// whenever it is `Some`: it stays for the closing transition.
+pub fn expander_parts<V: 'static>(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    content: impl IntoElement,
+    window: &mut Window,
+    cx: &mut Context<V>,
+) -> (AnyElement, Option<AnyElement>) {
     let id: SharedString = id.into();
     let label: SharedString = label.into();
     let state = window.use_keyed_state(format!("{id}-open"), cx, |_, _| false);
@@ -66,20 +86,7 @@ pub fn expander<V: 'static>(
                 .text_color(rgb(p.muted))
                 .child(label.clone()),
         )
-        .child(
-            // The chevron turns with the same move curve as the disclosure.
-            ui::icon("interface/chevron-down.svg", 12.)
-                .text_color(rgb(p.muted))
-                .with_spring(
-                    SharedString::from(format!("{id}-chevron")),
-                    crate::motion::toggle(crate::motion::BASE, open),
-                    |icon, phase| {
-                        icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                            std::f32::consts::PI * phase.0.clamp(0., 1.),
-                        )))
-                    },
-                ),
-        )
+        .child(chevron(id.clone(), open, p.muted))
         .aria_expanded(open)
         .on_click(move |_, _, cx| {
             state.update(cx, |open, cx| {
@@ -87,21 +94,29 @@ pub fn expander<V: 'static>(
                 cx.notify();
             });
         })
-        .automation(AutomationRole::Button, label.to_string());
-    div()
-        .flex()
-        .flex_col()
-        .items_start()
-        .child(toggle)
-        // Height moves between the measured bounds; content fades after half.
-        .children(crate::motion::collapse(
-            id.clone(),
-            open,
-            || div().w_full().pt_1().child(content).into_any_element(),
-            window,
-            cx,
-        ))
-        .into_any_element()
+        .automation(AutomationRole::Button, label.to_string())
+        .into_any_element();
+    // Height moves between the measured bounds; content fades after half.
+    let body = crate::motion::fold(id, open, open, window, cx)
+        .map(|frame| frame.wrap(div().w_full().pt_1().child(content)));
+    (toggle, body)
+}
+
+/// A 12px chevron that turns with the disclosure's spring: pointing down when
+/// closed, up when open, in `color`. Keyed by the disclosure `id`.
+pub fn chevron(id: impl Into<SharedString>, open: bool, color: u32) -> impl IntoElement {
+    let id: SharedString = id.into();
+    ui::icon("interface/chevron-down.svg", 12.)
+        .text_color(rgb(color))
+        .with_spring(
+        SharedString::from(format!("{id}-chevron")),
+        crate::motion::toggle(crate::motion::BASE, open),
+        |icon, phase| {
+            icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
+                std::f32::consts::PI * phase.0.clamp(0., 1.),
+            )))
+        },
+    )
 }
 
 /// An ⓘ that shows `text` on hover or keyboard focus.

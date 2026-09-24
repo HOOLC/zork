@@ -186,9 +186,7 @@ impl Navigation {
             .h(px(48.))
             .pl(px(64.))
             .mb_2()
-            .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                window.start_window_move()
-            })
+            .window_control_area(gpui::WindowControlArea::Drag)
             .child(brand)
             .automation(AutomationRole::Status, "Zork")
             .into_any_element()

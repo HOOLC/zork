@@ -621,13 +621,16 @@ impl ProfilesView {
             .cloned()
             .collect()
     }
-    fn copy_link(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+    fn copy_link(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
         let sources = self.copy_sources();
         if sources.is_empty() {
             return None;
         }
         let open = self.copy_model_open;
-        let chips: Vec<_> = open
+        // The chips stay rendered while they fold away.
+        let fold = zork_ui::motion::fold("model-copy", open, open, window, cx);
+        let chips: Vec<_> = fold
+            .is_some()
             .then(|| {
                 sources
                     .iter()
@@ -663,16 +666,20 @@ impl ProfilesView {
                     )
                     .self_start()
                     .text_size(px(12.5))
-                    .child(ui::icon("icons/chevron-down.svg", 12.))
+                    .child(zork_ui::components::disclosure::chevron(
+                        "model-copy",
+                        open,
+                        ZORK_UI.palette.muted,
+                    ))
                     .on_click(cx.listener(|v, _, _, cx| {
                         v.copy_model_open = !v.copy_model_open;
                         zork_ui::components::region::invalidate(cx, &["dialog", "page"]);
                     }))
                     .automation(AutomationRole::Button, "参考已有模型"),
                 )
-                .when(open, |v| {
-                    v.child(div().flex().flex_wrap().gap(px(6.)).children(chips))
-                })
+                .children(fold.map(|fold| {
+                    fold.wrap(div().flex().flex_wrap().gap(px(6.)).pt(px(6.)).children(chips))
+                }))
                 .into_any_element(),
         )
     }
@@ -710,7 +717,7 @@ impl ProfilesView {
             .unwrap_or_default()
             .iter()
             .any(|(f, _)| f == "profile-model");
-        let mut body = div()
+        let body = div()
             .flex()
             .flex_col()
             .gap(px(6.))
@@ -740,11 +747,11 @@ impl ProfilesView {
                 .ml(px(-6.))
                 .self_start()
                 .text_size(px(12.5))
-                .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
-                    icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
-                        std::f32::consts::PI,
-                    )))
-                }))
+                .child(zork_ui::components::disclosure::chevron(
+                    "model-params",
+                    open,
+                    ZORK_UI.palette.muted,
+                ))
                 .on_click(cx.listener(|v, _, _, cx| {
                     v.model_params_open = !v.model_params_open;
                     v.reference_open = None;
@@ -752,9 +759,12 @@ impl ProfilesView {
                 }))
                 .automation(AutomationRole::Button, toggle_label),
             );
-        if !open {
+        // The parameters fold open and closed from what is on screen; they stay
+        // rendered while closing. The 6px gap lives inside the fold so nothing
+        // snaps at either end.
+        let Some(fold) = zork_ui::motion::fold("model-params", open, open, window, cx) else {
             return body;
-        }
+        };
         let family = |api: &str| {
             provider_path(if api.starts_with("anthropic") {
                 "anthropic"
@@ -808,8 +818,12 @@ impl ProfilesView {
                 zork_ui::components::region::invalidate(cx, &["dialog", "page"]);
             },
         );
-        body = body
-            .children(self.copy_link(cx))
+        let params = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .pt(px(6.))
+            .children(self.copy_link(window, cx))
             .child(self.row("协议", div().w(px(220.)).child(api).into_any_element(), None))
             .child(self.row("上下文", context, Some(context_ref)))
             .children(self.field_error("profile-context-limit", cx))
@@ -823,7 +837,7 @@ impl ProfilesView {
             .children(self.reference_list(Field::Thinking, cx))
             .child(self.row("能力", image, Some(caps_ref)))
             .children(self.reference_list(Field::Capabilities, cx));
-        body
+        div().flex().flex_col().child(body).child(fold.wrap(params))
     }
     /// 取消 / 保存 for either the dialog or the inline editor.
     pub(super) fn model_editor_actions(&self, cx: &mut Context<Self>) -> gpui::Div {
