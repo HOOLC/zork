@@ -191,7 +191,8 @@ impl Flyout {
                 )
                 .absolute()
                 .inset_0(),
-            );
+            )
+            .automation(AutomationRole::Status, title);
         if self.state.borrow_mut().focus_pending {
             self.state.borrow_mut().focus_pending = false;
             let initial = self.initial_focus.borrow().clone();
@@ -215,12 +216,11 @@ impl Flyout {
         } else {
             -crate::motion::POPOVER_OFFSET
         };
-        let panel = panel.with_animation(
+        let panel = div().child(panel).with_animation(
             enter_id,
             crate::motion::enter(crate::motion::POPOVER),
-            move |panel, t| panel.opacity(t).relative().top(px(travel * (1. - t))),
-        )
-        .automation(AutomationRole::Status, title);
+            move |wrap, t| wrap.opacity(t).relative().top(px(travel * (1. - t))),
+        );
         let align = if self.align_end.get() {
             Align::End
         } else {

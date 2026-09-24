@@ -367,18 +367,18 @@ pub(crate) fn render<V: 'static>(
                 app.stop_propagation();
             })
             .on_mouse_down_out(move |_, w, cx| close(w, cx))
-            // Opens below its trigger: fade in while moving away from it.
-            .with_animation(
-                SharedString::from(format!("{id}-menu-enter")),
-                crate::motion::enter(crate::motion::POPOVER),
-                |panel, t| {
-                    panel
-                        .opacity(t)
-                        .relative()
-                        .top(px(-crate::motion::POPOVER_OFFSET * (1. - t)))
-                },
-            )
             .automation(AutomationRole::ScrollArea, label);
+        // Opens below its trigger: fade in while moving away from it. A plain
+        // wrapper carries the animation so the panel keeps its own id.
+        let panel = div().child(panel).with_animation(
+            SharedString::from(format!("{id}-menu-enter")),
+            crate::motion::enter(crate::motion::POPOVER),
+            |wrap, t| {
+                wrap.opacity(t)
+                    .relative()
+                    .top(px(-crate::motion::POPOVER_OFFSET * (1. - t)))
+            },
+        );
         select = select.child(
             deferred(
                 gpui_base::Positioner::side(anchor.get())

@@ -34,13 +34,14 @@ impl Fade {
     fn opacity(&self) -> f32 {
         self.alpha
     }
-    fn advance(&mut self, open: bool, reduced: bool) -> bool {
+    /// `now` comes from the app executor so tests on a virtual clock advance it.
+    fn advance(&mut self, open: bool, reduced: bool, now: std::time::Instant) -> bool {
         use crate::motion;
         let target = if open { 1. } else { 0. };
         if target != self.target {
             self.from = self.alpha;
             self.target = target;
-            self.start = std::time::Instant::now();
+            self.start = now;
         }
         if reduced {
             self.alpha = target;
@@ -53,7 +54,7 @@ impl Fade {
             (motion::exit(self.enter_ms), Box::new(motion::bezier(0.4, 0.0, 1.0, 1.0)))
         };
         let total = motion::duration(ms).as_secs_f32().max(0.001);
-        let t = (self.start.elapsed().as_secs_f32() / total).clamp(0., 1.);
+        let t = (now.saturating_duration_since(self.start).as_secs_f32() / total).clamp(0., 1.);
         self.alpha = self.from + (self.target - self.from) * curve(t);
         if t >= 1. {
             self.alpha = target;
@@ -202,8 +203,9 @@ impl PlainDialog {
 
         let reduced = cx.reduce_motion();
         let was_alive = self.alive();
-        let content_moving = self.reveal.advance(open, reduced);
-        let backdrop_moving = self.backdrop.advance(open, reduced);
+        let now = cx.background_executor().now();
+        let content_moving = self.reveal.advance(open, reduced, now);
+        let backdrop_moving = self.backdrop.advance(open, reduced, now);
         let moving = content_moving || backdrop_moving;
         // Redraw until the fade reaches its endpoint, including the final
         // frame that releases a retained dialog payload.
