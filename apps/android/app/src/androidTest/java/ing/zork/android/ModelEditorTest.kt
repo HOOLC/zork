@@ -278,6 +278,25 @@ class ModelEditorTest {
         }
     }
 
+    @Test fun fetchFillsPresetsAndOffersRemovedModelsAgain() {
+        ui.launch("profile").use { scenario ->
+            ui.settle(); ui.click("获取模型")
+            ui.await("获取到 2 个新模型：1 个已按预设填好，1 个待配置")
+            ui.await("200K · 档位 · 按预设")
+            // Recognized but off until turned on; the unknown one cannot be turned on yet.
+            assertTrue(ui.isEnabled("模型启用 o3")); assertFalse(ui.isEnabled("模型启用 vendor-x-preview"))
+            ui.capture("23-fetched")
+            ui.click("模型启用 o3")
+            scenario.onActivity { assertEquals("enable_model", it.lastAction); assertTrue(it.lastBody!!.getBoolean("enabled")) }
+            // A reported model the user removed comes back as a suggestion.
+            ui.click("编辑 o3"); ui.await("与预设一致"); ui.click("移除"); ui.await("已移除 o3")
+            ui.click("手动添加"); ui.focus("模型 ID")
+            ui.await("工作室订阅 上可用")
+            ui.awaitPrefix("o3，o3")
+            ui.capture("24-reported-suggestion")
+        }
+    }
+
     @Test fun cancelAndReopenStartsClean() {
         openAdd().use {
             ui.type("模型 ID", "o3"); ui.imeDone("模型 ID"); ui.await("参数已按预设填好")

@@ -811,13 +811,14 @@ private fun CapsuleChip(label: String, default: Boolean, bad: Boolean, enabled: 
         Box(nameModifier.fillMaxHeight()
             .selectable(default, enabled = enabled, role = Role.RadioButton, interactionSource = nameInteraction, indication = null, onClick = choose)
             .semantics { stateDescription = if (default) "默认" else "设为默认" }
-            .padding(start = 12.dp, end = 2.dp), contentAlignment = Alignment.Center) {
+            .padding(start = 12.dp), contentAlignment = Alignment.Center) {
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace, color = ink, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
         }
-        Box(Modifier.fillMaxHeight().width(34.dp)
+        // A full 44 dp target; the glyph sits near the name, not in the middle of it.
+        Box(Modifier.fillMaxHeight().width(44.dp)
             .clickable(enabled = enabled && canDelete, role = Role.Button, interactionSource = deleteInteraction, indication = null, onClick = delete)
-            .semantics { contentDescription = "删除 $label" }, contentAlignment = Alignment.Center) {
+            .semantics { contentDescription = "删除 $label" }.padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
             Glyph(R.drawable.ic_x, 12.dp, if (enabled && canDelete) ink.copy(alpha = .6f) else ink.copy(alpha = .2f))
         }
     }
@@ -863,6 +864,13 @@ internal fun splitTokens(text: String): Pair<String, String> {
     return BigDecimal(count).movePointLeft(3).stripTrailingZeros().toPlainString() to "K"
 }
 
+/** What the number field accepts: digits and the first decimal point. */
+internal fun numberText(input: String): String {
+    val chars = input.replace(',', '.').filter { it.isDigit() || it == '.' }
+    val dot = chars.indexOf('.')
+    return if (dot < 0) chars else chars.substring(0, dot + 1) + chars.substring(dot + 1).replace(".", "")
+}
+
 internal fun joinTokens(number: String, unit: String) = number.trim().let { if (it.isEmpty()) "" else it + unit }
 
 @Composable
@@ -894,7 +902,8 @@ private fun TokenInput(field: String, view: JSONObject, enabled: Boolean, focus:
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(shown.first, { send(it, shown.second) }, enabled = enabled, singleLine = true,
+            // Digits and one decimal point; a comma from a locale keyboard is a decimal point.
+            OutlinedTextField(shown.first, { send(numberText(it), shown.second) }, enabled = enabled, singleLine = true,
                 placeholder = { Text(view.text("placeholder").removePrefix("例如 ").dropLast(1).let { "例如 $it" }, fontSize = 14.sp, color = ZorkColors.Subtle) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
@@ -935,8 +944,8 @@ private fun UnitToggle(label: String, unit: String, enabled: Boolean, choose: (S
     val base = if (LocalSectionFill.current) ZorkColors.Canvas else ZorkColors.Prompt
     val thumb = if (LocalSectionFill.current) ZorkColors.Prompt else ZorkColors.Canvas
     val slot = animatedValue(if (unit == "M") 1f else 0f, "unit")
-    Box(Modifier.width(92.dp).height(48.dp).background(base, ZorkShapes.Control).padding(3.dp)) {
-        Box(Modifier.width(43.dp).fillMaxHeight().graphicsLayer { translationX = slot * 43.dp.toPx() }
+    Box(Modifier.width(96.dp).height(52.dp).background(base, ZorkShapes.Control).padding(4.dp)) {
+        Box(Modifier.width(44.dp).fillMaxHeight().graphicsLayer { translationX = slot * 44.dp.toPx() }
             .background(thumb, ZorkShapes.Control).border(UiTokens.Border, UiTokens.Outline, ZorkShapes.Control))
         Row(Modifier.fillMaxSize()) {
             listOf("K", "M").forEach { option ->

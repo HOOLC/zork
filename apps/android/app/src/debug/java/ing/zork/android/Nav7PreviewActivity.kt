@@ -87,7 +87,11 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     action=="enable_model" -> updateProfile { profile ->
                                         profile.optJSONArray("models").objects().find{it.text("id")==body.getString("model")}!!.put("enabled",body!!.getBoolean("enabled"))
                                     }
-                                    action=="discover_models" -> JSONObject().put("added",0).put("configured",0).put("preset",0).put("pending",0).put("message","没有新模型")
+                                    action=="discover_models" -> discoverFixture(settings.profile!!, settings.profiles, settings.providers).let { (profile, result) ->
+                                        lastProfile=profile
+                                        settings=settings.copy(profile=profile,profiles=settings.profiles.map{if(it.text("profile_id")==profile.text("profile_id"))profile else it})
+                                        result
+                                    }
                                     action=="remove_model" -> updateProfile { profile ->
                                         val id=body.getJSONObject("model").getString("id")
                                         profile.put("models",org.json.JSONArray(profile.optJSONArray("models").objects().filter{it.text("id")!=id}))
@@ -109,6 +113,28 @@ class Nav7PreviewActivity : ComponentActivity() {
         }
     }
 }
+/**
+ * The provider "reports" o3 and a model the catalog does not know. Like core's
+ * discovery, o3 gets its preset values (through the shared editor and save rules)
+ * but stays off; the unknown one stays unconfigured. A second fetch finds nothing.
+ */
+private fun discoverFixture(profile: JSONObject, profiles: List<JSONObject>, providers: List<JSONObject>): Pair<JSONObject, JSONObject> {
+    val models = profile.optJSONArray("models") ?: org.json.JSONArray()
+    if (models.objects().any { it.text("id") == "o3" }) return profile to obj("added" to 0, "preset" to 0, "pending" to 0, "message" to "没有新模型")
+    val context = modelEditorContext(profile, profiles, providers, emptyList())
+    val opened = JSONObject(NativeBridge.modelEditor(obj("context" to context, "state" to null, "action" to obj("type" to "open_add")).toString())).getJSONObject("data")
+    val settled = JSONObject(NativeBridge.modelEditor(obj("context" to context, "state" to opened.getJSONObject("state"),
+        "action" to obj("type" to "settle", "id" to "o3")).toString())).getJSONObject("data")
+    val saved = JSONObject(NativeBridge.modelEditor(obj("context" to context, "state" to settled.getJSONObject("state"),
+        "action" to obj("type" to "save")).toString())).getJSONObject("data")
+    val applied = JSONObject(NativeBridge.previewModels(saved.getJSONObject("effect").getJSONObject("save").toString(), models.toString()))
+        .getJSONObject("data").getJSONArray("models")
+    applied.objects().first { it.text("id") == "o3" }.put("enabled", false)
+    applied.put(obj("id" to "vendor-x-preview", "api" to "openai-responses", "enabled" to false))
+    return JSONObject(profile.toString()).put("models", applied) to
+        obj("added" to 2, "preset" to 1, "pending" to 1, "message" to "获取到 2 个新模型：1 个已按预设填好，1 个待配置")
+}
+
 private fun obj(vararg pairs: Pair<String, Any?>) = JSONObject().apply { pairs.forEach { put(it.first, it.second ?: JSONObject.NULL) } }
 private fun leader(id: String, name: String, avatar: String) = obj("id" to id,"name" to name,"avatar" to avatar,"can_open" to true)
 private fun task(id: String, title: String, unread: Int = 0) = obj("chat_id" to id,"title" to title,"unread" to (unread > 0),"in_preview" to true)

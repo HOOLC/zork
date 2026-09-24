@@ -161,7 +161,7 @@ class SettingsParityTest {
                 assertFalse(it.lastBody!!.getBoolean("enabled"))
             }
             assertNotNull(reveal("待配置"))
-            click("获取模型"); await("没有新模型")
+            click("获取模型"); await("获取到 2 个新模型：1 个已按预设填好，1 个待配置")
             scenario.onActivity { assertEquals("discover_models", it.lastAction) }
             click("更多"); click("刷新额度")
             scenario.onActivity { assertEquals("refresh_quota", it.lastAction) }
