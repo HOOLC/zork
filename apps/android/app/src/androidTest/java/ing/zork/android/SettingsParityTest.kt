@@ -217,11 +217,11 @@ class SettingsParityTest {
     }
     @Test fun newChatUsesCoreChoicesAndSubmitsOnlyAfterSending() {
         launch("new-chat").use { scenario ->
-            settle(); await("新建 Chat"); await("Demo model")
+            settle(); await("新建 Chat"); await("选择模型")
             scenario.onActivity { assertFalse(it.newChatSnapshot!!.optBoolean("busy"));assertFalse(it.newChatSnapshot!!.optBoolean("can_submit")) }
-            click("Demo model"); click("Demo fast"); capture("new-chat-after-model")
+            click("选择模型"); click("Demo fast"); capture("new-chat-after-model")
             scenario.onActivity { assertEquals(it.newChatSnapshot.toString(),"off",it.newChatSnapshot!!.getJSONObject("thinking").getString("value")) }
-            reveal("off")
+            click("完成"); settle()
             val input=nodes().first { it.isEditable }
             assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"新建一个 Chat 🦊")}))
             settle(); capture("new-chat-input");click("发送")
