@@ -90,10 +90,7 @@ impl Statistics {
                     .max_w_full()
                     .min_w_0()
                     .truncate()
-                    .ml(px(2.))
-                    .pl(px(8.))
-                    .border_l_1()
-                    .border_color(rgb(BORDER()))
+                    .ml(px(8.))
                     .text_color(rgb(DIM()))
                     .child(
                         runtime
@@ -199,9 +196,7 @@ impl Statistics {
             .flex_shrink_0()
             .px(px(16.))
             .pt(px(12.))
-            .pb(px(10.))
-            .border_b_1()
-            .border_color(rgb(BORDER()))
+            .pb(px(16.))
             .flex()
             .flex_col()
             .child(identity)

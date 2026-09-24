@@ -752,13 +752,7 @@ impl Navigation {
             .pb_2()
             .child(header)
             .children(devices)
-            .child(
-                div()
-                    .h(px(crate::design::BORDER_WIDTH))
-                    .mx(px(12.))
-                    .my(px(6.))
-                    .bg(rgb(ZORK_UI.palette.border)),
-            )
+            .child(div().h(px(12.)))
             .child(
             self.tabs
                 .tab("desktop-manage".into(), false)

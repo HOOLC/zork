@@ -6,6 +6,8 @@ pub struct DialogOptions {
     pub title_action: Option<AnyElement>,
     pub notice: Option<String>,
     pub dismissible: bool,
+    /// Panel width; `None` uses the form width, or the confirmation width for alerts.
+    pub width: Option<f32>,
 }
 impl Default for DialogOptions {
     fn default() -> Self {
@@ -14,6 +16,7 @@ impl Default for DialogOptions {
             title_action: None,
             notice: None,
             dismissible: true,
+            width: None,
         }
     }
 }

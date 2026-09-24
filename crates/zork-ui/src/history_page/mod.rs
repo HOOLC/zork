@@ -615,9 +615,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         if a.kind == Kind::End && entry.state == "succeeded" {
             return div()
                 .id(("history-row", index))
-                .px(px(12.))
-                .py(px(6.))
-                .child(div().h(px(1.)).w_full().bg(rgb(BORDER())))
+                // A finished turn ends with space, not a rule.
+                .h(px(13.))
                 .into_any_element();
         }
         let first_entry =

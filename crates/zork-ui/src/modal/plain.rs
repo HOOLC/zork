@@ -209,7 +209,13 @@ impl PlainDialog {
         }
 
         let viewport = window.viewport_size();
-        let width = ui::DIALOG_WIDTH.min(viewport.width.as_f32() - 40.).max(2.);
+        let wanted = options.width.unwrap_or(if self.alert {
+            ui::DIALOG_CONFIRM_WIDTH
+        } else {
+            ui::DIALOG_FORM_WIDTH
+        });
+        let radius = ui::dialog_radius(wanted);
+        let width = wanted.min(viewport.width.as_f32() - 40.).max(2.);
         let max_height = (viewport.height.as_f32() - 64.).clamp(2., 660.);
         let contents = panel_contents_with_title_action(
             id.clone(),
@@ -229,7 +235,7 @@ impl PlainDialog {
             close.clone(),
         );
 
-        let panel = smooth::surface(id.clone(), ui::MODAL_RADIUS)
+        let panel = smooth::surface(id.clone(), radius)
             .occlude()
             .w(px(width))
             .max_h(px(max_height))

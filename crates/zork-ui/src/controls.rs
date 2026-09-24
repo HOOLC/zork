@@ -1,5 +1,5 @@
 //! Shared compact native controls and approved Zork identity assets.
-pub use super::modal::{detail_modal, detail_modal_with_title_action, modal, ModalState};
+pub use super::modal::{detail_modal, detail_modal_sized, detail_modal_with_title_action, modal, ModalState};
 use crate::{
     automation::{AutomationElementExt, AutomationRole},
     components::text_input::ComposerInput,
@@ -15,9 +15,13 @@ pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
         .text_color(rgb(ZORK_UI.palette.muted))
 }
 /// Shared desktop geometry, also exercised by the offscreen visual checks.
-pub const SETTINGS_COLUMN_WIDTH: f32 = 790.;
-pub const SETTINGS_GUTTER: f32 = 34.;
-pub const DIALOG_WIDTH: f32 = 540.;
+/// Settings content keeps a reading width and aligns to the page start.
+pub const SETTINGS_COLUMN_WIDTH: f32 = 720.;
+pub const SETTINGS_GUTTER: f32 = 32.;
+/// Dialog widths by content: a short confirmation, a form, rich details.
+pub const DIALOG_CONFIRM_WIDTH: f32 = 400.;
+pub const DIALOG_FORM_WIDTH: f32 = 480.;
+pub const DIALOG_RICH_WIDTH: f32 = 560.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const BUTTON_HEIGHT: f32 = CONTROL_HEIGHT;
@@ -34,6 +38,14 @@ pub const FIELD_RADIUS: f32 = crate::design::RADIUS.control;
 pub const ICON_BUTTON_RADIUS: f32 = crate::design::RADIUS.control;
 pub const BUTTON_PADDING_X: f32 = 16.;
 pub const MODAL_RADIUS: f32 = crate::design::RADIUS.surface;
+/// Confirmations and forms read as containers; rich dialogs keep the surface corner.
+pub fn dialog_radius(width: f32) -> f32 {
+    if width >= DIALOG_RICH_WIDTH {
+        MODAL_RADIUS
+    } else {
+        crate::design::RADIUS.container
+    }
+}
 pub const MENU_RADIUS: f32 = PLAIN_POPOVER_RADIUS;
 /// Menus and popovers: MENU_PADDING inside keeps capsule items concentric.
 pub const PLAIN_POPOVER_RADIUS: f32 = crate::design::RADIUS.container;
@@ -73,10 +85,9 @@ pub fn settings_content(content: impl IntoElement) -> impl IntoElement {
     div()
         .id("desktop-settings-column")
         .w_full()
-        .max_w(px(SETTINGS_COLUMN_WIDTH))
-        .mx_auto()
+        .max_w(px(SETTINGS_COLUMN_WIDTH + 2. * SETTINGS_GUTTER))
         .px(px(SETTINGS_GUTTER))
-        .pt(px(30.))
+        .pt(px(32.))
         .pb_8()
         .child(content)
         .automation(AutomationRole::Status, "设置内容列")

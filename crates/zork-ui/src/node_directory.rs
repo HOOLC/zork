@@ -62,7 +62,7 @@ pub trait Host: Sized + 'static {
                     .flex()
                     .items_center()
                     .gap_4()
-                    .py_4()
+                    .py_2()
                     .child(
                         div()
                             .size(px(44.))
