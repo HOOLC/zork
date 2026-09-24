@@ -170,11 +170,10 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
     var operation by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var error by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
-    // Ids the provider listed in the last fetch, for the editor's "available" suggestions.
+    // Ids the provider lists for this connection, read once when adding a model
+    // (for the editor's "上可用" suggestions) and again after a fetch.
     val reported = remember(state.device?.id, profileId) { mutableStateListOf<String>() }
-    // The profile as it was when a fetch started; the refreshed one arrives later.
-    var fetchBase by remember(state.device?.id, profileId) { mutableStateOf<JSONObject?>(null) }
-    var captureReported by remember(state.device?.id, profileId) { mutableStateOf(false) }
+    var reportedRead by remember(state.device?.id, profileId) { mutableStateOf(false) }
     var pendingEdit by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var more by remember { mutableStateOf(false) }
     // Arriving from the global list's add flow opens the editor once the device is usable.
@@ -191,19 +190,24 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             finally { operation = null }
         }
     }
-    fun editModel(id: String?) { editingJson = JSONObject().put("id", id ?: JSONObject.NULL).toString(); editor = "model" }
+    fun readReported() {
+        if (reportedRead || profileId.isBlank()) return
+        reportedRead = true
+        scope.launch {
+            // A connection without a model-list API, or a failure, just means no such suggestions.
+            val ids = try { actions.perform("available_models", JSONObject().put("profile", profileId)).optJSONArray("ids") }
+                catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            reported.clear(); ids?.let { a -> reported.addAll((0 until a.length()).map { a.optString(it) }.filter(String::isNotBlank)) }
+        }
+    }
+    fun editModel(id: String?) {
+        if (id == null) readReported()
+        editingJson = JSONObject().put("id", id ?: JSONObject.NULL).toString(); editor = "model"
+    }
     fun discover() = perform("models") {
-        fetchBase = profile
         val result = actions.perform("discover_models", JSONObject().put("profile", profileId))
         toast = result.text("message").ifBlank { if (result.optInt("added") > 0) "获取到 ${result.optInt("added")} 个新模型" else "没有新模型" }
-        captureReported = true
-    }
-    // Everything the provider listed was imported, so the refreshed model list is what it reported.
-    LaunchedEffect(profile, captureReported) {
-        if (captureReported && profile != null && profile !== fetchBase) {
-            reported.clear(); reported.addAll(profile.optJSONArray("models").objects().map { it.text("id") })
-            captureReported = false; fetchBase = null
-        }
+        reportedRead = false
     }
     LaunchedEffect(pendingAdd, enabled) { if (pendingAdd && enabled && !detail) { pendingAdd = false; editingJson = null; editor = "connection" } }
     Box(modifier.fillMaxSize()) {
@@ -325,7 +329,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
         key(kind, source?.text("id")) {
             if (kind == "model") profile?.let { current ->
                 ModelEditor(source?.optString("id")?.takeIf { source.opt("id") != JSONObject.NULL && it.isNotBlank() }, current, state, actions,
-                    reported, dismiss = { editor = null },
+                    reported.toList(), dismiss = { editor = null },
                     finished = { message -> toast = message; editor = null; actions.refresh() },
                     // 去编辑它: close this sheet, then open that model's editor once it has gone.
                     editOther = { id -> pendingEdit = id; editor = null },

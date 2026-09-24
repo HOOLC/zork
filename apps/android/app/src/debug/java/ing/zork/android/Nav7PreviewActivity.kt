@@ -83,7 +83,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     resource={selected->settings.resource?.let{resourceTrail+=it};settings=settings.copy(resource=selected,resourceData=settingsResourceFixture(selected))},
                                     page={settings=settingsFixturePage(settings,it)},profile={settings=settings.copy(page="profile",profile=it)},perform={action,body->
                                     if(failNextRequest){failNextRequest=false;error("fixture request failed")}
-                                    lastAction=action;lastBody=JSONObject(body.toString())
+                                    if(action!="available_models"){lastAction=action;lastBody=JSONObject(body.toString())} // a read, not an edit
                                     fun updateProfile(change:(JSONObject)->Unit):JSONObject {
                                         val profile=JSONObject(settings.profile!!.toString());change(profile);lastProfile=JSONObject(profile.toString())
                                         settings=settings.copy(profile=profile,profiles=settings.profiles.map{if(it.text("profile_id")==profile.text("profile_id"))profile else it})
@@ -100,6 +100,8 @@ class Nav7PreviewActivity : ComponentActivity() {
                                         settings=settings.copy(profile=profile,profiles=settings.profiles.map{if(it.text("profile_id")==profile.text("profile_id"))profile else it})
                                         result
                                     }
+                                    // What the provider lists: the two ids a fetch imports.
+                                    action=="available_models" -> JSONObject().put("ids",org.json.JSONArray().put("o3").put("vendor-x-preview"))
                                     action=="remove_model" -> updateProfile { profile ->
                                         val id=body.getJSONObject("model").getString("id")
                                         profile.put("models",org.json.JSONArray(profile.optJSONArray("models").objects().filter{it.text("id")!=id}))
