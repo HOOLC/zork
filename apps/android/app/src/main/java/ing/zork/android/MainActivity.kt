@@ -160,6 +160,13 @@ internal fun ClientScreen(model: ClientViewModel) {
             throw e
         }
     }
+    // "连接设备" acts at once: signed out, it starts the Google sign-in the sheet
+    // would otherwise offer as its only button; the sheet then shows progress.
+    val connectDevice = {
+        val account = model.account
+        if (account?.text("subject").isNullOrBlank() && (account?.text("phase", "idle") ?: "idle") == "idle") model.accountAction("login")
+        addDevice = true
+    }
     val retained = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val currentSettings = model.settings
     val workbenchState = WorkbenchState(model.messageRevision, model.peers, model.activePeer, model.conversation, model.leaders, model.sessions,
@@ -183,7 +190,7 @@ internal fun ClientScreen(model: ClientViewModel) {
         retained.SaveableStateProvider(settingsRouteKey(shown.settings)) {
             MobileSettings(shown.settings, shown.workbench.peers, if (!active) SettingsActions() else SettingsActions(model::backSettings, { model.showDevice(it) },
                 model::settingsPage, model::settingsProfile, model::assistSettings, model::openConnection, model::addConnection, model::checkUpdate,
-                { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction, catalog = model::catalog,
+                connectDevice, refresh = model::refreshSettings, perform = model::settingsAction, catalog = model::catalog,
                 theme = model.theme, saveTheme = model::saveTheme,
                 resource = model::inspectResource,
                 notifications = model.notificationSettings, notificationError = model.notificationError,
@@ -192,7 +199,8 @@ internal fun ClientScreen(model: ClientViewModel) {
                 notificationRefresh = model::refreshNotificationDelivery,
                 adb = model.adbSettings, adbError = model.adbError, adbAction = model::adbAction, adbRefresh = model::refreshAdb,
                 account = model.account, accountError = model.accountError, accountAction = model::accountAction,
-                dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData))
+                dataReset = model.dataReset, dataResetError = model.dataResetError, clearData = model::clearData,
+                home = shown.workbench.home, openChat = model::openArchivedChat, archiveChat = model::archiveChat))
         }
     } else if (shown.newChat != null) {
         NewChatPage(shown.newChat, if (active) model::back else ({}),
@@ -201,7 +209,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     } else retained.SaveableStateProvider("workbench") { CompositionLocalProvider(LocalFileImages provides model::fileImage) { Workbench(
         shown.workbench,
         if (!active) WorkbenchActions() else WorkbenchActions(model::selectPeer, model::openLeader, model::openSession, model::back,
-            { addDevice = true }, model::showSettings, model::retry, model::editDraft,
+            connectDevice, model::showSettings, model::retry, model::editDraft,
             model::send, model::stop, model::older, model::withdraw,
             resend = model::resend, deleteFailed = model::deleteFailed,
             comment = { row, quote -> model.conversation?.let { conversation ->

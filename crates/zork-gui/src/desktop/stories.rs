@@ -525,7 +525,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "client",
             "客户端设置",
-            &["signed-out", "signed-in", "loading", "error"][..],
+            &["signed-out", "signed-in", "loading", "error", "archived", "archived-empty"][..],
         ),
         (
             "device",
@@ -536,7 +536,7 @@ fn raw_catalog() -> Vec<Story> {
         (
             "enrollment",
             "连接设备",
-            &["start", "command", "loading", "error", "expired"][..],
+            &["loading", "command", "error", "expired"][..],
         ),
     ] {
         for state in states {

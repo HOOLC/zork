@@ -193,7 +193,6 @@ internal fun Workbench(state: WorkbenchState, actions: WorkbenchActions, modifie
 
 @Composable
 private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier) {
-    var showArchived by rememberSaveable { mutableStateOf(false) }
     val home = state.home
     // A new Chat goes to the last-used device, else the one with the first listed Chat.
     val target = state.activePeer?.let { active -> state.peers.find { it.id == active.id } }
@@ -212,11 +211,10 @@ private fun Navigation(state: WorkbenchState, actions: WorkbenchActions, modifie
             if (state.peers.isNotEmpty()) DeviceStrip(state.peers, actions.device)
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(ZorkColors.Canvas)) {
-                if (showArchived) ArchivedChats(home, actions, back = { showArchived = false })
-                else HomeChats(state, actions, openArchived = { showArchived = true })
+                HomeChats(state, actions)
             }
         }
-        if (!showArchived && target != null) NewChatButton(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 28.dp)) {
+        if (target != null) NewChatButton(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 28.dp)) {
             actions.newChat(target)
         }
     }
@@ -244,7 +242,7 @@ private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
 
 /** The core's merged list, shown in its order; sections only label runs of rows. */
 @Composable
-private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions, openArchived: () -> Unit) {
+private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions) {
     val home = state.home
     LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(top = 8.dp, bottom = 104.dp)) {
         if (state.peers.isEmpty()) item(key = "empty") {
@@ -264,34 +262,23 @@ private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions, openArch
             }
             item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
         }
-        if (state.peers.isNotEmpty()) item(key = "archived") {
-            Row(Modifier.fillMaxWidth().height(52.dp).zorkPressable(onClick = openArchived).padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Glyph(R.drawable.ic_folder, 20.dp, ZorkColors.Muted)
-                Text("已归档", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.weight(1f))
-                if (home.archivedTotal > 0) Text("${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Subtle)
-                Glyph(R.drawable.ic_arrow_right, 16.dp, ZorkColors.Subtle)
-            }
-        }
     }
 }
 
+/** Archived Chats, opened from client settings; rows restore or open the Chat. */
 @Composable
-private fun ArchivedChats(home: HomeNavigation, actions: WorkbenchActions, back: () -> Unit) {
-    androidx.activity.compose.BackHandler(onBack = back)
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 8.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            IconAction(R.drawable.ic_arrow_left, "返回 Chat", onClick = back)
-            Text("已归档", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink, modifier = Modifier.weight(1f))
-            if (home.archivedTotal > home.archived.size) Text("最近 ${home.archived.size} / ${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Muted)
+internal fun ArchivedChatsList(home: HomeNavigation, open: (JSONObject) -> Unit, archive: (String, String, Boolean, Long) -> Unit,
+    modifier: Modifier = Modifier) {
+    val actions = remember(open, archive) { WorkbenchActions(session = open, archiveChat = archive) }
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        if (home.archivedTotal > home.archived.size) item(key = "total") {
+            Text("最近 ${home.archived.size} / ${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Muted,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            if (home.archived.isEmpty()) item(key = "empty") {
-                Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
-            }
-            items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
+        if (home.archived.isEmpty()) item(key = "empty") {
+            Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
         }
+        items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
     }
 }
 

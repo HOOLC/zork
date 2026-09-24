@@ -78,6 +78,8 @@ pub fn state_label(state: &str) -> String {
         "dropdown" => "选择模型",
         "signed-out" => "未登录",
         "signed-in" => "已登录",
+        "archived" => "已归档的 Chat",
+        "archived-empty" => "已归档 · 空",
         "not-started" => "未启动",
         "preparing" => "准备中",
         "direct" => "直连",
