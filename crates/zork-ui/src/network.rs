@@ -545,8 +545,6 @@ pub fn page<V: 'static>(
                 .mt_6()
                 .when(divided, |v| {
                     v.pt_5()
-                        .border_t(px(crate::design::BORDER_WIDTH))
-                        .border_color(rgb(ZORK_UI.palette.border))
                 })
                 .child(enrollment(props.invitation, cx, move |v, event, cx| {
                     enrollment_action(v, PageAction::Enrollment(event), cx)

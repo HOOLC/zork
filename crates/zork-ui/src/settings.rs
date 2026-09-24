@@ -34,8 +34,6 @@ pub fn titled_row(
         .items_center()
         .gap_4()
         .py(px(14.))
-        .border_b(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
         .child(
             div()
                 .flex_1()
@@ -453,8 +451,6 @@ pub fn device<V: 'static>(
                 div()
                     .mt_6()
                     .pt_4()
-                    .border_t(gpui::px(crate::design::BORDER_WIDTH))
-                    .border_color(rgb(p.border))
                     .flex()
                     .items_center()
                     .justify_end()

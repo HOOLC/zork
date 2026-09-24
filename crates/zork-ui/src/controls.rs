@@ -180,8 +180,6 @@ pub fn section() -> Div {
         .flex_col()
         .gap_4()
         .py_5()
-        .border_t(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
 }
 use crate::components::widgets::controls::adaptive_action;
 /// Shared actions preserve intrinsic layout and caller-provided icon/content slots.
