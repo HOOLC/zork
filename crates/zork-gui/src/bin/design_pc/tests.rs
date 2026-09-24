@@ -55,6 +55,12 @@ fn catalog_is_grouped_and_free_of_retired_stories() {
 }
 
 #[test]
+fn remembered_side_by_side_theme_is_ignored() {
+    assert!(View::parse("both").is_none());
+    assert!(View::parse("dark") == Some(View::Dark));
+}
+
+#[test]
 fn checks_flag_small_and_clipped_controls() {
     let element = |id: &str, w: f64, visible: f64| {
         json!({"id":id,"role":"button","visible":true,
