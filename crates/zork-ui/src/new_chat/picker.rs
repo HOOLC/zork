@@ -3,6 +3,15 @@
 use super::*;
 use crate::design::INTERACTION;
 
+/// Models of one connection, built from the connections core names on each
+/// model option; first appearance keeps core's order.
+pub(super) struct Group {
+    pub profile: String,
+    pub name: String,
+    pub provider: String,
+    pub models: Vec<String>,
+}
+
 impl Page {
     pub(super) fn selected_model_label(&self) -> Option<String> {
         let value = self.data.model.value.trim();
@@ -40,25 +49,51 @@ impl Page {
                 .unwrap_or(0)
         })
     }
+    pub(super) fn groups(&self) -> Vec<Group> {
+        let mut groups: Vec<Group> = Vec::new();
+        for option in &self.data.model.options {
+            for connection in &option.connections {
+                match groups.iter_mut().find(|g| g.profile == connection.profile) {
+                    Some(group) => group.models.push(option.value.clone()),
+                    None => groups.push(Group {
+                        profile: connection.profile.clone(),
+                        name: connection.name.clone(),
+                        provider: connection.provider.clone(),
+                        models: vec![option.value.clone()],
+                    }),
+                }
+            }
+        }
+        if groups.is_empty() && !self.data.model.options.is_empty() {
+            // Older payloads carry no connection names; keep one plain group.
+            groups.push(Group {
+                profile: self.data.profile.value.clone(),
+                name: self.text.text("new_chat_choose_model"),
+                provider: String::new(),
+                models: self.data.model.options.iter().map(|o| o.value.clone()).collect(),
+            });
+        }
+        groups
+    }
     /// Provider of the connection the current model resolves to.
     pub(super) fn selected_provider(&self) -> Option<String> {
         let profile = self.data.profile.value.as_str();
-        self.data
-            .groups
-            .iter()
-            .filter(|g| g.available)
+        self.groups()
+            .into_iter()
             .find(|g| {
                 (profile == "auto" || g.profile == profile)
-                    && g.models.iter().any(|m| m.id == self.data.model.value)
+                    && g.models.iter().any(|m| m == &self.data.model.value)
             })
-            .map(|g| g.provider.clone())
+            .map(|g| g.provider)
+            .filter(|p| !p.is_empty())
     }
     fn selectable_pairs(&self) -> Vec<(String, String)> {
-        self.data
-            .groups
-            .iter()
-            .filter(|g| g.available)
-            .flat_map(|g| g.models.iter().map(|m| (g.profile.clone(), m.id.clone())))
+        self.groups()
+            .into_iter()
+            .flat_map(|g| {
+                let profile = g.profile;
+                g.models.into_iter().map(move |m| (profile.clone(), m))
+            })
             .collect()
     }
     fn selected_pair(&self) -> Option<usize> {
@@ -83,8 +118,14 @@ impl Page {
         let enabled = self.picker_open && self.data.editable;
         let selected = self.selected_pair();
         let mut list = div().flex().flex_col().gap(px(2.));
+        let device = self
+            .data
+            .model
+            .options
+            .iter()
+            .find_map(|o| o.device.clone());
         let mut index = 0usize;
-        for (g, group) in self.data.groups.iter().enumerate() {
+        for (g, group) in self.groups().into_iter().enumerate() {
             list = list.child(
                 div()
                     .h(px(30.))
@@ -96,25 +137,28 @@ impl Page {
                     .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(p.muted))
-                    .child(ui::provider_icon(&group.provider, 16.))
+                    .when(!group.provider.is_empty(), |v| {
+                        v.child(ui::provider_icon(&group.provider, 16.))
+                    })
                     .child(div().min_w_0().truncate().child(group.name.clone()))
-                    .when_some(group.reason.clone(), |v, reason| {
+                    .when_some(device.clone(), |v, device| {
                         v.child(
                             div()
                                 .ml_auto()
-                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
                                 .font_weight(FontWeight::NORMAL)
-                                .text_color(rgb(p.danger))
-                                .child(reason),
+                                .child(crate::device_name::mark(&device, 16.))
+                                .child(device),
                         )
                     }),
             );
-            for model in &group.models {
-                let checked = group.available && selected == Some(index);
+            for model in group.models {
+                let checked = selected == Some(index);
                 let row_id = format!("new-chat-model-{index}");
-                let (profile, id) = (group.profile.clone(), model.id.clone());
-                let live = enabled && group.available;
-                let label = format!("{} · {}", group.name, model.id);
+                let (profile, id) = (group.profile.clone(), model.clone());
+                let label = format!("{} · {}", group.name, model);
                 list = list.child(
                     div()
                         .id(SharedString::from(row_id))
@@ -125,37 +169,27 @@ impl Page {
                         .gap(px(10.))
                         .rounded_full()
                         .text_size(px(13.))
-                        .text_color(rgb(if group.available { p.text } else { p.subtle }))
+                        .text_color(rgb(p.text))
                         .when(checked, |v| {
                             v.bg(rgb(p.selected)).font_weight(FontWeight::MEDIUM)
                         })
-                        .when(live && !checked, |v| {
+                        .when(enabled && !checked, |v| {
                             v.hover(|s| s.bg(rgb(INTERACTION.neutral_hover)))
                         })
-                        .child(div().min_w_0().truncate().child(model.id.clone()))
-                        .child(
-                            div()
-                                .ml_auto()
-                                .flex_shrink_0()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.subtle))
-                                .child(model.context.clone()),
-                        )
+                        .child(div().flex_1().min_w_0().truncate().child(model))
                         .child(
                             div().w(px(14.)).flex_shrink_0().when(checked, |v| {
                                 v.child(ui::icon("icons/check.svg", 14.))
                             }),
                         )
-                        .when(live, |v| {
+                        .when(enabled, |v| {
                             v.on_click(cx.listener(move |view, _, _, cx| {
                                 view.select(profile.clone(), id.clone(), cx)
                             }))
                         })
-                        .automation_enabled(live, AutomationRole::Button, label),
+                        .automation_enabled(enabled, AutomationRole::Button, label),
                 );
-                if group.available {
-                    index += 1;
-                }
+                index += 1;
             }
         }
         let levels = &self.data.thinking.options;

@@ -76,7 +76,7 @@ pub fn present(
                 .into_iter()
                 .flatten()
                 .filter_map(|v| v.as_str())
-                .map(|id| option(id, id))
+                .map(|id| option(id, &crate::thinking::value_label(id)))
                 .collect(),
         },
         profile: Choice {
@@ -228,6 +228,9 @@ impl Fixture {
             Action::Profile { value } if self.snapshot().editable => {
                 self.selection =
                     choose(&self.profiles, &self.selection.0, &self.selection.1, &value)
+            }
+            Action::Select { profile, model } if self.snapshot().editable => {
+                self.selection = choose(&self.profiles, &model, &self.selection.1, &profile)
             }
             Action::Submit { text } if self.snapshot().can_submit => {
                 self.text = text;

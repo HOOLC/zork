@@ -54,5 +54,7 @@ pub enum Action {
     Model { value: String },
     Thinking { value: String },
     Profile { value: String },
+    /// Picks a model from one connection in a single step.
+    Select { profile: String, model: String },
     Submit { text: String },
 }
