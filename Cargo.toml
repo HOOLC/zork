@@ -147,3 +147,17 @@ gpui-base-uo = { path = "vendor/gpui-base-uo" }
 gpui-wgpu-gpui-unofficial = { path = "vendor/gpui-wgpu-gpui-unofficial" }
 gpui-apple-gpui-unofficial = { path = "vendor/gpui-apple-gpui-unofficial" }
 gpui-macos-gpui-unofficial = { path = "vendor/gpui-macos-gpui-unofficial" }
+
+# Fast iteration profile for UI work (Design previews, headless tests, checks).
+# Dependencies keep the dev-profile optimizations above; only the two large,
+# frequently edited UI crates skip optimization, which cuts an incremental
+# rebuild of the design binary from ~95 s to ~12 s. Packaged apps and frame
+# budget tests keep using the dev profile.
+[profile.dev-fast]
+inherits = "dev"
+
+[profile.dev-fast.package.zork-ui]
+opt-level = 0
+
+[profile.dev-fast.package.zork-gui]
+opt-level = 0
