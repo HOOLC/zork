@@ -147,6 +147,7 @@ impl<V: Render + 'static> Fixture<V> {
             [
                 zork_ui::controls::DIALOG_CONFIRM_WIDTH,
                 zork_ui::controls::DIALOG_FORM_WIDTH,
+                zork_ui::controls::DIALOG_STEP_WIDTH,
                 zork_ui::controls::DIALOG_RICH_WIDTH,
             ]
             .iter()

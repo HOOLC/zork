@@ -25,6 +25,8 @@ pub const SETTINGS_GUTTER: f32 = 32.;
 /// Dialog widths by content: a short confirmation, a form, rich details.
 pub const DIALOG_CONFIRM_WIDTH: f32 = 400.;
 pub const DIALOG_FORM_WIDTH: f32 = 480.;
+/// Multi-step forms whose choices are laid out as cards.
+pub const DIALOG_STEP_WIDTH: f32 = 520.;
 pub const DIALOG_RICH_WIDTH: f32 = 560.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;

@@ -1214,7 +1214,7 @@ impl Render for ProfilesView {
                     actions,
                     self.message.clone(),
                     &self.modal,
-                    520.,
+                    ui::DIALOG_STEP_WIDTH,
                     window,
                     cx,
                     !self.busy || self.attempt.is_some(),

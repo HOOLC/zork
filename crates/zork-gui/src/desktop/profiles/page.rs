@@ -620,6 +620,7 @@ impl ProfilesView {
             .when_some(self.message.clone(), |v, m| {
                 v.child(ui::status_notice(m, ui::NoticeKind::Error))
             })
+            .automation(AutomationRole::Status, title)
             .into_any_element()
     }
 }
