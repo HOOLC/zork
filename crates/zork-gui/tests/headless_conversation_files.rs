@@ -580,13 +580,16 @@ fn main() -> anyhow::Result<()> {
         &mut cx,
         json!({"type":"scroll","target":{"x":row_center.x,"y":row_center.y},"delta_x":-2000.,"delta_y":0.}),
     )?;
+    let after = driver.snapshot(false).elements;
+    let found = after.iter().find(|element| element.id == format!("remove-{last}"));
     anyhow::ensure!(
-        driver.snapshot(false).elements.iter().any(|element| {
-            element.id == format!("remove-{last}")
-                && element.visible
-                && element.bounds == element.visible_bounds
-        }),
-        "last attachment remove button is unreachable by horizontal scrolling"
+        found.is_some_and(|element| element.visible && element.bounds == element.visible_bounds),
+        "last attachment remove button is unreachable by horizontal scrolling: {:?} row {:?}",
+        found.map(|e| (e.visible, e.bounds, e.visible_bounds)),
+        after
+            .iter()
+            .find(|e| e.id == format!("draft-preview-{}", draft[0].id))
+            .map(|e| (e.bounds, e.visible_bounds))
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("count-16-row.png"))?;
