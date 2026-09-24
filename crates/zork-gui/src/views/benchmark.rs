@@ -331,6 +331,123 @@ impl RootView {
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
     }
 
+    /// Zork Design fixture for the Session activity band: a short Chat with
+    /// the member "Studio" working in its own Session. `step` advances the
+    /// running tool so live stories can show a step change.
+    pub fn benchmark_activity_story(&mut self, state: &str, cx: &mut Context<Self>) {
+        let line = |user: bool, text: &str| TranscriptLine::Message {
+            role: if user { Role::User } else { Role::Assistant },
+            content: text.into(),
+            metadata: crate::api::MessageMetadata {
+                author_name: (!user).then(|| "Studio".into()),
+                ..Default::default()
+            },
+        };
+        self.benchmark_replace_messages(
+            vec![
+                line(true, "先把会话动态按定稿重做：放到输入框上方，和输入框同宽。"),
+                line(false, "好的。我先读一下现在的实现和定稿，再改布局和动效。\n\n- 收起时一行：谁、在做什么\n- 展开时最近三步和完整历史"),
+                line(true, "改完跑一下相关的测试。"),
+            ],
+            cx,
+        );
+        self.benchmark_follow_messages(cx);
+        let session = "studio-session";
+        let history = self.core_device.conversation(session).history();
+        history.seed(zork_client_core::state::HistoryData {
+            loaded: true,
+            ..Default::default()
+        });
+        self.participants = vec![crate::api::ParticipantStatus {
+            id: "studio".into(),
+            name: "Studio".into(),
+            avatar: None,
+            session_id: session.into(),
+            subscribed: true,
+            assigned: false,
+            activity: Some(AgentStatus::Thinking),
+        }];
+        self.sync_session_activity(cx);
+        if state != "waiting" {
+            history.seed(zork_client_core::state::HistoryData {
+                records: Self::benchmark_activity_records(0).into(),
+                loaded: true,
+                ..Default::default()
+            });
+            self.deliver_session_activity_updates(cx);
+        }
+        if let Some(preview) = self.session_activity_preview.as_mut() {
+            preview.expanded = state == "expanded";
+            if state == "finished" {
+                preview.stopped = true;
+                for row in &mut preview.rows {
+                    row.running = false;
+                }
+            }
+        }
+        if state == "disconnected" {
+            self.agent_online = false;
+        }
+        zork_ui::components::region::invalidate_all(cx);
+    }
+
+    /// Replays the live fixture's next step.
+    pub fn benchmark_activity_step(&mut self, step: usize, cx: &mut Context<Self>) {
+        self.core_device
+            .conversation("studio-session")
+            .history()
+            .seed(zork_client_core::state::HistoryData {
+                records: Self::benchmark_activity_records(step).into(),
+                loaded: true,
+                ..Default::default()
+            });
+        self.deliver_session_activity_updates(cx);
+    }
+
+    /// Ends the live fixture's round: it holds briefly, then leaves.
+    pub fn benchmark_activity_finish(&mut self, cx: &mut Context<Self>) {
+        for participant in &mut self.participants {
+            participant.activity = None;
+        }
+        self.sync_session_activity(cx);
+        zork_ui::components::region::invalidate(cx, &["composer"]);
+    }
+
+    fn benchmark_activity_records(step: usize) -> Vec<crate::session_history::Record> {
+        let t = NOW - 60_000;
+        let tools = [
+            ("read-1", "file.read", serde_json::json!({"path":"src/chat.rs"}), 400),
+            ("shell-1", "shell.run", serde_json::json!({"command":"cargo check -p zork-ui"}), 12_000),
+            ("write-1", "file.write", serde_json::json!({"path":"src/activity.rs"}), 2_000),
+            ("edit-1", "file.edit", serde_json::json!({"path":"crates/zork-ui/src/device_name.rs"}), 1_000),
+            ("shell-2", "shell.run", serde_json::json!({"command":"cargo test -p zork-gui --test headless_chat_activity"}), 9_000),
+        ];
+        let last = (2 + step) % tools.len().max(1);
+        let last = last.max(2);
+        let mut records = Vec::new();
+        let mut at = t;
+        for (index, (id, tool, arguments, took)) in tools.iter().take(last + 1).enumerate() {
+            records.push(crate::session_history::Record {
+                event_id: format!("{:016x}", index * 2 + 1),
+                event: serde_json::json!({"kind":"step_completed","step_id":format!("s{index}"),
+                    "completed_at_ms":at,"invocations":[{"invocation_id":id,"tool":tool,
+                    "started_at_ms":at,"arguments":arguments}]}),
+                metadata: Default::default(),
+            });
+            if index < last {
+                at += took;
+                records.push(crate::session_history::Record {
+                    event_id: format!("{:016x}", index * 2 + 2),
+                    event: serde_json::json!({"kind":"tool_result","result":{"invocation_id":id,
+                        "tool":tool,"outcome":"succeeded","finished_at_ms":at,"data":{}}}),
+                    metadata: Default::default(),
+                });
+                at += 300;
+            }
+        }
+        records
+    }
+
     pub fn benchmark_story_history(
         &mut self,
         records: Vec<crate::session_history::Record>,

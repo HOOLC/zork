@@ -343,7 +343,17 @@ fn paint_morph(
 impl Render for Brand {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(target_os = "macos")]
-        cx.set_reduce_motion(system_reduce_motion());
+        {
+            // Startup seeds the preference; afterwards follow its changes
+            // only, so an explicit setting (tests, exported stills) stays.
+            use std::sync::atomic::{AtomicU8, Ordering};
+            static SEEN: AtomicU8 = AtomicU8::new(2);
+            let system = system_reduce_motion();
+            let seen = SEEN.swap(system as u8, Ordering::Relaxed);
+            if seen != 2 && seen != system as u8 {
+                cx.set_reduce_motion(system);
+            }
+        }
         if matches!(self.mode, BrandMotion::Header) {
             return self.render_header(cx);
         }
