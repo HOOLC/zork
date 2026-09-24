@@ -75,6 +75,8 @@ pub struct DesktopRoot {
     mesh_views: std::collections::HashMap<String, (u64, Entity<mesh_settings::MeshSettings>)>,
     device_info: std::collections::HashMap<String, serde_json::Value>,
     management_tab: usize,
+    /// The device page's 服务 entry row expands the services list in place.
+    device_services_open: bool,
     mesh_settings: Option<Entity<mesh_settings::MeshSettings>>,
     active_node_name: Option<String>,
     account_state: Arc<zork_client_core::relay_account::controller::Snapshot>,
@@ -198,6 +200,7 @@ impl DesktopRoot {
             mesh_views: Default::default(),
             device_info: Default::default(),
             management_tab: 0,
+            device_services_open: false,
             mesh_settings: None,
             active_node_name: None,
             account_state,
@@ -906,7 +909,10 @@ impl DesktopRoot {
                         .or(i["update"]["status"]["message"].as_str())
                 })
                 .map(str::to_owned),
+            services: Some(String::new()),
+            connections: Some(String::new()),
         };
+        let services_open = self.device_services_open;
         div()
             .flex()
             .flex_col()
@@ -934,11 +940,21 @@ impl DesktopRoot {
                         cx,
                     ),
                     DeviceAction::StartAtLogin(on) => v.set_node_background(true, on, cx),
+                    DeviceAction::Services => {
+                        v.device_services_open = !v.device_services_open;
+                        cx.notify();
+                    }
+                    // Model connections live on their own settings tab.
+                    DeviceAction::Connections => {
+                        v.management_tab = 0;
+                        cx.notify();
+                    }
                 },
             ))
             .when_some(
                 self.service_views
                     .get(&node.id)
+                    .filter(|_| services_open)
                     .map(|(_, view)| view.clone()),
                 |body, view| body.child(view),
             )

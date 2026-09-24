@@ -82,6 +82,7 @@ impl Statistics {
             .text_size(px(12.))
             .line_height(px(18.))
             .text_color(rgb(DIM()))
+            .child(crate::device_name::mark(&name, 16.))
             .child(
                 div()
                     .max_w(px((width * 0.4).max(80.)))

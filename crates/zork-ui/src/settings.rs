@@ -230,6 +230,9 @@ pub enum DeviceAction {
     ToggleRunning,
     Background(bool),
     StartAtLogin(bool),
+    /// Entry rows: this device's services and its model connections.
+    Services,
+    Connections,
 }
 #[derive(Clone)]
 pub struct DeviceData {
@@ -246,6 +249,9 @@ pub struct DeviceData {
     pub start_at_login: bool,
     pub busy: bool,
     pub notice: Option<String>,
+    /// Muted counts for the entry rows, such as "2 个运行中"; `None` hides the row.
+    pub services: Option<String>,
+    pub connections: Option<String>,
 }
 pub fn device<V: 'static>(
     data: DeviceData,
@@ -318,12 +324,32 @@ pub fn device<V: 'static>(
             menu_action(v, event, cx)
         },
     );
-    let state = if data.busy {
-        Some("正在处理…".to_owned())
+    let connection = crate::device_name::status_text(&data.status, None);
+    let state = Some(if data.busy {
+        "正在处理…".to_owned()
     } else if data.local {
-        Some(if data.running { "运行中" } else { "已停止" }.to_owned())
+        format!("{} · {connection}", if data.running { "运行中" } else { "已停止" })
     } else {
-        None
+        connection
+    });
+    let services = action.clone();
+    let connections = action.clone();
+    let entry = move |id: &'static str, title: &'static str, meta: String| {
+        ui::quiet_button(id, "", true, ui::IconButtonSize::Standard)
+            .w_full()
+            .h(px(40.))
+            .mx(px(-12.))
+            .justify_start()
+            .child(div().text_size(px(14.)).child(title))
+            .when(!meta.is_empty(), |v| v.child(disclosure::meta(meta)))
+            .child(div().flex_1())
+            .child(
+                ui::icon("interface/chevron-down.svg", 14.)
+                    .text_color(rgb(ZORK_UI.palette.subtle))
+                    .with_transformation(gpui::Transformation::rotate(gpui::radians(
+                        -std::f32::consts::FRAC_PI_2,
+                    ))),
+            )
     };
     div()
         .flex()
@@ -373,6 +399,22 @@ pub fn device<V: 'static>(
                     move |v, on, cx| background(v, DeviceAction::Background(on), cx),
                 ),
             ))
+        })
+        .when_some(data.services.clone(), |v, meta| {
+            v.child(
+                entry("device-services", "服务", meta)
+                    .on_click(cx.listener(move |v, _, _, cx| services(v, DeviceAction::Services, cx)))
+                    .automation(AutomationRole::Button, "服务"),
+            )
+        })
+        .when_some(data.connections.clone(), |v, meta| {
+            v.child(
+                entry("device-connections", "模型连接", meta)
+                    .on_click(
+                        cx.listener(move |v, _, _, cx| connections(v, DeviceAction::Connections, cx)),
+                    )
+                    .automation(AutomationRole::Button, "模型连接"),
+            )
         })
         // The update row appears only when there is something to install.
         .when(has_update && show_updates, |v| {
@@ -446,6 +488,8 @@ impl SettingsStory {
                 start_at_login: false,
                 busy: state == "loading",
                 notice: (state == "error").then(|| "暂时无法读取设备状态，请重试。".into()),
+                services: Some("2 个运行中".into()),
+                connections: Some("3 个".into()),
             },
             account: AccountData {
                 name: (state == "signed-in").then(|| text("name")),
@@ -534,6 +578,7 @@ impl gpui::Render for SettingsStory {
                         }
                     }
                     DeviceAction::StartAtLogin(on) => v.data.start_at_login = on,
+                    DeviceAction::Services | DeviceAction::Connections => {}
                 }
                 cx.notify();
             })

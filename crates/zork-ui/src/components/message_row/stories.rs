@@ -75,7 +75,7 @@ impl Render for Story {
                     document,
                     content_width: width,
                     selection: None,
-                    author_name: (index != 0).then(|| "产品领队".into()),
+                    author_name: (index != 0).then(|| "Studio".into()),
                     device: Some("演示设备".into()),
                     model: (index != 0).then(|| "gpt-6".into()),
                     time: Some("10:24".into()),

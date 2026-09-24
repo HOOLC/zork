@@ -121,6 +121,12 @@ pub fn network<V: 'static>(
                             None,
                         )),
                 )
+                // Status is shape and text: the dot plus 在线 / 中继 / 离线.
+                .child(disclosure::meta(match peer.status {
+                    crate::device_name::DeviceStatus::Direct
+                    | crate::device_name::DeviceStatus::Connected => "在线".to_owned(),
+                    ref status => crate::device_name::status_text(status, None),
+                }))
                 .when(!peer.permission.is_empty(), |v| {
                     v.child(disclosure::info(
                         format!("mesh-peer-permission-{}", peer.id),

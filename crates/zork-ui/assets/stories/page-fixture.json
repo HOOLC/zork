@@ -59,7 +59,7 @@
     {
       "id": "leader",
       "prototype_id": "product",
-      "name": "产品 Leader",
+      "name": "Studio",
       "role": "leader",
       "avatar": "fox",
       "profile_id": "fixture",
@@ -87,7 +87,7 @@
   },
   "conversation": {
     "id": "product",
-    "placeholder": "告诉 Leader 你想做什么…",
+    "placeholder": "想让 Studio 做什么…",
     "messages": [
       {
         "id": "story-message-1",
