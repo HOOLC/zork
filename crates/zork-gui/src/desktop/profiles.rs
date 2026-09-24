@@ -2324,6 +2324,7 @@ impl ProfilesView {
         let toggle_label = if open { "收起参数" } else { "调整参数" };
         let recognition = match recognized {
             Some((name, summary)) => div()
+                .id("model-recognition-summary")
                 .flex()
                 .items_center()
                 .gap(px(8.))
