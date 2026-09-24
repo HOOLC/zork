@@ -6,7 +6,7 @@ use crate::{
     controls as ui,
     design::ZORK_UI,
 };
-use gpui::{div, prelude::*, px, rgb, AnyElement, Context, SharedString, Window};
+use gpui::{div, prelude::*, px, rgb, AnimationExt, AnyElement, Context, SharedString, Window};
 
 /// A quiet "更多" icon button with its menu. Items that are unavailable are
 /// passed disabled; an empty list renders nothing.
