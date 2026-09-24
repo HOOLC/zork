@@ -29,6 +29,8 @@ class Nav7PreviewActivity : ComponentActivity() {
     var lastProfile: JSONObject? = null
     var previewTheme by mutableStateOf("system")
     var failNextRequest = false
+    /** Tests: show another connection's page, as navigating there would. */
+    var openProfile: (String) -> Unit = {}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); configureZorkSystemBars()
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -58,6 +60,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     else settingsFixturePage(fixtureSettings(), route)) }
                                 val resourceTrail = remember { mutableListOf<ResourceSelection>() }
                                 var archivedHome by remember { mutableStateOf(fixtureHome()) }
+                                openProfile = { id -> settings = settings.copy(page = "profile", profile = settings.profiles.first { it.text("profile_id") == id }) }
                                 MobileSettings(settings,fixturePeers(),SettingsActions(back={
                                     if(resourceTrail.isNotEmpty()) {
                                         val selected=resourceTrail.removeAt(resourceTrail.lastIndex)

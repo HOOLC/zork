@@ -540,14 +540,10 @@ private fun RadioOption(title: String, detail: String, selected: Boolean, enable
             .padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.padding(top = 1.dp).size(18.dp).border(ring, if (selected) ZorkColors.Ink else ZorkColors.FieldBorder, CircleShape))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(androidx.compose.ui.text.buildAnnotatedString {
-                    append(title)
-                    suffix?.let {
-                        pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, color = ZorkColors.Subtle))
-                        append("  $it"); pop()
-                    }
-                }, fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
-                if (detail.isNotBlank()) Text(detail, fontSize = 12.sp, lineHeight = 17.sp, color = ZorkColors.Muted)
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 20.sp)
+                // A suffix (· 连接默认) ends the detail line, so it never breaks inside the title.
+                val line = listOfNotNull(detail.takeIf { it.isNotBlank() }, suffix?.let(::unbreakable)).joinToString(" ")
+                if (line.isNotBlank()) Text(line, fontSize = 12.sp, lineHeight = 17.sp, color = ZorkColors.Muted)
             }
         }
         if (content != null) ZorkExpand(selected) {
@@ -556,6 +552,9 @@ private fun RadioOption(title: String, detail: String, selected: Boolean, enable
         }
     }
 }
+
+/** Keeps a short phrase on one line: no-break space and word joiners between its characters. */
+private fun unbreakable(text: String) = text.replace(' ', '\u00A0').toList().joinToString("\u2060")
 
 /**
  * A 44 dp touch target drawing a shorter capsule: quick picks, defaults and
@@ -946,7 +945,7 @@ private fun UnitToggle(label: String, unit: String, enabled: Boolean, choose: (S
     val slot = animatedValue(if (unit == "M") 1f else 0f, "unit")
     Box(Modifier.width(96.dp).height(52.dp).background(base, ZorkShapes.Control).padding(4.dp)) {
         Box(Modifier.width(44.dp).fillMaxHeight().graphicsLayer { translationX = slot * 44.dp.toPx() }
-            .background(thumb, ZorkShapes.Control).border(UiTokens.Border, UiTokens.Outline, ZorkShapes.Control))
+            .background(thumb, ZorkShapes.Control))
         Row(Modifier.fillMaxSize()) {
             listOf("K", "M").forEach { option ->
                 val on = option == unit

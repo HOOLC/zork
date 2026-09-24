@@ -298,7 +298,11 @@ class ModelEditorTest {
     }
 
     @Test fun cancelAndReopenStartsClean() {
-        openAdd().use {
+        openAdd().use { scenario ->
+            // An empty id cannot be saved and nothing is sent.
+            ui.click("保存模型")
+            ui.await("填写供应商提供的模型 ID")
+            scenario.onActivity { assertEquals("", it.lastAction) }
             ui.type("模型 ID", "o3"); ui.imeDone("模型 ID"); ui.await("参数已按预设填好")
             ui.click("取消"); ui.awaitGone("参数已按预设填好")
             ui.click("手动添加"); ui.await("添加模型")
@@ -332,9 +336,72 @@ class ModelEditorTest {
             ui.clickPrefix("长度：")
             ui.click("最长输出 64K")
             ui.capture("31-dark-modified")
+            ui.click("取消"); ui.awaitGone("添加模型")
+            ui.click("手动添加")
             ui.type("模型 ID", "my-dark"); ui.imeDone("模型 ID")
+            ui.await("它会思考吗？")
             ui.click("按 token 预算")
             ui.capture("32-dark-numbered")
+            ui.click("从相似模型填入"); ui.awaitPrefix("fixture-model，")
+            ui.capture("34-dark-sources")
+        }
+    }
+
+    @Test fun realTypingKeepsFocusAndTheLastQueryWins() {
+        openAdd().use {
+            ui.focus("模型 ID")
+            ui.instrumentation.sendStringSync("gpt-4")
+            ui.instrumentation.sendStringSync("o-mini")
+            ui.settle()
+            assertEquals("gpt-4o-mini", ui.text("模型 ID"))
+            assertTrue("focus left the id while typing: ${ui.focusState()}", ui.focusState().contains("模型 ID") || ui.focusState().contains("gpt-4o-mini"))
+            ui.awaitPrefix("gpt-4o-mini，GPT-4o mini")
+            // Recognition caught up with the last keystroke; no form while the list is open.
+            assertNull(ui.findPrefix("思考："))
+            ui.imeDone("模型 ID")
+            ui.await("参数已按预设填好")
+            assertNotNull(ui.find("GPT-4o mini"))
+            // Deleting back to a sibling id re-recognizes it (never gpt-4o-mini for gpt-4o).
+            ui.focus("模型 ID")
+            repeat(5) { ui.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DEL) }
+            ui.settle(); assertEquals("gpt-4o", ui.text("模型 ID"))
+            ui.imeDone("模型 ID")
+            ui.awaitPrefix("长度：上下文 128K · 最长输出 16,384")
+            assertNotNull(ui.find("GPT-4o"))
+        }
+    }
+
+    @Test fun longLevelNamesStayInsideTheSheet() {
+        openAdd().use {
+            ui.type("模型 ID", "my-long-levels"); ui.imeDone("模型 ID")
+            ui.click("按档位调节")
+            ui.click("+ 档位")
+            ui.type("新档位名称", "x".repeat(41)); ui.imeDone("新档位名称")
+            ui.await("名称最多 40 个字符")
+            val long = "reasoning-effort-" + "y".repeat(23)
+            ui.type("新档位名称", long); ui.imeDone("新档位名称")
+            val chip = ui.bounds("删除 $long")
+            val width = ui.instrumentation.targetContext.resources.displayMetrics.widthPixels
+            assertTrue("chip overflows: $chip", chip.right <= width)
+            ui.capture("35-long-level")
+            ui.click("删除 $long"); ui.awaitGone("删除 $long")
+        }
+    }
+
+    @Test fun switchingConnectionClosesTheEditor() {
+        openAdd().use { scenario ->
+            ui.type("模型 ID", "o3"); ui.imeDone("模型 ID"); ui.await("参数已按预设填好")
+            scenario.onActivity { it.openProfile("lab") }
+            ui.awaitGone("参数已按预设填好")
+            ui.await("编辑 qwen3-32b")
+            // A new editor belongs to the new connection: protocol shows, nothing carried over.
+            ui.click("手动添加")
+            assertEquals("", ui.editable("模型 ID")?.text?.toString().orEmpty())
+            ui.type("模型 ID", "my-lab-model"); ui.imeDone("模型 ID")
+            ui.reveal("接口协议")
+            scenario.onActivity { it.openProfile("studio") }
+            ui.awaitGone("接口协议")
+            ui.await("编辑 fixture-model")
         }
     }
 

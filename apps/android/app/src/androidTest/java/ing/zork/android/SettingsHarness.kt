@@ -70,7 +70,8 @@ internal class SettingsHarness(private val folder: String) {
         "${it.className} text=${it.text} desc=${it.contentDescription} click=${it.isClickable} enabled=${it.isEnabled} checked=${it.isChecked} selected=${it.isSelected} state=${it.stateDescription} focused=${it.isFocused}"
     }
 
-    private fun scrollable() = nodes().lastOrNull { it.isScrollable && it.isVisibleToUser }
+    /** The outermost scroller: the sheet (or page), not a horizontal chip row inside it. */
+    private fun scrollable() = nodes().firstOrNull { it.isScrollable && it.isVisibleToUser }
 
     private fun reveal(match: () -> AccessibilityNodeInfo?, name: String): AccessibilityNodeInfo {
         repeat(3) { match()?.let { return it }; Thread.sleep(150) }
