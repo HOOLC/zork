@@ -21,7 +21,10 @@ pub enum ThinkingScheme {
     /// Thinking can be switched on or off; `on` is the value sent when on.
     Toggle { on: String, default_on: bool },
     /// Native effort names in the provider's order, e.g. minimal…xhigh.
-    Levels { values: Vec<String>, default: String },
+    Levels {
+        values: Vec<String>,
+        default: String,
+    },
     /// A token budget. `presets` are in tokens; `dynamic` lets the provider
     /// choose (Gemini); `allow_off` offers no thinking at all.
     Budget {
@@ -339,7 +342,10 @@ mod tests {
             dynamic: false,
             allow_off: true,
         };
-        assert!(budget.error(Some(65536)).is_some(), "budget must stay below output");
+        assert!(
+            budget.error(Some(65536)).is_some(),
+            "budget must stay below output"
+        );
         assert!(budget.error(Some(128000)).is_none());
         let off_not_allowed = ThinkingScheme::Budget {
             presets: vec![8192],

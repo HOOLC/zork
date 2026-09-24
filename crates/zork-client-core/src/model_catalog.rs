@@ -146,7 +146,10 @@ pub fn stored_scheme(model: &Value) -> ThinkingScheme {
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
-    ThinkingScheme::decode(&values, model["default_thinking"].as_str().unwrap_or_default())
+    ThinkingScheme::decode(
+        &values,
+        model["default_thinking"].as_str().unwrap_or_default(),
+    )
 }
 
 /// A field that the editor offers reference values for.
@@ -187,10 +190,7 @@ pub fn references(field: Field, recognized: Option<&str>) -> Vec<Reference> {
         .map(|entry| {
             let (value, label) = match field {
                 Field::Context => (json!(entry.context), compact_tokens(entry.context)),
-                Field::Output => (
-                    json!(entry.output),
-                    compact_tokens(u64::from(entry.output)),
-                ),
+                Field::Output => (json!(entry.output), compact_tokens(u64::from(entry.output))),
                 Field::Thinking => (
                     json!({"scheme": entry.thinking, "field": entry.thinking_field}),
                     entry.thinking.summary(),
@@ -338,7 +338,10 @@ mod tests {
 
     #[test]
     fn recognizes_exact_dated_and_routed_ids() {
-        assert_eq!(recognize("deepseek-chat", None).unwrap().key, "deepseek-chat");
+        assert_eq!(
+            recognize("deepseek-chat", None).unwrap().key,
+            "deepseek-chat"
+        );
         assert_eq!(
             recognize("claude-sonnet-4-5-20250929", None).unwrap().key,
             "claude-sonnet"
@@ -348,7 +351,10 @@ mod tests {
             "claude-opus-4-5"
         );
         assert_eq!(recognize("gpt-5-2025-08-07", None).unwrap().key, "gpt-5");
-        assert_eq!(recognize("gpt-5.1-codex-mini", None).unwrap().key, "gpt-5-codex");
+        assert_eq!(
+            recognize("gpt-5.1-codex-mini", None).unwrap().key,
+            "gpt-5-codex"
+        );
         assert_eq!(recognize("GPT-5-Mini", None).unwrap().key, "gpt-5-mini");
         assert_eq!(
             recognize("openrouter/deepseek/deepseek-chat-v3.1:free", None)
@@ -357,10 +363,15 @@ mod tests {
             "deepseek-chat"
         );
         assert_eq!(
-            recognize("models/gemini-2.5-pro", Some("google")).unwrap().key,
+            recognize("models/gemini-2.5-pro", Some("google"))
+                .unwrap()
+                .key,
             "gemini-2.5-pro"
         );
-        assert_eq!(recognize("kimi-k2-thinking", None).unwrap().key, "kimi-k2-thinking");
+        assert_eq!(
+            recognize("kimi-k2-thinking", None).unwrap().key,
+            "kimi-k2-thinking"
+        );
         assert!(recognize("my-private-model", None).is_none());
         assert!(recognize("", None).is_none());
     }
