@@ -467,12 +467,15 @@ impl Render for Brand {
                     .h(px(28.))
                     .overflow_hidden()
                     .child(
-                        gpui::img("brand/zork-wordmark.svg")
+                        // Tinted like the mark: the asset's own ink fill vanishes in dark.
+                        gpui::svg()
+                            .path("brand/zork-wordmark.svg")
                             .relative()
                             .left(px(-left * 0.6))
                             .w(px(81.6))
                             .h(px(26.4))
-                            .flex_shrink_0(),
+                            .flex_shrink_0()
+                            .text_color(rgb(crate::design::ZORK_UI.palette.text)),
                     );
                 // Letter wrappers share one contiguous wordmark. Translation never changes layout.
                 let element = if animated {

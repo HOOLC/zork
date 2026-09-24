@@ -171,6 +171,28 @@ pub(crate) fn render<V: 'static>(
             icon: option_icons.get(i).copied().flatten(),
         })
         .collect();
+    // The open menu fits its longest option (row padding, icon, check mark,
+    // panel inset and border) so option names are not cut short.
+    let menu_width = if open {
+        rows.iter()
+            .map(|row| {
+                crate::components::widgets::overlay::measure_label_with_weight(
+                    &row.label,
+                    12.,
+                    FontWeight::NORMAL,
+                    window,
+                )
+                .ceil()
+                    + if row.icon.is_some() { 22. } else { 0. }
+            })
+            .fold(0., f32::max)
+            + 28.
+            + 22.
+            + 12.
+            + 2.
+    } else {
+        0.
+    };
     let entry = rows.iter().position(|v| v.checked).unwrap_or(0);
     let trigger_focus = action_focus(format!("{id}-trigger"), window, cx);
     let owner = cx.entity().downgrade();
@@ -316,7 +338,7 @@ pub(crate) fn render<V: 'static>(
         let panel = div()
             .id(format!("{id}-menu"))
             .occlude()
-            .w(px(control_width.max(160.)))
+            .w(px(control_width.max(160.).max(menu_width.min(360.))))
             .max_h(px(height))
             .p(px(6.))
             .rounded(px(ui::PLAIN_POPOVER_RADIUS))

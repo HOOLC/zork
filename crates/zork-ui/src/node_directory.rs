@@ -180,14 +180,17 @@ pub trait Host: Sized + 'static {
                                     .items_center()
                                     .gap_3()
                                     .py_2()
-                                    .child(ui::icon("icons/node.svg", 18.))
                                     .child(
                                         div()
                                             .flex_1()
                                             .min_w_0()
                                             .text_ellipsis()
-                                            .child(crate::device_name::label(format!("directory-name-{}", node.id),
-node.name.clone(), &node.status, None)),
+                                            .child(crate::device_name::label(
+                                                format!("directory-name-{}", node.id),
+                                                node.name.clone(),
+                                                &node.status,
+                                                None,
+                                            )),
                                     )
                                     .child(
                                         ui::button(
@@ -293,7 +296,7 @@ node.name.clone(), &node.status, None)),
                     data.nodes.clone().into_iter().map(|node| {
                         ui::button(
                             format!("browse-node-{}", node.id),
-                            format!("浏览 {}", crate::device_name::summary(&node.name, &node.status, None)),
+                            format!("浏览 {}", node.name),
                             false,
                             true,
                         )

@@ -14,6 +14,19 @@ pub fn row(
     detail: impl Into<gpui::SharedString>,
     control: impl IntoElement,
 ) -> Div {
+    titled_row(
+        ui::text_role(title, crate::design::TextRole::SectionTitle),
+        detail,
+        control,
+    )
+}
+
+/// A settings row whose title is an element, such as a device label.
+pub fn titled_row(
+    title: impl IntoElement,
+    detail: impl Into<gpui::SharedString>,
+    control: impl IntoElement,
+) -> Div {
     div()
         .w_full()
         .flex()
@@ -31,7 +44,7 @@ pub fn row(
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(ui::text_role(title, crate::design::TextRole::SectionTitle))
+                .child(title)
                 .child(ui::text_role(detail, crate::design::TextRole::Description)),
         )
         .child(div().flex_shrink_0().child(control))
@@ -317,15 +330,15 @@ pub fn device<V: 'static>(
                                 .text_size(px(12.))
                                 .text_color(rgb(p.muted))
                                 .when(data.local, |v| {
-                                    v.child("·").child(if data.busy {
+                                    v.child(if data.busy {
                                         "正在处理…"
                                     } else if data.running {
                                         "运行中"
                                     } else {
                                         "已停止"
                                     })
+                                    .child("·")
                                 })
-                                .child("·")
                                 .child(version_label),
                         ),
                 )

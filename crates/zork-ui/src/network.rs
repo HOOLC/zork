@@ -3,7 +3,7 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
     design::ZORK_UI,
-    settings::row,
+    settings::{row, titled_row},
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
@@ -135,8 +135,19 @@ pub fn network<V: 'static>(
         .children(data.peers.iter().map(|peer| {
             let action = action.clone();
             let id = peer.id.clone();
-            row(
-                crate::device_name::summary(&peer.name, &peer.status, None),
+            let (size, line_height, weight) = crate::design::TextRole::SectionTitle.metrics();
+            titled_row(
+                div()
+                    .text_size(px(size))
+                    .line_height(px(line_height))
+                    .font_weight(FontWeight(weight as f32))
+                    .text_color(rgb(ZORK_UI.palette.text))
+                    .child(crate::device_name::label(
+                        format!("mesh-peer-{id}"),
+                        peer.name.clone(),
+                        &peer.status,
+                        None,
+                    )),
                 peer.permission.clone(),
                 ui::button(format!("revoke-peer-{id}"), "移除", false, !data.busy)
                     .on_click(cx.listener(move |v, _, _, cx| {
@@ -521,6 +532,8 @@ pub fn page<V: 'static>(
     let action = Rc::new(action);
     let network_action = action.clone();
     let enrollment_action = action.clone();
+    // The last peer row already ends with a divider.
+    let divided = props.data.peers.is_empty() || props.data.notice.is_some();
     div()
         .flex()
         .flex_col()
@@ -530,9 +543,11 @@ pub fn page<V: 'static>(
         .child(
             div()
                 .mt_6()
-                .pt_5()
-                .border_t(px(crate::design::BORDER_WIDTH))
-                .border_color(rgb(ZORK_UI.palette.border))
+                .when(divided, |v| {
+                    v.pt_5()
+                        .border_t(px(crate::design::BORDER_WIDTH))
+                        .border_color(rgb(ZORK_UI.palette.border))
+                })
                 .child(enrollment(props.invitation, cx, move |v, event, cx| {
                     enrollment_action(v, PageAction::Enrollment(event), cx)
                 })),

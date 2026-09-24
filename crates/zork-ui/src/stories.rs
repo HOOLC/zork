@@ -906,7 +906,7 @@ impl Render for PrimitiveStory {
                             .child(overlay)
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .text_color(rgb(p.muted))
                                     .child("悬停查看详情，移开后关闭"),
                             ),
@@ -954,8 +954,8 @@ impl Render for PrimitiveStory {
                             .keys()
                             .map(|name| {
                                 div()
-                                    .w(px(68.))
-                                    .h(px(44.))
+                                    .w(px(96.))
+                                    .h(px(52.))
                                     .flex()
                                     .flex_col()
                                     .gap_1()
@@ -968,8 +968,12 @@ impl Render for PrimitiveStory {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(9.))
+                                            .text_size(px(12.))
                                             .text_color(rgb(p.muted))
+                                            .max_w_full()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .whitespace_nowrap()
                                             .child(name.trim_end_matches(".svg").to_owned()),
                                     )
                             }),

@@ -223,7 +223,8 @@ pub(crate) fn init_component_theme(cx: &mut gpui::App) {
     theme.colors.list = rgb(p.canvas).into();
     theme.list_hover = rgb(INTERACTION.neutral_hover).into();
     theme.list_active = rgb(p.selected).into();
-    theme.list_active_border = rgb(FORM.focus_border).into();
+    // Menus mark the highlighted row with its fill, not a second outline.
+    theme.list_active_border = rgb(p.selected).into();
     theme.slider_bar = rgb(p.text).into();
     theme.slider_thumb = rgb(p.canvas).into();
     theme.switch = rgb(FORM.switch_off).into();
