@@ -22,7 +22,7 @@ internal fun AccountSettings(actions: SettingsActions, modifier: Modifier = Modi
             ZorkIconButton("返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
             Text("Zork 账号", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         }
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             AccountContent(actions.account, actions.accountError, actions.accountAction)
         }
     }

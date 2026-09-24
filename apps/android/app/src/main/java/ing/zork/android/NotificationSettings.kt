@@ -60,26 +60,31 @@ internal fun NotificationSettings(actions: SettingsActions, modifier: Modifier =
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     SettingsPageFrame("通知", actions.back, busy, { allowed = NotificationPlatform.allowed(context); actions.notificationRefresh() }, modifier) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val enabled = preferences?.optBoolean("enabled") == true
-            SettingsToggle("接收通知", enabled, !busy && preferences != null, "新回复、待验收和需要处理的任务") {
-                if (it) request("enabled") else change("enabled", false)
-            }
-            SettingsToggle("显示会话名称", preferences?.optBoolean("preview") == true, !busy && preferences != null, "关闭时只显示 Zork 和事件类型") { change("preview", it) }
-            SettingsToggle("提示音", preferences?.optBoolean("sound") == true, !busy && preferences != null, "通知声音也可在系统通知设置中调整") { change("sound", it) }
-            actions.notificationTarget?.let { (peer, session) ->
-                val muted = preferences?.optJSONArray("muted")?.let { rows ->
-                    (0 until rows.length()).any { rows.optJSONArray(it)?.let { row -> row.optString(0) == peer && row.optString(1) == session } == true }
-                } == true
-                SettingsToggle("当前会话免打扰", muted, !busy && preferences != null, "保留未读提示，不发送系统通知") { value ->
-                    run { actions.notificationAction(JSONObject().put("action", "mute").put("peer", peer).put("session", session).put("value", value)) }
+            SettingsListGroup { Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+                SettingsToggle("接收通知", enabled, !busy && preferences != null, "新回复、待验收和需要处理的任务") {
+                    if (it) request("enabled") else change("enabled", false)
                 }
-            }
-            SettingsToggle("离开应用后保持连接", preferences?.optBoolean("background") == true, !busy && enabled,
-                "保持设备连接以接收通知，会显示常驻通知并增加耗电。系统停止应用后需重新打开。") {
-                if (it) request("background") else change("background", false)
-            }
-            Text(if (allowed) "系统已允许通知" else "系统未允许通知", color = if (allowed) ZorkColors.Muted else ZorkColors.Warning, fontSize = 13.sp)
+                SettingsToggle("显示会话名称", preferences?.optBoolean("preview") == true, !busy && preferences != null, "关闭时只显示 Zork 和事件类型") { change("preview", it) }
+                SettingsToggle("提示音", preferences?.optBoolean("sound") == true, !busy && preferences != null, "通知声音也可在系统通知设置中调整") { change("sound", it) }
+                actions.notificationTarget?.let { (peer, session) ->
+                    val muted = preferences?.optJSONArray("muted")?.let { rows ->
+                        (0 until rows.length()).any { rows.optJSONArray(it)?.let { row -> row.optString(0) == peer && row.optString(1) == session } == true }
+                    } == true
+                    SettingsToggle("当前会话免打扰", muted, !busy && preferences != null, "保留未读提示，不发送系统通知") { value ->
+                        run { actions.notificationAction(JSONObject().put("action", "mute").put("peer", peer).put("session", session).put("value", value)) }
+                    }
+                }
+            } }
+            SettingsListGroup { Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+                SettingsToggle("离开应用后保持连接", preferences?.optBoolean("background") == true, !busy && enabled,
+                    "保持设备连接以接收通知，会显示常驻通知并增加耗电。系统停止应用后需重新打开。") {
+                    if (it) request("background") else change("background", false)
+                }
+            } }
+            Text(if (allowed) "系统已允许通知" else "系统未允许通知", color = if (allowed) ZorkColors.Muted else ZorkColors.Warning, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 8.dp))
             if (!allowed && Build.VERSION.SDK_INT >= 33) SettingsButton("允许系统通知", enabled = !busy) { request("permission") }
             SettingsButton("发送测试通知", enabled = enabled && !busy) { request("test") }
             SettingsButton("打开系统通知设置") {

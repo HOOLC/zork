@@ -658,7 +658,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         if (snapshot.optBoolean("revoked")) {
             settings = current.copy(info = null, agents = emptyList(), profiles = emptyList(), providers = emptyList(), profile = null,
                 authorization = null, authorizationBusy = false, authorizationComplete = false, authorizationError = null, operation = null,
-                command = null, updateCheck = null, resourceData = null,
+                command = null, updateCheck = null, update = null, resourceData = null,
                 loading = false, online = false, connectionState = "revoked", profilesReady = false, message = "设备访问权限已撤销")
             return
         }
@@ -674,7 +674,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         settings = current.copy(authorization = snapshot.optJSONObject("authorization"), authorizationComplete = snapshot.optBoolean("authorization_complete"),
             authorizationBusy = snapshot.optBoolean("authorization_busy"), authorizationError = snapshot.text("authorization_error").takeIf { it.isNotBlank() },
             operation = snapshot.optJSONObject("operation"), info = info, device = name?.let { current.device?.copy(name = it) } ?: current.device,
-            command = snapshot.optJSONObject("command"), updateCheck = snapshot.optJSONObject("update_check"),
+            command = snapshot.optJSONObject("command"), updateCheck = snapshot.optJSONObject("update_check"), update = snapshot.optJSONObject("update"),
             connectionState = snapshot.text("connection_state", if (snapshot.optBoolean("online")) "online" else "offline"),
             profileRefreshing = snapshot.optJSONArray("profile_refreshing")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty(),
             profileFailed = snapshot.optJSONArray("profile_failed")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty(),
@@ -684,11 +684,55 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             profile = profiles.find { it.text("profile_id") == selectedId }, loading = refreshing,
             online = snapshot.optBoolean("online", false), message = snapshot.text("error").takeIf { it.isNotBlank() })
     }
-    fun showSettings() { settings = MobileSettingsState() }
-    fun showDevice(peer: Peer, fromChat: Boolean = false) {
+    fun showSettings() { showSettingsHome() }
+    private fun showSettingsHome() {
+        settingsWatch?.cancel()
+        settings = MobileSettingsState(connections = settings?.connections)
+        loadModelConnections(refresh = false)
+    }
+    private fun showModelConnections() {
+        settingsWatch?.cancel()
+        settings = MobileSettingsState(page = "model-connections", connections = settings?.connections)
+        loadModelConnections(refresh = true)
+    }
+    private var connectionsJob: Job? = null
+    /** Every device's connections from core: the cache first, then one read per device. */
+    private fun loadModelConnections(refresh: Boolean) {
+        connectionsJob?.cancel()
+        connectionsJob = viewModelScope.launch {
+            fun show(result: JSONObject, loading: Boolean) {
+                val current = settings?.takeIf { it.device == null && it.page in listOf("home", "model-connections") } ?: return
+                settings = current.copy(connections = result.optJSONArray("devices").objects(), loading = loading)
+            }
+            if (refresh) settings = settings?.copy(loading = true, message = null)
+            try {
+                show(repo.command("model_connections", "cached_only" to true), refresh)
+                if (refresh) show(repo.command("model_connections"), false)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (settings?.device == null) settings = settings?.copy(loading = false, message = e.message)
+            }
+        }
+    }
+    /** Opens one device's connection from the global list; back returns there. */
+    fun openConnection(peerId: String, profile: JSONObject) {
+        val peer = peers.find { it.id == peerId } ?: return
+        showDevice(peer, fromConnections = true)
+        settingsProfile(profile)
+    }
+    /** The add flow picks the device first, then opens that device's editor. */
+    fun addConnection(peerId: String) {
+        val peer = peers.find { it.id == peerId } ?: return
+        showDevice(peer, fromConnections = true)
+        settings = settings?.copy(page = "models", addConnection = true)
+        if (settings?.online == true) action { settingsAction("open_models", JSONObject()) }
+    }
+    fun showDevice(peer: Peer, fromChat: Boolean = false, fromConnections: Boolean = false) {
+        connectionsJob?.cancel()
         val tree = deviceTrees[peer.id]
-        settings = MobileSettingsState(page = "device", device = peer, fromChat = fromChat,
-            online = tree?.online ?: false, agents = tree?.leaders.orEmpty(), loading = true, profilesReady = false)
+        settings = MobileSettingsState(page = "device", device = peer, fromChat = fromChat, fromConnections = fromConnections,
+            online = tree?.online ?: false, agents = tree?.leaders.orEmpty(), loading = true, profilesReady = false,
+            connections = settings?.connections)
         refreshSettings()
         watchSettings(peer.id)
     }
@@ -704,6 +748,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
     fun refreshSettings() {
         val previous = settings ?: return
+        if (previous.page == "model-connections") { loadModelConnections(refresh = true); return }
         previous.resource?.let { refreshResources(it); return }
         val peer = previous.device ?: return
         settings = previous.copy(loading = true, message = null)
@@ -722,15 +767,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         resourceTrail.clear(); resourcesWatch?.cancel()
         when (page) {
             "models" -> if (settings?.online == true) action { settingsAction("open_models", JSONObject()) }
-            "connections", "services" -> {
-                val selection = ResourceSelection(if (page == "services") settings?.device?.id else null,
-                    "service", title = "服务")
-                showResource(selection)
-            }
+            "model-connections" -> showModelConnections()
+            "services" -> showResource(ResourceSelection(settings?.device?.id, "service", title = "服务"))
         }
     }
     fun settingsProfile(profile: JSONObject) {
-        settings = settings?.copy(page = "profile", profile = profile, selectedProfileId = profile.text("profile_id"))
+        settings = settings?.copy(page = "profile", profile = profile, selectedProfileId = profile.text("profile_id"), addConnection = false)
         if (settings?.online == true) action { settingsAction("open_profile", JSONObject().put("profile", profile.text("profile_id"))) }
     }
     private var resourcesWatch: Job? = null
@@ -764,18 +806,24 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
         resourcesWatch?.cancel()
         settings = settings?.copy(resource = null, resourceData = null)
-        settings = when (settings?.page) {
-            "home" -> null
-            "appearance", "display", "connections", "notifications", "adb" -> MobileSettingsState()
-            "device" -> if (settings?.fromChat == true) null else MobileSettingsState()
-            "profile" -> settings?.copy(page = "models")
-            else -> settings?.copy(page = "device")
+        val current = settings
+        when {
+            current?.page == "home" -> settings = null
+            current?.fromConnections == true && current.page in listOf("models", "profile") -> showModelConnections()
+            current?.page in listOf("appearance", "notifications", "adb", "account", "model-connections") -> showSettingsHome()
+            current?.page == "device" -> if (current.fromChat) settings = null else showSettingsHome()
+            current?.page == "profile" -> settings = current.copy(page = "models")
+            else -> settings = current?.copy(page = "device")
         }
     }
-    fun checkUpdate() = action {
-        val peer = settings?.device ?: return@action
-        val result = repo.command("settings_action", "peer" to peer.id, "operation" to JSONObject().put("action", "check_update"))
-        if (settings?.device?.id == peer.id) settings = settings?.copy(message = result.text("latest_version").takeIf { it.isNotBlank() }?.let { "最新版本：$it" } ?: "尚未获得版本信息")
+    /** Core tracks the check: its running state and outcome arrive as the snapshot's `update`. */
+    fun checkUpdate() {
+        if (settings?.device == null) return
+        viewModelScope.launch {
+            try { settingsAction("check_update", JSONObject().put("_request_id", NativeBridge.newId())) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* Reported through update.error. */ }
+        }
     }
     fun assistSettings(leader: JSONObject) = action {
         val targetDevice = settings?.device ?: return@action

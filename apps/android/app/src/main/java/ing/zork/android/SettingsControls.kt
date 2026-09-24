@@ -22,9 +22,9 @@ import androidx.compose.ui.unit.sp
 
 // Zork styling on native Compose controls and touch input.
 internal object SettingsStyle {
-    val Card = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.CompactRadius)
-    val Field = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.FieldRadius)
-    val Pill = androidx.compose.foundation.shape.RoundedCornerShape(UiTokens.PillRadius)
+    val Card = ZorkShapes.Container
+    val Field = ZorkShapes.Container
+    val Pill = ZorkShapes.Control
 }
 @Composable internal fun SettingsButton(text: String, primary: Boolean = false, enabled: Boolean = true, click: () -> Unit) {
     ZorkButton(text, if (primary) Modifier.fillMaxWidth() else Modifier, primary, enabled, onClick = click)
@@ -57,11 +57,11 @@ internal object SettingsStyle {
                 ZorkIconButton("关闭", enabled = visible && (!busy || dismissWhileBusy), onClick = close) { Icon(painterResource(R.drawable.ic_x), null, Modifier.size(18.dp)) }
             }
             if (footer == null) {
-                if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.Prompt, SettingsStyle.Field).padding(12.dp))
+                if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 18.dp, vertical = 12.dp))
                 content()
             } else {
                 Column(Modifier.weight(1f, fill = false).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.Prompt, SettingsStyle.Field).padding(12.dp))
+                    if (error != null) Text(error, color = ZorkColors.Danger, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.fillMaxWidth().background(ZorkColors.DangerSoft, ZorkShapes.Container).padding(horizontal = 18.dp, vertical = 12.dp))
                     content()
                 }
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp), content = footer)
@@ -76,14 +76,14 @@ internal object SettingsStyle {
 
 @Composable
 internal fun SettingsListGroup(content: @Composable ColumnScope.() -> Unit) {
-    ZorkCard(Modifier.fillMaxWidth(), color = ZorkColors.Paper, outlined = false) {
+    ZorkCard(Modifier.fillMaxWidth(), color = ZorkColors.Paper, outlined = false, shape = ZorkShapes.Container) {
         Column(content = content)
     }
 }
 
 @Composable
-internal fun SettingsListDivider() {
-    HorizontalDivider(Modifier.padding(start = 60.dp, end = 16.dp), thickness = 0.5.dp, color = ZorkColors.FieldBorder)
+internal fun SettingsListDivider(inset: androidx.compose.ui.unit.Dp = 60.dp) {
+    HorizontalDivider(Modifier.padding(start = inset, end = 16.dp), thickness = UiTokens.Border, color = ZorkColors.Border)
 }
 
 @Composable
@@ -119,7 +119,7 @@ internal fun SettingsToggle(label: String, checked: Boolean, enabled: Boolean = 
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, fontSize = 14.sp)
+            Text(label, fontSize = 15.sp)
             detail?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Muted) }
         }
         ZorkSwitch(checked, change, enabled = enabled, modifier = Modifier.semantics { contentDescription = label })

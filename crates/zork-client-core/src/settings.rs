@@ -12,6 +12,18 @@ fn present_profile(mut profile: Value) -> Value {
         .or_else(|| profile["account"]["ok"].as_bool())
         .or_else(|| profile["verified"].as_bool())
         .unwrap_or(false));
+    // A rejected account check is distinct from one not yet made.
+    let rejected = profile["account"]["ok"] == false
+        || profile["account"]["error"]
+            .as_str()
+            .is_some_and(|error| !error.is_empty());
+    profile["verification"] = json!(if profile["verified"] == true {
+        "verified"
+    } else if rejected {
+        "failed"
+    } else {
+        "pending"
+    });
     // The mobile adapter consumes the same normalized quota as desktop. It
     // must not interpret provider-specific account/usage payloads itself.
     profile["quota"] = json!(crate::api::ProfileQuota::from_value(&profile["rateLimits"]));
@@ -60,6 +72,26 @@ pub(crate) fn cached(store: &ClientStore, peer: &str) -> Result<Value> {
         }
     }
     Ok(snapshot)
+}
+
+/// Version update state for the settings page, so clients do not compare
+/// versions or keep their own busy flags.
+fn update(info: &Value, check: Option<&Value>, command: Option<&Value>) -> Value {
+    let text = |value: &Value| value.as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+    let station = &info["station"];
+    let current = text(&station["release_version"]).or_else(|| text(&station["version"]));
+    let latest = check.and_then(|check| text(&check["latest_version"]));
+    let checking = command.filter(|c| c["kind"] == "check_update");
+    json!({
+        "supported": info["update"]["supported"] == true,
+        "current": current,
+        "latest": latest,
+        "available": matches!((&latest, &current), (Some(l), Some(c)) if l != c),
+        "up_to_date": latest.is_some() && latest == current,
+        "checking": checking.is_some_and(|c| c["running"] == true),
+        "error": checking.filter(|c| c["running"] != true).and_then(|c| text(&c["error"])),
+        "message": text(&info["update"]["status"]["message"]),
+    })
 }
 
 pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
@@ -119,6 +151,7 @@ pub(crate) fn snapshot(store: &ClientStore, peer: &str) -> Result<Value> {
     snapshot["authorization_complete"] = json!(authorization_complete);
     snapshot["operation"] = json!(operation);
     snapshot["command"] = json!(command);
+    snapshot["update"] = update(&snapshot["info"], update_check.as_ref(), command.as_ref());
     snapshot["update_check"] = json!(update_check);
     snapshot["profile_refreshing"] = json!(profiles.as_ref().map(|p| &p.refreshing));
     snapshot["profile_failed"] = json!(profiles.as_ref().map(|p| &p.failed));
@@ -153,6 +186,13 @@ pub(crate) async fn refresh(
         store.put(peer,"public-settings",&snapshot)?;
         Ok(())
     }.await;
+    if result.is_ok() {
+        store.put(
+            peer,
+            crate::model_connections::LOADED_AT,
+            &crate::store::delivery_now_ms(),
+        )?;
+    }
     let mut snapshot = snapshot(&store, peer)?;
     match result {
         Ok(()) => {
@@ -174,11 +214,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn update_state_compares_versions_and_tracks_the_check_command() {
+        let info = json!({"station":{"release_version":"1.0","version":"0.9"},"update":{"supported":true}});
+        let none = update(&info, None, None);
+        assert_eq!(none["current"], "1.0");
+        assert_eq!(none["available"], false);
+        assert_eq!(none["up_to_date"], false);
+        let newer = update(&info, Some(&json!({"latest_version":"1.1"})), None);
+        assert_eq!(newer["available"], true);
+        let same = update(&info, Some(&json!({"latest_version":"1.0"})), None);
+        assert_eq!(same["up_to_date"], true);
+        assert_eq!(same["available"], false);
+        let running = json!({"id":"r","kind":"check_update","running":true});
+        assert_eq!(update(&info, None, Some(&running))["checking"], true);
+        let failed = json!({"id":"r","kind":"check_update","running":false,"error":"离线"});
+        let failed = update(&info, None, Some(&failed));
+        assert_eq!(failed["checking"], false);
+        assert_eq!(failed["error"], "离线");
+        let other = json!({"id":"r","running":true,"error":"x"});
+        assert_eq!(update(&info, None, Some(&other))["checking"], false);
+    }
+
+    #[test]
     fn platform_snapshot_uses_shared_quota_and_keeps_unreported_distinct_from_failure() {
         let profile = present_profile(json!({"profile_id":"p","verified":true,
             "rateLimits":{"ok":true,"rateLimits":{"primary":{"usedPercent":28,"windowDurationMins":300},
             "credits":{"balance":0,"unit":"USD"}}}}));
         assert_eq!(profile["verified"], true);
+        assert_eq!(profile["verification"], "verified");
+        let rejected = present_profile(json!({"account":{"ok":false,"error":"401"}}));
+        assert_eq!(rejected["verified"], false);
+        assert_eq!(rejected["verification"], "failed");
+        assert_eq!(present_profile(json!({}))["verification"], "pending");
         assert_eq!(profile["quota"]["windows"][0]["remaining"], 72.0);
         assert_eq!(profile["quota"]["windows"][0]["minutes"], 300);
         assert_eq!(profile["quota"]["balance"], json!([0.0, "USD"]));

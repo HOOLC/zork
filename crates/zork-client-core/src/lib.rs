@@ -25,6 +25,7 @@ pub mod local_scripts;
 pub mod locale;
 pub mod mesh_enrollment;
 pub mod model_edit;
+mod model_connections;
 pub mod new_chat;
 pub mod notifications;
 pub mod pages;

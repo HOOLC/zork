@@ -59,12 +59,12 @@ class ClientSettingsTest {
         }
         run {
             ActivityScenario.launch<Nav7PreviewActivity>(Intent(context, Nav7PreviewActivity::class.java).putExtra("screen", "home").putExtra("width", 0)).use { scenario ->
-                instrumentation.waitForIdleSync(); await("工具连接")
+                instrumentation.waitForIdleSync(); await("模型连接")
                 scenario.onActivity { activity ->
                     barInsets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)!!
                         .getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
                 }
-                assertNull(find("这台手机")); assertNull(find("查看连接身份")); assertNotNull(find("通知")); assertNotNull(find("工具连接"))
+                assertNull(find("这台手机")); assertNull(find("查看连接身份")); assertNotNull(find("通知")); assertNotNull(find("Mesh")); assertNull(find("工具连接"))
                 capture("home")
                 assertNotNull(find("外观")); assertNull(find("文字大小"))
                 scenario.recreate(); instrumentation.waitForIdleSync(); await("外观")
@@ -73,7 +73,7 @@ class ClientSettingsTest {
                 click("mini1")
                 assertNotNull(find("服务")); assertNull(find("连接其他设备"))
                 capture("device")
-                click("返回对话"); await("工具连接")
+                click("返回对话"); await("模型连接")
             }
 
         }
