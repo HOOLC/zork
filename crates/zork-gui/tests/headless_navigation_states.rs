@@ -596,6 +596,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 .bounds
         };
         let notifications = bounds("client_notifications");
+        let appearance = bounds("client_appearance");
         let account = bounds("client_account");
         let data = bounds("client_data");
         let client_heading = bounds("client-settings-heading");
@@ -615,6 +616,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         for id in [
             "desktop-return",
             "client_notifications",
+            "client_appearance",
             "client_account",
             "client_data",
             "settings-device-fixture",
@@ -626,7 +628,11 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 "settings tab geometry differs: {id}: {row:?}"
             );
         }
-        for (previous, next) in [(notifications, account), (account, data)] {
+        for (previous, next) in [
+            (notifications, appearance),
+            (appearance, account),
+            (account, data),
+        ] {
             anyhow::ensure!(
                 (next.y - previous.y - previous.height - 2.).abs() < 0.1,
                 "settings tab gap differs: {previous:?} -> {next:?}"

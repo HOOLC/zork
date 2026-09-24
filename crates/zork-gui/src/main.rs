@@ -216,6 +216,7 @@ fn main() {
             std::process::exit(1);
         });
         DesktopRoot::install_startup(startup, cx);
+        DesktopRoot::restore_theme(cx);
         #[cfg(target_os = "macos")]
         cx.spawn(async move |cx| {
             if terminate.await.is_ok() {
@@ -230,7 +231,7 @@ fn main() {
         zork_client_core::desktop::trace_startup("gui.components_ready");
         #[cfg(target_os = "macos")]
         app_menu::install(cx, AppKind::Client);
-        // Follow the system appearance unless ZORK_THEME pins light or dark.
+        // Follow the system appearance unless ZORK_THEME or the saved theme pins it.
         cx.set_window_appearance(zork_ui::design::pinned_theme().map(|theme| theme.appearance()));
         let window_options = gpui::WindowOptions {
             window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::centered(

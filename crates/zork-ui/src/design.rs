@@ -5,7 +5,7 @@
 //! geometry live here so regressions do not silently turn the app back into a
 //! generic dashboard.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// The brand persimmon of the mark. Interface accents read `INTERACTION.accent`,
 /// which each theme tunes for its surfaces.
@@ -45,12 +45,59 @@ impl Theme {
         }
     }
 }
-/// `ZORK_THEME=light|dark` pins the theme; otherwise it follows the system.
+/// The saved appearance preference: 0 follows the system, 1 light, 2 dark.
+static PREFERRED: AtomicU8 = AtomicU8::new(0);
+/// Records the client's saved theme; `None` follows the system.
+pub fn set_preferred_theme(theme: Option<Theme>) {
+    let value = match theme {
+        None => 0,
+        Some(Theme::Light) => 1,
+        Some(Theme::Dark) => 2,
+    };
+    PREFERRED.store(value, Ordering::Relaxed);
+}
+/// `ZORK_THEME=light|dark` pins the theme first, then the saved preference;
+/// otherwise it follows the system.
 pub fn pinned_theme() -> Option<Theme> {
-    match std::env::var("ZORK_THEME").ok()?.to_ascii_lowercase().as_str() {
-        "light" => Some(Theme::Light),
-        "dark" => Some(Theme::Dark),
+    let env = std::env::var("ZORK_THEME").ok().map(|v| v.to_ascii_lowercase());
+    match env.as_deref() {
+        Some("light") => return Some(Theme::Light),
+        Some("dark") => return Some(Theme::Dark),
+        _ => {}
+    }
+    match PREFERRED.load(Ordering::Relaxed) {
+        1 => Some(Theme::Light),
+        2 => Some(Theme::Dark),
         _ => None,
+    }
+}
+/// Applies a changed preference at runtime: pins the window chrome and palette,
+/// or hands both back to the system appearance.
+pub fn prefer_theme(theme: Option<Theme>, cx: &mut gpui::App) {
+    set_preferred_theme(theme);
+    let pinned = pinned_theme();
+    cx.set_window_appearance(pinned.map(Theme::appearance));
+    apply_theme(
+        pinned.unwrap_or_else(|| Theme::for_appearance(cx.window_appearance())),
+        cx,
+    );
+    if pinned.is_none() {
+        // Clearing the override updates the app's effective appearance
+        // asynchronously, and no appearance event fires when the system look
+        // already matched the pin. Re-read it once AppKit has settled.
+        cx.spawn(async move |cx| {
+            for delay in [16, 120, 500] {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(delay))
+                    .await;
+                let _ = cx.update(|cx| {
+                    if pinned_theme().is_none() {
+                        apply_theme(Theme::for_appearance(cx.window_appearance()), cx);
+                    }
+                });
+            }
+        })
+        .detach();
     }
 }
 /// Switches palettes and the component library to `theme`, then repaints.

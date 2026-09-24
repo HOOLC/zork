@@ -325,9 +325,13 @@ impl Render for ModelSettings {
             connection_count += state.profiles.len();
             let name = zork_ui::device_name::summary(&device.name, &device.status, None);
             if state.loading {
-                notices.push(format!("{name} · 正在加载模型…"));
+                notices.push((device.id.clone(), format!("{name} · 正在加载模型…"), false));
             } else if let Some(error) = &state.error {
-                notices.push(format!("{name} · {error}"));
+                notices.push((
+                    device.id.clone(),
+                    format!("{name} · 读取失败：{error}"),
+                    true,
+                ));
             }
             append_groups(
                 &mut groups,
@@ -348,7 +352,7 @@ impl Render for ModelSettings {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .child(ui::page_title("模型设置"))
+                    .child(ui::page_title("模型连接"))
                     .child(
                         ui::page_action("models-add", "添加连接")
                             .on_click(cx.listener(|v, _, _, cx| {
@@ -365,7 +369,32 @@ impl Render for ModelSettings {
                             .automation(AutomationRole::Button, "添加连接"),
                     ),
             )
-            .children(notices.into_iter().map(ui::feedback))
+            // A device that cannot be read keeps a retry beside its reason, so a
+            // failed load never reads as a device without connections.
+            .children(notices.into_iter().map(|(id, text, failed)| {
+                if !failed {
+                    return ui::status_notice(text, ui::NoticeKind::Loading);
+                }
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .child(ui::status_notice(text, ui::NoticeKind::Warning)),
+                    )
+                    .child(
+                        ui::button(format!("models-retry-{id}"), "重试", false, true)
+                            .on_click(cx.listener(move |v, _, _, cx| {
+                                if let Some(device) = v.devices.iter().find(|d| d.id == id) {
+                                    device.editor.update(cx, |view, cx| view.refresh(cx));
+                                }
+                            }))
+                            .automation(AutomationRole::Button, "重试读取模型连接"),
+                    )
+            }))
             .when(connection_count == 0 && !has_notices, |v| {
                 v.child(
                     ui::section().child(ui::label("暂无模型连接")).child(
