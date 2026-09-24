@@ -1121,6 +1121,19 @@ impl Render for DesktopRoot {
                 cx.listener(|v, _, _, cx| {
                     v.navigation.update(cx, |n, cx| n.finish_resize(cx));
                 }),
+            )
+            // The titlebar strip under everything: empty space drags the window
+            // and double-click runs the system titlebar action. Controls drawn
+            // over it take their presses; see `Window::window_control_area_at_mouse`.
+            .child(
+                div()
+                    .id("window-titlebar")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(zork_ui::controls::TITLEBAR_HEIGHT))
+                    .window_control_area(gpui::WindowControlArea::Drag),
             );
         let content = if self.startup_state.onboarding.is_some() {
             self.render_onboarding(cx)
@@ -1171,9 +1184,7 @@ impl Render for DesktopRoot {
                                 div()
                                     .h(px(48.))
                                     .pl(px(64.))
-                                    .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                                        window.start_window_move()
-                                    })
+                                    .window_control_area(gpui::WindowControlArea::Drag)
                                     .child(window.use_keyed_state(
                                         "management-header-brand",
                                         cx,
