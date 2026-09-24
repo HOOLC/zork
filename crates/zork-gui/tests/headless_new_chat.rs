@@ -315,11 +315,8 @@ fn long_model_selection() -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .filter(|e| e.id == "new-chat-model-39"
-                || e.id == "new-chat-model-list"
-                || e.id == "new-chat-picker-content"
-                || e.id == "new-chat-options")
-            .map(|e| (&e.id, e.visible, e.bounds, e.visible_bounds))
+            .filter(|e| e.id.starts_with("new-chat"))
+            .map(|e| (&e.id, e.visible, e.bounds.y))
             .collect::<Vec<_>>()
     );
     action(
