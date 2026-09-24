@@ -94,7 +94,8 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     private var newChatWatch: Job? = null
     private var newChatGeneration = 0L
-    var messagePreviewHeight by mutableIntStateOf(0)
+    /** "system", "light" or "dark", persisted by the client core. */
+    var theme by mutableStateOf("system")
         private set
     var running by mutableStateOf(false)
         private set
@@ -186,7 +187,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     init {
         viewModelScope.launch {
             try {
-                messagePreviewHeight = repo.command("preferences").optInt("message_preview_height")
+                theme = repo.command("preferences").text("theme", "system")
                 notificationSettings = repo.command("notification_settings")
             }
             catch (e: CancellationException) { throw e }
@@ -194,11 +195,11 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
-    suspend fun saveMessagePreviewHeight(height: Int) {
-        // Keep the committed setting visible even if the user leaves the
+    suspend fun saveTheme(value: String) {
+        // Keep the committed theme visible even if the user leaves the
         // appearance page while its local write is completing.
         viewModelScope.async {
-            messagePreviewHeight = repo.command("preferences", "message_preview_height" to height).getInt("message_preview_height")
+            theme = repo.command("preferences", "theme" to value).text("theme", "system")
         }.await()
     }
 

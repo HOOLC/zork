@@ -47,12 +47,10 @@ class MainActivity : ComponentActivity() {
         model.localScripts.attach(this)
         intent.getStringExtra("notification_tag")?.let { model.openNotification(it); intent.removeExtra("notification_tag") }
         configureZorkSystemBars()
-        setContent { ZorkTheme {
+        setContent { ZorkTheme(model.theme) {
             val lightPage = model.conversation != null || model.settings != null || model.newChat != null
-            CompositionLocalProvider(LocalMessagePreviewHeight provides model.messagePreviewHeight) {
-                ZorkPageBackground(lightPage) { ClientScreen(model) }
-                LocalScriptPanel(model.localScripts)
-            }
+            ZorkPageBackground(lightPage) { ClientScreen(model) }
+            LocalScriptPanel(model.localScripts)
         } }
     }
     override fun onDestroy() { model.localScripts.detach(this); super.onDestroy() }
@@ -84,7 +82,6 @@ internal fun ClientScreen(model: ClientViewModel) {
     var addDevice by rememberSaveable { mutableStateOf(false) }
 
     var editingComment by remember { mutableStateOf<DraftCommentUi?>(null) }
-    var fullMessage by remember(model.activePeer?.id, model.conversation?.id) { mutableStateOf<ChatMessage?>(null) }
     var attachmentPeer by rememberSaveable { mutableStateOf<String?>(null) }
     var attachmentSession by rememberSaveable { mutableStateOf<String?>(null) }
     var exporting by remember { mutableStateOf<TextAttachmentUi?>(null) }
@@ -116,7 +113,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     BackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) {
         if (model.sessionHistory != null) {
             if (model.sessionHistory?.selectedId != null) model.historyDetail(null) else model.closeHistory()
-        } else if (fullMessage != null) fullMessage = null else if (model.settings != null) model.backSettings() else model.back()
+        } else if (model.settings != null) model.backSettings() else model.back()
     }
     val retained = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val currentSettings = model.settings
@@ -126,27 +123,19 @@ internal fun ClientScreen(model: ClientViewModel) {
             model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer)
     val history = model.sessionHistory
     val draftChat = model.newChat
-    val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: fullMessage?.let { "message:${it.id}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
-    PageSlide(ClientPage(currentSettings, workbenchState, fullMessage, history, draftChat), routeKey, if (history != null || fullMessage != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
+    val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
+    PageSlide(ClientPage(currentSettings, workbenchState, history, draftChat), routeKey, if (history != null) 2 else if (draftChat != null && currentSettings == null) 1 else settingsRouteDepth(currentSettings),
         if (currentSettings != null || model.conversation != null || draftChat != null) ZorkColors.Canvas else ZorkColors.Paper,
         Modifier.safeDrawingPadding().imePadding()) { shown, active ->
     if (shown.history != null) {
         SessionHistoryPage(shown.history, if (!active) HistoryActions() else HistoryActions(
             model::closeHistory, model::olderHistory, model::newerHistory, model::latestHistory, model::retryHistory, model::historyDetail, model::historyAnchor, model::historyNavigate))
-    } else if (shown.message != null) {
-        FullMessagePage(shown.message, { fullMessage = null }) { quote ->
-            model.conversation?.let { conversation ->
-                val row = shown.message
-                editingComment = DraftCommentUi(NativeBridge.newId(), conversation.id, row.id,
-                    row.author, row.authorAgentId.ifBlank { null }, quote, "")
-            }
-        }
     } else if (shown.settings != null) {
         retained.SaveableStateProvider(settingsRouteKey(shown.settings)) {
             MobileSettings(shown.settings, shown.workbench.peers, if (!active) SettingsActions() else SettingsActions(model::backSettings, { model.showDevice(it) },
                 model::settingsPage, model::settingsProfile, model::assistSettings, model::checkUpdate,
                 { addDevice = true }, refresh = model::refreshSettings, perform = model::settingsAction,
-                messagePreviewHeight = model.messagePreviewHeight, saveMessagePreviewHeight = model::saveMessagePreviewHeight,
+                theme = model.theme, saveTheme = model::saveTheme,
                 resource = model::inspectResource,
                 notifications = model.notificationSettings, notificationError = model.notificationError,
                 notificationTarget = model.activePeer?.id?.let { peer -> model.conversation?.id?.let { peer to it } },
@@ -171,7 +160,7 @@ internal fun ClientScreen(model: ClientViewModel) {
             } }, editComment = { editingComment = it }, removeComment = model::removeComment,
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
-            removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown, message = { fullMessage = it },
+            removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown,
             newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
     ) }
     }
@@ -185,7 +174,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     }
 }
 
-private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState, val message: ChatMessage? = null,
+private data class ClientPage(val settings: MobileSettingsState?, val workbench: WorkbenchState,
     val history: SessionHistoryState? = null, val newChat: NewChatUi? = null)
 
 @Composable

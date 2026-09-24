@@ -47,6 +47,7 @@ internal fun ZorkButton(
     primary: Boolean = false,
     enabled: Boolean = true,
     quiet: Boolean = false,
+    danger: Boolean = false,
     onClick: () -> Unit,
     leading: (@Composable () -> Unit)? = null,
 ) {
@@ -55,9 +56,10 @@ internal fun ZorkButton(
         Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
     }
     val colors = ButtonDefaults.buttonColors(
-        containerColor = if (primary) UiTokens.Accent else if (quiet) Color.Transparent else ZorkColors.Canvas,
-        contentColor = if (primary) ZorkColors.Canvas else ZorkColors.Ink,
-        disabledContainerColor = if (primary) ZorkColors.Pressed else Color.Transparent,
+        // Primary actions are ink; persimmon is reserved for sending and work in progress.
+        containerColor = if (danger) ZorkColors.Danger else if (primary) ZorkColors.Ink else if (quiet) Color.Transparent else ZorkColors.Canvas,
+        contentColor = if (primary || danger) ZorkColors.Canvas else ZorkColors.Ink,
+        disabledContainerColor = if (primary || danger) ZorkColors.Pressed else Color.Transparent,
         disabledContentColor = ZorkColors.Disabled,
     )
     val shape = RoundedCornerShape(UiTokens.PillRadius)
@@ -65,7 +67,7 @@ internal fun ZorkButton(
         colors = colors, content = content)
     else Button(onClick, modifier.heightIn(min = 48.dp), enabled = enabled, shape = shape,
         colors = colors,
-        border = if (primary) null else androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline),
+        border = if (primary || danger) null else androidx.compose.foundation.BorderStroke(UiTokens.Border, UiTokens.Outline),
         content = content)
 }
 

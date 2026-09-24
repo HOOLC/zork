@@ -49,8 +49,8 @@ internal class SettingsActions(
     val checkUpdate: () -> Unit = {}, val addDevice: () -> Unit = {},
     val refresh: () -> Unit = {},
     val perform: suspend (String, JSONObject) -> JSONObject = { _,_ -> error("设备未连接") },
-    val messagePreviewHeight: Int = 0,
-    val saveMessagePreviewHeight: suspend (Int) -> Unit = {},
+    val theme: String = "system",
+    val saveTheme: suspend (String) -> Unit = {},
     val resource: (ResourceSelection) -> Unit = {},
     val notifications: JSONObject? = null,
     val notificationError: String? = null,
@@ -100,7 +100,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     val upgrading = state.operation?.optBoolean("running") == true
     val info = state.info
     val supported = info?.optJSONObject("update")?.optBoolean("supported") == true
-    val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "models" -> "大模型"; else -> "连接详情" }
+    val title = when(state.page) { "home" -> "设置"; "device" -> "设备"; "models" -> "模型连接"; else -> "连接详情" }
     Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             ZorkIconButton(if (state.fromChat && state.page == "device") "返回对话" else "返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
@@ -110,28 +110,31 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             if (state.page in listOf("models","profile")) state.profileMessage?.let { Text(it,color=ZorkColors.Danger,fontSize=13.sp) }
             if (state.page == "home") {
-                SettingsListGroup {
-                }
                 SectionTitle("客户端")
                 SettingsListGroup {
                     SettingsListRow("Zork 账号", R.drawable.ic_settings, subtext = "Google 登录与公网连接", action = { actions.page("account") })
                     SettingsListDivider()
-                    SettingsListRow("外观", R.drawable.ic_settings, subtext = "消息折叠高度", action = { actions.page("appearance") })
+                    SettingsListRow("外观", R.drawable.ic_settings_three,
+                        value = when (actions.theme) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" },
+                        action = { actions.page("appearance") })
                     SettingsListDivider()
-                    SettingsListRow("通知", R.drawable.ic_settings, subtext = "消息提醒、免打扰与后台连接", action = { actions.page("notifications") })
-                    SettingsListDivider()
-                    SettingsListRow("安卓调试", R.drawable.ic_settings, subtext = "通过 Mesh 安装应用和调试", action = { actions.page("adb") })
+                    SettingsListRow("通知", R.drawable.ic_attention, subtext = "消息提醒、免打扰与后台连接", action = { actions.page("notifications") })
                 }
                 SectionTitle("设备", peers.size.toString())
-                if (peers.isNotEmpty()) SettingsListGroup {
-                    peers.forEachIndexed { index, peer ->
-                        if (index > 0) SettingsListDivider()
-                        SettingsListRow(compactDeviceName(peer.name, peer.status), R.drawable.ic_node, action = { actions.device(peer) })
+                SettingsListGroup {
+                    peers.forEach { peer ->
+                        SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
+                            trailing = { DeviceStatusBadge(peer.status) }, action = { actions.device(peer) })
+                        SettingsListDivider()
                     }
+                    SettingsListRow("连接设备", R.drawable.ic_plus, action = actions.addDevice)
                 }
-                SettingsButton("连接设备", click = actions.addDevice)
-                SectionTitle("数据")
-                ClearDataSettings(actions)
+                SectionTitle("高级")
+                SettingsListGroup {
+                    SettingsListRow("安卓调试", R.drawable.ic_node, subtext = "通过 Mesh 安装应用和调试", action = { actions.page("adb") })
+                    SettingsListDivider()
+                    ClearDataSettings(actions)
+                }
             } else if (state.page == "device") {
                 Column(Modifier.fillMaxWidth().background(ZorkColors.Paper, SettingsStyle.Card).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -148,7 +151,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 }
                 SectionTitle("管理")
                 SettingsListGroup {
-                    SettingsListRow("大模型", R.drawable.ic_mesh, value = if(state.profilesReady) state.profiles.size.toString() else "—", subtext = "连接账号，管理可用模型", action = { actions.page("models") })
+                    SettingsListRow("模型连接", R.drawable.ic_mesh, value = if(state.profilesReady) state.profiles.size.toString() else "—", subtext = "连接账号，管理可用模型", action = { actions.page("models") })
                     SettingsListDivider()
                     SettingsListRow("服务", R.drawable.ic_node, subtext = "运行状态、共享信息与日志", action = { actions.page("services") })
                 }

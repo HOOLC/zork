@@ -45,7 +45,6 @@ internal class SessionHistoryState(val peer: String, val session: String, val na
     var blocks by mutableStateOf<List<HistoryBlock>?>(null)
         private set
     val expanded = mutableStateMapOf<String, Boolean>()
-    val timeline = HistoryTimelineState()
     var highlightedId by mutableStateOf<String?>(null)
     var status by mutableStateOf(HistoryStatus())
     var overview by mutableStateOf<HistoryOverview?>(null)

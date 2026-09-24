@@ -42,26 +42,6 @@ internal fun HistorySheet(title: String, dismiss: () -> Unit, open: Boolean, clo
 }
 
 @Composable
-internal fun HistoryTimelineSelectionSheet(entries: List<HistoryRow>, select: (String) -> Unit, dismiss: () -> Unit, open: Boolean, closed: () -> Unit) {
-    HistorySheet("时间轴记录", dismiss, open, closed) {
-        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
-            items(entries, key = { it.id }) { entry ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                    .historyPress(label = "${entry.title} · ${historyClock(entry.start ?: entry.end)} · ${entry.status}") { select(entry.id); dismiss() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Glyph(if (entry.lane == 1) R.drawable.history_operations else historyIcon(entry.kind), 16.dp, if (entry.failed) ZorkColors.Danger else ZorkColors.Muted)
-                    Column(Modifier.weight(1f)) {
-                        Text(entry.title, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${historyClock(entry.start ?: entry.end)} · ${entry.status}", fontSize = 12.sp, color = ZorkColors.Muted)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 internal fun HistoryDetailSheet(state: SessionHistoryState, actions: HistoryActions, open: Boolean, closed: () -> Unit) {
     val detail = state.detail
     val clipboard = LocalClipboard.current

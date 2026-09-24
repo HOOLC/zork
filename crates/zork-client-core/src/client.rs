@@ -140,7 +140,8 @@ pub enum Command {
         cached_only: bool,
     },
     Preferences {
-        message_preview_height: Option<u32>,
+        #[serde(default)]
+        theme: Option<preferences::Theme>,
     },
     Settings {
         peer: String,
@@ -525,11 +526,9 @@ impl LocalClient {
                 self.services.close(&view_id);
                 Ok(json!({"ok":true}))
             }
-            Command::Preferences {
-                message_preview_height,
-            } => {
-                let value = match message_preview_height {
-                    Some(height) => preferences::save_message_preview_height(&self.store, height)?,
+            Command::Preferences { theme } => {
+                let value = match theme {
+                    Some(theme) => preferences::save_theme(&self.store, theme)?,
                     None => preferences::read(&self.store),
                 };
                 Ok(serde_json::to_value(value)?)

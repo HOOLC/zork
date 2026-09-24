@@ -584,8 +584,8 @@ impl Directory {
     pub fn selected(&self) -> Option<String> {
         self.store.get("device", "last-node").ok().flatten()
     }
-    pub fn save_message_preview_height(&self, height: u32) -> Result<()> {
-        let preferences = crate::preferences::save_message_preview_height(&self.store, height)?;
+    pub fn save_theme(&self, theme: crate::preferences::Theme) -> Result<()> {
+        let preferences = crate::preferences::save_theme(&self.store, theme)?;
         self.commit(|s| s.preferences = preferences);
         Ok(())
     }

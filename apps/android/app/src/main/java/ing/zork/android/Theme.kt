@@ -227,8 +227,9 @@ private fun scheme(dark: Boolean): ColorScheme {
 }
 
 @Composable
-internal fun ZorkTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+internal fun ZorkTheme(preference: String = "system", content: @Composable () -> Unit) {
+    val system = isSystemInDarkTheme()
+    val dark = when (preference) { "light" -> false; "dark" -> true; else -> system }
     // Set before children read colors, so the first frame of a switch is consistent.
     if (ZorkColors.dark != dark) ZorkColors.dark = dark
     MaterialTheme(

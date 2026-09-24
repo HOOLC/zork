@@ -98,7 +98,6 @@ internal class WorkbenchActions(
     val deviceSettings: () -> Unit = settings,
     val attach: () -> Unit = {}, val removeAttachment: (String) -> Unit = {}, val file: (TextAttachmentUi) -> Unit = {},
     val entered: () -> Unit = {},
-    val message: (ChatMessage) -> Unit = {},
     val newer: () -> Unit = {},
     val windowAnchor: (String?) -> Unit = {},
     val interaction: (String, String, Map<String, String>) -> Unit = { _, _, _ -> },
@@ -366,7 +365,6 @@ private fun ConversationRefreshRate() {
 
 @Composable
 internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, listState: LazyListState = rememberLazyListState()) {
-    val messagePreviewHeight = LocalMessagePreviewHeight.current
     ConversationRefreshRate()
     LaunchedEffect(state.conversation?.id, state.conversationEntry) {
         withFrameNanos { }
@@ -439,7 +437,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
     val messageActions = remember {
         WorkbenchActions(resend = { latestActions.value.resend(it) }, deleteFailed = { latestActions.value.deleteFailed(it) },
             chatFile = { message, file -> latestActions.value.chatFile(message, file) },
-            file = { latestActions.value.file(it) }, message = { latestActions.value.message(it) }, older = { latestActions.value.older() },
+            file = { latestActions.value.file(it) }, older = { latestActions.value.older() },
             comment = { row, quote -> latestActions.value.comment(row, quote) }, newer = { latestActions.value.newer() },
             interaction = { id, choice, values -> latestActions.value.interaction(id, choice, values) })
     }
@@ -465,7 +463,6 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             trackTail = beganAtTail || following,
             follow = following && !touching && scrollJob?.isActive != true,
             tailIndex = rows.size + 1,
-            previewHeight = messagePreviewHeight,
             overlay = {
                 Column(Modifier.fillMaxWidth()) {
                     if (unread > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -504,9 +501,6 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     listState.requestScrollToItem(rows.size + 1)
                 }
             }
-            // IME/composer resize changes the viewport, not message geometry.
-            // A moving limit retruncates native TextViews on every inset frame.
-            val messageLimit = (messagePreviewHeight.takeIf { it in 80..720 } ?: 192).dp
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize().pointerInput(listState) {
                     awaitPointerEventScope {
                         while (true) {
@@ -537,7 +531,7 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                         Spacer(Modifier.height(22.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
                             Column {
-                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, messageLimit, { messageActions.message(row) }) { quote -> messageActions.comment(row, quote) }
+                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile) { quote -> messageActions.comment(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -580,7 +574,7 @@ private class ConversationBodySlot {
 }
 
 @Composable
-private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int, previewHeight: Int,
+private fun ConversationViewport(listState: LazyListState, presence: ComposerPresence, trackTail: Boolean, follow: Boolean, tailIndex: Int,
     overlay: @Composable () -> Unit, content: @Composable (Dp) -> Unit) {
     val geometry = remember { intArrayOf(-1, -1, -1, -1) }
     val slot = remember { ConversationBodySlot() }
@@ -589,12 +583,11 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
         val overlayHeight = controls.maxOfOrNull { it.height } ?: 0
         val baseHeight = overlayHeight - presence.extentPixels(density)
         val reservedHeight = baseHeight + (presence.targetExtent * density).toInt()
-        if (geometry[0] != constraints.maxWidth || geometry[1] != reservedHeight || geometry[2] != constraints.maxHeight || geometry[3] != previewHeight) {
+        if (geometry[0] != constraints.maxWidth || geometry[1] != reservedHeight || geometry[2] != constraints.maxHeight) {
             if (follow) listState.requestScrollToItem(tailIndex)
             geometry[0] = constraints.maxWidth
             geometry[1] = reservedHeight
             geometry[2] = constraints.maxHeight
-            geometry[3] = previewHeight
         }
         if (slot.content == null || slot.base != baseHeight || slot.parent !== content) {
             val base = baseHeight.toDp()
@@ -618,13 +611,13 @@ private fun ConversationViewport(listState: LazyListState, presence: ComposerPre
 }
 
 @Composable
-private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, limit: Dp, open: () -> Unit, comment: (String) -> Unit) {
+private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit, comment: (String) -> Unit) {
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
             if (row.content.isNotBlank() || row.files.isNotEmpty() || row.deliveredFiles.isNotEmpty()) {
                 ZorkCard(color = ZorkColors.Bubble, outlined = false, shape = ZorkShapes.Bubble) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 11.dp)) {
-                        if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
+                        if (row.content.isNotBlank()) MessageBody(row, comment)
                         row.files.forEach { FileCard(it) { file(it) } }
             row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
                     }
@@ -660,7 +653,7 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
                 val detail = listOf(row.model, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
                 if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (row.content.isNotBlank()) MessageBodyPreview(row, limit, open, comment)
+            if (row.content.isNotBlank()) MessageBody(row, comment)
             row.files.forEach { FileCard(it) { file(it) } }
             row.deliveredFiles.forEach { DeliveredFileCard(it) { chatFile(row.id, it.id) } }
         }
