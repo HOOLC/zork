@@ -147,7 +147,8 @@ internal fun ClientScreen(model: ClientViewModel) {
         }
     } else if (shown.newChat != null) {
         NewChatPage(shown.newChat, if (active) model::back else ({}),
-            if (active) model::newChatAction else ({ _, _ -> }), if (active) model::newChatModels else ({}))
+            if (active) model::newChatAction else ({ _, _ -> }), if (active) model::newChatModels else ({}),
+            model.peers, if (active) model::openNewChat else ({}))
     } else retained.SaveableStateProvider("workbench") { Workbench(
         shown.workbench,
         if (!active) WorkbenchActions() else WorkbenchActions(model::selectPeer, model::openLeader, model::openSession, model::back,
@@ -190,11 +191,14 @@ internal fun PlainMessage(content: String, modifier: Modifier = Modifier, previe
         }.apply {
             gravity = android.view.Gravity.CENTER_VERTICAL
             typeface = ResourcesCompat.getFont(ctx, R.font.inter)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels); includeFontPadding = false; setTextColor(ZorkColors.Ink.toArgb()); setLinkTextColor(ZorkColors.Ink.toArgb())
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels); includeFontPadding = false
             setTextIsSelectable(true); setLineHeight((textPixels * 1.7f).toInt())
         }
     }, update = { view ->
         view.preview = preview
+        // Colors are read here, not in factory, so a theme switch recolors the view.
+        view.setTextColor(ZorkColors.Ink.toArgb()); view.setLinkTextColor(ZorkColors.Ink.toArgb())
+        view.highlightColor = ZorkColors.Selected.toArgb()
         if (view.textSize != textPixels) {
             view.invalidatePreview()
             view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels)
