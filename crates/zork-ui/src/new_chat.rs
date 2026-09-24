@@ -14,7 +14,6 @@ use gpui_component::popover::Popover;
 use std::rc::Rc;
 use zork_client_types::new_chat::{Action, Snapshot};
 mod picker;
-use picker::PickerMode;
 
 const RAIL_INSET: f32 = 13.;
 const RAIL_CONTENT_INSET: f32 = 12.;
@@ -33,10 +32,8 @@ pub struct Page {
     input: Entity<ComposerInput>,
     device_menu: bool,
     picker_open: bool,
-    picker_mode: PickerMode,
     picker_focus: FocusHandle,
     picker_trigger_focus: FocusHandle,
-    thinking_preview: Option<usize>,
     width: f32,
     scene: composer::Scene,
     focus_pending: bool,
@@ -72,10 +69,8 @@ impl Page {
             input,
             device_menu: false,
             picker_open: false,
-            picker_mode: PickerMode::Strength,
             picker_focus: cx.focus_handle(),
             picker_trigger_focus: cx.focus_handle(),
-            thinking_preview: None,
             width: 480.,
             scene: Default::default(),
             focus_pending: true,
@@ -90,9 +85,6 @@ impl Page {
     }
     pub fn configure(&mut self, data: Snapshot, width: f32, text: Text, cx: &mut Context<Self>) {
         self.text = text;
-        if self.data.model != data.model || self.data.thinking != data.thinking || !data.editable {
-            self.thinking_preview = None;
-        }
         if !data.editable {
             self.picker_open = false;
             self.device_menu = false;
@@ -293,36 +285,46 @@ impl Render for Page {
             .selected_thinking_index()
             .and_then(|index| self.data.thinking.options.get(index))
             .filter(|_| !self.data.model.value.is_empty())
-            .map(|option| format!("{} · {}", model_label, self.thinking_label(&option.value)))
-            .unwrap_or(model_label);
-        let label = trigger_label;
+            .map(|option| self.thinking_label(&option.value));
+        let model_part = model_label.clone();
+        let thinking_part = trigger_label.clone();
+        let label = match &trigger_label {
+            Some(thinking) => format!("{model_label} · {thinking}"),
+            None => model_label,
+        };
         let picker_owner = cx.entity().downgrade();
         let change_owner = picker_owner.clone();
-        let popup_width = (if self.picker_mode == PickerMode::Models {
-            480_f32
-        } else {
-            284_f32
-        })
-        .min((window.viewport_size().width.as_f32() - 24.).max(2.));
+        let popup_width = 380_f32.min((window.viewport_size().width.as_f32() - 24.).max(2.));
         let trigger = Popover::new("new-chat-options-panel")
             .rounded(px(crate::design::RADIUS.container))
             .trigger(
-                ui::quiet_button(
-                    "new-chat-options",
-                    label.clone(),
-                    self.data.editable,
-                    ui::IconButtonSize::Small,
-                )
+                ui::quiet_button("new-chat-options", "", self.data.editable, ui::IconButtonSize::Small)
                 .h(px(28.))
-                .font_weight(FontWeight::NORMAL)
+                .font_weight(FontWeight::MEDIUM)
                 .radius(14.)
                 .track_focus(&self.picker_trigger_focus)
-                .child(ui::icon("icons/chevron-down.svg", 12.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .when_some(self.selected_provider(), |v, provider| {
+                            v.child(ui::provider_icon(&provider, 16.))
+                        })
+                        .child(div().text_color(rgb(ZORK_UI.palette.text)).child(model_part))
+                        .when_some(thinking_part, |v, thinking| {
+                            v.child(
+                                div()
+                                    .text_color(rgb(ZORK_UI.palette.muted))
+                                    .child(format!("· {thinking}")),
+                            )
+                        })
+                        .child(ui::icon("icons/chevron-down.svg", 12.)),
+                )
                 .on_click(cx.listener(|view, event: &ClickEvent, window, cx| {
                     if matches!(event, ClickEvent::Keyboard(_)) && view.data.editable {
                         view.picker_open = true;
                         view.device_menu = false;
-                        view.picker_mode = PickerMode::Strength;
                         window.focus(&view.picker_focus, cx);
                         cx.notify();
                     }
@@ -339,9 +341,7 @@ impl Render for Page {
                 let _ = change_owner.update(app, |view, cx| {
                     view.picker_open = *open;
                     view.device_menu = false;
-                    view.picker_mode = PickerMode::Strength;
                     if !open {
-                        view.thinking_preview = None;
                         window.focus(&view.picker_trigger_focus, cx);
                     }
                     cx.notify();

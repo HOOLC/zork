@@ -13,6 +13,25 @@ pub struct Choice {
     pub value: String,
     pub options: Vec<OptionItem>,
 }
+/// One model connection and the models it offers, for a grouped picker.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelGroup {
+    pub profile: String,
+    pub name: String,
+    pub provider: String,
+    /// False when the connection cannot be used; `reason` says why.
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub models: Vec<ModelEntry>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelEntry {
+    pub id: String,
+    /// Short context size such as `128K`; empty when unknown.
+    #[serde(default)]
+    pub context: String,
+}
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
     pub text: String,
@@ -21,6 +40,9 @@ pub struct Snapshot {
     pub model: Choice,
     pub thinking: Choice,
     pub profile: Choice,
+    /// Models grouped by connection; the selected pair is `profile` + `model`.
+    #[serde(default)]
+    pub groups: Vec<ModelGroup>,
     pub editable: bool,
     pub can_submit: bool,
     pub busy: bool,
@@ -39,5 +61,7 @@ pub enum Action {
     Model { value: String },
     Thinking { value: String },
     Profile { value: String },
+    /// Picks a model from one connection in a single step.
+    Select { profile: String, model: String },
     Submit { text: String },
 }

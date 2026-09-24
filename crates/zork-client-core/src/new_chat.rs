@@ -2,7 +2,7 @@
 use crate::api::ProfileInfo;
 use zork_client_types::device::DeviceStatus;
 pub use zork_client_types::new_chat::{Action, Choice};
-use zork_client_types::new_chat::{OptionItem, Snapshot};
+use zork_client_types::new_chat::{ModelEntry, ModelGroup, OptionItem, Snapshot};
 
 pub fn selectable(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
     profiles
@@ -26,6 +26,47 @@ pub fn selectable(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
         .collect()
 }
 
+/// Every connection with its usable models; unusable ones stay listed with a reason.
+pub fn groups(profiles: &[ProfileInfo]) -> Vec<ModelGroup> {
+    let usable = selectable(profiles);
+    profiles
+        .iter()
+        .map(|profile| {
+            let ready = usable.iter().find(|p| p.profile_id == profile.profile_id);
+            let models = ready
+                .map(|p| {
+                    p.models
+                        .iter()
+                        .map(|m| ModelEntry {
+                            id: m.id.clone(),
+                            context: m
+                                .extra
+                                .get("limits")
+                                .and_then(|l| l.get("context_window_tokens"))
+                                .and_then(serde_json::Value::as_u64)
+                                .map(crate::model_edit::compact_tokens)
+                                .unwrap_or_default(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            ModelGroup {
+                profile: profile.profile_id.clone(),
+                name: profile
+                    .name
+                    .clone()
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| profile.profile_id.clone()),
+                provider: profile.provider.clone(),
+                available: ready.is_some(),
+                reason: ready.is_none().then(|| "未登录".to_owned()),
+                models,
+            }
+        })
+        .filter(|g| !g.available || !g.models.is_empty())
+        .collect()
+}
+
 pub fn present(
     profiles: &[ProfileInfo],
     text: &str,
@@ -33,6 +74,7 @@ pub fn present(
     thinking: &str,
     profile: &str,
 ) -> Snapshot {
+    let groups = groups(profiles);
     let profiles = selectable(profiles);
     let choices = crate::agent_edit::choices(&profiles, profile, model, thinking);
     let valid = crate::agent_edit::validate_selection(&profiles, profile, model, thinking).is_ok();
@@ -61,7 +103,7 @@ pub fn present(
                 .into_iter()
                 .flatten()
                 .filter_map(|v| v.as_str())
-                .map(|id| option(id, id))
+                .map(|id| option(id, &crate::thinking::value_label(id)))
                 .collect(),
         },
         profile: Choice {
@@ -83,6 +125,7 @@ pub fn present(
                 })
                 .collect(),
         },
+        groups,
         editable: true,
         can_submit: !text.trim().is_empty() && valid && !too_large,
         error: if too_large {
@@ -213,6 +256,9 @@ impl Fixture {
                 self.selection =
                     choose(&self.profiles, &self.selection.0, &self.selection.1, &value)
             }
+            Action::Select { profile, model } if self.snapshot().editable => {
+                self.selection = choose(&self.profiles, &model, &self.selection.1, &profile)
+            }
             Action::Submit { text } if self.snapshot().can_submit => {
                 self.text = text;
                 self.scenario = "creating".into();
@@ -225,6 +271,21 @@ impl Fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn models_are_grouped_by_connection_and_unusable_connections_stay_listed() {
+        let mut fixture = Fixture::new("draft");
+        fixture.profiles[1]
+            .extra
+            .insert("auth_configured".into(), serde_json::json!(false));
+        let snapshot = present(&fixture.profiles, "", "Demo model", "high", "auto");
+        assert_eq!(snapshot.groups.len(), 2);
+        assert!(snapshot.groups[0].available);
+        assert_eq!(snapshot.groups[0].models[0].id, "Demo model");
+        assert_eq!(snapshot.groups[0].models[0].context, "128K");
+        assert!(!snapshot.groups[1].available);
+        assert!(snapshot.groups[1].reason.is_some());
+        assert!(snapshot.groups[1].models.is_empty());
+    }
     #[test]
     fn model_depth_and_optional_profile_choices_respect_actual_capabilities() {
         let fixture = Fixture::new("draft");
