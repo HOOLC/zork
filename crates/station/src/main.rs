@@ -21,6 +21,7 @@ mod inbound;
 mod interaction_registry;
 mod jobs;
 mod mesh;
+mod mesh_invite_tools;
 mod message_log;
 mod node;
 mod node_access;
