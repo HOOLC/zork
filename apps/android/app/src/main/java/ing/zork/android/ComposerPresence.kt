@@ -1,9 +1,10 @@
 package ing.zork.android
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -11,6 +12,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
@@ -18,7 +23,7 @@ import kotlin.math.roundToInt
 
 internal data class ComposerMember(
     val id: String, val name: String, val label: String,
-    val failed: Boolean, val session: String = "",
+    val failed: Boolean, val session: String = "", val working: Boolean = false,
 )
 
 /** Presence has a fixed layout slot; updates never animate the composer outline. */
@@ -51,7 +56,8 @@ internal fun rememberComposerPresence(state: WorkbenchState, availableWidth: Flo
     val members = state.participants.map {
         val activity = it.optJSONObject("activity")
         ComposerMember(it.text("id"), it.text("name"), activityLabel(activity),
-            activity?.text("state") == "failed", it.text("session_id"))
+            activity?.text("state") == "failed", it.text("session_id"),
+            activity?.text("state") in setOf("live", "thinking", "tool_finished", "tools_started", "tools_waiting"))
     }
     return remember(members) { ComposerPresence(members) }
 }
@@ -66,15 +72,26 @@ internal fun ComposerMembers(
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 presence.members.forEach { member ->
+                    // A static capsule: who, whether they work now, and a short state.
+                    val working = member.working && !member.failed
+                    val state = when {
+                        member.failed -> "执行失败"
+                        else -> member.label.substringBefore(" · ").ifBlank { "空闲" }
+                    }
                     Surface(onClick = { history(member.session, member.name) },
                         enabled = member.session.isNotBlank(),
-                        shape = RoundedCornerShape(UiTokens.PillRadius),
+                        modifier = Modifier.semantics { contentDescription = "${member.name} · 执行历史 · ${member.label.ifBlank { "空闲" }}" },
+                        shape = ZorkShapes.Control,
                         color = ZorkColors.Canvas) {
-                        Row(Modifier.height(40.dp).padding(horizontal = 8.dp),
+                        Row(Modifier.height(40.dp).padding(start = 8.dp, end = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("${member.name} · ${member.label.ifBlank { "空闲" }}", fontSize = 12.sp,
-                                color = if (member.failed) ZorkColors.Danger else ZorkColors.Ink)
+                            DeviceMark(member.name, 18.dp)
+                            Text(member.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Ink, maxLines = 1)
+                            if (working) Box(Modifier.size(6.dp).background(ZorkColors.Accent, CircleShape))
+                            Text(state, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 120.dp),
+                                color = if (member.failed) ZorkColors.Danger else ZorkColors.Muted)
                         }
                     }
                 }

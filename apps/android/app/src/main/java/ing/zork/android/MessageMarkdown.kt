@@ -57,7 +57,8 @@ internal class MarkdownBoundedCache<K, V>(private val limit: Int, private val by
 }
 
 internal object MessageMarkdownCache {
-    private data class Style(val density: Float, val textPixels: Float)
+    // Renderer spans bake theme colors, so each palette keeps its own renderer.
+    private data class Style(val density: Float, val textPixels: Float, val dark: Boolean)
     private val renderers = MarkdownBoundedCache<Style, Markwon>(4, Int.MAX_VALUE)
     private data class Document(val root: Node, val ordinals: List<Pair<OrderedList, Int>>)
     private val documents = MarkdownBoundedCache<String, Document>(384, 8 * 1024 * 1024)
@@ -65,7 +66,7 @@ internal object MessageMarkdownCache {
     val entries get() = documents.size
     val estimatedBytes get() = documents.estimatedBytes
     fun renderer(context: Context, density: Float, textPixels: Float): Markwon =
-        renderers.getOrPut(Style(density, textPixels), 1) { createRenderer(context.applicationContext, density, textPixels) }
+        renderers.getOrPut(Style(density, textPixels, ZorkColors.dark), 1) { createRenderer(context.applicationContext, density, textPixels) }
 
     fun render(renderer: Markwon, content: String, density: Float, textPixels: Float): Spanned {
         // Conservative source + AST allowance; the cap is an estimate, not just string bytes.
@@ -169,28 +170,31 @@ private fun appendCode(visitor: MarkwonVisitor, node: Node, info: String?, code:
     visitor.blockEnd(node)
 }
 
-private data class MarkdownBinding(val content: String, val density: Float, val textPixels: Float)
+private data class MarkdownBinding(val content: String, val density: Float, val textPixels: Float, val dark: Boolean)
 
 @Composable
 internal fun Markdown(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, onComment: ((String) -> Unit)? = null) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val textPixels = with(density) { 15.sp.toPx() }
-    val renderer = remember(context.applicationContext, density.density, textPixels) {
+    val dark = ZorkColors.dark
+    val renderer = remember(context.applicationContext, density.density, textPixels, dark) {
         MessageMarkdownCache.renderer(context, density.density, textPixels)
     }
     AndroidView(modifier = modifier, factory = { ctx ->
         MarkdownTextView(ctx).apply {
             gravity = Gravity.TOP
             typeface = ResourcesCompat.getFont(ctx, R.font.inter)
-            includeFontPadding = false; setTextColor(ZorkColors.Ink.toArgb()); setLinkTextColor(ZorkColors.Ink.toArgb())
-            setTextIsSelectable(true); highlightColor = ZorkColors.Selected.toArgb()
+            includeFontPadding = false; setTextIsSelectable(true)
             breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
             hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         }
     }, update = { view ->
         view.preview = preview
-        val binding = MarkdownBinding(content, density.density, textPixels)
+        // Read in update so a theme switch recolors views that already exist.
+        view.setTextColor(ZorkColors.Ink.toArgb()); view.setLinkTextColor(ZorkColors.Ink.toArgb())
+        view.highlightColor = ZorkColors.Selected.toArgb()
+        val binding = MarkdownBinding(content, density.density, textPixels, dark)
         if (view.tag != binding) {
             view.dismissLinkActions()
             view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPixels)

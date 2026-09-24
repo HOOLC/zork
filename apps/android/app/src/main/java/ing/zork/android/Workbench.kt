@@ -354,36 +354,84 @@ private fun chatTime(ms: Long?): String? {
 
 @Composable
 internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions, showBack: Boolean) {
-    Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 8.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    var menu by remember { mutableStateOf(false) }
+    var files by remember { mutableStateOf(false) }
+    val chat = state.conversation
+    val session = chat?.let { current ->
+        (state.activePeer?.let { state.deviceTrees[it.id]?.sessions }.orEmpty() + state.sessions)
+            .firstOrNull { it.text("chat_id") == current.id }
+    }
+    Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 8.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (showBack) IconAction(R.drawable.ic_arrow_left, "返回对话列表", onClick = actions.back)
-        Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (state.participants.isNotEmpty()) state.participants.take(3).forEach { member ->
-                Box(Modifier.size(44.dp, 44.dp)
-                    .historyPress(enabled = member.text("session_id").isNotBlank(), radius = 12.dp) { actions.history(member.text("session_id"), member.text("name")) }
-                    .semantics { contentDescription = "${member.text("name")} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Text(member.text("name").take(2), fontSize = 12.sp, color = ZorkColors.Ink,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            } else state.conversation?.let {
-                Box(Modifier.size(44.dp, 44.dp).historyPress(radius = 12.dp) { actions.history(it.id, it.title) }
-                    .semantics { contentDescription = "${it.title} · 执行历史" }, contentAlignment = Alignment.Center) {
-                    Text(it.title.take(2), fontSize = 12.sp, color = ZorkColors.Ink,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f).padding(start = if (showBack) 0.dp else 8.dp)) {
+            Text(chat?.title.orEmpty().ifBlank { "对话" }, fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            state.activePeer?.let { Text(it.name, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        // Members open their execution history: the first as a named capsule,
+        // the rest by their mark alone.
+        val members = if (state.participants.isNotEmpty()) state.participants.take(3).map { it.text("name") to it.text("session_id") }
+            else chat?.let { listOf((state.activePeer?.name ?: it.title) to it.id) }.orEmpty()
+        members.forEachIndexed { index, (name, target) ->
+            val open = { actions.history(target, name) }
+            if (index == 0) Row(Modifier.widthIn(max = 148.dp).heightIn(min = 44.dp)
+                .historyPress(enabled = target.isNotBlank(), radius = UiTokens.PillRadius, label = "$name · 执行历史", onClick = open)
+                .background(ZorkColors.Prompt, ZorkShapes.Control).padding(start = 10.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DeviceMark(name, 18.dp)
+                Text(name, fontSize = 13.sp, color = ZorkColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                Glyph(R.drawable.history_history, 16.dp, ZorkColors.Muted)
+            } else Box(Modifier.size(44.dp)
+                .historyPress(enabled = target.isNotBlank(), radius = UiTokens.PillRadius, label = "$name · 执行历史", onClick = open),
+                contentAlignment = Alignment.Center) { DeviceMark(name, 22.dp) }
+        }
+        Box {
+            IconAction(R.drawable.ic_more, "更多", glyphSize = 20.dp) { menu = true }
+            PlainMenu("更多", menu, { menu = false }, 180.dp) {
+                HeaderMenuItem(R.drawable.ic_file, "文件") { menu = false; files = true }
+                HeaderMenuItem(R.drawable.ic_node, "设备设置") { menu = false; actions.deviceSettings() }
+                val peer = state.activePeer
+                if (session != null && peer != null) {
+                    val archived = session.optBoolean("archived")
+                    HeaderMenuItem(if (archived) R.drawable.ic_archive_restore else R.drawable.ic_archive, if (archived) "取消归档" else "归档",
+                        enabled = !session.optBoolean("archive_pending")) {
+                        menu = false
+                        actions.archiveChat(peer.id, session.text("chat_id"), !archived, session.optLong("message_count"))
+                    }
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        val deviceInteraction = remember { MutableInteractionSource() }
-        val devicePressed by deviceInteraction.collectIsPressedAsState()
-        Row(Modifier.clip(ZorkShapes.Control).background(if (devicePressed) ZorkColors.Pressed else Color.Transparent)
-            .clickable(interactionSource = deviceInteraction, indication = null, onClick = actions.deviceSettings).heightIn(min = 44.dp).padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Glyph(R.drawable.ic_node, 17.dp, tint = ZorkColors.Ink)
-            Text(state.activePeer?.name.orEmpty(), fontSize = 13.sp, color = ZorkColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
     }
     HorizontalDivider(color = ZorkColors.Border, thickness = 0.5.dp)
+    if (files) ChatFilesSheet(state.messages, actions) { files = false }
+}
+
+@Composable
+private fun HeaderMenuItem(icon: Int, text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth().heightIn(min = 44.dp)
+        .historyPress(enabled = enabled, radius = PlainMenuStyle.RowRadius, onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Glyph(icon, 18.dp, if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
+        Text(text, fontSize = 14.sp, color = if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
+    }
+}
+
+/** Files attached to or delivered in the messages loaded so far. */
+@Composable
+private fun ChatFilesSheet(messages: List<ChatMessage>, actions: WorkbenchActions, dismiss: () -> Unit) {
+    val attached = messages.flatMap { it.files }
+    val delivered = messages.flatMap { row -> row.deliveredFiles.map { row.id to it } }
+    SettingsSheet("文件", dismiss = dismiss) {
+        if (attached.isEmpty() && delivered.isEmpty())
+            Text("已加载的消息里没有文件。", fontSize = 13.sp, color = ZorkColors.Muted)
+        else Column {
+            attached.forEach { FileCard(it) { actions.file(it) } }
+            delivered.forEach { (message, file) -> DeliveredFileCard(file) { actions.chatFile(message, file.id) } }
+            Text("只列出已加载的消息中的文件。", fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 12.dp))
+        }
+    }
 }
 
 private class MessageTailAnchor(var activityCursor: Long) {
@@ -532,9 +580,13 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
             overlay = {
                 Column(Modifier.fillMaxWidth()) {
                     if (unread > 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Text("有新消息", fontSize = 12.sp, color = ZorkColors.Ink,
-                            modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
-                                .clickable { following = true; followTail() }.padding(horizontal = 14.dp, vertical = 8.dp))
+                        Box(Modifier.heightIn(min = 44.dp).clip(ZorkShapes.Control)
+                            .clickable(role = androidx.compose.ui.semantics.Role.Button) { following = true; followTail() },
+                            contentAlignment = Alignment.Center) {
+                            Text("有新消息", fontSize = 12.sp, color = ZorkColors.Ink,
+                                modifier = Modifier.background(ZorkColors.Canvas, ZorkShapes.Control)
+                                    .border(UiTokens.Border, UiTokens.Outline, ZorkShapes.Control).padding(horizontal = 14.dp, vertical = 8.dp))
+                        }
                     }
                     if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 12.sp,
                         modifier = Modifier.padding(start = gutter + 10.dp, end = gutter, bottom = 5.dp))
@@ -802,11 +854,17 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (showAttach) IconAction(R.drawable.ic_paperclip, "添加文本附件",enabled=canSend,glyphSize=16.dp,onClick = actions.attach)
                 Spacer(Modifier.weight(1f))
-                Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,onClick=if(stop)actions.stop else actions.send)
+                Box(Modifier.size(44.dp).clickable(enabled=enabled,interactionSource=sendInteractions,indication=null,role=androidx.compose.ui.semantics.Role.Button,onClick=if(stop)actions.stop else actions.send)
                     .semantics { contentDescription=if(stop) "停止" else "发送" },contentAlignment=Alignment.Center) {
-                    Box(Modifier.size(32.dp).background(if(!enabled)ZorkColors.SendDisabled else if(sendPressed)ZorkColors.SendPressed else ZorkColors.Ink,CircleShape),contentAlignment=Alignment.Center) {
+                    // Send is the one persimmon action; stopping a run stays ink.
+                    val fill = when {
+                        !enabled -> ZorkColors.SendDisabled
+                        stop -> if (sendPressed) ZorkColors.SendPressed else ZorkColors.Ink
+                        else -> if (sendPressed) ZorkColors.AccentPressed else ZorkColors.Accent
+                    }
+                    Box(Modifier.size(32.dp).background(fill,CircleShape),contentAlignment=Alignment.Center) {
                         if(stop) Box(Modifier.size(10.dp).background(ZorkColors.Canvas,RoundedCornerShape(2.dp)))
-                        else Glyph(R.drawable.ic_arrow_up,16.dp,tint=ZorkColors.Canvas)
+                        else Glyph(R.drawable.ic_arrow_up,16.dp,tint=if(enabled) Color.White else ZorkColors.Canvas)
                     }
                 }
             }
@@ -831,13 +889,15 @@ private fun Notice(message: String, busy: Boolean, retry: () -> Unit) {
         ZorkButton("重试", quiet = true, onClick = retry, enabled = !busy)
     }
 }
+private val messageClockFormat = DateTimeFormatter.ofPattern("HH:mm")
+private val messageDateFormat = DateTimeFormatter.ofPattern("M月d日")
 private fun messageTime(value: String): String = runCatching {
-    OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern("HH:mm"))
+    OffsetDateTime.parse(value).format(messageClockFormat)
 }.getOrDefault("")
 
 private fun messageDate(value: String): String = runCatching {
     val date = OffsetDateTime.parse(value).toLocalDate()
-    if (date == java.time.LocalDate.now()) "今天" else date.format(DateTimeFormatter.ofPattern("M月d日"))
+    if (date == java.time.LocalDate.now()) "今天" else date.format(messageDateFormat)
 }.getOrDefault("")
 
 @Composable
