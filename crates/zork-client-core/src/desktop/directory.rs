@@ -565,6 +565,7 @@ impl Directory {
                             .cloned()
                             .unwrap_or_default(),
                     ),
+                    ..Default::default()
                 })
                 .collect(),
         }

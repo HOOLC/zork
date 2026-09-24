@@ -7,6 +7,21 @@ pub struct OptionItem {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<crate::device::DeviceStatus>,
+    /// For model options: the connections that offer this model, in list order,
+    /// so pickers can group models by connection. Empty for other choices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connections: Vec<ConnectionRef>,
+    /// For model options: the device the connections are saved on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+}
+/// A model connection as a picker names it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionRef {
+    pub profile: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub provider: String,
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Choice {
