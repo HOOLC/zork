@@ -288,7 +288,8 @@ impl ProfilesView {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let p = ZORK_UI.palette;
-        if std::mem::take(&mut self.page_focus_pending) {
+        // Escape needs a focus inside the page; take it when nothing holds focus.
+        if std::mem::take(&mut self.page_focus_pending) || window.focused(cx).is_none() {
             window.focus(&self.page_focus, cx);
         }
         let profile_id = detail["profile_id"].as_str().unwrap_or_default().to_owned();

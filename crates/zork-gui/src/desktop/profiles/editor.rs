@@ -662,7 +662,6 @@ impl ProfilesView {
                         ui::IconButtonSize::Compact,
                     )
                     .self_start()
-                    .ml(px(-6.))
                     .text_size(px(12.5))
                     .child(ui::icon("icons/chevron-down.svg", 12.))
                     .on_click(cx.listener(|v, _, _, cx| {
