@@ -1,104 +1,671 @@
 {
-  "notice": "Built-in defaults for popular models. Every value is a starting point to be checked against the vendor documentation linked in `source`; entries stay `verified: false` until someone does. Token counts are rounded. Order is popularity order for reference menus.",
+  "notice": "Built-in defaults for popular models. `verified: true` means context, output, thinking scheme and inputs were checked against the vendor page in `source` (2026-09); a chosen default level or budget presets are our pick within what the vendor allows. Everything else is a starting point. Order is popularity order for reference menus.",
   "models": [
     {
-      "key": "gpt-5", "name": "GPT-5", "family": "GPT-5 系列", "provider": "openai",
-      "match": { "ids": ["gpt-5", "gpt-5-chat-latest"], "prefixes": ["gpt-5-20", "gpt-5.1", "gpt-5.2", "gpt-5.5"] },
-      "api": "openai-responses", "context": 400000, "output": 128000,
-      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "key": "gpt-6-sol", "name": "GPT-6 Sol", "family": "GPT-6 系列", "provider": "openai",
+      "match": { "ids": ["gpt-6-sol"], "prefixes": ["gpt-6-sol-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "medium" },
       "thinking_field": "reasoning.effort",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": true, "verified": false, "source": "https://platform.openai.com/docs/models/gpt-5"
+      "popular": true, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-6-sol"
     },
     {
-      "key": "gpt-5-mini", "name": "GPT-5 mini", "family": "GPT-5 系列", "provider": "openai",
-      "match": { "ids": [], "prefixes": ["gpt-5-mini", "gpt-5.1-mini", "gpt-5.5-mini"] },
-      "api": "openai-responses", "context": 400000, "output": 128000,
-      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "key": "gpt-5.5", "name": "GPT-5.5", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.5"], "prefixes": ["gpt-5.5-20"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "medium" },
       "thinking_field": "reasoning.effort",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.openai.com/docs/models/gpt-5-mini"
+      "popular": true, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.5"
     },
     {
-      "key": "gpt-5-nano", "name": "GPT-5 nano", "family": "GPT-5 系列", "provider": "openai",
-      "match": { "ids": [], "prefixes": ["gpt-5-nano", "gpt-5.1-nano"] },
-      "api": "openai-responses", "context": 400000, "output": 128000,
-      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "low" },
+      "key": "claude-opus-5-5", "name": "Claude Opus 5.5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-5-5"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "medium" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": true, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+    },
+    {
+      "key": "claude-sonnet-5", "name": "Claude Sonnet 5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-sonnet-5"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": true, "verified": true, "source": "https://platform.claude.com/docs/en/models/sonnet-5/overview"
+    },
+    {
+      "key": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.8-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": true, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"
+    },
+    {
+      "key": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.1-pro"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "high" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": true, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview"
+    },
+    {
+      "key": "grok-4.7", "name": "Grok 4.7", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-4.7", "grok-4.7-latest"], "prefixes": ["grok-4.7-"] },
+      "api": "openai-completions", "context": 500000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh"], "default": "high" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": false, "source": "https://docs.x.ai/docs/models/grok-4.7"
+    },
+    {
+      "key": "deepseek-flash", "name": "DeepSeek V4.1 Flash", "family": "DeepSeek", "provider": "deepseek",
+      "match": { "ids": ["deepseek-flash"], "prefixes": ["deepseek-flash-", "deepseek-v4-flash", "deepseek-v4.1-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 384000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "high", "max"], "default": "high" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": true, "source": "https://api-docs.deepseek.com/quick_start/pricing"
+    },
+    {
+      "key": "qwen3.8-max", "name": "Qwen3.8 Max", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.8-max"] },
+      "api": "openai-completions", "context": 1000000, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-max"
+    },
+    {
+      "key": "kimi-k3", "name": "Kimi K3", "family": "Kimi", "provider": "moonshot",
+      "match": { "ids": [], "prefixes": ["kimi-k3"] },
+      "api": "openai-completions", "context": 1048576, "output": 131072,
+      "thinking": { "kind": "levels", "values": ["low", "high", "max"], "default": "max" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": true, "source": "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart"
+    },
+    {
+      "key": "glm-5.3", "name": "GLM-5.3", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-5.3"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "high", "max"], "default": "max" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": true, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+    },
+    {
+      "key": "minimax-m3", "name": "MiniMax-M3", "family": "MiniMax", "provider": "minimax",
+      "match": { "ids": [], "prefixes": ["minimax-m3"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": false },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": false, "source": "https://platform.minimaxi.com/docs/api-reference/text-anthropic-api"
+    },
+    {
+      "key": "doubao-seed-2-1-pro", "name": "Doubao Seed 2.1 Pro", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-1-pro"] },
+      "api": "openai-completions", "context": 1048576, "output": 262144,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": true, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "gpt-6-astra", "name": "GPT-6 Astra", "family": "GPT-6 系列", "provider": "openai",
+      "match": { "ids": ["gpt-6-astra"], "prefixes": ["gpt-6-astra-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "medium" },
       "thinking_field": "reasoning.effort",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.openai.com/docs/models/gpt-5-nano"
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-6-astra"
     },
     {
-      "key": "gpt-5-codex", "name": "GPT-5 Codex", "family": "GPT-5 系列", "provider": "openai",
-      "match": { "ids": ["codex-mini-latest"], "prefixes": ["gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex", "gpt-5.5-codex", "codex-"] },
+      "key": "gpt-6-luna", "name": "GPT-6 Luna", "family": "GPT-6 系列", "provider": "openai",
+      "match": { "ids": ["gpt-6-luna"], "prefixes": ["gpt-6-luna-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-6-luna"
+    },
+    {
+      "key": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.6", "gpt-5.6-sol"], "prefixes": ["gpt-5.6-sol-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+    },
+    {
+      "key": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.6-terra"], "prefixes": ["gpt-5.6-terra-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
+    },
+    {
+      "key": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.6-luna"], "prefixes": ["gpt-5.6-luna-"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
+    },
+    {
+      "key": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.5-pro"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["medium", "high", "xhigh"], "default": "high" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.5-pro"
+    },
+    {
+      "key": "gpt-5.4", "name": "GPT-5.4", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.4"], "prefixes": ["gpt-5.4-20"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.4"
+    },
+    {
+      "key": "gpt-5.4-pro", "name": "GPT-5.4 Pro", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.4-pro"] },
+      "api": "openai-responses", "context": 1050000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["medium", "high", "xhigh"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.4-pro"
+    },
+    {
+      "key": "gpt-5.4-mini", "name": "GPT-5.4 mini", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.4-mini"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+    },
+    {
+      "key": "gpt-5.4-nano", "name": "GPT-5.4 nano", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.4-nano"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "low" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.4-nano"
+    },
+    {
+      "key": "gpt-5.3-codex", "name": "GPT-5.3 Codex", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.3-codex"] },
       "api": "openai-responses", "context": 400000, "output": 128000,
       "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh"], "default": "medium" },
       "thinking_field": "reasoning.effort",
       "capabilities": { "image": true, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.openai.com/docs/models/gpt-5-codex"
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
     },
     {
-      "key": "claude-sonnet", "name": "Claude Sonnet", "family": "Claude 系列", "provider": "anthropic",
-      "match": { "ids": [], "prefixes": ["claude-sonnet-4", "claude-3-7-sonnet"] },
-      "api": "anthropic-messages", "context": 200000, "output": 64000,
-      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": { "kind": "off" }, "dynamic": false, "allow_off": true },
-      "thinking_field": "thinking.budget_tokens",
+      "key": "gpt-5.2", "name": "GPT-5.2", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.2"], "prefixes": ["gpt-5.2-20"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": true, "verified": false, "source": "https://docs.anthropic.com/en/docs/about-claude/models/overview"
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.2"
+    },
+    {
+      "key": "gpt-5.2-pro", "name": "GPT-5.2 Pro", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.2-pro"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["medium", "high", "xhigh"], "default": "high" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.2-pro"
+    },
+    {
+      "key": "gpt-5.1", "name": "GPT-5.1", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5.1"], "prefixes": ["gpt-5.1-20"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5.1"
+    },
+    {
+      "key": "gpt-5.1-codex-max", "name": "GPT-5.1 Codex Max", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.1-codex-max"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5.1-codex-max"
+    },
+    {
+      "key": "gpt-5.1-codex-mini", "name": "GPT-5.1 Codex mini", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5.1-codex-mini"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5.1-codex-mini"
+    },
+    {
+      "key": "gpt-5-codex", "name": "GPT-5 Codex", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["codex-mini-latest"], "prefixes": ["gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5-codex"
+    },
+    {
+      "key": "gpt-5", "name": "GPT-5", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["gpt-5"], "prefixes": ["gpt-5-20"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5"
+    },
+    {
+      "key": "gpt-5-mini", "name": "GPT-5 mini", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5-mini"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5-mini"
+    },
+    {
+      "key": "gpt-5-nano", "name": "GPT-5 nano", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5-nano"] },
+      "api": "openai-responses", "context": 400000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "low" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5-nano"
+    },
+    {
+      "key": "gpt-5-pro", "name": "GPT-5 Pro", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-5-pro"] },
+      "api": "openai-responses", "context": 400000, "output": 272000,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-5-pro"
+    },
+    {
+      "key": "gpt-5-chat", "name": "GPT-5 Chat", "family": "GPT-5 系列", "provider": "openai",
+      "match": { "ids": ["chat-latest"], "prefixes": ["gpt-5-chat", "gpt-5.1-chat", "gpt-5.2-chat", "gpt-5.3-chat"] },
+      "api": "openai-responses", "context": 128000, "output": 16384,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-5-chat-latest"
+    },
+    {
+      "key": "o3", "name": "o3", "family": "o 系列", "provider": "openai",
+      "match": { "ids": ["o3"], "prefixes": ["o3-20"] },
+      "api": "openai-responses", "context": 200000, "output": 100000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/o3"
+    },
+    {
+      "key": "o3-pro", "name": "o3 Pro", "family": "o 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["o3-pro"] },
+      "api": "openai-responses", "context": 200000, "output": 100000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "high" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/o3-pro"
+    },
+    {
+      "key": "o4-mini", "name": "o4-mini", "family": "o 系列", "provider": "openai",
+      "match": { "ids": ["o4-mini"], "prefixes": ["o4-mini-20"] },
+      "api": "openai-responses", "context": 200000, "output": 100000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/o4-mini"
+    },
+    {
+      "key": "gpt-4.1", "name": "GPT-4.1", "family": "GPT-4 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-4.1"] },
+      "api": "openai-responses", "context": 1047576, "output": 32768,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-4.1"
+    },
+    {
+      "key": "gpt-4o", "name": "GPT-4o", "family": "GPT-4 系列", "provider": "openai",
+      "match": { "ids": ["gpt-4o", "chatgpt-4o-latest"], "prefixes": ["gpt-4o-20"] },
+      "api": "openai-responses", "context": 128000, "output": 16384,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://developers.openai.com/api/docs/models/gpt-4o"
+    },
+    {
+      "key": "gpt-4o-mini", "name": "GPT-4o mini", "family": "GPT-4 系列", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-4o-mini"] },
+      "api": "openai-responses", "context": 128000, "output": 16384,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-4o-mini"
+    },
+    {
+      "key": "gpt-oss-120b", "name": "gpt-oss-120b", "family": "gpt-oss", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-oss-120b"] },
+      "api": "openai-completions", "context": 131072, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-oss-120b"
+    },
+    {
+      "key": "gpt-oss-20b", "name": "gpt-oss-20b", "family": "gpt-oss", "provider": "openai",
+      "match": { "ids": [], "prefixes": ["gpt-oss-20b"] },
+      "api": "openai-completions", "context": 131072, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://developers.openai.com/api/docs/models/gpt-oss-20b"
+    },
+    {
+      "key": "claude-fable-5-1", "name": "Claude Fable 5.1", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-fable-5-1"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/fable-5-1/overview"
+    },
+    {
+      "key": "claude-fable-5", "name": "Claude Fable 5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-fable-5"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/fable-5/overview"
+    },
+    {
+      "key": "claude-mythos-5-1", "name": "Claude Mythos 5.1", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-mythos-5-1"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/fable-5-1/overview"
+    },
+    {
+      "key": "claude-mythos-5", "name": "Claude Mythos 5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-mythos-5"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/fable-5/overview"
+    },
+    {
+      "key": "claude-opus-5", "name": "Claude Opus 5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-5"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-5/overview"
+    },
+    {
+      "key": "claude-opus-4-8", "name": "Claude Opus 4.8", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-4-8"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-4-8/overview"
+    },
+    {
+      "key": "claude-opus-4-7", "name": "Claude Opus 4.7", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-4-7"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-4-7/overview"
+    },
+    {
+      "key": "claude-opus-4-6", "name": "Claude Opus 4.6", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-4-6"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-4-6/overview"
+    },
+    {
+      "key": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-sonnet-4-6"] },
+      "api": "anthropic-messages", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "max"], "default": "high" },
+      "thinking_field": "output_config.effort",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview"
     },
     {
       "key": "claude-opus-4-5", "name": "Claude Opus 4.5", "family": "Claude 系列", "provider": "anthropic",
-      "match": { "ids": [], "prefixes": ["claude-opus-4-5", "claude-opus-4.5"] },
+      "match": { "ids": [], "prefixes": ["claude-opus-4-5"] },
       "api": "anthropic-messages", "context": 200000, "output": 64000,
-      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": { "kind": "off" }, "dynamic": false, "allow_off": true },
+      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": {"kind": "off"}, "dynamic": false, "allow_off": true },
       "thinking_field": "thinking.budget_tokens",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.anthropic.com/en/docs/about-claude/models/overview"
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/opus-4-5/overview"
     },
     {
-      "key": "claude-opus", "name": "Claude Opus", "family": "Claude 系列", "provider": "anthropic",
-      "match": { "ids": [], "prefixes": ["claude-opus-4", "claude-3-opus"] },
-      "api": "anthropic-messages", "context": 200000, "output": 32000,
-      "thinking": { "kind": "budget", "presets": [4000, 16000], "default": { "kind": "off" }, "dynamic": false, "allow_off": true },
+      "key": "claude-sonnet", "name": "Claude Sonnet 4.5", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-sonnet-4", "claude-3-7-sonnet"] },
+      "api": "anthropic-messages", "context": 200000, "output": 64000,
+      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": {"kind": "off"}, "dynamic": false, "allow_off": true },
       "thinking_field": "thinking.budget_tokens",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.anthropic.com/en/docs/about-claude/models/overview"
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/sonnet-4-5/overview"
     },
     {
-      "key": "claude-haiku", "name": "Claude Haiku", "family": "Claude 系列", "provider": "anthropic",
+      "key": "claude-haiku", "name": "Claude Haiku 4.5", "family": "Claude 系列", "provider": "anthropic",
       "match": { "ids": [], "prefixes": ["claude-haiku-4", "claude-3-5-haiku"] },
       "api": "anthropic-messages", "context": 200000, "output": 64000,
-      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": { "kind": "off" }, "dynamic": false, "allow_off": true },
+      "thinking": { "kind": "budget", "presets": [4000, 16000, 32000], "default": {"kind": "off"}, "dynamic": false, "allow_off": true },
       "thinking_field": "thinking.budget_tokens",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.anthropic.com/en/docs/about-claude/models/overview"
+      "popular": false, "verified": true, "source": "https://platform.claude.com/docs/en/models/haiku-4-5/overview"
     },
     {
-      "key": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "family": "Gemini 系列", "provider": "google",
-      "match": { "ids": [], "prefixes": ["gemini-2.5-pro"] },
-      "api": "openai-completions", "context": 1000000, "output": 64000,
-      "thinking": { "kind": "budget", "presets": [8000, 16000, 32000], "default": { "kind": "dynamic" }, "dynamic": true, "allow_off": false },
-      "thinking_field": "thinkingConfig.thinkingBudget",
+      "key": "claude-opus", "name": "Claude Opus 4.1", "family": "Claude 系列", "provider": "anthropic",
+      "match": { "ids": [], "prefixes": ["claude-opus-4", "claude-3-opus"] },
+      "api": "anthropic-messages", "context": 200000, "output": 32000,
+      "thinking": { "kind": "budget", "presets": [4000, 16000], "default": {"kind": "off"}, "dynamic": false, "allow_off": true },
+      "thinking_field": "thinking.budget_tokens",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": true, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models"
+      "popular": false, "verified": false, "source": "https://platform.claude.com/docs/en/about-claude/model-deprecations"
     },
     {
-      "key": "gemini-3-pro", "name": "Gemini 3 Pro", "family": "Gemini 系列", "provider": "google",
-      "match": { "ids": [], "prefixes": ["gemini-3-pro", "gemini-3.0-pro"] },
-      "api": "openai-completions", "context": 1000000, "output": 64000,
-      "thinking": { "kind": "levels", "values": ["low", "high"], "default": "high" },
+      "key": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.7-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash"
+    },
+    {
+      "key": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.6-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash"
+    },
+    {
+      "key": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.5-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "medium" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash"
+    },
+    {
+      "key": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.5-flash-lite"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "minimal" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite"
+    },
+    {
+      "key": "gemini-3.1-flash-lite", "name": "Gemini 3.1 Flash-Lite", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3.1-flash-lite"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "minimal" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite"
+    },
+    {
+      "key": "gemini-3-flash", "name": "Gemini 3 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3-flash", "gemini-3.0-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["minimal", "low", "medium", "high"], "default": "high" },
       "thinking_field": "thinkingConfig.thinkingLevel",
       "capabilities": { "image": true, "pdf": true, "tools": true },
       "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/thinking"
     },
     {
-      "key": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "family": "Gemini 系列", "provider": "google",
-      "match": { "ids": [], "prefixes": ["gemini-2.5-flash-lite", "gemini-2.5-flash"] },
-      "api": "openai-completions", "context": 1000000, "output": 64000,
-      "thinking": { "kind": "budget", "presets": [4000, 8000, 24000], "default": { "kind": "dynamic" }, "dynamic": true, "allow_off": true },
+      "key": "gemini-3-pro", "name": "Gemini 3 Pro", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-3-pro", "gemini-3.0-pro"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "levels", "values": ["low", "high"], "default": "high" },
+      "thinking_field": "thinkingConfig.thinkingLevel",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": true, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-preview"
+    },
+    {
+      "key": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-2.5-pro"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "budget", "presets": [8000, 16000, 32000], "default": {"kind": "dynamic"}, "dynamic": true, "allow_off": false },
       "thinking_field": "thinkingConfig.thinkingBudget",
       "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models"
+      "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro"
+    },
+    {
+      "key": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-2.5-flash"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "budget", "presets": [4000, 8000, 24000], "default": {"kind": "dynamic"}, "dynamic": true, "allow_off": true },
+      "thinking_field": "thinkingConfig.thinkingBudget",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash"
+    },
+    {
+      "key": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite", "family": "Gemini 系列", "provider": "google",
+      "match": { "ids": [], "prefixes": ["gemini-2.5-flash-lite"] },
+      "api": "openai-completions", "context": 1048576, "output": 65536,
+      "thinking": { "kind": "budget", "presets": [4000, 8000, 24000], "default": {"kind": "off"}, "dynamic": true, "allow_off": true },
+      "thinking_field": "thinkingConfig.thinkingBudget",
+      "capabilities": { "image": true, "pdf": true, "tools": true },
+      "popular": false, "verified": false, "source": "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite"
+    },
+    {
+      "key": "grok-4.6", "name": "Grok 4.6", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-4.6", "grok-4.6-latest"], "prefixes": ["grok-4.6-"] },
+      "api": "openai-completions", "context": 500000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high", "xhigh"], "default": "high" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/guides/reasoning"
+    },
+    {
+      "key": "grok-4.5", "name": "Grok 4.5", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-4.5", "grok-4.5-latest"], "prefixes": ["grok-4.5-"] },
+      "api": "openai-completions", "context": 500000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "high" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/guides/reasoning"
+    },
+    {
+      "key": "grok-4.3", "name": "Grok 4.3", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-4.3", "grok-4.3-latest"], "prefixes": ["grok-4.3-"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "low" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/models/grok-4.3"
+    },
+    {
+      "key": "grok-4.20", "name": "Grok 4.20", "family": "Grok", "provider": "xai",
+      "match": { "ids": [], "prefixes": ["grok-4.20"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/models"
+    },
+    {
+      "key": "grok-4.20-non-reasoning", "name": "Grok 4.20 Non-Reasoning", "family": "Grok", "provider": "xai",
+      "match": { "ids": [], "prefixes": ["grok-4.20-non-reasoning", "grok-4.20-0309-non-reasoning"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/models"
+    },
+    {
+      "key": "grok-4", "name": "Grok 4", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-4", "grok-4-latest", "grok-3", "grok-3-mini"], "prefixes": ["grok-4-0", "grok-4-fast", "grok-4-1-fast", "grok-4.1"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "medium", "high", "xhigh"], "default": "low" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/developers/migration/may-15-retirement"
+    },
+    {
+      "key": "grok-code-fast", "name": "Grok Build 0.1", "family": "Grok", "provider": "xai",
+      "match": { "ids": ["grok-build-latest"], "prefixes": ["grok-code-fast", "grok-build"] },
+      "api": "openai-completions", "context": 256000, "output": 64000,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/models/grok-build-0.1"
+    },
+    {
+      "key": "deepseek-v4-pro", "name": "DeepSeek V4 Pro", "family": "DeepSeek", "provider": "deepseek",
+      "match": { "ids": ["deepseek-v4"], "prefixes": ["deepseek-v4-pro"] },
+      "api": "openai-completions", "context": 1000000, "output": 384000,
+      "thinking": { "kind": "levels", "values": ["off", "low", "high", "max"], "default": "high" },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://api-docs.deepseek.com/quick_start/pricing"
     },
     {
       "key": "deepseek-chat", "name": "DeepSeek V3.2", "family": "DeepSeek", "provider": "deepseek",
@@ -107,11 +674,11 @@
       "thinking": { "kind": "toggle", "on": "high", "default_on": false },
       "thinking_field": "thinking.type",
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": true, "verified": false, "source": "https://api-docs.deepseek.com/quick_start/pricing"
+      "popular": false, "verified": false, "source": "https://api-docs.deepseek.com/updates/"
     },
     {
       "key": "deepseek-reasoner", "name": "DeepSeek Reasoner", "family": "DeepSeek", "provider": "deepseek",
-      "match": { "ids": ["deepseek-reasoner", "deepseek-r1"], "prefixes": ["deepseek-r1", "deepseek-reasoner"] },
+      "match": { "ids": ["deepseek-reasoner", "deepseek-r1"], "prefixes": ["deepseek-r1-0528", "deepseek-reasoner"] },
       "api": "openai-completions", "context": 128000, "output": 64000,
       "thinking": { "kind": "always", "value": "high" },
       "thinking_field": "reasoning_content",
@@ -119,58 +686,274 @@
       "popular": false, "verified": false, "source": "https://api-docs.deepseek.com/guides/reasoning_model"
     },
     {
-      "key": "qwen3-max", "name": "Qwen3 Max", "family": "Qwen", "provider": "qwen",
-      "match": { "ids": ["qwen-max", "qwen3-max"], "prefixes": ["qwen3-max", "qwen-max"] },
-      "api": "openai-completions", "context": 256000, "output": 64000,
-      "thinking": { "kind": "unsupported" },
-      "thinking_field": null,
-      "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": true, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/models"
+      "key": "qwen3.8-flash", "name": "Qwen3.8 Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.8-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-8-flash"
     },
     {
-      "key": "qwen-plus", "name": "Qwen Plus", "family": "Qwen", "provider": "qwen",
-      "match": { "ids": ["qwen-plus", "qwen-plus-latest"], "prefixes": ["qwen-plus", "qwen3-235b", "qwen3-32b"] },
-      "api": "openai-completions", "context": 128000, "output": 32000,
+      "key": "qwen3.7-max", "name": "Qwen3.7 Max", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.7-max"] },
+      "api": "openai-completions", "context": 1000000, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/qwen3-7-max"
+    },
+    {
+      "key": "qwen3.7-plus", "name": "Qwen3.7 Plus", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.7-plus"] },
+      "api": "openai-completions", "context": 1000000, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-7-plus"
+    },
+    {
+      "key": "qwen3.7-flash", "name": "Qwen3.7 Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.7-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-7-flash"
+    },
+    {
+      "key": "qwen3.6-plus", "name": "Qwen3.6 Plus", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.6-plus"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-6-plus"
+    },
+    {
+      "key": "qwen3.6-flash", "name": "Qwen3.6 Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.6-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "qwen3.5-plus", "name": "Qwen3.5 Plus", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.5-plus"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://help.aliyun.com/zh/model-studio/qwen3-5-plus"
+    },
+    {
+      "key": "qwen3.5-flash", "name": "Qwen3.5 Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3.5-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "qwen3-max", "name": "Qwen3 Max", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": ["qwen-max", "qwen3-max"], "prefixes": ["qwen3-max", "qwen-max"] },
+      "api": "openai-completions", "context": 262144, "output": 65536,
       "thinking": { "kind": "toggle", "on": "high", "default_on": false },
       "thinking_field": "enable_thinking",
       "capabilities": { "image": false, "pdf": false, "tools": true },
       "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
     },
     {
-      "key": "qwen3-coder", "name": "Qwen3 Coder", "family": "Qwen", "provider": "qwen",
-      "match": { "ids": [], "prefixes": ["qwen3-coder", "qwen-coder"] },
-      "api": "openai-completions", "context": 1000000, "output": 64000,
+      "key": "qwen-plus", "name": "Qwen Plus", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": ["qwen-plus", "qwen-plus-latest"], "prefixes": ["qwen-plus"] },
+      "api": "openai-completions", "context": 1000000, "output": 32768,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": false },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "qwen-flash", "name": "Qwen Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 32768,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": false },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "qwen3-coder", "name": "Qwen3 Coder Plus", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-coder-plus", "qwen-coder-plus"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
       "thinking": { "kind": "unsupported" },
       "thinking_field": null,
       "capabilities": { "image": false, "pdf": false, "tools": true },
       "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/qwen-coder"
     },
     {
-      "key": "kimi-k2", "name": "Kimi K2", "family": "Kimi", "provider": "moonshot",
-      "match": { "ids": ["kimi-k2", "kimi-latest"], "prefixes": ["kimi-k2-0", "kimi-k2-turbo", "kimi-k2-instruct"] },
-      "api": "openai-completions", "context": 256000, "output": 32000,
+      "key": "qwen3-coder-flash", "name": "Qwen3 Coder Flash", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-coder-flash"] },
+      "api": "openai-completions", "context": 1000000, "output": 65536,
       "thinking": { "kind": "unsupported" },
       "thinking_field": null,
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": true, "verified": false, "source": "https://platform.moonshot.cn/docs/intro"
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/qwen-coder"
+    },
+    {
+      "key": "qwen3-coder-next", "name": "Qwen3 Coder Next", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-coder-next"] },
+      "api": "openai-completions", "context": 262144, "output": 65536,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/qwen-coder"
+    },
+    {
+      "key": "qwen3-coder-open", "name": "Qwen3 Coder（开源）", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-coder-480b-a35b", "qwen3-coder-30b-a3b"] },
+      "api": "openai-completions", "context": 262144, "output": 65536,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://huggingface.co/Qwen/Qwen3-Coder-480B-A35B-Instruct"
+    },
+    {
+      "key": "qwen3-instruct", "name": "Qwen3 Instruct（开源）", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-235b-a22b-instruct", "qwen3-30b-a3b-instruct", "qwen3-next-80b-a3b-instruct"] },
+      "api": "openai-completions", "context": 262144, "output": 32768,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507"
+    },
+    {
+      "key": "qwen3-thinking", "name": "Qwen3 Thinking（开源）", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": ["qwq-plus"], "prefixes": ["qwen3-235b-a22b-thinking", "qwen3-30b-a3b-thinking", "qwen3-next-80b-a3b-thinking", "qwq-"] },
+      "api": "openai-completions", "context": 262144, "output": 32768,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": "reasoning_content",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "qwen3-open", "name": "Qwen3（开源混合思考）", "family": "Qwen", "provider": "qwen",
+      "match": { "ids": [], "prefixes": ["qwen3-235b-a22b", "qwen3-32b", "qwen3-30b-a3b", "qwen3-14b", "qwen3-8b"] },
+      "api": "openai-completions", "context": 131072, "output": 32768,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "enable_thinking",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://huggingface.co/Qwen/Qwen3-235B-A22B"
+    },
+    {
+      "key": "kimi-k2.7-code", "name": "Kimi K2.7 Code", "family": "Kimi", "provider": "moonshot",
+      "match": { "ids": [], "prefixes": ["kimi-k2.7-code"] },
+      "api": "openai-completions", "context": 262144, "output": 32768,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart"
+    },
+    {
+      "key": "kimi-k2.6", "name": "Kimi K2.6", "family": "Kimi", "provider": "moonshot",
+      "match": { "ids": [], "prefixes": ["kimi-k2.6"] },
+      "api": "openai-completions", "context": 262144, "output": 32768,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart"
+    },
+    {
+      "key": "kimi-k2.5", "name": "Kimi K2.5", "family": "Kimi", "provider": "moonshot",
+      "match": { "ids": [], "prefixes": ["kimi-k2.5"] },
+      "api": "openai-completions", "context": 262144, "output": 32768,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://help.aliyun.com/zh/model-studio/deep-thinking"
+    },
+    {
+      "key": "kimi-k2", "name": "Kimi K2", "family": "Kimi", "provider": "moonshot",
+      "match": { "ids": ["kimi-k2", "kimi-latest"], "prefixes": ["kimi-k2-0", "kimi-k2-turbo", "kimi-k2-instruct"] },
+      "api": "openai-completions", "context": 262144, "output": 32000,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://platform.kimi.ai/docs/intro"
     },
     {
       "key": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "family": "Kimi", "provider": "moonshot",
       "match": { "ids": [], "prefixes": ["kimi-k2-thinking"] },
-      "api": "openai-completions", "context": 256000, "output": 32000,
+      "api": "openai-completions", "context": 262144, "output": 32000,
       "thinking": { "kind": "always", "value": "high" },
       "thinking_field": "reasoning_content",
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.moonshot.cn/docs/intro"
+      "popular": false, "verified": false, "source": "https://huggingface.co/moonshotai/Kimi-K2-Thinking"
     },
     {
-      "key": "glm-4.6", "name": "GLM-4.6", "family": "GLM", "provider": "zhipu",
-      "match": { "ids": [], "prefixes": ["glm-4.6", "glm-4.7"] },
+      "key": "glm-5.2", "name": "GLM-5.2", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-5.2"] },
+      "api": "openai-completions", "context": 1000000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
+    },
+    {
+      "key": "glm-5.1", "name": "GLM-5.1", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-5.1"] },
       "api": "openai-completions", "context": 200000, "output": 128000,
       "thinking": { "kind": "toggle", "on": "high", "default_on": true },
       "thinking_field": "thinking.type",
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": true, "verified": false, "source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-4.6"
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
+    },
+    {
+      "key": "glm-5", "name": "GLM-5", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": ["glm-5"], "prefixes": ["glm-5-"] },
+      "api": "openai-completions", "context": 200000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
+    },
+    {
+      "key": "glm-5v-turbo", "name": "GLM-5V-Turbo", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-5v"] },
+      "api": "openai-completions", "context": 200000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
+    },
+    {
+      "key": "glm-4.7", "name": "GLM-4.7", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-4.7"] },
+      "api": "openai-completions", "context": 200000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
+    },
+    {
+      "key": "glm-4.6", "name": "GLM-4.6", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-4.6"] },
+      "api": "openai-completions", "context": 200000, "output": 128000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-4.6"
+    },
+    {
+      "key": "glm-4.6v", "name": "GLM-4.6V", "family": "GLM", "provider": "zhipu",
+      "match": { "ids": [], "prefixes": ["glm-4.6v"] },
+      "api": "openai-completions", "context": 128000, "output": 32000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.bigmodel.cn/cn/guide/start/model-overview"
     },
     {
       "key": "glm-4.5", "name": "GLM-4.5", "family": "GLM", "provider": "zhipu",
@@ -179,61 +962,151 @@
       "thinking": { "kind": "toggle", "on": "high", "default_on": true },
       "thinking_field": "thinking.type",
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-4.5"
+      "popular": false, "verified": true, "source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-4.5"
     },
     {
-      "key": "grok-4", "name": "Grok 4", "family": "Grok", "provider": "xai",
-      "match": { "ids": ["grok-4", "grok-4-latest"], "prefixes": ["grok-4-0", "grok-4.1"] },
-      "api": "openai-completions", "context": 256000, "output": 64000,
-      "thinking": { "kind": "always", "value": "high" },
-      "thinking_field": null,
-      "capabilities": { "image": true, "pdf": false, "tools": true },
-      "popular": true, "verified": false, "source": "https://docs.x.ai/docs/models"
-    },
-    {
-      "key": "grok-code-fast", "name": "Grok Code Fast", "family": "Grok", "provider": "xai",
-      "match": { "ids": [], "prefixes": ["grok-code-fast"] },
-      "api": "openai-completions", "context": 256000, "output": 64000,
+      "key": "minimax-m2.7", "name": "MiniMax-M2.7", "family": "MiniMax", "provider": "minimax",
+      "match": { "ids": [], "prefixes": ["minimax-m2.7"] },
+      "api": "anthropic-messages", "context": 204800, "output": 128000,
       "thinking": { "kind": "always", "value": "high" },
       "thinking_field": null,
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.x.ai/docs/models"
+      "popular": false, "verified": false, "source": "https://platform.minimaxi.com/docs/guides/text-generation"
     },
     {
-      "key": "gpt-4.1", "name": "GPT-4.1", "family": "GPT-4 系列", "provider": "openai",
-      "match": { "ids": [], "prefixes": ["gpt-4.1"] },
-      "api": "openai-responses", "context": 1000000, "output": 32000,
-      "thinking": { "kind": "unsupported" },
+      "key": "minimax-m2.5", "name": "MiniMax-M2.5", "family": "MiniMax", "provider": "minimax",
+      "match": { "ids": [], "prefixes": ["minimax-m2.5"] },
+      "api": "anthropic-messages", "context": 204800, "output": 128000,
+      "thinking": { "kind": "always", "value": "high" },
       "thinking_field": null,
-      "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.openai.com/docs/models/gpt-4.1"
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://platform.minimaxi.com/docs/guides/text-generation"
     },
     {
-      "key": "o3", "name": "o3", "family": "o 系列", "provider": "openai",
-      "match": { "ids": ["o3", "o4-mini"], "prefixes": ["o3-", "o4-mini-"] },
-      "api": "openai-responses", "context": 200000, "output": 100000,
-      "thinking": { "kind": "levels", "values": ["low", "medium", "high"], "default": "medium" },
-      "thinking_field": "reasoning.effort",
-      "capabilities": { "image": true, "pdf": true, "tools": true },
-      "popular": false, "verified": false, "source": "https://platform.openai.com/docs/models/o3"
+      "key": "minimax-m2", "name": "MiniMax-M2 / M2.1", "family": "MiniMax", "provider": "minimax",
+      "match": { "ids": [], "prefixes": ["minimax-m2"] },
+      "api": "anthropic-messages", "context": 204800, "output": 128000,
+      "thinking": { "kind": "always", "value": "high" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://platform.minimaxi.com/docs/guides/text-generation"
     },
     {
-      "key": "mistral-large", "name": "Mistral Large", "family": "Mistral", "provider": "mistral",
-      "match": { "ids": ["mistral-large-latest"], "prefixes": ["mistral-large", "mistral-medium"] },
-      "api": "openai-completions", "context": 128000, "output": 32000,
+      "key": "doubao-seed-2-1-pro-260628", "name": "Doubao Seed 2.1 Pro 260628", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-1-pro-260628"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-1-lite", "name": "Doubao Seed 2.1 Lite", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-1-lite"] },
+      "api": "openai-completions", "context": 1048576, "output": 262144,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-1-turbo", "name": "Doubao Seed 2.1 Turbo", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-1-turbo"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-evolving", "name": "Doubao Seed Evolving", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-evolving"] },
+      "api": "openai-completions", "context": 1048576, "output": 262144,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-0-pro", "name": "Doubao Seed 2.0 Pro", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-0-pro"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-0-lite", "name": "Doubao Seed 2.0 Lite", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-0-lite"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-0-mini", "name": "Doubao Seed 2.0 Mini", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-0-mini"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "doubao-seed-2-0-code", "name": "Doubao Seed 2.0 Code", "family": "豆包 Seed", "provider": "doubao",
+      "match": { "ids": [], "prefixes": ["doubao-seed-2-0-code"] },
+      "api": "openai-completions", "context": 262144, "output": 131072,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": true },
+      "thinking_field": "thinking.type",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": true, "source": "https://docs.volcengine.com/docs/ark/model-list"
+    },
+    {
+      "key": "mistral-medium", "name": "Mistral Medium 3.5", "family": "Mistral", "provider": "mistral",
+      "match": { "ids": ["mistral-medium-latest", "mistral-medium-3-5"], "prefixes": ["mistral-medium-3-5", "mistral-medium-3.5", "mistral-medium-2604"] },
+      "api": "openai-completions", "context": 256000, "output": 32000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": false },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/models/mistral-medium-3-5-26-04"
+    },
+    {
+      "key": "mistral-large", "name": "Mistral Large 3", "family": "Mistral", "provider": "mistral",
+      "match": { "ids": ["mistral-large-latest", "mistral-large-3"], "prefixes": ["mistral-large-3", "mistral-large-2512"] },
+      "api": "openai-completions", "context": 256000, "output": 32000,
       "thinking": { "kind": "unsupported" },
       "thinking_field": null,
       "capabilities": { "image": true, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/models/mistral-large-3-25-12"
+    },
+    {
+      "key": "mistral-small", "name": "Mistral Small 4", "family": "Mistral", "provider": "mistral",
+      "match": { "ids": ["mistral-small-latest", "mistral-small-4"], "prefixes": ["mistral-small-4", "mistral-small-2603"] },
+      "api": "openai-completions", "context": 256000, "output": 32000,
+      "thinking": { "kind": "toggle", "on": "high", "default_on": false },
+      "thinking_field": "reasoning_effort",
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/studio/conversations/reasoning"
     },
     {
       "key": "codestral", "name": "Codestral", "family": "Mistral", "provider": "mistral",
-      "match": { "ids": ["codestral-latest"], "prefixes": ["codestral", "devstral"] },
+      "match": { "ids": ["codestral-latest"], "prefixes": ["codestral"] },
+      "api": "openai-completions", "context": 128000, "output": 32000,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": false, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/models/codestral-25-08"
+    },
+    {
+      "key": "devstral", "name": "Devstral 2", "family": "Mistral", "provider": "mistral",
+      "match": { "ids": ["devstral-latest"], "prefixes": ["devstral"] },
       "api": "openai-completions", "context": 256000, "output": 32000,
       "thinking": { "kind": "unsupported" },
       "thinking_field": null,
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/models/devstral-2-25-12"
     },
     {
       "key": "magistral", "name": "Magistral", "family": "Mistral", "provider": "mistral",
@@ -242,7 +1115,7 @@
       "thinking": { "kind": "always", "value": "high" },
       "thinking_field": null,
       "capabilities": { "image": false, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "popular": false, "verified": false, "source": "https://docs.mistral.ai/resources/deprecated/native-reasoning"
     },
     {
       "key": "llama-4-maverick", "name": "Llama 4 Maverick", "family": "Llama", "provider": "meta",
@@ -251,7 +1124,16 @@
       "thinking": { "kind": "unsupported" },
       "thinking_field": null,
       "capabilities": { "image": true, "pdf": false, "tools": true },
-      "popular": false, "verified": false, "source": "https://www.llama.com/docs/model-cards-and-prompt-formats/llama4/"
+      "popular": false, "verified": false, "source": "https://dev.meta.ai/llama/docs/model-cards-and-prompt-formats/llama4/"
+    },
+    {
+      "key": "llama-4-scout", "name": "Llama 4 Scout", "family": "Llama", "provider": "meta",
+      "match": { "ids": [], "prefixes": ["llama-4-scout", "llama4-scout"] },
+      "api": "openai-completions", "context": 10000000, "output": 16000,
+      "thinking": { "kind": "unsupported" },
+      "thinking_field": null,
+      "capabilities": { "image": true, "pdf": false, "tools": true },
+      "popular": false, "verified": false, "source": "https://dev.meta.ai/llama/docs/model-cards-and-prompt-formats/llama4/"
     },
     {
       "key": "llama-3.3-70b", "name": "Llama 3.3 70B", "family": "Llama", "provider": "meta",
