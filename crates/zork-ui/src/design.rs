@@ -81,6 +81,24 @@ pub fn prefer_theme(theme: Option<Theme>, cx: &mut gpui::App) {
         pinned.unwrap_or_else(|| Theme::for_appearance(cx.window_appearance())),
         cx,
     );
+    if pinned.is_none() {
+        // Clearing the override updates the app's effective appearance
+        // asynchronously, and no appearance event fires when the system look
+        // already matched the pin. Re-read it once AppKit has settled.
+        cx.spawn(async move |cx| {
+            for delay in [16, 120, 500] {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(delay))
+                    .await;
+                let _ = cx.update(|cx| {
+                    if pinned_theme().is_none() {
+                        apply_theme(Theme::for_appearance(cx.window_appearance()), cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
 }
 /// Switches palettes and the component library to `theme`, then repaints.
 pub fn apply_theme(theme: Theme, cx: &mut gpui::App) {
