@@ -1886,6 +1886,11 @@ impl Actor {
                 if is_deprecated {
                     return None;
                 }
+                // Zork patch: a fake-IP proxy TUN address (198.18.0.0/15) is reachable only
+                // through the local proxy, never by a peer; don't advertise it.
+                if crate::util::is_proxy_fake_ip(addr.ip()) {
+                    return None;
+                }
                 Some(DirectAddr { addr, typ })
             })
             .collect();

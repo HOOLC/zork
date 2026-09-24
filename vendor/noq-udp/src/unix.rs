@@ -156,10 +156,20 @@ impl UdpSocketState {
                 )?;
             }
         }
-        #[cfg(any(bsd, apple, solarish))]
         // IP_RECVDSTADDR == IP_SENDSRCADDR on FreeBSD
         // macOS uses only IP_RECVDSTADDR, no IP_SENDSRCADDR on macOS (the same on Solaris)
-        // macOS also supports IP_PKTINFO
+        //
+        // Zork patch: not enabled on Apple platforms. XNU silently ignores IP_RECVDSTADDR as
+        // a *send* control message, so the source address can never be pinned there; the
+        // kernel always picks it from the route. Reporting the receive destination anyway
+        // makes noq key paths by a local IPv4 address that outgoing packets do not carry:
+        // a multi-homed macOS server records the address the first Initial hit (e.g. .10),
+        // answers from the routed one (e.g. .107), then discards the client's handshake
+        // packets sent to .107 ("discarding packet sent to incorrect interface"); behind a
+        // fake-IP TUN (Surge/Clash) paths get keyed to the TUN address. Leaving `dst_ip` unset for
+        // IPv4 keeps path identity equal to what the kernel really sends. IPv6 is
+        // unaffected: XNU honours IPV6_PKTINFO for sending.
+        #[cfg(any(bsd, solarish))]
         {
             if is_ipv4 {
                 set_socket_option(&*io, libc::IPPROTO_IP, libc::IP_RECVDSTADDR, OPTION_ON)?;
@@ -488,7 +498,8 @@ pub(crate) fn send_single(
         &mut hdr,
         &mut iov,
         &mut ctrl,
-        cfg!(apple) || cfg!(target_os = "openbsd") || cfg!(target_os = "netbsd"),
+        // Zork patch: Apple ignores IP_RECVDSTADDR on send (see `UdpSocketState::new`).
+        cfg!(target_os = "openbsd") || cfg!(target_os = "netbsd"),
         state.sendmsg_einval(),
     );
     retry_if_interrupted(|| unsafe { libc::sendmsg(io.as_raw_fd(), &hdr, 0) })?;

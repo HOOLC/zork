@@ -3,7 +3,7 @@ pub(crate) use crate::punch::RelayHttpRoute;
 use anyhow::Result;
 use iroh::{
     address_lookup::{PkarrPublisher, PkarrResolver},
-    dns::{DnsProtocol, DnsResolver},
+    dns::DnsResolver,
     endpoint::{Builder, RelayMode},
     NetReportConfig, RelayConfig, RelayMap,
 };
@@ -68,12 +68,12 @@ pub(crate) async fn configure_endpoint(
                 options.relay_quic_port,
             )?));
         }
-        let dns = ["1.1.1.1:53", "8.8.8.8:53"]
-            .into_iter()
-            .map(|address| Ok((address.parse()?, DnsProtocol::Udp)))
-            .collect::<Result<Vec<_>>>()?;
         let mut report = NetReportConfig::default();
-        report.quic_dns_resolver = Some(DnsResolver::builder().with_nameservers(dns).build());
+        // QUIC address discovery resolves relay hosts with the system resolver (iroh falls
+        // back to public servers only if the system configuration cannot be read). Fixed
+        // UDP resolvers such as 1.1.1.1/8.8.8.8 are blocked on some networks and are
+        // hijacked by fake-IP proxies anyway; iroh skips fake-IP (198.18.0.0/15) answers.
+        report.quic_dns_resolver = Some(DnsResolver::builder().with_system_defaults().build());
         if !options.quic_discovery_urls.is_empty() {
             report.quic_discovery_servers =
                 relays(&options.quic_discovery_urls, options.relay_quic_port)?.relays::<Vec<_>>();
