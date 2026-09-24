@@ -27,18 +27,6 @@ controls = (ROOT/'crates/zork-ui/src/controls.rs').read_text()
 assert not re.search(r'\bfn\s+smooth_(?:button|icon_button|quiet_button|choice|segment|busy_button)', controls), 'parallel playground controls returned'
 gallery = (ROOT/'crates/zork-ui/src/component_story/mod.rs').read_text()
 assert 'self.dialog.render(' in gallery and 'ui::button(' in gallery, 'gallery bypassed production controls'
-design = ROOT/'apps/zork-design-pc'
-assets = (ROOT/'crates/zork-gui/src/bin/design_pc/assets.rs').read_text()
-manifest = json.loads((design/'assets/manifest.json').read_text())
-for item in manifest['items']:
- if item['category'] != 'svg/avatars' and item['path'].endswith(('.svg','.png')) and (design/item['path']).is_file():
-  assert 'design/'+item['path'] in assets,item['path']
-assert 'design/mobile/zork-mobile-v1.png' in assets
-for image in (design/'archive/reference-captures').glob('*.png'):
- assert 'design/'+str(image.relative_to(design)) in assets,image
-guides = (ROOT/'crates/zork-gui/src/bin/design_pc/guide.rs').read_text()
-for document in (design/'docs').glob('*.md'):
- if document.name == '11-avatars.md':
-  continue
- assert 'docs/'+document.name in guides,document
+bin_dir = ROOT/"crates/zork-gui/src/bin/design_pc"
+assert not (bin_dir/"guide.rs").exists() and not (bin_dir/"assets.rs").exists(), "the preview app renders components only"
 print('PASS native design package: shared controls and embedded design sources')

@@ -130,15 +130,17 @@ fn export_story(story: &Story, output: &Path) -> anyhow::Result<Value> {
     Ok(data)
 }
 
-#[path = "design_pc/assets.rs"]
-mod assets;
-#[path = "design_pc/guide.rs"]
-mod guide;
 #[path = "design_pc/workbench.rs"]
 mod workbench;
 use workbench::Gallery;
 
+/// A family (render family or sidebar entry) matches either key.
+fn in_family(story: &Story, family: &str) -> bool {
+    story.family == family || story.entry == family
+}
+
 /// Batch exports select fixtures; interactive launches only select the initial view.
+/// Retired `-compact`/`-wide` ids resolve to the merged state at that size.
 fn launch_catalog(
     mut catalog: Vec<Story>,
     family: Option<&str>,
@@ -148,17 +150,19 @@ fn launch_catalog(
     anyhow::ensure!(!catalog.is_empty(), "empty story catalog");
     if let Some(family) = family {
         anyhow::ensure!(
-            catalog.iter().any(|s| s.family == family),
+            catalog.iter().any(|s| in_family(s, family)),
             "unknown story family {family}"
         );
     }
-    let selected = if let Some(story) = story {
-        catalog
-            .iter()
-            .position(|s| s.id == story && family.is_none_or(|f| s.family == f))
-            .ok_or_else(|| anyhow::anyhow!("unknown story {story} in the requested family"))?
+    let selected = if let Some(id) = story {
+        let resolved = stories::resolve(&catalog, id)
+            .filter(|s| family.is_none_or(|f| in_family(s, f)))
+            .ok_or_else(|| anyhow::anyhow!("unknown story {id} in the requested family"))?;
+        let index = catalog.iter().position(|s| s.id == resolved.id).unwrap();
+        catalog[index] = resolved;
+        index
     } else if let Some(family) = family {
-        catalog.iter().position(|s| s.family == family).unwrap()
+        catalog.iter().position(|s| in_family(s, family)).unwrap()
     } else {
         catalog
             .iter()
@@ -166,8 +170,10 @@ fn launch_catalog(
             .unwrap_or(0)
     };
     if batch {
-        catalog
-            .retain(|s| family.is_none_or(|f| s.family == f) && story.is_none_or(|id| s.id == id));
+        if story.is_some() {
+            return Ok((vec![catalog[selected].clone()], 0));
+        }
+        catalog.retain(|s| family.is_none_or(|f| in_family(s, f)));
         return Ok((catalog, 0));
     }
     Ok((catalog, selected))
@@ -189,18 +195,52 @@ fn main() -> anyhow::Result<()> {
             .cloned()
     };
     let batch = value("--export").is_some() || args.iter().any(|a| a == "--list");
+    let theme = value("--theme");
+    if let Some(theme) = &theme {
+        anyhow::ensure!(
+            matches!(theme.as_str(), "light" | "dark"),
+            "--theme must be light or dark"
+        );
+        if batch {
+            // Offscreen renders read the pinned theme during component init.
+            std::env::set_var("ZORK_THEME", theme);
+        }
+    }
     let focus = if batch {
         value("--story")
     } else {
         value("--start-story").or_else(|| value("--story"))
     };
+    let family = value("--entry").or_else(|| value("--family"));
+    let restored = if batch || focus.is_some() || family.is_some() {
+        Value::Null
+    } else {
+        Gallery::restore()
+    };
+    let focus = focus.or_else(|| restored["story"].as_str().map(str::to_owned));
     let (mut catalog, initial) = launch_catalog(
         stories::catalog(),
-        value("--family").as_deref(),
+        family.as_deref(),
         focus.as_deref(),
         batch,
-    )?;
+    )
+    .or_else(|error| {
+        // A remembered story may no longer exist after a rebuild.
+        if restored.is_null() {
+            Err(error)
+        } else {
+            launch_catalog(stories::catalog(), None, None, false)
+        }
+    })?;
+    let preset = value("--width").and_then(|w| {
+        (!batch)
+            .then(|| workbench::Width::parse(&w))
+            .flatten()
+    });
     for (flag, width) in [("--width", true), ("--height", false)] {
+        if width && preset.is_some() {
+            continue;
+        }
         if let Some(value) = value(flag) {
             let value: f32 = value.parse()?;
             anyhow::ensure!(value.is_finite() && value >= 100., "invalid story size");
@@ -256,8 +296,10 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        // Background stills publish what rendered; full exports stay all-or-nothing.
+        let partial = args.iter().any(|a| a == "--partial");
         anyhow::ensure!(
-            failures.is_empty(),
+            failures.is_empty() || (partial && !rendered.is_empty()),
             "gallery was not replaced; {} stories failed:\n{}",
             failures.len(),
             failures.join("\n")
@@ -310,9 +352,11 @@ fn main() -> anyhow::Result<()> {
         );
     }
     let fixed_size = value("--width").is_some() || value("--height").is_some();
-    let show_overview = value("--family").is_none() && focus.is_none();
+    let overview = value("--story").is_none()
+        && value("--start-story").is_none()
+        && family.is_some();
     gpui_platform::application()
-        .with_assets(assets::DesignAssets)
+        .with_assets(EmbeddedAssets)
         .run(move |cx| {
             zork_gui::assets::init_fonts(cx);
             zork_gui::components::init(cx);
@@ -337,7 +381,7 @@ fn main() -> anyhow::Result<()> {
                         ..Default::default()
                     },
                     |w, cx| {
-                        w.set_window_title("Zork Design PC");
+                        w.set_window_title("Zork Design");
                         zork_ui::design::follow_appearance(w).detach();
                         w.on_window_should_close(cx, |_, cx| {
                             cx.quit();
@@ -346,8 +390,18 @@ fn main() -> anyhow::Result<()> {
                         let gallery = cx.new(|cx| {
                             let mut gallery =
                                 Gallery::new(catalog, initial, driver, fixed_size, cx);
-                            if show_overview {
-                                gallery.show_overview();
+                            gallery.enable_stills();
+                            gallery.apply_restored(&restored, cx);
+                            if overview {
+                                gallery.set_mode(workbench::Mode::Overview);
+                            }
+                            if let Some(width) = preset {
+                                gallery.set_width(width);
+                            }
+                            match theme.as_deref() {
+                                Some("light") => gallery.set_view(workbench::View::Light, cx),
+                                Some("dark") => gallery.set_view(workbench::View::Dark, cx),
+                                _ => {}
                             }
                             gallery
                         });

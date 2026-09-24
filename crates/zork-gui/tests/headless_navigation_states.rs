@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 "navigation-default"
             };
-            let story = stories::catalog().into_iter().find(|s| s.id == id).unwrap();
+            let story = stories::fixture(id).unwrap();
             let mut host_entity = None;
             let window = cx.open_window(gpui::size(px(width), px(360.)), |_, cx| {
                 let host = cx.new(|cx| StoryHost::new(story, cx));
