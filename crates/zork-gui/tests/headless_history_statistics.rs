@@ -208,15 +208,11 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         "records lost their primary reading space: {}",
         ledger.bounds.height
     );
-    // The history page moves the model above the token/cache pair at this breakpoint.
+    // Identity, model and total tokens share one line; the breakdown and the
+    // cache rate wait behind 用量.
     let tokens = find("history-tokens").bounds;
-    let cache = find("history-cache").bounds;
-    assert!((tokens.y - cache.y).abs() < 1.);
-    if stats.bounds.width <= 330. {
-        assert!(model_element.bounds.y + model_element.bounds.height < tokens.y);
-    } else {
-        assert!((model_element.bounds.y - tokens.y).abs() < 1.);
-    }
+    assert!((model_element.bounds.y - tokens.y).abs() < 1.);
+    assert!(!snapshot.elements.iter().any(|e| e.id == "history-cache"));
     std::fs::write(
         out.join("layout.json"),
         serde_json::to_vec_pretty(&json!({
@@ -302,11 +298,9 @@ fn run(width: f32, height: f32) -> anyhow::Result<()> {
         loaded.label
     );
     assert!(
-        paged
-            .elements
-            .iter()
-            .any(|e| e.id == "history-cache" && e.label == "—"),
-        "partial cache reports must not imply a complete rate"
+        loaded.label.ends_with(": —"),
+        "partial cache reports must not imply a complete rate: {}",
+        loaded.label
     );
     let records = (0..600).map(|i| record(i, json!({"kind":"input_appended","input":{
         "input_id":format!("scroll-{i}"),"content":format!("历史记录 {i} · rolling history"),"received_at_ms":NOW-600000+i as i64*1000

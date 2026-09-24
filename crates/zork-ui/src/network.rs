@@ -3,9 +3,8 @@ use crate::{
     automation::{AutomationElementExt, AutomationRole},
     controls as ui,
     design::ZORK_UI,
-    settings::{row, titled_row},
 };
-use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
+use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle};
 use std::rc::Rc;
 #[derive(Clone, Default)]
 pub struct Peer {
@@ -34,14 +33,111 @@ pub enum NetworkAction {
 pub fn network<V: 'static>(
     data: NetworkData,
     focus: &FocusHandle,
-    cx: &Context<V>,
+    connect: Option<gpui::AnyElement>,
+    window: &mut gpui::Window,
+    cx: &mut Context<V>,
     action: impl Fn(&mut V, NetworkAction, &mut Context<V>) + 'static,
 ) -> Div {
+    use crate::components::{disclosure, standard_menu::Item};
+    let _ = focus;
     let action = Rc::new(action);
-    let add = action.clone();
-    let toggle = action.clone();
-    let refresh = action.clone();
-    let copy = action.clone();
+    let more_action = action.clone();
+    let enabled = data.enabled;
+    let mut items = vec![
+        Item::new("mesh-new-peer", "手动连接"),
+        {
+            let item = Item::new("node-mesh-toggle", "允许设备连接").check(enabled);
+            if data.busy || !data.available {
+                item.disabled()
+            } else {
+                item
+            }
+        },
+    ];
+    items.push(if data.identity.is_some() {
+        Item::new("copy-node-origin", "复制节点身份")
+    } else {
+        Item::new("copy-node-origin", "复制节点身份").disabled()
+    });
+    items.push(if data.busy {
+        Item::new("mesh-settings-refresh", "正在刷新…").disabled()
+    } else {
+        Item::new("mesh-settings-refresh", "刷新")
+    });
+    let more = disclosure::more_menu(
+        "mesh-more",
+        items,
+        true,
+        window,
+        cx,
+        move |v, key, _, cx| {
+            let event = match key.as_str() {
+                "mesh-new-peer" => NetworkAction::Add,
+                "node-mesh-toggle" => NetworkAction::Toggle(!enabled),
+                "copy-node-origin" => NetworkAction::CopyIdentity,
+                "mesh-settings-refresh" => NetworkAction::Refresh,
+                _ => return,
+            };
+            more_action(v, event, cx)
+        },
+    );
+    let mut list = div().flex().flex_col();
+    for peer in &data.peers {
+        let action = action.clone();
+        let id = peer.id.clone();
+        let busy = data.busy;
+        let row_menu = disclosure::more_menu(
+            format!("mesh-peer-more-{id}"),
+            vec![if busy {
+                Item::new("remove", "移除").disabled()
+            } else {
+                Item::new("remove", "移除")
+            }],
+            true,
+            window,
+            cx,
+            move |v, key, _, cx| {
+                if key == "remove" {
+                    action(v, NetworkAction::Remove(id.clone()), cx)
+                }
+            },
+        );
+        let group = format!("mesh-peer-row-{}", peer.id);
+        list = list.child(
+            div()
+                .group(group.clone())
+                .flex()
+                .items_center()
+                .gap_2()
+                .min_h(px(40.))
+                .child(
+                    div()
+                        .min_w_0()
+                        .text_size(px(14.))
+                        .child(crate::device_name::label(
+                            format!("mesh-peer-{}", peer.id),
+                            peer.name.clone(),
+                            &peer.status,
+                            None,
+                        )),
+                )
+                .when(!peer.permission.is_empty(), |v| {
+                    v.child(disclosure::info(
+                        format!("mesh-peer-permission-{}", peer.id),
+                        peer.permission.clone(),
+                    ))
+                })
+                .child(div().flex_1())
+                // Rare row actions stay out of sight until the row is hovered.
+                .child(
+                    div()
+                        .opacity(0.)
+                        .group_hover(group, |s| s.opacity(1.))
+                        .child(row_menu),
+                ),
+        );
+    }
+    let count = data.peers.len();
     div()
         .flex()
         .flex_col()
@@ -49,121 +145,27 @@ pub fn network<V: 'static>(
             div()
                 .flex()
                 .items_center()
-                .justify_between()
-                .gap_4()
-                .pb(px(18.))
-                .child(ui::page_title("设备连接"))
-                .child(
-                    ui::page_action("mesh-new-peer", "手动连接")
-                        .on_click(cx.listener(move |v, _, _, cx| add(v, NetworkAction::Add, cx)))
-                        .automation(AutomationRole::Button, "手动连接设备"),
-                ),
-        )
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(rgb(ZORK_UI.palette.muted))
-                .child("管理已配对设备及其访问权限。"),
-        )
-        .child(row(
-            "允许设备连接",
-            if data.enabled {
-                "已启用"
-            } else {
-                "已关闭"
-            },
-            ui::switch(
-                "node-mesh-toggle",
-                "允许设备连接",
-                data.enabled,
-                !data.busy && data.available,
-                focus,
-                cx,
-                move |v, on, cx| toggle(v, NetworkAction::Toggle(on), cx),
-            ),
-        ))
-        .child(
-            div()
-                .flex()
-                .items_center()
                 .gap_2()
-                .py_4()
-                .child(
-                    ui::button(
-                        "copy-node-origin",
-                        "复制节点身份",
-                        false,
-                        data.identity.is_some(),
-                    )
-                    .on_click(
-                        cx.listener(move |v, _, _, cx| copy(v, NetworkAction::CopyIdentity, cx)),
-                    )
-                    .automation_enabled(
-                        data.identity.is_some(),
-                        AutomationRole::Button,
-                        "复制节点身份",
-                    ),
-                )
-                .child(
-                    ui::button(
-                        "mesh-settings-refresh",
-                        if data.busy {
-                            "正在刷新…"
-                        } else {
-                            "刷新"
-                        },
-                        false,
-                        !data.busy,
-                    )
-                    .on_click(
-                        cx.listener(move |v, _, _, cx| refresh(v, NetworkAction::Refresh, cx)),
-                    )
-                    .automation_enabled(
-                        !data.busy,
-                        AutomationRole::Button,
-                        "刷新连接信息",
-                    ),
-                ),
+                .pb(px(12.))
+                .child(ui::page_title("设备"))
+                .when(count > 0, |v| {
+                    v.child(disclosure::meta(format!("{count} 台")))
+                })
+                .child(div().flex_1())
+                .children(connect)
+                .child(more),
         )
+        .child(list)
+        .when(data.peers.is_empty(), |v| {
+            v.child(disclosure::meta("还没有其他设备。").py_2())
+        })
         .child(
             div()
-                .text_size(px(13.))
-                .font_weight(FontWeight::MEDIUM)
-                .pb_3()
-                .child("已配对设备"),
+                .pt(px(12.))
+                .child(disclosure::meta("同一 Google 账号的手机会自动出现在这里")),
         )
-        .children(data.peers.iter().map(|peer| {
-            let action = action.clone();
-            let id = peer.id.clone();
-            let (size, line_height, weight) = crate::design::TextRole::SectionTitle.metrics();
-            titled_row(
-                div()
-                    .text_size(px(size))
-                    .line_height(px(line_height))
-                    .font_weight(FontWeight(weight as f32))
-                    .text_color(rgb(ZORK_UI.palette.text))
-                    .child(crate::device_name::label(
-                        format!("mesh-peer-{id}"),
-                        peer.name.clone(),
-                        &peer.status,
-                        None,
-                    )),
-                peer.permission.clone(),
-                ui::button(format!("revoke-peer-{id}"), "移除", false, !data.busy)
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        action(v, NetworkAction::Remove(id.clone()), cx)
-                    }))
-                    .automation_enabled(!data.busy, AutomationRole::Button, "撤销配对"),
-            )
-        }))
-        .when(data.peers.is_empty(), |v| {
-            v.child(
-                div()
-                    .py_2()
-                    .text_size(px(12.))
-                    .text_color(rgb(ZORK_UI.palette.muted))
-                    .child("还没有配对设备。通过加入命令或手动连接连接设备。"),
-            )
+        .when(!enabled, |v| {
+            v.child(div().pt_2().child(disclosure::meta("设备连接已关闭，可在“更多”中开启。")))
         })
         .when_some(data.notice, |v, text| {
             v.child(div().mt_4().child(ui::feedback(text)))
@@ -193,34 +195,14 @@ pub fn enrollment<V: 'static>(
     let create = action.clone();
     let copy = action.clone();
     let revoke = action.clone();
+    let p = ZORK_UI.palette;
     let active =
         matches!(data.status.as_str(), "waiting" | "connecting") && !data.command.is_empty();
-    // Buttons keep their own width; the column hugs its content.
     div()
         .flex()
         .flex_col()
         .items_start()
         .gap_3()
-        .child(
-            div()
-                .text_size(px(12.))
-                .child("手机登录同一个 Google 账号后会自动连接。"),
-        )
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(rgb(ZORK_UI.palette.muted))
-                .child("连接其它设备：生成安装链接，并在目标设备打开链接完成安装。"),
-        )
-        .when(!data.status_label.is_empty(), |v| {
-            v.child(
-                div()
-                    .id("mesh-invite-status")
-                    .text_size(px(12.))
-                    .child(data.status_label.clone())
-                    .automation(AutomationRole::Status, data.status_label.clone()),
-            )
-        })
         .when(!active, |v| {
             v.child(
                 ui::button(
@@ -228,7 +210,7 @@ pub fn enrollment<V: 'static>(
                     if data.busy {
                         "正在生成…"
                     } else {
-                        "生成安装链接"
+                        "生成连接命令"
                     },
                     true,
                     !data.busy && data.available,
@@ -237,41 +219,79 @@ pub fn enrollment<V: 'static>(
                 .automation_enabled(
                     !data.busy && data.available,
                     AutomationRole::Button,
-                    "生成安装链接",
+                    "生成连接命令",
                 ),
             )
+            .when(!data.status_label.is_empty(), |v| {
+                v.child(
+                    div()
+                        .id("mesh-invite-status")
+                        .text_size(px(12.))
+                        .text_color(rgb(p.muted))
+                        .child(data.status_label.clone())
+                        .automation(AutomationRole::Status, data.status_label.clone()),
+                )
+            })
         })
         .when(active, |v| {
-            v.child(command_block("mesh-invite-command", data.command.clone()))
+            v.child(div().text_size(px(14.)).child("在另一台电脑上运行："))
                 .child(
-                    ui::button("mesh-invite-copy", "复制安装链接", true, !data.busy).on_click(
-                        cx.listener(move |v, _, _, cx| copy(v, EnrollmentAction::Copy, cx)),
-                    ),
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .p(px(4.))
+                        .pl(px(14.))
+                        .rounded(px(crate::design::RADIUS.block))
+                        .bg(rgb(p.prompt))
+                        .child(
+                            div()
+                                .id("mesh-invite-command")
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_x_scroll()
+                                .font_family(crate::assets::CODE_FONT_FAMILY)
+                                .text_size(px(12.))
+                                .line_height(px(18.))
+                                .whitespace_nowrap()
+                                .child(data.command.clone())
+                                .automation(AutomationRole::Status, data.command.clone()),
+                        )
+                        .child(
+                            ui::quiet_button("mesh-invite-copy", "复制", !data.busy, ui::IconButtonSize::Compact)
+                                .on_click(cx.listener(move |v, _, _, cx| {
+                                    copy(v, EnrollmentAction::Copy, cx)
+                                }))
+                                .automation_enabled(!data.busy, AutomationRole::Button, "复制安装链接"),
+                        ),
                 )
                 .child(
-                    ui::button("mesh-invite-revoke", "撤销链接", false, !data.busy).on_click(
-                        cx.listener(move |v, _, _, cx| revoke(v, EnrollmentAction::Revoke, cx)),
-                    ),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            div()
+                                .id("mesh-invite-status")
+                                .text_size(px(12.))
+                                .text_color(rgb(p.muted))
+                                .child(data.status_label.clone())
+                                .automation(AutomationRole::Status, data.status_label.clone()),
+                        )
+                        .child(div().text_size(px(12.)).text_color(rgb(p.subtle)).child("·"))
+                        .child(
+                            ui::quiet_button("mesh-invite-revoke", "撤销", !data.busy, ui::IconButtonSize::Small)
+                                .px(px(6.))
+                                .text_size(px(12.))
+                                .on_click(cx.listener(move |v, _, _, cx| {
+                                    revoke(v, EnrollmentAction::Revoke, cx)
+                                }))
+                                .automation_enabled(!data.busy, AutomationRole::Button, "撤销链接"),
+                        ),
                 )
         })
         .when_some(data.notice, |v, text| v.child(ui::feedback(text)))
-}
-pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl IntoElement {
-    div()
-        .id(id)
-        .w_full()
-        .min_w_0()
-        .p_3()
-        .bg(rgb(ZORK_UI.palette.sidebar))
-        .border(gpui::px(crate::design::BORDER_WIDTH))
-        .border_color(rgb(ZORK_UI.palette.border))
-        .rounded(px(ui::FIELD_RADIUS))
-        .overflow_x_scroll()
-        .font_family("Menlo")
-        .text_size(px(12.))
-        .line_height(px(18.))
-        .child(command.clone())
-        .automation(AutomationRole::Status, command)
 }
 
 #[cfg(feature = "stories")]
@@ -345,7 +365,7 @@ impl NetworkStory {
                     String::new()
                 },
                 status_label: if active {
-                    "等待目标设备执行 · 10 分 0 秒后过期".into()
+                    "10 分钟内有效".into()
                 } else if state == "expired" {
                     "加入命令已过期，请重新生成。".into()
                 } else {
@@ -366,7 +386,7 @@ impl NetworkStory {
             EnrollmentAction::Create => {
                 self.enrollment.busy = false;
                 self.enrollment.status = "waiting".into();
-                self.enrollment.status_label = "等待目标设备执行 · 10 分 0 秒后过期".into();
+                self.enrollment.status_label = "10 分钟内有效".into();
                 self.enrollment.command = crate::stories::page_fixture()["mesh"]["invitation"]
                     .as_str()
                     .unwrap()
@@ -533,19 +553,40 @@ pub fn page<V: 'static>(
     let action = Rc::new(action);
     let network_action = action.clone();
     let enrollment_action = action.clone();
+    let create = action.clone();
+    let invitation = props.invitation.clone();
+    let active = matches!(invitation.status.as_str(), "waiting" | "connecting")
+        && !invitation.command.is_empty();
+    let connect = (!active).then(|| {
+        let enabled = !invitation.busy && invitation.available;
+        ui::button("mesh-invite-create", "连接设备", true, enabled)
+            .on_click(cx.listener(move |v, _, _, cx| {
+                create(v, PageAction::Enrollment(EnrollmentAction::Create), cx)
+            }))
+            .automation_enabled(enabled, AutomationRole::Button, "连接设备")
+            .into_any_element()
+    });
     div()
         .flex()
         .flex_col()
-        .child(network(props.data, props.focus, cx, move |v, event, cx| {
-            network_action(v, PageAction::Network(event), cx)
-        }))
-        .child(
-            div()
-                .mt_6()
-                .child(enrollment(props.invitation, cx, move |v, event, cx| {
-                    enrollment_action(v, PageAction::Enrollment(event), cx)
-                })),
-        )
+        .child(network(
+            props.data,
+            props.focus,
+            connect,
+            window,
+            cx,
+            move |v, event, cx| network_action(v, PageAction::Network(event), cx),
+        ))
+        // The command appears only while an invitation is open.
+        .when(active || invitation.notice.is_some(), |v| {
+            v.child(
+                div()
+                    .mt_6()
+                    .child(enrollment(invitation, cx, move |v, event, cx| {
+                        enrollment_action(v, PageAction::Enrollment(event), cx)
+                    })),
+            )
+        })
         .when_some(props.peer, |v, fields| {
             v.child(peer::render(
                 fields,
@@ -565,7 +606,24 @@ pub fn enrollment_dialog<V: 'static>(
     event: impl Fn(&mut V, EnrollmentAction, &mut Context<V>) + 'static,
     close: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
-    let content = enrollment(data, cx, event);
+    let done = Rc::new(close);
+    let finish = done.clone();
+    let active =
+        matches!(data.status.as_str(), "waiting" | "connecting") && !data.command.is_empty();
+    let content = div()
+        .flex()
+        .flex_col()
+        .gap_4()
+        .child(enrollment(data, cx, event))
+        .when(active, |v| {
+            v.child(
+                div().flex().justify_end().child(
+                    ui::button("add-device-done", "完成", false, true)
+                        .on_click(cx.listener(move |v, _, _, cx| finish(v, cx)))
+                        .automation(AutomationRole::Button, "完成"),
+                ),
+            )
+        });
     ui::detail_modal_sized(
         "add-device-dialog",
         "连接设备",
@@ -576,7 +634,7 @@ pub fn enrollment_dialog<V: 'static>(
         window,
         cx,
         true,
-        move |v, _, cx| close(v, cx),
+        move |v, _, cx| done(v, cx),
     )
     .into_any_element()
 }

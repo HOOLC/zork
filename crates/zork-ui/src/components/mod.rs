@@ -4,6 +4,7 @@ pub mod attachments;
 pub mod brand;
 pub(crate) mod choice_menu;
 pub mod comments;
+pub mod disclosure;
 pub mod flyout;
 pub mod frame_delivery;
 pub mod geometry;

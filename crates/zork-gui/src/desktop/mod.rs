@@ -851,7 +851,7 @@ impl DesktopRoot {
         .detach();
         cx.notify();
     }
-    fn render_device(&self, cx: &mut Context<Self>) -> Div {
+    fn render_device(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{DeviceAction, DeviceData};
         let Some(node) = self
             .nodes
@@ -914,6 +914,7 @@ impl DesktopRoot {
             .child(zork_ui::settings::device(
                 data,
                 &self.device_switch_focus,
+                window,
                 cx,
                 |v, action, cx| match action {
                     DeviceAction::Rename => v.open_device_rename(cx),
@@ -942,7 +943,7 @@ impl DesktopRoot {
                 |body, view| body.child(view),
             )
     }
-    fn render_account(&self, cx: &mut Context<Self>) -> Div {
+    fn render_account(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         use zork_ui::settings::{AccountAction, AccountData};
         zork_ui::settings::account(
             AccountData {
@@ -961,6 +962,7 @@ impl DesktopRoot {
                         .then(|| "已退出本机，正在等待服务器确认撤销。".into())
                 }),
             },
+            window,
             cx,
             |v, action, cx| match action {
                 AccountAction::Login => v.login_account(cx),
@@ -1303,8 +1305,8 @@ impl Render for DesktopRoot {
                                     .w_full()
                                     .flex()
                                     .flex_col()
-                                    .when(tab == 3, |v| v.child(self.render_device(cx)))
-                                    .when(tab == 4, |v| v.child(self.render_client_settings(cx)))
+                                    .when(tab == 3, |v| v.child(self.render_device(window, cx)))
+                                    .when(tab == 4, |v| v.child(self.render_client_settings(window, cx)))
                                     .when(tab == 0, |v| {
                                         v.when_some(self.model_settings.clone(), |v, e| v.child(e))
                                     })

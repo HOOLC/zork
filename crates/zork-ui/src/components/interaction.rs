@@ -249,13 +249,16 @@ impl Render for InteractionCard {
             .gap_3()
             .p_4()
             .rounded(px(crate::design::RADIUS.container))
+            // Title, a small status pill and an ⓘ for the scope note.
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_1()
+                    .items_center()
+                    .gap_2()
+                    .min_w(px(0.))
                     .child(
                         div()
+                            .min_w(px(0.))
                             .text_size(px(14.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(p.text))
@@ -263,17 +266,21 @@ impl Render for InteractionCard {
                     )
                     .child(
                         div()
+                            .id(format!("interaction-{}-status", self.view.id))
+                            .flex_shrink_0()
+                            .px_2()
+                            .rounded_full()
+                            .bg(rgb(p.prompt))
                             .text_size(px(12.))
+                            .line_height(px(20.))
                             .text_color(rgb(p.muted))
                             .child(self.view.status.clone()),
                     )
                     .when_some(self.view.description.clone(), |header, text| {
-                        header.child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.muted))
-                                .child(text),
-                        )
+                        header.child(crate::components::disclosure::info(
+                            format!("interaction-{}-scope", self.view.id),
+                            text.to_string(),
+                        ))
                     }),
             );
         for field in self
@@ -439,24 +446,27 @@ impl Render for InteractionCard {
             );
         }
         if !self.view.details.is_empty() {
+            // A lone detail is the card's body; its label would only repeat that.
+            let lone = self.view.details.len() == 1 && self.view.fields.is_empty();
             body = body.child(
                 div()
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .pt_2()
                     .children(self.view.details.iter().enumerate().map(
                         |(index, (label, value))| {
                             div()
                                 .flex()
                                 .flex_col()
                                 .gap_1()
-                                .child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(p.muted))
-                                        .child(label.clone()),
-                                )
+                                .when(!lone, |v| {
+                                    v.child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .text_color(rgb(p.muted))
+                                            .child(label.clone()),
+                                    )
+                                })
                                 .child(self.read_value(
                                     format!("interaction-{}-detail-{index}", self.view.id),
                                     value.clone(),

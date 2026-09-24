@@ -361,7 +361,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 .absolute()
                 .size_full(),
             )
-            .child(self.history_statistics().render(self.history_text(), width))
+            .child(self.history_statistics().render(self.history_text(), width, window, cx))
             .child(
                 // The page body holds the scroll region the follow button
                 // floats over; the record list pads the records 12/16/24.
