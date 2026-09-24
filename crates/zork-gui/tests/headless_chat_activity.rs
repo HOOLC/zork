@@ -1,4 +1,4 @@
-//! Active members have one activity presentation in the transcript, never on the composer.
+//! Active members have one activity band above the composer, never inside it.
 use gpui::{px, AppContext, HeadlessAppContext};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};

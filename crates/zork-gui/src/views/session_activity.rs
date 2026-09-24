@@ -84,13 +84,28 @@ pub(super) struct SessionActivityPreview {
     pub name: String,
     pub rows: Vec<zork_ui::components::activity::SessionRow>,
     pub expanded: bool,
+    /// The round ended; the preview holds briefly, then leaves.
     pub stopped: bool,
+    /// Fading out; removed once the exit has played.
     pub leaving: bool,
     window: PreviewWindow,
     _source: Arc<Conversation>,
     updates: Option<zork_client_core::state::HistorySubscription>,
     subscription: Option<Task<()>>,
     dismiss: Option<Task<()>>,
+}
+
+/// A finished round stays readable this long before it fades away.
+const FINISH_HOLD: Duration = Duration::from_millis(600);
+
+fn step_duration(ms: i64, locale: Locale) -> String {
+    let seconds = (ms + 500) / 1000;
+    match (locale == Locale::ZhCn, seconds < 60) {
+        (true, true) => format!("{seconds} 秒"),
+        (true, false) => format!("{} 分 {} 秒", seconds / 60, seconds % 60),
+        (false, true) => format!("{seconds}s"),
+        (false, false) => format!("{}m {}s", seconds / 60, seconds % 60),
+    }
 }
 
 impl SessionActivityPreview {
@@ -111,57 +126,34 @@ impl SessionActivityPreview {
         let entries = entries.into_iter().rev().collect::<Vec<_>>();
         let visible = self.window.select(&entries);
         let projection = Projection::new(&visible);
+        // Tool steps only: input, replies, thinking and round boundaries are
+        // not "what the member is doing" and never become filler text.
         self.rows = projection
-            .rows(&visible, &HashSet::new())
-            .into_iter()
-            .filter_map(|row| {
-                let block = &projection.blocks[row.block];
-                let activity_index = row.activity.unwrap_or(block.start);
-                let activity = &projection.activities[activity_index];
-                if activity.kind == Kind::Input {
-                    return None;
-                }
+            .activities
+            .iter()
+            .filter(|activity| {
+                !matches!(
+                    activity.kind,
+                    Kind::Input | Kind::Output | Kind::Thinking | Kind::End
+                )
+            })
+            .map(|activity| {
                 let entry = &visible[activity.entry];
-                let group = row.activity.is_none();
-                let label = if group {
-                    let counts = &block.counts;
-                    [
-                        (counts.read, "history_group_read"),
-                        (counts.written, "history_group_write"),
-                        (counts.edited, "history_group_edit"),
-                        (counts.shell, "history_group_command"),
-                        (counts.queries, "history_group_query"),
-                        (counts.thinking, "history_group_thinking"),
-                        (counts.other, "history_group_operation"),
-                        (counts.failed, "history_group_failed"),
-                    ]
-                    .into_iter()
-                    .filter(|(count, _)| *count > 0)
-                    .map(|(count, key)| locale.text(key).replace("{count}", &count.to_string()))
-                    .collect::<Vec<_>>()
-                    .join(" · ")
-                } else {
-                    locale
-                        .text(zork_ui::components::history::kind_label(activity.kind))
-                        .to_owned()
-                };
-                Some(zork_ui::components::activity::SessionRow {
+                zork_ui::components::activity::SessionRow {
                     id: entry.id.clone(),
-                    icon: if group {
-                        "history/generic-tool.svg"
-                    } else {
-                        zork_ui::components::history::kind_icon(activity.kind)
-                    },
-                    label,
-                    summary: zork_ui::history::activity::preview(if group {
-                        &block.summary
-                    } else {
-                        &activity.summary
-                    }),
-                    failed: block.counts.failed > 0
-                        || matches!(entry.state.as_str(), "failed" | "timed_out"),
+                    icon: zork_ui::components::history::kind_icon(activity.kind),
+                    label: locale
+                        .text(zork_ui::components::history::kind_label(activity.kind))
+                        .to_owned(),
+                    summary: zork_ui::history::activity::preview(&activity.summary),
+                    failed: matches!(entry.state.as_str(), "failed" | "timed_out"),
                     running: entry.state == "running",
-                })
+                    duration: entry
+                        .end
+                        .and_then(|_| entry.duration(0))
+                        .filter(|ms| *ms >= 1000)
+                        .map(|ms| step_duration(ms, locale)),
+                }
             })
             .collect();
     }
@@ -229,6 +221,9 @@ impl RootView {
                 dismiss: None,
             });
             self.observe_session_activity(false, cx);
+        } else if !self.agent_online {
+            // Disconnected is not the end of the round: keep the last
+            // reliable state until the device answers again.
         } else if let Some(preview) = self.session_activity_preview.as_mut() {
             if preview.stopped {
                 return;
@@ -238,44 +233,197 @@ impl RootView {
             preview.subscription = None;
             preview.updates = None;
             let session = preview.session.clone();
-            let reduced = cx.reduce_motion();
             preview.dismiss = Some(cx.spawn(async move |this, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_millis(600))
-                    .await;
-                if !reduced {
-                    if this
-                        .update(cx, |view, cx| {
-                            if let Some(preview) = view
-                                .session_activity_preview
-                                .as_mut()
-                                .filter(|preview| preview.session == session && preview.stopped)
-                            {
-                                preview.leaving = true;
-                                zork_ui::components::region::invalidate(cx, &["transcript"]);
-                            }
-                        })
-                        .is_err()
-                    {
-                        return;
-                    }
-                    cx.background_executor()
-                        .timer(Duration::from_millis(220))
-                        .await;
-                }
-                let _ = this.update(cx, |view, cx| {
-                    if view
-                        .session_activity_preview
+                // Hold the finished state briefly, then fade on the exit
+                // curve and drop it once the fade has played.
+                cx.background_executor().timer(FINISH_HOLD).await;
+                let still = |view: &RootView| {
+                    view.session_activity_preview
                         .as_ref()
                         .is_some_and(|preview| preview.session == session && preview.stopped)
-                    {
+                };
+                if this
+                    .update(cx, |view, cx| {
+                        if still(view) {
+                            view.session_activity_preview.as_mut().unwrap().leaving = true;
+                            zork_ui::components::region::invalidate(cx, &["composer"]);
+                        }
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+                cx.background_executor()
+                    .timer(
+                        zork_ui::motion::duration(zork_ui::motion::exit(zork_ui::motion::BASE))
+                            + Duration::from_millis(32),
+                    )
+                    .await;
+                let _ = this.update(cx, |view, cx| {
+                    if still(view) {
                         view.session_activity_preview = None;
-                        view.transcript_list
-                            .remeasure_items(view.lines.len()..view.lines.len() + 1);
-                        zork_ui::components::region::invalidate(cx, &["transcript"]);
+                        zork_ui::components::region::invalidate(cx, &["composer", "transcript"]);
                     }
                 });
             }));
+        }
+    }
+
+    /// The activity band above the composer, at the composer's width. It
+    /// shows the member's Session preview, or the live status while its
+    /// records have not arrived. Its height is part of the measured composer
+    /// overlay, so the message list reserves it like the composer itself.
+    pub(super) fn render_session_activity(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        use zork_ui::components::activity::{
+            Actions, Labels, Phase, SessionActivity,
+        };
+        let locale = self.locale;
+        let offline = !self.agent_online;
+        let labels = Labels {
+            expand: locale.text("session_activity_more").into(),
+            collapse: locale.text("session_activity_less").into(),
+            stop: locale.text("session_activity_stop").into(),
+            history: locale.text("session_activity_history").into(),
+            now: locale.text("session_activity_now").into(),
+        };
+        let presentations = self.activity_presentations();
+        let failed = presentations.iter().any(|item| item.failed);
+        let data = match self
+            .session_activity_preview
+            .as_ref()
+            .filter(|preview| !preview.rows.is_empty() && !failed)
+        {
+            Some(preview) => {
+                let phase = if offline {
+                    Phase::Disconnected
+                } else if preview.stopped {
+                    Phase::Finished
+                } else {
+                    Phase::Running
+                };
+                Some((
+                    preview.session.clone(),
+                    SessionActivity {
+                        name: preview.name.clone(),
+                        phase,
+                        expanded: preview.expanded,
+                        rows: preview.rows.clone(),
+                        live: None,
+                        status: locale
+                            .text(match phase {
+                                Phase::Running => "history_running",
+                                Phase::Finished => "session_activity_done",
+                                Phase::Disconnected => "session_activity_offline",
+                            })
+                            .into(),
+                        labels,
+                    },
+                    !preview.leaving,
+                ))
+            }
+            None => presentations.first().map(|item| {
+                let session = self
+                    .participants
+                    .iter()
+                    .find(|participant| participant.id == item.id)
+                    .map(|participant| participant.session_id.clone())
+                    .unwrap_or_default();
+                (
+                    session,
+                    SessionActivity {
+                        name: item.name.clone(),
+                        phase: if offline {
+                            Phase::Disconnected
+                        } else if item.running {
+                            Phase::Running
+                        } else {
+                            Phase::Finished
+                        },
+                        expanded: false,
+                        rows: Vec::new(),
+                        live: Some((item.label.clone(), item.failed)),
+                        status: String::new(),
+                        labels,
+                    },
+                    true,
+                )
+            }),
+        };
+        let open = data.as_ref().is_some_and(|(_, _, open)| *open);
+        let frame = zork_ui::motion::presence(
+            "session-activity-presence",
+            open,
+            zork_ui::motion::BASE,
+            window,
+            cx,
+        );
+        let (session, data, _) = match (frame, data) {
+            (Some(_), Some(data)) => data,
+            _ => {
+                self.note_session_activity_height(false, cx);
+                return None;
+            }
+        };
+        let frame = frame.unwrap();
+        let root = cx.entity().downgrade();
+        let open_root = root.clone();
+        let stop_root = root.clone();
+        let running = data.phase == Phase::Running;
+        let (element, moving) = zork_ui::components::activity::render_session(
+            &data,
+            Actions {
+                expand: Rc::new(move |cx| {
+                    let _ = root.update(cx, |view, cx| {
+                        if let Some(preview) = view.session_activity_preview.as_mut() {
+                            preview.expanded = !preview.expanded;
+                            zork_ui::components::region::invalidate(cx, &["composer"]);
+                        }
+                    });
+                }),
+                open: Rc::new(move |entry, cx| {
+                    let session = session.clone();
+                    let _ = open_root.update(cx, |view, cx| match entry {
+                        Some(entry) => view.open_history_entry(&session, entry, cx),
+                        None => view.open_history(&session, cx),
+                    });
+                }),
+                stop: (running && !self.canceling).then(|| {
+                    Rc::new(move |cx: &mut gpui::App| {
+                        let _ = stop_root.update(cx, |view, cx| view.cancel_session(cx));
+                    }) as Rc<dyn Fn(&mut gpui::App)>
+                }),
+            },
+            window,
+            cx,
+        );
+        // Height changes while expanding, collapsing or appearing: the cached
+        // composer region must remeasure on those frames.
+        self.note_session_activity_height(true, cx);
+        if moving || frame.opacity < 1. {
+            zork_ui::components::region::invalidate(cx, &["composer"]);
+        }
+        Some(
+            div()
+                .w(px(self.composer_surface_width))
+                .max_w_full()
+                .pb(px(12.))
+                .flex_shrink_0()
+                .relative()
+                .top(px(zork_ui::motion::ROW_OFFSET * frame.travel))
+                .opacity(frame.opacity)
+                .child(element)
+                .into_any_element(),
+        )
+    }
+
+    fn note_session_activity_height(&mut self, shown: bool, cx: &mut Context<Self>) {
+        if self.session_activity_shown != shown {
+            self.session_activity_shown = shown;
+            zork_ui::components::region::invalidate(cx, &["composer"]);
         }
     }
 
@@ -344,9 +492,7 @@ impl RootView {
         if let Some(update) = updates.prepare() {
             preview.apply(&update.state, self.locale);
             updates.acknowledge(update.batch.unwrap());
-            self.transcript_list
-                .remeasure_items(self.lines.len()..self.lines.len() + 1);
-            zork_ui::components::region::invalidate(cx, &["transcript"]);
+            zork_ui::components::region::invalidate(cx, &["composer"]);
         }
         preview.updates = Some(updates);
     }
