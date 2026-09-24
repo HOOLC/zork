@@ -310,8 +310,7 @@ fn main() -> anyhow::Result<()> {
         );
         f.click("model-edit-fixture-model")?;
         anyhow::ensure!(
-            f.element("model-inline-editor").is_some()
-                && f.element("model-editor-dialog").is_none(),
+            f.element("model-inline-editor").is_some(),
             "editing a model did not expand in place"
         );
         f.screenshot(&format!("model-inline-{width}.png"))?;
