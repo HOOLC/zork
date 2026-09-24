@@ -191,6 +191,7 @@ internal fun rememberDeferredLoading(loading: Boolean): Boolean {
  * The persimmon "working" dot breathes over 1.6 s only while [active]. When the
  * dot leaves composition or stops, the loop ends; reduced motion keeps it static.
  */
+@Composable
 internal fun Modifier.workingPulse(active: Boolean): Modifier = this.then(
     if (!active) Modifier else Modifier.composedPulse()
 )
