@@ -416,7 +416,7 @@ impl Render for ModelSettings {
                     .then(|| device.editor.clone())
             }))
             .when(chooser_visible, |v| {
-                v.child(ui::detail_modal(
+                v.child(ui::detail_modal_sized(
                     "model-device-dialog",
                     "选择保存连接的设备",
                     ui::section()
@@ -432,8 +432,7 @@ impl Render for ModelSettings {
                                 ui::IconButtonSize::Standard,
                             )
                             .w_full()
-                            .h_auto()
-                            .py_3()
+                            .h(px(40.))
                             .justify_start()
                             .child(zork_ui::device_name::label(
                                 format!("model-add-device-name-{id}"),
@@ -458,6 +457,7 @@ impl Render for ModelSettings {
                         })),
                     None,
                     &self.modal,
+                    ui::DIALOG_FORM_WIDTH,
                     window,
                     cx,
                     true,

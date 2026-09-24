@@ -77,7 +77,6 @@ fn placement(family: &str) -> Option<(&'static str, &'static str, &'static str)>
         "brand" | "icons" | "providers" => ("基础控件", "icons-brand", "图标与品牌"),
         "conversation" => ("对话", "conversation", "会话"),
         "markdown" => ("对话", "markdown", "消息正文"),
-        "composer" => ("对话", "composer", "消息输入"),
         "comments" => ("对话", "comments", "文字评论"),
         "activity" => ("对话", "activity", "会话动态"),
         "message-interaction" => ("对话", "message-interaction", "交互卡片"),
@@ -338,16 +337,6 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 600.;
         items.push(story);
     }
-    let mut composer = Story::new(
-        "composer",
-        "消息输入",
-        "interactive",
-        "crates/zork-ui/src/components/widgets/composer.rs",
-        "composer",
-    );
-    composer.width = 900.;
-    composer.height = 700.;
-    items.push(composer);
     for state in ["image", "document", "long", "loading", "error"] {
         let mut story = Story::new(
             "attachment-viewer",
@@ -698,13 +687,6 @@ impl StoryHost {
         {
             return view.read(cx).inspect();
         }
-        if let Ok(view) = self
-            .inner
-            .clone()
-            .downcast::<zork_ui::component_story::ComposerExample>()
-        {
-            return view.read(cx).inspect(cx);
-        }
         if let Ok(view) = self.inner.clone().downcast::<PrimitiveStory>() {
             return view.read(cx).inspect(cx);
         }
@@ -808,9 +790,6 @@ impl StoryHost {
                         cx,
                     )
                 })
-                .into(),
-            "composer" => cx
-                .new(zork_ui::component_story::ComposerExample::new)
                 .into(),
             "attachment-viewer" => cx
                 .new(|cx| {

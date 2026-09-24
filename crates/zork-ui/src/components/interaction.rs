@@ -445,8 +445,6 @@ impl Render for InteractionCard {
                     .flex_col()
                     .gap_2()
                     .pt_2()
-                    .border_t(gpui::px(crate::design::BORDER_WIDTH))
-                    .border_color(rgb(p.border_strong))
                     .children(self.view.details.iter().enumerate().map(
                         |(index, (label, value))| {
                             div()

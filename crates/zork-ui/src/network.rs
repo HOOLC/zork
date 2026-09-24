@@ -159,7 +159,7 @@ pub fn network<V: 'static>(
         .when(data.peers.is_empty(), |v| {
             v.child(
                 div()
-                    .py_5()
+                    .py_2()
                     .text_size(px(12.))
                     .text_color(rgb(ZORK_UI.palette.muted))
                     .child("还没有配对设备。通过加入命令或手动连接连接设备。"),
@@ -195,10 +195,12 @@ pub fn enrollment<V: 'static>(
     let revoke = action.clone();
     let active =
         matches!(data.status.as_str(), "waiting" | "connecting") && !data.command.is_empty();
+    // Buttons keep their own width; the column hugs its content.
     div()
         .flex()
         .flex_col()
-        .gap_4()
+        .items_start()
+        .gap_3()
         .child(
             div()
                 .text_size(px(12.))
@@ -259,7 +261,6 @@ pub fn command_block(id: impl Into<gpui::ElementId>, command: String) -> impl In
         .id(id)
         .w_full()
         .min_w_0()
-        .min_h(px(84.))
         .p_3()
         .bg(rgb(ZORK_UI.palette.sidebar))
         .border(gpui::px(crate::design::BORDER_WIDTH))
@@ -532,8 +533,6 @@ pub fn page<V: 'static>(
     let action = Rc::new(action);
     let network_action = action.clone();
     let enrollment_action = action.clone();
-    // The last peer row already ends with a divider.
-    let divided = props.data.peers.is_empty() || props.data.notice.is_some();
     div()
         .flex()
         .flex_col()
@@ -543,11 +542,6 @@ pub fn page<V: 'static>(
         .child(
             div()
                 .mt_6()
-                .when(divided, |v| {
-                    v.pt_5()
-                        .border_t(px(crate::design::BORDER_WIDTH))
-                        .border_color(rgb(ZORK_UI.palette.border))
-                })
                 .child(enrollment(props.invitation, cx, move |v, event, cx| {
                     enrollment_action(v, PageAction::Enrollment(event), cx)
                 })),
@@ -572,12 +566,13 @@ pub fn enrollment_dialog<V: 'static>(
     close: impl Fn(&mut V, &mut Context<V>) + 'static,
 ) -> gpui::AnyElement {
     let content = enrollment(data, cx, event);
-    ui::detail_modal(
+    ui::detail_modal_sized(
         "add-device-dialog",
         "连接设备",
         content,
         None,
         modal,
+        ui::DIALOG_FORM_WIDTH,
         window,
         cx,
         true,

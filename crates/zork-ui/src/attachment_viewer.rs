@@ -412,6 +412,7 @@ impl Viewer {
                     DialogOptions {
                         title_action: Some(title_actions.into_any_element()),
                         notice: self.data.notice.map(|key| self.locale.text(key).to_owned()),
+                        width: Some(ui::DIALOG_RICH_WIDTH),
                         ..Default::default()
                     },
                     window,

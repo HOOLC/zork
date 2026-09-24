@@ -94,6 +94,8 @@ enum Interaction {
 
 struct Session {
     selected: usize,
+    /// Width the specimen was built at, for pages that lay out from it.
+    width: Option<f32>,
     host: Entity<StoryHost>,
     scroll: ScrollHandle,
     pending: Option<Vec<Value>>,
@@ -281,6 +283,17 @@ impl Gallery {
         self.width = width;
     }
 
+    /// Pages that lay out from the fixture width are rebuilt at a new width;
+    /// other specimens keep their edits across width changes.
+    fn relayout(&mut self, cx: &mut Context<Self>) {
+        let family = self.story().family.as_str();
+        if matches!(family, "new-chat" | "onboarding")
+            && self.session().width != self.width.pixels()
+        {
+            self.create_session(self.selected, None, cx);
+        }
+    }
+
     fn story(&self) -> &Story {
         &self.catalog[self.selected]
     }
@@ -303,7 +316,11 @@ impl Gallery {
     }
 
     fn create_session(&mut self, selected: usize, extra: Option<Vec<Value>>, cx: &mut Context<Self>) {
-        let story = self.catalog[selected].clone();
+        let mut story = self.catalog[selected].clone();
+        let width = self.width.pixels();
+        if let Some(width) = width {
+            story.width = width;
+        }
         let mut actions = story.actions.clone();
         actions.extend(extra.unwrap_or_default());
         let host = cx.new(|cx| StoryHost::new(story.clone(), cx));
@@ -311,6 +328,7 @@ impl Gallery {
             story.entry,
             Session {
                 selected,
+                width,
                 host,
                 scroll: ScrollHandle::new(),
                 pending: Some(actions),
@@ -693,9 +711,6 @@ impl Gallery {
                 .items_center()
                 .gap_2()
                 .pt(px(44.))
-                .bg(rgb(p.sidebar))
-                .border_r(px(zork_ui::design::BORDER_WIDTH))
-                .border_color(rgb(p.border))
                 .child(
                     ui::icon_button("design-sidebar-open", true)
                         .child(ui::icon("icons/panel-left.svg", 16.))
@@ -826,9 +841,6 @@ impl Gallery {
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .bg(rgb(p.sidebar))
-            .border_r(px(zork_ui::design::BORDER_WIDTH))
-            .border_color(rgb(p.border))
             .child(
                 div()
                     .h(px(44.))
@@ -854,7 +866,7 @@ impl Gallery {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .px(px(20.))
+                    .px(px(24.))
                     .pt_1()
                     .pb_3()
                     .child(
@@ -988,10 +1000,8 @@ impl Gallery {
             .flex()
             .items_center()
             .gap_2()
-            .pl(px(20.))
-            .pr_3()
-            .border_b(px(zork_ui::design::BORDER_WIDTH))
-            .border_color(rgb(p.border))
+            .pl(px(24.))
+            .pr(px(16.))
             .child(crumb.flex_1())
             .child(mode)
             .child(view)
@@ -1036,26 +1046,46 @@ impl Gallery {
         }
     }
 
-    fn overview(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn overview(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = ZORK_UI.palette;
         let themes = self.still_themes();
+        // Responsive grid: tiles at least 260 px wide share the row evenly.
+        const GAP: f32 = 16.;
+        const PAD: f32 = 12.;
+        let rail = if self.sidebar_open { SIDEBAR_WIDTH } else { RAIL_WIDTH };
+        let available = (f32::from(window.viewport_size().width) - rail - 48.).max(260.);
+        let columns = ((available + GAP) / (260. + GAP)).floor().max(1.);
+        let tile = ((available - GAP * (columns - 1.)) / columns).floor();
+        let inner = tile - 2. * PAD;
+        let half = if themes.len() == 2 { (inner - 4.) / 2. } else { inner };
         let tiles = self.states(&self.story().entry).into_iter().map(|index| {
             let story = &self.catalog[index];
-            let halves = themes.iter().map(|theme| {
+            let stills: Vec<_> = themes.iter().map(|theme| self.still(&story.id, theme)).collect();
+            // Each half keeps the still's aspect ratio; the row takes the taller one.
+            let height = stills
+                .iter()
+                .flatten()
+                .map(|t| half * t.height / t.width.max(1.))
+                .fold(0., f32::max);
+            let height = if height > 0. {
+                height.clamp(48., inner)
+            } else {
+                (half * story.height / story.width.max(1.)).clamp(48., inner)
+            };
+            let halves = stills.into_iter().map(|still| {
                 div()
-                    .flex_1()
-                    .h_full()
-                    .min_w_0()
+                    .w(px(half))
+                    .h(px(height))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .overflow_hidden()
-                    .bg(rgb(p.window))
-                    .child(self.still_frame(
-                        self.still(&story.id, theme),
-                        if themes.len() == 2 { 140. } else { 280. },
-                        150.,
-                    ))
+                    .child(match still {
+                        Some(thumb) => gpui::img(thumb.path)
+                            .size_full()
+                            .object_fit(gpui::ObjectFit::Contain)
+                            .into_any_element(),
+                        None => self.still_frame(None, half, height),
+                    })
             });
             let issues = self
                 .still(&story.id, themes[0])
@@ -1064,27 +1094,33 @@ impl Gallery {
             let selected = index == self.selected;
             div()
                 .id(format!("design-tile-{}", story.id))
-                .w(px(300.))
+                .w(px(tile))
                 .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p(px(PAD))
                 .rounded(px(RADIUS.container))
-                .overflow_hidden()
-                .border(px(if selected { 2. } else { zork_ui::design::BORDER_WIDTH }))
-                .border_color(rgb(if selected { p.text } else { p.border }))
                 .bg(rgb(p.canvas))
+                .when(selected, |v| v.border_2().border_color(rgb(p.text)))
                 .cursor_pointer()
-                .child(div().h(px(166.)).flex().children(halves))
                 .child(
                     div()
-                        .h(px(40.))
+                        .flex()
+                        .gap_1()
+                        .rounded(px(RADIUS.container - PAD))
+                        .overflow_hidden()
+                        .children(halves),
+                )
+                .child(
+                    div()
                         .flex()
                         .items_center()
                         .gap_2()
-                        .px(px(14.))
-                        .border_t(px(zork_ui::design::BORDER_WIDTH))
-                        .border_color(rgb(p.border))
-                        .text_size(px(12.5))
+                        .px_1()
+                        .text_size(px(13.))
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(div().flex_1().min_w_0().child(story.label.clone()))
+                        .child(div().flex_1().min_w_0().truncate().child(story.label.clone()))
                         .when(issues > 0, |v| {
                             v.child(
                                 div()
@@ -1108,9 +1144,16 @@ impl Gallery {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .p(px(20.))
-            .bg(rgb(p.window))
-            .child(div().flex().flex_wrap().gap_4().items_start().children(tiles))
+            .px(px(24.))
+            .pb(px(24.))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(GAP))
+                    .items_start()
+                    .children(tiles),
+            )
             .automation(AutomationRole::ScrollArea, "全部状态")
             .into_any_element()
     }
@@ -1124,7 +1167,7 @@ impl Gallery {
             div()
                 .text_size(px(12.))
                 .text_color(rgb(p.subtle))
-                .mb_2()
+                .mb(px(8.))
                 .child(text)
         };
         let size_text = self
@@ -1135,10 +1178,8 @@ impl Gallery {
             .when_some(self.canvas_width(), |v, w| v.w(px(w)).h(px(story.height)))
             .when(self.canvas_width().is_none(), |v| v.w_full().h_full())
             .flex_shrink_0()
-            .rounded(px(14.))
+            .rounded(px(RADIUS.container))
             .overflow_hidden()
-            .border(px(zork_ui::design::BORDER_WIDTH))
-            .border_color(rgb(p.border_strong))
             .child(session.host.clone())
             .automation(AutomationRole::Status, "当前组件画布");
         let live_label = if live_theme == "light" { "浅色" } else { "深色" };
@@ -1170,7 +1211,12 @@ impl Gallery {
                             .flex()
                             .items_start()
                             .justify_center()
-                            .child(self.still_frame(self.still(&story.id, other), 1600., 1600.)),
+                            .child(
+                                div()
+                                    .rounded(px(RADIUS.container))
+                                    .overflow_hidden()
+                                    .child(self.still_frame(self.still(&story.id, other), 1600., 1600.)),
+                            ),
                     ),
             );
         }
@@ -1181,8 +1227,8 @@ impl Gallery {
             .min_h_0()
             .overflow_scroll()
             .track_scroll(&session.scroll)
-            .p(px(24.))
-            .bg(rgb(p.window))
+            .px(px(24.))
+            .pb(px(24.))
             .child(frames)
             .into_any_element()
     }
@@ -1195,10 +1241,6 @@ impl Gallery {
                 .flex()
                 .flex_col()
                 .gap_2()
-                .px(px(18.))
-                .py(px(16.))
-                .border_b(px(zork_ui::design::BORDER_WIDTH))
-                .border_color(rgb(p.border))
                 .child(
                     div()
                         .text_size(px(12.))
@@ -1244,7 +1286,8 @@ impl Gallery {
             .filter_map(|e| serde_json::to_value(e).ok())
             .collect();
         let issues = checks(&values);
-        let mut body = div().flex().flex_col();
+        // Sections are a title plus spacing on the paper; no dividers.
+        let mut body = div().flex().flex_col().gap(px(24.)).p(px(20.));
         body = body.child(
             section("状态")
                 .child(meta("状态", story.label.clone()))
@@ -1273,7 +1316,7 @@ impl Gallery {
             };
             body = body.child(section("交互状态").child(segmented(
                 "design-interaction",
-                INSPECTOR_WIDTH - 36.,
+                INSPECTOR_WIDTH - 40.,
                 options,
                 selected,
                 true,
@@ -1360,8 +1403,6 @@ impl Gallery {
                 .flex()
                 .flex_col()
                 .gap_2()
-                .px(px(18.))
-                .py(px(16.))
                 .child(
                     ui::button("design-open-source", format!("在编辑器中打开 {source}"), false, true)
                         .on_click(cx.listener(|v, _, _, _| v.open_source()))
@@ -1391,9 +1432,6 @@ impl Gallery {
             .h_full()
             .flex_shrink_0()
             .overflow_y_scroll()
-            .border_l(px(zork_ui::design::BORDER_WIDTH))
-            .border_color(rgb(p.border))
-            .bg(rgb(p.canvas))
             .child(body)
             .automation(AutomationRole::ScrollArea, "检查面板")
             .into_any_element()
@@ -1449,6 +1487,7 @@ impl Render for Gallery {
             });
         }
         if self.mode == Mode::Single {
+            self.relayout(cx);
             self.pending_actions(window, cx);
         }
         self.queue_stills(cx);
@@ -1456,7 +1495,7 @@ impl Render for Gallery {
         let sidebar = self.sidebar(cx);
         let header = self.header(window, cx);
         let canvas = if self.mode == Mode::Overview {
-            self.overview(cx)
+            self.overview(window, cx)
         } else {
             self.stage()
         };
@@ -1498,7 +1537,7 @@ impl Render for Gallery {
             .font(zork_ui::components::workbench::font())
             .text_size(px(13.))
             .text_color(rgb(p.text))
-            .bg(rgb(p.canvas))
+            .bg(rgb(p.window))
             .child(sidebar)
             .child(main)
             .children(highlight)

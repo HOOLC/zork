@@ -431,7 +431,10 @@ impl Render for Page {
             .flex()
             .flex_col()
             .items_center()
-            .justify_end()
+            // Without a greeting the composer sits in the middle of the page
+            // instead of under an empty field.
+            .when(self.welcome, |v| v.justify_end())
+            .when(!self.welcome, |v| v.justify_center())
             .px_6()
             .pb(px(ZORK_UI.layout.composer_bottom_inset))
             .when(self.welcome, |v| {
