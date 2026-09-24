@@ -66,16 +66,15 @@ impl Statistics {
             .items_center()
             .flex_wrap()
             .gap(px(6.))
-            .mt(px(10.))
-            .text_size(px(11.))
-            .line_height(px(16.5))
+            .text_size(px(12.))
+            .line_height(px(18.))
             .text_color(rgb(SUBTLE()))
             .child(
                 div()
                     .max_w(px((width - 56.).max(1.)))
                     .truncate()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(DIM()))
+                    .text_color(rgb(TEXT()))
                     .child(name.clone()),
             )
             .when_some(
@@ -91,8 +90,8 @@ impl Statistics {
                     .max_w_full()
                     .min_w_0()
                     .truncate()
-                    .ml(px(4.))
-                    .pl(px(10.))
+                    .ml(px(2.))
+                    .pl(px(8.))
                     .border_l_1()
                     .border_color(rgb(BORDER()))
                     .text_color(rgb(DIM()))
@@ -122,16 +121,16 @@ impl Statistics {
                 .flex_col()
                 .child(
                     div()
-                        .text_size(px(10.))
-                        .line_height(px(15.))
+                        .text_size(px(12.))
+                        .line_height(px(16.))
                         .text_color(rgb(SUBTLE()))
                         .child(label),
                 )
                 .child(
                     div()
-                        .my(px(5.))
-                        .text_size(px(if compact { 13. } else { 17. }))
-                        .line_height(px(if compact { 18.2 } else { 23.8 }))
+                        .mt(px(2.))
+                        .text_size(px(if compact { 13. } else { 15. }))
+                        .line_height(px(20.))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(rgb(TEXT()))
                         .font_features(crate::components::history::tabular_nums())
@@ -141,9 +140,10 @@ impl Statistics {
                 .when_some(note, |v, note| {
                     v.child(
                         div()
-                            .text_size(px(9.))
-                            .line_height(px(24.))
+                            .text_size(px(12.))
+                            .line_height(px(16.))
                             .text_color(rgb(SUBTLE()))
+                            .truncate()
                             .child(note),
                     )
                 })
@@ -184,7 +184,7 @@ impl Statistics {
             })),
             false,
         );
-        let facts = div().w_full().flex().gap(px(12.)).mt(px(18.));
+        let facts = div().w_full().flex().gap(px(12.)).mt(px(10.));
         let facts = if width <= 330. {
             facts
                 .flex_col()
@@ -198,17 +198,19 @@ impl Statistics {
             .w_full()
             .flex_shrink_0()
             .px(px(16.))
-            .pt(px(16.))
+            .pt(px(12.))
             .pb(px(10.))
+            .border_b_1()
+            .border_color(rgb(BORDER()))
             .flex()
             .flex_col()
             .child(identity)
             .child(facts)
             .child(
                 div()
-                    .mt(px(12.))
-                    .text_size(px(9.))
-                    .line_height(px(13.5))
+                    .mt(px(8.))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
                     .text_color(rgb(SUBTLE()))
                     .child(
                         text.text("history_usage_scope")

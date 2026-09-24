@@ -37,6 +37,19 @@ fn SUBTLE() -> u32 {
 fn BORDER() -> u32 {
     crate::design::ZORK_UI.palette.border
 }
+/// A received message's quote bar.
+#[allow(non_snake_case)]
+fn QUOTE() -> u32 {
+    crate::design::ZORK_UI.palette.border_strong
+}
+/// A message sent to a Chat sits on a light persimmon wash.
+fn sent_wash() -> Rgba {
+    rgba((crate::design::INTERACTION.accent << 8) | 0x14)
+}
+/// A received or sent message previews three lines until it is opened.
+const MESSAGE_LINES: usize = 3;
+/// A file revealed in a record's details previews this many lines.
+const FILE_LINES: usize = 20;
 mod live;
 pub use live::HistoryChanged;
 mod statistics;
@@ -267,8 +280,8 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .flex_col()
             .items_center()
             .text_center()
-            .text_size(px(11.))
-            .line_height(px(16.5))
+            .text_size(px(12.))
+            .line_height(px(18.))
             .text_color(rgb(SUBTLE()))
             .when(busy || paging.error || !paging.older, |v| {
                 v.child(div().when(!busy, |v| v.mt(px(6.))).child(label.clone()))
@@ -415,7 +428,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                         .border_color(rgb(BORDER()))
                                         .bg(rgb(ZORK_UI.palette.canvas))
                                         .shadow_sm()
-                                        .text_size(px(11.))
+                                        .text_size(px(12.))
                                         .text_color(rgb(DIM()))
                                         .cursor_pointer()
                                         .child(crate::controls::icon(
@@ -497,7 +510,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .cursor_pointer()
             .track_focus(&focus)
             .tab_stop(true)
-            .text_size(px(11.))
+            .text_size(px(12.))
             .text_color(rgb(SUBTLE()))
             .child(disclosure_label.clone())
             .when(expanded, |v| {
@@ -604,7 +617,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                 .id(("history-row", index))
                 .px(px(12.))
                 .py(px(6.))
-                .child(div().h(px(1.)).w_full().bg(rgba(0x80808030)))
+                .child(div().h(px(1.)).w_full().bg(rgb(BORDER())))
                 .into_any_element();
         }
         let first_entry =
@@ -617,8 +630,19 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             self.history_subject(a, entry)
         };
         if !group && !a.details.files.is_empty() {
+            // The file reads inline in the record's details, never in a dialog.
             subject = Some(a.details.files[0].path.clone());
-            jump = Some(Jump::File(entry.id.clone()));
+            jump = None;
+        }
+        if !group && a.kind == Kind::Input {
+            return self
+                .render_history_message(index, a, entry, subject, jump, false, focus, cx)
+                .into_any_element();
+        }
+        if !group && a.kind == Kind::SendMessage {
+            return self
+                .render_history_message(index, a, entry, subject, jump, true, focus, cx)
+                .into_any_element();
         }
         let expanded = self.history().records_expanded.contains(&entry.id);
         let action = if group {
@@ -642,17 +666,6 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             })
             .collect::<Vec<_>>()
             .join(" · ")
-        } else if a.kind == Kind::Input {
-            // The history page reads the user's own message as a receipt from its resolved
-            // source, with no separate target on the line.
-            let unknown = self.history_text().text("history_source_unknown");
-            let name = subject
-                .take()
-                .filter(|name| name != &unknown)
-                .unwrap_or_else(|| self.history_text().text("history_ref_fallback").to_owned());
-            self.history_text()
-                .text("history_message_received_from")
-                .replace("{name}", &name)
         } else if a.kind == Kind::Thinking {
             entry
                 .start
@@ -716,10 +729,7 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         if !group && subject.as_ref() == Some(&summary) {
             summary.clear();
         }
-        if a.kind == Kind::Input && expanded {
-            summary.clear();
-        }
-        let tail = matches!(a.kind, Kind::Input | Kind::Thinking);
+        let tail = a.kind == Kind::Thinking;
         let status = if group {
             None
         } else {
@@ -841,6 +851,195 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             .into_any_element()
     }
 
+    fn toggle_history_record(&mut self, index: usize, id: &str, cx: &mut Context<Self>) {
+        self.history_mut().hold_disclosure(index);
+        if !self.history_mut().records_expanded.remove(id) {
+            self.history_mut().records_expanded.insert(id.to_owned());
+        }
+        crate::components::region::invalidate_all(cx);
+        cx.emit(HistoryChanged::clock());
+        cx.notify();
+    }
+
+    /// A received message is a quote under its source; a message sent to a
+    /// Chat is a light persimmon block. Both preview three lines and open
+    /// inline with their record clock.
+    #[allow(clippy::too_many_arguments)]
+    fn render_history_message(
+        &self,
+        index: usize,
+        activity: &Activity,
+        entry: &Entry,
+        subject: Option<String>,
+        jump: Option<Jump>,
+        sent: bool,
+        focus: FocusHandle,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let text = self.history_text();
+        let expanded = self.history().records_expanded.contains(&entry.id);
+        let body = if activity.details.text.trim().is_empty() {
+            activity.summary.clone()
+        } else {
+            activity.details.text.clone()
+        };
+        let unknown = text.text("history_source_unknown");
+        let name = subject
+            .filter(|name| !name.is_empty() && name != &unknown)
+            .unwrap_or_else(|| text.text("history_ref_fallback"));
+        let template = text.text(if sent {
+            "history_message_send_to_chat"
+        } else {
+            "history_message_received_from"
+        });
+        let heading = template.replace("{name}", &name);
+        let (before, after) = template
+            .split_once("{name}")
+            .map(|(before, after)| (before.to_owned(), after.to_owned()))
+            .unwrap_or_else(|| (template.clone(), String::new()));
+        let failed = matches!(entry.state.as_str(), "failed" | "timed_out");
+        // The source or destination is the one link on the line, in the
+        // primary ink rather than a separate link colour.
+        let target = match jump {
+            Some(jump) => div()
+                .id(format!("history-target-{index}"))
+                .min_w_0()
+                .truncate()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(TEXT()))
+                .cursor_pointer()
+                .focusable()
+                .tab_stop(true)
+                .child(name.clone())
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    cx.stop_propagation();
+                    v.history_action(Action::Jump(jump.clone()), cx);
+                }))
+                .automation(AutomationRole::Button, name.clone())
+                .into_any_element(),
+            None => div()
+                .min_w_0()
+                .truncate()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(DIM()))
+                .child(name.clone())
+                .into_any_element(),
+        };
+        let icon_color = if failed {
+            crate::components::history::ACTIVITY_ERROR_COLOR()
+        } else if sent {
+            crate::design::INTERACTION.accent
+        } else {
+            SUBTLE()
+        };
+        let header = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .min_w_0()
+            .text_size(px(12.))
+            .line_height(px(18.))
+            .text_color(rgb(SUBTLE()))
+            .child(
+                crate::controls::icon(kind_icon(activity.kind), 14.)
+                    .flex_shrink_0()
+                    .text_color(rgb(icon_color)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .min_w_0()
+                    .whitespace_nowrap()
+                    .when(!before.is_empty(), |v| v.child(before))
+                    .child(target)
+                    .when(!after.is_empty(), |v| v.child(after)),
+            )
+            .when(failed, |v| {
+                v.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(rgb(crate::components::history::ACTIVITY_ERROR_COLOR()))
+                        .child(text.text("history_error")),
+                )
+            });
+        let long = body.lines().count() > MESSAGE_LINES;
+        let content = div()
+            .flex_1()
+            .min_w_0()
+            .text_size(px(13.))
+            .line_height(px(21.))
+            .text_color(rgb(TEXT()))
+            .whitespace_normal();
+        // Opened, the complete text is the record's inline detail.
+        let content = if expanded {
+            content
+                .id(("history-inline-detail", index))
+                .child(body.clone())
+                .automation(AutomationRole::Status, body.clone())
+                .into_any_element()
+        } else {
+            content
+                .line_clamp(MESSAGE_LINES)
+                .child(body.clone())
+                .into_any_element()
+        };
+        let id = entry.id.clone();
+        let click_focus = focus.clone();
+        let record = div()
+            .id(("history-record", index))
+            .track_focus(&focus)
+            .tab_stop(true)
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .cursor_pointer()
+            .on_click(cx.listener(move |v, _, window, cx| {
+                window.focus(&click_focus, cx);
+                v.toggle_history_record(index, &id, cx);
+            }))
+            .child(header);
+        let record = if sent {
+            record
+                .px(px(12.))
+                .py(px(8.))
+                .rounded(px(crate::design::RADIUS.block))
+                .bg(sent_wash())
+                .child(content)
+        } else {
+            record.child(
+                div()
+                    .flex()
+                    .gap(px(10.))
+                    .min_w_0()
+                    .child(
+                        div()
+                            .w(px(2.))
+                            .flex_shrink_0()
+                            .rounded_full()
+                            .bg(rgb(QUOTE())),
+                    )
+                    .child(content),
+            )
+        };
+        div().id(("history-row", index)).py(px(6.)).child(
+            record
+                .when(expanded, |v| {
+                    v.child(record_time(index, entry.start.or(entry.end)))
+                })
+                .when(!expanded && long, |v| {
+                    v.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(SUBTLE()))
+                            .child(text.text("history_output_show_more")),
+                    )
+                })
+                .automation(AutomationRole::Button, format!("{heading} {body}")),
+        )
+    }
+
     fn render_history_details(
         &self,
         index: usize,
@@ -849,75 +1048,103 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let detail = &activity.details;
-        let file_id = entry.id.clone();
+        let code = || {
+            div()
+                .min_w_0()
+                .font_family(crate::assets::CODE_FONT_FAMILY)
+                .text_size(px(12.))
+                .line_height(px(19.))
+                .whitespace_normal()
+        };
         div()
             .id(("history-inline-detail", index))
             .min_w_0()
             .mt(px(3.))
             .mb(px(8.))
-            .ml(px(24.))
+            // Aligned under the label: the 14px icon plus the 8px gap.
+            .ml(px(22.))
             .pt(px(4.))
             .pb(px(6.))
             .pl(px(12.))
             .border_l_1()
             .border_color(rgb(BORDER()))
             .text_size(px(12.))
-            .line_height(px(21.6))
+            .line_height(px(20.))
             .text_color(rgb(DIM()))
             .child(record_time(index, entry.start.or(entry.end)))
             .when(!detail.command.is_empty(), |body| {
-                body.child(
-                    div()
-                        .font_family(crate::assets::CODE_FONT_FAMILY)
-                        .text_size(px(11.))
-                        .line_height(px(19.8))
-                        .child(format!("$ {}", detail.command)),
-                )
+                body.child(code().child(format!("$ {}", detail.command)))
             })
             .when(!detail.text.is_empty(), |body| {
                 body.child(div().whitespace_normal().child(detail.text.clone()))
             })
             .when(!detail.output.is_empty(), |body| {
-                body.child(
-                    div()
-                        .mt(px(4.))
-                        .font_family(crate::assets::CODE_FONT_FAMILY)
-                        .text_size(px(11.))
-                        .line_height(px(19.8))
-                        .child(detail.output.clone()),
-                )
+                body.child(code().mt(px(4.)).child(detail.output.clone()))
             })
+            // A file reads inline: its path, the replaced text when an edit
+            // recorded it, then the first lines with their own disclosure.
             .children(detail.files.iter().enumerate().map(|(i, file)| {
-                let file_id = file_id.clone();
+                let key = format!("{}#file{i}", entry.id);
+                let open = self.history().output_expanded.contains(&key);
+                let lines = file.content.lines().count();
+                let shown = if open || lines <= FILE_LINES {
+                    file.content.clone()
+                } else {
+                    file.content
+                        .lines()
+                        .take(FILE_LINES)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                };
+                let label = self.history_text().text(if open {
+                    "history_output_show_less"
+                } else {
+                    "history_output_show_more"
+                });
                 div()
                     .id(format!("history-file-{index}-{i}"))
                     .mt(px(6.))
-                    .text_size(px(11.))
-                    .text_color(rgb(TEXT()))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .cursor_pointer()
-                    .focusable()
-                    .tab_stop(true)
-                    .child(crate::controls::icon("interface/file.svg", 13.))
+                    .min_w_0()
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
                             .min_w_0()
-                            .truncate()
-                            .underline()
-                            .child(file.path.clone()),
+                            .text_color(rgb(TEXT()))
+                            .child(crate::controls::icon("interface/file.svg", 14.).flex_shrink_0())
+                            .child(div().min_w_0().truncate().child(file.path.clone())),
                     )
-                    .on_click(cx.listener(move |v, _, _, cx| {
-                        v.history_action(Action::Jump(Jump::File(file_id.clone())), cx)
-                    }))
-                    .automation(AutomationRole::Button, file.path.clone())
+                    .when_some(file.previous.clone(), |v, previous| {
+                        v.child(
+                            code()
+                                .mt(px(4.))
+                                .text_color(rgb(SUBTLE()))
+                                .child(previous),
+                        )
+                    })
+                    .child(code().mt(px(4.)).child(shown))
+                    .when(lines > FILE_LINES, |v| {
+                        v.child(
+                            div()
+                                .id(format!("history-file-disclosure-{index}-{i}"))
+                                .mt(px(4.))
+                                .text_color(rgb(SUBTLE()))
+                                .cursor_pointer()
+                                .child(label.clone())
+                                .on_click(cx.listener(move |v, _, _, cx| {
+                                    cx.stop_propagation();
+                                    v.toggle_history_output(index, &key, cx);
+                                }))
+                                .automation(AutomationRole::Button, label),
+                        )
+                    })
+                    .automation(AutomationRole::Status, file.path.clone())
             }))
             .when(detail.truncated, |body| {
                 body.child(
                     div()
                         .mt(px(8.))
-                        .text_size(px(11.))
                         .text_color(rgb(SUBTLE()))
                         .child(self.history_text().text("history_content_truncated")),
                 )
@@ -933,14 +1160,14 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
             )
     }
 }
-/// The record clock is an absolute local `HH:MM:SS` at 9px tertiary, rendered
+/// The record clock is an absolute local `HH:MM:SS` at 12px tertiary, rendered
 /// only inside the content a disclosure reveals. Rows carry no relative age.
 fn record_time(index: usize, timestamp: Option<i64>) -> impl IntoElement {
     let clock = timestamp.map_or_else(String::new, |ms| model::clock(Some(ms)));
     div()
         .id(("history-output-clock", index))
         .mb(px(6.))
-        .text_size(px(9.))
+        .text_size(px(12.))
         .text_color(rgb(SUBTLE()))
         .font_features(crate::components::history::tabular_nums())
         .child(clock.clone())

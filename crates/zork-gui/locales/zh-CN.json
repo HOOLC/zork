@@ -704,6 +704,7 @@
   "history_message_received_from": "收到来自 {name} 的消息",
   "history_message_send_to": "发送消息到",
   "history_message_send_to_name": "发送消息到 {name}",
+  "history_message_send_to_chat": "发送到 Chat「{name}」",
   "history_thinking_duration": "思考 {seconds} 秒",
   "history_thinking_unmeasured": "思考 · 时长未记录",
   "history_group_read": "读取 {count} 个文件",
