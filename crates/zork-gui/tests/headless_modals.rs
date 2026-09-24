@@ -563,6 +563,8 @@ fn settle_enrollment(
     });
     let mut samples = Vec::new();
     let mut minimum_ink = usize::MAX;
+    // Quiet icon sources draw only their glyph, so compare with the first frame.
+    let mut baseline: Option<usize> = None;
     loop {
         f.cx.advance_clock(Duration::from_millis(16));
         f.cx.update_window(f.window.into(), |_, window, cx| {
@@ -612,9 +614,10 @@ fn settle_enrollment(
                     serde_json::to_vec_pretty(&samples)?,
                 )?;
             }
+            let first = *baseline.get_or_insert(ink);
             anyhow::ensure!(
-                ink > 500,
-                "source button stopped drawing: {name}, ink={ink}, state={state}"
+                ink > 20 && ink * 2 >= first,
+                "source button stopped drawing: {name}, ink={ink} of {first}, state={state}"
             );
         }
         let alpha = if open { 1. } else { 0. };
