@@ -120,7 +120,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     val workbenchState = WorkbenchState(model.messageRevision, model.peers, model.activePeer, model.conversation, model.leaders, model.sessions,
             model.tasksByLeader, model.messages, model.pending, model.draft, model.olderCursor != null,
             model.busy || model.loadingOlder, model.ready, model.connected, model.notice, model.activity, model.running,
-            model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer)
+            model.comments, model.participants, model.deviceTrees, model.attachments, model.historyLoading, model.conversationEntry, model.messageActivity, newer = model.hasNewer, home = model.home)
     val history = model.sessionHistory
     val draftChat = model.newChat
     val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
@@ -161,7 +161,7 @@ internal fun ClientScreen(model: ClientViewModel) {
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; pickFile.launch(arrayOf("text/*", "application/json")) },
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown,
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat, device = { model.showDevice(it) }),
     ) }
     }
     ZorkRetained(editingComment) { comment, open, closed ->

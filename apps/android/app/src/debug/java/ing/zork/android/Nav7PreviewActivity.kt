@@ -90,7 +90,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     else -> JSONObject()
                                 }}))
                             }
-                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.text("chat_id")}" }))
+                            else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.optString("_peer")}/${it.text("chat_id")}" }, device = { lastAction = "device:${it.id}" }))
                         }
                     }
                 }
@@ -129,7 +129,19 @@ private fun fixture(route: String): WorkbenchState {
             ChatMessage("illustrator","插画 Worker","头像直接复用，保留已知作者的辨识度。",false,createdAt="2026-09-07T10:28:00+08:00",device="mini2",model="gpt-6")),
         draft=if(route=="composer") "整理一下这些资料。\n先确认范围，再给出方案。\n保留需要我决定的问题。\n附件里是当前要求。" else "",
         attachments=if(route=="composer") listOf(TextAttachmentUi("draft-file","requirements.md","# 当前要求")) else emptyList(),
-        comments=listOf(DraftCommentUi("comment","brand","product","产品 Leader",null,"导航和群聊分开","切换后保留阅读位置。")))
+        comments=listOf(DraftCommentUi("comment","brand","product","产品 Leader",null,"导航和群聊分开","切换后保留阅读位置。")),
+        home=fixtureHome())
+}
+private fun fixtureHome(): HomeNavigation {
+    val now=System.currentTimeMillis(); val hour=3_600_000L
+    fun chat(peer:String,id:String,title:String,description:String,section:String,at:Long,unread:Boolean=false,archived:Boolean=false)=
+        HomeChat(peer,peer,id,title,description,"gpt-6",unread,archived,false,null,3,at,section,true,false)
+    return HomeNavigation(listOf(
+        chat("mini2","guide","品牌规范整理","把导航和群聊分开","unread",now-2*hour,unread=true),
+        chat("mini1","brand","品牌资源接入","头像直接复用","today",now-hour),
+        chat("mini2","mobile","移动端交互调研","三屏稿整理好了","today",now-3*hour),
+        chat("mini1","offline","离线恢复怎么处理","","week",now-72*hour)),
+        listOf(chat("mini1","old","旧版导航","","earlier",now-400*hour,archived=true)),archivedTotal=1,loaded=true)
 }
 private fun fixtureSettings(): MobileSettingsState {
     val models=org.json.JSONArray().put(obj("id" to "fixture-model","api" to "openai-responses","enabled" to true,"default" to true,"default_thinking" to "off","thinking" to org.json.JSONArray().put("off"),

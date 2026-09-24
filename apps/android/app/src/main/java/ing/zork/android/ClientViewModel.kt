@@ -51,6 +51,27 @@ internal data class DraftCommentUi(val id: String, val session: String, val mess
         JSONObject().put("session_id", session).put("message_id", messageId ?: JSONObject.NULL)
             .put("author", author).put("author_agent_id", authorAgentId ?: JSONObject.NULL).put("quote", quote))
 }
+/** One row of the home list. Order, unread and section come from the core's
+ * merged navigation projection; the UI never re-sorts them. */
+internal data class HomeChat(val peer: String, val peerName: String, val id: String, val title: String,
+    val description: String, val model: String, val unread: Boolean, val archived: Boolean,
+    val archivePending: Boolean, val archiveError: String?, val messageCount: Long,
+    val updatedAtMs: Long?, val section: String, val canSend: Boolean, val canStop: Boolean) {
+    fun session(): JSONObject = JSONObject().put("_peer", peer).put("chat_id", id).put("title", title)
+        .put("can_send", canSend).put("can_stop", canStop)
+}
+internal data class HomeNavigation(val chats: List<HomeChat> = emptyList(), val archived: List<HomeChat> = emptyList(),
+    val archivedTotal: Int = 0, val loaded: Boolean = false)
+internal fun parseHomeChat(it: JSONObject) = HomeChat(it.text("peer"), it.text("peer_name", it.text("peer")),
+    it.text("chat_id"), it.text("title", "对话"), it.text("description"), it.text("model"), it.optBoolean("unread"),
+    it.optBoolean("archived"), it.optBoolean("archive_pending"), it.text("archive_error").ifBlank { null },
+    it.optLong("message_count"), if (it.isNull("updated_at_ms")) null else it.optLong("updated_at_ms"),
+    it.text("section", "earlier"), it.optBoolean("can_send", true), it.optBoolean("can_stop"))
+internal fun parseHomeNavigation(value: JSONObject) = HomeNavigation(
+    value.optJSONArray("chats").objects().map(::parseHomeChat),
+    value.optJSONArray("archived").objects().map(::parseHomeChat),
+    value.optInt("archived_total"), loaded = true)
+
 internal data class DeviceTree(val leaders: List<JSONObject>, val sessions: List<JSONObject>,
     val tasksByLeader: Map<String, List<JSONObject>>, val online: Boolean = false)
 
@@ -88,6 +109,10 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         private set
     var deviceTrees by mutableStateOf(emptyMap<String, DeviceTree>())
         private set
+    /** Every device's Chats, merged and ordered by the core. */
+    var home by mutableStateOf(HomeNavigation())
+        private set
+    private var navigationWatch: Job? = null
     var settings by mutableStateOf<MobileSettingsState?>(null)
         private set
     var newChat by mutableStateOf<NewChatUi?>(null)
@@ -210,6 +235,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         live?.cancel()
         historyWatch?.cancel()
         directoryWatch?.cancel()
+        navigationWatch?.cancel()
         if (value) { watchDataReset(); watchAccount() }
         if (value) action {
             adbPlatform.start()
@@ -219,6 +245,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
             refreshNotificationDelivery()
             watchAdb()
             watchDirectory()
+            watchNavigation()
             reportVisibleConversation()
             pendingNotification?.let { openNotification(it) }
             settings?.device?.id?.let { watchSettings(it) }
@@ -381,6 +408,16 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         }
     }
 
+    private fun watchNavigation() {
+        navigationWatch?.cancel()
+        navigationWatch = viewModelScope.launch {
+            try {
+                repo.navigationEvents().collect { frame -> home = parseHomeNavigation(frame.value.getJSONObject("snapshot")) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { notice = error.message ?: "Chat 列表暂时不可用" }
+        }
+    }
+
     private fun applySnapshot(value: JSONObject) {
         identity = value.text("identity")
         directOnly = value.optJSONObject("network")?.optBoolean("direct_only") ?: false
@@ -499,13 +536,19 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun archiveChat(peer: String, chat: String, archived: Boolean, expectedMessageCount: Long) {
-        if (activePeer?.id != peer) peers.find { it.id == peer }?.let(::selectPeer)
+        // The home list observes every device, so archiving never switches devices.
         action { repo.command("archive_chat", "peer" to peer, "chat" to chat, "archived" to archived, "expected_message_count" to expectedMessageCount) }
     }
 
     fun openSession(session: JSONObject) {
         rememberConversation()
-        peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) { live?.cancel(); activePeer = peer; conversation = null; connected = false } }
+        peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) {
+            // The home list mixes devices: select the Chat's device first, as
+            // the core remembers it as the last-used device.
+            live?.cancel(); activePeer = peer; conversation = null; connected = false
+            leaders = emptyList(); sessions = emptyList(); tasksByLeader = emptyMap(); participants = emptyList()
+            viewModelScope.launch { runCatching { repo.command("select_peer", "peer" to peer.id) } }
+        } }
         openConversation(Conversation(session.text("chat_id").ifBlank { session.text("session_id") }, session.text("title", "对话"),
             canSend = session.optBoolean("can_send", true), canStop = session.optBoolean("can_stop")))
     }
