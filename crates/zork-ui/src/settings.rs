@@ -33,7 +33,7 @@ pub fn titled_row(
         .flex_wrap()
         .items_center()
         .gap_4()
-        .py(px(14.))
+        .py(px(12.))
         .child(
             div()
                 .flex_1()
