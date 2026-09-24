@@ -125,6 +125,8 @@ internal object ZorkColors {
     val Composer get() = palette.composer
     val Bubble get() = palette.bubble
     val Pressed get() = palette.pressed
+    /** Behind sheets and dialogs. */
+    val Scrim get() = if (dark) Color(0x8C000000) else Color(0x6118191B)
     val Prompt get() = palette.prompt
     val Selected get() = palette.selected
     val Online get() = palette.online

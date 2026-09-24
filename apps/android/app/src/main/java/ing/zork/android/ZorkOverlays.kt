@@ -6,11 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,37 +55,6 @@ internal fun ZorkDialog(
                     content = content)
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun ZorkSheet(
-    open: Boolean, title: String, dismiss: () -> Unit, onClosed: () -> Unit = {},
-    canDismiss: Boolean = true,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val closed by rememberUpdatedState(onClosed)
-    val dismissible by rememberUpdatedState(canDismiss)
-    LaunchedEffect(open) { if (!open) closed() }
-    if (!open) return
-    // A busy sheet refuses to hide at the state level. Otherwise Material3 animates
-    // it away first and asks afterwards, leaving an invisible sheet that still
-    // captures touches.
-    val state = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { it != SheetValue.Hidden || dismissible },
-    )
-    ModalBottomSheet(onDismissRequest = { if (dismissible) dismiss() },
-        sheetState = state,
-        sheetGesturesEnabled = canDismiss,
-        shape = ZorkShapes.Sheet,
-        containerColor = ZorkColors.Canvas,
-        dragHandle = null) {
-        Column(Modifier.fillMaxWidth().widthIn(max = 640.dp)
-            .imePadding().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 18.dp)
-            .semantics { paneTitle = title },
-            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
     }
 }
 

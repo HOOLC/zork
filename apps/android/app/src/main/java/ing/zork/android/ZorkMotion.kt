@@ -40,6 +40,7 @@ internal object ZorkMotion {
     /** Reduced motion keeps only short fades. */
     const val REDUCED_FADE = 150
     const val VALUE = 300
+    const val LIST_COLLAPSE = 160
     const val LOADING_DELAY = 300L
     const val LOADING_MIN = 400L
     const val PULSE = 1600
@@ -103,13 +104,15 @@ internal fun zorkRiseIn(): EnterTransition {
 internal fun listFade(): FiniteAnimationSpec<Float> =
     if (LocalReducedMotion.current) tween(ZorkMotion.REDUCED_FADE) else ZorkMotion.enter(ZorkMotion.BASE)
 
+/** A removed row fades out first ([ZorkMotion.FAST]) … */
 @Composable
 internal fun listFadeOut(): FiniteAnimationSpec<Float> =
-    if (LocalReducedMotion.current) tween(ZorkMotion.REDUCED_FADE) else ZorkMotion.exitSpec(ZorkMotion.BASE)
+    if (LocalReducedMotion.current) tween(ZorkMotion.REDUCED_FADE) else tween(ZorkMotion.FAST, easing = ZorkMotion.Exit)
 
+/** … then the rows below close the gap over 160 ms on the move curve. */
 @Composable
 internal fun listMove(): FiniteAnimationSpec<androidx.compose.ui.unit.IntOffset>? =
-    if (LocalReducedMotion.current) null else ZorkMotion.move(ZorkMotion.BASE)
+    if (LocalReducedMotion.current) null else tween(ZorkMotion.LIST_COLLAPSE, delayMillis = ZorkMotion.FAST, easing = ZorkMotion.Move)
 
 /** Status notices come down from their region's top edge. */
 @Composable

@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -137,6 +138,7 @@ internal fun ClientScreen(model: ClientViewModel) {
     // Predictive back: pages that pop a route follow the finger, then continue from
     // where it let go. Leaving a conversation is handled inside the workbench.
     var backProgress by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val backScope = rememberCoroutineScope()
     androidx.activity.compose.PredictiveBackHandler(enabled = model.sessionHistory != null || model.settings != null || model.conversation != null || model.newChat != null) { events ->
         val follows = (model.sessionHistory != null && model.sessionHistory?.selectedId == null) || model.settings != null ||
             (model.newChat != null && model.settings == null)
@@ -150,7 +152,11 @@ internal fun ClientScreen(model: ClientViewModel) {
             androidx.compose.runtime.withFrameNanos { }
             backProgress = 0f
         } catch (e: kotlinx.coroutines.CancellationException) {
-            backProgress = 0f
+            // Cancelled: ease the page back into place from where the finger left it.
+            val from = backProgress
+            backScope.launch {
+                androidx.compose.animation.core.animate(from, 0f, animationSpec = ZorkMotion.move(ZorkMotion.FAST)) { value, _ -> backProgress = value }
+            }
             throw e
         }
     }
