@@ -1,6 +1,6 @@
 # release/dev/test 开发与自救
 
-日常使用 dev，release 保留为独立救援入口，Agent 开发和回归使用 test。三套客户端分别使用自己的名称、
+三个通道的来源固定：**dev 是 main 分支的构建**，功能分支合并进 main 之后才构建和安装 dev，不从功能分支或集成分支直接打 dev；**release 是稳定的 dev 版本**，只由通过观察期的 dev 候选提升而来，同时保留为独立救援入口；Agent 开发、功能分支和回归使用 test。日常使用 dev。三套客户端分别使用自己的名称、
 bundle 身份、数据、偏好、节点身份和 Mesh；不要用复制整份 release 数据的方法
 初始化 dev，也不要让不同通道加入同一个日常 Mesh。
 
@@ -31,7 +31,7 @@ python3 scripts/dev/recovery.py --root /path/to/deployment accept-test /path/to/
 
 此步骤复用代码和构建记录，不复制测试数据；加 `--switch` 才切换该部署根下的 dev。
 远端安装指定 `update-macos-client.py --channel dev --candidate /path/to/dev-candidate`。
-直接构建日常 dev 也必须显式 `--channel dev`；Android 使用
+直接构建日常 dev 也必须显式 `--channel dev`，并且只从 main 的提交构建；Android 使用
 `scripts/android/build.py --channel dev`。Android 应用 ID 按 release（无后缀）、
 `.dev`、`.test` 对齐。
 release 的观察期与提升要求保持不变。旧部署配置再次 `install-tools` 时只补缺少的
