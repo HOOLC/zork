@@ -479,10 +479,14 @@ impl Gallery {
             std::env::current_exe().unwrap_or_else(|_| "zork-design-pc".into()),
         );
         command
-            .args(["--export", &output.to_string_lossy(), "--entry", &entry, "--partial"])
+            .arg("--export")
+            .arg(&output)
+            .arg("--entry")
+            .arg(&entry)
+            .arg("--partial")
             .env("ZORK_THEME", theme);
         if let Some(px) = self.width.pixels() {
-            command.args(["--width", &px.to_string()]);
+            command.arg("--width").arg(px.to_string());
         }
         let job = (entry, theme, width);
         let stories: Vec<String> = self
@@ -573,10 +577,13 @@ impl Gallery {
             std::env::current_exe().unwrap_or_else(|_| "zork-design-pc".into()),
         );
         command
-            .args(["--export", &output.to_string_lossy(), "--story", &story])
+            .arg("--export")
+            .arg(&output)
+            .arg("--story")
+            .arg(&story)
             .env("ZORK_THEME", theme);
         if let Some(px) = self.width.pixels() {
-            command.args(["--width", &px.to_string()]);
+            command.arg("--width").arg(px.to_string());
         }
         self.notice = Some("正在导出…".into());
         let task = cx.background_executor().spawn(async move {
