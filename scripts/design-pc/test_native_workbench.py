@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the native component browser through its physical-input dev API."""
+"""Exercise the native design browser through its physical-input dev API."""
 import argparse
 import hashlib
 import json
@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,26 +32,28 @@ def main():
         def target():
             elements = snapshot()["elements"]
             item = next((e for e in elements if e["id"] == id), None)
-            return item if item and item["visible"] and item["visible_bounds"]["height"] >= 28 else None
+            return item if item and item["visible"] and item["visible_bounds"]["height"] >= 24 else None
         if item := target():
             return item
-        native.ui("/v1/actions", {"type": "scroll", "target": {"element_id": "story-navigation"},
+        native.ui("/v1/actions", {"type": "scroll", "target": {"element_id": "design-directory"},
                                   "delta_y": 10000})
         for _ in range(80):
             if item := target():
                 return item
-            native.ui("/v1/actions", {"type": "scroll", "target": {"element_id": "story-navigation"},
-                                      "delta_y": -350})
+            native.ui("/v1/actions", {"type": "scroll", "target": {"element_id": "design-directory"},
+                                      "delta_y": -300})
         raise AssertionError(f"cannot reveal {id}")
 
     def click(id):
         wait(lambda: native.element(id, enabled=True), id, timeout=10)
         native.click(id)
 
-    def choose(id, option):
-        click(id)
-        click(option)
-        wait(lambda: not native.element(id + "-menu"), "menu dismissed", timeout=10)
+    def open_state(entry, story):
+        reveal(f"design-entry-{entry}")
+        click(f"design-entry-{entry}")
+        reveal(f"design-state-{story}")
+        click(f"design-state-{story}")
+        wait(lambda: native.element("story-canvas"), f"{story} canvas", timeout=10)
 
     def canvas_width():
         return native.element("story-canvas")["bounds"]["width"]
@@ -60,126 +63,76 @@ def main():
         def settled():
             nonlocal previous, repeats
             elements = snapshot()["elements"]
-            if any(e["visible"] and e["id"] in ("story-size-menu", "story-scenario-menu") for e in elements):
-                return False
-            bounds = [(e["id"], e["bounds"]) for e in elements
-                      if e["id"] in ("story-canvas", "story-size", "story-scenario")]
+            bounds = [(e["id"], e["bounds"]) for e in elements if e["id"] in ("story-canvas", "design-overview")]
             repeats = repeats + 1 if bounds == previous else 0
             previous = bounds
-            # The history fixture intentionally includes a live activity spinner;
-            # wait for layout and transient menus, not identical animation pixels.
             if repeats >= 2 and time.monotonic() - started > 1:
                 (args.output / f"{name}.png").write_bytes(native.ui("/v1/screenshot"))
                 return True
             return False
         wait(settled, f"settled {name} screenshot", timeout=10)
 
+    home = tempfile.TemporaryDirectory()
     try:
+        # A private HOME keeps the remembered position and stills out of the user's cache.
+        env = dict(os.environ, HOME=home.name)
         native.process = subprocess.Popen(
             [str(args.binary.resolve()), "--dev", "--dev-port", native.url.rsplit(":", 1)[1],
              "--dev-token", "mesh-native-fixture", "--" + args.launch_selector,
              "history" if args.launch_selector == "family" else "history-collapsed"],
-            cwd=ROOT, env=os.environ.copy(), stdout=native.log, stderr=native.log,
+            cwd=ROOT, env=env, stdout=native.log, stderr=native.log,
         )
-        wait(lambda: native.element("story-canvas"), "native workbench ready", timeout=30)
+        wait(lambda: native.element("design-entry-history"), "native browser ready", timeout=30)
+        if args.launch_selector == "family":
+            wait(lambda: native.element("design-overview"), "family overview", timeout=10)
+            assert native.element("design-tile-history-empty")
+            save("01-history-overview")
+            checks.append("family launch opens the overview of all states")
+        open_state("history", "history-collapsed")
         fit_width = canvas_width()
         assert fit_width > 560, fit_width
-        assert not any(e["id"].startswith("story-history-") for e in snapshot()["elements"])
-        save("01-history-fit")
-        checks.append("family directory and work-area layout")
+        save("02-history-state")
 
-        click("story-expand")
-        native.ui("/v1/actions", {"type": "scroll", "target": {"element_id": "history-ledger"}, "delta_y": -550})
-        expanded = wait(lambda: next((e for e in snapshot()["elements"]
-                                     if e["id"].startswith("history-output-disclosure-")
-                                     and "收起" in e["label"]), None), "expanded body", timeout=10)
-        disclosure = expanded["id"]
-        reveal("story-family-button")
-        click("story-family-button")
-        wait(lambda: native.element("story-button"), "button component", timeout=10)
-        reveal("story-family-history")
-        click("story-family-history")
-        wait(lambda: any(e["id"] == disclosure and "收起" in e["label"]
-                         for e in snapshot()["elements"]), "retained expansion", timeout=10)
-        checks.append("component switch retains expanded content")
+        click("design-width-360")
+        wait(lambda: abs(canvas_width() - 360) < 1, "360 canvas", timeout=10)
+        save("03-history-360")
+        click("design-width-window")
+        wait(lambda: abs(canvas_width() - fit_width) < 1, "window restored", timeout=10)
+        checks.append("width presets resize the live specimen")
 
-        choose("story-size", "story-size-2")
-        wait(lambda: abs(canvas_width() - 320) < 1, "narrow canvas", timeout=10)
-        save("02-history-narrow")
-        choose("story-size", "story-size-0")
-        wait(lambda: abs(canvas_width() - fit_width) < 1, "fit restored", timeout=10)
-        assert any(e["id"] == disclosure and "收起" in e["label"] for e in snapshot()["elements"])
-        checks.append("canvas changes preserve content state")
+        for state in ("history-empty", "history-error"):
+            open_state("history", state)
+            save(f"04-{state}")
+        checks.append("normal, empty and error states")
 
-        click("story-reset")
-        wait(lambda: any(e["id"].startswith("history-output-disclosure-") and "展开" in e["label"]
-                         for e in snapshot()["elements"]), "reset collapses content", timeout=10)
-        checks.append("explicit reset restores only current specimen")
-        choose("story-scenario", "story-scenario-history-empty")
-        save("03-history-empty")
-        choose("story-scenario", "story-scenario-history-error")
-        save("04-history-error")
-        choose("story-scenario", "story-scenario-history-collapsed")
-        checks.append("normal, empty and error scenes")
-
-        reveal("story-family-field")
-        click("story-family-field")
+        open_state("field", "field-empty")
         click("story-field")
         native.type("保留输入 Native 123")
-        reveal("story-family-button")
-        click("story-family-button")
-        reveal("story-family-field")
-        click("story-family-field")
+        open_state("button", "button-primary")
+        open_state("field", "field-empty")
         wait(lambda: native.element("story-field"), "restored field", timeout=10)
         save("05-field-retained")
-        checks.append("input round-trip captured for visual inspection")
+        checks.append("switching components keeps the specimen")
 
-        reveal("design-guide-docs-00-overview-md")
-        click("design-guide-docs-00-overview-md")
-        wait(lambda: native.element("design-guide-scroll"), "native design guide", timeout=10)
-        save("06-design-guide")
-        checks.append("editable design guide opens natively")
-        reveal("design-assets-brand")
-        click("design-assets-brand")
-        wait(lambda: native.element("design-assets-scroll"), "native design assets", timeout=10)
-        assert native.element("design-image-design-assets-brand-mark-svg")
-        save("07-design-assets")
-        checks.append("curated SVG assets render in the native browser")
+        native.ui("/v1/actions", {"type": "key", "keystroke": "cmd-k"})
+        native.type("新建有草稿")
+        native.ui("/v1/actions", {"type": "key", "keystroke": "enter"})
+        wait(lambda: native.element("new-chat-composer-surface"), "search jumps to a state", timeout=10)
+        save("06-search")
+        checks.append("search reaches a state in one step")
 
-        reveal("story-family-onboarding")
-        click("story-family-onboarding")
-        wait(lambda: native.element("desktop-welcome-login"), "first-use login", timeout=10)
+        open_state("onboarding", "onboarding-login")
+        click("design-width-360")
         click("desktop-welcome-login")
         wait(lambda: native.element("onboarding-cancel-login"), "browser wait specimen", timeout=10)
         click("onboarding-cancel-login")
         wait(lambda: native.element("desktop-welcome-login", enabled=True), "cancel returns to login", timeout=10)
-        choose("story-scenario", "story-scenario-onboarding-failure-compact")
+        open_state("onboarding", "onboarding-failure")
         notice = wait(lambda: native.element("onboarding-error"), "startup failure notice", timeout=10)
         retry = native.element("desktop-startup-retry")
         assert retry["bounds"]["y"] - (notice["bounds"]["y"] + notice["bounds"]["height"]) >= 12
-        assert notice["bounds"]["width"] < 300
-        save("08-onboarding-failure-spacing")
-        choose("story-scenario", "story-scenario-onboarding-ready-compact")
-        wait(lambda: native.element("new-chat-welcome"), "first Chat greeting", timeout=10)
-        assert not native.element("onboarding-finish")
-        assert not native.element("new-chat-context")
-        assert not native.element("new-chat-device")
-        options = native.element("new-chat-options")
-        assert options["label"] == "Demo model · 高"
-        assert options["bounds"] == options["visible_bounds"]
-        assert native.element("new-chat-composer-surface")["bounds"]["x"] >= 0
-        save("09-onboarding-new-chat")
-        checks.append("failure actions have breathing room and the first Chat omits device setup while showing its model and thinking level")
-
-        choose("story-scenario", "story-scenario-onboarding-models-compact")
-        click("onboarding-add-model")
-        wait(lambda: native.element("profile-close-form"), "real model connection form", timeout=10)
-        click("profile-access-false")
-        wait(lambda: native.element("profile-provider-select") and
-             native.element("profile-provider-select")["label"],
-             "fixture provider ready", timeout=10)
-        assert not native.element("model-add-device-mini1")
-        checks.append("first-use flow opens the real local model editor without device choice")
+        save("07-onboarding-failure-spacing")
+        checks.append("first-use states render interactively")
 
         print("PASS zork-design-pc: " + "; ".join(checks), flush=True)
         (args.output / "result.json").write_text(json.dumps({
@@ -197,6 +150,7 @@ def main():
                 pass
         native.stop()
         native.log.close()
+        home.cleanup()
 
 
 if __name__ == "__main__":

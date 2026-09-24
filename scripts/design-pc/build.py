@@ -56,7 +56,6 @@ def main():
     parser.add_argument("--package-app", type=Path, help="Create a signed Zork Design PC.app at this new path")
     args = parser.parse_args()
     env = dict(build_environment(), CARGO_INCREMENTAL="0", CARGO_PROFILE_DEV_DEBUG="0", CARGO_BUILD_JOBS="4")
-    subprocess.run([sys.executable, str(ROOT / "scripts/design-pc/generate_assets.py")], cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/design-pc/test_package.py")], cwd=ROOT, check=True)
     subprocess.run(["cargo", "build", "--locked", "-p", "zork-gui", "--features", "headless-bench", "--bin", "zork-design-pc"], cwd=ROOT, env=env, check=True)
     binary = Path(env["CARGO_TARGET_DIR"]) / "debug/zork-design-pc"

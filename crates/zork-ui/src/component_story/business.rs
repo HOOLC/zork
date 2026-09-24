@@ -1,41 +1,7 @@
 //! Labels for native component stories.
 
-pub fn is_business(family: &str) -> bool {
-    matches!(
-        family,
-        "device-name"
-            | "welcome"
-            | "node-directory"
-            | "connection"
-            | "model"
-            | "client"
-            | "device"
-            | "mesh"
-            | "enrollment"
-            | "message-interaction"
-            | "conversation"
-            | "history-details"
-            | "history"
-            | "comments"
-            | "attachment"
-            | "tooltip"
-            | "markdown"
-            | "activity"
-            | "composer"
-            | "resources"
-            | "notifications"
-            | "appearance"
-            | "data-settings"
-            | "browser"
-            | "attachment-viewer"
-            | "chat-navigation"
-            | "message-reader"
-            | "conversation-files"
-    )
-}
-
 pub fn state_label(state: &str) -> String {
-    let state = state.trim_end_matches("-compact");
+    let state = state.trim_end_matches("-compact").trim_end_matches("-wide");
     match state {
         "primary" => "主要操作",
         "secondary" => "次要操作",
@@ -139,8 +105,6 @@ pub fn state_label(state: &str) -> String {
         "row" => "列表行",
         "message-image" => "消息图片",
         "message-document" => "消息文档",
-        "leader" => "领队",
-        "task" => "任务",
         "hover" => "悬停",
         "paragraph" => "段落",
         "heading" => "标题",
@@ -165,6 +129,19 @@ pub fn state_label(state: &str) -> String {
         "messages" => "消息",
         "composer" => "消息输入",
         "history" => "执行历史",
+        "session-compact" => "收起",
+        "session-compact-expanded" => "展开",
+        "session-live" => "运行中",
+        "no-models" => "没有模型",
+        "creating" => "创建中",
+        "retry" => "重试",
+        "draft" => "有草稿",
+        "waiting" => "等待浏览器",
+        "failure" => "准备失败",
+        "models" => "选择模型",
+        "model-form" => "添加模型连接",
+        "ready" => "开始对话",
+        "mesh" => "设备连接",
         _ => state,
     }
     .to_owned()

@@ -50,7 +50,189 @@ pub fn install(cx: &mut gpui::App) {
     ));
 }
 
+/// Product areas, in sidebar order.
+pub const GROUPS: [&str; 7] = [
+    "基础控件",
+    "对话",
+    "导航与新建",
+    "执行历史",
+    "设置与设备",
+    "首次使用",
+    "文件",
+];
+
+/// Sidebar placement for each render family: group, entry id and entry title.
+fn placement(family: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    Some(match family {
+        "button" => ("基础控件", "button", "按钮"),
+        "field" => ("基础控件", "field", "输入框"),
+        "choice" => ("基础控件", "choice", "选项"),
+        "switch" => ("基础控件", "switch", "开关"),
+        "dropdown" => ("基础控件", "dropdown", "下拉菜单"),
+        "modal" => ("基础控件", "modal", "弹窗"),
+        "feedback" => ("基础控件", "feedback", "状态提示"),
+        "loading" => ("基础控件", "loading", "加载状态"),
+        "navigation" => ("基础控件", "navigation", "导航行"),
+        "device-name" => ("基础控件", "device-name", "设备标识"),
+        "brand" | "icons" | "providers" => ("基础控件", "icons-brand", "图标与品牌"),
+        "conversation" => ("对话", "conversation", "会话"),
+        "markdown" => ("对话", "markdown", "消息正文"),
+        "composer" => ("对话", "composer", "消息输入"),
+        "comments" => ("对话", "comments", "文字评论"),
+        "activity" => ("对话", "activity", "会话动态"),
+        "message-interaction" => ("对话", "message-interaction", "交互卡片"),
+        "browser" => ("对话", "browser", "页面浏览器"),
+        "chat-navigation" => ("导航与新建", "chat-navigation", "侧栏与设备坞"),
+        "new-chat" => ("导航与新建", "new-chat", "新建 Chat"),
+        "history" => ("执行历史", "history", "执行历史"),
+        "history-details" => ("执行历史", "history-details", "执行记录详情"),
+        "connection" => ("设置与设备", "connection", "模型连接"),
+        "model" => ("设置与设备", "model", "模型配置"),
+        "profile-card" => ("设置与设备", "profile-card", "模型连接卡片"),
+        "client" => ("设置与设备", "client", "客户端设置"),
+        "notifications" => ("设置与设备", "notifications", "通知设置"),
+        "data-settings" => ("设置与设备", "data-settings", "清空本机数据"),
+        "device" => ("设置与设备", "device", "设备设置"),
+        "mesh" => ("设置与设备", "mesh", "设备连接"),
+        "enrollment" => ("设置与设备", "enrollment", "连接设备"),
+        "node-directory" => ("设置与设备", "node-directory", "本机与已存设备"),
+        "resources" => ("设置与设备", "resources", "资源目录"),
+        "onboarding" => ("首次使用", "onboarding", "首次使用"),
+        "attachment" => ("文件", "attachment", "附件"),
+        "attachment-viewer" => ("文件", "attachment-viewer", "附件预览"),
+        "conversation-files" => ("文件", "conversation-files", "会话文件与页面"),
+        _ => return None,
+    })
+}
+
+/// Repository-relative source file for "open in editor".
+fn source_path(source: &str) -> String {
+    let first = source
+        .split(" / ")
+        .next()
+        .unwrap_or(source)
+        .split(" + ")
+        .next()
+        .unwrap_or(source)
+        .split("::")
+        .next()
+        .unwrap_or(source)
+        .trim();
+    if first.starts_with("crates/") {
+        first.to_owned()
+    } else if let Some(rest) = first.strip_prefix("desktop/") {
+        format!("crates/zork-gui/src/desktop/{rest}")
+    } else if first.starts_with("zork-") {
+        format!("crates/{first}")
+    } else {
+        first.to_owned()
+    }
+}
+
+fn label(family: &str, state: &str) -> String {
+    use zork_ui::component_story::business::state_label;
+    match (family, state) {
+        ("history", "collapsed") => "正常记录".into(),
+        ("history", "expanded") => "全部展开".into(),
+        ("icons", _) => "功能图标".into(),
+        ("providers", _) => "供应商图标".into(),
+        ("brand", "linked") => "品牌 · 组合标志".into(),
+        ("brand", state) => format!("品牌 · {}", state_label(state)),
+        ("conversation", "history") => "执行历史".into(),
+        _ => state_label(state),
+    }
+}
+
+/// Folds `-compact`/`-wide` pairs into one state with an alternative size,
+/// assigns every story a product area, and orders the catalog by area.
+fn organize(items: Vec<Story>) -> Vec<Story> {
+    let mut out: Vec<Story> = Vec::new();
+    for mut story in items {
+        if let Some(base) = story.state.strip_suffix("-wide") {
+            if let Some(compact) = out
+                .iter_mut()
+                .find(|s| s.family == story.family && s.state == base)
+            {
+                compact.wide = Some([story.width, story.height]);
+                continue;
+            }
+        }
+        if let Some(base) = story.state.strip_suffix("-compact") {
+            story.state = base.to_owned();
+            story.id = format!("{}-{base}", story.family);
+        }
+        let Some((group, entry, title)) = placement(&story.family) else {
+            continue;
+        };
+        story.group = group.into();
+        story.entry = entry.into();
+        story.entry_title = title.into();
+        story.label = label(&story.family, &story.state);
+        story.source = source_path(&story.source);
+        out.push(story);
+    }
+    // The narrow history fixture is a width, not a state.
+    out.retain(|s| !(s.family == "history" && s.state == "narrow"));
+    // Group by area, then keep each entry's states together in first-seen order.
+    let mut entries: Vec<String> = Vec::new();
+    for story in &out {
+        if !entries.contains(&story.entry) {
+            entries.push(story.entry.clone());
+        }
+    }
+    out.sort_by_key(|s| {
+        (
+            GROUPS
+                .iter()
+                .position(|g| *g == s.group)
+                .unwrap_or(GROUPS.len()),
+            entries.iter().position(|e| *e == s.entry).unwrap_or(0),
+        )
+    });
+    out
+}
+
+/// Resolves a story id, including the retired `-compact`/`-wide` and
+/// `history-narrow` ids, to a catalog story at that size.
+pub fn resolve(catalog: &[Story], id: &str) -> Option<Story> {
+    if let Some(story) = catalog.iter().find(|s| s.id == id) {
+        return Some(story.clone());
+    }
+    if id == "history-narrow" {
+        let mut story = catalog
+            .iter()
+            .find(|s| s.id == "history-collapsed")?
+            .clone();
+        story.width = 320.;
+        return Some(story);
+    }
+    if let Some(base) = id.strip_suffix("-wide") {
+        let mut story = catalog.iter().find(|s| s.id == base)?.clone();
+        if let Some([w, h]) = story.wide {
+            story.width = w;
+            story.height = h;
+        }
+        return Some(story);
+    }
+    id.strip_suffix("-compact")
+        .and_then(|base| catalog.iter().find(|s| s.id == base))
+        .cloned()
+}
+
+/// Every story a test may open by id: the catalog plus hidden walkthroughs.
+pub fn fixture(id: &str) -> Option<Story> {
+    resolve(&catalog(), id).or_else(|| {
+        zork_ui::stories::fixtures()
+            .into_iter()
+            .find(|s| s.id == id)
+    })
+}
+
 pub fn catalog() -> Vec<Story> {
+    organize(raw_catalog())
+}
+
+fn raw_catalog() -> Vec<Story> {
     let mut items = zork_ui::stories::catalog();
     for state in [
         "login",
@@ -117,7 +299,7 @@ pub fn catalog() -> Vec<Story> {
             items.push(story);
         }
     }
-    for state in ["entry", "agent", "long"] {
+    for state in ["entry", "long"] {
         let mut story = Story::new(
             "history-details",
             "执行记录与成员详情",
@@ -554,7 +736,14 @@ impl StoryHost {
         );
         let inner = match story.family.as_str() {
             "onboarding" => cx
-                .new(|cx| super::onboarding_story::OnboardingStory::new(&story.state, cx))
+                .new(|cx| {
+                    // The onboarding fixture lays out for the compact or wide window.
+                    let size = if story.width < 600. { "compact" } else { "wide" };
+                    super::onboarding_story::OnboardingStory::new(
+                        &format!("{}-{size}", story.state),
+                        cx,
+                    )
+                })
                 .into(),
             "new-chat" => new_chat_story(&story.state, story.width, cx).into(),
             "node-directory" => cx

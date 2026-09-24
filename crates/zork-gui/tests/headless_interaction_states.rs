@@ -28,10 +28,7 @@ fn main() -> anyhow::Result<()> {
         cx.set_reduce_motion(true);
         HeadlessAutomation::install(cx)
     });
-    let story = stories::catalog()
-        .into_iter()
-        .find(|s| s.id == "interaction-overview")
-        .unwrap();
+    let story = stories::fixture("interaction-overview").unwrap();
     let window = cx.open_window(gpui::size(px(800.), px(620.)), |_, cx| {
         let host = cx.new(|cx| StoryHost::new(story, cx));
         cx.new(|_| AutomationRoot::new(host))

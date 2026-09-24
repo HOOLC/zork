@@ -30,6 +30,15 @@ pub struct Story {
     pub height: f32,
     pub target: String,
     pub actions: Vec<Value>,
+    /// Product area in the design browser sidebar (基础控件, 对话, …).
+    pub group: String,
+    /// Sidebar entry; several render families can share one entry.
+    pub entry: String,
+    pub entry_title: String,
+    /// Human label of this state.
+    pub label: String,
+    /// Alternative wide size for pages that used to ship as `-compact`/`-wide` pairs.
+    pub wide: Option<[f32; 2]>,
 }
 impl Story {
     pub fn new(family: &str, title: &str, state: &str, source: &str, reference: &str) -> Self {
@@ -44,6 +53,11 @@ impl Story {
             height: 360.,
             target: "story-component".into(),
             actions: vec![],
+            group: String::new(),
+            entry: family.into(),
+            entry_title: title.into(),
+            label: state.into(),
+            wide: None,
         }
     }
 }
@@ -52,26 +66,6 @@ fn click(id: &str) -> Value {
 }
 pub fn catalog() -> Vec<Story> {
     let mut items = vec![];
-    let mut components = Story::new(
-        "components",
-        "组件展示",
-        "gallery",
-        "crates/zork-ui/src/component_story",
-        "components",
-    );
-    components.width = 1180.;
-    components.height = 900.;
-    items.push(components);
-    let mut unified = Story::new(
-        "unified-design",
-        "统一设计",
-        "overview",
-        "crates/zork-ui/src/unified_story.rs",
-        "unified-design",
-    );
-    unified.width = 1180.;
-    unified.height = 1180.;
-    items.push(unified);
     for (family, title, states, source, reference) in [
         (
             "device-name",
@@ -92,13 +86,6 @@ pub fn catalog() -> Vec<Story> {
             ][..],
             "crates/zork-ui/src/device_name.rs",
             "status",
-        ),
-        (
-            "interaction",
-            "交互反馈",
-            &["overview", "form"][..],
-            "crates/zork-ui/src/interaction_story.rs",
-            "button",
         ),
         (
             "button",
@@ -242,25 +229,11 @@ pub fn catalog() -> Vec<Story> {
             "navigation",
         ),
         (
-            "tooltip",
-            "悬停详情",
-            &["leader", "task", "hover"][..],
-            "crates/zork-ui/src/components/tooltip.rs",
-            "tooltip",
-        ),
-        (
             "markdown",
             "消息正文",
             &["paragraph", "heading", "list", "quote", "code", "table"][..],
             "crates/zork-ui/src/components/message.rs::render_markdown",
             "markdown",
-        ),
-        (
-            "member-status",
-            "成员状态",
-            &["running", "failed", "done"][..],
-            "crates/zork-ui/src/components/activity.rs",
-            "missing",
         ),
         (
             "activity",
@@ -301,10 +274,6 @@ pub fn catalog() -> Vec<Story> {
             if family == "brand" {
                 story.target = format!("brand-{state}");
             }
-            if family == "interaction" {
-                story.width = 800.;
-                story.height = if *state == "form" { 760. } else { 620. };
-            }
             if family == "icons" {
                 story.height = 560.;
             }
@@ -333,9 +302,6 @@ pub fn catalog() -> Vec<Story> {
                 ("navigation", "hover" | "selected-hover") => story
                     .actions
                     .push(json!({"type":"move","target":{"element_id":"story-nav"}})),
-                ("tooltip", "hover") => story.actions.push(json!({
-                    "type":"move","target":{"element_id":"tooltip-leader-trigger"}
-                })),
                 ("profile-card", "hover-5h") => story.actions.push(json!({
                     "type":"move","target":{"element_id":"profile-quota-window-story-card-0"}
                 })),
@@ -348,6 +314,27 @@ pub fn catalog() -> Vec<Story> {
         }
     }
     items
+}
+
+/// Test-only fixtures: complete interaction and form walkthroughs used by
+/// headless state tests. They are not listed in the design browser, where
+/// each control shows its own interaction states instead.
+pub fn fixtures() -> Vec<Story> {
+    ["overview", "form"]
+        .into_iter()
+        .map(|state| {
+            let mut story = Story::new(
+                "interaction",
+                "交互反馈",
+                state,
+                "crates/zork-ui/src/interaction_story.rs",
+                "button",
+            );
+            story.width = 800.;
+            story.height = if state == "form" { 760. } else { 620. };
+            story
+        })
+        .collect()
 }
 
 pub struct PrimitiveStory {
@@ -379,11 +366,6 @@ impl PrimitiveStory {
     }
 
     pub fn inspect(&self, cx: &gpui::App) -> Value {
-        if let Some(extra) = &self.extra {
-            if let Ok(view) = extra.clone().downcast::<crate::component_story::Gallery>() {
-                return view.read(cx).inspect(cx);
-            }
-        }
         json!({"id":self.story.id,"state":self.story.state,"brand_progress":self.brand.read(cx).morph_progress(),"selected":self.selected,"open":self.open,"clicks":self.clicks,"checked":self.selected==1,"quote":self.quote,"text":if self.story.state=="secret" { "[redacted]" } else {self.input.read(cx).value()}})
     }
     /// Hosts with their own keyboard controls focus the specimen after replaying
@@ -417,9 +399,7 @@ impl PrimitiveStory {
         };
         let brand = cx.new(|_| Brand::new(motion, ZORK_UI.palette.canvas));
         let selected = usize::from(matches!(story.state.as_str(), "on" | "disabled-on"));
-        let extra = if story.family == "components" {
-            Some(cx.new(crate::component_story::Gallery::new).into())
-        } else if story.family == "interaction" {
+        let extra = if story.family == "interaction" {
             if story.state == "form" {
                 Some(cx.new(crate::form_story::FormStory::new).into())
             } else {
@@ -483,13 +463,6 @@ impl PrimitiveStory {
 }
 impl Render for PrimitiveStory {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.story.family == "components" {
-            return div()
-                .id(self.id("story-sample"))
-                .size_full()
-                .child(self.extra.clone().unwrap())
-                .into_any_element();
-        }
         if self.focus_pending && !self.grouped {
             self.focus_pending = false;
             window.focus(&self.focus, cx);
@@ -497,7 +470,6 @@ impl Render for PrimitiveStory {
         let state = self.story.state.as_str();
         let p = ZORK_UI.palette;
         let component: gpui::AnyElement = match self.story.family.as_str() {
-            "unified-design" => crate::unified_story::overview(&self.input, cx),
             "profile-card" => {
                 let quota = match state {
                     "subscription" | "narrow" | "full" | "hover-5h" => Some(Quota {
@@ -847,80 +819,6 @@ impl Render for PrimitiveStory {
                     )
                 }
             }
-            "tooltip" => {
-                use crate::components::tooltip::DetailsTooltip;
-                let leader = DetailsTooltip {
-                    key: self.id("leader-detail"),
-                    title: "产品 Leader".into(),
-                    kind: "Leader".into(),
-                    description: "梳理产品需求，协调任务并检查交付结果。".into(),
-                    rows: vec![
-                        ("设备".into(), "mini1".into()),
-                        ("模型".into(), "fixture-model".into()),
-                    ],
-                };
-                let task = DetailsTooltip {
-                    key: self.id("task-detail"),
-                    title: "完善导航交互".into(),
-                    kind: "Task".into(),
-                    description: "统一导航层级与交互反馈，并验证窄窗口下的显示。".into(),
-                    rows: vec![
-                        ("Leader".into(), "产品 Leader".into()),
-                        ("状态".into(), "进行中".into()),
-                        ("执行设备".into(), "mini1".into()),
-                    ],
-                };
-                if state == "hover" {
-                    let tabs = navigation::TabGroup::keyed(self.id("navigation-tabs"), window, cx);
-                    let overlay = window.use_keyed_state(self.id("details-overlay"), cx, |_, _| {
-                        crate::components::tooltip::DetailsOverlay::default()
-                    });
-                    tabs.surface(
-                        tabs.column()
-                            .w(px(240.))
-                            .child(
-                                tabs.tab(self.id("tooltip-leader-trigger"), false)
-                                    .child("产品 Leader")
-                                    .automation(AutomationRole::Button, "产品 Leader")
-                                    .map(|row| {
-                                        crate::components::tooltip::trigger(
-                                            row,
-                                            leader,
-                                            overlay.clone(),
-                                        )
-                                    }),
-                            )
-                            .child(
-                                tabs.tab(self.id("tooltip-task-trigger"), false)
-                                    .child(ui::icon("icons/checklist.svg", 16.))
-                                    .child("完善导航交互")
-                                    .automation(AutomationRole::Button, "完善导航交互")
-                                    .map(|row| {
-                                        crate::components::tooltip::trigger(
-                                            row,
-                                            task,
-                                            overlay.clone(),
-                                        )
-                                    }),
-                            )
-                            .child(overlay)
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(p.muted))
-                                    .child("悬停查看详情，移开后关闭"),
-                            ),
-                    )
-                    .into_any_element()
-                } else {
-                    if state == "leader" {
-                        leader.card(window)
-                    } else {
-                        task.card(window)
-                    }
-                    .into_any_element()
-                }
-            }
             "providers" => div()
                 .flex()
                 .flex_wrap()
@@ -1086,7 +984,7 @@ impl Render for PrimitiveStory {
                 let root = cx.entity().downgrade();
                 let open = root.clone();
                 let preview = activity::render_session(
-                    "产品 Leader",
+                    "Studio",
                     stopped,
                     stopped,
                     live && !cx.reduce_motion(),
@@ -1172,23 +1070,6 @@ impl Render for PrimitiveStory {
                     preview.into_any_element()
                 }
             }
-            "member-status" => activity::render_with_id(
-                self.id("participant-activity"),
-                &[activity::Presentation {
-                    id: self.id("story"),
-                    name: "产品 Leader".into(),
-                    label: match state {
-                        "failed" => "执行失败",
-                        "done" => "已完成",
-                        _ => "正在检查组件",
-                    }
-                    .into(),
-                    failed: state == "failed",
-                    running: state == "running",
-                }],
-                false,
-            )
-            .into_any_element(),
             "attachment" => self.extra.clone().unwrap().into_any_element(),
             "feedback" => ui::status_notice(
                 match state {
@@ -1239,201 +1120,6 @@ impl Render for PrimitiveStory {
                     .child(component)
                     .automation(AutomationRole::Status, self.story.title.clone()),
             )
-            .into_any_element()
-    }
-}
-
-/// One component tab, with all of its states rendered by independent entities.
-pub struct FamilyStories {
-    family: String,
-    items: Vec<(Story, Entity<PrimitiveStory>)>,
-    pending_focus: Option<gpui::FocusHandle>,
-}
-impl FamilyStories {
-    pub fn new(family: String, cx: &mut Context<Self>) -> Self {
-        let mut pending_focus = None;
-        let items = catalog()
-            .into_iter()
-            .filter(|s| s.family == family)
-            .map(|story| {
-                let child = cx.new(|cx| PrimitiveStory::grouped(story.clone(), cx));
-                if story.state == "focus" {
-                    pending_focus = Some(if story.family == "field" {
-                        child.read(cx).input.read(cx).focus_handle()
-                    } else {
-                        child.read(cx).focus.clone()
-                    });
-                }
-                (story, child)
-            })
-            .collect();
-        Self {
-            family,
-            items,
-            pending_focus,
-        }
-    }
-    pub fn inspect(&self, cx: &gpui::App) -> Value {
-        json!({"id":format!("family-{}", self.family),"family":self.family,
-            "states":self.items.iter().map(|(_,view)|view.read(cx).inspect(cx)).collect::<Vec<_>>()})
-    }
-}
-impl Render for FamilyStories {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        if self.family == "components" {
-            return div()
-                .size_full()
-                .children(self.items.first().map(|(_, child)| child.clone()))
-                .into_any_element();
-        }
-        if self.family == "unified-design" {
-            return div()
-                .id("family-unified-design")
-                .size_full()
-                .overflow_y_scroll()
-                .children(self.items.first().map(|(_, child)| child.clone()))
-                .into_any_element();
-        }
-        if let Some(focus) = self.pending_focus.take() {
-            window.on_next_frame(move |window, cx| {
-                window.blur();
-                let key = gpui::Keystroke::parse("tab").expect("tab key");
-                window.dispatch_keystroke(key.clone(), cx);
-                window.dispatch_event(
-                    gpui::PlatformInput::KeyUp(gpui::KeyUpEvent { keystroke: key }),
-                    cx,
-                );
-                window.focus(&focus, cx);
-            });
-        }
-        let p = ZORK_UI.palette;
-        let width = f32::from(window.viewport_size().width);
-        let columns = if width >= 1000. && self.family != "icons" {
-            2.
-        } else {
-            1.
-        };
-        let card_width = ((width - 48. - (columns - 1.) * 16.) / columns).max(200.);
-        let height = match self.family.as_str() {
-            "button" | "navigation" | "switch" => 96.,
-            "field" => 132.,
-            "modal" => 400.,
-            "history" => 380.,
-            "tooltip" => 280.,
-            "comments" => 380.,
-            "attachment" => 220.,
-            "dropdown" => 246.,
-            "icons" => 580.,
-            "markdown" => 232.,
-            "brand" | "profile-card" => 140.,
-            _ => 112.,
-        };
-        div()
-            .id(format!("family-{}", self.family))
-            .size_full()
-            .overflow_y_scroll()
-            .font_family("Inter Variable")
-            .text_size(px(13.))
-            .text_color(rgb(p.text))
-            .bg(rgb(p.canvas))
-            .p_6()
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_start()
-                    .gap_4()
-                    .children(self.items.iter().map(|(story, child)| {
-                        let height = if story.state.starts_with("fold-") {
-                            300.
-                        } else {
-                            height
-                        };
-                        let label = match story.state.as_str() {
-                            "compose" => "添加评论",
-                            "queued" => "待发送",
-                            "editing" => "编辑",
-                            "file" => "文件",
-                            "image" => "图片",
-                            "loading" => "加载中",
-                            "success" => "成功",
-                            "unavailable" => "离线",
-                            "standard" => "标准弹窗",
-                            "detail" => "详情",
-                            "scroll" => "内容滚动",
-                            "error" => "错误",
-                            "collapsed" => "收起",
-                            "expanded" => "展开",
-                            "primary" => "主按钮",
-                            "secondary" => "次按钮",
-                            "with-icon" => "带图标",
-                            "leader" => "Leader 详情",
-                            "task" => "Task 详情",
-                            "long" => "长文字",
-                            "disabled" => "禁用",
-                            "hover" => "悬停",
-                            "focus" => "键盘焦点",
-                            "empty" => "空状态",
-                            "off" => "关闭",
-                            "on" => "开启",
-                            "disabled-off" => "禁用 · 关闭",
-                            "disabled-on" => "禁用 · 开启",
-                            "value" => "已输入",
-                            "secret" => "密码",
-                            "selected" => "选中",
-                            "selected-hover" => "选中 · 悬停",
-                            "gap" => "跨分组滑动",
-                            "selected-focus" => "选中 · 键盘焦点",
-                            "closed" => "收起",
-                            "open" => "展开",
-                            "default" => "默认",
-                            "paragraph" => "段落",
-                            "heading" => "标题",
-                            "list" => "列表",
-                            "quote" => "引用",
-                            "code" => "代码",
-                            "table" => "表格",
-                            "running" => "进行中",
-                            "failed" => "失败",
-                            "done" => "完成",
-                            "all" => "全部",
-                            "notice" => "提示",
-                            "linked" => "组合标志",
-                            "subscription" => "订阅额度",
-                            "manual" => "手动连接",
-                            "quota-error" => "额度获取失败",
-                            "narrow" => "窄窗口",
-                            "hover-5h" => "悬停显示重置时间",
-                            "full" => "额度满额",
-                            "wordmark" => "字标",
-                            "icon" => "图标",
-                            "morph" => "标志动效",
-                            other => other,
-                        };
-                        div()
-                            .id(format!("state-{}", story.id))
-                            .w(px(card_width))
-                            .flex_shrink_0()
-                            .rounded(px(ui::CARD_RADIUS))
-                            .border(gpui::px(crate::design::BORDER_WIDTH))
-                            .border_color(rgb(p.border))
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .px_6()
-                                    .pt_4()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(p.muted))
-                                    .child(label.to_owned()),
-                            )
-                            .child(div().h(px(height)).w_full().child(child.clone()))
-                            .automation(
-                                AutomationRole::Status,
-                                format!("{} · {label}", story.title),
-                            )
-                    })),
-            )
-            .automation(AutomationRole::Status, "组件的全部状态")
             .into_any_element()
     }
 }
