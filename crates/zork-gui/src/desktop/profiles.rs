@@ -43,6 +43,11 @@ pub struct ProfilesView {
     #[cfg(feature = "headless-bench")]
     model_rows_built: usize,
     model_form_open: bool,
+    model_params_open: bool,
+    params_touched: bool,
+    thinking_scheme: crate::api::thinking::ThinkingScheme,
+    recognized: Option<(String, String)>,
+    reference_open: Option<crate::api::model_catalog::Field>,
     model_attempted: bool,
     editing_model: Option<String>,
     model_original: Option<Value>,
@@ -146,6 +151,20 @@ impl ProfilesView {
             },
         )
         .detach();
+        cx.subscribe(
+            &model,
+            |view, _, _: &crate::components::text_input::ComposerEdited, cx| view.recognize(cx),
+        )
+        .detach();
+        for limit in [&context_limit, &output_limit] {
+            cx.subscribe(
+                limit,
+                |view, _, _: &crate::components::text_input::ComposerEdited, _| {
+                    view.params_touched = true
+                },
+            )
+            .detach();
+        }
         context_limit.update(cx, |v, cx| v.set_value("32K", cx));
         output_limit.update(cx, |v, cx| v.set_value("4.096K", cx));
         key.update(cx, |input, cx| input.set_secret(true, cx));
@@ -178,6 +197,11 @@ impl ProfilesView {
             #[cfg(feature = "headless-bench")]
             model_rows_built: 0,
             model_form_open: false,
+            model_params_open: false,
+            params_touched: false,
+            thinking_scheme: crate::api::thinking::ThinkingScheme::Unsupported,
+            recognized: None,
+            reference_open: None,
             model_attempted: false,
             editing_model: None,
             model_original: None,
@@ -635,6 +659,9 @@ impl ProfilesView {
         );
         self.copy_model_open = false;
         self.api_open = false;
+        self.model_params_open = false;
+        self.reference_open = None;
+        self.params_touched = self.editing_model.is_some();
         self.model_form_open = true;
         self.model_attempted = false;
         self.message = None;
@@ -653,6 +680,8 @@ impl ProfilesView {
             .position(|a| a.0 == input.api)
             .unwrap_or(0);
         self.model_image_input = input.images;
+        self.thinking_scheme = input.scheme();
+        self.recognized = self.recognition_line(&input.id);
         self.model.update(cx, |v, cx| v.set_value(input.id, cx));
         self.context_limit
             .update(cx, |v, cx| v.set_value(input.context, cx));
@@ -934,10 +963,10 @@ impl ProfilesView {
             api: MODEL_APIS[self.model_api].0.into(),
             context: self.context_limit.read(cx).value().into(),
             output: self.output_limit.read(cx).value().into(),
-            thinking: self.thinking_levels.read(cx).value().into(),
-            default_thinking: self.default_thinking.read(cx).value().into(),
+            thinking: self.thinking_scheme.encode().0.join(", "),
+            default_thinking: self.thinking_scheme.encode().1,
             images: self.model_image_input,
-            thinking_scheme: None,
+            thinking_scheme: Some(self.thinking_scheme.clone()),
         }
     }
     fn model_errors(&self, cx: &gpui::App) -> Vec<(String, String)> {
@@ -959,6 +988,7 @@ impl ProfilesView {
         self.model_attempted = true;
         self.message = None;
         if let Some((field, _)) = self.model_errors(cx).first() {
+            self.model_params_open = field != "profile-model";
             let input = match field.as_str() {
                 "profile-context-limit" => &self.context_limit,
                 "profile-output-limit" => &self.output_limit,
@@ -1215,6 +1245,9 @@ impl Render for ProfilesView {
         let displayed_detail = detail_visible
             .clone()
             .or_else(|| model_visible.as_ref().map(|(detail, _)| detail.clone()));
+        let editor_body = model_visible
+            .is_some()
+            .then(|| self.model_editor_body(window, cx));
         let supports = self
             .selection()
             .is_some_and(|(_, b)| b["deviceCode"] == true);
@@ -1770,133 +1803,7 @@ impl Render for ProfilesView {
                                         .unwrap_or("")
                                 )))
                             })
-                            .child(self.input("profile-model", "模型 ID", &self.model, cx))
-                            .child(ui::form_field(
-                                "接口协议",
-                                ui::dropdown_with_icons(
-                                    "model-api-select",
-                                    MODEL_APIS[self.model_api].1.into(),
-                                    MODEL_APIS
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, (_, name))| {
-                                            (
-                                                format!("model-api-{i}"),
-                                                (*name).into(),
-                                                i == self.model_api,
-                                            )
-                                        })
-                                        .collect(),
-                                    self.api_open,
-                                    !self.busy,
-                                    Some(provider_path(
-                                        if MODEL_APIS[self.model_api].0.starts_with("anthropic") {
-                                            "anthropic"
-                                        } else {
-                                            "openai"
-                                        },
-                                    )),
-                                    MODEL_APIS
-                                        .iter()
-                                        .map(|(api, _)| {
-                                            Some(provider_path(if api.starts_with("anthropic") {
-                                                "anthropic"
-                                            } else {
-                                                "openai"
-                                            }))
-                                        })
-                                        .collect(),
-                                    window,
-                                    cx,
-                                    |v, open, cx| {
-                                        v.api_open = open;
-                                        v.copy_model_open = false;
-                                        zork_ui::components::region::invalidate_all(cx);
-                                    },
-                                    |v, index, cx| {
-                                        v.model_api = index;
-                                        v.api_open = false;
-                                        zork_ui::components::region::invalidate_all(cx);
-                                    },
-                                ),
-                            ))
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap_3()
-                                    .child(self.input(
-                                        "profile-context-limit",
-                                        "上下文 token 上限",
-                                        &self.context_limit,
-                                        cx,
-                                    ))
-                                    .child(self.input(
-                                        "profile-output-limit",
-                                        "输出 token 上限",
-                                        &self.output_limit,
-                                        cx,
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap_3()
-                                    .child(
-                                        self.input(
-                                            "profile-thinking-levels",
-                                            "推理级别，用逗号分隔",
-                                            &self.thinking_levels,
-                                            cx,
-                                        )
-                                        .min_w(px(220.))
-                                        .flex_basis(px(220.)),
-                                    )
-                                    .child(
-                                        self.input(
-                                            "profile-default-thinking",
-                                            "默认推理级别",
-                                            &self.default_thinking,
-                                            cx,
-                                        )
-                                        .min_w(px(220.))
-                                        .flex_basis(px(220.)),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(rgb(p.muted))
-                                    .child("填写该模型实际支持的容量和推理级别。"),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_between()
-                                    .gap_3()
-                                    .py_2()
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .child(self.locale.text("model_image_input")),
-                                    )
-                                    .child(ui::switch(
-                                        "profile-model-image-input",
-                                        self.locale.text("model_image_input"),
-                                        self.model_image_input,
-                                        !self.busy,
-                                        &self.model_image_focus,
-                                        cx,
-                                        |v, on, cx| {
-                                            v.model_image_input = on;
-                                            zork_ui::components::region::invalidate(
-                                                cx,
-                                                &["dialog"],
-                                            );
-                                        },
-                                    )),
-                            ),
+                            .children(editor_body),
                         div()
                             .w_full()
                             .flex()
@@ -1968,6 +1875,590 @@ impl Render for ProfilesView {
                 self.message.clone().filter(|_| modal_key.is_none()),
                 |v, m| v.child(ui::status_notice(m, ui::NoticeKind::Error)),
             )
+    }
+}
+
+/// Model editor: recognition fills everything; parameters stay collapsed until
+/// the user asks, and every parameter can borrow a popular model's value.
+impl ProfilesView {
+    fn provider_id(&self) -> Option<String> {
+        self.detail
+            .as_ref()
+            .and_then(|d| d["provider"].as_str())
+            .map(str::to_owned)
+    }
+    fn recognition_line(&self, id: &str) -> Option<(String, String)> {
+        if id.trim().is_empty() {
+            return None;
+        }
+        let provider = self.provider_id();
+        let found = crate::api::model_catalog::recognition(id, provider.as_deref(), None);
+        Some((
+            found["entry"]["name"].as_str()?.to_owned(),
+            found["summary"].as_str().unwrap_or_default().to_owned(),
+        ))
+    }
+    fn recognize(&mut self, cx: &mut Context<Self>) {
+        let id = self.model.read(cx).value().to_owned();
+        self.recognized = self.recognition_line(&id);
+        if !self.params_touched && self.editing_model.is_none() {
+            // A new model takes every parameter from the recognized entry
+            // until the user changes one of them.
+            let provider = self.provider_id();
+            let blank = ModelInput {
+                id: id.clone(),
+                context: String::new(),
+                output: String::new(),
+                thinking: String::new(),
+                default_thinking: String::new(),
+                images: false,
+                thinking_scheme: None,
+                ..self.model_input(cx)
+            };
+            let (filled, entry) =
+                crate::api::model_catalog::fill_input(blank, provider.as_deref());
+            if entry.is_some() {
+                self.context_limit
+                    .update(cx, |v, cx| v.set_value(filled.context.clone(), cx));
+                self.output_limit
+                    .update(cx, |v, cx| v.set_value(filled.output.clone(), cx));
+                self.thinking_scheme = filled.scheme();
+                self.model_image_input = filled.images;
+                self.params_touched = false;
+            }
+        }
+        zork_ui::components::region::invalidate(cx, &["dialog"]);
+    }
+    fn apply_reference(
+        &mut self,
+        field: crate::api::model_catalog::Field,
+        value: Value,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::api::model_catalog::Field;
+        let tokens = |v: &Value| v.as_u64().map(zork_client_core::model_edit::compact_tokens);
+        match field {
+            Field::Context => {
+                if let Some(text) = tokens(&value) {
+                    self.context_limit.update(cx, |v, cx| v.set_value(text, cx));
+                }
+            }
+            Field::Output => {
+                if let Some(text) = tokens(&value) {
+                    self.output_limit.update(cx, |v, cx| v.set_value(text, cx));
+                }
+            }
+            Field::Thinking => {
+                if let Ok(scheme) = serde_json::from_value(value["scheme"].clone()) {
+                    self.thinking_scheme = scheme;
+                }
+            }
+            Field::Capabilities => self.model_image_input = value["image"] == true,
+        }
+        self.params_touched = true;
+        self.reference_open = None;
+        zork_ui::components::region::invalidate(cx, &["dialog"]);
+    }
+    fn set_thinking(
+        &mut self,
+        scheme: crate::api::thinking::ThinkingScheme,
+        cx: &mut Context<Self>,
+    ) {
+        self.thinking_scheme = scheme;
+        self.params_touched = true;
+        zork_ui::components::region::invalidate(cx, &["dialog"]);
+    }
+    fn chip(
+        &self,
+        id: impl Into<gpui::ElementId>,
+        label: String,
+        on: bool,
+        cx: &mut Context<Self>,
+        click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> gpui::AnyElement {
+        let p = ZORK_UI.palette;
+        let enabled = !self.busy;
+        div()
+            .id(id)
+            .h(px(28.))
+            .px(px(12.))
+            .flex()
+            .items_center()
+            .rounded_full()
+            .text_size(px(12.5))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .bg(rgb(if on { p.text } else { p.prompt }))
+            .text_color(rgb(if on { p.canvas } else { p.muted }))
+            .when(enabled && !on, |v| {
+                v.hover(|s| s.bg(rgb(zork_ui::design::INTERACTION.neutral_hover)))
+            })
+            .when(enabled, |v| {
+                v.cursor_pointer()
+                    .on_click(cx.listener(move |view, _, _, cx| click(view, cx)))
+            })
+            .child(label.clone())
+            .automation_enabled(enabled, AutomationRole::Button, label)
+            .into_any_element()
+    }
+    fn param_row(&self, label: &'static str, control: gpui::AnyElement) -> gpui::Div {
+        div()
+            .min_h(px(36.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .w(px(76.))
+                    .flex_shrink_0()
+                    .text_size(px(12.5))
+                    .text_color(rgb(ZORK_UI.palette.muted))
+                    .child(label),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .flex_wrap()
+                    .gap(px(6.))
+                    .child(control),
+            )
+    }
+    fn reference_toggle(
+        &self,
+        field: crate::api::model_catalog::Field,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let open = self.reference_open == Some(field);
+        ui::quiet_button(
+            format!("model-reference-{field:?}").to_lowercase(),
+            "参照",
+            !self.busy,
+            ui::IconButtonSize::Compact,
+        )
+        .text_size(px(12.))
+        .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
+            icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
+                std::f32::consts::PI,
+            )))
+        }))
+        .on_click(cx.listener(move |v, _, _, cx| {
+            v.reference_open = (v.reference_open != Some(field)).then_some(field);
+            zork_ui::components::region::invalidate(cx, &["dialog"]);
+        }))
+        .automation(AutomationRole::Button, "参照常见模型")
+        .into_any_element()
+    }
+    fn reference_list(
+        &self,
+        field: crate::api::model_catalog::Field,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui::AnyElement> {
+        if self.reference_open != Some(field) {
+            return None;
+        }
+        let id = self.model.read(cx).value().to_owned();
+        let refs = crate::api::model_catalog::references(field, Some(&id));
+        let chips: Vec<_> = refs
+            .into_iter()
+            .take(10)
+            .enumerate()
+            .map(|(i, r)| {
+                let value = r.value.clone();
+                self.chip(
+                    SharedString::from(format!("model-reference-{i}")),
+                    format!("{} · {}", r.name, r.label),
+                    r.recognized,
+                    cx,
+                    move |v, cx| v.apply_reference(field, value.clone(), cx),
+                )
+            })
+            .collect();
+        Some(
+            div()
+                .id(SharedString::from(
+                    format!("model-references-{field:?}").to_lowercase(),
+                ))
+                .pl(px(84.))
+                .pb(px(6.))
+                .flex()
+                .flex_wrap()
+                .gap(px(6.))
+                .children(chips)
+                .into_any_element(),
+        )
+    }
+    fn thinking_controls(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        use crate::api::thinking::{BudgetChoice, ThinkingScheme as T};
+        let p = ZORK_UI.palette;
+        let kind = match &self.thinking_scheme {
+            T::Unsupported => 0,
+            T::Always { .. } => 1,
+            T::Toggle { .. } => 2,
+            T::Levels { .. } => 3,
+            T::Budget { .. } => 4,
+        };
+        let kinds = ["不支持", "固定开启", "开关", "档位", "预算"];
+        let kind_chips: Vec<_> = kinds
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                self.chip(
+                    SharedString::from(format!("model-thinking-kind-{i}")),
+                    (*name).to_owned(),
+                    i == kind,
+                    cx,
+                    move |v, cx| {
+                        if i == kind {
+                            return;
+                        }
+                        let next = match i {
+                            0 => T::Unsupported,
+                            1 => T::Always {
+                                value: "high".into(),
+                            },
+                            2 => T::Toggle {
+                                on: "enabled".into(),
+                                default_on: true,
+                            },
+                            3 => T::Levels {
+                                values: vec!["low".into(), "medium".into(), "high".into()],
+                                default: "medium".into(),
+                            },
+                            _ => T::Budget {
+                                presets: vec![4096, 16384, 32768],
+                                default: BudgetChoice::Tokens(16384),
+                                dynamic: false,
+                                allow_off: true,
+                            },
+                        };
+                        v.set_thinking(next, cx)
+                    },
+                )
+            })
+            .collect();
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(div().flex().flex_wrap().gap(px(6.)).children(kind_chips));
+        const ORDER: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+        match self.thinking_scheme.clone() {
+            T::Levels { values, default } => {
+                let mut known: Vec<String> = ORDER.iter().map(|v| (*v).to_owned()).collect();
+                for value in &values {
+                    if !known.contains(value) {
+                        known.push(value.clone());
+                    }
+                }
+                let level_chips: Vec<_> = known
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, name)| {
+                        let on = values.contains(&name);
+                        let (values, default) = (values.clone(), default.clone());
+                        self.chip(
+                            SharedString::from(format!("model-thinking-level-{i}")),
+                            name.clone(),
+                            on,
+                            cx,
+                            move |v, cx| {
+                                let mut next = values.clone();
+                                if on {
+                                    next.retain(|x| x != &name);
+                                } else {
+                                    next.push(name.clone());
+                                }
+                                next.sort_by_key(|x| {
+                                    ORDER.iter().position(|o| o == x).unwrap_or(ORDER.len())
+                                });
+                                let default = if next.contains(&default) {
+                                    default.clone()
+                                } else {
+                                    next.first().cloned().unwrap_or_default()
+                                };
+                                v.set_thinking(
+                                    T::Levels {
+                                        values: next,
+                                        default,
+                                    },
+                                    cx,
+                                )
+                            },
+                        )
+                    })
+                    .collect();
+                let options = values.iter().map(|v| (v.clone(), v.clone())).collect();
+                col = col
+                    .child(div().flex().flex_wrap().gap(px(6.)).children(level_chips))
+                    .child(self.default_choice(options, default, cx, move |value| T::Levels {
+                        values: values.clone(),
+                        default: value,
+                    }));
+            }
+            T::Budget {
+                presets,
+                default,
+                dynamic,
+                allow_off,
+            } => {
+                let mut options: Vec<(String, String)> = Vec::new();
+                if allow_off {
+                    options.push(("off".into(), "关".into()));
+                }
+                if dynamic {
+                    options.push(("dynamic".into(), "动态".into()));
+                }
+                options.extend(presets.iter().map(|t| {
+                    (
+                        crate::api::thinking::budget_value(*t),
+                        zork_client_core::model_edit::compact_tokens(u64::from(*t)),
+                    )
+                }));
+                let current = match default {
+                    BudgetChoice::Off => "off".into(),
+                    BudgetChoice::Dynamic => "dynamic".into(),
+                    BudgetChoice::Tokens(t) => crate::api::thinking::budget_value(t),
+                };
+                col = col.child(self.default_choice(options, current, cx, move |value| {
+                    let default = match value.as_str() {
+                        "off" => BudgetChoice::Off,
+                        "dynamic" => BudgetChoice::Dynamic,
+                        other => BudgetChoice::Tokens(
+                            crate::api::thinking::budget_tokens(other).unwrap_or(16384),
+                        ),
+                    };
+                    T::Budget {
+                        presets: presets.clone(),
+                        default,
+                        dynamic,
+                        allow_off,
+                    }
+                }));
+            }
+            T::Toggle { on, default_on } => {
+                col = col.child(self.chip(
+                    "model-thinking-default-on",
+                    if default_on { "默认开启" } else { "默认关闭" }.to_owned(),
+                    default_on,
+                    cx,
+                    move |v, cx| {
+                        v.set_thinking(
+                            T::Toggle {
+                                on: on.clone(),
+                                default_on: !default_on,
+                            },
+                            cx,
+                        )
+                    },
+                ));
+            }
+            T::Always { .. } => {
+                col = col.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(p.subtle))
+                        .child("这个模型总是会思考"),
+                );
+            }
+            T::Unsupported => {}
+        }
+        col.into_any_element()
+    }
+    fn default_choice(
+        &self,
+        options: Vec<(String, String)>,
+        current: String,
+        cx: &mut Context<Self>,
+        make: impl Fn(String) -> crate::api::thinking::ThinkingScheme + 'static,
+    ) -> gpui::AnyElement {
+        let make = std::rc::Rc::new(make);
+        let chips: Vec<_> = options
+            .into_iter()
+            .enumerate()
+            .map(|(i, (value, label))| {
+                let make = make.clone();
+                let on = value == current;
+                self.chip(
+                    SharedString::from(format!("model-thinking-default-{i}")),
+                    label,
+                    on,
+                    cx,
+                    move |v, cx| v.set_thinking(make(value.clone()), cx),
+                )
+            })
+            .collect();
+        div()
+            .flex()
+            .items_center()
+            .flex_wrap()
+            .gap(px(6.))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(rgb(ZORK_UI.palette.subtle))
+                    .mr(px(2.))
+                    .child("默认"),
+            )
+            .children(chips)
+            .into_any_element()
+    }
+    fn model_editor_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
+        use crate::api::model_catalog::Field;
+        let p = ZORK_UI.palette;
+        let recognized = self.recognized.clone();
+        let open = self.model_params_open;
+        let toggle_label = if open { "收起参数" } else { "调整参数" };
+        let recognition = match recognized {
+            Some((name, summary)) => div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(rgb(p.text))
+                        .child(name.clone()),
+                )
+                .child(div().text_color(rgb(p.muted)).child(summary.clone()))
+                .automation(AutomationRole::Status, format!("{name} · {summary}"))
+                .into_any_element(),
+            None => div()
+                .text_color(rgb(p.subtle))
+                .child("未识别的模型：展开参数手动填写")
+                .into_any_element(),
+        };
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(self.input("profile-model", "模型 ID", &self.model, cx))
+            .child(
+                div()
+                    .id("model-recognition")
+                    .min_h(px(24.))
+                    .px(px(4.))
+                    .flex()
+                    .items_center()
+                    .text_size(px(12.5))
+                    .child(recognition),
+            )
+            .child(
+                ui::quiet_button(
+                    "model-params-toggle",
+                    toggle_label,
+                    !self.busy,
+                    ui::IconButtonSize::Compact,
+                )
+                .ml(px(-6.))
+                .text_size(px(12.5))
+                .child(ui::icon("icons/chevron-down.svg", 12.).when(open, |icon| {
+                    icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
+                        std::f32::consts::PI,
+                    )))
+                }))
+                .on_click(cx.listener(|v, _, _, cx| {
+                    v.model_params_open = !v.model_params_open;
+                    v.reference_open = None;
+                    zork_ui::components::region::invalidate(cx, &["dialog"]);
+                }))
+                .automation(AutomationRole::Button, toggle_label),
+            );
+        if !open {
+            return body;
+        }
+        let family = |api: &str| {
+            provider_path(if api.starts_with("anthropic") {
+                "anthropic"
+            } else {
+                "openai"
+            })
+        };
+        let api = ui::dropdown_with_icons(
+            "model-api-select",
+            MODEL_APIS[self.model_api].1.into(),
+            MODEL_APIS
+                .iter()
+                .enumerate()
+                .map(|(i, (_, name))| (format!("model-api-{i}"), (*name).into(), i == self.model_api))
+                .collect(),
+            self.api_open,
+            !self.busy,
+            Some(family(MODEL_APIS[self.model_api].0)),
+            MODEL_APIS.iter().map(|(api, _)| Some(family(api))).collect(),
+            window,
+            cx,
+            |v, open, cx| {
+                v.api_open = open;
+                v.copy_model_open = false;
+                zork_ui::components::region::invalidate_all(cx);
+            },
+            |v, index, cx| {
+                v.model_api = index;
+                v.api_open = false;
+                v.params_touched = true;
+                zork_ui::components::region::invalidate_all(cx);
+            },
+        );
+        let context = self
+            .input("profile-context-limit", "", &self.context_limit, cx)
+            .w(px(140.));
+        let output = self
+            .input("profile-output-limit", "", &self.output_limit, cx)
+            .w(px(140.));
+        let context_ref = self.reference_toggle(Field::Context, cx);
+        let output_ref = self.reference_toggle(Field::Output, cx);
+        let thinking_ref = self.reference_toggle(Field::Thinking, cx);
+        let caps_ref = self.reference_toggle(Field::Capabilities, cx);
+        let thinking = self.thinking_controls(cx);
+        let image = self.chip(
+            "profile-model-image-input",
+            self.locale.text("model_image_input").to_string(),
+            self.model_image_input,
+            cx,
+            |v, cx| {
+                v.model_image_input = !v.model_image_input;
+                v.params_touched = true;
+                zork_ui::components::region::invalidate(cx, &["dialog"]);
+            },
+        );
+        let row = |a: gpui::AnyElement, b: gpui::AnyElement| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(a)
+                .child(b)
+                .into_any_element()
+        };
+        body = body
+            .child(self.param_row("协议", div().w(px(220.)).child(api).into_any_element()))
+            .child(self.param_row("上下文", row(context.into_any_element(), context_ref)))
+            .children(self.reference_list(Field::Context, cx))
+            .child(self.param_row("最长输出", row(output.into_any_element(), output_ref)))
+            .children(self.reference_list(Field::Output, cx))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .w(px(76.))
+                            .pt(px(6.))
+                            .flex_shrink_0()
+                            .text_size(px(12.5))
+                            .text_color(rgb(p.muted))
+                            .child("思考方式"),
+                    )
+                    .child(div().flex_1().min_w_0().child(thinking))
+                    .child(thinking_ref),
+            )
+            .children(self.reference_list(Field::Thinking, cx))
+            .child(self.param_row("能力", row(image, caps_ref)))
+            .children(self.reference_list(Field::Capabilities, cx));
+        body
     }
 }
 

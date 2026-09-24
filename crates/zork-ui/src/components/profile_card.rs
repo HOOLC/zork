@@ -45,6 +45,8 @@ pub struct ProfileCard {
     pub quota: Option<Quota>,
 }
 
+/// One quiet line per connection: name and device first; quota as thin bars;
+/// status and billing only matter when something needs fixing.
 pub fn render(
     card: ProfileCard,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -56,109 +58,86 @@ pub fn render(
         true,
         controls::IconButtonSize::Standard,
     )
-    .radius(crate::design::RADIUS.container)
+    .radius(22.)
     .font_weight(gpui::FontWeight::NORMAL)
     .justify_start()
     .w_full()
     .on_click(on_click)
-    .h_auto()
+    .h(px(44.))
     .pl(px(14.))
-    .pr(px(16.))
-    .py(px(12.))
-    .rounded(px(crate::design::RADIUS.container))
+    .pr(px(12.))
     .flex()
     .items_center()
-    .gap_3()
+    .gap(px(10.))
     .child(
         div()
             .id(format!("profile-provider-mark-{}", card.key))
-            .size(px(40.))
             .flex_shrink_0()
-            .rounded(px(12.))
-            .bg(rgb(p.sidebar))
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(provider_icon(&card.provider, 24.))
+            .child(provider_icon(&card.provider, 18.))
             .automation(AutomationRole::Status, card.provider.clone()),
     )
     .child(
         div()
-            .flex_1()
+            .id(format!("profile-name-{}", card.key))
             .min_w_0()
-            .flex()
-            .flex_col()
-            .gap_0()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(13.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(card.name.clone()),
-                    )
-                    .when_some(card.device.clone(), |v, device| {
-                        v.child(
-                            div()
-                                .flex_shrink_0()
-                                .max_w(px(150.))
-                                .min_w_0()
-                                .text_size(px(12.))
-                                .text_color(rgb(p.muted))
-                                .child(device_name::label(
-                                    format!("profile-device-{}", card.key),
-                                    device.name,
-                                    &device.status,
-                                    None,
-                                )),
-                        )
-                    }),
-            )
-            .child(
-                div()
-                    .id(format!("profile-billing-{}", card.key))
-                    .truncate()
-                    .text_size(px(12.))
-                    .line_height(px(16.))
-                    .text_color(rgb(p.muted))
-                    .child(card.billing.clone())
-                    .automation(AutomationRole::Status, card.billing.clone()),
-            )
-            .when_some(
-                card.quota
-                    .as_ref()
-                    .filter(|quota| !quota.summary.is_empty()),
-                |v, quota| v.child(quota_summary(&card.key, quota)),
-            ),
+            .truncate()
+            .text_size(px(13.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .child(card.name.clone())
+            .automation(AutomationRole::Status, format!("{} · {}", card.name, card.billing)),
+    )
+    .when_some(card.device.clone(), |v, device| {
+        v.child(
+            div()
+                .flex_shrink_0()
+                .max_w(px(150.))
+                .min_w_0()
+                .text_size(px(12.))
+                .text_color(rgb(p.muted))
+                .child(device_name::label(
+                    format!("profile-device-{}", card.key),
+                    device.name,
+                    &device.status,
+                    None,
+                )),
+        )
+    })
+    .child(div().flex_1())
+    .when_some(
+        card.quota
+            .as_ref()
+            .filter(|quota| !quota.summary.is_empty()),
+        |v, quota| v.child(quota_summary(&card.key, quota)),
     )
     .child(
         div()
             .id(format!("profile-model-count-{}", card.key))
+            .flex_shrink_0()
+            .w(px(72.))
             .text_size(px(12.))
-            .text_color(rgb(p.muted))
+            .text_color(rgb(p.subtle))
             .child(card.model_count.clone())
             .automation(AutomationRole::Status, card.model_count),
     )
-    .child(
-        div()
-            .id(format!("profile-verification-{}", card.key))
-            .px_2()
-            .py_1()
-            .rounded_full()
-            .text_size(px(12.))
-            .bg(gpui::rgba(
-                ((if card.verified { p.success } else { p.warning }) << 8) | 0x12,
-            ))
-            .text_color(rgb(if card.verified { p.success } else { p.warning }))
-            .child(card.verification.clone())
-            .automation(AutomationRole::Status, card.verification),
-    )
+    .when(!card.verified, |v| {
+        v.child(
+            div()
+                .id(format!("profile-verification-{}", card.key))
+                .flex_shrink_0()
+                .h(px(22.))
+                .px(px(9.))
+                .flex()
+                .items_center()
+                .rounded_full()
+                .text_size(px(12.))
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .bg(gpui::rgba((p.warning << 8) | 0x1f))
+                .text_color(rgb(p.warning))
+                .child(card.verification.clone())
+                .automation(AutomationRole::Status, card.verification),
+        )
+    })
+    .child(controls::icon("icons/chevron-right.svg", 14.).text_color(rgb(p.subtle)))
 }
 
 fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
@@ -170,7 +149,7 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
         .items_center()
         .gap(px(10.))
         .min_w_0()
-        .mt(px(3.))
+        .flex_shrink_0()
         .text_size(px(12.))
         .when(quota.failed, |v| {
             v.text_color(rgb(p.warning)).child(quota.summary.clone())
@@ -183,17 +162,14 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                     .take(2)
                     .enumerate()
                     .map(|(index, window)| {
-                        let color = if window.remaining == 0. {
+                        // Ink by default; colour only when the window runs low.
+                        let color = if window.remaining < 10. {
                             p.danger
-                        } else if window.remaining < 20. {
+                        } else if window.remaining < 30. {
                             p.warning
                         } else {
-                            p.success
+                            p.text
                         };
-                        // Wide enough for two 12 px digits inside the stroke.
-                        let size = 24.;
-                        let track = ring_path(size, 1.);
-                        let progress = ring_path(size, window.remaining / 100.);
                         let label = format!("{} · {}", window.label, window.value);
                         let hint = window
                             .reset
@@ -205,52 +181,33 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
                             .flex()
                             .flex_shrink_0()
                             .items_center()
-                            .gap(px(4.))
+                            .gap(px(6.))
                             .child(
                                 div()
                                     .text_size(px(12.))
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(rgb(p.muted))
+                                    .text_color(rgb(p.subtle))
                                     .child(window.short_label.clone()),
                             )
                             .child(
                                 div()
-                                    .relative()
-                                    .size(px(size))
-                                    .flex_shrink_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        gpui::canvas(
-                                            |_, _, _| {},
-                                            move |bounds, _, window, _| {
-                                                if let Some(track) = &track {
-                                                    window.paint_path_at(
-                                                        track,
-                                                        bounds.origin,
-                                                        gpui::rgba((p.muted << 8) | 0x30),
-                                                    );
-                                                }
-                                                if let Some(progress) = &progress {
-                                                    window.paint_path_at(
-                                                        progress,
-                                                        bounds.origin,
-                                                        rgb(color),
-                                                    );
-                                                }
-                                            },
-                                        )
-                                        .absolute()
-                                        .inset_0(),
-                                    )
+                                    .w(px(56.))
+                                    .h(px(5.))
+                                    .rounded_full()
+                                    .bg(rgb(p.prompt))
+                                    .overflow_hidden()
                                     .child(
                                         div()
-                                            .text_size(px(12.))
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(rgb(color))
-                                            .child(window.center_value.clone()),
+                                            .h_full()
+                                            .rounded_full()
+                                            .w(px(56. * (window.remaining / 100.).clamp(0., 1.)))
+                                            .bg(rgb(color)),
                                     ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(if color == p.text { p.muted } else { color }))
+                                    .child(window.center_value.clone()),
                             )
                             .automation(AutomationRole::Status, label);
                         tooltip::hint(
@@ -274,39 +231,3 @@ fn quota_summary(key: &str, quota: &Quota) -> gpui::AnyElement {
         .into_any_element()
 }
 
-fn ring_path(size: f32, fraction: f32) -> Option<gpui::Path<gpui::Pixels>> {
-    const STROKE: f32 = 2.;
-    if !size.is_finite() || size <= STROKE || !fraction.is_finite() {
-        return None;
-    }
-    let fraction = fraction.clamp(0., 1.);
-    if fraction <= 0. {
-        return None;
-    }
-    let steps = (fraction * 64.).ceil().max(2.) as usize;
-    let center = size / 2.;
-    let radius = (size - STROKE) / 2.;
-    let mut path = gpui::PathBuilder::stroke(px(STROKE)).with_style(gpui::PathStyle::Stroke(
-        gpui::StrokeOptions::default()
-            .with_line_width(STROKE)
-            .with_line_cap(lyon::path::LineCap::Round)
-            .with_line_join(lyon::path::LineJoin::Round),
-    ));
-    for step in 0..=steps {
-        let angle = -std::f32::consts::FRAC_PI_2
-            - std::f32::consts::TAU * fraction * step as f32 / steps as f32;
-        let point = gpui::point(
-            px(center + radius * angle.cos()),
-            px(center + radius * angle.sin()),
-        );
-        if step == 0 {
-            path.move_to(point);
-        } else {
-            path.line_to(point);
-        }
-    }
-    if fraction == 1. {
-        path.close();
-    }
-    path.build().ok()
-}

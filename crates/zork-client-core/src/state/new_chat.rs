@@ -231,7 +231,6 @@ impl NewChat {
             Action::Model { value } => self.choose(value, s.thinking.clone(), s.profile.clone()),
             Action::Thinking { value } => self.choose(s.model.clone(), value, s.profile.clone()),
             Action::Profile { value } => self.choose(s.model.clone(), s.thinking.clone(), value),
-            Action::Select { profile, model } => self.choose(model, s.thinking.clone(), profile),
             Action::Submit { text } => self.submit_text(text),
         }
     }

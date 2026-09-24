@@ -176,15 +176,13 @@ fn main() -> anyhow::Result<()> {
                     <= connection.bounds.y + connection.bounds.height,
             "Device label is outside its Profile card: {device_name:?}"
         );
-        let billing = snapshot
-            .elements
-            .iter()
-            .find(|e| e.id == format!("profile-billing-{device}-fixture"))
-            .ok_or_else(|| anyhow::anyhow!("Missing {device} billing"))?;
+        // Billing is secondary: it stays in the row's accessible name only.
         anyhow::ensure!(
-            billing.label == "OpenAI · ChatGPT 订阅 (Codex)",
-            "Connection billing disappeared: {}",
-            billing.label
+            snapshot.elements.iter().any(|e| {
+                e.id == format!("profile-name-{device}-fixture")
+                    && e.label.contains("OpenAI · ChatGPT 订阅 (Codex)")
+            }),
+            "Connection billing disappeared"
         );
         let quota = snapshot
             .elements
@@ -203,7 +201,7 @@ fn main() -> anyhow::Result<()> {
                 snapshot.elements.iter().any(|e| {
                     e.id == format!("profile-quota-window-{device}-fixture-{index}") && e.visible
                 }),
-                "{device} circular quota {index} is missing"
+                "{device} quota bar {index} is missing"
             );
         }
         anyhow::ensure!(
@@ -213,10 +211,10 @@ fn main() -> anyhow::Result<()> {
             "Connection model count disappeared"
         );
         anyhow::ensure!(
-            snapshot.elements.iter().any(|e| {
-                e.id == format!("profile-verification-{device}-fixture") && e.label == "已验证"
+            !snapshot.elements.iter().any(|e| {
+                e.id == format!("profile-verification-{device}-fixture") && e.visible
             }),
-            "Connection verification disappeared"
+            "A verified connection must not show a status pill"
         );
     }
     cx.capture_screenshot(window.into())?
