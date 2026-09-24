@@ -576,6 +576,14 @@ fn main() -> anyhow::Result<()> {
         .find(|element| element.id == format!("draft-preview-{}", draft[0].id))
         .unwrap()
         .center;
+    let before = driver
+        .snapshot(true)
+        .elements
+        .into_iter()
+        .filter(|e| e.id.starts_with("draft-preview-"))
+        .map(|e| (e.id, e.bounds.x))
+        .collect::<Vec<_>>();
+    eprintln!("DIAG draft={:?} before={before:?} center={row_center:?}", draft.iter().map(|f| f.id.clone()).collect::<Vec<_>>());
     act(
         &mut cx,
         json!({"type":"scroll","target":{"x":row_center.x,"y":row_center.y},"delta_x":-2000.,"delta_y":0.}),
