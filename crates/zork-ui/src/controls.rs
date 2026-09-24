@@ -9,6 +9,7 @@ use crate::{
     components::text_input::ComposerInput,
     design::{TextRole, FORM, INTERACTION, ZORK_UI},
 };
+use crate::motion::MotionExt;
 use gpui::{div, prelude::*, px, rgb, svg, Div, Entity, FontWeight, Stateful};
 
 pub fn icon(path: &'static str, size: f32) -> gpui::Svg {
@@ -601,6 +602,9 @@ pub enum NoticeKind {
 pub fn status_notice(message: String, kind: NoticeKind) -> Div {
     use crate::components::widgets::primitives::{feedback, surface};
     let (_, fill) = feedback::colors(kind);
+    // A new notice drops in from its region's top edge; the same message
+    // re-rendering keeps its animation state and does not replay.
+    let enter = gpui::SharedString::from(format!("status-notice-enter-{message}"));
     div().w_full().child(
         // A banner is a container: its corner and insets grow together.
         surface("status-notice-surface", crate::design::RADIUS.container, fill, false)
@@ -613,6 +617,11 @@ pub fn status_notice(message: String, kind: NoticeKind) -> Div {
                 message,
                 kind,
                 None,
-            )),
+            ))
+            .appear(
+                enter,
+                crate::motion::SURFACE,
+                -crate::motion::NOTICE_OFFSET,
+            ),
     )
 }

@@ -14,6 +14,7 @@ use crate::{
     design::ZORK_UI,
     resources::Text,
 };
+use crate::motion::MotionExt;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
@@ -444,6 +445,12 @@ pub trait Host: Sized + EventEmitter<HistoryChanged> + 'static {
                                             AutomationRole::Button,
                                             self.history_text().text("history_latest"),
                                         ),
+                                )
+                                // Appears only when reading history; fades in, never slides.
+                                .appear(
+                                    "history-follow-latest-enter",
+                                    crate::motion::BASE,
+                                    0.,
                                 ),
                         )
                     }),

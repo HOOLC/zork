@@ -134,6 +134,8 @@ pub(super) struct Gallery {
     reveal_initial: bool,
     sidebar_open: bool,
     inspector_open: bool,
+    /// Stretches every motion token ×5 so transitions can be inspected.
+    slow_motion: bool,
     search: Entity<ComposerInput>,
     query: String,
     focus: gpui::FocusHandle,
@@ -246,6 +248,7 @@ impl Gallery {
             reveal_initial: true,
             sidebar_open: true,
             inspector_open: true,
+            slow_motion: false,
             search,
             query: String::new(),
             focus: cx.focus_handle(),
@@ -370,6 +373,19 @@ impl Gallery {
         self.interaction = Interaction::Rest;
         self.create_session(self.selected, None, cx);
         cx.notify();
+    }
+
+    /// Remounts the story with its current interaction so enter transitions
+    /// and scripted actions (opening a menu or dialog) play again.
+    fn replay(&mut self, cx: &mut Context<Self>) {
+        self.apply_interaction(self.interaction, cx);
+    }
+
+    fn toggle_slow_motion(&mut self, cx: &mut Context<Self>) {
+        self.slow_motion = !self.slow_motion;
+        zork_ui::motion::set_slow(if self.slow_motion { 5. } else { 1. });
+        // Tokens are read when an animation starts; replay so the change shows.
+        self.replay(cx);
     }
 
     fn step_state(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -995,6 +1011,27 @@ impl Gallery {
             .child(mode)
             .child(view)
             .child(width)
+            .when(self.mode == Mode::Single, |v| {
+                v.child(
+                    ui::quiet_button("story-replay", "重播", true, ui::IconButtonSize::Compact)
+                        .on_click(cx.listener(|v, _, _, cx| v.replay(cx)))
+                        .automation(AutomationRole::Button, "重播"),
+                )
+                .child(
+                    ui::quiet_button(
+                        "story-slow-motion",
+                        "慢放 ×5",
+                        true,
+                        ui::IconButtonSize::Compact,
+                    )
+                    .when(self.slow_motion, |v| {
+                        v.bg(rgb(zork_ui::design::INTERACTION.neutral_hover))
+                    })
+                    .aria_label(if self.slow_motion { "关闭慢放" } else { "慢放 ×5" })
+                    .on_click(cx.listener(|v, _, _, cx| v.toggle_slow_motion(cx)))
+                    .automation(AutomationRole::Button, "慢放"),
+                )
+            })
             .child(
                 ui::icon_button("story-reset", true)
                     .child(ui::icon("icons/reload.svg", 16.))

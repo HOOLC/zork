@@ -78,6 +78,9 @@ struct State {
     focus: Option<FocusHandle>,
     popup: Option<Entity<PopupMenu>>,
     subscription: Option<Subscription>,
+    /// The last popup and its position, kept for the exit fade after closing.
+    leaving: Option<(Entity<PopupMenu>, Point<Pixels>)>,
+    presence: Option<crate::motion::Presence>,
 }
 #[derive(Clone, Default)]
 pub struct Menu {
@@ -91,7 +94,9 @@ impl Menu {
     pub fn dismiss(&self) {
         let mut state = self.state.borrow_mut();
         state.open = false;
-        state.popup = None;
+        if let Some(popup) = state.popup.take() {
+            state.leaving = Some((popup, state.position));
+        }
         state.subscription = None;
     }
     pub fn close(&self, window: &mut Window, cx: &mut App) {
@@ -176,11 +181,44 @@ impl Menu {
         choose: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static,
     ) -> Option<AnyElement> {
         let id: SharedString = id.into();
-        let (position, focus, existing) = {
-            let state = self.state.borrow();
-            if !state.open {
-                return None;
+        let now = cx.background_executor().now();
+        let mode = crate::motion::mode(cx);
+        let frame = {
+            let mut state = self.state.borrow_mut();
+            let open = state.open;
+            let presence = state
+                .presence
+                .get_or_insert_with(|| crate::motion::Presence::new(crate::motion::POPOVER));
+            let (frame, moving) = presence.step(open, now, mode);
+            if moving {
+                window.request_animation_frame();
             }
+            if frame.is_none() {
+                state.leaving = None;
+            }
+            frame?
+        };
+        if frame.closing {
+            // The dismissed popup fades where it was; a capture layer keeps
+            // clicks from reaching its items while it leaves.
+            let (popup, position) = self.state.borrow().leaving.clone()?;
+            return Some(
+                deferred(
+                    gpui_base::Positioner::corner(Anchor::TopLeft, position).child(
+                        div()
+                            .opacity(frame.opacity)
+                            .capture_any_mouse_down(|_, _, cx| cx.stop_propagation())
+                            .capture_any_mouse_up(|_, _, cx| cx.stop_propagation())
+                            .child(popup),
+                    ),
+                )
+                .with_priority(350)
+                .into_any_element(),
+            );
+        }
+        let (position, focus, existing) = {
+            let mut state = self.state.borrow_mut();
+            state.leaving = None;
             (state.position, state.focus.clone(), state.popup.clone())
         };
         let popup = if let Some(popup) = existing {
@@ -210,7 +248,9 @@ impl Menu {
                     };
                     let mut state = state.borrow_mut();
                     state.open = false;
-                    state.popup = None;
+                    if let Some(popup) = state.popup.take() {
+                        state.leaving = Some((popup, state.position));
+                    }
                     window.refresh();
                 });
             {
@@ -222,7 +262,16 @@ impl Menu {
             popup
         };
         Some(
-            deferred(gpui_base::Positioner::corner(Anchor::TopLeft, position).child(popup))
+            deferred(
+                gpui_base::Positioner::corner(Anchor::TopLeft, position).child(
+                    // Context menus open at the pointer and drop away from it.
+                    div()
+                        .relative()
+                        .top(px(-crate::motion::POPOVER_OFFSET * frame.travel))
+                        .opacity(frame.opacity)
+                        .child(popup),
+                ),
+            )
                 .with_priority(350)
                 .into_any_element(),
         )
