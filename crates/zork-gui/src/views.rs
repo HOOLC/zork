@@ -108,6 +108,8 @@ pub struct RootView {
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
     session_activity_preview: Option<session_activity::SessionActivityPreview>,
+    /// Whether the activity band above the composer rendered last frame.
+    session_activity_shown: bool,
     client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
@@ -411,6 +413,7 @@ impl RootView {
             history: history::HistoryState::default(),
             chat_histories: HashMap::new(),
             session_activity_preview: None,
+            session_activity_shown: false,
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
                 let device =
@@ -547,6 +550,8 @@ impl RootView {
             self.agent_online = state.online == Some(true);
             self.access_revoked = state.revoked;
             self.connection_error = state.connection_error.clone();
+            // Reconnecting settles a preview that was kept while unreachable.
+            self.sync_session_activity(cx);
             if let Some(ms) = state.confirmed_at_ms {
                 self.last_confirmed_at =
                     chrono::DateTime::from_timestamp_millis(ms as i64).map(|t| t.to_rfc3339());
@@ -1326,23 +1331,6 @@ impl RootView {
         let file_previews = self.file_ui.message_previews.clone();
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
-        let activity = self.activity_presentations();
-        let animate_activity = !self.scroll_active && !cx.reduce_motion();
-        let session_activity = self.session_activity_preview.as_ref().and_then(|preview| {
-            (!preview.rows.is_empty() && !activity.iter().any(|item| item.failed)).then(|| {
-                (
-                    preview.session.clone(),
-                    preview.name.clone(),
-                    preview.stopped,
-                    preview.leaving,
-                    preview.expanded,
-                    preview.rows.clone(),
-                )
-            })
-        });
-        let activity_in_transcript = !activity.is_empty() || session_activity.is_some();
-        let has_activity = activity_in_transcript;
-        let activity_root = cx.entity().downgrade();
 
         self.transcript_selection.borrow_mut().begin_frame();
         let selection_state = self.transcript_selection.clone();
@@ -1616,63 +1604,12 @@ impl RootView {
                             row.into_any_element()
                         }
                     })
-            } else if activity_in_transcript {
-                let compact = session_activity.as_ref().map(
-                    |(session, name, stopped, leaving, expanded, rows)| {
-                        let expand_root = activity_root.clone();
-                        let open_root = activity_root.clone();
-                        let session = session.clone();
-                        zork_ui::components::activity::render_session(
-                            name,
-                            *stopped,
-                            *leaving,
-                            animate_activity,
-                            *expanded,
-                            rows,
-                            locale.text("session_activity_more"),
-                            locale.text("session_activity_less"),
-                            locale.text(if *stopped {
-                                "session_activity_stopped"
-                            } else {
-                                "history_running"
-                            }),
-                            Rc::new(move |cx| {
-                                let _ = expand_root.update(cx, |view, cx| {
-                                    if let Some(preview) = view.session_activity_preview.as_mut() {
-                                        preview.expanded = !preview.expanded;
-                                        view.transcript_list.remeasure_items(
-                                            view.lines.len()..view.lines.len() + 1,
-                                        );
-                                        zork_ui::components::region::invalidate(
-                                            cx,
-                                            &["transcript"],
-                                        );
-                                    }
-                                });
-                            }),
-                            Rc::new(move |id, cx| {
-                                let _ = open_root.update(cx, |view, cx| {
-                                    view.open_history_entry(&session, id, cx);
-                                });
-                            }),
-                        )
-                    },
-                );
-                div()
-                    .w(px(content_width))
-                    .mx_auto()
-                    .child(match compact {
-                        Some(compact) => compact.into_any_element(),
-                        None => crate::components::activity::render(&activity, animate_activity)
-                            .into_any_element(),
-                    })
-                    .into_any()
             } else {
                 div().h_0().into_any()
             }
         });
 
-        let history = if item_count == 0 && !has_activity {
+        let history = if item_count == 0 {
             zork_ui::components::message_placeholder::render(
                 zork_ui::components::message_placeholder::Data {
                     loading: self.messages_loading,
@@ -1765,6 +1702,9 @@ impl RootView {
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
                 v.attach_paths(paths.paths().to_vec(), cx);
             }))
+            // Session activity sits directly above the composer, at its width;
+            // it is a separate surface, never part of the composer itself.
+            .children(self.render_session_activity(window, cx))
             .child(self.render_composer_extras(window, cx))
             .child(composer)
             .child(

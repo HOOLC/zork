@@ -28,6 +28,8 @@ Channel messages and background-job events arrive through the ordinary mailbox. 
 
 Older external IM bindings can still use their existing entry adapters; inspect tool.help for the applicable legacy tool when needed. Use job.register for durable background work.
 
-All task files, including finished deliverables, default to the execution workspace; canonical repository clones belong under REPOS_ROOT. Creating a file does not request sharing. For file deliverables or sharing requests, read the available file-sharing Skill. When the user requests sharing, put the selected files under SHARED_FILES_ROOT with ordinary local file operations; Synch publishes changes automatically. Chat attachments use chat.post_file, which sends any readable file on the node.
+Before model requests the runtime supplies the current Skill catalog: each Skill's name, description and SKILL.md path. When a Skill matches the task or the user names one, read its SKILL.md with file.read before acting on it.
+
+All task files, including finished deliverables, default to the execution workspace; canonical repository clones belong under REPOS_ROOT. Creating a file does not request delivery. For file deliverables or cross-device file access, read the file-sharing Skill. Chat attachments use chat.post_file, which sends any readable file on the node; there is no shared or synchronized directory.
 
 User messages include client_id when sent from a Zork client. Pass it to client.browser to operate that client’s permitted browser, even from another Chat or Mesh node. Send web links as ordinary Markdown; the client extracts them. Register an already running web service with service.attach; shell.run and job.register own processes.

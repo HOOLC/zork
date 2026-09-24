@@ -199,6 +199,52 @@ class SessionHistoryTest {
                 .apply { parentFile?.mkdirs() }.writeText(report.toString())
         }
     }
+    @Test fun receivedChatMessageReadsAsAMessageNotJson() {
+        ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
+            click("阿狸 · 执行历史", last = true); await("执行历史")
+            scrollToLabel("来自 小熊")
+            // The sender is the member name, the body is rendered Markdown and
+            // the attachment reads by name; the Station envelope never shows.
+            assertTrue(screenContains("窄屏截图见附件"))
+            assertFalse(screenContains("**窄屏截图**"))
+            assertTrue(screenContains("narrow.png"))
+            assertFalse(screenContains("\"source\""))
+            assertFalse(screenContains("worker-1"))
+            scenario.onActivity { activity ->
+                val row = activity.history!!.entries.first { it.id == "wake-input" }
+                assertEquals("小熊", row.message!!.sender)
+                assertEquals(listOf("narrow.png"), row.message!!.files)
+            }
+            capture("received-message.png")
+            // The Markdown body stays selectable; the sender line opens the record.
+            val header = android.graphics.Rect().also { rect ->
+                automation.clearCache()
+                fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                    if (node == null) return null
+                    if (node.isVisibleToUser && node.text?.startsWith("来自 小熊") == true) return node
+                    return (0 until node.childCount).firstNotNullOfOrNull { find(node.getChild(it)) }
+                }
+                find(automation.rootInActiveWindow)!!.getBoundsInScreen(rect)
+            }
+            val down = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, header.exactCenterX(), header.exactCenterY(), 0).let {
+                    assertTrue(automation.injectInputEvent(it, true)); it.recycle()
+                }
+                Thread.sleep(40)
+            }
+            instrumentation.waitForIdleSync(); Thread.sleep(650)
+            await("附件")
+            scenario.onActivity { activity ->
+                val detail = activity.history!!.detail!!
+                assertTrue(detail.sections.first { it.title == "内容" }.text.startsWith("检查完成，继续整理报告。"))
+                assertEquals("narrow.png", detail.sections.first { it.title == "附件" }.text)
+                // The envelope is only in the raw event section.
+                assertTrue(detail.sections.any { it.code && it.text.contains("\\\"source\\\":\\\"chat\\\"") })
+            }
+            capture("received-message-detail.png")
+        }
+    }
     @Test fun keyboardFocusInputDismissalAndEmptyState() {
         ActivityScenario.launch<SessionHistoryPreviewActivity>(mixedIntent()).use { scenario ->
             click("消息输入框")

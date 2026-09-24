@@ -6,6 +6,7 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Div, FocusHandle, FontWeight};
 use std::rc::Rc;
+pub mod archived;
 pub mod data;
 mod notifications;
 pub use notifications::{notifications, NotificationAction, NotificationData};
@@ -448,6 +449,7 @@ pub struct SettingsStory {
     family: String,
     data: DeviceData,
     account: AccountData,
+    archived: Option<Vec<archived::ArchivedChat>>,
     focus: [FocusHandle; 2],
 }
 #[cfg(feature = "stories")]
@@ -499,6 +501,31 @@ impl SettingsStory {
                 signing_out: false,
                 notice: (state == "error").then(|| "登录未完成。请检查连接后重试。".into()),
             },
+            archived: state.starts_with("archived").then(|| {
+                if state == "archived-empty" {
+                    return vec![];
+                }
+                [
+                    ("mini1", "旧版导航方案", "2026-09-18T10:00:00Z", false),
+                    ("studio", "评估 Qwen 方案", "2026-09-12T10:00:00Z", true),
+                    ("mini1", "整理品牌资源", "2026-08-30T10:00:00Z", false),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (device, title, at, pending))| archived::ArchivedChat {
+                    node: device.into(),
+                    device: device.into(),
+                    chat: zork_client_types::navigation::NavigationChat {
+                        chat_id: format!("archived-{i}"),
+                        title: title.into(),
+                        updated_at: at.into(),
+                        archived: true,
+                        archive_pending: pending,
+                        ..Default::default()
+                    },
+                })
+                .collect()
+            }),
             focus: [cx.focus_handle(), cx.focus_handle()],
         }
     }
@@ -515,7 +542,29 @@ impl gpui::Render for SettingsStory {
             .rename_modal
             .retain("device-rename-dialog", self.rename_open.then_some(()), cx)
             .is_some();
-        let page = if self.family == "client" {
+        let page = if let Some(chats) = self.archived.clone() {
+            let text = crate::resources::Text(Rc::new(|key| {
+                match key {
+                    "chat_unarchive" => "取消归档",
+                    "chat_archive_empty" => "没有已归档的 Chat",
+                    _ => "未命名 Chat",
+                }
+                .into()
+            }));
+            div()
+                .flex()
+                .flex_col()
+                .gap_5()
+                .child(ui::page_title("已归档的 Chat"))
+                .child(archived::list(chats, &text, cx, |v, action, cx| {
+                    if let archived::Action::Restore { node, chat, .. } = action {
+                        if let Some(list) = &mut v.archived {
+                            list.retain(|item| item.node != node || item.chat.chat_id != chat);
+                        }
+                    }
+                    cx.notify();
+                }))
+        } else if self.family == "client" {
             account(self.account.clone(), window, cx, |v, event, cx| {
                 match event {
                     AccountAction::Login => {

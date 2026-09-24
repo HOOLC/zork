@@ -627,6 +627,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         action { repo.command("archive_chat", "peer" to peer, "chat" to chat, "archived" to archived, "expected_message_count" to expectedMessageCount) }
     }
 
+    /** Opens a Chat from the archived list in settings, leaving settings. */
+    fun openArchivedChat(session: JSONObject) {
+        settings = null
+        openSession(session)
+    }
+
     fun openSession(session: JSONObject) {
         rememberConversation()
         peers.find { it.id == session.text("_peer") }?.let { peer -> if (activePeer?.id != peer.id) {
@@ -942,7 +948,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         when {
             current?.page == "home" -> settings = null
             current?.fromConnections == true && current.page in listOf("models", "profile") -> showModelConnections()
-            current?.page in listOf("appearance", "notifications", "adb", "account", "model-connections") -> showSettingsHome()
+            current?.page in listOf("appearance", "notifications", "adb", "account", "model-connections", "archived") -> showSettingsHome()
             current?.page == "device" -> if (current.fromChat) settings = null else showSettingsHome()
             current?.page == "profile" -> settings = current.copy(page = "models")
             else -> settings = current?.copy(page = "device")

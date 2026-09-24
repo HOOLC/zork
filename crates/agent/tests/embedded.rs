@@ -288,3 +288,72 @@ async fn embedded_events_reset_snapshot_after_lag_and_reconnect_without_history_
     let mut reopened = AgentRuntime::start(options(root.path())).unwrap();
     reopened.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn embedded_runtime_provisions_bundled_skills_and_supplies_catalog() {
+    use zork_agent::session::state::GenerationEntry;
+    let root = tempfile::tempdir().unwrap();
+    let user = root.path().join("skills/local-notes");
+    std::fs::create_dir_all(&user).unwrap();
+    std::fs::write(
+        user.join("SKILL.md"),
+        "---\nname: local-notes\ndescription: Keep notes locally\n---\nbody",
+    )
+    .unwrap();
+    let mut runtime = fixture(root.path()).await;
+    let bundled = root
+        .path()
+        .join("skills/bundled/device-onboarding/SKILL.md");
+    assert!(std::fs::metadata(&bundled)
+        .unwrap()
+        .permissions()
+        .readonly());
+    let session = runtime
+        .agent()
+        .create_session(request(root.path()))
+        .await
+        .unwrap();
+    runtime
+        .agent()
+        .append_mailbox_id(
+            session.session_id.clone(),
+            "request-1".into(),
+            MailboxRequest {
+                content: "hello".into(),
+            },
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let state = runtime
+                .agent()
+                .service
+                .state(&session.session_id)
+                .await
+                .unwrap();
+            let catalog = state
+                .generation
+                .entries
+                .iter()
+                .find_map(|entry| match entry {
+                    GenerationEntry::Notice { message }
+                        if message.starts_with(zork_agent::skills::CATALOG_NOTICE) =>
+                    {
+                        Some(message.clone())
+                    }
+                    _ => None,
+                });
+            if let Some(catalog) = catalog {
+                assert!(catalog.contains("Keep notes locally"));
+                assert!(catalog.contains("device-onboarding (bundled)"));
+                assert!(!catalog.contains("body"));
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    runtime.shutdown().await;
+}

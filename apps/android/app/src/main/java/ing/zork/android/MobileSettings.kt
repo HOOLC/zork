@@ -75,6 +75,10 @@ internal class SettingsActions(
     val dataReset: JSONObject? = null,
     val dataResetError: String? = null,
     val clearData: () -> Unit = {},
+    /** Archived Chats live in client settings; opening one leaves settings. */
+    val home: HomeNavigation? = null,
+    val openChat: (JSONObject) -> Unit = {},
+    val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
 )
 
 @Composable
@@ -99,6 +103,10 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
     }
     if (state.page == "appearance") {
         AppearanceSettings(actions, modifier)
+        return
+    }
+    if (state.page == "archived") {
+        ArchivedSettings(actions, modifier)
         return
     }
     var editor by rememberSaveable(state.device?.id) { mutableStateOf<String?>(null) }
@@ -129,6 +137,9 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                     SettingsListRow("通知", R.drawable.ic_attention,
                         value = actions.notifications?.let { if (it.optBoolean("enabled")) "已开启" else "已关闭" },
                         action = { actions.page("notifications") })
+                    SettingsListRow("已归档的 Chat", R.drawable.ic_archive,
+                        value = actions.home?.archivedTotal?.takeIf { it > 0 }?.toString(),
+                        action = { actions.page("archived") })
                 }
                 SectionTitle("Mesh")
                 SettingsListGroup {
@@ -220,6 +231,17 @@ internal fun SettingsRefreshButton(rawLoading: Boolean, refresh: () -> Unit) {
     ZorkIconButton(if (rawLoading) "正在刷新" else "刷新", onClick = refresh, enabled = !rawLoading) {
         Icon(painterResource(R.drawable.ic_reload), null,
             Modifier.size(18.dp).graphicsLayer { rotationZ = angle.value }, tint = ZorkColors.Ink)
+    }
+}
+
+@Composable
+private fun ArchivedSettings(actions: SettingsActions, modifier: Modifier) {
+    Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            ZorkIconButton("返回", onClick = actions.back) { Icon(painterResource(R.drawable.ic_arrow_left), null, Modifier.size(22.dp)) }
+            Text("已归档的 Chat", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        }
+        ArchivedChatsList(actions.home ?: HomeNavigation(), actions.openChat, actions.archiveChat, Modifier.weight(1f))
     }
 }
 

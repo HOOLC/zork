@@ -580,13 +580,6 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         )?;
         pump(&mut cx, 20)?;
         let snapshot = driver.snapshot(false);
-        anyhow::ensure!(
-            !snapshot
-                .elements
-                .iter()
-                .any(|element| element.id == "client_appearance"),
-            "Removed appearance tab is still in the client settings sidebar"
-        );
         let bounds = |id: &str| {
             snapshot
                 .elements
@@ -596,31 +589,61 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 .bounds
         };
         let notifications = bounds("client_notifications");
-        let appearance = bounds("client_appearance");
         let account = bounds("client_account");
-        let data = bounds("client_data");
         let client_heading = bounds("client-settings-heading");
-        let device_heading = bounds("device-settings-heading");
-        let device_tab = bounds("settings-device-fixture");
-        anyhow::ensure!(
-            client_heading.height == device_heading.height
-                && client_heading.width == device_heading.width
-                && client_heading.x == device_heading.x,
-            "settings section headings differ"
-        );
-        anyhow::ensure!(
-            (notifications.y - client_heading.y - client_heading.height - 2.).abs() < 0.1
-                && (device_tab.y - device_heading.y - device_heading.height - 2.).abs() < 0.1,
-            "settings section heading/tab spacing differs"
-        );
-        for id in [
-            "desktop-return",
-            "client_notifications",
-            "client_appearance",
+        let mesh_heading = bounds("mesh-settings-heading");
+        let advanced_heading = bounds("advanced-settings-heading");
+        // Documented order: 客户端 (账号 · 外观 · 通知 · 已归档的 Chat), Mesh
+        // (模型连接 · devices · 连接设备), 高级 (数据).
+        let order = [
+            "client-settings-heading",
             "client_account",
-            "client_data",
+            "client_appearance",
+            "client_notifications",
+            "client_archived",
+            "mesh-settings-heading",
+            "settings-models",
             "settings-device-fixture",
             "settings-add-device",
+            "advanced-settings-heading",
+            "client_data",
+        ];
+        for pair in order.windows(2) {
+            anyhow::ensure!(
+                bounds(pair[0]).y < bounds(pair[1]).y,
+                "settings order: {} should precede {}",
+                pair[0],
+                pair[1]
+            );
+        }
+        for heading in [mesh_heading, advanced_heading] {
+            anyhow::ensure!(
+                client_heading.height == heading.height
+                    && client_heading.width == heading.width
+                    && client_heading.x == heading.x,
+                "settings section headings differ"
+            );
+        }
+        for (heading, first) in [
+            (client_heading, account),
+            (mesh_heading, bounds("settings-models")),
+            (advanced_heading, bounds("client_data")),
+        ] {
+            anyhow::ensure!(
+                (first.y - heading.y - heading.height - 2.).abs() < 0.1,
+                "settings section heading/tab spacing differs"
+            );
+        }
+        for id in [
+            "desktop-return",
+            "client_account",
+            "client_appearance",
+            "client_notifications",
+            "client_archived",
+            "settings-models",
+            "settings-device-fixture",
+            "settings-add-device",
+            "client_data",
         ] {
             let row = bounds(id);
             anyhow::ensure!(
@@ -628,16 +651,25 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
                 "settings tab geometry differs: {id}: {row:?}"
             );
         }
-        for (previous, next) in [
-            (notifications, appearance),
-            (appearance, account),
-            (account, data),
-        ] {
+        for pair in [
+            "client_account",
+            "client_appearance",
+            "client_notifications",
+            "client_archived",
+        ]
+        .windows(2)
+        {
+            let (previous, next) = (bounds(pair[0]), bounds(pair[1]));
             anyhow::ensure!(
                 (next.y - previous.y - previous.height - 2.).abs() < 0.1,
                 "settings tab gap differs: {previous:?} -> {next:?}"
             );
         }
+        // Archived Chats moved here from the Chat sidebar.
+        anyhow::ensure!(
+            !snapshot.elements.iter().any(|e| e.id == "chat-archive-filter"),
+            "the sidebar still shows an archived filter"
+        );
         let scale = snapshot.scale_factor;
         let selected_color = zork_ui::design::ZORK_UI.palette.selected.to_be_bytes();
         let default_color = zork_ui::design::ZORK_UI.palette.sidebar.to_be_bytes();
@@ -705,7 +737,7 @@ fn settings_sidebar_checks(output: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(
             output.join(format!("settings-{width}.json")),
             serde_json::to_vec_pretty(
-                &json!({"width":width,"height":height,"notifications":notifications,"account":account,"client_heading":client_heading,"device_heading":device_heading,"idle_callbacks":pending}),
+                &json!({"width":width,"height":height,"notifications":notifications,"account":account,"client_heading":client_heading,"mesh_heading":mesh_heading,"idle_callbacks":pending}),
             )?,
         )?;
     }

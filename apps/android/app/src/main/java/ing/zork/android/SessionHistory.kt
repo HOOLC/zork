@@ -169,14 +169,33 @@ private fun HistoryEntryRow(entry: HistoryRow, child: Boolean, selected: Boolean
             if (truncatedPreview(entry.preview)) Text("查看全文", fontSize = 13.sp, color = ZorkColors.Muted,
                 modifier = Modifier.heightIn(min = 44.dp).historyPress(label = "查看全文", onClick = open).wrapContentHeight())
         }
-        // Received input: a quote with its source.
-        "input", "received" -> Row(modifier.fillMaxWidth().padding(vertical = 8.dp)
-            .historyPress(selected = selected, label = label, onClick = open)) {
-            Box(Modifier.width(3.dp).heightIn(min = 40.dp).background(ZorkColors.FieldBorder, ZorkShapes.Control))
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(listOfNotNull(entry.subject?.label?.let { "来自 $it" } ?: entry.title, whenText.ifBlank { null }).joinToString(" · "),
-                    fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(entry.preview, fontSize = 15.sp, lineHeight = 23.sp, color = ZorkColors.Ink, maxLines = 6, overflow = TextOverflow.Ellipsis)
+        // Received message: a quote under its sender, the text in Markdown and
+        // files by name. A structured payload's source stays in the detail.
+        "input", "received" -> {
+            val message = entry.message
+            val sender = message?.sender ?: entry.subject?.label
+            val from = listOfNotNull(sender?.let { "来自 $it" } ?: entry.title,
+                message?.device?.takeIf { it != sender }, whenText.ifBlank { null }).joinToString(" · ")
+            val text = message?.text ?: entry.preview
+            Row(modifier.fillMaxWidth().padding(vertical = 8.dp)
+                .historyPress(selected = selected, label = "$from · ${entry.preview}", onClick = open)) {
+                Box(Modifier.width(3.dp).heightIn(min = 40.dp).background(ZorkColors.FieldBorder, ZorkShapes.Control))
+                Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(if (message?.reply == true) "$from · 回复" else from,
+                        fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (text.isNotBlank()) Markdown(text, Modifier.fillMaxWidth())
+                    else if (message?.files.isNullOrEmpty()) Text(if (message?.structured == true) "结构化消息，详情中查看原始内容" else "无文字内容",
+                        fontSize = 14.sp, color = ZorkColors.Subtle)
+                    message?.files?.takeIf { it.isNotEmpty() }?.let { files ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Glyph(R.drawable.history_attachment, 14.dp, ZorkColors.Muted)
+                            Text(files.joinToString("、"), fontSize = 13.sp, color = ZorkColors.Muted,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (message?.truncated == true) Text("查看全文", fontSize = 13.sp, color = ZorkColors.Muted,
+                        modifier = Modifier.heightIn(min = 44.dp).historyPress(label = "查看全文", onClick = open).wrapContentHeight())
+                }
             }
         }
         // A message posted to the Chat: what the member said outside itself.
