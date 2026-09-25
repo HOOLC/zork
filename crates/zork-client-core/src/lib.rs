@@ -27,6 +27,7 @@ pub mod locale;
 pub mod mesh_enrollment;
 pub mod model_catalog;
 pub mod model_edit;
+pub mod model_editor;
 mod model_connections;
 pub mod new_chat;
 pub mod notifications;

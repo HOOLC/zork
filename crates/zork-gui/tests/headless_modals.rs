@@ -270,29 +270,33 @@ fn main() -> anyhow::Result<()> {
         f.click("profile-model-add")?;
         f.modal("model-editor-dialog", width, height)?;
         f.click("profile-model")?;
-        f.action(json!({"type":"type_text","text":"copied-model"}))?;
-        f.click("model-params-toggle")?;
-        f.click("model-copy-select")?;
-        f.click("model-copy-0")?;
+        f.action(json!({"type":"type_text","text":"deepseek-chat"}))?;
+        f.key("enter")?;
         anyhow::ensure!(
-            f.element("model-copy-select-menu").is_none(),
-            "copy menu remained open after choosing a model"
+            f.element("model-summary-thinking").is_some(),
+            "a recognized id did not show its summary rows"
+        );
+        f.click("model-source-open")?;
+        // The popover is an overlay inside the dialog layer; read its state.
+        let sources_open = |f: &Fixture<HeadlessProfilesView>| {
+            f.view
+                .read_with(&f.cx, |view, cx| view.headless_state(cx))["editor"]["sources_open"]
+                == true
+        };
+        anyhow::ensure!(sources_open(&f), "fill sources did not open");
+        f.key("escape")?;
+        anyhow::ensure!(
+            !sources_open(&f) && f.element("model-editor-dialog").is_some(),
+            "Escape closed the dialog before the popover"
         );
         let state = f.view.read_with(&f.cx, |view, cx| view.headless_state(cx));
         anyhow::ensure!(
-            state["model_id"] == "copied-model",
-            "copy replaced the new model identity"
-        );
-        anyhow::ensure!(
-            state["context_window"] == "32K" && state["max_output_tokens"] == "4.096K",
-            "copy did not populate token limits: {state}"
+            state["editor"]["state"]["id"] == "deepseek-chat"
+                && state["editor"]["state"]["context"] == "128K",
+            "recognition did not fill the form: {state}"
         );
         let card = f.element("model-editor-dialog").unwrap().bounds;
-        for id in [
-            "model-copy-select",
-            "profile-model-cancel",
-            "profile-model-save",
-        ] {
+        for id in ["profile-model-cancel", "profile-model-save"] {
             let action = f.element(id).unwrap();
             anyhow::ensure!(
                 action.bounds == action.visible_bounds

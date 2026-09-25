@@ -33,6 +33,9 @@ pub use gpui_base::input::{
     Copy as CopyText, Cut as CutText, Paste as PasteText, Redo as RedoText,
     SelectAll as SelectAllText, Undo as UndoText,
 };
+/// Up/Down inside a single-line field; hosts capture them to move through a
+/// suggestion list or step a value.
+pub use gpui_base::input::{MoveDown as FieldDown, MoveUp as FieldUp};
 pub use shortcuts::init;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -21,8 +21,9 @@ impl ProfilesView {
     }
     /// Inline editing is available while the list is short enough to lay out.
     pub(super) fn inline_editing(&self) -> bool {
-        self.model_form_open
-            && self.editing_model.is_some()
+        self.editor
+            .as_ref()
+            .is_some_and(|e| e.editing().is_some())
             && self
                 .detail
                 .as_ref()
@@ -170,88 +171,125 @@ impl ProfilesView {
                 .into_any_element(),
         )
     }
+    /// `id · 128K · 可开关 · 按预设 | 待配置 · switch`. The row opens its
+    /// inline editor; the switch is a sibling, not nested in the row action.
     fn model_row(&mut self, model: Value, cx: &mut Context<Self>) -> gpui::AnyElement {
         #[cfg(feature = "headless-bench")]
         {
             self.model_rows_built += 1;
         }
         let p = ZORK_UI.palette;
-        let id = model["id"].as_str().unwrap_or_default().to_owned();
+        let provider = self
+            .detail
+            .as_ref()
+            .and_then(|d| d["provider"].as_str())
+            .unwrap_or_default()
+            .to_owned();
+        let row = crate::api::model_catalog::model_row(&model, &provider);
+        let id = row.id.clone();
         self.model_switch_focus
             .entry(id.clone())
             .or_insert_with(|| cx.focus_handle());
-        let active = model["enabled"].as_bool().unwrap_or(true);
-        let configured = model["limits"].is_object();
-        let summary = if configured {
-            crate::api::model_catalog::model_summary(&model)
+        let busy = self.busy || self.editor.as_ref().is_some_and(|e| e.busy);
+        let editing = self.inline_editing()
+            && self.editor.as_ref().and_then(|e| e.editing()) == Some(id.as_str());
+        let toggle_id = id.clone();
+        let edit_id = id.clone();
+        let badge = if row.unconfigured {
+            Some(
+                div()
+                    .flex_shrink_0()
+                    .h(px(20.))
+                    .px(px(8.))
+                    .flex()
+                    .items_center()
+                    .rounded_full()
+                    .bg(gpui::rgba((p.warning << 8) | 0x24))
+                    .text_color(rgb(p.warning))
+                    .text_size(px(11.5))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child("待配置")
+                    .into_any_element(),
+            )
+        } else if row.preset {
+            Some(
+                div()
+                    .flex_shrink_0()
+                    .text_size(px(12.))
+                    .text_color(rgb(p.subtle))
+                    .child("按预设")
+                    .into_any_element(),
+            )
         } else {
-            self.locale.text("model_needs_configuration").to_owned()
+            None
         };
-        let editing = self.inline_editing() && self.editing_model.as_deref() == Some(id.as_str());
-        let (edit, toggle_id, remove) = (model.clone(), id.clone(), id.clone());
-        let edit_again = model.clone();
-        let menu = self.menu(
-            format!("model-menu-{id}"),
-            ui::icon_button(format!("model-more-{id}"), !self.busy)
-                .child(ui::icon("icons/more-horizontal.svg", 14.))
-                .automation(AutomationRole::Button, format!("{id} 更多操作")),
-            vec![
-                MenuItem {
-                    id: format!("model-edit-action-{id}"),
-                    label: "编辑".into(),
-                    danger: false,
-                    enabled: true,
-                    run: Rc::new(move |v, _, cx| v.edit_model(Some(edit_again.clone()), cx)),
-                },
-                MenuItem {
-                    id: format!("model-remove-{id}"),
-                    label: "删除".into(),
-                    danger: true,
-                    enabled: true,
-                    run: Rc::new(move |v, _, cx| v.remove_model(&remove, cx)),
-                },
-            ],
-            cx,
+        let label = format!(
+            "编辑 {id}{}",
+            if row.unconfigured {
+                " · 待配置".to_owned()
+            } else {
+                format!(" · {}", row.meta)
+            }
         );
         div()
-            .id(gpui::SharedString::from(format!("model-edit-{id}")))
+            .id(gpui::SharedString::from(format!("model-row-{id}")))
             .h(px(MODEL_ROW))
             .flex_shrink_0()
-            .px(px(12.))
+            .pr(px(10.))
             .flex()
             .items_center()
             .gap(px(10.))
-            .rounded_full()
-            .cursor_pointer()
-            .when(editing, |v| v.bg(rgb(p.selected)))
-            .when(!editing, |v| {
-                v.hover(|s| s.bg(rgb(zork_ui::design::INTERACTION.neutral_hover)))
-            })
             .child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(px(13.))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(rgb(if active { p.text } else { p.muted }))
-                    .child(id.clone()),
-            )
-            .child(
-                div()
-                    .id(gpui::SharedString::from(format!("model-limits-{id}")))
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(px(12.))
-                    .text_color(rgb(p.subtle))
-                    .child(summary.clone())
-                    .automation(AutomationRole::Status, summary),
+                ui::quiet_button(
+                    gpui::SharedString::from(format!("model-edit-{id}")),
+                    "",
+                    !busy,
+                    ui::IconButtonSize::Standard,
+                )
+                .selected(editing)
+                .flex_1()
+                .min_w_0()
+                .h(px(MODEL_ROW))
+                .pl(px(14.))
+                .pr(px(4.))
+                .justify_start()
+                .gap(px(10.))
+                .rounded_full()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_shrink(1.)
+                        .truncate()
+                        .font_family(zork_ui::assets::CODE_FONT_FAMILY)
+                        .text_size(px(12.5))
+                        .font_weight(gpui::FontWeight::NORMAL)
+                        .text_color(rgb(if row.enabled { p.text } else { p.muted }))
+                        .child(id.clone()),
+                )
+                .when(!row.meta.is_empty(), |v| {
+                    v.child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(12.))
+                            .font_weight(gpui::FontWeight::NORMAL)
+                            .text_color(rgb(p.subtle))
+                            .child(row.meta.clone()),
+                    )
+                })
+                .children(badge)
+                .child(div().flex_1())
+                .on_click(cx.listener(move |v, _, _, cx| {
+                    if !v.busy {
+                        v.toggle_edit_model(&edit_id, cx);
+                    }
+                }))
+                .automation_enabled(!busy, AutomationRole::Button, label),
             )
             .child(ui::switch(
                 format!("model-enabled-{id}"),
                 self.locale.text("model_enabled"),
-                active,
-                !self.busy && (active || configured),
+                row.enabled,
+                !busy && (row.enabled || !row.unconfigured),
                 &self.model_switch_focus[&id],
                 cx,
                 move |v, on, cx| {
@@ -259,13 +297,6 @@ impl ProfilesView {
                     v.set_model_enabled(toggle_id.clone(), on, cx);
                 },
             ))
-            .child(menu)
-            .on_click(cx.listener(move |v, _, _, cx| {
-                if !v.busy {
-                    v.edit_model(Some(edit.clone()), cx);
-                }
-            }))
-            .automation(AutomationRole::Button, format!("编辑 {id}"))
             .into_any_element()
     }
     fn section_title(&self, title: &'static str) -> gpui::Div {
@@ -389,7 +420,11 @@ impl ProfilesView {
             .child(
                 ui::icon_button("profile-detail-dialog-close", true)
                     .child(ui::icon("icons/arrow-left.svg", 16.))
-                    .on_click(cx.listener(|v, _, _, cx| v.close_dialog(cx)))
+                    .on_click(cx.listener(|v, _, _, cx| {
+                        // Back leaves the page, taking an open editor with it.
+                        v.close_editor(cx);
+                        v.close_dialog(cx);
+                    }))
                     .automation(AutomationRole::Button, "返回模型连接"),
             )
             .child(provider_icon(detail["provider"].as_str().unwrap_or_default(), 28.))
@@ -443,7 +478,7 @@ impl ProfilesView {
             .map(|q| q.checked.clone());
         let editing_id = self
             .inline_editing()
-            .then(|| self.editing_model.clone())
+            .then(|| self.editor.as_ref().and_then(|e| e.editing()).map(str::to_owned))
             .flatten();
         let model_count = models.len();
         let list = if model_count > INLINE_EDIT_LIMIT {
@@ -483,25 +518,42 @@ impl ProfilesView {
         } else {
             let mut rows: Vec<gpui::AnyElement> = Vec::new();
             for model in models {
-                let is_editing = editing_id.as_deref() == model["id"].as_str();
+                let id = model["id"].as_str().unwrap_or_default().to_owned();
+                let is_editing = editing_id.as_deref() == Some(id.as_str());
                 rows.push(self.model_row(model, cx));
-                if is_editing {
-                    let body = self.model_editor_body(window, cx);
-                    let actions = self.model_editor_actions(cx);
+                // Every row keeps its disclosure state so reopening animates in.
+                let frame = zork_ui::motion::fold(
+                    format!("model-inline-{id}"),
+                    is_editing,
+                    false,
+                    window,
+                    cx,
+                );
+                if let Some(frame) = frame.filter(|_| is_editing) {
+                    let body = self.editor_body(false, window, cx);
+                    let footer = self.editor_footer(false, cx);
+                    let error = self.editor.as_ref().and_then(|e| e.error.clone());
                     rows.push(
-                        div()
-                            .id("model-inline-editor")
-                            .my(px(4.))
-                            .p(px(16.))
-                            .rounded(px(zork_ui::design::RADIUS.container))
-                            .bg(rgb(p.prompt))
-                            .flex()
-                            .flex_col()
-                            .gap(px(10.))
-                            .child(body)
-                            .child(actions)
-                            .automation(AutomationRole::Status, "编辑模型")
-                            .into_any_element(),
+                        frame.wrap(
+                            div()
+                                .id("model-inline-editor")
+                                .mt(px(4.))
+                                .mb(px(8.))
+                                .pt(px(16.))
+                                .px(px(18.))
+                                .pb(px(14.))
+                                .rounded(px(zork_ui::design::RADIUS.container))
+                                .bg(rgb(p.prompt))
+                                .flex()
+                                .flex_col()
+                                .gap(px(14.))
+                                .child(body)
+                                .when_some(error, |v, error| {
+                                    v.child(ui::status_notice(error, ui::NoticeKind::Error))
+                                })
+                                .child(footer)
+                                .automation(AutomationRole::Status, "编辑模型"),
+                        ),
                     );
                 }
             }
@@ -535,9 +587,8 @@ impl ProfilesView {
                 if v.renaming || v.menu_open.is_some() {
                     return;
                 }
-                if v.model_form_open {
-                    v.model_form_open = false;
-                    v.editing_model = None;
+                if v.editor.is_some() {
+                    v.close_editor(cx);
                 } else {
                     v.close_dialog(cx);
                 }
@@ -601,14 +652,14 @@ impl ProfilesView {
                                 ui::button("profile-model-add", "", false, !self.busy)
                                     .text_size(px(12.))
                                     .gap_1()
-                                    .child(ui::icon("icons/plus.svg", 13.))
-                                    .child("手动添加")
+                                    .child(ui::icon("interface/plus.svg", 13.))
+                                    .child("添加模型")
                                     .on_click(cx.listener(|v, _, _, cx| {
                                         if !v.busy {
-                                            v.edit_model(None, cx);
+                                            v.open_add_model(cx);
                                         }
                                     }))
-                                    .automation(AutomationRole::Button, "手动添加模型"),
+                                    .automation(AutomationRole::Button, "添加模型"),
                             ),
                     )
                     .when(model_count == 0, |v| {

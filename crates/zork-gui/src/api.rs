@@ -10,6 +10,6 @@ pub use zork_client_core::model_edit::{
 pub use zork_client_core::state::{MeshAction, MeshAdmin, MeshAdminData};
 
 pub use zork_client_core::model_edit::{copy_form, copyable, model_form, model_form_with_catalog};
-pub use zork_client_core::{model_catalog, thinking};
+pub use zork_client_core::{model_catalog, model_editor, thinking};
 
 pub use zork_client_core::model_edit::connection_options;

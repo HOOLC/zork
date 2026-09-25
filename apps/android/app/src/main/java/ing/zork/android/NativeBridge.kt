@@ -25,6 +25,10 @@ internal object NativeBridge {
     external fun isLocal(request: String): Boolean
     external fun agentChoices(profiles: String, profile: String, model: String, thinking: String): String
     external fun modelForm(query: String): String
+    /** Shared model editor step: {context,state,action} → {ok,data:{state,view,effect,focus}}. */
+    external fun modelEditor(request: String): String
+    /** Model editor fill sources: {context,state,query} → {ok,data:[groups]}. */
+    external fun modelEditorSources(request: String): String
     external fun copyableModel(model: String): Boolean
     external fun connectionChoices(catalog: String, subscription: Boolean, provider: String, billing: String): String
     external fun composerState(input: String): String

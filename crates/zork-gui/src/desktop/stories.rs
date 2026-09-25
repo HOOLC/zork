@@ -429,61 +429,6 @@ fn raw_catalog() -> Vec<Story> {
             "connection-provider",
         ),
         (
-            "model",
-            "模型配置",
-            "detail",
-            "profile-detail-dialog",
-            vec![],
-            "model-detail",
-        ),
-        (
-            "model",
-            "模型配置",
-            "create",
-            "model-editor-dialog",
-            vec![
-                click("profile-model-add"),
-                click("profile-context-limit"),
-                json!({"type":"type_text","text":"32000"}),
-                click("profile-output-limit"),
-                json!({"type":"type_text","text":"4096"}),
-                click("profile-model"),
-            ],
-            "model-create",
-        ),
-        (
-            "model",
-            "模型配置",
-            "protocol",
-            "model-editor-dialog",
-            vec![click("profile-model-add"), click("model-api-select")],
-            "model-protocol",
-        ),
-        (
-            "model",
-            "模型配置",
-            "inline",
-            "profile-detail-dialog",
-            vec![],
-            "model-detail",
-        ),
-        (
-            "model",
-            "模型配置",
-            "params",
-            "model-editor-dialog",
-            vec![],
-            "model-create",
-        ),
-        (
-            "model",
-            "模型配置",
-            "reference",
-            "model-editor-dialog",
-            vec![],
-            "model-create",
-        ),
-        (
             "conversation",
             "会话",
             "messages",
@@ -648,34 +593,122 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 700.;
         items.push(story);
     }
-    for story in &mut items {
-        if story.family != "model" || story.state.starts_with("detail") {
-            continue;
-        }
-        if story.state.starts_with("inline") {
-            story.actions = vec![
-                click("model-edit-fixture-model"),
-                click("model-params-toggle"),
-            ];
-            continue;
-        }
-        // Typing a known id fills every parameter; later states open them.
-        let mut actions = vec![
+    // Model editor: one story per state, driven through the real editor.
+    let typed = |id: &str| {
+        vec![
             click("profile-model-add"),
             click("profile-model"),
-            json!({"type":"type_text","text":"deepseek-chat"}),
-        ];
-        let state = story.state.as_str();
-        if !state.starts_with("create") {
-            actions.push(click("model-params-toggle"));
-        }
-        if state.starts_with("reference") {
-            actions.push(click("model-reference-context"));
-        }
-        if state.starts_with("protocol") {
-            actions.push(click("model-api-select"));
-        }
+            json!({"type":"type_text","text":id}),
+            json!({"type":"key","keystroke":"enter"}),
+        ]
+    };
+    let then = |mut first: Vec<Value>, rest: Vec<Value>| {
+        first.extend(rest);
+        first
+    };
+    let dialog = "model-editor-dialog";
+    let page = "profile-detail-dialog";
+    for (state, target, actions) in [
+        ("list", page, vec![]),
+        ("add", dialog, vec![click("profile-model-add")]),
+        (
+            "suggestions",
+            dialog,
+            vec![
+                click("profile-model-add"),
+                click("profile-model"),
+                json!({"type":"type_text","text":"gpt-5"}),
+                json!({"type":"key","keystroke":"down"}),
+            ],
+        ),
+        ("recognized", dialog, typed("gpt-5-nano")),
+        ("variant", dialog, typed("gpt-5-nano-2026-08-07")),
+        (
+            "levels",
+            dialog,
+            then(typed("gpt-5-nano"), vec![click("model-section-thinking")]),
+        ),
+        (
+            "modified",
+            dialog,
+            then(
+                typed("gpt-5-nano"),
+                vec![click("model-section-thinking"), click("model-level-0")],
+            ),
+        ),
+        (
+            "level-add",
+            dialog,
+            then(
+                typed("gpt-5-nano"),
+                vec![click("model-section-thinking"), click("model-level-add")],
+            ),
+        ),
+        (
+            "budget",
+            dialog,
+            then(
+                typed("claude-sonnet-4-5"),
+                vec![
+                    click("model-section-thinking"),
+                    click("model-budget-add"),
+                    json!({"type":"type_text","text":"64K"}),
+                    json!({"type":"key","keystroke":"enter"}),
+                ],
+            ),
+        ),
+        (
+            "length",
+            dialog,
+            then(
+                typed("gpt-5-nano"),
+                vec![
+                    click("model-section-length"),
+                    click("profile-output-limit"),
+                ],
+            ),
+        ),
+        ("unknown", dialog, typed("my-model")),
+        (
+            "errors",
+            dialog,
+            then(typed("my-model"), vec![click("profile-model-save")]),
+        ),
+        (
+            "sources",
+            dialog,
+            then(typed("my-model"), vec![click("model-source-open")]),
+        ),
+        ("duplicate", dialog, typed("gpt-5")),
+        ("inline", page, vec![click("model-edit-gpt-5-mini")]),
+        (
+            "inline-restore",
+            page,
+            vec![
+                click("model-edit-gpt-5-mini"),
+                click("model-section-thinking"),
+            ],
+        ),
+        ("inline-unconfigured", page, vec![click("model-edit-internal-preview")]),
+        ("fetched", page, vec![click("profile-model-discover")]),
+        (
+            "custom",
+            dialog,
+            then(typed("qwen3-coder-plus"), vec![click("model-section-api")]),
+        ),
+    ] {
+        let mut story = Story::new(
+            "model",
+            "模型配置",
+            state,
+            "desktop/profiles/editor.rs",
+            "model-editor",
+        );
+        story.width = 1100.;
+        story.height = 820.;
+        story.target = target.into();
         story.actions = actions;
+        items.push(story);
     }
     let mut picker = Story::new(
         "new-chat",
@@ -984,7 +1017,9 @@ impl StoryHost {
             "connection" => cx
                 .new(|cx| ProfilesView::headless_fixture(false, cx))
                 .into(),
-            "model" => cx.new(|cx| ProfilesView::headless_fixture(true, cx)).into(),
+            "model" => cx
+                .new(|cx| ProfilesView::headless_model_fixture(story.state.starts_with("custom"), cx))
+                .into(),
             "conversation" => cx
                 .new(|cx| {
                     zork_ui::components::message_row::stories::Story::new(
