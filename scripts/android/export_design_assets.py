@@ -77,6 +77,9 @@ def main():
     for source in (ROOT/"crates/zork-ui/assets/history").glob("*.svg"):
         export(source, "history_"+source.stem.replace("-", "_"))
     export(ROOT/"crates/zork-ui/assets/icons/copy.svg", "ic_copy")
+    # Multi-agent messages: reply lines and the plain Chat mark.
+    for name in ["reply", "message-square"]:
+        export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-", "_"))
 
 if __name__ == "__main__":
     main()

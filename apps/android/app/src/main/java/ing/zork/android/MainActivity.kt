@@ -82,7 +82,6 @@ internal fun ClientScreen(model: ClientViewModel) {
     LaunchedEffect(model.ready, model.activePeer?.id, model.conversation?.id, model.settings != null) { model.reportVisibleConversation() }
     var addDevice by rememberSaveable { mutableStateOf(false) }
 
-    var editingComment by remember { mutableStateOf<DraftCommentUi?>(null) }
     var attachmentPeer by rememberSaveable { mutableStateOf<String?>(null) }
     var attachmentSession by rememberSaveable { mutableStateOf<String?>(null) }
     var attachSheet by remember { mutableStateOf(false) }
@@ -176,7 +175,7 @@ internal fun ClientScreen(model: ClientViewModel) {
             draftFiles = model.draftFiles, attaching = model.attaching.filter { it.session == model.conversation?.id },
             files = FileAvailability(model.activePeer?.name.orEmpty(), model.connected, model.activePeer?.status?.state == "revoked",
                 model.chatFile?.takeIf { it.loading || it.saving }?.fileId),
-            historyLoading = model.historyLoading, conversationEntry = model.conversationEntry, messageActivity = model.messageActivity, newer = model.hasNewer, home = model.home)
+            historyLoading = model.historyLoading, conversationEntry = model.conversationEntry, messageActivity = model.messageActivity, newer = model.hasNewer, home = model.home, toast = model.toast)
     val history = model.sessionHistory
     val draftChat = model.newChat
     val routeKey = history?.let { "history:${it.peer}:${it.session}" } ?: if (currentSettings == null && draftChat != null) "new-chat:${draftChat.peer.id}" else settingsRouteKey(currentSettings)
@@ -212,20 +211,14 @@ internal fun ClientScreen(model: ClientViewModel) {
             connectDevice, model::showSettings, model::retry, model::editDraft,
             model::send, model::stop, model::older, model::withdraw,
             resend = model::resend, deleteFailed = model::deleteFailed,
-            comment = { row, quote -> model.conversation?.let { conversation ->
-                editingComment = DraftCommentUi(NativeBridge.newId(), conversation.id, row.id,
-                    row.author, row.authorAgentId.ifBlank { null }, quote, "")
-            } }, editComment = { editingComment = it }, removeComment = model::removeComment,
+            comment = model::quoteReply, editComment = model::editCommentText, removeComment = model::removeComment,
             deviceSettings = { model.activePeer?.let { model.showDevice(it, fromChat = true) } },
             attach = { attachmentPeer = model.activePeer?.id; attachmentSession = model.conversation?.id; attachSheet = true },
             saveChatFile = model::saveMessageFile, openDraftFile = model::openDraftFile, removeFile = model::removeDraftFile,
             dismissPendingFile = model::dismissPendingFile,
             removeAttachment = model::removeAttachment, file = { exporting = it; saveFile.launch(it.name) }, entered = model::conversationShown,
-            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat, device = { model.showDevice(it) }),
+            newer = model::newer, windowAnchor = model::windowAnchor, interaction = model::respondToInteraction, history = model::openHistory, chatFile = model::openChatFile, newChat = model::openNewChat, archiveChat = model::archiveChat, device = { model.showDevice(it) }, dismissToast = model::dismissToast),
     ) } }
-    }
-    ZorkRetained(editingComment) { comment, open, closed ->
-        CommentDialog(comment, open, closed, { editingComment = null }) { text -> model.saveComment(comment.copy(text = text)); editingComment = null }
     }
     ZorkRetained(Unit.takeIf { addDevice }) { _, open, closed ->
         SettingsSheet("连接设备", dismiss = { addDevice = false }, open = open, onClosed = closed) {
@@ -238,7 +231,7 @@ private data class ClientPage(val settings: MobileSettingsState?, val workbench:
     val history: SessionHistoryState? = null, val newChat: NewChatUi? = null)
 
 @Composable
-internal fun PlainMessage(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, onComment: ((String) -> Unit)? = null) {
+internal fun PlainMessage(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, marks: MessageMarks? = null, onComment: ((String) -> Unit)? = null) {
     val textPixels = with(androidx.compose.ui.platform.LocalDensity.current) { 15.sp.toPx() }
     AndroidView(modifier = modifier, factory = { ctx ->
         object : MessageTextView(ctx) {
@@ -264,9 +257,10 @@ internal fun PlainMessage(content: String, modifier: Modifier = Modifier, previe
             view.setLineHeight((textPixels * 1.7f).toInt())
         }
         if (view.tag != content) { view.text = content; view.tag = content; view.retainMessageText() }
+        applyMessageMarks(view, marks)
         view.customSelectionActionModeCallback = if (onComment == null) null else object : android.view.ActionMode.Callback {
             override fun onCreateActionMode(mode: android.view.ActionMode, menu: android.view.Menu): Boolean {
-                menu.add(0, 701, 0, "评论").setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                menu.add(0, 701, 0, "引用回复").setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
                 return true
             }
             override fun onPrepareActionMode(mode: android.view.ActionMode, menu: android.view.Menu) = false
@@ -279,20 +273,6 @@ internal fun PlainMessage(content: String, modifier: Modifier = Modifier, previe
             override fun onDestroyActionMode(mode: android.view.ActionMode) {}
         }
     })
-}
-
-@Composable
-private fun CommentDialog(comment: DraftCommentUi, open: Boolean, closed: () -> Unit, dismiss: () -> Unit, save: (String) -> Unit) {
-    var text by remember(comment.id) { mutableStateOf(comment.text) }
-    SettingsSheet(if (comment.text.isBlank()) "评论所选片段" else "编辑评论", dismiss = dismiss, open = open, onClosed = closed) {
-        Text(comment.quote, fontSize = 13.sp, lineHeight = 21.sp, modifier = Modifier.fillMaxWidth()
-            .background(ZorkColors.Paper, ZorkShapes.Block).padding(horizontal = 16.dp, vertical = 12.dp))
-        Text("你的评论", fontSize = 12.sp, color = ZorkColors.Muted)
-        FormField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3,
-            placeholder = { Text("对这段内容有什么想法？", fontSize = 16.sp) })
-        ZorkButton("加入待发送评论", primary = true, onClick = { save(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth())
-        Text("可以继续添加其他评论，最后和消息一起发送。", color = ZorkColors.Muted, fontSize = 12.sp)
-    }
 }
 
 @Composable

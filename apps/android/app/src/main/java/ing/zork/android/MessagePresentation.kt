@@ -44,6 +44,8 @@ internal open class MessageTextView(context: Context) : TextView(context) {
         if (android.os.Build.VERSION.SDK_INT >= 35) requestedFrameRate = 120f
     }
     var preview: MessagePreviewMeasure? = null
+    /** Token of the jump wash already applied (see [applyMessageMarks]). */
+    var appliedWash = 0L
     // Selection's movement method can scroll even a height-limited TextView.
     // Chat previews belong to the outer list; the full reader stays selectable.
     override fun scrollTo(x: Int, y: Int) {
@@ -88,12 +90,12 @@ internal open class MessageTextView(context: Context) : TextView(context) {
 /** Messages always show in full; very long ones render in independent chunks
  * so no single native text view holds the whole body. */
 @Composable
-internal fun MessageBody(row: ChatMessage, comment: (String) -> Unit) {
-    val parts = remember(row.id, row.content) { messageReaderParts(row.content, row.user) }
+internal fun MessageBody(row: ChatMessage, comment: (String) -> Unit, marks: MessageMarks? = null, text: String = row.content) {
+    val parts = remember(row.id, text) { messageReaderParts(text, row.user) }
     Column(Modifier.fillMaxWidth()) {
         parts.forEach { part ->
-            if (row.user) PlainMessage(part, Modifier.fillMaxWidth(), onComment = comment)
-            else Markdown(part, Modifier.fillMaxWidth(), onComment = comment)
+            if (row.user) PlainMessage(part, Modifier.fillMaxWidth(), marks = marks, onComment = comment)
+            else Markdown(part, Modifier.fillMaxWidth(), marks = marks, onComment = comment)
         }
     }
 }

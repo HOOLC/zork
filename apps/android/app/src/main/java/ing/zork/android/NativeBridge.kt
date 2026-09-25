@@ -40,6 +40,9 @@ internal object NativeBridge {
      * Pass the conversation rows as observed; re-run after next_change_ms or when rows change.
      */
     external fun messagePresentation(request: String): String
+    /** Chat-list relative times (core `message_time`):
+     * {times_ms:[ms|null], now_ms, utc_offset_minutes, locale} → {ok,data:{labels:[{label,full}|null],next_change_ms}}. */
+    external fun messageTimes(request: String): String
     external fun initialize(context: Context)
     external fun clearData(root: String, confirmed: Boolean, context: Context): String
     external fun call(root: String, request: String): String

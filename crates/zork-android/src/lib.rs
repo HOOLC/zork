@@ -111,6 +111,49 @@ pub fn message_presentation(request: &str) -> Result<Value> {
     zork_client_core::message_presentation::handle(serde_json::from_str(request)?)
 }
 
+/// Relative time labels for chat-list rows (pure; `zork_client_core::message_time`).
+/// Request `{times_ms: [ms|null], now_ms, utc_offset_minutes, locale}` →
+/// `{labels: [{label, full}|null], next_change_ms}`.
+pub fn message_times(request: &str) -> Result<Value> {
+    use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+    use zork_client_core::message_time::{self, TimeLocale};
+    #[derive(serde::Deserialize)]
+    struct Request {
+        times_ms: Vec<Option<i64>>,
+        now_ms: i64,
+        #[serde(default)]
+        utc_offset_minutes: i32,
+        #[serde(default)]
+        locale: String,
+    }
+    ensure!(request.len() <= 1024 * 1024, "request too large");
+    let request: Request = serde_json::from_str(request)?;
+    let offset = FixedOffset::east_opt(request.utc_offset_minutes * 60)
+        .ok_or_else(|| anyhow::anyhow!("invalid_utc_offset"))?;
+    let now = offset
+        .timestamp_millis_opt(request.now_ms)
+        .single()
+        .ok_or_else(|| anyhow::anyhow!("invalid_now"))?;
+    let locale = TimeLocale::from_tag(&request.locale);
+    let mut next: Option<i64> = None;
+    let labels: Vec<Value> = request
+        .times_ms
+        .iter()
+        .map(|at| {
+            let Some(at) = at.and_then(DateTime::<Utc>::from_timestamp_millis) else {
+                return Value::Null;
+            };
+            if let Some(wait) = message_time::next_change(at, now) {
+                let wait = wait.num_milliseconds().max(0);
+                next = Some(next.map_or(wait, |known| known.min(wait)));
+            }
+            let time = message_time::format(at, now, locale);
+            json!({"label": time.label, "full": time.full})
+        })
+        .collect();
+    Ok(json!({"labels": labels, "next_change_ms": next}))
+}
+
 /// Pure input projection; it does not open a client, acquire IO locks or request a network.
 pub fn validate_model(input: &str, models: &str) -> Result<Value> {
     let input: zork_client_core::model_edit::ModelInput = serde_json::from_str(input)?;
@@ -160,6 +203,22 @@ fn preview_new_chat(request: &str) -> Result<Value> {
 mod tests {
     use super::*;
     use zork_client_core::store::{ClientStore, SavedNode};
+
+    #[test]
+    fn message_times_label_chat_list_rows() {
+        // 2026-09-26 14:30 +08:00; one row 30 s old, one 2 min old, one unknown.
+        let now = 1790404200000i64;
+        let value = super::message_times(&format!(
+            r#"{{"times_ms":[{},{},null],"now_ms":{now},"utc_offset_minutes":480,"locale":"zh-CN"}}"#,
+            now - 30_000,
+            now - 120_000
+        ))
+        .unwrap();
+        assert_eq!(value["labels"][0]["label"], "刚刚");
+        assert_eq!(value["labels"][1]["label"], "2 分钟前");
+        assert!(value["labels"][2].is_null());
+        assert_eq!(value["next_change_ms"], 30_000);
+    }
 
     #[test]
     fn message_presentation_uses_the_shared_envelope() {
@@ -579,6 +638,20 @@ mod android {
     ) -> JString<'a> {
         env.with_env(|env| -> Result<_, jni::errors::Error> {
             let value = super::message_presentation(&request.to_string());
+            JString::from_str(env, super::envelope(value).to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// Relative chat-list time labels. Returns `{"ok":true,"data":…}`.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_messageTimes<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = super::message_times(&request.to_string());
             JString::from_str(env, super::envelope(value).to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()

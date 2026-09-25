@@ -35,14 +35,27 @@ internal data class Conversation(val id: String, val title: String, val leaderId
     val canSend: Boolean = true, val canStop: Boolean = canSend)
 internal data class ChatMessage(val id: String, val author: String, val content: String,
     val user: Boolean, val pending: Boolean = false, val attempted: Boolean = false,
-    val createdAt: String = "", val device: String = "", val model: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList())
+    val createdAt: String = "", val device: String = "", val model: String = "", val authorAgentId: String = "", val files: List<TextAttachmentUi> = emptyList(), val deliveryStatus: String = "", val requestId: String = "", val deliveryError: String = "", val interaction: InteractionCardUi? = null, val deliveredFiles: List<ChatFileUi> = emptyList(),
+    val replyTo: String = "", val source: ObservedRow? = null)
+
+/** The row exactly as the conversation observation sent it, for core
+ * presentation (`NativeBridge.messagePresentation`). Equality ignores it: the
+ * display fields above already change whenever the row does. */
+internal class ObservedRow(val json: JSONObject) {
+    override fun equals(other: Any?) = other is ObservedRow
+    override fun hashCode() = 0
+}
 
 internal fun parseChatMessage(it: JSONObject) = ChatMessage(it.text("id"), it.text("author_name", if (it.text("role") == "user") "用户" else "助手"),
     it.text("display_content", it.text("content")), it.text("role") == "user", pending = it.optBoolean("pending"), attempted = it.optBoolean("attempted"),
     createdAt = it.text("created_at"), device = it.text("device"), model = it.text("model"), authorAgentId = it.text("author_agent_id"),
     files = it.textAttachments(), deliveryStatus = it.text("delivery_status"), requestId = it.text("request_id"),
     deliveryError = it.text("delivery_error"), interaction = it.optJSONObject("interaction_card")?.let(::parseInteractionCard),
-    deliveredFiles = it.fileViews())
+    deliveredFiles = it.fileViews(), replyTo = it.text("reply_to"),
+    source = ObservedRow(if (it.has("type")) it else it.put("type", "message")))
+
+/** Core's refusal (`state::outbox::EMPTY_COMMENT_REPLY`) of a passage without a reply. */
+internal const val EMPTY_COMMENT_REPLY = "每段引用都写一句回复，或者移除它"
 
 internal data class TextAttachmentUi(val id: String, val name: String, val content: String, val caption: String = "文本附件") {
     fun json(): JSONObject = JSONObject().put("id", id).put("name", name).put("content", content)
@@ -62,7 +75,8 @@ internal data class DraftCommentUi(val id: String, val session: String, val mess
 internal data class HomeChat(val peer: String, val peerName: String, val id: String, val title: String,
     val description: String, val model: String, val unread: Boolean, val archived: Boolean,
     val archivePending: Boolean, val archiveError: String?, val messageCount: Long,
-    val updatedAtMs: Long?, val section: String, val canSend: Boolean, val canStop: Boolean) {
+    val updatedAtMs: Long?, val section: String, val canSend: Boolean, val canStop: Boolean,
+    val avatar: ChatAvatarUi = ChatAvatarUi(), val deviceLocal: Boolean = false, val deviceMachine: String? = null) {
     fun session(): JSONObject = JSONObject().put("_peer", peer).put("chat_id", id).put("title", title)
         .put("can_send", canSend).put("can_stop", canStop)
 }
@@ -72,7 +86,9 @@ internal fun parseHomeChat(it: JSONObject) = HomeChat(it.text("peer"), it.text("
     it.text("chat_id"), it.text("title", "对话"), it.text("description"), it.text("model"), it.optBoolean("unread"),
     it.optBoolean("archived"), it.optBoolean("archive_pending"), it.text("archive_error").ifBlank { null },
     it.optLong("message_count"), if (it.isNull("updated_at_ms")) null else it.optLong("updated_at_ms"),
-    it.text("section", "earlier"), it.optBoolean("can_send", true), it.optBoolean("can_stop"))
+    it.text("section", "earlier"), it.optBoolean("can_send", true), it.optBoolean("can_stop"),
+    parseChatAvatar(it.optJSONObject("avatar")), it.optJSONObject("device")?.optBoolean("local") ?: false,
+    it.optJSONObject("device")?.text("machine")?.ifBlank { null })
 internal fun parseHomeNavigation(value: JSONObject) = HomeNavigation(
     value.optJSONArray("chats").objects().map(::parseHomeChat),
     value.optJSONArray("archived").objects().map(::parseHomeChat),
@@ -717,10 +733,19 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         val content = draft
         if (busy || !current.canSend) return
         action {
-            repo.command("submit_draft", "peer" to peer.id, "session" to current.id, "text" to content)
+            try { repo.command("submit_draft", "peer" to peer.id, "session" to current.id, "text" to content) }
+            catch (error: Exception) {
+                // Core refuses a quoted passage without its reply; say so over the
+                // composer instead of as a connection notice.
+                if (error.message?.contains(EMPTY_COMMENT_REPLY) == true) { toast = EMPTY_COMMENT_REPLY; return@action }
+                throw error
+            }
             loadLocalConversation()
         }
     }
+    /** Short text over the composer; see [EMPTY_COMMENT_REPLY]. */
+    var toast by mutableStateOf<String?>(null)
+    fun dismissToast() { toast = null }
 
     fun respondToInteraction(messageId: String, choice: String, values: Map<String, String>) {
         val peer = activePeer ?: return
@@ -1047,6 +1072,23 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     }
 
     fun saveComment(comment: DraftCommentUi) = draftAction(JSONObject().put("action", "put_comment").put("comment", comment.json()))
+    /** Selected text → a draft passage with an empty reply, written in the composer. */
+    fun quoteReply(row: ChatMessage, quote: String) {
+        val current = conversation ?: return
+        saveComment(DraftCommentUi(NativeBridge.newId(), current.id, row.id, row.author,
+            row.authorAgentId.ifBlank { null }, quote, ""))
+    }
+    /** Typing a passage's reply saves it like the main draft: no busy state. */
+    fun editCommentText(comment: DraftCommentUi) {
+        val peer = activePeer ?: return
+        val current = conversation ?: return
+        comments = comments.map { if (it.id == comment.id) comment else it }
+        viewModelScope.launch {
+            try { repo.command("draft_action", "peer" to peer.id, "session" to current.id,
+                "operation" to JSONObject().put("action", "put_comment").put("comment", comment.json())) }
+            catch (error: Exception) { if (error !is CancellationException) notice = "草稿尚未保存：${error.message}" }
+        }
+    }
     fun removeComment(id: String) = draftAction(JSONObject().put("action", "remove_comment").put("id", id))
 
     fun withdraw(id: String) = action {
