@@ -46,6 +46,21 @@ def node_enabled(client, fallback=False):
         return json.loads(row[0]) if row else fallback
 
 
+def launch_gui(app, env, log):
+    """Start the installed app through LaunchServices, as a user launch would.
+
+    macOS attributes a process to its responsible app for Local Network privacy.
+    Executing zork-gui directly from the installer (often an SSH session) makes
+    that session responsible instead of the app, so the app's Local Network
+    grant does not apply: LAN sends fail with EHOSTUNREACH and Mesh falls back
+    to the relay. `open` makes the signed app bundle itself responsible.
+    """
+    command = ['open', '-n', '-a', str(app), '--stdout', str(log), '--stderr', str(log)]
+    for key, value in env.items():
+        command += ['--env', f'{key}={value}']
+    subprocess.run(command, check=True, stdin=subprocess.DEVNULL, capture_output=True)
+
+
 class AppRuntime:
     def __init__(self, settings, log):
         self.settings = settings
@@ -105,15 +120,12 @@ class AppRuntime:
             subprocess.run([LSREGISTER, '-f', str(self.app),
                             *(str(p) for p in sorted(self.app.rglob('*.app')))], check=True, capture_output=True)
             self.log.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            env = {key: value for key, value in os.environ.items() if not key.startswith('ZORK_')}
-            env.update(ZORK_CLIENT_DATA=str(self.data),
-                       ZORK_GUI_PREFERENCES_PATH=self.settings.get('preferences', str(self.data / 'preferences.json')),
-                       ZORK_REGISTRY_DIR=str(self.data / 'nodes'))
-            # The signed native main executable keeps its bundle identity. Explicit
-            # paths also support isolated installation drills without global HOME changes.
-            with self.log.open('ab') as output:
-                subprocess.Popen([str(self.app / 'Contents/MacOS/zork-gui')], env=env,
-                                 stdin=subprocess.DEVNULL, stdout=output, stderr=output, start_new_session=True)
+            # Explicit paths also support isolated installation drills without global HOME changes.
+            launch_gui(self.app, {
+                'ZORK_CLIENT_DATA': str(self.data),
+                'ZORK_GUI_PREFERENCES_PATH': self.settings.get('preferences', str(self.data / 'preferences.json')),
+                'ZORK_REGISTRY_DIR': str(self.data / 'nodes'),
+            }, self.log)
 
     def gui(self, expected=None, wait_for_ready=True):
         gui = (self.app / 'Contents/MacOS/zork-gui').resolve()

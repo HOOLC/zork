@@ -263,10 +263,20 @@ class RecoveryTests(unittest.TestCase):
     def test_app_rollback_restores_node_that_outlived_gui(self):
         runtime = AppRuntime({'payload': str(self.binary), 'data': str(self.data), 'channel': 'dev'}, self.root / 'app.log')
         original = {'running': False, 'node': {'running': True, 'service_loaded': False}}
-        with patch.object(runtime.node, 'start') as start, patch('deployment_macos.subprocess.Popen') as gui:
+        with patch.object(runtime.node, 'start') as start, patch('deployment_macos.launch_gui') as gui:
             runtime.start(original)
         start.assert_called_once_with(original['node'], candidate=False)
         gui.assert_not_called()
+
+    def test_gui_launches_through_launch_services(self):
+        import deployment_macos
+        with patch('deployment_macos.subprocess.run') as run:
+            deployment_macos.launch_gui(Path('/Apps/Zork Dev.app'), {'ZORK_CLIENT_DATA': '/d x'}, Path('/l/app.log'))
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], ['open', '-n', '-a', '/Apps/Zork Dev.app'])
+        self.assertIn('--env', command)
+        self.assertEqual(command[command.index('--env') + 1], 'ZORK_CLIENT_DATA=/d x')
+        self.assertEqual(command[command.index('--stdout') + 1], '/l/app.log')
 
     def test_app_stop_waits_for_gui_before_stopping_node(self):
         runtime = AppRuntime({'payload': str(self.binary), 'data': str(self.data), 'channel': 'dev'}, self.root / 'app.log')
