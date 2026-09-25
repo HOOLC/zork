@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
-import kotlin.math.roundToInt
 
 internal data class ComposerMember(
     val id: String, val name: String, val label: String,
@@ -27,11 +26,13 @@ internal data class ComposerMember(
     val steps: List<Pair<String, String>> = emptyList(),
 )
 
-/** Presence has a fixed layout slot; updates never animate the composer outline. */
-internal data class ComposerPresence(val members: List<ComposerMember>) {
-    val targetExtent: Float get() = if (members.isEmpty()) 0f else 48f
-    val extent: Float get() = targetExtent
-    fun extentPixels(density: Float): Int = (extent * density).roundToInt()
+/**
+ * Live member activity, shown as the last item of the message list. Only members
+ * that are working or failed are news; idle members keep their history entry in
+ * the header, and a finished round leaves the list with its final message.
+ */
+internal data class ConversationActivity(val members: List<ComposerMember>) {
+    val visible: Boolean get() = members.isNotEmpty()
 }
 
 internal fun activityLabel(activity: JSONObject?): String = when (activity?.text("state")) {
@@ -63,28 +64,31 @@ internal fun activitySteps(activity: JSONObject?): List<Pair<String, String>> =
     }
 
 @Composable
-internal fun rememberComposerPresence(state: WorkbenchState, availableWidth: Float): ComposerPresence {
+internal fun rememberConversationActivity(state: WorkbenchState): ConversationActivity {
     val members = state.participants.map {
         val activity = it.optJSONObject("activity")
         ComposerMember(it.text("id"), it.text("name"), activityLabel(activity),
             activity?.text("state") == "failed", it.text("session_id"),
             activity?.text("state") in setOf("live", "thinking", "tool_finished", "tools_started", "tools_waiting"),
             activitySteps(activity))
-    }
-    return remember(members) { ComposerPresence(members) }
+    }.filter { it.working || it.failed }
+    return remember(members) { ConversationActivity(members) }
 }
 
+/**
+ * The trailing list item: right after the latest message, at the message column's
+ * width, scrolling with the messages. It fades in and out without moving; the list
+ * owns tail following, so a reader who scrolled up is never moved by it.
+ */
 @Composable
-internal fun ComposerMembers(
-    presence: ComposerPresence, history: (String, String) -> Unit = { _, _ -> },
-) {
-    Box(Modifier.fillMaxWidth().height((presence.extent + 40f).dp),
-        contentAlignment = Alignment.TopStart) {
-        if (presence.members.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                presence.members.forEach { member -> MemberCapsule(member, history) }
-            }
+internal fun ConversationActivityItem(activity: ConversationActivity, history: (String, String) -> Unit) {
+    // Keep the last members on screen while the row fades out.
+    val shown = remember { arrayOf(activity) }
+    if (activity.visible) shown[0] = activity
+    androidx.compose.animation.AnimatedVisibility(activity.visible, enter = zorkFadeIn(), exit = zorkFadeOut()) {
+        Row(Modifier.fillMaxWidth().padding(top = 22.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            shown[0].members.forEach { member -> MemberCapsule(member, history) }
         }
     }
 }
@@ -92,8 +96,8 @@ internal fun ComposerMembers(
 /**
  * One line: who, and what they are doing now — the tool in ink, its object muted.
  * "Thinking" alone is not news, so it adds no text. Expanding lists the latest
- * steps in a menu, leaving the composer's fixed slot untouched. Stopping stays on
- * the composer's own stop button, which is always visible while work runs.
+ * steps in a menu, so the list row keeps its height. Stopping stays on the
+ * composer's own stop button, which is always visible while work runs.
  */
 @Composable
 private fun MemberCapsule(member: ComposerMember, history: (String, String) -> Unit) {

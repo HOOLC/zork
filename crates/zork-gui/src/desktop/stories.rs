@@ -559,7 +559,7 @@ fn raw_catalog() -> Vec<Story> {
         story.height = 680.;
         items.push(story);
     }
-    // Session activity in the real Chat view: above the composer, at its width.
+    // Session activity in the real Chat view: the last item of the message list.
     for state in [
         "collapsed",
         "expanded",

@@ -108,8 +108,6 @@ pub struct RootView {
     history: history::HistoryState,
     chat_histories: HashMap<String, history::HistoryState>,
     session_activity_preview: Option<session_activity::SessionActivityPreview>,
-    /// Whether the activity band above the composer rendered last frame.
-    session_activity_shown: bool,
     client: Arc<StationClient>,
     core_device: Arc<zork_client_core::state::Device>,
     device_updates: Option<zork_client_core::state::DeviceSubscription>,
@@ -413,7 +411,6 @@ impl RootView {
             history: history::HistoryState::default(),
             chat_histories: HashMap::new(),
             session_activity_preview: None,
-            session_activity_shown: false,
             core_device: {
                 zork_client_core::desktop::trace_startup("gui.workspace_device_begin");
                 let device =
@@ -701,6 +698,10 @@ impl RootView {
             for edit in edits {
                 self.transcript_list.splice(edit.remove, edit.insert.len());
             }
+            // The trailing activity row depends on the latest message (the
+            // final reply hides it), so its cached height is stale too.
+            self.transcript_list
+                .remeasure_items(self.lines.len()..self.lines.len() + 1);
             if self.restore_reading_pending && state.loaded {
                 self.restore_reading_position();
                 self.restore_reading_pending = false;
@@ -1321,7 +1322,11 @@ impl RootView {
         )
     }
 
-    fn render_transcript(&mut self, _window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_transcript(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let link_handler = self.message_link_handler(cx);
         let pending = self.transcript_deliveries.clone();
         let delivery_root = cx.entity().downgrade();
@@ -1331,6 +1336,10 @@ impl RootView {
         let file_previews = self.file_ui.message_previews.clone();
         let item_count = lines.len();
         let content_width = self.composer_surface_width;
+        // Live activity is the list's trailing item, right after the latest
+        // message; it scrolls with the messages and follows the tail with them.
+        let activity = self.render_session_activity(window, cx);
+        let activity_row = activity.clone();
 
         self.transcript_selection.borrow_mut().begin_frame();
         let selection_state = self.transcript_selection.clone();
@@ -1604,12 +1613,19 @@ impl RootView {
                             row.into_any_element()
                         }
                     })
+            } else if let Some(activity) = &activity_row {
+                // With no message yet, the row keeps the first message's
+                // clearance from the floating controls.
+                div()
+                    .when(ix == 0, |row| row.pt(px(32.)))
+                    .child(activity(window, cx))
+                    .into_any_element()
             } else {
                 div().h_0().into_any()
             }
         });
 
-        let history = if item_count == 0 {
+        let history = if item_count == 0 && activity.is_none() {
             zork_ui::components::message_placeholder::render(
                 zork_ui::components::message_placeholder::Data {
                     loading: self.messages_loading,
@@ -1702,9 +1718,6 @@ impl RootView {
             .on_drop(cx.listener(|v, paths: &gpui::ExternalPaths, _, cx| {
                 v.attach_paths(paths.paths().to_vec(), cx);
             }))
-            // Session activity sits directly above the composer, at its width;
-            // it is a separate surface, never part of the composer itself.
-            .children(self.render_session_activity(window, cx))
             .child(self.render_composer_extras(window, cx))
             .child(composer)
             .child(
