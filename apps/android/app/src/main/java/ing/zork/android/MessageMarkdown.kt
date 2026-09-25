@@ -173,7 +173,7 @@ private fun appendCode(visitor: MarkwonVisitor, node: Node, info: String?, code:
 private data class MarkdownBinding(val content: String, val density: Float, val textPixels: Float, val dark: Boolean)
 
 @Composable
-internal fun Markdown(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, onComment: ((String) -> Unit)? = null) {
+internal fun Markdown(content: String, modifier: Modifier = Modifier, preview: MessagePreviewMeasure? = null, marks: MessageMarks? = null, onComment: ((String) -> Unit)? = null) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val textPixels = with(density) { 15.sp.toPx() }
@@ -204,9 +204,11 @@ internal fun Markdown(content: String, modifier: Modifier = Modifier, preview: M
             view.movementMethod = io.noties.markwon.ext.tables.TableAwareMovementMethod.wrap(android.text.method.ArrowKeyMovementMethod.getInstance())
             view.tag = binding
         }
+        applyMessageMarks(view, marks)
         view.customSelectionActionModeCallback = if (onComment == null) null else object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.add(0, 701, 0, "评论").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM); return true
+                // First in the floating selection toolbar, next to the selection.
+                menu.add(0, 701, 0, "引用回复").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS); return true
             }
             override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
             override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {

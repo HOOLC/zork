@@ -18,6 +18,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,6 +96,8 @@ internal data class WorkbenchState(
     val messageActivity: MessageActivity = MessageActivity(),
     val newer: Boolean = false,
     val home: HomeNavigation = HomeNavigation(),
+    /** A short refusal or confirmation over the composer (e.g. an empty passage reply). */
+    val toast: String? = null,
 )
 internal class WorkbenchActions(
     val peer: (Peer) -> Unit = {}, val leader: (JSONObject) -> Unit = {},
@@ -118,6 +123,7 @@ internal class WorkbenchActions(
     val newChat: (Peer) -> Unit = {},
     val archiveChat: (String, String, Boolean, Long) -> Unit = { _, _, _, _ -> },
     val device: (Peer) -> Unit = {},
+    val dismissToast: () -> Unit = {},
 )
 
 private class ConversationPresentation {
@@ -250,6 +256,7 @@ private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
 @Composable
 private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions) {
     val home = state.home
+    val times = rememberChatTimes(home.chats.map { it.updatedAtMs })
     LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(top = 8.dp, bottom = 104.dp)) {
         if (state.peers.isEmpty()) item(key = "empty") {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -266,7 +273,7 @@ private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions) {
                 Text(sectionTitle(chat.section), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Muted,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp))
             }
-            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
+            item(key = "chat:${chat.peer}:${chat.id}") { HomeChatRow(chat, times.getOrNull(index), actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
         }
     }
 }
@@ -276,6 +283,7 @@ private fun HomeChats(state: WorkbenchState, actions: WorkbenchActions) {
 internal fun ArchivedChatsList(home: HomeNavigation, open: (JSONObject) -> Unit, archive: (String, String, Boolean, Long) -> Unit,
     modifier: Modifier = Modifier) {
     val actions = remember(open, archive) { WorkbenchActions(session = open, archiveChat = archive) }
+    val times = rememberChatTimes(home.archived.map { it.updatedAtMs })
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         if (home.archivedTotal > home.archived.size) item(key = "total") {
             Text("最近 ${home.archived.size} / ${home.archivedTotal}", fontSize = 12.sp, color = ZorkColors.Muted,
@@ -284,37 +292,48 @@ internal fun ArchivedChatsList(home: HomeNavigation, open: (JSONObject) -> Unit,
         if (home.archived.isEmpty()) item(key = "empty") {
             Text("没有已归档的 Chat", fontSize = 14.sp, color = ZorkColors.Muted, modifier = Modifier.padding(20.dp))
         }
-        items(home.archived, key = { "archived:${it.peer}:${it.id}" }) { chat -> HomeChatRow(chat, actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
+        itemsIndexed(home.archived, key = { _, it -> "archived:${it.peer}:${it.id}" }) { index, chat -> HomeChatRow(chat, times.getOrNull(index), actions, Modifier.animateItem(fadeInSpec = listFade(), placementSpec = listMove(), fadeOutSpec = listFadeOut())) }
     }
 }
 
+/** Two lines of uniform height: the title alone, then a muted meta line from
+ * the left content edge with the Chat's small agent stack, the device (remote
+ * Chats only) and the relative time from core. */
 @Composable
-private fun HomeChatRow(chat: HomeChat, actions: WorkbenchActions, modifier: Modifier = Modifier) {
+private fun HomeChatRow(chat: HomeChat, time: String?, actions: WorkbenchActions, modifier: Modifier = Modifier) {
     val archive = { actions.archiveChat(chat.peer, chat.id, !chat.archived, chat.messageCount) }
     val archiveLabel = if (chat.archived) "取消归档" else "归档聊天"
+    val where = if (chat.deviceLocal) null else "在设备 ${chat.peerName} 上"
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .zorkPressable(onLongClick = if (chat.archivePending) null else archive) { actions.session(chat.session()) }
             .semantics { if (!chat.archivePending) customActions = listOf(CustomAccessibilityAction(archiveLabel) { archive(); true }) }
             .padding(start = 20.dp, end = if (chat.archived) 8.dp else 20.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            DeviceMark(chat.peerName, 32.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(chat.title, Modifier.weight(1f), fontSize = 15.sp, color = ZorkColors.Ink,
+                    Text(chat.title, Modifier.weight(1f), fontSize = 15.sp, lineHeight = 20.sp, color = ZorkColors.Ink,
                         fontWeight = if (chat.unread) FontWeight.SemiBold else FontWeight.Medium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (chat.unread) Box(Modifier.size(8.dp).background(ZorkColors.Ink, CircleShape).semantics { contentDescription = "未读" })
-                    else chatTime(chat.updatedAtMs)?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1) }
                 }
-                Text(chatPreview(chat), fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.semantics(mergeDescendants = true) { where?.let { contentDescription = listOfNotNull(it, time).joinToString("，") } },
+                    verticalAlignment = Alignment.CenterVertically) {
+                    AvatarStack(chat.avatar, 16.dp, 5.dp, ZorkColors.Canvas)
+                    Spacer(Modifier.width(6.dp))
+                    if (where != null) {
+                        Text(chat.peerName, fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle, maxLines = 1)
+                        Text(" · ", fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Subtle)
+                    }
+                    time?.let { Text(it, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Subtle, maxLines = 1) }
+                }
             }
             if (chat.archived) ZorkIconButton("取消归档", enabled = !chat.archivePending, onClick = archive) {
                 Glyph(R.drawable.ic_archive_restore, 18.dp, ZorkColors.Muted)
             }
         }
         chat.archiveError?.let {
-            Text(it, color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(start = 64.dp, end = 20.dp, bottom = 6.dp))
+            Text(it, color = ZorkColors.Danger, fontSize = 12.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 6.dp))
         }
     }
 }
@@ -337,22 +356,6 @@ private fun sectionTitle(section: String) = when (section) {
     else -> "更早"
 }
 
-private fun chatPreview(chat: HomeChat): String =
-    listOf(chat.description, chat.model).firstOrNull { it.isNotBlank() }?.let { "${chat.peerName}：$it" } ?: chat.peerName
-
-private fun chatTime(ms: Long?): String? {
-    if (ms == null) return null
-    val zone = java.time.ZoneId.systemDefault()
-    val at = java.time.Instant.ofEpochMilli(ms).atZone(zone)
-    val days = java.time.temporal.ChronoUnit.DAYS.between(at.toLocalDate(), java.time.LocalDate.now(zone))
-    return when {
-        days <= 0L -> at.format(DateTimeFormatter.ofPattern("HH:mm"))
-        days == 1L -> "昨天"
-        days < 7L -> "周" + "一二三四五六日"[at.dayOfWeek.value - 1]
-        else -> at.format(DateTimeFormatter.ofPattern("M月d日"))
-    }
-}
-
 @Composable
 internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions, showBack: Boolean) {
     var menu by remember { mutableStateOf(false) }
@@ -362,10 +365,16 @@ internal fun ConversationHeader(state: WorkbenchState, actions: WorkbenchActions
         (state.activePeer?.let { state.deviceTrees[it.id]?.sessions }.orEmpty() + state.sessions)
             .firstOrNull { it.text("chat_id") == current.id }
     }
+    // The same stacked agent avatar as the Chat's list row.
+    val avatar = chat?.let { current ->
+        state.home.chats.firstOrNull { it.id == current.id && it.peer == state.activePeer?.id }?.avatar
+            ?: session?.optJSONObject("avatar")?.let(::parseChatAvatar)
+    }
     Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 8.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (showBack) IconAction(R.drawable.ic_arrow_left, "返回对话列表", onClick = actions.back)
-        Column(Modifier.weight(1f).padding(start = if (showBack) 0.dp else 8.dp)) {
+        if (avatar != null) AvatarStack(avatar, 20.dp, 7.dp, ZorkColors.Canvas, Modifier.padding(start = if (showBack) 0.dp else 8.dp, end = 4.dp))
+        Column(Modifier.weight(1f).padding(start = if (showBack || avatar != null) 0.dp else 8.dp)) {
             Text(chat?.title.orEmpty().ifBlank { "对话" }, fontSize = 17.sp, fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             // The member capsule already names the device; repeat it only when there is none.
@@ -564,14 +573,62 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
         ConversationMessageState(state.conversation?.id, state.messages.firstOrNull()?.createdAt.orEmpty(),
             state.messages.isEmpty(), state.connected, state.historyLoading, state.older, state.busy, state.newer)
     }
-    val deviceNames = remember(state.peers, state.activePeer) {
-        (state.peers + listOfNotNull(state.activePeer)).associate { it.id to it.name }
+    val devicePeers = remember(state.peers, state.activePeer) {
+        (state.peers + listOfNotNull(state.activePeer)).associateBy { it.id }
+    }
+    // Core presentation of the raw rows: groups, times, identities, reply lines.
+    val transcript = rememberTranscript(rows, state.older, devicePeers)
+    val latestTranscript = rememberUpdatedState(transcript)
+    val latestRows = rememberUpdatedState(rows)
+    // Laid-out heights for the reply omission rule ("within one screen").
+    val heights = remember(state.conversation?.id) { mutableStateMapOf<String, Int>() }
+    var jumpWash by remember { mutableStateOf<JumpWash?>(null) }
+    var loadHint by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rows.firstOrNull()?.id) {
+        if (loadHint) { loadHint = false; hint = "已加载，再点引用可以跳转到原消息" }
+    }
+    val latestComments = rememberUpdatedState(state.comments)
+    val draftMarks = remember(state.comments) { state.comments.groupBy({ it.messageId.orEmpty() }, { it.quote }) }
+    val density = LocalDensity.current
+    val context = remember {
+        TranscriptRowActions(
+            jump = { id, mark ->
+                val all = latestRows.value
+                val index = all.indexOfFirst { it.id == id }
+                if (index >= 0) {
+                    scrollJob?.cancel(); scrollJob = null; following = false
+                    latestActions.value.windowAnchor(all.firstOrNull()?.id)
+                    // Rows open with their group spacing; top it up to ~24 dp.
+                    val head = latestTranscript.value?.get(all[index].id)?.groupHead != false
+                    val extra = with(density) { (24.dp - if (head) 20.dp else 6.dp).toPx() }
+                    scope.launch {
+                        listState.animateScrollToItem(index + 1)
+                        if (extra > 0f) listState.animateScrollBy(-extra)
+                    }
+                    jumpWash = JumpWash(all[index].id, mark, System.nanoTime())
+                }
+            },
+            // Not loaded: the first click only loads older history; the list keeps
+            // its reading position and the next click jumps.
+            load = { following = false; loadHint = true; latestActions.value.older() },
+            quote = { row, quote ->
+                val passage = quote.replace(Regex("\\s+"), " ").trim()
+                when {
+                    passage.isEmpty() -> Unit
+                    latestComments.value.any { it.messageId == row.id && it.quote == passage } -> hint = "这段已经在引用里了"
+                    else -> latestActions.value.comment(row, passage)
+                }
+            })
     }
     // Measure the floating controls before the list in this same layout pass.
     // No onSizeChanged round trip can leave a frame with obsolete bottom space.
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val activity = rememberConversationActivity(state)
         val availableHeight = maxHeight
+        val screenPx = with(LocalDensity.current) { maxHeight.toPx() }.toInt()
+        // Phone width hides the device name after agent names.
+        val phone = maxWidth < 600.dp
         val gutter = 18.dp
         ConversationViewport(
             listState = listState,
@@ -593,10 +650,16 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     }
                     if (state.activity.startsWith("已请求停止")) Text(state.activity, color = ZorkColors.Muted, fontSize = 12.sp,
                         modifier = Modifier.padding(start = gutter + 10.dp, end = gutter, bottom = 5.dp))
-                    val commentLimit = (availableHeight * .25f).coerceAtMost(160.dp)
-                    if (state.comments.isNotEmpty()) CommentTray(state.comments, actions, commentLimit)
-                    val composerLimit = (availableHeight - (if (state.comments.isEmpty()) 0.dp else commentLimit + 8.dp) - 40.dp).coerceAtLeast(100.dp)
-                    Composer(state, actions, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), composerLimit) { actions.send() }
+                    val toast = hint ?: state.toast
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        SettingsToast(toast, { if (hint != null) hint = null else actions.dismissToast() }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    }
+                    val composerLimit = (availableHeight - 40.dp).coerceAtLeast(100.dp)
+                    val draftAuthor = { comment: DraftCommentUi ->
+                        comment.messageId?.let { transcript?.get(it)?.author }
+                            ?: AuthorUi(comment.author.ifBlank { "消息" }, comment.authorAgentId == null, comment.authorAgentId, null, null, null)
+                    }
+                    Composer(state, actions, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), composerLimit, draftAuthor) { actions.send() }
                 }
             },
         ) { overlayBaseHeight ->
@@ -650,11 +713,17 @@ internal fun ConversationBody(state: WorkbenchState, actions: WorkbenchActions, 
                     if (messageState.older) ZorkButton("加载更早消息", quiet = true, onClick = { following = false; messageActions.older() }, enabled = !messageState.busy)
                 }
                 items(rows, key = { it.id }) { row ->
-                    Column {
-                        Spacer(Modifier.height(22.dp))
+                    val shown = transcript?.get(row.id)
+                    val omitted = rememberReplyOmitted(shown, rows, heights, screenPx)
+                    val wash = jumpWash?.takeIf { it.id == row.id }
+                    // A summary, or a passage no longer in the text, washes the whole message.
+                    val whole = wash != null && (wash.mark == null || !messageTexts(row, shown).any { it.contains(wash.mark) })
+                    val marks = MessageMarks(draftMarks[row.id].orEmpty(), wash?.mark?.takeIf { !whole }, wash?.token ?: 0)
+                    Column(Modifier.onSizeChanged { if (heights[row.id] != it.height) heights[row.id] = it.height }) {
+                        Spacer(Modifier.height(if (shown?.groupHead == false) 6.dp else 20.dp))
                         MessageEntry(anchor.arrivals[row.id], row.user) {
-                            Column {
-                            MessageRow(row, deviceNames[row.device] ?: row.device.takeUnless { it.startsWith("key:") }.orEmpty(), messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, state.files, messageActions.saveChatFile) { quote -> messageActions.comment(row, quote) }
+                            Column(Modifier.jumpWash(wash?.token.takeIf { whole }, row.user)) {
+                            MessageRow(row, shown, transcript, phone, omitted, marks, context, messageActions.resend, messageActions.deleteFailed, messageActions.file, messageActions.chatFile, state.files, messageActions.saveChatFile) { quote -> context.quote(row, quote) }
                             row.interaction?.let { card ->
                                 Spacer(Modifier.height(8.dp))
                                 InteractionCard(card) { choice, values -> messageActions.interaction(row.id, choice, values) }
@@ -731,25 +800,100 @@ private fun ConversationViewport(listState: LazyListState, follow: Boolean, tail
     }
 }
 
+internal data class JumpWash(val id: String, val mark: String?, val token: Long)
+internal class TranscriptRowActions(val jump: (String?, String?) -> Unit, val load: () -> Unit, val quote: (ChatMessage, String) -> Unit)
+
+/** The text a jump mark is looked up in: the body, or a batch's replies. */
+private fun messageTexts(row: ChatMessage, shown: RowUi?): List<String> =
+    shown?.pairs?.let { pairs -> pairs.map { it.reply } + shown.extraText } ?: listOf(row.content)
+
+/** Omission rule: core says whether only the author's own messages lie between
+ * (`own_run`); the UI adds "the original starts within one laid-out screen
+ * above", from measured heights (estimated for rows never laid out), never
+ * the scroll position. Re-evaluated when heights or the viewport change. */
 @Composable
-private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit,
+private fun rememberReplyOmitted(shown: RowUi?, rows: List<ChatMessage>, heights: Map<String, Int>, screen: Int): Boolean {
+    val reply = shown?.reply
+    val target = reply?.targetIndex?.takeIf { reply.ownRun && reply.state == "linked" }
+    val density = LocalDensity.current.density
+    val omitted = remember(shown?.index, target, rows, screen) {
+        derivedStateOf {
+            if (target == null) return@derivedStateOf false
+            var distance = 0
+            for (at in target until shown.index) {
+                val row = rows.getOrNull(at) ?: return@derivedStateOf false
+                distance += heights[row.id] ?: ((44 + (row.content.length / 20 + 1) * 25) * density).toInt()
+                if (distance > screen) return@derivedStateOf false
+            }
+            true
+        }
+    }
+    return omitted.value
+}
+
+/** Warm wash behind a jumped-to message; holds ~1.6 s, then fades. */
+@Composable
+private fun Modifier.jumpWash(token: Long?, user: Boolean): Modifier {
+    val alpha = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(token) {
+        if (token == null) return@LaunchedEffect
+        alpha.snapTo(1f); kotlinx.coroutines.delay(1600)
+        alpha.animateTo(0f, androidx.compose.animation.core.tween(if (android.animation.ValueAnimator.areAnimatorsEnabled()) 600 else 0))
+    }
+    val color = AgentTints.Wash
+    return drawBehind {
+        val a = alpha.value
+        if (a <= 0f) return@drawBehind
+        val x = if (user) 0f else 10.dp.toPx(); val y = 2.dp.toPx()
+        drawRoundRect(color.copy(alpha = a), topLeft = androidx.compose.ui.geometry.Offset(-x, -y),
+            size = androidx.compose.ui.geometry.Size(size.width + 2 * x, size.height + 2 * y),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()))
+    }
+}
+
+@Composable
+private fun MessageRow(row: ChatMessage, shown: RowUi?, transcript: TranscriptUi?, phone: Boolean, omitted: Boolean, marks: MessageMarks,
+    actions: TranscriptRowActions, resend: (String) -> Unit, deleteFailed: (String) -> Unit, file: (TextAttachmentUi) -> Unit, chatFile: (String, String) -> Unit,
     fileState: FileAvailability, saveFile: (String, String) -> Unit, comment: (String) -> Unit) {
+    val reply = shown?.reply?.takeUnless { omitted }
+    val openReply = { line: ReplyUi -> actions.jump(transcript?.idAt(line.targetIndex), line.content?.mark) }
     if (row.user) {
         Column(Modifier.fillMaxWidth().padding(start = 30.dp), horizontalAlignment = Alignment.End) {
+            if (reply != null) ReplyLine(reply, Modifier.padding(bottom = 3.dp), open = { openReply(reply) }, load = actions.load)
             // Sent files stand above the bubble, images at their own ratio.
             if (row.deliveredFiles.isNotEmpty()) Box(Modifier.padding(bottom = 6.dp)) {
                 MessageFiles(row.id, row.deliveredFiles, true, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
             }
+            val pairs = shown?.pairs
             if (row.content.isNotBlank() || row.files.isNotEmpty()) {
                 ZorkCard(color = ZorkColors.Bubble, outlined = false, shape = ZorkShapes.Bubble) {
-                    Column(Modifier.padding(horizontal = 18.dp, vertical = 11.dp)) {
-                        if (row.content.isNotBlank()) MessageBody(row, comment)
+                    Column(Modifier.padding(horizontal = if (pairs != null) 14.dp else 18.dp, vertical = 11.dp)) {
+                        if (pairs != null) {
+                            // Each passage is a quote line then its reply; pairs are
+                            // separated by space only, the extra text comes last.
+                            pairs.forEachIndexed { at, pair ->
+                                if (at > 0) Spacer(Modifier.height(12.dp))
+                                PassageLine(pair.source, pair.quote, open = when (pair.state) {
+                                    "linked" -> ({ actions.jump(transcript?.idAt(pair.sourceIndex), pair.quote) })
+                                    "not_loaded" -> actions.load
+                                    else -> null
+                                })
+                                if (pair.reply.isNotBlank()) Box(Modifier.padding(top = 2.dp)) { MessageBody(row, comment, marks, pair.reply) }
+                            }
+                            if (shown.extraText.isNotBlank()) {
+                                Spacer(Modifier.height(12.dp))
+                                MessageBody(row, comment, marks, shown.extraText)
+                            }
+                        } else if (row.content.isNotBlank()) MessageBody(row, comment, marks)
                         row.files.forEach { FileCard(it) { file(it) } }
                     }
                 }
             }
-            val time = messageTime(row.createdAt)
-            if (time.isNotEmpty()) Text(time, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
+            val time = shown?.time
+            if (time != null) { if (time.placement == "tail") TimeText(time, 12.5.sp, Modifier.padding(top = 4.dp)) }
+            else messageTime(row.createdAt).takeIf { it.isNotEmpty() }?.let {
+                Text(it, fontSize = 12.sp, color = ZorkColors.Muted, modifier = Modifier.padding(top = 5.dp))
+            }
             if (row.pending) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (row.deliveryStatus.isNotBlank()) Column(Modifier.weight(1f, fill = false)) {
                     Text(if (row.deliveryStatus == "failed") "发送失败" else "发送中", fontSize = 12.sp, color = ZorkColors.Muted)
@@ -772,13 +916,27 @@ private fun MessageRow(row: ChatMessage, device: String, resend: (String) -> Uni
         }
     } else {
         Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(device.ifBlank { row.author }, modifier = Modifier.weight(1f, fill = false), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val detail = listOf(row.model, messageTime(row.createdAt)).filter { it.isNotBlank() }.joinToString(" · ")
-                if (detail.isNotEmpty()) Text(detail, modifier = Modifier.weight(1f, fill = false), fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (row.content.isNotBlank()) MessageBody(row, comment)
+            if (shown == null || shown.groupHead) {
+                // Identity row: disc + name (long press: name · device · model),
+                // the device only on wide screens, the reply line, then the time.
+                val identity = shown?.identity
+                Row(Modifier.padding(bottom = 4.dp).heightIn(min = 22.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (identity != null) AgentDisc(identity.author, 22.dp)
+                    LongPressTip(identity?.detail, Modifier.widthIn(max = 160.dp)) {
+                        Text(identity?.author?.name ?: row.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = ZorkColors.Ink,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    val device = identity?.deviceName
+                    if (device != null && transcript?.multiDevice == true && !phone)
+                        Text(device, fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (reply != null && reply.inHead) ReplyLine(reply, Modifier.weight(1f, fill = false), open = { openReply(reply) }, load = actions.load)
+                    shown?.time?.let { TimeText(it) } ?: messageTime(row.createdAt).takeIf { it.isNotEmpty() }?.let {
+                        Text(it, fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1)
+                    }
+                }
+            } else if (reply != null) ReplyLine(reply, Modifier.padding(bottom = 2.dp), open = { openReply(reply) }, load = actions.load)
+            if (row.content.isNotBlank()) MessageBody(row, comment, marks)
             row.files.forEach { FileCard(it) { file(it) } }
             MessageFiles(row.id, row.deliveredFiles, false, fileState, { chatFile(row.id, it) }, { saveFile(row.id, it) })
         }
@@ -800,7 +958,8 @@ private fun ComposerPlate(modifier: Modifier, body: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Composer(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier, heightLimit: Dp, send: () -> Unit) {
+private fun Composer(state: WorkbenchState, actions: WorkbenchActions, modifier: Modifier, heightLimit: Dp,
+    draftAuthor: (DraftCommentUi) -> AuthorUi?, send: () -> Unit) {
     val attached = state.comments.size + state.attachments.size + state.draftFiles.size
     val command = remember(state.draft, attached, state.running, state.connected, state.busy, state.conversation) {
         JSONObject(NativeBridge.composerState(JSONObject().put("text", state.draft)
@@ -820,32 +979,71 @@ private fun Composer(state: WorkbenchState, actions: WorkbenchActions, modifier:
         WorkbenchActions(draft = { latest.value.draft(it) }, attach = { latest.value.attach() },
             removeAttachment = { latest.value.removeAttachment(it) }, stop = { latest.value.stop() }, send = { latestSend.value() },
             openDraftFile = { latest.value.openDraftFile(it) }, removeFile = { latest.value.removeFile(it) },
-            dismissPendingFile = { latest.value.dismissPendingFile(it) })
+            dismissPendingFile = { latest.value.dismissPendingFile(it) },
+            editComment = { latest.value.editComment(it) }, removeComment = { latest.value.removeComment(it) })
     }
     DraftComposer(draft, attachments, canSend, stop, enabled, modifier, heightLimit, controls,
-        files = state.draftFiles, pending = state.attaching)
+        files = state.draftFiles, pending = state.attaching, passages = state.comments, passageAuthor = draftAuthor)
 }
 
 @Composable
 internal fun DraftComposer(draft: String, attachments: List<TextAttachmentUi>, canEdit: Boolean,
     stop: Boolean, enabled: Boolean, modifier: Modifier, heightLimit: Dp,
     actions: WorkbenchActions, showAttach: Boolean = true,
-    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList(),
+    passages: List<DraftCommentUi> = emptyList(), passageAuthor: (DraftCommentUi) -> AuthorUi? = { null }) {
     ComposerPlate(modifier.fillMaxWidth().preferredFrameRate(120f)) {
-        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach, files, pending)
+        ComposerControls(draft, attachments, canEdit, stop, enabled, heightLimit, actions, showAttach, files, pending, passages, passageAuthor)
+    }
+}
+
+/** A quoted passage in the draft, shaped like the sent pair: its quote line
+ * with × to remove it, then a borderless, growing input for its reply. */
+@Composable
+private fun DraftPassage(passage: DraftCommentUi, author: AuthorUi?, actions: WorkbenchActions, focus: Boolean) {
+    var reply by remember(passage.id) { mutableStateOf(passage.text) }
+    // A passage just quoted takes the cursor so its reply can be typed at once.
+    val requester = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(passage.id) { if (focus) runCatching { requester.requestFocus() } }
+    Column(Modifier.fillMaxWidth()) {
+        PassageLine(author, passage.quote, trailing = {
+            Box(Modifier.size(24.dp).clip(CircleShape).clickable(role = androidx.compose.ui.semantics.Role.Button) { actions.removeComment(passage.id) }
+                .semantics { contentDescription = "移除这段引用" }, contentAlignment = Alignment.Center) {
+                Glyph(R.drawable.ic_x, 14.dp, ZorkColors.Subtle)
+            }
+        })
+        BasicTextField(reply, { reply = it; actions.editComment(passage.copy(text = it)) },
+            Modifier.fillMaxWidth().padding(top = 2.dp).focusRequester(requester).semantics { contentDescription = "回复这段" },
+            textStyle = TextStyle(fontFamily = ZorkFonts.Body, fontSize = 15.sp, lineHeight = 24.sp, color = ZorkColors.Ink),
+            cursorBrush = SolidColor(ZorkColors.Ink), decorationBox = { inner ->
+                Box {
+                    if (reply.isEmpty()) Text("回复这段…", fontSize = 15.sp, lineHeight = 24.sp, color = ZorkColors.Subtle)
+                    inner()
+                }
+            })
     }
 }
 
 @Composable
 private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>, canSend: Boolean,
     stop: Boolean, enabled: Boolean, heightLimit: Dp, actions: WorkbenchActions, showAttach: Boolean = true,
-    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList()) {
+    files: List<ChatFileUi> = emptyList(), pending: List<PendingFileUi> = emptyList(),
+    passages: List<DraftCommentUi> = emptyList(), passageAuthor: (DraftCommentUi) -> AuthorUi? = { null }) {
     val sendInteractions = remember { MutableInteractionSource() }
     val sendPressed by sendInteractions.collectIsPressedAsState()
-        Column(Modifier.graphicsLayer().heightIn(max = heightLimit).padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
+        // The static rounded panel with a thin stroke (apps/android/design.md): the
+        // transcript scrolls beneath it, and draft passages must stay readable.
+        Column(Modifier.graphicsLayer().heightIn(max = heightLimit).background(ZorkColors.Canvas, ZorkShapes.Container)
+            .border(UiTokens.Border, ZorkColors.FieldBorder, ZorkShapes.Container).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)) {
             Column(Modifier.weight(1f, fill = false)) {
             // Draft files sit above the editor, inside the composer.
             DraftFileChips(files, pending, actions.openDraftFile, actions.removeFile, actions.dismissPendingFile)
+            val known = remember { passages.mapTo(HashSet()) { it.id } }
+            if (passages.isNotEmpty()) Column(Modifier.weight(1f, fill = false).heightIn(max = 220.dp).verticalScroll(rememberScrollState())
+                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                passages.forEach { key(it.id) { DraftPassage(it, passageAuthor(it), actions, focus = it.id !in known) } }
+                SideEffect { passages.forEach { known += it.id } }
+            }
             // BasicTextField owns vertical scrolling and cursor visibility. Do not
             // wrap the editor in another scroller or cap/truncate its draft value.
             BasicTextField(draft, actions.draft, Modifier.fillMaxWidth().padding(start=12.dp,end=12.dp,top=4.dp)
@@ -853,7 +1051,7 @@ private fun ComposerControls(draft: String, attachments: List<TextAttachmentUi>,
                 textStyle = TextStyle(fontFamily = ZorkFonts.Body, fontSize = 16.sp, lineHeight = 24.sp, color = ZorkColors.Ink),
                 cursorBrush = SolidColor(ZorkColors.Ink), decorationBox = { inner ->
                     Box {
-                        if (draft.isEmpty()) Text(if (canSend) "补充想法…" else "此任务暂不可直接发送消息",
+                        if (draft.isEmpty()) Text(if (!canSend) "此任务暂不可直接发送消息" else if (passages.isNotEmpty()) "补充说明（可选）" else "补充想法…",
                             fontSize = 16.sp, color = ZorkColors.Muted, lineHeight = 24.sp)
                         inner()
                     }
@@ -924,31 +1122,6 @@ private fun messageDate(value: String): String = runCatching {
     val date = OffsetDateTime.parse(value).toLocalDate()
     if (date == java.time.LocalDate.now()) "今天" else date.format(messageDateFormat)
 }.getOrDefault("")
-
-@Composable
-private fun CommentTray(comments: List<DraftCommentUi>, actions: WorkbenchActions, heightLimit: Dp) {
-    ZorkCard(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 8.dp).heightIn(max = heightLimit), radius = 20.dp) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("待发送评论 · ${comments.size}", fontSize = 12.sp, lineHeight = 16.sp, color = ZorkColors.Muted)
-            }
-            comments.forEach { comment ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).zorkPressable() { actions.editComment(comment) }) {
-                        Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.width(3.dp).height(18.dp).background(ZorkColors.FieldBorder))
-                            Text(comment.quote, fontSize = 12.sp, lineHeight = 18.sp, color = ZorkColors.Muted, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
-                        }
-                        Text(comment.text, fontSize = 13.sp, lineHeight = 19.5.sp)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    IconAction(R.drawable.ic_x, "移除评论", glyphSize = 16.dp, onClick = { actions.removeComment(comment.id) })
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun FileCard(file: TextAttachmentUi, save: () -> Unit) {
