@@ -45,7 +45,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                         }) {
                             if (route == "new-chat") {
                                 val actions = remember { org.json.JSONArray() }
-                                fun project() = JSONObject(NewChatFixtureBridge.render(JSONObject().put("scenario", "draft").put("actions", actions).toString()))
+                                fun project() = JSONObject(NewChatFixtureBridge.render(JSONObject().put("scenario", intent.getStringExtra("scenario") ?: "draft").put("actions", actions).toString()))
                                 var snapshot by remember { mutableStateOf(project()) }
                                 newChatSnapshot = snapshot
                                 NewChatPage(NewChatUi(fixturePeers()[0], snapshot), {}, { action, value ->

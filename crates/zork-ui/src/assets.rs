@@ -164,6 +164,19 @@ impl AssetSource for EmbeddedAssets {
             "providers/openrouter.svg" => {
                 Some(include_bytes!("../assets/providers/openrouter.svg"))
             }
+            "makers/openai.svg" => Some(include_bytes!("../assets/makers/openai.svg")),
+            "makers/anthropic.svg" => Some(include_bytes!("../assets/makers/anthropic.svg")),
+            "makers/google.svg" => Some(include_bytes!("../assets/makers/google.svg")),
+            "makers/deepseek.svg" => Some(include_bytes!("../assets/makers/deepseek.svg")),
+            "makers/qwen.svg" => Some(include_bytes!("../assets/makers/qwen.svg")),
+            "makers/zhipu.svg" => Some(include_bytes!("../assets/makers/zhipu.svg")),
+            "makers/doubao.svg" => Some(include_bytes!("../assets/makers/doubao.svg")),
+            "makers/moonshot.svg" => Some(include_bytes!("../assets/makers/moonshot.svg")),
+            "makers/minimax.svg" => Some(include_bytes!("../assets/makers/minimax.svg")),
+            "makers/mistral.svg" => Some(include_bytes!("../assets/makers/mistral.svg")),
+            "makers/meta.svg" => Some(include_bytes!("../assets/makers/meta.svg")),
+            "makers/xai.svg" => Some(include_bytes!("../assets/makers/xai.svg")),
+            "makers/generic.svg" => Some(include_bytes!("../assets/makers/generic.svg")),
             "brand/zork-wordmark.svg" => Some(include_bytes!("../assets/brand/zork-wordmark.svg")),
             "icons/columns.svg" => Some(include_bytes!("../assets/icons/columns.svg")),
             "icons/search.svg" => Some(include_bytes!("../assets/icons/search.svg")),

@@ -178,7 +178,7 @@ pub fn catalog() -> Vec<Story> {
         (
             "providers",
             "供应商图标",
-            &["all"][..],
+            &["all", "makers"][..],
             "crates/zork-ui/src/controls.rs::provider_icon",
             "providers",
         ),
@@ -801,6 +801,20 @@ impl Render for PrimitiveStory {
                     )
                 }
             }
+            // Model makers: what model rows and pickers draw (placeholders until redrawn).
+            "providers" if state == "makers" => div()
+                .flex()
+                .flex_wrap()
+                .gap_4()
+                .children(
+                    [
+                        "openai", "anthropic", "google", "deepseek", "qwen", "zhipu", "doubao",
+                        "moonshot", "minimax", "mistral", "meta", "xai", "",
+                    ]
+                    .into_iter()
+                    .map(|key| ui::maker_icon(Some(key).filter(|k| !k.is_empty()), 20.)),
+                )
+                .into_any_element(),
             "providers" => div()
                 .flex()
                 .flex_wrap()

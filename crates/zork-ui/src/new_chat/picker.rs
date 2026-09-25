@@ -91,17 +91,21 @@ impl Page {
         }
         groups
     }
-    /// Provider of the connection the current model resolves to.
-    pub(super) fn selected_provider(&self, cx: &App) -> Option<String> {
-        let profile = self.data.profile.value.as_str();
-        self.groups(cx)
-            .into_iter()
-            .find(|g| {
-                (profile == "auto" || g.profile == profile)
-                    && g.models.iter().any(|m| m == &self.data.model.value)
-            })
-            .map(|g| g.provider)
-            .filter(|p| !p.is_empty())
+    /// Maker of a listed model; `None` for an unknown maker.
+    fn maker_of(&self, model: &str) -> Option<&str> {
+        self.data
+            .model
+            .options
+            .iter()
+            .find(|o| o.value == model)
+            .and_then(|o| o.maker.as_deref())
+    }
+    /// The current model's maker mark, once a listed model is chosen. The
+    /// trigger names a model, so it carries the maker, not the connection.
+    pub(super) fn selected_maker_path(&self) -> Option<&'static str> {
+        let model = self.data.model.value.as_str();
+        (!model.is_empty() && self.data.model.options.iter().any(|o| o.value == model))
+            .then(|| ui::maker_path(self.maker_of(model)))
     }
     fn selectable_pairs(&self, cx: &App) -> Vec<(String, String)> {
         self.groups(cx)
@@ -201,8 +205,17 @@ impl Page {
                     .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(rgb(p.muted))
+                    // The group names a connection: its provider's mark.
                     .when(!group.provider.is_empty(), |v| {
-                        v.child(ui::provider_icon(&group.provider, 16.))
+                        v.child(
+                            div()
+                                .id(SharedString::from(format!("new-chat-group-mark-{g}")))
+                                .child(ui::icon(ui::provider_path(&group.provider), 14.))
+                                .automation(
+                                    AutomationRole::Status,
+                                    ui::provider_path(&group.provider),
+                                ),
+                        )
                     })
                     .child(div().min_w_0().truncate().child(group.name.clone()))
                     .when_some(device.clone(), |v, device| {
@@ -223,6 +236,7 @@ impl Page {
                 let row_id = format!("new-chat-model-{index}");
                 let (profile, id) = (group.profile.clone(), model.clone());
                 let label = format!("{} · {}", group.name, model);
+                let maker = ui::maker_path(self.maker_of(&model));
                 list = list.child(
                     div()
                         .id(SharedString::from(row_id))
@@ -241,6 +255,14 @@ impl Page {
                         .when(enabled && !checked, |v| {
                             v.hover(|s| s.bg(rgb(INTERACTION.neutral_hover)))
                         })
+                        // The row names a model: its maker's mark.
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("new-chat-model-mark-{index}")))
+                                .flex_shrink_0()
+                                .child(ui::icon(maker, 16.).text_color(rgb(p.text)))
+                                .automation(AutomationRole::Status, maker),
+                        )
                         .child(div().flex_1().min_w_0().truncate().child(model))
                         .child(
                             div().w(px(14.)).flex_shrink_0().when(checked, |v| {

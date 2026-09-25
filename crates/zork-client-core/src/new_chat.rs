@@ -63,9 +63,18 @@ pub fn present(
                 .into_iter()
                 .flatten()
                 .filter_map(|m| m["id"].as_str())
-                .map(|id| OptionItem {
-                    connections: connections(id),
-                    ..option(id, id)
+                .map(|id| {
+                    let connections = connections(id);
+                    // The model's own maker; a vendor connection vouches for ids only it knows.
+                    let maker = std::iter::once(None)
+                        .chain(connections.iter().map(|c| Some(c.provider.as_str())))
+                        .find_map(|provider| crate::model_catalog::maker(id, provider))
+                        .map(str::to_owned);
+                    OptionItem {
+                        connections,
+                        maker,
+                        ..option(id, id)
+                    }
                 })
                 .collect(),
         },
@@ -153,6 +162,16 @@ impl Fixture {
             ]}
         ])).unwrap()
         };
+        let mut profiles = profiles;
+        if scenario == "picker" {
+            // A router serving other makers' models: marks follow the model, not the connection.
+            profiles.push(serde_json::from_value(serde_json::json!(
+            {"profile_id":"opencode","name":"OpenCode Go","provider":"opencode-go","auth_configured":true,"models":[
+                {"id":"deepseek-flash","thinking":["off","high"],"default_thinking":"high","limits":{"context_window_tokens":1048576,"max_output_tokens":131072}},
+                {"id":"glm-5.1","thinking":["off","high"],"default_thinking":"high","limits":{"context_window_tokens":200000,"max_output_tokens":32768}},
+                {"id":"muse-spark","thinking":["off"],"default_thinking":"off","limits":{"context_window_tokens":200000,"max_output_tokens":32768}}
+            ]})).unwrap());
+        }
         Self {
             profiles,
             text: if matches!(scenario, "creating" | "retry" | "error") {
@@ -268,6 +287,21 @@ mod tests {
         // Older payloads without the new fields still parse.
         let old: OptionItem = serde_json::from_value(serde_json::json!({"value":"m","label":"m"})).unwrap();
         assert!(old.connections.is_empty() && old.device.is_none());
+    }
+    #[test]
+    fn model_options_name_their_maker_apart_from_the_connection() {
+        let snapshot = Fixture::new("picker").snapshot();
+        let option = |id: &str| snapshot.model.options.iter().find(|o| o.value == id).unwrap();
+        assert_eq!(option("deepseek-flash").maker.as_deref(), Some("deepseek"));
+        assert_eq!(option("deepseek-flash").connections[0].provider, "opencode-go");
+        assert_eq!(option("glm-5.1").maker.as_deref(), Some("zhipu"));
+        assert_eq!(option("muse-spark").maker, None);
+        // OpenAI's own connection vouches for its unlisted demo ids.
+        assert_eq!(option("Demo model").maker.as_deref(), Some("openai"));
+        let json = serde_json::to_value(option("muse-spark")).unwrap();
+        assert!(json.get("maker").is_none());
+        // Other scenarios keep their two connections.
+        assert_eq!(Fixture::new("draft").profiles.len(), 2);
     }
     #[test]
     fn model_depth_and_optional_profile_choices_respect_actual_capabilities() {

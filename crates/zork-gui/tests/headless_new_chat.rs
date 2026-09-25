@@ -8,7 +8,110 @@ use zork_gui::{
     desktop::stories::{Story, StoryHost},
 };
 
+/// A model served by another maker's router: the model row and trigger carry
+/// the maker's mark, the connection heading carries the provider's mark.
+fn maker_and_provider_marks() -> anyhow::Result<()> {
+    let mut cx = HeadlessAppContext::with_platform(
+        gpui_platform::current_platform(true).text_system(),
+        Arc::new(EmbeddedAssets),
+        gpui_platform::current_headless_renderer,
+    );
+    let driver = cx.update(|cx| {
+        zork_gui::assets::init_fonts(cx);
+        zork_gui::components::init(cx);
+        cx.set_reduce_motion(true);
+        HeadlessAutomation::install(cx)
+    });
+    let mut story = Story::new("new-chat", "新建 Chat", "picker", "", "new-chat");
+    story.width = 900.;
+    story.height = 700.;
+    let window = cx.open_window(size(px(900.), px(700.)), |_, cx| {
+        let view = cx.new(|cx| StoryHost::new(story, cx));
+        cx.new(|_| AutomationRoot::new(view))
+    })?;
+    let draw = |cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        for _ in 0..4 {
+            cx.run_until_parked();
+            cx.advance_clock(Duration::from_millis(16));
+            cx.update_window(window.into(), |_, w, cx| w.draw(cx).clear(cx))?;
+        }
+        Ok(())
+    };
+    let action = |value: Value, cx: &mut HeadlessAppContext| -> anyhow::Result<()> {
+        cx.update_window(window.into(), |_, w, cx| {
+            driver.dispatch(serde_json::from_value(value)?, w, cx)
+        })??;
+        draw(cx)
+    };
+    let label = |id: &str| {
+        driver
+            .snapshot(false)
+            .elements
+            .into_iter()
+            .find(|e| e.id == id && e.visible)
+            .map(|e| e.label)
+    };
+    draw(&mut cx)?;
+    anyhow::ensure!(
+        label("new-chat-options-mark").as_deref() == Some("makers/openai.svg"),
+        "trigger mark {:?}",
+        label("new-chat-options-mark")
+    );
+    action(json!({"type":"click","target":{"element_id":"new-chat-options"}}), &mut cx)?;
+    // Groups: 个人账号 (OpenAI), API (OpenAI), OpenCode Go.
+    anyhow::ensure!(label("new-chat-group-mark-0").as_deref() == Some("providers/openai.svg"));
+    anyhow::ensure!(
+        label("new-chat-group-mark-2").as_deref() == Some("providers/opencode.svg"),
+        "OpenCode Go heading {:?}",
+        label("new-chat-group-mark-2")
+    );
+    // The list scrolls; rows below the fold are still in the tree.
+    let all = driver.snapshot(true).elements;
+    let rows: Vec<(String, String)> = all
+        .iter()
+        .filter(|e| e.id.starts_with("new-chat-model-") && !e.id.contains("mark") && e.id != "new-chat-model-list")
+        .filter_map(|e| {
+            let index = e.id.trim_start_matches("new-chat-model-");
+            let mark = all.iter().find(|m| m.id == format!("new-chat-model-mark-{index}"))?;
+            Some((e.label.clone(), mark.label.clone()))
+        })
+        .collect();
+    let mark = |model: &str| {
+        rows.iter()
+            .find(|(label, _)| label.ends_with(&format!("· {model}")))
+            .map(|(_, mark)| mark.as_str())
+    };
+    anyhow::ensure!(mark("deepseek-flash") == Some("makers/deepseek.svg"), "rows {rows:?}");
+    anyhow::ensure!(mark("glm-5.1") == Some("makers/zhipu.svg"), "rows {rows:?}");
+    anyhow::ensure!(mark("muse-spark") == Some("makers/generic.svg"), "rows {rows:?}");
+    anyhow::ensure!(mark("Demo fast") == Some("makers/openai.svg"), "rows {rows:?}");
+    // Choosing the router's DeepSeek model moves the trigger to the DeepSeek mark.
+    let index = all
+        .iter()
+        .find(|e| e.id.starts_with("new-chat-model-") && e.label.ends_with("· deepseek-flash"))
+        .map(|e| e.id.clone())
+        .unwrap();
+    for delta in [-400., 400.] {
+        let visible = driver.snapshot(false).elements.iter().any(|e| e.id == index && e.visible && e.bounds == e.visible_bounds);
+        if visible {
+            break;
+        }
+        let row = all.iter().find(|e| e.id == "new-chat-model-0").unwrap().bounds;
+        let (x, y) = (row.x + row.width / 2., row.y + row.height / 2.);
+        action(json!({"type":"scroll","target":{"x":x,"y":y},"delta_y":delta}), &mut cx)?;
+    }
+    action(json!({"type":"click","target":{"element_id":index}}), &mut cx)?;
+    anyhow::ensure!(
+        label("new-chat-options-mark").as_deref() == Some("makers/deepseek.svg"),
+        "trigger after choosing deepseek-flash {:?}",
+        label("new-chat-options-mark")
+    );
+    println!("maker marks ok");
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
+    maker_and_provider_marks()?;
     long_model_selection()?;
     let output =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/chat-first/native");
