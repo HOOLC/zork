@@ -88,6 +88,29 @@ impl EnrollmentService {
         self.invites().prune(records)
     }
 
+    /// Unused, unexpired invitations this device can still be reached for.
+    fn open_invites(&self) -> Result<Vec<InviteRecord>> {
+        let now = enrollment::now();
+        Ok(self
+            .records()?
+            .into_iter()
+            .filter(|r| !r.revoked && r.used_by.is_none() && r.expires_at > now)
+            .collect())
+    }
+    /// The enrollment endpoint keeps a relay connection only while open
+    /// invitations exist; returns the earliest open expiry.
+    async fn sync_invite_relay(&self) -> Option<u64> {
+        let open = match self.open_invites() {
+            Ok(open) => open,
+            Err(error) => {
+                tracing::warn!(%error, "invite relay state unavailable");
+                return None;
+            }
+        };
+        self.transport.hold_relay_for_invites(!open.is_empty()).await;
+        open.iter().map(|r| r.expires_at).min()
+    }
+
     pub async fn create(&self, state: &AppState) -> Result<Value> {
         let service = state.mesh.get().context("mesh_not_ready")?;
         let mesh = zork_config::load_config(&self.root)?.mesh;
@@ -145,7 +168,16 @@ impl EnrollmentService {
             "too_many_active_invites"
         );
         let config = zork_config::load_config(&self.root)?.mesh;
-        let short = enrollment::ticket::Ticket::new(self.transport.address().await, &config)?;
+        // Joiners outside the LAN reach this endpoint through the relay.
+        self.transport.hold_relay_for_invites(true).await;
+        let short = match enrollment::ticket::Ticket::new(self.transport.address().await, &config)
+        {
+            Ok(short) => short,
+            Err(error) => {
+                self.sync_invite_relay().await;
+                return Err(error);
+            }
+        };
         let id = short.id();
         let secret = short.secret();
         let expires_at = enrollment::now() + enrollment::INVITE_SECONDS;
@@ -222,6 +254,7 @@ impl EnrollmentService {
         );
         record.revoked = true;
         self.save(&record)?;
+        self.sync_invite_relay().await;
         state.db.realtime.notify(crate::realtime::MESH);
         Ok(json!({"revoked":true}))
     }
@@ -410,6 +443,7 @@ impl EnrollmentService {
             })?;
             record.committed = true;
             self.save(&record)?;
+            self.sync_invite_relay().await;
         }
         service.refresh(state).await?;
         state
@@ -824,16 +858,26 @@ pub async fn apply_group(state: &AppState, sender: &str, group: MeshGroup) -> Re
 pub fn start(service: Arc<EnrollmentService>, state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let handler = service.clone();
-        if let Err(error) = service
-            .transport
-            .serve(move |endpoint, request| {
-                let state = state.clone();
-                let handler = handler.clone();
-                async move { handler.begin(&state, endpoint, request).await }
-            })
-            .await
-        {
-            tracing::error!(%error,"Enrollment listener stopped");
+        let serve = service.transport.serve(move |endpoint, request| {
+            let state = state.clone();
+            let handler = handler.clone();
+            async move { handler.begin(&state, endpoint, request).await }
+        });
+        // Invitations expire silently; release the relay once the last one has.
+        let expiry = async {
+            loop {
+                let wait = match service.sync_invite_relay().await {
+                    Some(expires_at) => expires_at.saturating_sub(enrollment::now()) + 1,
+                    None => 60,
+                };
+                tokio::time::sleep(std::time::Duration::from_secs(wait.clamp(1, 60))).await;
+            }
+        };
+        tokio::select! {
+            result = serve => if let Err(error) = result {
+                tracing::error!(%error,"Enrollment listener stopped");
+            },
+            () = expiry => {}
         }
     })
 }

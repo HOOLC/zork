@@ -210,6 +210,34 @@ struct RelayConnectionOptions {
     auth_token: Option<String>,
 }
 
+/// Whether a relay dial failed because the server answered the WebSocket
+/// upgrade with HTTP 429. iroh-relay and tokio-websockets keep only the status
+/// code (not Retry-After), so the error chain text is inspected.
+fn is_rate_limited(err: &(dyn std::error::Error + 'static)) -> bool {
+    let mut current = Some(err);
+    while let Some(error) = current {
+        if rate_limited_text(&error.to_string()) {
+            return true;
+        }
+        current = error.source();
+    }
+    rate_limited_text(&format!("{err:?}"))
+}
+fn rate_limited_text(text: &str) -> bool {
+    // tokio-websockets: "expected HTTP 101 Switching Protocols, got status code 429";
+    // iroh-relay: "Unexpected status during upgrade: 429 Too Many Requests".
+    text.contains("got status code 429")
+        || text.contains("during upgrade: 429")
+        || text.contains("DidNotSwitchProtocols(429)")
+        || text.contains("code: 429")
+}
+/// 30s, 60s, 120s, 240s, then 300s, each with +-20% jitter.
+fn rate_limited_delay(throttled: u32) -> Duration {
+    let base = 30u64.saturating_mul(1u64 << throttled.min(4)).min(300);
+    let jitter: f64 = 0.8 + 0.4 * rand::random::<f64>();
+    Duration::from_secs_f64(base as f64 * jitter)
+}
+
 /// Possible reasons for a failed relay connection.
 #[allow(missing_docs)]
 #[stack_error(derive, add_meta)]
@@ -322,13 +350,29 @@ impl ActiveRelayActor {
     /// Primarily switches between the dialing and connected states.
     async fn run(mut self) {
         let mut backoff = Self::build_backoff();
+        let mut throttled = 0u32;
 
         while let Err(err) = self.run_once().await {
             warn!("{err:#}");
             let was_established = matches!(err, RelayConnectionError::Established { .. });
+            let rate_limited = !was_established && is_rate_limited(&err);
             let last_error = Some(Arc::new(AnyError::from(err)));
             self.my_relay
                 .set_status(&self.url, RelayConnectionState::Disconnected { last_error });
+            if rate_limited {
+                // Zork patch: HTTP 429 means the relay refused admission for
+                // this client. The 16s exponential cap would keep hammering a
+                // budget whose Retry-After is 30s or longer, so back off from
+                // 30s doubling to 5 minutes, with jitter.
+                let delay = rate_limited_delay(throttled);
+                throttled = throttled.saturating_add(1);
+                warn!(?delay, "relay admission rate limited, backing off");
+                tokio::select! {
+                    _ = self.stop_token.cancelled() => break,
+                    _ = time::sleep(delay) => {}
+                }
+                continue;
+            }
             if !was_established {
                 // If dialing failed, or if the relay connection failed before we received a pong,
                 // we wait an exponentially increasing time until we attempt to reconnect again.
@@ -342,6 +386,7 @@ impl ActiveRelayActor {
                 // If the relay connection remained established long enough so that we received a pong
                 // from the relay server, we reset the backoff and attempt to reconnect immediately.
                 backoff = Self::build_backoff();
+                throttled = 0;
             }
         }
         debug!("exiting");
@@ -1469,6 +1514,28 @@ pub(crate) struct RelayRecvDatagram {
     pub(crate) url: RelayUrl,
     pub(crate) src: EndpointId,
     pub(crate) datagrams: Datagrams,
+}
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::*;
+
+    #[test]
+    fn upgrade_429_is_recognised_and_backs_off_to_five_minutes() {
+        assert!(rate_limited_text(
+            "expected HTTP 101 Switching Protocols, got status code 429"
+        ));
+        assert!(rate_limited_text(
+            "Unexpected status during upgrade: 429 Too Many Requests"
+        ));
+        assert!(!rate_limited_text(
+            "expected HTTP 101 Switching Protocols, got status code 502"
+        ));
+        let first = rate_limited_delay(0).as_secs_f64();
+        assert!((24.0..=36.0).contains(&first));
+        let capped = rate_limited_delay(10).as_secs_f64();
+        assert!((240.0..=360.0).contains(&capped));
+    }
 }
 
 #[cfg(test)]

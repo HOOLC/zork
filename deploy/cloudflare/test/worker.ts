@@ -2,6 +2,7 @@
 import { DurableObject } from "cloudflare:workers";
 import worker, { Account as ProductionAccount, RelayBudget as ProductionRelayBudget, DiscoveryRecord, LoginAttempt, LoginLimiter } from "../src/index";
 import { signToken, nowSeconds, reply, readJson } from "../src/auth";
+import { budgetFor } from "../src/relay";
 import type { Env } from "../src/env";
 export { DiscoveryRecord, LoginAttempt, LoginLimiter };
 
@@ -27,21 +28,22 @@ export class Account extends ProductionAccount {
 }
 
 export class RelayBudget extends ProductionRelayBudget {
-  exhaustBudget(kind: "bytes" | "frames" = "bytes") {
+  exhaustBudget(kind: "bytes" | "frames" = "bytes", key = "global") {
     const now = nowSeconds();
-    this.ctx.storage.kv.put("quota", {
+    const limits = budgetFor(key);
+    this.store(key, {
       minute: Math.floor(now / 60),
       day: Math.floor(now / 86400),
       at: now,
-      requests: 0,
       connects: 0,
-      bytes: kind === "bytes" ? 5 * 1024 * 1024 * 1024 : 0,
-      frames: kind === "frames" ? 20_000_000 : 0,
+      bytes: kind === "bytes" ? limits.bytesPerDay : 0,
+      frames: kind === "frames" ? limits.framesPerDay : 0,
       balance: 0,
+      frameBalance: 0,
     });
   }
-  statistics() {
-    return this.ctx.storage.kv.get("quota");
+  statistics(key = "global") {
+    return this.quota(key);
   }
 }
 
@@ -57,6 +59,11 @@ export class Relay extends DurableObject<{ TEST_RELAY?: Fetcher }> {
   delay(milliseconds: number) {
     this.delayMs = milliseconds;
   }
+  private handshake = false;
+  /** Emulates the iroh-relay challenge: ClientAuth (tag 1) is confirmed (tag 2) unless its key starts with 0xff. */
+  useHandshake(enabled: boolean) {
+    this.handshake = enabled;
+  }
   async fetch(request: Request): Promise<Response> {
     if (this.delayMs) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
     if (request.headers.has("authorization") || request.headers.has("cookie") || new URL(request.url).search) {
@@ -68,7 +75,13 @@ export class Relay extends DurableObject<{ TEST_RELAY?: Fetcher }> {
     const pair = new WebSocketPair();
     pair[1].binaryType = "arraybuffer";
     pair[1].accept();
-    pair[1].addEventListener("message", (event) => pair[1].send(event.data));
+    const handshake = this.handshake;
+    if (handshake) pair[1].send(new Uint8Array([0, ...new Uint8Array(16)]));
+    pair[1].addEventListener("message", (event) => {
+      const frame = new Uint8Array(event.data as ArrayBuffer);
+      if (handshake && frame[0] === 1) pair[1].send(new Uint8Array(frame[1] === 0xff ? [3] : [2]));
+      else pair[1].send(event.data);
+    });
     pair[1].addEventListener("close", () => pair[1].close(1000, "closed"));
     return new Response(null, {
       status: 101,

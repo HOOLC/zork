@@ -254,7 +254,8 @@ test("relay budgets span anonymous and account sessions; account idle expiry sti
       h.fetch("/relay", {
         headers: { ...auth(token), upgrade: "websocket", "sec-websocket-protocol": "iroh-relay" },
       });
-    for (let i = 0; i < 8; i++) {
+    // All local test clients share one IP budget.
+    for (let i = 0; i < 32; i++) {
       const response = await upgrade((i % 2 ? first : second).access_token);
       assert.equal(response.status, 101);
       response.webSocket!.accept();
