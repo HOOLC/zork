@@ -134,7 +134,7 @@ fn main() -> anyhow::Result<()> {
     let snapshot = driver.snapshot(false);
     anyhow::ensure!(
         snapshot.elements.iter().any(|e| {
-            e.id == "model-provider-openai" && e.visible && e.label == "OpenAI · 2 个 Profile"
+            e.id == "model-provider-openai" && e.visible && e.label == "OpenAI · 2 个账号"
         }),
         "OpenAI provider group is missing"
     );
@@ -175,6 +175,17 @@ fn main() -> anyhow::Result<()> {
                 && device_name.bounds.y + device_name.bounds.height
                     <= connection.bounds.y + connection.bounds.height,
             "Device label is outside its Profile card: {device_name:?}"
+        );
+        // Unnamed: titled by the access label, and no Profile name is shown.
+        anyhow::ensure!(
+            snapshot.elements.iter().any(|e| {
+                e.id == format!("profile-name-{device}-fixture")
+                    && e.label.starts_with("ChatGPT 订阅 (Codex) · ")
+            }) && !snapshot
+                .elements
+                .iter()
+                .any(|e| e.id == format!("profile-custom-name-{device}-fixture")),
+            "An unnamed connection is not titled by its access"
         );
         // Billing is secondary: it stays in the row's accessible name only.
         anyhow::ensure!(
@@ -368,7 +379,7 @@ fn main() -> anyhow::Result<()> {
             .snapshot(false)
             .elements
             .iter()
-            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 1 个 Profile" }),
+            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 1 个账号" }),
         "Provider count did not follow source removal"
     );
     click("models-add", &mut cx)?;
@@ -395,7 +406,7 @@ fn main() -> anyhow::Result<()> {
         snapshot
             .elements
             .iter()
-            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 2 个 Profile" })
+            .any(|e| { e.id == "model-provider-openai" && e.label == "OpenAI · 2 个账号" })
             && snapshot
                 .elements
                 .iter()
@@ -405,6 +416,41 @@ fn main() -> anyhow::Result<()> {
             }),
         "Same-provider or unconfigured Profile is missing"
     );
+    // A name the user set shows after the account, muted.
+    anyhow::ensure!(
+        snapshot.elements.iter().any(|e| {
+            e.id == "profile-custom-name-desktop-team" && e.visible && e.label == "Team Profile"
+        }) && snapshot.elements.iter().any(|e| {
+            e.id == "profile-name-desktop-team" && e.label.starts_with("ChatGPT 订阅 (Codex) · ")
+        }),
+        "A custom Profile name is not shown after the account"
+    );
+    // Two lines at 600pt: the account has its own line and nothing spills past the card.
+    let element = |id: &str| {
+        snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Missing {id}"))
+    };
+    for key in ["desktop-fixture", "desktop-team"] {
+        let card = element(&format!("profile-detail-{key}"))?;
+        let name = element(&format!("profile-name-{key}"))?;
+        let count = element(&format!("profile-model-count-{key}"))?;
+        let right = card.bounds.x + card.bounds.width;
+        anyhow::ensure!(
+            name.bounds.y + name.bounds.height <= count.bounds.y + 1.
+                && name.bounds.width >= 120.
+                && count.visible
+                && count.bounds.x + count.bounds.width <= right
+                && name.bounds.x + name.bounds.width <= right
+                && card.bounds.x + card.bounds.width <= 600.,
+            "{key}: title or facts do not fit their two lines: {:?} {:?} {:?}",
+            name.bounds,
+            count.bounds,
+            card.bounds
+        );
+    }
     anyhow::ensure!(
         !snapshot
             .elements
@@ -422,6 +468,11 @@ fn main() -> anyhow::Result<()> {
     for (index, (id, name, _, status)) in sources.iter().enumerate() {
         let mut fixture = zork_ui::stories::page_fixture();
         fixture["profile"]["account_key"] = json!("openai:a:0123456789abcdef");
+        // Only the laptop's copy has learned the account's email yet.
+        if index == 1 {
+            fixture["profile"]["account_label"] = json!("codex@example.test");
+        }
+        fixture["profile"]["name"] = json!("openai");
         fixture["profile"]["checkedAt"] = json!(if index == 0 {
             "2026-09-26T00:00:00Z"
         } else {
@@ -456,8 +507,18 @@ fn main() -> anyhow::Result<()> {
         }) && snapshot
             .elements
             .iter()
-            .any(|e| e.id == "model-provider-openai" && e.label == "OpenAI · 1 个 Profile"),
+            .any(|e| e.id == "model-provider-openai" && e.label == "OpenAI · 1 个账号"),
         "Merged card lost its devices or count"
+    );
+    anyhow::ensure!(
+        snapshot.elements.iter().any(|e| {
+            e.id == "profile-name-account-desktop-fixture"
+                && e.label.starts_with("codex@example.test · ")
+        }) && !snapshot
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-custom-name-account-desktop-fixture"),
+        "Merged card is not titled by its account"
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("same-account-merged.png"))?;
@@ -478,6 +539,13 @@ fn main() -> anyhow::Result<()> {
     })??;
     draw(&mut cx)?;
     let snapshot = driver.snapshot(false);
+    anyhow::ensure!(
+        snapshot
+            .elements
+            .iter()
+            .any(|e| e.id == "model-account-name" && e.label == "codex@example.test"),
+        "Account page is not titled by the account"
+    );
     anyhow::ensure!(
         snapshot
             .elements
@@ -517,6 +585,13 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.id == "profile-detail-account-desktop-fixture" && e.visible),
         "Back from the account did not return to the list"
     );
-    println!("PASS model settings: provider → Profile cards, quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal, same account merged across devices");
+    cx.update_window(window.into(), |_, w, cx| {
+        w.resize(size(px(900.), px(760.)));
+        w.bounds_changed(cx);
+    })?;
+    draw(&mut cx)?;
+    cx.capture_screenshot(window.into())?
+        .save(output.join("same-account-merged-900.png"))?;
+    println!("PASS model settings: provider → account cards (account title, custom name muted, generated name hidden), quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal, same account merged across devices");
     Ok(())
 }

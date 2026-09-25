@@ -15,6 +15,10 @@ pub struct ProfileInfo {
     /// that holds the same login or key. Absent when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_key: Option<String>,
+    /// The account's readable name: an email or login, or `···` and the last
+    /// four characters of its API key. Absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_label: Option<String>,
     #[serde(default)]
     pub account: serde_json::Value,
     #[serde(default, rename = "rateLimits")]

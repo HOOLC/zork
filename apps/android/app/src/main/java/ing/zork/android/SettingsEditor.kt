@@ -31,6 +31,14 @@ private fun ConnectionSteps(step: Int) {
     }
 }
 
+/** A new connection's id, as the desktop derives it: the provider id, numbered
+ * (`-2`, `-3`…) past ids this device already has. */
+internal fun newProfileId(provider: String, profiles: List<JSONObject>): String {
+    val base = provider.ifBlank { "connection" }
+    val taken = profiles.map { it.text("profile_id") }.toSet()
+    return generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base-$it" }.first { it !in taken }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSettingsState, actions: SettingsActions,
@@ -38,7 +46,7 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
     open: Boolean = true, onClosed: () -> Unit = dismiss) {
     val context = LocalContext.current
     val attempt = state.authorization.takeIf { kind == "connection" }
-    var name by rememberSaveable { mutableStateOf(if (kind == "rename") state.device?.name.orEmpty() else if (kind == "profile-name") source?.let(::profileName).orEmpty() else source?.text("name").orEmpty()) }
+    var name by rememberSaveable { mutableStateOf(if (kind == "rename") state.device?.name.orEmpty() else if (kind == "profile-name") source?.let(::customName).orEmpty() else source?.text("name").orEmpty()) }
     var profileId by rememberSaveable { mutableStateOf(attempt?.text("profile_id") ?: source?.text("profile_id").orEmpty()) }
     var access by rememberSaveable { mutableStateOf("subscription") }
     var providerId by rememberSaveable { mutableStateOf(attempt?.text("provider").orEmpty()) }
@@ -120,7 +128,11 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                 submit.perform("rename_device", JSONObject().put("name", name))
             }
             "connection" -> if (step == 3) {
-                SettingsButton("完成", true, !discovering) { saved() }
+                // The name is optional; without one the connection is titled by its account.
+                SettingsButton(if (busy) "保存中…" else "完成", true, !discovering && !busy) {
+                    if (name.isBlank()) saved()
+                    else submit.perform("rename_profile", JSONObject().put("profile", profileId).put("name", name.trim()))
+                }
             } else if (step == 1) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("保存到", fontSize = 12.sp, color = ZorkColors.Subtle)
@@ -149,8 +161,8 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
         if (!state.online) Text("设备离线，显示已保存的设置。恢复连接后可修改。", color = ZorkColors.Muted, fontSize = 13.sp)
         when (kind) {
             "profile-name" -> {
-                SettingsField("名称", name, { name = it }, enabled = editable)
-                Text("名称可使用中文，原有连接 ID 和 Session 配置保持有效。", fontSize = 12.sp, color = ZorkColors.Muted)
+                SettingsField("名称（可选）", name, { name = it }, enabled = editable)
+                Text("留空则只显示账号信息。原有连接 ID 和 Session 配置保持有效。", fontSize = 12.sp, color = ZorkColors.Muted)
             }
             "rename" -> {
                 SettingsField("显示名称", name, { name = it }, enabled = editable)
@@ -166,7 +178,7 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                             .zorkPressable(enabled = editable) {
                                 providerId = value; billingId = ""; base = ""; key = ""
                                 access = if ("订阅" in kinds) "subscription" else "api"
-                                if (profileId.isBlank()) profileId = value
+                                if (attempt == null) profileId = newProfileId(value, state.profiles)
                                 step = 2
                             }
                             .semantics { contentDescription = label }
@@ -185,6 +197,7 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                         else -> "开启的模型会出现在新建 Chat 的模型面板里"
                     }, fontSize = 13.sp, color = ZorkColors.Muted)
                     discoverError?.let { Text(it, fontSize = 13.sp, color = ZorkColors.Danger) }
+                    SettingsField("名称（可选）", name, { name = it }, enabled = editable)
                     val rows = newProfile?.let(::modelRows).orEmpty().associateBy { it.text("id") }
                     models.forEach { model ->
                         val row = rows[model.text("id")]
@@ -200,7 +213,6 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                 if (providerCards.find { it.first == providerId }?.third?.size == 2)
                     SettingsSegments(listOf("subscription" to "订阅账号", "api" to "API 接入"), access, editable && attempt == null) { access = it; billingId = ""; key = ""; base = "" }
                 if (billings.size > 1) SettingsSelect("接入方式", billing?.text("id").orEmpty(), billings.map { it.text("id") to it.text("label") }, editable && attempt == null) { billingId = it; key = "" }
-                SettingsField("连接名称", profileId, { profileId = it }, enabled = editable && attempt == null)
                 if (!deviceCode && provider != null && billing != null) {
                     if (providerId == "openai-compatible") SettingsField("接口地址", base, { base = it }, enabled = editable)
                     SettingsField("API Key", key, { key = it }, secret = true, enabled = editable)

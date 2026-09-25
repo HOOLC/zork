@@ -114,6 +114,10 @@ impl AuthProvider for GithubCopilot {
         nonempty(auth.get("githubUserId"))
     }
 
+    fn account_label(&self, _billing: &str, auth: &Value) -> Option<String> {
+        nonempty(auth.get("githubLogin"))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")
@@ -124,12 +128,14 @@ impl AuthProvider for GithubCopilot {
         if billing == "subscription" || nonempty(auth.get("refresh")).is_some() {
             auth = self.refresh_if_needed(http, auth).await?;
         }
-        if nonempty(auth.get("githubUserId")).is_none() {
+        // Once per login: the id merges devices, the login names the account.
+        if nonempty(auth.get("githubUserId")).is_none() || auth.get("githubLogin").is_none() {
             if let Some(github) = nonempty(auth.get("refresh")) {
                 if let Some(map) = auth.as_object_mut() {
                     match github_user(http, &github).await {
-                        Ok(id) => {
+                        Ok((id, login)) => {
                             map.insert("githubUserId".into(), json!(id));
+                            map.insert("githubLogin".into(), json!(login));
                         }
                         Err(error) => tracing::warn!(%error, "GitHub user lookup failed"),
                     }
@@ -270,14 +276,15 @@ async fn mint_copilot_auth(http: &Client, github_token: String) -> Result<Value>
         "expires": expires,
     });
     // The account identity lets devices holding this login show it once.
-    if let Ok(id) = github_user(http, &github_token).await {
+    if let Ok((id, login)) = github_user(http, &github_token).await {
         auth["githubUserId"] = json!(id);
+        auth["githubLogin"] = json!(login);
     }
     Ok(auth)
 }
 
-/// The GitHub user's stable numeric id (logins can be renamed).
-async fn github_user(http: &Client, github_token: &str) -> Result<String> {
+/// The GitHub user's stable numeric id (logins can be renamed) and login.
+async fn github_user(http: &Client, github_token: &str) -> Result<(String, Option<String>)> {
     let response = http
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {github_token}"))
@@ -293,11 +300,12 @@ async fn github_user(http: &Client, github_token: &str) -> Result<String> {
         response.status()
     );
     let payload: Value = response.json().await.context("github user json")?;
-    payload
+    let id = payload
         .get("id")
         .and_then(Value::as_u64)
         .map(|id| id.to_string())
-        .context("GitHub user id missing")
+        .context("GitHub user id missing")?;
+    Ok((id, nonempty(payload.get("login"))))
 }
 
 async fn refresh_copilot_auth(http: &Client, auth: Value) -> Result<Value> {

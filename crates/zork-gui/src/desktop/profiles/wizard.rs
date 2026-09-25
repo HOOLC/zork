@@ -76,12 +76,8 @@ impl ProfilesView {
         self.created = Some(id.clone());
         self.created_detail = None;
         self.discovering = true;
-        let name = self
-            .selection()
-            .and_then(|(p, b)| b["label"].as_str().or_else(|| p["label"].as_str()))
-            .unwrap_or(&id)
-            .to_owned();
-        self.name.update(cx, |v, cx| v.set_value(name, cx));
+        // The name is optional: without one the connection is titled by its account.
+        self.name.update(cx, |v, cx| v.set_value(String::new(), cx));
         let source = self.source.clone();
         cx.spawn(async move |this, cx| {
             let _ = source.open_detail(&id).await;
@@ -457,15 +453,15 @@ impl ProfilesView {
                             .gap(px(8.))
                             .child(
                                 div()
-                                    .w(px(64.))
+                                    .w(px(84.))
                                     .text_size(px(12.5))
                                     .text_color(rgb(p.muted))
-                                    .child("名称"),
+                                    .child("名称（可选）"),
                             )
                             .child(
                                 ui::input_control("profile-new-name", &self.name, false, cx)
                                     .flex_1()
-                                    .automation(AutomationRole::TextInput, "连接名称"),
+                                    .automation(AutomationRole::TextInput, "名称（可选）"),
                             ),
                     )
                     .child(

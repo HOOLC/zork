@@ -98,6 +98,24 @@ impl AuthProvider for Kimi {
         nonempty(claims.get("user_id")).or_else(|| nonempty(claims.get("sub")))
     }
 
+    fn account_label(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        let claims = super::jwt_claims(&nonempty(auth.get("access"))?)?;
+        super::claim_label(
+            &claims,
+            &[
+                "email",
+                "username",
+                "user_name",
+                "name",
+                "nickname",
+                "preferred_username",
+            ],
+        )
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")

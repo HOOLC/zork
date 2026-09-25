@@ -104,6 +104,13 @@ impl AuthProvider for Xai {
         nonempty(auth.get("email")).map(|email| email.to_lowercase())
     }
 
+    fn account_label(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        nonempty(auth.get("email"))
+    }
+
     fn decorate_execution_headers(
         &self,
         billing: &str,

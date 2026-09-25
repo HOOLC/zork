@@ -135,7 +135,7 @@ impl ProfilesView {
         let base_url = field("兼容接口地址（可选）");
         let callback = field("粘贴浏览器返回的授权码或地址");
         let editor_inputs = editor::Inputs::new(cx);
-        let name = cx.new(|cx| ComposerInput::new("名称", cx).single_line());
+        let name = cx.new(|cx| ComposerInput::new("名称（可选）", cx).single_line());
         cx.subscribe(
             &name,
             |_, _, _: &crate::components::text_input::ComposerEdited, cx| {
@@ -603,12 +603,13 @@ impl ProfilesView {
         let Some(detail) = &self.detail else {
             return;
         };
-        let name = detail["name"]
-            .as_str()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| detail["profile_id"].as_str())
-            .unwrap_or_default()
-            .to_owned();
+        // Only a name the user set; an unnamed connection starts empty.
+        let name = serde_json::from_value::<ProfileInfo>(detail.clone())
+            .ok()
+            .and_then(|profile| {
+                zork_client_core::model_connections::connection_title(&profile, &self.catalog).name
+            })
+            .unwrap_or_default();
         self.name.update(cx, |input, cx| {
             input.set_value(name, cx);
         });
@@ -1109,6 +1110,7 @@ impl ProfilesView {
             &[],
             None,
             None,
+            None,
             cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
         )
     }
@@ -1121,11 +1123,16 @@ impl ProfilesView {
         devices: &[(String, zork_ui::device_name::DeviceStatus)],
         model_count: Option<usize>,
         key: Option<String>,
+        title: Option<zork_client_core::model_connections::ConnectionTitle>,
         on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
     ) -> gpui::AnyElement {
         use zork_ui::components::profile_card::{
             self, DeviceIdentity, ProfileCard, Quota, QuotaWindow,
         };
+        // Titled by the account; a merged account passes the title all its copies share.
+        let title = title.unwrap_or_else(|| {
+            zork_client_core::model_connections::connection_title(profile, catalog)
+        });
 
         let id = profile.profile_id.clone();
         let row_key = key.unwrap_or_else(|| {
@@ -1176,12 +1183,16 @@ impl ProfilesView {
                 .collect(),
             balance: quota.balance,
         });
+        let heading = match &title.name {
+            Some(name) => format!("{} · {name}", title.title),
+            None => title.title.clone(),
+        };
         let accessible = if devices.is_empty() {
-            profile.display_name().to_owned()
+            heading
         } else {
             format!(
                 "{} · {}",
-                profile.display_name(),
+                heading,
                 devices
                     .iter()
                     .map(|(device, status)| {
@@ -1196,7 +1207,9 @@ impl ProfilesView {
             ProfileCard {
                 key: row_key,
                 provider: profile.provider.clone(),
-                name: profile.display_name().to_owned(),
+                name: title.title,
+                custom_name: title.name,
+                access: title.access,
                 devices: devices
                     .iter()
                     .map(|(name, status)| DeviceIdentity {

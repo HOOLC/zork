@@ -338,11 +338,23 @@ impl ProfilesView {
             window.focus(&self.page_focus, cx);
         }
         let profile_id = detail["profile_id"].as_str().unwrap_or_default().to_owned();
-        let title = detail["name"]
-            .as_str()
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or(&profile_id)
-            .to_owned();
+        // Titled by the account like its card; a name the user set follows, muted.
+        // Only the naming fields: the detail also carries every model.
+        let naming = serde_json::json!({
+            "profile_id": detail["profile_id"], "provider": detail["provider"],
+            "billing": detail["billing"], "name": detail["name"],
+            "account_label": detail["account_label"],
+        });
+        let heading = serde_json::from_value::<zork_client_core::api::ProfileInfo>(naming)
+            .ok()
+            .map(|profile| {
+                zork_client_core::model_connections::connection_title(&profile, &self.catalog)
+            });
+        let title = heading
+            .as_ref()
+            .map(|h| h.title.clone())
+            .unwrap_or_else(|| profile_id.clone());
+        let custom_name = heading.and_then(|h| h.name);
         let provider = self.catalog.iter().find(|x| x["id"] == detail["provider"]);
         let provider_name = provider
             .and_then(|x| x["label"].as_str())
@@ -415,6 +427,20 @@ impl ProfilesView {
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .child(title.clone()),
                 )
+                .when_some(custom_name.clone(), |v, custom| {
+                    v.child(
+                        div()
+                            .id("profile-custom-name")
+                            .min_w_0()
+                            .flex_shrink(8.)
+                            .truncate()
+                            .ml(px(4.))
+                            .text_size(px(13.))
+                            .text_color(rgb(p.muted))
+                            .child(custom.clone())
+                            .automation(AutomationRole::Status, custom),
+                    )
+                })
                 .child(
                     ui::icon_button("profile-rename", !self.busy)
                         .child(ui::icon("icons/edit.svg", 14.))

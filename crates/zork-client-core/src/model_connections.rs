@@ -5,6 +5,9 @@
 //! The same provider account saved on several devices is one connection: rows
 //! with equal `(provider, account_key)` merge, and each device stays a source
 //! that is still managed on its own. Rows without an identity never merge.
+//!
+//! A connection is titled by its account (see [`connection_title`]); a Profile
+//! name only shows when the user set one.
 use crate::{api::ProfileInfo, settings, store::ClientStore};
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -73,6 +76,157 @@ pub fn merge_accounts(sources: &[AccountSource<'_>]) -> Vec<AccountEntry> {
     entries
 }
 
+/// How a connection is titled on every client.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct ConnectionTitle {
+    /// The account label; for an API key the access plus its tail
+    /// ("OpenCode Go 订阅 · ···a1b2"); else the access label. Never empty.
+    pub title: String,
+    /// A name the user set explicitly, shown secondary and muted. Generated
+    /// names (equal to the provider, access or id defaults) are never shown.
+    pub name: Option<String>,
+    /// The access wording for the row's meta line, unless the title already says it.
+    pub access: Option<String>,
+}
+
+/// Prefix of an API key's label; the rest is its last four characters.
+const KEY_TAIL: &str = "···";
+
+/// The title of one device's connection. `providers` is that device's catalog;
+/// without it the title falls back to the provider id.
+pub fn connection_title(profile: &ProfileInfo, providers: &[Value]) -> ConnectionTitle {
+    let text = |value: &Value| {
+        value
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
+    let provider = providers
+        .iter()
+        .find(|p| p["id"] == profile.provider.as_str());
+    let provider_label = provider.and_then(|p| text(&p["label"]));
+    let billings: Vec<&Value> = provider
+        .and_then(|p| p["billing"].as_array())
+        .map(|items| items.iter().collect())
+        .unwrap_or_default();
+    let billing_label = billings
+        .iter()
+        .find(|b| b["id"].as_str() == profile.billing.as_deref())
+        .and_then(|b| text(&b["label"]));
+    let access = billing_label
+        .clone()
+        .or_else(|| provider_label.clone())
+        .or_else(|| Some(profile.provider.trim().to_owned()).filter(|s| !s.is_empty()))
+        .or_else(|| Some(profile.profile_id.trim().to_owned()).filter(|s| !s.is_empty()))
+        .unwrap_or_else(|| "模型连接".to_owned());
+    let label = profile
+        .account_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != KEY_TAIL);
+    let title = match label {
+        Some(tail) if tail.starts_with(KEY_TAIL) => format!("{access} · {tail}"),
+        Some(label) => label.to_owned(),
+        None => access.clone(),
+    };
+    let meta_access = (!title.contains(access.as_str())).then(|| access.clone());
+    // Every name a client or an older version generated for this connection.
+    let mut defaults = vec![
+        profile.profile_id.clone(),
+        generated_id_base(&profile.profile_id).to_owned(),
+        profile.provider.clone(),
+        access,
+        title.clone(),
+    ];
+    defaults.extend(label.map(str::to_owned));
+    defaults.extend(provider_label.clone());
+    for billing in &billings {
+        if let Some(label) = text(&billing["label"]) {
+            if let Some(provider) = &provider_label {
+                defaults.push(format!("{provider} {label}"));
+            }
+            defaults.push(label);
+        }
+    }
+    let defaults: Vec<String> = defaults.iter().map(|d| name_key(d)).collect();
+    let name = profile
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && !defaults.contains(&name_key(name)))
+        .map(str::to_owned);
+    ConnectionTitle {
+        title,
+        name,
+        access: meta_access,
+    }
+}
+
+/// The title of one account saved on several devices: the first source that
+/// knows the account names it, so every copy reads the same.
+pub fn account_title<'a>(
+    sources: impl IntoIterator<Item = (&'a ProfileInfo, &'a [Value])>,
+) -> ConnectionTitle {
+    let titles: Vec<_> = sources
+        .into_iter()
+        .map(|(profile, providers)| {
+            let known = profile
+                .account_label
+                .as_deref()
+                .is_some_and(|l| !l.trim().is_empty());
+            (known, connection_title(profile, providers))
+        })
+        .collect();
+    let title = titles
+        .iter()
+        .find(|(known, _)| *known)
+        .or(titles.first())
+        .map(|(_, t)| t.title.clone())
+        .unwrap_or_else(|| "模型连接".to_owned());
+    let name = titles.iter().find_map(|(_, t)| t.name.clone());
+    let access = titles
+        .iter()
+        .find(|(known, _)| *known)
+        .or(titles.first())
+        .and_then(|(_, t)| t.access.clone());
+    ConnectionTitle {
+        title,
+        name,
+        access,
+    }
+}
+
+/// `opencode-go-2` came from `opencode-go`: clients number repeated ids.
+fn generated_id_base(id: &str) -> &str {
+    match id.rsplit_once('-') {
+        Some((base, n)) if !base.is_empty() && n.parse::<u32>().is_ok() => base,
+        _ => id,
+    }
+}
+
+/// Names compare without case, spaces or punctuation: "OpenCode-Go" is the
+/// generated "opencode-go".
+fn name_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Adds core's `title` and `custom_name` to each profile of one device.
+pub(crate) fn present_titles(profiles: &mut [Value], providers: &[Value]) {
+    for profile in profiles {
+        let Ok(parsed) = serde_json::from_value::<ProfileInfo>(profile.clone()) else {
+            continue;
+        };
+        let title = connection_title(&parsed, providers);
+        profile["title"] = json!(title.title);
+        profile["custom_name"] = json!(title.name);
+        profile["access"] = json!(title.access);
+    }
+}
+
 /// Orders samples: any success above any failure, then by sampling time.
 fn sample(source: &AccountSource<'_>) -> (bool, i64) {
     let profile = source.profile;
@@ -105,6 +259,7 @@ fn accounts(devices: &[Value]) -> Value {
         billing: None,
         verified: false,
         account_key: None,
+        account_label: None,
         account: Value::Null,
         rate_limits: Value::Null,
         checked_at: None,
@@ -124,7 +279,13 @@ fn accounts(devices: &[Value]) -> Value {
             .into_iter()
             .map(|entry| {
                 let (device, profile, _) = rows[entry.primary];
-                let first = rows[entry.sources[0]].1;
+                let title = account_title(entry.sources.iter().map(|&index| {
+                    let (device, _, _) = rows[index];
+                    (
+                        sources[index].profile,
+                        device["providers"].as_array().map(Vec::as_slice).unwrap_or(&[]),
+                    )
+                }));
                 let id = match sources[entry.primary].profile.account_key.as_deref() {
                     Some(key) if !key.is_empty() => format!("account:{key}"),
                     _ => format!("profile:{}/{}", device["peer"].as_str().unwrap_or_default(),
@@ -133,8 +294,10 @@ fn accounts(devices: &[Value]) -> Value {
                 json!({
                     "id": id,
                     "provider": profile["provider"],
-                    "name": first["name"].as_str().filter(|n| !n.trim().is_empty())
-                        .or_else(|| first["profile_id"].as_str()),
+                    "name": title.title,
+                    "title": title.title,
+                    "custom_name": title.name,
+                    "access": title.access,
                     "peer": device["peer"],
                     "profile": profile,
                     "models": entry.models,
@@ -389,7 +552,10 @@ mod tests {
         let accounts = accounts(&devices);
         let accounts = accounts.as_array().unwrap();
         assert_eq!(accounts.len(), 2);
-        assert_eq!(accounts[0]["name"], "OpenCode-Go");
+        // "OpenCode-Go" is the generated default, so the account titles the card.
+        assert_eq!(accounts[0]["name"], "opencode-go");
+        assert_eq!(accounts[0]["title"], "opencode-go");
+        assert_eq!(accounts[0]["custom_name"], Value::Null);
         assert_eq!(accounts[0]["peer"], "b");
         assert_eq!(accounts[0]["profile"]["profile_id"], "go2");
         let devices: Vec<_> = accounts[0]["sources"]
@@ -401,6 +567,197 @@ mod tests {
         assert_eq!(devices, vec![json!("A"), json!("B")]);
         assert_eq!(accounts[1]["sources"].as_array().unwrap().len(), 1);
         assert_eq!(accounts[1]["id"], "profile:b/solo");
+    }
+
+    fn catalog() -> Vec<Value> {
+        vec![
+            json!({"id":"opencode-go","label":"OpenCode Go",
+                "billing":[{"id":"subscription","label":"OpenCode Go 订阅"}]}),
+            json!({"id":"anthropic","label":"Anthropic","billing":[
+                {"id":"usage","label":"API 按量"},{"id":"subscription","label":"Claude 订阅 (Pro/Max)"}]}),
+        ]
+    }
+
+    fn titled(
+        provider: &str,
+        billing: &str,
+        id: &str,
+        name: Option<&str>,
+        label: Option<&str>,
+    ) -> ProfileInfo {
+        serde_json::from_value(
+            json!({"profile_id": id, "provider": provider, "billing": billing,
+            "name": name, "account_label": label}),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn title_is_the_account_and_api_keys_keep_the_access_wording() {
+        let providers = catalog();
+        let login = titled(
+            "anthropic",
+            "subscription",
+            "anthropic",
+            None,
+            Some("me@example.test"),
+        );
+        assert_eq!(
+            connection_title(&login, &providers),
+            ConnectionTitle {
+                title: "me@example.test".into(),
+                name: None,
+                access: Some("Claude 订阅 (Pro/Max)".into()),
+            }
+        );
+        let key = titled(
+            "opencode-go",
+            "subscription",
+            "opencode-go",
+            None,
+            Some("···a1b2"),
+        );
+        assert_eq!(
+            connection_title(&key, &providers).title,
+            "OpenCode Go 订阅 · ···a1b2"
+        );
+        // The title already says the access, so the meta line does not repeat it.
+        assert_eq!(connection_title(&key, &providers).access, None);
+    }
+
+    #[test]
+    fn only_a_name_the_user_set_shows_and_generated_names_never_do() {
+        let providers = catalog();
+        let custom = titled(
+            "opencode-go",
+            "subscription",
+            "opencode-go",
+            Some(" 工作 "),
+            Some("···a1b2"),
+        );
+        assert_eq!(
+            connection_title(&custom, &providers).name.as_deref(),
+            Some("工作")
+        );
+        for generated in [
+            "OpenCode-Go",
+            "opencode-go",
+            "OpenCode Go",
+            "OpenCode Go 订阅",
+            "opencode-go-2",
+            "  ",
+            "···a1b2",
+        ] {
+            let profile = titled(
+                "opencode-go",
+                "subscription",
+                "opencode-go-2",
+                Some(generated),
+                Some("···a1b2"),
+            );
+            assert_eq!(
+                connection_title(&profile, &providers).name,
+                None,
+                "{generated}"
+            );
+        }
+        // Without a catalog the provider id and profile id still count as generated.
+        let bare = titled(
+            "opencode-go",
+            "subscription",
+            "go",
+            Some("OpenCode-Go"),
+            None,
+        );
+        assert_eq!(connection_title(&bare, &[]).name, None);
+        let email = titled(
+            "anthropic",
+            "subscription",
+            "claude",
+            Some("Me@Example.test"),
+            Some("me@example.test"),
+        );
+        assert_eq!(
+            connection_title(&email, &providers).name,
+            None,
+            "repeats the title"
+        );
+    }
+
+    #[test]
+    fn unknown_accounts_fall_back_to_the_access_label_and_are_never_empty() {
+        let providers = catalog();
+        let unknown = titled(
+            "anthropic",
+            "subscription",
+            "anthropic",
+            Some("Claude"),
+            None,
+        );
+        let title = connection_title(&unknown, &providers);
+        assert_eq!(title.title, "Claude 订阅 (Pro/Max)");
+        assert_eq!(title.name.as_deref(), Some("Claude"));
+        assert_eq!(connection_title(&unknown, &[]).title, "anthropic");
+        let blank = titled("", "", "", None, Some("  "));
+        assert_eq!(connection_title(&blank, &[]).title, "模型连接");
+    }
+
+    #[test]
+    fn merged_accounts_share_one_title_from_the_source_that_knows_the_account() {
+        let providers = catalog();
+        let older = titled(
+            "opencode-go",
+            "subscription",
+            "opencode-go",
+            Some("OpenCode-Go"),
+            None,
+        );
+        let newer = titled(
+            "opencode-go",
+            "subscription",
+            "go-2",
+            Some("家里"),
+            Some("···a1b2"),
+        );
+        let title = account_title([
+            (&older, providers.as_slice()),
+            (&newer, providers.as_slice()),
+        ]);
+        assert_eq!(title.title, "OpenCode Go 订阅 · ···a1b2");
+        assert_eq!(title.name.as_deref(), Some("家里"));
+        let devices = [
+            device(
+                "a",
+                "A",
+                &json!({"ready":true,"profiles_ready":true,"providers":providers,
+                "profiles":[{"profile_id":"opencode-go","name":"OpenCode-Go","provider":"opencode-go",
+                    "billing":"subscription","account_key":"opencode-go:k:1","account_label":"···a1b2"}]}),
+                None,
+                None,
+            ),
+            device(
+                "b",
+                "B",
+                &json!({"ready":true,"profiles_ready":true,"providers":providers,
+                "profiles":[{"profile_id":"opencode-go","provider":"opencode-go","billing":"subscription",
+                    "account_key":"opencode-go:k:1","account_label":"···a1b2"}]}),
+                None,
+                None,
+            ),
+        ];
+        let accounts = accounts(&devices);
+        assert_eq!(accounts[0]["title"], "OpenCode Go 订阅 · ···a1b2");
+        assert_eq!(accounts[0]["custom_name"], Value::Null);
+        assert_eq!(accounts[0]["sources"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn device_profiles_carry_core_titles() {
+        let mut profiles = vec![json!({"profile_id":"opencode-go","provider":"opencode-go",
+            "billing":"subscription","name":"OpenCode-Go","account_label":"···a1b2"})];
+        present_titles(&mut profiles, &catalog());
+        assert_eq!(profiles[0]["title"], "OpenCode Go 订阅 · ···a1b2");
+        assert_eq!(profiles[0]["custom_name"], Value::Null);
     }
 
     #[test]

@@ -9,7 +9,9 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, Task, Window};
 use std::{collections::BTreeMap, sync::Arc};
-use zork_client_core::model_connections::{merge_accounts, AccountEntry, AccountSource};
+use zork_client_core::model_connections::{
+    account_title, connection_title, merge_accounts, AccountEntry, AccountSource, ConnectionTitle,
+};
 
 type Source = (
     String,
@@ -66,9 +68,9 @@ fn append_groups(
 }
 fn sort_rows(rows: &mut [ConnectionRow]) {
     rows.sort_by(|a, b| {
-        a.profile
-            .display_name()
-            .cmp(b.profile.display_name())
+        connection_title(&a.profile, &a.providers)
+            .title
+            .cmp(&connection_title(&b.profile, &b.providers).title)
             .then_with(|| a.device_name.cmp(&b.device_name))
             .then_with(|| a.device_id.cmp(&b.device_id))
             .then_with(|| a.profile.profile_id.cmp(&b.profile.profile_id))
@@ -84,6 +86,15 @@ fn account_entries(rows: &[ConnectionRow]) -> Vec<AccountEntry> {
         })
         .collect();
     merge_accounts(&sources)
+}
+/// One title for every copy of an account.
+fn entry_title(rows: &[ConnectionRow], entry: &AccountEntry) -> ConnectionTitle {
+    account_title(
+        entry
+            .sources
+            .iter()
+            .map(|&index| (&rows[index].profile, rows[index].providers.as_slice())),
+    )
 }
 /// A merged account is named by its identity, which is equal on every source.
 fn account_id(rows: &[ConnectionRow], entry: &AccountEntry) -> String {
@@ -224,7 +235,7 @@ impl ModelSettings {
             .first()
             .map(|row| row.provider_label.clone())
             .unwrap_or_else(|| provider_id.clone());
-        let profile_count = accounts.len();
+        let account_count = accounts.len();
         ui::section()
             .gap_2()
             .child(
@@ -245,11 +256,11 @@ impl ModelSettings {
                         div()
                             .text_size(px(12.))
                             .text_color(rgb(palette.muted))
-                            .child(format!("{profile_count} 个 Profile")),
+                            .child(format!("{account_count} 个账号")),
                     )
                     .automation(
                         AutomationRole::Status,
-                        format!("{provider_label} · {profile_count} 个 Profile"),
+                        format!("{provider_label} · {account_count} 个账号"),
                     ),
             )
             .children(accounts.iter().map(|entry| {
@@ -289,6 +300,7 @@ impl ModelSettings {
                 &[(row.device_name.clone(), row.device_status.clone())],
                 None,
                 None,
+                None,
                 on_click,
             )
         })
@@ -307,8 +319,8 @@ impl ModelSettings {
             return gpui::Empty.into_any_element();
         };
         let first = &rows[entry.sources[0]];
-        let mut profile = primary.profile.clone();
-        profile.name = Some(first.profile.display_name().to_owned());
+        let profile = primary.profile.clone();
+        let title = entry_title(rows, entry);
         // Named by its first source, so it stays put when the quota source changes.
         let key = format!("account-{}-{}", first.device_id, first.profile.profile_id);
         let devices: Vec<_> = entry
@@ -329,6 +341,7 @@ impl ModelSettings {
                 &devices,
                 Some(entry.models),
                 Some(key),
+                Some(title),
                 on_click,
             )
         })
@@ -343,14 +356,21 @@ impl ModelSettings {
         let p = ZORK_UI.palette;
         let first = &rows[entry.sources[0]];
         let provider = first.profile.provider.clone();
-        let name = first.profile.display_name().to_owned();
+        let title = entry_title(&rows, &entry);
+        let name = title.title.clone();
         let devices = entry
             .sources
             .iter()
             .map(|&index| rows[index].device_name.as_str())
             .collect::<Vec<_>>()
             .join("、");
-        let meta = format!("{} · 同一账号保存在 {devices}", first.provider_label);
+        let meta = match &title.name {
+            Some(custom) => format!(
+                "{custom} · {} · 同一账号保存在 {devices}",
+                first.provider_label
+            ),
+            None => format!("{} · 同一账号保存在 {devices}", first.provider_label),
+        };
         div()
             .w_full()
             .flex()

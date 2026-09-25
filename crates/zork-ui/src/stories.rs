@@ -511,6 +511,8 @@ impl Render for PrimitiveStory {
                     key: "story-card".into(),
                     provider: if state == "manual" { "anthropic" } else { "openai" }.into(),
                     name: if state == "manual" { "Claude API" } else { "Codex" }.into(),
+                    custom_name: None,
+                    access: None,
                     devices: std::iter::once(DeviceIdentity {
                         name: if state == "narrow" {
                             "设计工作室的 MacBook Air"

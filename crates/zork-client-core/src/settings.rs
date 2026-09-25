@@ -59,6 +59,7 @@ pub(crate) fn cached(store: &ClientStore, peer: &str) -> Result<Value> {
                 _ => {}
             }
         }
+        crate::model_connections::present_titles(&mut profiles, &providers);
         return Ok(
             json!({"ready":true,"cached":true,"info":info,"agents":agents,"profiles":profiles,"providers":providers,"cursor":cursor,"profiles_ready":profile_ready,"profiles_error":profile_error}),
         );
@@ -66,10 +67,15 @@ pub(crate) fn cached(store: &ClientStore, peer: &str) -> Result<Value> {
     let mut snapshot = store
         .get::<Value>(peer, "public-settings")?
         .unwrap_or_else(|| json!({"ready":false,"cached":true}));
+    let providers = snapshot["providers"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     if let Some(profiles) = snapshot["profiles"].as_array_mut() {
-        for profile in profiles {
+        for profile in profiles.iter_mut() {
             *profile = present_profile(profile.take());
         }
+        crate::model_connections::present_titles(profiles, &providers);
     }
     Ok(snapshot)
 }

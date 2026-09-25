@@ -23,8 +23,8 @@ import org.json.JSONObject
 private data class SourceUi(val peer: String, val device: String, val profile: JSONObject)
 /** One account in the global list: core merges the same provider account saved on
  * several devices; [profile] is the source whose quota represents it. */
-private data class ConnectionUi(val id: String, val name: String, val profile: JSONObject, val providerLabel: String,
-    val models: Int, val sources: List<SourceUi>)
+private data class ConnectionUi(val id: String, val name: String, val customName: String?, val profile: JSONObject, val providerLabel: String,
+    val models: Int, val sources: List<SourceUi>, val access: String? = null)
 
 /** Verification from core's `verification`: verified, failed or pending. */
 @Composable
@@ -39,6 +39,12 @@ internal fun VerificationPill(profile: JSONObject) {
         if (label == "已验证") Glyph(R.drawable.ic_check, 12.dp, fg)
         Text(label, fontSize = 12.sp, color = fg, maxLines = 1)
     }
+}
+
+/** Core writes an API key's title as "access · ···tail"; split so only the access ellipsizes. */
+internal fun splitKeyTail(title: String): Pair<String, String?> {
+    val at = title.lastIndexOf(" · ···")
+    return if (at <= 0) title to null else title.substring(0, at) to title.substring(at + 3)
 }
 
 internal fun accessLabel(profile: JSONObject) = if (profile.text("billing") == "subscription") "订阅" else "API Key"
@@ -57,16 +63,20 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
         val accounts = state.accounts ?: devices.flatMap { device ->
             device.optJSONArray("profiles").objects().map { profile ->
                 JSONObject().put("id", "profile:${device.text("peer")}/${profile.text("profile_id")}")
-                    .put("name", profileName(profile)).put("provider", profile.text("provider")).put("profile", profile)
+                    .put("title", connectionTitle(profile)).put("custom_name", customName(profile)).put("access", profile.opt("access")).put("provider", profile.text("provider")).put("profile", profile)
                     .put("models", profile.optJSONArray("models")?.length() ?: 0)
                     .put("sources", org.json.JSONArray().put(JSONObject().put("peer", device.text("peer")).put("device", device.text("name")).put("profile", profile)))
             }
         }
         accounts.map { account ->
             val profile = account.optJSONObject("profile") ?: JSONObject()
-            ConnectionUi(account.text("id"), account.text("name", profileName(profile)), profile,
+            // Core titles the account; a Profile name only when the user set one.
+            val title = account.text("title").ifBlank { account.text("name").ifBlank { connectionTitle(profile) } }
+            ConnectionUi(account.text("id"), title, account.text("custom_name").takeIf { it.isNotBlank() && it != title }, profile,
                 labels[account.text("provider")] ?: account.text("provider"), account.optInt("models"),
-                account.optJSONArray("sources").objects().map { SourceUi(it.text("peer"), it.text("device"), it.optJSONObject("profile") ?: profile) })
+                account.optJSONArray("sources").objects().map { SourceUi(it.text("peer"), it.text("device"), it.optJSONObject("profile") ?: profile) },
+                // Core's access wording when the title does not already say it.
+                (if (account.has("access")) account.text("access") else profile.text("access")).takeIf { it.isNotBlank() })
         }
     }
     val groups = remember(rows) { rows.groupBy { it.providerLabel }.toSortedMap(String.CASE_INSENSITIVE_ORDER) }
@@ -101,8 +111,11 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
             groups.forEach { (provider, connections) ->
                 item(key = "provider:$provider") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(provider, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
-                            modifier = Modifier.padding(start = 8.dp, top = 8.dp))
+                        Row(Modifier.padding(start = 8.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(provider, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            Text("${connections.size} 个账号", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1)
+                        }
                         SettingsListGroup {
                             connections.sortedBy { it.name.lowercase() }.forEach { connection ->
                                 ConnectionCard(connection) {
@@ -131,7 +144,7 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
                 account.sources.forEach { source ->
                     val verification = source.profile.text("verification", if (source.profile.optBoolean("verified")) "verified" else "pending")
                     SettingsListRow(source.device, leading = { DeviceMark(source.device, 24.dp) },
-                        subtext = profileName(source.profile).takeIf { it != account.name },
+                        subtext = customName(source.profile),
                         trailing = { if (verification != "verified") VerificationPill(source.profile) },
                         action = { sourcesOf = null; actions.connection(source.peer, source.profile) })
                 }
@@ -165,32 +178,57 @@ private fun ConnectionBanner(text: String, retry: (() -> Unit)?, reason: String?
 
 @Composable
 private fun ConnectionCard(connection: ConnectionUi, open: () -> Unit) {
-    // One row: name, where it lives, a thin quota bar for subscriptions and the model
-    // count. A status pill appears only when verification needs attention.
+    // Two lines, like the chat list: the account first (it names the connection),
+    // then the quiet facts. A status pill appears only when verification needs attention.
     val profile = connection.profile
     val models = connection.models
     val verification = profile.text("verification", if (profile.optBoolean("verified")) "verified" else "pending")
     val remaining = if (profile.text("billing") == "subscription") quotaRemaining(profile) else null
     val devices = connection.sources.joinToString("、") { it.device }
-    val description = "${connection.name}，${accessLabel(profile)}，$devices"
-    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics(mergeDescendants = true) { contentDescription = description }, onClick = open) {
-        Text(connection.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false))
-        // Every device that holds this account, in core's order.
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            connection.sources.forEach { DeviceMark(it.device, 16.dp) }
-        }
-        Spacer(Modifier.weight(1f))
-        if (verification != "verified") VerificationPill(profile)
-        else {
-            remaining?.let { target ->
-                val share = animatedValue(target, "quota")
-                val tone = when { share < 10f -> ZorkColors.Danger; share < 30f -> ZorkColors.Warning; else -> ZorkColors.Ink }
-                Box(Modifier.width(48.dp).height(4.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
-                    Box(Modifier.fillMaxWidth(share / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))
+    val heading = listOfNotNull(connection.name, connection.customName).joinToString(" · ")
+    val description = "$heading，${accessLabel(profile)}，$devices"
+    ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 60.dp).semantics(mergeDescendants = true) { contentDescription = description }, onClick = open) {
+        ProviderMark(profile.text("provider"), 22)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // An API key's tail identifies the account, so the access wording before it
+                // is what ellipsizes: "OpenCode G… · ···a1b2".
+                val (head, tail) = splitKeyTail(connection.name)
+                // The account takes up to three quarters of the line; the custom name the rest.
+                Row(Modifier.weight(3f, fill = false), verticalAlignment = Alignment.CenterVertically) {
+                    Text(head, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    tail?.let { Text(" · $it", fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false) }
+                }
+                // A name the user set: secondary, and it gives up width before the account.
+                connection.customName?.let {
+                    Text(it, fontSize = 13.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
                 }
             }
-            Text("$models", fontSize = 13.sp, color = ZorkColors.Subtle, modifier = Modifier.semantics { contentDescription = "$models 个模型" })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                connection.access?.let {
+                    Text(it, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                }
+                // Every device that holds this account, in core's order.
+                Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    connection.sources.forEach { DeviceMark(it.device, 14.dp) }
+                    Text(devices, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 2.dp))
+                }
+                if (verification == "verified") remaining?.let { target ->
+                    val share = animatedValue(target, "quota")
+                    val tone = when { share < 10f -> ZorkColors.Danger; share < 30f -> ZorkColors.Warning; else -> ZorkColors.Ink }
+                    Box(Modifier.width(28.dp).height(4.dp).background(ZorkColors.Border, ZorkShapes.Control)) {
+                        Box(Modifier.fillMaxWidth(share / 100f).fillMaxHeight().background(tone, ZorkShapes.Control))
+                    }
+                    Text("${target.toInt()}%", fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, softWrap = false)
+                }
+                Text("$models 个模型", fontSize = 12.sp, color = ZorkColors.Subtle, maxLines = 1, softWrap = false)
+                // Status is a fact of the second line, so the account keeps the first.
+                if (verification != "verified") VerificationPill(profile)
+            }
         }
     }
 }

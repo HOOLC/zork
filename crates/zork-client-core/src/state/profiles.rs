@@ -763,9 +763,10 @@ impl Profiles {
     pub async fn rename(&self, id: String, name: String) -> anyhow::Result<()> {
         crate::model_edit::valid_id(&id)?;
         let name = name.trim();
+        // An empty name clears it: the connection is titled by its account.
         anyhow::ensure!(
-            !name.is_empty() && name.chars().count() <= 100 && !name.chars().any(char::is_control),
-            "名称需为 1–100 个字符"
+            name.chars().count() <= 100 && !name.chars().any(char::is_control),
+            "名称最多 100 个字符"
         );
         let value = self
             .client

@@ -101,6 +101,13 @@ impl AuthProvider for Anthropic {
         nonempty(auth.get("accountUuid"))
     }
 
+    fn account_label(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        nonempty(auth.get("email"))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")
@@ -109,7 +116,7 @@ impl AuthProvider for Anthropic {
         let auth = document.get("auth").cloned().unwrap_or(json!({}));
         if billing == "subscription" {
             let refreshed = self.refresh_if_needed(http, auth.clone()).await?;
-            let refreshed = with_account_uuid(http, refreshed).await;
+            let refreshed = with_account_identity(http, refreshed).await;
             let snapshot = probe_subscription(http, &refreshed).await?;
             return Ok(super::with_refreshed_auth(snapshot, &auth, refreshed));
         }
@@ -301,7 +308,7 @@ fn fill_random(buf: &mut [u8]) {
     getrandom::fill(buf).expect("OS randomness unavailable");
 }
 
-fn base64url_nopad(input: &[u8]) -> String {
+pub(super) fn base64url_nopad(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(input.len().saturating_mul(4).div_ceil(3));
     let mut chunks = input.chunks_exact(3);
@@ -406,13 +413,19 @@ async fn read_token_response(
         if let Some(uuid) = nonempty(payload.pointer("/account/uuid")) {
             map.insert("accountUuid".into(), json!(uuid));
         }
+        if let Some(email) = nonempty(payload.pointer("/account/email_address"))
+            .or_else(|| nonempty(payload.pointer("/account/email")))
+        {
+            map.insert("email".into(), json!(email));
+        }
     }
     Ok(next)
 }
 
-/// Logins saved before the account id was kept learn it once from the profile.
-async fn with_account_uuid(http: &Client, mut auth: Value) -> Value {
-    if nonempty(auth.get("accountUuid")).is_some() {
+/// Logins saved before the account id and email were kept learn them once from
+/// the profile. A profile without an email records `null`, so it is not asked again.
+async fn with_account_identity(http: &Client, mut auth: Value) -> Value {
+    if nonempty(auth.get("accountUuid")).is_some() && auth.get("email").is_some() {
         return auth;
     }
     let Some(bearer) = nonempty(auth.get("access")) else {
@@ -433,12 +446,19 @@ async fn with_account_uuid(http: &Client, mut auth: Value) -> Value {
             response.status()
         );
         let payload: Value = response.json().await.context("Claude profile response")?;
-        nonempty(payload.pointer("/account/uuid")).context("Claude account uuid missing")
+        let uuid =
+            nonempty(payload.pointer("/account/uuid")).context("Claude account uuid missing")?;
+        let email = nonempty(payload.pointer("/account/email"))
+            .or_else(|| nonempty(payload.pointer("/account/email_address")));
+        Ok::<_, anyhow::Error>((uuid, email))
     };
     match lookup.await {
-        Ok(uuid) => {
+        Ok((uuid, email)) => {
             if let Some(map) = auth.as_object_mut() {
                 map.insert("accountUuid".into(), json!(uuid));
+                if nonempty(map.get("email")).is_none() {
+                    map.insert("email".into(), json!(email));
+                }
             }
         }
         Err(error) => tracing::warn!(%error, "Claude account lookup failed"),
