@@ -90,6 +90,23 @@ test("client auth verification uses real ed25519 signatures over the derived cha
 
 // ---- Worker + Durable Object --------------------------------------------------
 
+test("net report captive-portal probe gets iroh-relay's 204 challenge response", async () => {
+  const h = await harness({ noGoogle: true });
+  try {
+    const ok = await h.fetch("/generate_204", { headers: { "x-iroh-challenge": "ts1727.ab-C_9" } });
+    assert.equal(ok.status, 204);
+    assert.equal(ok.headers.get("x-iroh-response"), "response ts1727.ab-C_9");
+    const plain = await h.fetch("/generate_204");
+    assert.equal(plain.status, 204);
+    assert.equal(plain.headers.get("x-iroh-response"), null);
+    const bad = await h.fetch("/generate_204", { headers: { "x-iroh-challenge": "a b<script>" } });
+    assert.equal(bad.status, 204);
+    assert.equal(bad.headers.get("x-iroh-response"), null, "invalid challenges are not echoed");
+  } finally {
+    await h.close();
+  }
+});
+
 test("upgrade negotiation, signed challenge and ServerConfirmsAuth; operator restart", { timeout: 15000 }, async () => {
   const h = await harness({ noGoogle: true });
   try {
