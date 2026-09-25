@@ -459,6 +459,75 @@ pub fn normalize_tokens(text: &str) -> String {
         .unwrap_or_else(|| text.trim().to_owned())
 }
 
+/// From here on a whole number typed next to a K|M unit is a raw token count
+/// (`131072` with K selected means 131,072 tokens, not 131M); below it the
+/// number means the selected unit (`128` with K is 128K).
+pub const RAW_TOKEN_MIN: u64 = 10_000;
+
+fn without_separators(text: &str) -> String {
+    text.chars()
+        .filter(|c| !(c.is_whitespace() || matches!(c, ',' | '_' | '\u{202f}')))
+        .collect()
+}
+
+/// What a number field + K|M unit control show for token text: `128K` →
+/// (`128`, `K`), `131,072` → (`131072`, ``) — an empty unit is a raw count —
+/// and empty text → (``, `K`).
+pub fn token_parts(text: &str) -> (String, &'static str) {
+    let text = without_separators(text);
+    match text.chars().last() {
+        None => (String::new(), "K"),
+        Some('k' | 'K') => (text[..text.len() - 1].to_owned(), "K"),
+        Some('m' | 'M') => (text[..text.len() - 1].to_owned(), "M"),
+        Some(_) => (text, ""),
+    }
+}
+
+/// Joins a number field and its unit (`K`, `M` or `` for a raw count) into
+/// token text. A whole number of at least [`RAW_TOKEN_MIN`] is a raw count
+/// whatever the unit, so a pasted `131072` can never become 131,072K.
+pub fn join_token_parts(number: &str, unit: &str) -> String {
+    let number = without_separators(number);
+    let raw = !number.is_empty()
+        && number.bytes().all(|b| b.is_ascii_digit())
+        && number.parse::<u64>().map_or(true, |n| n >= RAW_TOKEN_MIN);
+    match unit {
+        _ if raw || number.is_empty() => number,
+        "k" | "K" => number + "K",
+        "m" | "M" => number + "M",
+        _ => number,
+    }
+}
+
+/// Picks another unit for token text: a raw count of at least
+/// [`RAW_TOKEN_MIN`] keeps its value (`131072` → `131.072K`, `0.131072M`);
+/// any smaller number takes the new unit (`128K` → `128M`, `1` → `1M`), which
+/// is what choosing a unit after typing means.
+pub fn switch_token_unit(text: &str, unit: &str) -> String {
+    let (number, current) = token_parts(text);
+    let (scale, suffix, digits): (u64, &str, usize) = match unit {
+        "k" | "K" => (1_000, "K", 3),
+        "m" | "M" => (1_000_000, "M", 6),
+        _ => return join_token_parts(&number, ""),
+    };
+    if current.is_empty() {
+        if let Some(count) = parse_tokens(&number).filter(|n| *n >= RAW_TOKEN_MIN) {
+            let fraction = format!("{:0digits$}", count % scale);
+            let fraction = fraction.trim_end_matches('0');
+            let whole = count / scale;
+            return if fraction.is_empty() {
+                format!("{whole}{suffix}")
+            } else {
+                format!("{whole}.{fraction}{suffix}")
+            };
+        }
+    }
+    if number.is_empty() {
+        return number;
+    }
+    number + suffix
+}
+
 pub const MODEL_APIS: [(&str, &str); 4] = [
     ("openai-completions", "OpenAI Chat Completions"),
     ("openai-responses", "OpenAI Responses"),
@@ -610,6 +679,47 @@ mod model_tests {
         assert_eq!(exact_tokens(128000), "128,000");
         assert_eq!(exact_tokens(1000000), "1,000,000");
         assert_eq!(exact_tokens(7), "7");
+    }
+    #[test]
+    fn token_parts_join_and_unit_switch() {
+        assert_eq!(token_parts("128K"), ("128".into(), "K"));
+        assert_eq!(token_parts("1.5m"), ("1.5".into(), "M"));
+        assert_eq!(token_parts("131,072"), ("131072".into(), ""));
+        assert_eq!(token_parts(" "), (String::new(), "K"));
+        // A big bare number is a raw count whatever unit is selected.
+        assert_eq!(join_token_parts("131072", "K"), "131072");
+        assert_eq!(join_token_parts("10000", "M"), "10000");
+        assert_eq!(join_token_parts("9999", "K"), "9999K");
+        assert_eq!(join_token_parts("128", "K"), "128K");
+        assert_eq!(join_token_parts("1.5", "M"), "1.5M");
+        assert_eq!(join_token_parts("10000.5", "K"), "10000.5K");
+        assert_eq!(join_token_parts("819", ""), "819");
+        assert_eq!(join_token_parts("", "K"), "");
+        assert_eq!(
+            join_token_parts("99999999999999999999999", "K"),
+            "99999999999999999999999"
+        );
+        for (number, unit, tokens) in [
+            ("131072", "K", 131072),
+            ("128", "K", 128000),
+            ("1.5", "M", 1500000),
+        ] {
+            assert_eq!(parse_tokens(&join_token_parts(number, unit)), Some(tokens));
+        }
+        // Switching a raw count keeps its value; a number with a unit takes the new unit.
+        assert_eq!(switch_token_unit("131072", "K"), "131.072K");
+        assert_eq!(switch_token_unit("131,072", "M"), "0.131072M");
+        assert_eq!(switch_token_unit("2000000", "M"), "2M");
+        assert_eq!(
+            parse_tokens(&switch_token_unit("131072", "M")),
+            Some(131072)
+        );
+        assert_eq!(switch_token_unit("128K", "M"), "128M");
+        assert_eq!(switch_token_unit("1.5M", "K"), "1.5K");
+        assert_eq!(switch_token_unit("1", "M"), "1M");
+        assert_eq!(switch_token_unit("4,096", "K"), "4096K");
+        assert_eq!(switch_token_unit("", "M"), "");
+        assert_eq!(switch_token_unit("12x", "M"), "12xM");
     }
     #[test]
     fn token_text_accepts_common_spellings_and_rejects_the_rest() {

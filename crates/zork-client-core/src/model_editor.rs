@@ -28,6 +28,9 @@
 //!          | {"type": "budget_allow_off", "on"} | {"type": "budget_dynamic", "on"}
 //!          | {"type": "clear_add_errors"}
 //!          | {"type": "set_length", "field": "context"|"output", "text"}
+//!          | {"type": "set_length_number", "field", "number", "unit": "K"|"M"|""}
+//!            // a number field + unit control; a whole number ≥ 10000 is a raw count
+//!          | {"type": "length_unit", "field", "unit": "K"|"M"}
 //!          | {"type": "blur_length", "field"} | {"type": "step_length", "field", "up": bool}
 //!          | {"type": "pick_length", "field", "value": n}
 //!          | {"type": "set_image", "on"} | {"type": "set_api", "api"} | {"type": "save"}
@@ -41,8 +44,9 @@ use crate::model_catalog::{
     Suggestions, Values,
 };
 use crate::model_edit::{
-    compact_tokens, exact_tokens, id_error, normalize_tokens, parse_tokens, ModelInput, FIELD_API,
-    FIELD_CONTEXT, FIELD_ID, FIELD_OUTPUT, FIELD_THINKING, MODEL_APIS,
+    compact_tokens, exact_tokens, id_error, join_token_parts, normalize_tokens, parse_tokens,
+    switch_token_unit, token_parts, ModelInput, FIELD_API, FIELD_CONTEXT, FIELD_ID, FIELD_OUTPUT,
+    FIELD_THINKING, MODEL_APIS,
 };
 use crate::thinking::{BudgetChoice, Panel, ThinkingKind, ThinkingScheme};
 use serde::{Deserialize, Serialize};
@@ -284,6 +288,16 @@ pub enum Action {
     SetLength {
         field: LengthField,
         text: String,
+    },
+    /// A number field + K|M control; see [`join_token_parts`].
+    SetLengthNumber {
+        field: LengthField,
+        number: String,
+        unit: String,
+    },
+    LengthUnit {
+        field: LengthField,
+        unit: String,
     },
     BlurLength {
         field: LengthField,
@@ -606,6 +620,15 @@ impl EditorState {
             Action::BudgetDynamic { on } => self.edit_scheme(|s| s.set_budget_dynamic(on)),
             Action::ClearAddErrors => {}
             Action::SetLength { field, text } => *self.length_mut(field) = text,
+            Action::SetLengthNumber {
+                field,
+                number,
+                unit,
+            } => *self.length_mut(field) = join_token_parts(&number, &unit),
+            Action::LengthUnit { field, unit } => {
+                let text = switch_token_unit(self.length(field), &unit);
+                *self.length_mut(field) = text;
+            }
             Action::BlurLength { field } => {
                 if !self.touched.contains(&field) {
                     self.touched.push(field);
@@ -960,6 +983,9 @@ pub struct TokenFieldView {
     pub text: String,
     /// `128,000` once the text parses.
     pub exact: Option<String>,
+    /// The text as a number field + unit (`K`, `M`, or `` for a raw count).
+    pub number: String,
+    pub unit: &'static str,
     pub placeholder: &'static str,
     pub picks: Vec<PickView>,
     pub error: Option<String>,
@@ -1097,6 +1123,8 @@ impl EditorState {
                 },
                 text: text.to_owned(),
                 exact: parsed.map(exact_tokens),
+                number: token_parts(text).0,
+                unit: token_parts(text).1,
                 placeholder: match field {
                     LengthField::Context => "例如 128K",
                     LengthField::Output => "例如 8K",
@@ -2008,6 +2036,62 @@ mod tests {
             state.view(&ctx).id.error.as_deref(),
             Some("填写供应商提供的模型 ID")
         );
+    }
+
+    #[test]
+    fn length_number_field_treats_big_numbers_as_raw_counts() {
+        let ctx = deepseek();
+        let mut state = add(&ctx, "my-model");
+        let number = |state: &mut EditorState, number: &str, unit: &str| {
+            run(
+                state,
+                &ctx,
+                Action::SetLengthNumber {
+                    field: LengthField::Context,
+                    number: number.into(),
+                    unit: unit.into(),
+                },
+            );
+            state.view(&ctx).length.context
+        };
+        let view = number(&mut state, "131072", "K");
+        assert_eq!(view.exact.as_deref(), Some("131,072"));
+        assert_eq!((view.number.as_str(), view.unit), ("131072", ""));
+        let view = number(&mut state, "128", "K");
+        assert_eq!(view.exact.as_deref(), Some("128,000"));
+        assert_eq!((view.number.as_str(), view.unit), ("128", "K"));
+        run(
+            &mut state,
+            &ctx,
+            Action::LengthUnit {
+                field: LengthField::Context,
+                unit: "M".into(),
+            },
+        );
+        let view = state.view(&ctx).length.context;
+        assert_eq!(view.exact.as_deref(), Some("128,000,000"));
+        assert_eq!(view.unit, "M");
+        number(&mut state, "131072", "M");
+        run(
+            &mut state,
+            &ctx,
+            Action::LengthUnit {
+                field: LengthField::Context,
+                unit: "K".into(),
+            },
+        );
+        let view = state.view(&ctx).length.context;
+        assert_eq!(view.exact.as_deref(), Some("131,072"), "value kept");
+        assert_eq!((view.number.as_str(), view.unit), ("131.072", "K"));
+        run(
+            &mut state,
+            &ctx,
+            Action::BlurLength {
+                field: LengthField::Context,
+            },
+        );
+        let view = state.view(&ctx).length.context;
+        assert_eq!((view.number.as_str(), view.unit), ("131072", ""));
     }
 
     #[test]

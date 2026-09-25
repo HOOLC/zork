@@ -36,7 +36,6 @@ private fun ConnectionSteps(step: Int) {
 internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSettingsState, actions: SettingsActions,
     latest: String, dismiss: () -> Unit, saved: () -> Unit,
     open: Boolean = true, onClosed: () -> Unit = dismiss) {
-    if (kind == "model") { ModelEditor(source, state, actions, dismiss, saved, open, onClosed); return }
     val context = LocalContext.current
     val attempt = state.authorization.takeIf { kind == "connection" }
     var name by rememberSaveable { mutableStateOf(if (kind == "rename") state.device?.name.orEmpty() else if (kind == "profile-name") source?.let(::profileName).orEmpty() else source?.text("name").orEmpty()) }
@@ -181,9 +180,11 @@ internal fun SettingsEditor(kind: String, source: JSONObject?, state: MobileSett
                         else -> "开启的模型会出现在新建 Chat 的模型面板里"
                     }, fontSize = 13.sp, color = ZorkColors.Muted)
                     discoverError?.let { Text(it, fontSize = 13.sp, color = ZorkColors.Danger) }
+                    val rows = newProfile?.let(::modelRows).orEmpty().associateBy { it.text("id") }
                     models.forEach { model ->
-                        SettingsToggle(model.text("id"), model.optBoolean("enabled", true), enabled = state.online && model.optJSONObject("limits") != null,
-                            detail = modelSummary(model)) { on ->
+                        val row = rows[model.text("id")]
+                        SettingsToggle(model.text("id"), model.optBoolean("enabled", true), enabled = state.online && row?.optBoolean("unconfigured") == false,
+                            detail = row?.let(::modelRowDetail)) { on ->
                             scope.launch {
                                 runCatching { actions.perform("enable_model", JSONObject().put("profile", profileId).put("model", model.text("id")).put("enabled", on)) }
                                 actions.refresh()

@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -92,16 +94,58 @@ internal fun ProfileQuota(profile: JSONObject, summary: Boolean = false) {
 internal fun quotaRemaining(profile: JSONObject): Float? =
     quotaUi(profile).takeIf { !it.failed }?.windows?.minOfOrNull { it.remaining }
 
-/** "400K · 128K · low–xhigh": a model's limits and thinking range as one muted line. */
-internal fun modelSummary(model: JSONObject): String {
-    val limits = model.optJSONObject("limits") ?: return "待配置"
-    val thinking = model.optJSONArray("thinking")?.let { values -> (0 until values.length()).map { values.optString(it) } }.orEmpty()
-        .filter { it.isNotBlank() && it != "off" }
-    return listOfNotNull(
-        compactTokens(limits.optLong("context_window_tokens")),
-        compactTokens(limits.optLong("max_output_tokens")),
-        when (thinking.size) { 0 -> null; 1 -> thinking[0]; else -> "${thinking.first()}–${thinking.last()}" },
-    ).joinToString(" · ")
+/** Core's list rows for a connection's models: `{id, meta, preset, unconfigured, enabled}`. */
+internal fun modelRows(profile: JSONObject): List<JSONObject> {
+    val request = JSONObject().put("profile", JSONObject().put("profile_id", profile.text("profile_id"))
+        .put("provider", profile.text("provider")).put("models", profile.optJSONArray("models") ?: org.json.JSONArray()))
+    return JSONObject(NativeBridge.modelRows(request.toString())).optJSONArray("data").objects()
+}
+
+/** `128K · 可开关 · 按预设`, or `待配置`. */
+internal fun modelRowDetail(row: JSONObject): String =
+    if (row.optBoolean("unconfigured")) "待配置"
+    else listOfNotNull(row.text("meta").takeIf { it.isNotBlank() }, "按预设".takeIf { row.optBoolean("preset") }).joinToString(" · ")
+
+/**
+ * A model row: id (mono) · meta · 按预设 or a 待配置 pill, and the enable switch.
+ * The row body and the switch are sibling targets, never one inside the other.
+ */
+@Composable
+private fun ModelRow(row: JSONObject, enabled: Boolean, open: () -> Unit, enable: (Boolean) -> Unit) {
+    val id = row.text("id")
+    val unconfigured = row.optBoolean("unconfigured")
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).heightIn(min = 56.dp).clip(ZorkShapes.Block).zorkPressable(onClick = open)
+            .semantics { contentDescription = "编辑 $id" }
+            .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(id, fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val meta = listOfNotNull(row.text("meta").takeIf { it.isNotBlank() }, "按预设".takeIf { row.optBoolean("preset") }).joinToString(" · ")
+                if (meta.isNotBlank()) Text(meta, fontSize = 12.sp, color = ZorkColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (unconfigured) Text("待配置", fontSize = 12.sp, color = ZorkColors.Warning, maxLines = 1,
+                modifier = Modifier.background(ZorkColors.WarningSoft, ZorkShapes.Control).padding(horizontal = 10.dp, vertical = 3.dp))
+        }
+        // An unconfigured model cannot be turned on; one already on can still be turned off.
+        ZorkSwitch(row.optBoolean("enabled"), enable, enabled = enabled && (!unconfigured || row.optBoolean("enabled")),
+            modifier = Modifier.semantics { contentDescription = "模型启用 $id" })
+    }
+}
+
+/** A short confirmation over the page bottom: rises in, fades out after a moment. */
+@Composable
+internal fun SettingsToast(message: String?, dismissed: () -> Unit, modifier: Modifier = Modifier) {
+    val last = remember { arrayOfNulls<String>(1) }
+    if (message != null) last[0] = message
+    LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2600); dismissed() } }
+    androidx.compose.animation.AnimatedVisibility(message != null, modifier, enter = zorkRiseIn(), exit = zorkFadeOut()) {
+        Text(last[0].orEmpty(), fontSize = 13.sp, color = ZorkColors.Canvas, maxLines = 3, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 480.dp).background(ZorkColors.Ink, ZorkShapes.Control)
+                .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }
+                .padding(horizontal = 18.dp, vertical = 10.dp))
+    }
 }
 
 @Composable
@@ -125,7 +169,12 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
     val editing = editingJson?.let(::JSONObject)
     var operation by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var error by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
-    var updateMessage by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
+    var toast by remember { mutableStateOf<String?>(null) }
+    // Ids the provider lists for this connection, read once when adding a model
+    // (for the editor's "上可用" suggestions) and again after a fetch.
+    val reported = remember(state.device?.id, profileId) { mutableStateListOf<String>() }
+    var reportedRead by remember(state.device?.id, profileId) { mutableStateOf(false) }
+    var pendingEdit by remember(state.device?.id, profileId) { mutableStateOf<String?>(null) }
     var more by remember { mutableStateOf(false) }
     // Arriving from the global list's add flow opens the editor once the device is usable.
     var pendingAdd by rememberSaveable(state.device?.id) { mutableStateOf(state.addConnection) }
@@ -141,17 +190,28 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
             finally { operation = null }
         }
     }
-    fun editModel(model: JSONObject?) { editingJson = model?.toString(); editor = "model" }
+    fun readReported() {
+        if (reportedRead || profileId.isBlank()) return
+        reportedRead = true
+        scope.launch {
+            // A connection without a model-list API, or a failure, just means no such suggestions.
+            val ids = try { actions.perform("available_models", JSONObject().put("profile", profileId)).optJSONArray("ids") }
+                catch (e: CancellationException) { throw e } catch (_: Exception) { reportedRead = false; null }
+            reported.clear(); ids?.let { a -> reported.addAll((0 until a.length()).map { a.optString(it) }.filter(String::isNotBlank)) }
+        }
+    }
+    fun editModel(id: String?) {
+        if (id == null) readReported()
+        editingJson = JSONObject().put("id", id ?: JSONObject.NULL).toString(); editor = "model"
+    }
     fun discover() = perform("models") {
         val result = actions.perform("discover_models", JSONObject().put("profile", profileId))
-        updateMessage = when {
-            result.optInt("added") > 0 -> "已添加 ${result.optInt("added")} 个模型"
-            result.optInt("configured") > 0 -> "已配置 ${result.optInt("configured")} 个模型"
-            else -> "模型已是最新"
-        } + if (result.optBoolean("truncated")) "，仅返回部分结果" else ""
+        toast = result.text("message").ifBlank { if (result.optInt("added") > 0) "获取到 ${result.optInt("added")} 个新模型" else "没有新模型" }
+        reportedRead = false
     }
     LaunchedEffect(pendingAdd, enabled) { if (pendingAdd && enabled && !detail) { pendingAdd = false; editingJson = null; editor = "connection" } }
-    Column(modifier.fillMaxSize().background(ZorkColors.Canvas)) {
+    Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(ZorkColors.Canvas)) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(R.drawable.ic_arrow_left, "返回", onClick = actions.back)
             if (!detail) Text("模型连接", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
@@ -168,6 +228,7 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                 }
             }
         }
+        val rows = remember(profile) { profile?.let(::modelRows).orEmpty() }
         LazyColumn(Modifier.fillMaxWidth().weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item(key = "notice") {
@@ -249,28 +310,34 @@ internal fun ModelSettingsPage(state: MobileSettingsState, actions: SettingsActi
                             ZorkButton("手动添加", quiet = true, enabled = enabled, onClick = { editModel(null) },
                                 leading = { Glyph(R.drawable.ic_plus, 14.dp, ZorkColors.Ink) })
                         }
-                        updateMessage?.let { Text(it, fontSize = 12.sp, color = ZorkColors.Subtle, modifier = Modifier.padding(start = 4.dp)) }
                     }
                 }
-                val models = profile.optJSONArray("models").objects()
-                items(models, key = { "model:${it.text("id")}" }) { model ->
-                    val configured = model.optJSONObject("limits") != null
-                    val active = model.optBoolean("enabled", true)
-                    SettingsListRow(model.text("id"), subtext = modelSummary(model), action = { editModel(model) },
-                        trailing = {
-                            ZorkSwitch(active, { on -> perform("enabled") {
-                                actions.perform("enable_model", JSONObject().put("profile", profileId).put("model", model.text("id")).put("enabled", on))
-                            } }, enabled = enabled && (active || configured),
-                                modifier = Modifier.semantics { contentDescription = "模型启用 ${model.text("id")}" })
-                        })
+                items(rows, key = { "model:${it.text("id")}" }) { row ->
+                    ModelRow(row, enabled, open = { editModel(row.text("id")) }) { on ->
+                        perform("enabled") {
+                            actions.perform("enable_model", JSONObject().put("profile", profileId).put("model", row.text("id")).put("enabled", on))
+                        }
+                    }
                 }
-                if (models.isEmpty()) item { Text("还没有模型，点“获取模型”从供应商读取", fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.padding(4.dp)) }
+                if (rows.isEmpty()) item { Text("还没有模型。可以从供应商获取，或手动添加。", fontSize = 13.sp, color = ZorkColors.Muted, modifier = Modifier.padding(4.dp)) }
             }
         }
     }
+    SettingsToast(toast, { toast = null }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp))
+    }
     ZorkRetained(editor?.let { it to editing }) { (kind, source), open, closed ->
         key(kind, source?.text("id")) {
-            SettingsEditor(kind, source, state, actions, "", { editor = null }, { editor = null; actions.refresh() }, open = open, onClosed = closed)
+            if (kind == "model") profile?.let { current ->
+                ModelEditor(source?.optString("id")?.takeIf { source.opt("id") != JSONObject.NULL && it.isNotBlank() }, current, state, actions,
+                    reported.toList(), dismiss = { editor = null },
+                    finished = { message -> toast = message; editor = null; actions.refresh() },
+                    // 去编辑它: close this sheet, then open that model's editor once it has gone.
+                    editOther = { id -> pendingEdit = id; editor = null },
+                    open = open, onClosed = {
+                        closed()
+                        pendingEdit?.let { id -> pendingEdit = null; editModel(id) }
+                    })
+            } else SettingsEditor(kind, source, state, actions, "", { editor = null }, { editor = null; actions.refresh() }, open = open, onClosed = closed)
         }
     }
 }

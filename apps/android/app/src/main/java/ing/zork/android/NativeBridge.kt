@@ -29,6 +29,8 @@ internal object NativeBridge {
     external fun modelEditor(request: String): String
     /** Model editor fill sources: {context,state,query} → {ok,data:[groups]}. */
     external fun modelEditorSources(request: String): String
+    /** List rows for a connection's models: {profile} → {ok,data:[{id,meta,preset,unconfigured,enabled}]}. */
+    external fun modelRows(request: String): String
     external fun copyableModel(model: String): Boolean
     external fun connectionChoices(catalog: String, subscription: Boolean, provider: String, billing: String): String
     external fun composerState(input: String): String
