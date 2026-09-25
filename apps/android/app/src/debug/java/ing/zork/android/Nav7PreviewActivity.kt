@@ -113,7 +113,7 @@ class Nav7PreviewActivity : ComponentActivity() {
                                     }
                                     action=="save_agent" -> JSONObject()
                                     else -> JSONObject()
-                                }}))
+                                }}), localDevice = fixtureLocalDevice())
                             }
                             else Workbench(fixture(route), WorkbenchActions(resend = { lastAction = "resend:$it" }, deleteFailed = { lastAction = "delete:$it" }, newChat = { lastAction = "new-chat:${it.id}" }, session = { lastAction = "session:${it.optString("_peer")}/${it.text("chat_id")}" }, device = { lastAction = "device:${it.id}" }))
                         }
@@ -152,6 +152,8 @@ private fun task(id: String, title: String, unread: Int = 0) = obj("chat_id" to 
 private fun fixturePeers() = listOf(
     Peer("mini1","mini1","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus()),
     Peer("mini2","mini2","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
+/** This phone as core names it in the directory snapshot's `local`. */
+private fun fixtureLocalDevice() = Peer("key:phone","C","", machine="Pixel 8", colorKey="seq:2")
 /** Mesh devices as core names them: short display names, machine names kept. */
 private fun namedPeers() = listOf(
     Peer("air","A","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus(), machine="zuozijiandeMacBook-Air", colorKey="seq:0"),

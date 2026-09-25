@@ -235,6 +235,32 @@ pub fn label(
     status: &DeviceStatus,
     locale: Option<&Text>,
 ) -> impl IntoElement {
+    tagged_label(id, name, status, locale, None)
+}
+
+/// A quiet muted word right after a device name (such as "本机"). It is a
+/// fact about the device, not a status: never coloured, and read out with
+/// the name.
+pub fn tag(id: impl Into<gpui::ElementId>, text: &str) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .flex_shrink_0()
+        .text_size(px(12.))
+        .line_height(px(16.))
+        .text_color(rgb(ZORK_UI.palette.muted))
+        .whitespace_nowrap()
+        .child(text.to_owned())
+}
+
+/// `label` with an optional `tag` after the status dot, so the dot keeps
+/// its place on every row; read out in the same order ("A（机器名）· 直连 · 本机").
+pub fn tagged_label(
+    id: impl Into<gpui::ElementId>,
+    name: impl Into<DeviceName>,
+    status: &DeviceStatus,
+    locale: Option<&Text>,
+    tag_text: Option<&str>,
+) -> impl IntoElement {
     let id = id.into();
     let name: DeviceName = name.into();
     let text = status_text(status, locale);
@@ -270,6 +296,11 @@ pub fn label(
         .automation(AutomationRole::Status, detail.clone());
     let badge = tooltip::hint(badge, format!("device-status-{id:?}"), detail.clone());
     let text = name_text(&id, &name);
+    let tag_id = format!("device-tag-{id}");
+    let spoken = match tag_text {
+        Some(tag) => format!("{} · {detail} · {tag}", name.accessible()),
+        None => format!("{} · {detail}", name.accessible()),
+    };
     div()
         .id(id)
         .min_w_0()
@@ -283,8 +314,6 @@ pub fn label(
         ))
         .child(text)
         .child(badge)
-        .automation(
-            AutomationRole::Status,
-            format!("{} · {detail}", name.accessible()),
-        )
+        .when_some(tag_text, |v, text| v.child(tag(tag_id, text)))
+        .automation(AutomationRole::Status, spoken)
 }

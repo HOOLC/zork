@@ -8,6 +8,9 @@ pub struct Outbox {
     pub by_message_id: Arc<HashMap<String, usize>>,
     pub phases: Arc<HashMap<String, String>>,
 }
+/// Refusal when a draft comment has no reply text.
+pub const EMPTY_COMMENT_REPLY: &str = "每段引用都写一句回复，或者移除它";
+
 impl Device {
     pub fn recover_outbox(&self) -> Arc<Outbox> {
         self.reload_outbox();
@@ -131,6 +134,12 @@ impl Device {
         crate::valid_session(session)?;
         let _serial = self.draft_gate.lock().unwrap();
         let draft = self.draft(session);
+        // Each quoted passage carries its own reply (the approved multi-agent
+        // design); a passage without one is refused rather than sent bare.
+        anyhow::ensure!(
+            draft.comments.iter().all(|c| !c.comment.trim().is_empty()),
+            EMPTY_COMMENT_REPLY
+        );
         let content = draft.submission(text);
         if content.is_empty() {
             return Ok(None);
@@ -338,6 +347,16 @@ mod tests {
         assert_eq!(*device.draft("chat"), super::super::Draft::default());
         assert_eq!(store.outbox("node").unwrap().len(), 1);
         assert!(device.submit_draft("chat", " ").unwrap().is_none());
+        assert_eq!(store.outbox("node").unwrap().len(), 1);
+        // A quoted passage without its reply is refused and stays in the draft.
+        let bare = crate::comments::DraftComment {
+            comment: "  ".into(),
+            ..comments[0].clone()
+        };
+        device.put_comment("chat", bare.clone()).unwrap();
+        let error = device.submit_draft("chat", "extra").unwrap_err();
+        assert_eq!(error.to_string(), super::EMPTY_COMMENT_REPLY);
+        assert_eq!(device.draft("chat").comments, vec![bare]);
         assert_eq!(store.outbox("node").unwrap().len(), 1);
     }
 }

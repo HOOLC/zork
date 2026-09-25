@@ -12439,6 +12439,7 @@ name = "zork-android"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "jni 0.22.4",
  "rustls-platform-verifier",
  "serde",

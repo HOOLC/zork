@@ -56,7 +56,8 @@ impl Directory {
             .get::<Option<String>>("device", "last-node")?
             .flatten()
             .filter(|id| nodes.iter().any(|node| node["id"] == *id));
-        let value = json!({"nodes":nodes,"running":false,"selected_peer":selected});
+        let value = json!({"nodes":nodes,"running":false,"selected_peer":selected,
+            "local":local_device(&store)});
         Ok(Arc::new(Self {
             store,
             resources,
@@ -416,10 +417,12 @@ impl Directory {
             .get::<Option<String>>("device", "last-node")?
             .flatten()
             .filter(|id| nodes.iter().any(|n| &n.id == id));
+        let local = local_device(&self.store);
         let previous = self.source.read();
         if !changed
             && previous["running"] == running
             && previous["selected_peer"] == json!(selected)
+            && previous["local"] == local
         {
             return Ok(());
         }
@@ -441,7 +444,7 @@ impl Directory {
             .into_iter()
             .flatten()
             .any(|old| !nodes.iter().any(|node| node["id"] == old["id"]));
-        let value = json!({"nodes":nodes,"selected_peer":selected,"running":running});
+        let value = json!({"nodes":nodes,"selected_peer":selected,"running":running,"local":local});
         if *previous == value {
             return Ok(());
         }
@@ -452,6 +455,21 @@ impl Directory {
                 .publish_changed(value, zork_observe::Topics::ALL);
         }
         Ok(())
+    }
+}
+
+/// This device itself for the device list, named like every other device;
+/// `null` until it belongs to a Mesh this client knows.
+fn local_device(store: &ClientStore) -> Value {
+    match store.local_device_name() {
+        Ok(Some(own)) => json!({"id":own.origin,"name":own.display,
+            "machine_name":(own.machine != own.display).then_some(&own.machine),
+            "color_key":own.color_key()}),
+        Ok(None) => Value::Null,
+        Err(error) => {
+            tracing::debug!(%error, "this device's Mesh name is unavailable");
+            Value::Null
+        }
     }
 }
 

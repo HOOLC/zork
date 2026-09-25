@@ -23,6 +23,7 @@ pub mod device_status;
 pub mod file_io;
 pub mod interactions;
 pub mod live;
+pub mod local_device;
 pub mod local_scripts;
 pub mod locale;
 pub mod mesh_enrollment;
