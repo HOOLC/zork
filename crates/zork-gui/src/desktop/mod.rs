@@ -1316,7 +1316,7 @@ impl Render for DesktopRoot {
                                                         // The device mark is the row's only icon.
                                                         .child(
                                                             div().flex_1().min_w_0().child(
-                                                                zork_ui::device_name::label(
+                                                                zork_ui::device_name::tagged_label(
                                                                     format!(
                                                                         "settings-name-{}",
                                                                         node.id
@@ -1326,6 +1326,9 @@ impl Render for DesktopRoot {
                                                                         .source
                                                                         .device_status(&node.id),
                                                                     None,
+                                                                    node.local.then_some(
+                                                                        zork_ui::network::LOCAL_TAG,
+                                                                    ),
                                                                 ),
                                                             ),
                                                         )

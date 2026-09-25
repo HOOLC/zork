@@ -821,26 +821,32 @@ impl Navigation {
             .child(add_device);
         let devices = self.devices.iter().map(|device| {
             let node = device.id.clone();
+            let tag = device.local.then(|| self.locale.text("mesh_local"));
             self.tabs
                 .tab(format!("device-dock-{}", device.id), false)
                 .pl(px(10.))
-                .child(crate::device_name::label(
+                .child(crate::device_name::tagged_label(
                     format!("device-dock-name-{}", device.id),
                     device.device_name(),
                     &device.status,
                     Some(&self.locale),
+                    tag.as_deref(),
                 ))
                 .on_click(cx.listener(move |v, _, _, cx| {
                     v.go(Some(node.clone()), Destination::Manage(3), cx)
                 }))
-                .automation(
-                    AutomationRole::Button,
-                    crate::device_name::accessible_summary(
+                .automation(AutomationRole::Button, {
+                    let summary = crate::device_name::accessible_summary(
                         device.device_name(),
                         &device.status,
                         Some(&self.locale),
-                    ),
-                )
+                    );
+                    if let Some(tag) = &tag {
+                        format!("{summary} · {tag}")
+                    } else {
+                        summary
+                    }
+                })
         });
         self.tabs
             .column()
