@@ -386,7 +386,7 @@ mod tests {
                     "placement": "in_head", "own_run": false},
                 "comments": null
             }],
-            "multi_device": true, "next_change_ms": 30000, "tints": {"entries": []}
+            "multi_device": true, "next_change_ms": 30000
         }));
         assert!(parsed.multi_device);
         let row = &parsed.rows[0];

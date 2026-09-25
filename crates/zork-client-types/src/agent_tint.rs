@@ -2,18 +2,19 @@
 //! (through `zork_client_core::message_presentation`).
 //!
 //! Five tint slots (`zork_ui::design::AGENT_TINTS` on desktop, the same pairs
-//! on Android). Each agent has a preferred slot from a hash of its id; within
-//! one Chat, agents in first-appearance order take the next free slot when
-//! theirs is taken. Beyond five agents slots repeat (the name and initial
-//! still tell them apart).
+//! on Android). An agent's slot is a pure function of its id ([`slot`]), so
+//! it is the same in the transcript, the chat list, the chat header, reply
+//! lines and composer drafts, and never moves as history loads. Two agents
+//! in one Chat may share a slot; the maker mark and the name tell them apart.
 
 /// Number of agent tint slots.
 pub const AGENT_TINT_SLOTS: usize = 5;
 
-/// The agent's preferred slot: 32-bit FNV-1a over the Unicode scalar values
-/// of `"agent:" + id` (the prefix seeds it apart from device hues), folded as
-/// `(h ^ h >> 15) % 5`. Identical to the approved prototype.
-pub fn preferred_slot(agent_id: &str) -> usize {
+/// The agent's tint slot: 32-bit FNV-1a over the Unicode scalar values of
+/// `"agent:" + id` (the prefix seeds it apart from device hues), folded as
+/// `(h ^ h >> 15) % 5`. Identical to the approved prototype's preferred slot.
+/// Depends on nothing but the id; there is no per-Chat collision avoidance.
+pub fn slot(agent_id: &str) -> usize {
     let hash = "agent:"
         .chars()
         .chain(agent_id.chars())
@@ -21,51 +22,6 @@ pub fn preferred_slot(agent_id: &str) -> usize {
             (hash ^ c as u32).wrapping_mul(0x0100_0193)
         });
     ((hash ^ (hash >> 15)) as usize) % AGENT_TINT_SLOTS
-}
-
-/// Tint slots of one Chat's agents.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
-pub struct TintSlots {
-    entries: Vec<(String, usize)>,
-}
-
-impl TintSlots {
-    /// Assigns slots to agent ids in first-appearance order (repeats are
-    /// ignored). Each keeps its preferred slot unless an earlier agent holds
-    /// it, then takes the next free one; once all five are used, later agents
-    /// keep their preferred slot.
-    pub fn assign<'a>(ids: impl IntoIterator<Item = &'a str>) -> Self {
-        let mut entries: Vec<(String, usize)> = Vec::new();
-        for id in ids {
-            if entries.iter().any(|(known, _)| known == id) {
-                continue;
-            }
-            let preferred = preferred_slot(id);
-            let slot = if entries.len() >= AGENT_TINT_SLOTS {
-                preferred
-            } else {
-                (0..AGENT_TINT_SLOTS)
-                    .map(|step| (preferred + step) % AGENT_TINT_SLOTS)
-                    .find(|slot| !entries.iter().any(|(_, used)| used == slot))
-                    .unwrap_or(preferred)
-            };
-            entries.push((id.to_owned(), slot));
-        }
-        Self { entries }
-    }
-    /// The slot of an agent; one that has not appeared in this Chat (such as
-    /// the author of a quoted source outside the loaded history) uses its
-    /// preferred slot.
-    pub fn slot(&self, agent_id: &str) -> usize {
-        self.entries
-            .iter()
-            .find(|(id, _)| id == agent_id)
-            .map_or_else(|| preferred_slot(agent_id), |(_, slot)| *slot)
-    }
-    /// `(agent id, slot)` in first-appearance order.
-    pub fn entries(&self) -> &[(String, usize)] {
-        &self.entries
-    }
 }
 
 /// The letter on an identity disc: the first character of the trimmed name,
@@ -76,5 +32,33 @@ pub fn initial(name: &str) -> String {
         Some(c) if c.is_ascii_alphabetic() => c.to_ascii_uppercase().to_string(),
         Some(c) => c.to_string(),
         None => "?".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slots_match_the_prototype() {
+        // Vectors computed with the prototype's JavaScript `tintSlots`.
+        for (id, expected) in [
+            ("planner", 4),
+            ("builder", 1),
+            ("review", 3),
+            ("tester", 3),
+            ("docs", 0),
+            ("ops", 3),
+            ("design", 0),
+            ("审阅助手", 4),
+            ("key:abc/worker", 2),
+        ] {
+            assert_eq!(slot(id), expected, "{id}");
+        }
+    }
+
+    #[test]
+    fn slots_are_in_range() {
+        assert!((0..200).all(|n| slot(&format!("agent-{n}")) < AGENT_TINT_SLOTS));
     }
 }

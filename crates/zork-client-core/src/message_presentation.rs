@@ -18,8 +18,9 @@
 //!   re-run [`present`] after [`TranscriptPresentation::next_change_ms`].
 //! - **Identity**: at a non-user group head, the agent avatar (its tint disc
 //!   with the maker mark of the model that wrote the message, see
-//!   [`maker_key`]; the initial when no model is known) and the name. Tints are assigned per Chat in first-appearance order
-//!   ([`TintSlots`]). The device name is shown only when
+//!   [`maker_key`]; the initial when no model is known) and the name. An
+//!   agent's tint is [`tint_slot`] of its id alone: the same everywhere and
+//!   unchanged as history loads. The device name is shown only when
 //!   [`TranscriptPresentation::multi_device`] and the UI is not at phone width.
 //! - **Reply line**: for rows with `reply_to`, see [`ReplyLine`] and
 //!   [`quote_content`]. The omission rule has two parts: core decides
@@ -31,9 +32,8 @@
 //! - **Comment batches**: user messages carrying the comment envelope are
 //!   decoded into [`CommentLine`] pairs plus extra text.
 //!
-//! Tints follow first appearance in the rows given, so loading older history
-//! can move them; pass the whole loaded transcript (Android passes its
-//! window, where a target outside it reads as not loaded).
+//! Pass the whole loaded transcript (Android passes its window, where a
+//! target outside it reads as not loaded).
 use crate::{
     api::{MessageMetadata, Role, TranscriptMessage},
     message_time::{self, TimeLocale},
@@ -50,7 +50,7 @@ use zork_client_types::{
 
 mod quote;
 pub use quote::{fallback_excerpt, quote_content, QuoteContent, QuoteSource};
-pub use zork_client_types::agent_tint::{initial, preferred_slot, TintSlots, AGENT_TINT_SLOTS};
+pub use zork_client_types::agent_tint::{initial, slot as tint_slot, AGENT_TINT_SLOTS};
 
 /// Longest gap between two messages of one group.
 pub const GROUP_WINDOW: Duration = Duration::minutes(5);
@@ -238,8 +238,6 @@ pub struct TranscriptPresentation {
     pub multi_device: bool,
     /// Milliseconds until some label changes; `None` when all are stable.
     pub next_change_ms: Option<i64>,
-    /// Tint slots in first-appearance order.
-    pub tints: TintSlots,
 }
 
 /// Stable author identity used for grouping and the omission rule.
@@ -327,38 +325,25 @@ pub fn maker_key(model: Option<&str>) -> Option<String> {
     )
 }
 
-/// One Agent's avatar within a Chat's tint assignment.
-pub fn agent_avatar(
-    agent_id: &str,
-    name: Option<&str>,
-    model: Option<&str>,
-    tints: &TintSlots,
-) -> AgentAvatar {
+/// One Agent's avatar.
+pub fn agent_avatar(agent_id: &str, name: Option<&str>, model: Option<&str>) -> AgentAvatar {
     AgentAvatar {
         agent_id: agent_id.to_owned(),
         maker: maker_key(model),
-        tint: tints.slot(agent_id),
+        tint: tint_slot(agent_id),
         initial: initial(name.filter(|n| !n.trim().is_empty()).unwrap_or(agent_id)),
     }
 }
 
 /// A Chat's stacked avatar from its Agents in first-appearance order: the
 /// first [`CHAT_AVATAR_AGENTS`] avatars, then `more` for the rest (all
-/// `agent_count` Agents, never fewer than listed). Tints follow the same
-/// first-appearance assignment as the transcript.
+/// `agent_count` Agents, never fewer than listed). Each tint is the Agent's
+/// own [`tint_slot`], as in the transcript.
 pub fn chat_avatar(agents: &[ChatAgent], agent_count: u64) -> ChatAvatar {
-    let tints = TintSlots::assign(agents.iter().map(|agent| agent.id.as_str()));
     let shown: Vec<AgentAvatar> = agents
         .iter()
         .take(CHAT_AVATAR_AGENTS)
-        .map(|agent| {
-            agent_avatar(
-                &agent.id,
-                agent.name.as_deref(),
-                agent.model.as_deref(),
-                &tints,
-            )
-        })
+        .map(|agent| agent_avatar(&agent.id, agent.name.as_deref(), agent.model.as_deref()))
         .collect();
     let total = agent_count.max(agents.len() as u64);
     ChatAvatar {
@@ -367,7 +352,7 @@ pub fn chat_avatar(agents: &[ChatAgent], agent_count: u64) -> ChatAvatar {
     }
 }
 
-fn author_ref(row: PresentRow<'_>, tints: &TintSlots, options: &PresentOptions) -> AuthorRef {
+fn author_ref(row: PresentRow<'_>, options: &PresentOptions) -> AuthorRef {
     let locale = options.locale;
     if row.role == Role::User {
         return AuthorRef {
@@ -393,7 +378,7 @@ fn author_ref(row: PresentRow<'_>, tints: &TintSlots, options: &PresentOptions) 
                 .map(String::as_str)
         });
     AuthorRef {
-        tint: Some(tints.slot(tint_key(row.metadata))),
+        tint: Some(tint_slot(tint_key(row.metadata))),
         initial: Some(initial(&name)),
         maker: maker_key(model),
         name,
@@ -418,11 +403,6 @@ pub fn present<'a>(
         .enumerate()
         .filter_map(|(at, row)| row.metadata.id.as_deref().map(|id| (id, at)))
         .collect();
-    let tints = TintSlots::assign(
-        rows.iter()
-            .filter(|row| row.role != Role::User)
-            .map(|row| tint_key(row.metadata)),
-    );
     let devices: HashSet<&str> = rows
         .iter()
         .filter(|row| row.role != Role::User)
@@ -452,7 +432,7 @@ pub fn present<'a>(
                 },
             }
         });
-        let identity = (!user && head).then(|| identity(row, &tints, options));
+        let identity = (!user && head).then(|| identity(row, options));
         let reply = row.metadata.reply_to.as_deref().map(|target_id| {
             let target_index = index.get(target_id).copied();
             let target = target_index.map(|t| rows[t]);
@@ -464,7 +444,7 @@ pub fn present<'a>(
                     (None, false) => TargetState::Deleted,
                 },
                 target_index,
-                target: target.map(|t| author_ref(t, &tints, options)),
+                target: target.map(|t| author_ref(t, options)),
                 content: target.map(|t| {
                     quote_content(
                         &comments::quotable_text(t.content),
@@ -484,7 +464,7 @@ pub fn present<'a>(
                 pairs: batch
                     .pairs
                     .into_iter()
-                    .map(|pair| comment_line(pair, &rows, &index, &tints, options))
+                    .map(|pair| comment_line(pair, &rows, &index, options))
                     .collect(),
                 extra_text: batch.extra_text,
             })
@@ -507,12 +487,11 @@ pub fn present<'a>(
         rows: out,
         multi_device: devices.len() > 1,
         next_change_ms: next_change.map(|wait| wait.num_milliseconds().max(0)),
-        tints,
     }
 }
 
-fn identity(row: PresentRow<'_>, tints: &TintSlots, options: &PresentOptions) -> Identity {
-    let author = author_ref(row, tints, options);
+fn identity(row: PresentRow<'_>, options: &PresentOptions) -> Identity {
+    let author = author_ref(row, options);
     let device = row.metadata.device.clone();
     let label = device.as_deref().and_then(|d| options.devices.get(d));
     let model = row
@@ -546,7 +525,6 @@ fn comment_line(
     pair: CommentPair,
     rows: &[PresentRow<'_>],
     index: &HashMap<&str, usize>,
-    tints: &TintSlots,
     options: &PresentOptions,
 ) -> CommentLine {
     let source_index = pair
@@ -556,12 +534,12 @@ fn comment_line(
     // The loaded source knows its author best; otherwise use what the draft
     // recorded.
     let source = match source_index {
-        Some(at) => author_ref(rows[at], tints, options),
+        Some(at) => author_ref(rows[at], options),
         None => match pair.author_agent_id.as_deref() {
             Some(agent) => {
                 let name = pair.author.clone().unwrap_or_else(|| agent.to_owned());
                 AuthorRef {
-                    tint: Some(tints.slot(agent)),
+                    tint: Some(tint_slot(agent)),
                     initial: Some(initial(&name)),
                     maker: maker_key(options.agent_models.get(agent).map(String::as_str)),
                     name,

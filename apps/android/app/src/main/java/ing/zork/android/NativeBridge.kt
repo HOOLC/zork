@@ -40,6 +40,8 @@ internal object NativeBridge {
      * Pass the conversation rows as observed; re-run after next_change_ms or when rows change.
      */
     external fun messagePresentation(request: String): String
+    /** An agent's tint slot (core `agent_tint::slot`): a pure function of its id, the same everywhere. */
+    external fun agentTint(agentId: String): Int
     /** Chat-list relative times (core `message_time`):
      * {times_ms:[ms|null], now_ms, utc_offset_minutes, locale} → {ok,data:{labels:[{label,full}|null],next_change_ms}}. */
     external fun messageTimes(request: String): String

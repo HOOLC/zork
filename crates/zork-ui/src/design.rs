@@ -59,7 +59,9 @@ pub fn set_preferred_theme(theme: Option<Theme>) {
 /// `ZORK_THEME=light|dark` pins the theme first, then the saved preference;
 /// otherwise it follows the system.
 pub fn pinned_theme() -> Option<Theme> {
-    let env = std::env::var("ZORK_THEME").ok().map(|v| v.to_ascii_lowercase());
+    let env = std::env::var("ZORK_THEME")
+        .ok()
+        .map(|v| v.to_ascii_lowercase());
     match env.as_deref() {
         Some("light") => return Some(Theme::Light),
         Some("dark") => return Some(Theme::Dark),
@@ -200,8 +202,7 @@ pub fn device_hue(key: &str) -> u32 {
 /// devices gained raspberry (337°): orchid sat between plum and raspberry.
 /// Each pair is (fill, ink).
 pub static AGENT_TINTS: Themed<[(u32, u32); 5]> = Themed::new(
-    // Ordered so neighbouring slots differ most: collision fallback moves to
-    // the next slot and should still look clearly different.
+    // Ordered so neighbouring slots differ most.
     [
         (0xDFE3FA, 0x33429A),
         (0xEDE6C4, 0x5A4E0B),
@@ -217,20 +218,12 @@ pub static AGENT_TINTS: Themed<[(u32, u32); 5]> = Themed::new(
         (0x3D4044, 0xDDD9D2),
     ],
 );
-/// The agent's preferred tint slot, from its stable id (`zork_client_types::agent_tint`,
-/// shared with core and Android).
+/// The agent's tint slot, from its stable id alone (`zork_client_types::agent_tint`,
+/// shared with core and Android): the same in every place and every Chat, and
+/// unchanged as history loads. Two agents may share one; the maker mark and
+/// name tell them apart.
 pub fn agent_tint_slot(id: &str) -> usize {
-    zork_client_types::agent_tint::preferred_slot(id)
-}
-/// Tint slots for one Chat's agents in first-appearance order. Each agent keeps
-/// its preferred slot unless an earlier agent already holds it, then takes the
-/// next free one, so up to five agents in a Chat never share a tint; beyond
-/// that slots repeat and the name and initial still tell them apart.
-/// Transcripts get these from `message_presentation::present`.
-pub fn agent_tint_slots<'a>(ids: impl IntoIterator<Item = &'a str>) -> Vec<(String, usize)> {
-    zork_client_types::agent_tint::TintSlots::assign(ids)
-        .entries()
-        .to_vec()
+    zork_client_types::agent_tint::slot(id)
 }
 /// (fill, ink) of a tint slot in the current theme.
 pub fn agent_tint(slot: usize) -> (u32, u32) {
@@ -809,30 +802,18 @@ mod agent_tint_tests {
     }
 
     #[test]
-    fn a_chat_never_repeats_a_tint_below_capacity() {
-        let slots = agent_tint_slots(["planner", "reviewer", "builder", "planner", "a", "b"]);
-        let ids: Vec<_> = slots.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, ["planner", "reviewer", "builder", "a", "b"]);
-        let mut used: Vec<_> = slots.iter().map(|(_, slot)| *slot).collect();
-        used.sort();
-        used.dedup();
-        assert_eq!(used.len(), 5);
-        // The first agent always keeps its own preferred tint.
-        assert_eq!(slots[0].1, agent_tint_slot("planner"));
-        // Stable: the same order gives the same answer.
-        assert_eq!(
-            slots,
-            agent_tint_slots(["planner", "reviewer", "builder", "a", "b"])
-        );
-    }
-
-    #[test]
-    fn beyond_capacity_slots_repeat_their_preference() {
-        let ids: Vec<String> = (0..7).map(|i| format!("agent-{i}")).collect();
-        let slots = agent_tint_slots(ids.iter().map(String::as_str));
-        assert_eq!(slots.len(), 7);
-        assert_eq!(slots[5].1, agent_tint_slot("agent-5"));
-        assert_eq!(slots[6].1, agent_tint_slot("agent-6"));
+    fn agent_tint_slot_is_the_shared_per_id_slot() {
+        // A pure function of the id: no per-Chat assignment on desktop either.
+        for id in [
+            "planner",
+            "reviewer",
+            "builder",
+            "审阅助手",
+            "key:abc/worker",
+        ] {
+            assert_eq!(agent_tint_slot(id), zork_client_types::agent_tint::slot(id));
+            assert!(agent_tint_slot(id) < AGENT_TINTS.get(Theme::Light).len());
+        }
     }
 }
 
@@ -840,7 +821,9 @@ mod agent_tint_tests {
 mod device_hue_tests {
     #[test]
     fn devices_in_join_order_get_distinct_hues_and_renames_keep_them() {
-        let hues: Vec<_> = (0..6).map(|n| super::device_hue(&format!("seq:{n}"))).collect();
+        let hues: Vec<_> = (0..6)
+            .map(|n| super::device_hue(&format!("seq:{n}")))
+            .collect();
         let mut unique = hues.clone();
         unique.sort();
         unique.dedup();
