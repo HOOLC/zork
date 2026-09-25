@@ -196,6 +196,17 @@ pub struct MessageMetadata {
     pub author_kind: Option<zork_client_types::chat::AuthorKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
+    /// The author's quote of the part of `reply_to` it answers. Absent from
+    /// older Stations and for replies to short originals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
+    /// `excerpt` (verbatim, default when absent) or `summary`.
+    #[serde(
+        default,
+        deserialize_with = "zork_client_types::chat::lenient_kind",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub quote_kind: Option<zork_client_types::chat::QuoteKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interaction: Option<Box<serde_json::Value>>,
     /// Client-only derived state. The source request and result stay immutable.
@@ -203,6 +214,25 @@ pub struct MessageMetadata {
     pub interaction_result: Option<Box<zork_client_types::interaction::Resolution>>,
     #[serde(skip)]
     pub interaction_view: Option<Box<crate::interactions::Card>>,
+}
+
+impl MessageMetadata {
+    /// The reply quote this message carries, if any (kind defaults to excerpt).
+    pub fn reply_quote(&self) -> Option<zork_client_types::chat::MessageQuote> {
+        zork_client_types::chat::MessageQuote::from_fields(self.quote.as_deref(), self.quote_kind)
+    }
+    /// Stable author identity for grouping and the reply omission rule:
+    /// `agent:<id>` for Agents, `user` for the user, otherwise the legacy
+    /// assistant name.
+    pub fn author_key(&self, role: Role) -> String {
+        match (&self.author_agent_id, role) {
+            (Some(id), _) => format!("agent:{id}"),
+            (None, Role::User) => "user".into(),
+            (None, Role::Assistant) => {
+                format!("assistant:{}", self.author_name.as_deref().unwrap_or(""))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -954,3 +954,318 @@ fn archive_migrates_existing_catalog_without_requiring_new_messages() {
         true
     );
 }
+
+fn quote(text: &str, kind: zork_client_types::chat::QuoteKind) -> MessageQuote {
+    MessageQuote {
+        text: text.into(),
+        kind,
+    }
+}
+fn reply_with_quote(
+    db: &StationDb,
+    chat: &str,
+    id: &str,
+    reply_to: Option<&str>,
+    quote: Option<&MessageQuote>,
+) -> Result<Message> {
+    db.post_chat_content_from_client(
+        None,
+        id,
+        chat,
+        &author("builder"),
+        "已改好，其余不变。",
+        &[],
+        reply_to,
+        quote,
+        &[],
+        &[],
+        None,
+        None,
+    )
+}
+fn projected(db: &StationDb, id: &str) -> Value {
+    let value: String = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM sync_entities WHERE kind='message' AND id=?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    serde_json::from_str(&value).unwrap()
+}
+
+#[test]
+fn reply_quotes_persist_deliver_project_and_survive_restart_and_rebuild() {
+    use zork_client_types::chat::QuoteKind;
+    let (root, db) = database();
+    let chat = channel(&db, "quoted").chat_id;
+    preferences(
+        &db,
+        "quote-reader",
+        &chat,
+        "reader",
+        PreferenceChanges {
+            subscribed: Some(true),
+            ..Default::default()
+        },
+        None,
+    );
+    let original = post(&db, "original", &chat, "review", None, &[]);
+    let summary = quote("密码框缺少显示切换，错误提示对比度不够", QuoteKind::Summary);
+    let reply = reply_with_quote(
+        &db,
+        &chat,
+        "reply",
+        Some(&original.message_id),
+        Some(&summary),
+    )
+    .unwrap();
+    assert_eq!(reply.reply_quote(), Some(summary.clone()));
+    assert_eq!(reply.quote_kind, Some(QuoteKind::Summary));
+    let excerpt = quote("对比度", QuoteKind::Excerpt);
+    let second = reply_with_quote(
+        &db,
+        &chat,
+        "second",
+        Some(&original.message_id),
+        Some(&excerpt),
+    )
+    .unwrap();
+    assert_eq!(second.quote.as_deref(), Some("对比度"));
+    assert_eq!(second.quote_kind, Some(QuoteKind::Excerpt));
+
+    // A quote describes a reply target; without one nothing is committed.
+    let count = db.chat(&chat).unwrap().channel.message_count;
+    let error = reply_with_quote(&db, &chat, "orphan", None, Some(&excerpt)).unwrap_err();
+    assert_eq!(error.to_string(), "quote_requires_reply_to");
+    assert_eq!(db.chat(&chat).unwrap().channel.message_count, count);
+
+    // Readers, receivers and the client sync projection all carry the fields.
+    assert_eq!(db.chat_message(&chat, "reply").unwrap(), reply);
+    let history = db.chat_messages(&chat, None, 10).unwrap();
+    assert!(history.iter().any(|(_, m)| m == &reply));
+    let notices = db.chat_notice_page("local", None, 0).unwrap();
+    let delivered = notices
+        .items
+        .iter()
+        .find(|n| n.message.message_id == "reply")
+        .unwrap();
+    assert_eq!(delivered.message.reply_quote(), Some(summary.clone()));
+    // Remote peers receive the same notice JSON; older ones ignore the fields.
+    let wire = serde_json::to_value(delivered).unwrap();
+    assert_eq!(wire["message"]["quote_kind"], "summary");
+    let decoded: Notice = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(&decoded, delivered);
+    let mut legacy = wire;
+    legacy["message"].as_object_mut().unwrap().remove("quote");
+    legacy["message"]
+        .as_object_mut()
+        .unwrap()
+        .remove("quote_kind");
+    assert_eq!(
+        serde_json::from_value::<Notice>(legacy)
+            .unwrap()
+            .message
+            .quote,
+        None
+    );
+    let value = projected(&db, "reply");
+    assert_eq!(value["quote"], summary.text);
+    assert_eq!(value["quote_kind"], "summary");
+    assert_eq!(value["reply_to"], original.message_id);
+    let plain = projected(&db, &original.message_id);
+    assert!(plain.get("quote").is_none() && plain.get("quote_kind").is_none());
+
+    // Restart reads the complete source record.
+    drop(db);
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert_eq!(db.chat_message(&chat, "reply").unwrap(), reply);
+    assert_eq!(db.chat_message(&chat, "second").unwrap(), second);
+    // Losing the rebuildable indexes restores the facts from the source log.
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute_batch(
+            "DELETE FROM chat_notices; DELETE FROM chat_message_facts; DELETE FROM visible_messages;",
+        )
+        .unwrap();
+    }
+    drop(db);
+    std::fs::remove_dir_all(root.path().join("cache")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert_eq!(db.chat_message(&chat, "reply").unwrap(), reply);
+    assert_eq!(
+        db.chat_message(&chat, &original.message_id).unwrap(),
+        original
+    );
+    let facts: (Option<String>, Option<String>) = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT quote,quote_kind FROM chat_message_facts WHERE message_id='reply'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(facts, (Some(summary.text.clone()), Some("summary".into())));
+    assert_eq!(projected(&db, "reply")["quote"], summary.text);
+}
+
+#[test]
+fn facts_from_before_quotes_migrate_without_changing_existing_projections() {
+    let (root, db) = database();
+    let chat = channel(&db, "legacy-quotes").chat_id;
+    let old = post(&db, "old", &chat, "review", None, &[]);
+    let before = projected(&db, &old.message_id);
+    let revision = |db: &StationDb| -> i64 {
+        db.conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT revision FROM sync_entities WHERE kind='message' AND id=?1",
+                [&old.message_id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let old_revision = revision(&db);
+    {
+        // The schema and message projection of a Station before reply quotes.
+        let conn = db.conn.lock().unwrap();
+        conn.execute_batch(
+            "DROP TRIGGER sync_visible_messages_insert; DROP TRIGGER sync_visible_messages_update;
+             DROP TRIGGER sync_visible_messages_delete;
+             ALTER TABLE chat_message_facts DROP COLUMN quote;
+             ALTER TABLE chat_message_facts DROP COLUMN quote_kind;
+             CREATE TRIGGER sync_visible_messages_insert AFTER INSERT ON visible_messages BEGIN SELECT 'chat_message_facts'; END;",
+        )
+        .unwrap();
+        // Messages without a quote project byte-identically either way.
+        let same: bool = conn
+            .query_row(
+                "SELECT json_patch(json_object('a',1,'b',NULL,'c','x','d',json('[1]')),'{}')
+                 = json_object('a',1,'b',NULL,'c','x','d',json('[1]'))",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(same);
+    }
+    drop(db);
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    let old_read = db.chat_message(&chat, &old.message_id).unwrap();
+    assert_eq!(old_read, old);
+    assert_eq!((old_read.quote, old_read.quote_kind), (None, None));
+    assert_eq!(projected(&db, &old.message_id), before);
+    assert_eq!(revision(&db), old_revision);
+    // New replies after the migration carry quotes.
+    let reply = reply_with_quote(
+        &db,
+        &chat,
+        "after",
+        Some(&old.message_id),
+        Some(&quote("摘录", zork_client_types::chat::QuoteKind::Excerpt)),
+    )
+    .unwrap();
+    assert_eq!(projected(&db, &reply.message_id)["quote_kind"], "excerpt");
+}
+
+fn summary(db: &StationDb, chat: &str) -> Value {
+    let value: String = db
+        .conn
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT value FROM sync_entities WHERE kind='resource' AND id=?1",
+            [chat],
+            |r| r.get(0),
+        )
+        .unwrap();
+    serde_json::from_str(&value).unwrap()
+}
+
+#[test]
+fn messages_record_the_model_that_wrote_them_and_chats_list_their_agents() {
+    let (root, db) = database();
+    let chat = channel(&db, "avatars").chat_id;
+    // A Chat without Agent authors keeps its old summary shape.
+    let plain = summary(&db, &chat);
+    assert!(plain.get("agents").is_none() && plain.get("agent_count").is_none());
+    for (id, model) in [("builder", "gpt-5"), ("review", "claude-sonnet-5")] {
+        db.insert_node_agent(
+            &serde_json::from_value(json!({
+                "id": id, "name": id, "avatar": null, "role": "worker",
+                "profile_id": "fixture", "model": model, "thinking": "off",
+                "instructions": "", "allowed_leaders": []
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+    let user = Author {
+        id: "local-user".into(),
+        kind: AuthorKind::User,
+        name: None,
+    };
+    let send = |id: &str, who: &Author| {
+        db.post_chat_content(None, id, &chat, who, id, &[], None, &[], &[], None)
+            .unwrap()
+    };
+    let asked = send("ask", &user);
+    assert_eq!(asked.author_model, None);
+    let first = send("first", &author("builder"));
+    assert_eq!(first.author_model.as_deref(), Some("gpt-5"));
+    send("second", &author("review"));
+    // A remote Agent's model is known to its own Station, not this one.
+    let remote = send("remote", &author("key:peer/tester"));
+    assert_eq!(remote.author_model, None);
+    // Switching the model changes later messages only.
+    db.conn
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE node_agents SET value=json_set(value,'$.model','claude-opus-5') WHERE id='builder'",
+            [],
+        )
+        .unwrap();
+    let later = send("later", &author("builder"));
+    assert_eq!(later.author_model.as_deref(), Some("claude-opus-5"));
+    assert_eq!(
+        db.chat_message(&chat, "first").unwrap().author_model.as_deref(),
+        Some("gpt-5")
+    );
+    assert_eq!(projected(&db, "first")["model"], "gpt-5");
+    assert!(projected(&db, "ask").get("model").is_none());
+
+    // The Chat summary lists Agents by first appearance with their latest model.
+    let value = summary(&db, &chat);
+    assert_eq!(value["agent_count"], 3);
+    assert_eq!(
+        value["agents"],
+        json!([
+            {"id":"builder","name":"builder","model":"claude-opus-5"},
+            {"id":"review","name":"review","model":"claude-sonnet-5"},
+            {"id":"key:peer/tester","name":"key:peer/tester","model":null}
+        ])
+    );
+    let channel: Channel = serde_json::from_value(value).unwrap();
+    assert_eq!(channel.agents[0].model.as_deref(), Some("claude-opus-5"));
+    assert_eq!(channel.agents[2].model, None);
+
+    // Restart and index rebuild keep the recorded models.
+    {
+        let conn = db.conn.lock().unwrap();
+        conn.execute_batch(
+            "DELETE FROM chat_notices; DELETE FROM chat_message_facts; DELETE FROM visible_messages;",
+        )
+        .unwrap();
+    }
+    drop(db);
+    std::fs::remove_dir_all(root.path().join("cache")).unwrap();
+    let db = StationDb::open(root.path(), &root.path().join("workspaces")).unwrap();
+    assert_eq!(db.chat_message(&chat, "first").unwrap(), first);
+    assert_eq!(db.chat_message(&chat, "later").unwrap(), later);
+}

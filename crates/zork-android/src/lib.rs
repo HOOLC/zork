@@ -103,6 +103,14 @@ fn envelope(result: Result<Value>) -> Value {
     }
 }
 
+/// Transcript presentation for the conversation rows currently shown (pure;
+/// see `zork_client_core::message_presentation`). Request:
+/// `{rows, now_ms, utc_offset_minutes, locale, has_older, devices, agent_models}`.
+pub fn message_presentation(request: &str) -> Result<Value> {
+    ensure!(request.len() <= 8 * 1024 * 1024, "request too large");
+    zork_client_core::message_presentation::handle(serde_json::from_str(request)?)
+}
+
 /// Pure input projection; it does not open a client, acquire IO locks or request a network.
 pub fn validate_model(input: &str, models: &str) -> Result<Value> {
     let input: zork_client_core::model_edit::ModelInput = serde_json::from_str(input)?;
@@ -152,6 +160,19 @@ fn preview_new_chat(request: &str) -> Result<Value> {
 mod tests {
     use super::*;
     use zork_client_core::store::{ClientStore, SavedNode};
+
+    #[test]
+    fn message_presentation_uses_the_shared_envelope() {
+        let ok = super::envelope(super::message_presentation(
+            r#"{"rows":[{"type":"message","role":"user","content":"hi","id":"u","created_at":"2026-09-26T06:29:30Z"}],
+               "now_ms":1790404200000,"utc_offset_minutes":480,"locale":"zh-CN"}"#,
+        ));
+        assert_eq!(ok["ok"], true);
+        assert_eq!(ok["data"]["rows"][0]["group_tail"], true);
+        assert_eq!(ok["data"]["rows"][0]["time"]["placement"], "tail");
+        let bad = super::envelope(super::message_presentation("{}"));
+        assert_eq!(bad["ok"], false);
+    }
 
     #[test]
     fn local_drafts_do_not_wait_for_an_in_flight_network_command() {
@@ -543,6 +564,21 @@ mod android {
             let value = serde_json::from_str(&request.to_string())
                 .map_err(anyhow::Error::from)
                 .and_then(zork_client_core::model_editor::handle_sources);
+            JString::from_str(env, super::envelope(value).to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// Transcript presentation (group heads, time labels, identities, reply
+    /// lines, comment pairs) for the shown rows. Returns `{"ok":true,"data":…}`.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_messagePresentation<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = super::message_presentation(&request.to_string());
             JString::from_str(env, super::envelope(value).to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()

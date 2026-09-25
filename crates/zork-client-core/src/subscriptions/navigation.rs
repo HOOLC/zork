@@ -107,7 +107,29 @@ async fn changed(signals: &mut Vec<Readiness>) {
 pub(crate) struct Input {
     pub peer: String,
     pub name: String,
+    /// The device of this device's rows (shown before the time unless local).
+    pub device: zork_client_types::navigation::ChatDevice,
     pub navigation: Arc<NavigationData>,
+}
+
+/// The chat-list device of a directory node (`SavedNode` JSON): its
+/// display name, machine name, stable hue key and whether it is this client's
+/// own Station.
+pub(crate) fn chat_device(node: &Value) -> zork_client_types::navigation::ChatDevice {
+    let name = crate::device_label::device_label(node["name"].as_str().unwrap_or_default());
+    zork_client_types::navigation::ChatDevice {
+        id: node["id"].as_str().unwrap_or_default().to_owned(),
+        machine: node["machine_name"]
+            .as_str()
+            .filter(|machine| !machine.trim().is_empty() && *machine != name)
+            .map(str::to_owned),
+        color_key: node["color_key"]
+            .as_str()
+            .filter(|key| !key.is_empty())
+            .map_or_else(|| name.clone(), str::to_owned),
+        local: node["local"].as_bool().unwrap_or(false),
+        name,
+    }
 }
 
 /// Directory order and names; each live device controller's navigation. The
@@ -135,6 +157,7 @@ fn collect(
         inputs.push(Input {
             peer: peer.into(),
             name: crate::device_label::device_label(node["name"].as_str().unwrap_or_default()),
+            device: chat_device(node),
             navigation: source.snapshot(),
         });
         sources.push(source);
@@ -206,6 +229,8 @@ pub(crate) fn merge(inputs: &[Input], now: DateTime<FixedOffset>) -> Value {
         let mut value = json!(chat);
         value["peer"] = json!(input.peer);
         value["peer_name"] = json!(input.name);
+        // "A · 刚刚" before the time for remote Chats; local shows only the time.
+        value["device"] = json!(input.device);
         value["updated_at_ms"] = json!(at);
         value["section"] = json!(section(chat, *at, now));
         value
@@ -238,6 +263,7 @@ mod tests {
         Input {
             peer: peer.into(),
             name: format!("name-{peer}"),
+            device: chat_device(&json!({"id": peer, "name": format!("name-{peer}")})),
             navigation: Arc::new(NavigationData {
                 chats: Arc::new(chats),
                 ..Default::default()
@@ -365,5 +391,42 @@ mod tests {
             until_midnight(at("2026-09-24T00:00:02+08:00"))
                 <= std::time::Duration::from_secs(86_400)
         );
+    }
+
+    #[test]
+    fn rows_carry_the_device_line_and_the_stacked_avatar() {
+        let local = chat_device(&json!({"id":"desktop","name":"zuozijians-Mac-Studio","local":true,"color_key":"seq:0"}));
+        assert!(local.local);
+        assert_eq!(local.color_key, "seq:0");
+        let remote = chat_device(&json!({"id":"mini","name":"B","machine_name":"mini1","color_key":"seq:1","local":false}));
+        assert!(!remote.local);
+        assert_eq!((remote.name.as_str(), remote.machine.as_deref()), ("B", Some("mini1")));
+        // Without a colour key the hue follows the display name.
+        let bare = chat_device(&json!({"id":"old","name":"C"}));
+        assert_eq!((bare.color_key.as_str(), bare.local, bare.machine), ("C", false, None));
+
+        let mut with_agents = chat("team", "2026-09-24T10:00:00Z", false, false);
+        with_agents.avatar = crate::message_presentation::chat_avatar(
+            &[zork_client_types::chat::ChatAgent {
+                id: "builder".into(),
+                name: Some("Builder".into()),
+                model: Some("claude-sonnet-5".into()),
+            }],
+            1,
+        );
+        let mut on_desktop = input("desktop", vec![with_agents]);
+        on_desktop.device = local;
+        let mut on_mini = input("mini", vec![chat("solo", "2026-09-24T09:00:00Z", false, false)]);
+        on_mini.device = remote;
+        let merged = merge(&[on_desktop, on_mini], at("2026-09-24T18:00:00Z"));
+        let rows = merged["chats"].as_array().unwrap();
+        assert_eq!(rows[0]["device"]["local"], true);
+        assert_eq!(rows[0]["avatar"]["agents"][0]["maker"], "anthropic");
+        assert_eq!(rows[0]["avatar"]["more"], 0);
+        assert_eq!(rows[1]["device"]["local"], false);
+        assert_eq!(rows[1]["device"]["name"], "B");
+        assert_eq!(rows[1]["device"]["color_key"], "seq:1");
+        // A Chat without Agents has an empty avatar: platforms draw the plain mark.
+        assert_eq!(rows[1]["avatar"]["agents"], json!([]));
     }
 }

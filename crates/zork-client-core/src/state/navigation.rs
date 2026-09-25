@@ -78,6 +78,8 @@ impl NavigationData {
                             kind: AuthorKind::Agent,
                             name: definitions.get(id.as_str()).map(|a| string(a, "name")),
                         }),
+                        agents: vec![],
+                        agent_count: 0,
                     },
                 );
             }
@@ -94,6 +96,8 @@ impl NavigationData {
                         kind: AuthorKind::Agent,
                         name: definitions.get(creator.as_str()).map(|a| string(a, "name")),
                     }),
+                    agents: vec![],
+                    agent_count: 0,
                 });
             }
             fallback = by_id.into_values().collect::<Vec<_>>();
@@ -154,6 +158,10 @@ impl NavigationData {
                     .map(|session| session.model.clone())
                     .unwrap_or_default(),
                 in_preview: false,
+                avatar: crate::message_presentation::chat_avatar(
+                    &channel.agents,
+                    channel.agent_count,
+                ),
             };
             others.push(chat);
         }
@@ -198,6 +206,8 @@ mod tests {
                 kind: AuthorKind::Agent,
                 name: Some(format!("name-{id}")),
             }),
+            agents: vec![],
+            agent_count: 0,
         }
     }
     fn data(chats: Vec<Channel>) -> DeviceData {
@@ -305,6 +315,8 @@ mod archive_tests {
                     last_message_at: None,
                     message_count: 1,
                     creator: None,
+                    agents: vec![],
+                    agent_count: 0,
                 })
                 .collect(),
         ));

@@ -199,6 +199,9 @@
       "src/views.rs"
     ],
     "result.svg": [],
+    "reply.svg": [
+      "src/components/message_row/identity.rs"
+    ],
     "review.svg": [
       "src/task_overview.rs",
       "src/views/task_controls.rs"

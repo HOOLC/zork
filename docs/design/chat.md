@@ -14,6 +14,28 @@ Chat 是授权 Mesh 内的公开协作频道；Session 是内部模型和工具�
 
 工具参数由运行时 `tool.help` 生成。发现、创建、发言和直接请求使用当前 `chat.*` / `agent.*`；对象 ID、分页游标与输入水位不互换。
 
+<a id="reply-quotes"></a>
+
+### 回复引用
+
+回复（`reply_to`）可以附带作者自己写的引用，说明回答的是原消息的哪一部分：`quote` 不超过 120 个字符（按 Unicode 字符计），`quote_kind` 为 `excerpt`（从原文逐字摘出的一段，缺省）或 `summary`（简短转述）。原文不超过 10 个字符时客户端直接显示原文，不需要引用。`chat.post_message`、`chat.post_file`、`chat.post_message.android_script` 与客户端发送接口接受这两个字段：没有 `reply_to` 的引用、没有引用的类型、空引用、超长和未知类型都在提交前拒绝，不留下部分消息。
+
+引用是呈现数据，不改变投递、订阅筛选或权限。Station 把它与回复一起写入源记录和 `chat_message_facts`（`quote`、`quote_kind` 列，旧行为空），并在消息读取、`/messages` 页、SSE `message` 事件、客户端同步投影、Agent 收件通知与 Mesh 转发中原样携带；没有引用时字段缺省而不是 null，旧消息与旧节点的输出保持不变。旧节点按自己的参数表拒绝未知字段时，发送方去掉引用后把同一次发送再转发一次；新节点读取旧节点或旧记录时字段缺省。未知的 `quote_kind` 读作缺省。
+
+<a id="author-model"></a>
+
+### 作者模型与 Chat 头像
+
+Station 在接受本机 Agent 的发言时，把它当时运行的模型（Session 或 Agent 定义的模型）记入消息的 `author_model`，随源记录、`chat_message_facts` 与索引重建保留；消息读取和 SSE 的 `model` 优先使用这个记录，所以历史消息保留写下它的模型。用户、系统作者和远端 Agent 不记录（远端模型只在它自己的 Station），旧消息没有该字段；客户端这时可以用 Chat 的 Agent 列表或参与者的当前模型，都没有时头像显示首字母。
+
+Chat 摘要（同步资源 `chat_summary`）增加 `agents`（按首次出现顺序的前 4 个 Agent 作者：id、名称、在本 Chat 最近一条消息的模型）与 `agent_count`；没有 Agent 作者的 Chat 摘要保持原样，旧节点没有这两个字段。core 据此给每个导航行 `avatar`（最多 3 个 `{agent_id, maker, tint, initial}` 与剩余数 `more`），合并后的 Chat 列表行另带 `device`（`id`、显示名称、机器名、色相键 `color_key`、`local`）：行的第二行元信息中，远端 Chat 在时间前写设备名（「A · 刚刚」），本机 Station 的 Chat 只写时间。
+
+<a id="transcript-presentation"></a>
+
+### 对话呈现投影
+
+分组、时间文案、Agent 色盘、引用内容和用户评论对由 core 的 `message_presentation::present` 统一计算，桌面直接调用，Android 通过 `NativeBridge.messagePresentation` 传入观察到的消息行。每行给出是否组首/组尾、时间文案与位置、组首身份（名称、首字、色槽、设备与悬停详情）、回复行（目标状态：已加载、尚未加载、已删除；目标作者；引用内容来源：原文、摘录、大意、旧消息开头；摘录用于跳转后标记段落）以及用户评论批次的引用—回复对和补充说明。省略规则中“之间只有该作者自己的消息”由 core 给出（`own_run`）；“原文在一屏之内”由各端按排好的列表测量。色槽按行中首次出现的顺序分配，加载更早历史后可能变化。
+
 ## 本机脚本卡片
 
 本机脚本随普通 Chat 消息发布，承载显式的平台、接口版本和 JavaScript 源码。用户在兼容的 Android 客户端点击后执行本机能力；PC 与未知版本只读展示。消息到达、缓存重建、分页、重连与视图重建都不启动脚本，普通正文也不是可执行输入。
@@ -24,7 +46,7 @@ core 从实际缓存消息读取源码，管理校验、执行范围、取消和
 
 ## 消息源与恢复
 
-每个 Chat 在 Station 数据根的 `chats/<chat-id>/` 下保存消息源：`.zork/source.json` 保存来源身份与 epoch，`messages/` 保存按首个源位置命名的 JSONL 段。活动段只追加；封存段压缩为含独立小帧的 `.jsonl.zst`，逐页读取不必解压整个归档。完整源记录包含作者、正文、固定附件引用、回复、提及及业务卡片快照；压缩不改变记录或源位置。
+每个 Chat 在 Station 数据根的 `chats/<chat-id>/` 下保存消息源：`.zork/source.json` 保存来源身份与 epoch，`messages/` 保存按首个源位置命名的 JSONL 段。活动段只追加；封存段压缩为含独立小帧的 `.jsonl.zst`，逐页读取不必解压整个归档。完整源记录包含作者、正文、固定附件引用、回复与回复引用、提及及业务卡片快照；压缩不改变记录或源位置。
 
 Station 使用单一写者。业务事务可以暂存待发布消息；只有完整源记录刷盘成功后才清除暂存正文并回推。重启恢复已提交事务的物理日志前缀，不重发网络请求。活动尾部未完成的行不作为已发布记录；完整行损坏应报错，不能静默截断已发布历史。
 

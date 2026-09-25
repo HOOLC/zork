@@ -8,12 +8,19 @@ pub struct Definition {
     pub user_participation: bool,
 }
 
+/// Model-facing guidance for reply quotes. Clients show short originals
+/// verbatim themselves; for longer ones the quote tells readers which part a
+/// reply answers.
+pub const QUOTE_GUIDANCE: &str = "With reply_to: when the original message is longer than 10 characters, include quote, the part you are answering in at most 120 characters. For an excerpt copy a short passage exactly as it appears in the original (no added quotation marks or ellipses); otherwise write a short summary and set quote_kind to summary. Omit quote for short originals and when not replying.";
+
 pub fn definitions() -> Vec<Definition> {
     let string = || json!({"type":"string","minLength":1,"maxLength":512});
     let config = crate::agent_configuration::schema(true, false);
     let changes = crate::agent_configuration::schema(false, false);
     let page = json!({"cursor":string(),"limit":{"type":"integer","minimum":1,"maximum":100}});
-    let body = json!({"chat_id":string(),"text":{"type":"string","maxLength":32768},"reply_to":string(),"mentions":{"type":"array","maxItems":64,"uniqueItems":true,"items":string()}});
+    let mut body = json!({"chat_id":string(),"text":{"type":"string","maxLength":32768},"reply_to":string(),"mentions":{"type":"array","maxItems":64,"uniqueItems":true,"items":string()}});
+    body["quote"] = json!({"type":"string","minLength":1,"maxLength":zork_client_types::chat::MAX_QUOTE_CHARS,"description":QUOTE_GUIDANCE});
+    body["quote_kind"] = json!({"enum":["excerpt","summary"],"description":"How quote relates to the original: excerpt (default) is copied exactly from it; summary is your short paraphrase. Only with quote."});
     let mut files = body.clone();
     files["attachments"] = json!({"type":"array","minItems":1,"maxItems":16,"items":{"oneOf":[{"type":"object","properties":{"file_path":string()},"required":["file_path"],"additionalProperties":false},{"type":"object","properties":{"source_chat_id":string(),"attachment_id":string(),"source_target":string()},"required":["attachment_id"],"additionalProperties":false}]}});
     let mut result = Vec::new();
@@ -48,7 +55,7 @@ pub fn definitions() -> Vec<Definition> {
         ),
         (
             "chat.post_message",
-            "Post a text message to an explicit chat_id without joining or subscribing. Omit chat_id to publish to this Session's own Chat: the Chat bound to this execution context. Optional mentions and reply_to are message facts; only recipients whose own preferences match receive automatic Agent input. Own posts do not wake the sender. The complete source message persists before delivery. Ordinary sends are attempted once. Report an uncertain outcome without retrying automatically; an explicitly requested resend creates a new message, and both sends remain if both arrive. Optional interaction publishes {request_id} received from a running business tool and retains that business publication's receipt. oauth publishes a generic OAuth card directly and waits for its connection result; it cannot be combined with interaction. This tool carries no files; deliver files with chat.post_file. User responses return to the original tool independently of Chat subscriptions.",
+            "Post a text message to an explicit chat_id without joining or subscribing. Omit chat_id to publish to this Session's own Chat: the Chat bound to this execution context. Optional mentions and reply_to are message facts; when replying to a message longer than 10 characters also give quote (an exact excerpt, or a summary with quote_kind summary). Only recipients whose own preferences match receive automatic Agent input. Own posts do not wake the sender. The complete source message persists before delivery. Ordinary sends are attempted once. Report an uncertain outcome without retrying automatically; an explicitly requested resend creates a new message, and both sends remain if both arrive. Optional interaction publishes {request_id} received from a running business tool and retains that business publication's receipt. oauth publishes a generic OAuth card directly and waits for its connection result; it cannot be combined with interaction. This tool carries no files; deliver files with chat.post_file. User responses return to the original tool independently of Chat subscriptions.",
             body.clone(),
             vec![],
             false,
@@ -62,7 +69,7 @@ pub fn definitions() -> Vec<Definition> {
         ),
         (
             "chat.post_message.android_script",
-            "Publish a user-started Android JavaScript card to an explicit public chat_id without joining or subscribing; omit chat_id to publish to this Session's own Chat. Supply title, source and optional description directly; follow source's host API help. Android users click to execute locally; PC is read-only. This call completes when the message is published. Execution, logs and native callbacks stay on the device; do not wait for an execution result or register a response request. Delivery is attempted once, with no automatic retry; an explicitly requested resend creates a new message. Optional text, reply_to and mentions are ordinary message facts. Own posts do not wake the sender. This tool carries no files; deliver files with chat.post_file.",
+            "Publish a user-started Android JavaScript card to an explicit public chat_id without joining or subscribing; omit chat_id to publish to this Session's own Chat. Supply title, source and optional description directly; follow source's host API help. Android users click to execute locally; PC is read-only. This call completes when the message is published. Execution, logs and native callbacks stay on the device; do not wait for an execution result or register a response request. Delivery is attempted once, with no automatic retry; an explicitly requested resend creates a new message. Optional text, reply_to (with quote/quote_kind) and mentions are ordinary message facts. Own posts do not wake the sender. This tool carries no files; deliver files with chat.post_file.",
             body.clone(),
             vec!["title", "source"],
             false,
@@ -342,6 +349,86 @@ pub fn participating(name: &str, args: &Value) -> bool {
                 .collect()
         });
     CAPABLE.contains(name)
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+
+    fn valid(tool: &str, args: Value) -> bool {
+        let definition = definitions().into_iter().find(|d| d.name == tool).unwrap();
+        jsonschema::validator_for(&definition.schema)
+            .unwrap()
+            .is_valid(&args)
+    }
+
+    #[test]
+    fn every_message_tool_accepts_reply_quotes() {
+        for (tool, base) in [
+            ("chat.post_message", json!({"chat_id":"c","text":"已改好"})),
+            (
+                "chat.post_file",
+                json!({"chat_id":"c","attachments":[{"file_path":"a.md"}]}),
+            ),
+            (
+                "chat.post_message.android_script",
+                json!({"chat_id":"c","title":"t","source":"s"}),
+            ),
+        ] {
+            let mut args = base.clone();
+            args["reply_to"] = json!("m1");
+            args["quote"] = json!("对比度只有 3.9:1");
+            assert!(valid(tool, args.clone()), "{tool} excerpt");
+            args["quote_kind"] = json!("summary");
+            assert!(valid(tool, args.clone()), "{tool} summary");
+            args["quote_kind"] = json!("excerpt");
+            assert!(valid(tool, args.clone()), "{tool} explicit excerpt");
+            // Quotes stay optional: old callers are unchanged.
+            assert!(valid(tool, base), "{tool} without quote");
+        }
+    }
+
+    #[test]
+    fn quote_schema_bounds_length_and_kind() {
+        let args = |quote: &str, kind: Option<&str>| {
+            let mut args = json!({"chat_id":"c","text":"t","reply_to":"m","quote":quote});
+            if let Some(kind) = kind {
+                args["quote_kind"] = json!(kind);
+            }
+            args
+        };
+        let max = zork_client_types::chat::MAX_QUOTE_CHARS;
+        // maxLength counts characters: 120 CJK characters fit, 121 do not.
+        assert!(valid("chat.post_message", args(&"字".repeat(max), None)));
+        assert!(!valid(
+            "chat.post_message",
+            args(&"字".repeat(max + 1), None)
+        ));
+        assert!(!valid("chat.post_message", args("", None)));
+        assert!(!valid("chat.post_message", args("原文", Some("verbatim"))));
+        assert!(!valid(
+            "chat.post_message",
+            json!({"chat_id":"c","text":"t","quote":{"text":"x"}})
+        ));
+        // Tools that do not post messages do not take quotes.
+        assert!(!valid("chat.history", json!({"chat_id":"c","quote":"x"})));
+    }
+
+    #[test]
+    fn quote_guidance_reaches_the_model() {
+        let definition = definitions()
+            .into_iter()
+            .find(|d| d.name == "chat.post_message")
+            .unwrap();
+        assert!(definition.description.contains("longer than 10 characters"));
+        let quote = &definition.schema["properties"]["quote"];
+        assert_eq!(quote["description"], QUOTE_GUIDANCE);
+        assert!(QUOTE_GUIDANCE.contains("exactly") && QUOTE_GUIDANCE.contains("summary"));
+        assert_eq!(
+            definition.schema["properties"]["quote_kind"]["enum"],
+            json!(["excerpt", "summary"])
+        );
+    }
 }
 
 #[cfg(test)]

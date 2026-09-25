@@ -18,8 +18,8 @@ mod tests;
 pub use messages::PreparedFile;
 use serde::{Deserialize, Serialize};
 use zork_client_types::chat::{
-    Author, AuthorKind, Channel, DeliveryMode, Message, Participant, Preferences, StartAt,
-    UpdatePreferences,
+    Author, AuthorKind, Channel, DeliveryMode, Message, MessageQuote, Participant, Preferences,
+    StartAt, UpdatePreferences,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -117,6 +117,19 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     if !has_client_id {
         conn.execute_batch("ALTER TABLE chat_message_facts ADD COLUMN client_id TEXT;")?;
     }
+    // Reply quotes and the author's model are optional presentation facts.
+    // Existing rows keep NULL and read exactly as before.
+    let columns = conn
+        .prepare("PRAGMA table_info(chat_message_facts)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for column in ["quote", "quote_kind", "author_model"] {
+        if !columns.iter().any(|name| name == column) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE chat_message_facts ADD COLUMN {column} TEXT;"
+            ))?;
+        }
+    }
     navigation::initialize(conn)?;
     conn.execute(
         "INSERT OR IGNORE INTO chat_metadata(key,value) VALUES ('epoch',?1)",
@@ -187,6 +200,8 @@ fn map_channel(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatRow> {
                 })
                 .transpose()?,
             last_message_at: row.get(7)?,
+            agents: vec![],
+            agent_count: 0,
         },
         session_key: row.get(1)?,
     })
@@ -290,17 +305,21 @@ pub(super) fn message(conn: &Connection, id: &str) -> Result<Message> {
     if let Some(source) = source {
         return Ok(serde_json::from_str(&source)?);
     }
-    let (chat_id, author, text, mentions, reply_to, created_at, client_id): (
+    #[allow(clippy::type_complexity)]
+    let (chat_id, author, text, mentions, reply_to, created_at, client_id, quote, quote_kind, author_model): (
         String,
         String,
         String,
         String,
         Option<String>,
         String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
         Option<String>,
     ) = conn
         .query_row(
-            "SELECT f.chat_id,f.author,m.text,f.mentions,f.reply_to,m.created_at,f.client_id
+            "SELECT f.chat_id,f.author,m.text,f.mentions,f.reply_to,m.created_at,f.client_id,f.quote,f.quote_kind,f.author_model
          FROM chat_message_facts f JOIN visible_message_content m ON m.message_id=f.message_id
          WHERE f.message_id=?1",
             [id],
@@ -313,6 +332,9 @@ pub(super) fn message(conn: &Connection, id: &str) -> Result<Message> {
                     r.get(4)?,
                     r.get(5)?,
                     r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                    r.get(9)?,
                 ))
             },
         )
@@ -327,6 +349,11 @@ pub(super) fn message(conn: &Connection, id: &str) -> Result<Message> {
         attachments,
         mentions: serde_json::from_str(&mentions)?,
         reply_to,
+        quote,
+        quote_kind: quote_kind
+            .as_deref()
+            .and_then(zork_client_types::chat::QuoteKind::parse),
+        author_model,
         interaction: interactions::content(conn, id)?,
         created_at,
     })
@@ -372,14 +399,41 @@ pub(super) fn record(
     mentions: &[String],
     deliver: bool,
 ) -> Result<Vec<Topic>> {
-    record_with_client(conn, row, author, reply_to, mentions, deliver, None)
+    record_with_client(conn, row, author, reply_to, None, None, mentions, deliver, None)
 }
 
+/// The model an Agent author runs now: its Session's model, or a node Agent
+/// definition's. `None` for users, system authors and remote Agents (their
+/// own Station knows the model; clients fall back to the initial).
+pub(super) fn author_model(conn: &Connection, author: &Author) -> Result<Option<String>> {
+    if author.kind != AuthorKind::Agent || author.id.contains('/') {
+        return Ok(None);
+    }
+    let model: Option<String> = match author.id.strip_prefix("session:") {
+        Some(key) => conn
+            .query_row("SELECT model FROM sessions WHERE key=?1", [key], |r| r.get(0))
+            .optional()?
+            .flatten(),
+        None => conn
+            .query_row(
+                "SELECT json_extract(value,'$.model') FROM node_agents WHERE id=?1",
+                [&author.id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten(),
+    };
+    Ok(model.filter(|model| !model.trim().is_empty()))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn record_with_client(
     conn: &Connection,
     row: &VisibleMessageRow,
     author: Option<&Author>,
     reply_to: Option<&str>,
+    quote: Option<&MessageQuote>,
+    author_model: Option<&str>,
     mentions: &[String],
     deliver: bool,
     client_id: Option<&str>,
@@ -394,8 +448,12 @@ pub(super) fn record_with_client(
         Some(author) => author.clone(),
         None => legacy_author(conn, row)?,
     };
-    let inserted = conn.execute("INSERT OR IGNORE INTO chat_message_facts(message_id,chat_id,author_id,author,reply_to,mentions,client_id) VALUES (?1,?2,?3,?4,?5,?6,?7)",
-        params![row.message_id,chat_id,author.id,serde_json::to_string(&author)?,reply_to,serde_json::to_string(mentions)?,client_id])?;
+    anyhow::ensure!(
+        quote.is_none() || reply_to.is_some(),
+        "quote_requires_reply_to"
+    );
+    let inserted = conn.execute("INSERT OR IGNORE INTO chat_message_facts(message_id,chat_id,author_id,author,reply_to,mentions,client_id,quote,quote_kind,author_model) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        params![row.message_id,chat_id,author.id,serde_json::to_string(&author)?,reply_to,serde_json::to_string(mentions)?,client_id,quote.map(|q| q.text.as_str()),quote.map(|q| q.kind.as_str()),author_model])?;
     if inserted == 0 {
         return Ok(vec![]);
     }
@@ -412,15 +470,17 @@ pub(super) fn record_with_client(
             .collect::<String>();
         conn.execute("UPDATE product_tasks SET goal=?2,title=CASE WHEN title='' THEN ?3 ELSE title END WHERE session_key=?1 AND goal=''",params![row.session_key,row.text,title])?;
     }
-    conn.execute(
-        "UPDATE chat_channels SET archived=CASE WHEN ?3 THEN 0 ELSE archived END,message_count=message_count+1,last_message_at=?2 WHERE chat_id=?1",
-        params![chat_id, row.created_at, deliver],
-    )?;
+    // Participants first: the Chat summary projection (its avatar) reads
+    // them when the channel row below changes.
     if author.kind != AuthorKind::System {
         conn.execute("INSERT INTO chat_participants(chat_id,author_id,author,message_count,first_sequence) VALUES (?1,?2,?3,1,?4)
         ON CONFLICT(chat_id,author_id) DO UPDATE SET message_count=message_count+1,author=excluded.author",
         params![chat_id,author.id,serde_json::to_string(&author)?,row.sequence])?;
     }
+    conn.execute(
+        "UPDATE chat_channels SET archived=CASE WHEN ?3 THEN 0 ELSE archived END,message_count=message_count+1,last_message_at=?2 WHERE chat_id=?1",
+        params![chat_id, row.created_at, deliver],
+    )?;
     if deliver {
         let preferences = conn
             .prepare("SELECT agent_ref,generation,value FROM chat_preferences WHERE chat_id=?1")?
@@ -794,6 +854,9 @@ pub(super) fn finish(conn: &Connection, key: &str, value: &Value) -> Result<()> 
             "attachments",
             "mentions",
             "reply_to",
+            "quote",
+            "quote_kind",
+            "author_model",
             "interaction",
             "created_at",
         ] {

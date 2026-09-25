@@ -715,7 +715,12 @@ mod tests {
                 text: format!("message {sequence}: {}", "长期保存的正文\n".repeat(20)),
                 attachments: vec![],
                 mentions: vec![],
-                reply_to: None,
+                // Even records are replies with a quote; odd ones are old-style.
+                reply_to: (sequence % 2 == 0).then(|| format!("m{}", sequence - 1)),
+                quote: (sequence % 2 == 0).then(|| format!("引用 {sequence}")),
+                quote_kind: (sequence % 4 == 0)
+                    .then_some(zork_client_types::chat::QuoteKind::Summary),
+                author_model: (sequence % 3 == 0).then(|| "claude-sonnet-5".into()),
                 interaction: None,
                 created_at: "2026-09-14T00:00:00Z".into(),
             },
@@ -844,12 +849,22 @@ mod tests {
         for i in [1, 19, 40, 8] {
             assert_eq!(log.get(i).unwrap().message.text, record(i).message.text);
         }
+        // Compression keeps reply quotes and leaves old records without them.
+        for i in [2, 4, 7, 40] {
+            assert_eq!(log.get(i).unwrap().message, record(i).message);
+        }
+        assert_eq!(
+            log.get(4).unwrap().message.quote_kind,
+            Some(zork_client_types::chat::QuoteKind::Summary)
+        );
+        assert_eq!(log.get(7).unwrap().message.quote, None);
         drop(log);
         fs::remove_dir_all(&cache).unwrap();
         let log = MessageLog::open(&source, &cache).unwrap();
         assert_eq!(log.positions(0, 100).unwrap(), (1..=40).collect::<Vec<_>>());
         for i in [40, 1, 9, 20] {
             assert_eq!(log.get(i).unwrap().message.text, record(i).message.text);
+            assert_eq!(log.get(i).unwrap().message, record(i).message);
         }
     }
     #[test]

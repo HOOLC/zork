@@ -152,6 +152,7 @@ impl StationDb {
             text,
             attachments,
             reply_to,
+            None,
             mentions,
             pages,
             interaction,
@@ -169,6 +170,7 @@ impl StationDb {
         text: &str,
         attachments: &[PreparedFile],
         reply_to: Option<&str>,
+        quote: Option<&MessageQuote>,
         mentions: &[String],
         pages: &[zork_client_types::pages::DeliveredPage],
         interaction: Option<&Value>,
@@ -251,6 +253,7 @@ impl StationDb {
             author,
             &content,
             reply_to,
+            quote,
             mentions,
             pages,
             interaction,
@@ -427,6 +430,7 @@ pub(super) fn append_visible(
     author: &Author,
     text: &str,
     reply_to: Option<&str>,
+    quote: Option<&MessageQuote>,
     mentions: &[String],
     pages: &[zork_client_types::pages::DeliveredPage],
     interaction: Option<&Value>,
@@ -441,11 +445,14 @@ pub(super) fn append_visible(
     }
     super::super::pages::record_pages(conn, &channel.session_key, id, pages, now)?;
     let row = conn.query_row("SELECT sequence,message_id,session_key,role,text,kind,created_at FROM visible_message_content WHERE message_id=?1",[id],super::super::map_visible_message_row)?;
+    let model = super::author_model(conn, author)?;
     let topics = record_with_client(
         conn,
         &row,
         Some(author),
         reply_to,
+        quote,
+        model.as_deref(),
         mentions,
         true,
         client_id,

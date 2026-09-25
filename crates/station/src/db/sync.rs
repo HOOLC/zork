@@ -81,7 +81,9 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     for (table, marker) in [
         ("node_agents", "chat_agent_home"),
         ("sessions", "agent_control"),
-        ("visible_messages", "chat_message_facts"),
+        // Messages without a quote keep their exact projected value, so the
+        // one-time re-seed after this change does not bump their revisions.
+        ("visible_messages", "author_model"),
     ] {
         let sql: Option<String> = conn
             .query_row(
@@ -99,7 +101,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     install_projection(conn, "node_agents", "id", "agent", catalog, "1", "json_object('id',NEW.id,'name',json_extract(NEW.value,'$.name'),'avatar',json_extract(NEW.value,'$.avatar'),'role',json_extract(NEW.value,'$.role'),'profile_id',json_extract(NEW.value,'$.profile_id'),'model',json_extract(NEW.value,'$.model'),'thinking',json_extract(NEW.value,'$.thinking'),'instructions',json_extract(NEW.value,'$.instructions'),'allowed_leaders',json(COALESCE(json_extract(NEW.value,'$.allowed_leaders'),'[]')),'session_id',COALESCE((SELECT chat_id FROM chat_agent_home WHERE agent_id=NEW.id),(SELECT chat_id FROM chat_channels WHERE session_key=NEW.session_key)))")?;
     install_projection(conn, "sessions", "id", "session", catalog, "NEW.platform='local_gui' AND NEW.id IS NOT NULL AND COALESCE(NEW.channel_type,'')!='agent_control'", "json_object('session_id',NEW.id,'kind',COALESCE(NEW.channel_type,'desktop'),'title',NEW.channel_name,'profile_id',COALESCE(NEW.profile_id,''),'model',COALESCE(NEW.model,''),'thinking',COALESCE(NEW.thinking,''),'workspace',NEW.workspace_path,'created_at',NEW.created_at,'updated_at',NEW.updated_at)")?;
     // The conversation scope is keyed by the public session id, not session_key.
-    install_projection(conn, "visible_messages", "message_id", "message", "json_object('type','conversation','id',(SELECT id FROM sessions WHERE key=NEW.session_key))", "EXISTS(SELECT 1 FROM sessions WHERE key=NEW.session_key AND platform='local_gui' AND id IS NOT NULL)", "json_object('message_id',NEW.message_id,'sequence',NEW.sequence,'role',CASE WHEN NEW.role='user' AND (NEW.message_id GLOB 'assignment-*' OR NEW.message_id GLOB 'rework-*') AND EXISTS(SELECT 1 FROM worker_tasks WHERE session_key=NEW.session_key) THEN 'assistant' ELSE NEW.role END,'text','','kind',NEW.kind,'created_at',NEW.created_at,'author',json((SELECT author FROM chat_message_facts WHERE message_id=NEW.message_id)),'author_agent_id',(SELECT CASE WHEN json_extract(author,'$.kind')='agent' THEN author_id END FROM chat_message_facts WHERE message_id=NEW.message_id),'author_name',(SELECT json_extract(author,'$.name') FROM chat_message_facts WHERE message_id=NEW.message_id),'mentions',json((SELECT mentions FROM chat_message_facts WHERE message_id=NEW.message_id)),'reply_to',(SELECT reply_to FROM chat_message_facts WHERE message_id=NEW.message_id))")?;
+    install_projection(conn, "visible_messages", "message_id", "message", "json_object('type','conversation','id',(SELECT id FROM sessions WHERE key=NEW.session_key))", "EXISTS(SELECT 1 FROM sessions WHERE key=NEW.session_key AND platform='local_gui' AND id IS NOT NULL)", "json_patch(json_object('message_id',NEW.message_id,'sequence',NEW.sequence,'role',CASE WHEN NEW.role='user' AND (NEW.message_id GLOB 'assignment-*' OR NEW.message_id GLOB 'rework-*') AND EXISTS(SELECT 1 FROM worker_tasks WHERE session_key=NEW.session_key) THEN 'assistant' ELSE NEW.role END,'text','','kind',NEW.kind,'created_at',NEW.created_at,'author',json((SELECT author FROM chat_message_facts WHERE message_id=NEW.message_id)),'author_agent_id',(SELECT CASE WHEN json_extract(author,'$.kind')='agent' THEN author_id END FROM chat_message_facts WHERE message_id=NEW.message_id),'author_name',(SELECT json_extract(author,'$.name') FROM chat_message_facts WHERE message_id=NEW.message_id),'mentions',json((SELECT mentions FROM chat_message_facts WHERE message_id=NEW.message_id)),'reply_to',(SELECT reply_to FROM chat_message_facts WHERE message_id=NEW.message_id)),COALESCE((SELECT json_patch(CASE WHEN quote IS NULL THEN '{}' ELSE json_object('quote',quote,'quote_kind',COALESCE(quote_kind,'excerpt')) END,CASE WHEN author_model IS NULL THEN '{}' ELSE json_object('model',author_model) END) FROM chat_message_facts WHERE message_id=NEW.message_id),'{}'))")?;
     // Update only the task projection formula; its public shape and cursor
     // domain are unchanged. Do not rebuild message projections for this change.
     let task_trigger: Option<String> = conn.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='sync_product_tasks_insert'", [], |row| row.get(0)).optional()?;
@@ -136,11 +138,13 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     }
     install_markers(conn)?;
     let chat_trigger: Option<String> = conn.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='sync_chat_channels_insert'", [], |row| row.get(0)).optional()?;
-    if chat_trigger.is_some_and(|sql| !sql.contains("NEW.archived")) {
+    if chat_trigger.is_some_and(|sql| !sql.contains("NEW.archived") || !sql.contains("agent_count")) {
         conn.execute_batch("DROP TRIGGER IF EXISTS sync_chat_channels_insert; DROP TRIGGER IF EXISTS sync_chat_channels_update; DROP TRIGGER IF EXISTS sync_chat_channels_delete;")?;
     }
+    // Chats without Agent authors keep their exact summary; the avatar adds
+    // `agents` (first four by first appearance) and `agent_count`.
     install_projection(conn, "chat_channels", "chat_id", "resource", catalog, "1",
-        "json_object('resource_type','chat_summary','schema_version',1,'chat_id',NEW.chat_id,'title',NEW.title,'creator',json(NEW.creator),'created_at',NEW.created_at,'last_message_at',NEW.last_message_at,'message_count',NEW.message_count,'archived',json(CASE WHEN NEW.archived THEN 'true' ELSE 'false' END))")?;
+        "json_patch(json_object('resource_type','chat_summary','schema_version',1,'chat_id',NEW.chat_id,'title',NEW.title,'creator',json(NEW.creator),'created_at',NEW.created_at,'last_message_at',NEW.last_message_at,'message_count',NEW.message_count,'archived',json(CASE WHEN NEW.archived THEN 'true' ELSE 'false' END)),COALESCE((SELECT json_object('agents',(SELECT json_group_array(json(a)) FROM (SELECT json_object('id',p.author_id,'name',json_extract(p.author,'$.name'),'model',(SELECT f.author_model FROM chat_message_facts f WHERE f.chat_id=p.chat_id AND f.author_id=p.author_id AND f.author_model IS NOT NULL ORDER BY f.rowid DESC LIMIT 1)) AS a FROM chat_participants p WHERE p.chat_id=NEW.chat_id AND json_extract(p.author,'$.kind')='agent' ORDER BY p.first_sequence LIMIT 4)),'agent_count',COUNT(*)) FROM chat_participants c WHERE c.chat_id=NEW.chat_id AND json_extract(c.author,'$.kind')='agent' HAVING COUNT(*)>0),'{}'))")?;
     // A complete empty directory is distinct from an older node without this
     // projection. Unknown Resource variants are ignored by existing clients.
     conn.execute_batch(

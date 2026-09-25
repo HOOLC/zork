@@ -2,6 +2,11 @@
 //! Participation is derived from authorship; a preference is not membership.
 use serde::{Deserialize, Serialize};
 
+mod quote;
+pub use quote::{
+    lenient_kind, validate_quote, MessageQuote, QuoteKind, MAX_QUOTE_CHARS, SHORT_ORIGINAL_CHARS,
+};
+
 /// Maximum UTF-8 bytes in Chat text, excluding the file-reference envelope.
 pub const MAX_MESSAGE_TEXT_BYTES: usize = 32 * 1024;
 
@@ -152,6 +157,32 @@ pub struct Channel {
     pub creator: Option<Author>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message_at: Option<String>,
+    /// The first Agent authors in order of first appearance (at most
+    /// [`CHAT_AVATAR_AGENTS`]` + 1`), for the Chat avatar. Absent from older
+    /// Stations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<ChatAgent>,
+    /// All Agent authors of the Chat, for the "+N" disc.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub agent_count: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
+/// Agents shown in a Chat avatar before the "+N" disc.
+pub const CHAT_AVATAR_AGENTS: usize = 3;
+
+/// An Agent author of a Chat as its avatar needs it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatAgent {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Model of its latest recorded message in this Chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,9 +198,38 @@ pub struct Message {
     pub mentions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
+    /// The replying author's quote of the part it answers (see [`quote`]).
+    /// Only meaningful with `reply_to`; absent on old records and peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
+    /// `excerpt` (verbatim) or `summary`; absent means excerpt. Unknown kinds
+    /// from newer peers read as absent.
+    #[serde(
+        default,
+        deserialize_with = "lenient_kind",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub quote_kind: Option<QuoteKind>,
+    /// Model the authoring Agent ran when it posted, recorded by the Station
+    /// that accepted the post (absent for users, remote authors, old records).
+    /// Clients draw the model maker's mark in the author's identity disc.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interaction: Option<serde_json::Value>,
     pub created_at: String,
+}
+
+impl Message {
+    /// The reply quote, when this message carries one.
+    pub fn reply_quote(&self) -> Option<MessageQuote> {
+        MessageQuote::from_fields(self.quote.as_deref(), self.quote_kind)
+    }
+    /// Stores a validated quote (or clears it).
+    pub fn set_quote(&mut self, quote: Option<MessageQuote>) {
+        self.quote_kind = quote.as_ref().map(|q| q.kind);
+        self.quote = quote.map(|q| q.text);
+    }
 }
 
 impl Preferences {
@@ -208,6 +268,9 @@ mod tests {
             attachments: vec![],
             mentions: vec!["reader".into()],
             reply_to: None,
+            quote: None,
+            quote_kind: None,
+            author_model: None,
             interaction: None,
             created_at: "time".into(),
         };
@@ -251,5 +314,34 @@ mod tests {
             r#"{"agent_id":"another","changes":{"subscribed":true}}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn quote_fields_are_optional_on_the_wire() {
+        let legacy = r#"{"message_id":"m","chat_id":"c","author":{"id":"a","kind":"agent"},
+            "text":"hi","attachments":[],"mentions":[],"reply_to":"o","created_at":"t"}"#;
+        let message: Message = serde_json::from_str(legacy).unwrap();
+        assert_eq!((message.quote.as_deref(), message.quote_kind), (None, None));
+        let encoded = serde_json::to_value(&message).unwrap();
+        assert!(encoded.get("quote").is_none() && encoded.get("quote_kind").is_none());
+
+        let mut quoted = message.clone();
+        quoted.set_quote(Some(MessageQuote {
+            text: "对比度只有 3.9:1".into(),
+            kind: QuoteKind::Summary,
+        }));
+        let encoded = serde_json::to_value(&quoted).unwrap();
+        assert_eq!(encoded["quote"], "对比度只有 3.9:1");
+        assert_eq!(encoded["quote_kind"], "summary");
+        let decoded: Message = serde_json::from_value(encoded.clone()).unwrap();
+        assert_eq!(decoded, quoted);
+        assert_eq!(decoded.reply_quote().unwrap().kind, QuoteKind::Summary);
+
+        // A kind from a newer peer does not reject the message.
+        let mut future = encoded;
+        future["quote_kind"] = serde_json::json!("paraphrase");
+        let decoded: Message = serde_json::from_value(future).unwrap();
+        assert_eq!(decoded.quote_kind, None);
+        assert_eq!(decoded.reply_quote().unwrap().kind, QuoteKind::Excerpt);
     }
 }

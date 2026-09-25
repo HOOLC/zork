@@ -77,6 +77,7 @@ fn placement(family: &str) -> Option<(&'static str, &'static str, &'static str)>
         "brand" | "icons" | "providers" => ("基础控件", "icons-brand", "图标与品牌"),
         "conversation" => ("对话", "conversation", "会话"),
         "markdown" => ("对话", "markdown", "消息正文"),
+        "multi-agent" => ("对话", "multi-agent", "多 Agent 消息（设计稿）"),
         "comments" => ("对话", "comments", "文字评论"),
         "activity" => ("对话", "activity", "会话动态"),
         "message-interaction" => ("对话", "message-interaction", "交互卡片"),
@@ -138,6 +139,16 @@ fn label(family: &str, state: &str) -> String {
         ("brand", "linked") => "品牌 · 组合标志".into(),
         ("brand", state) => format!("品牌 · {}", state_label(state)),
         ("conversation", "history") => "执行历史".into(),
+        ("multi-agent", "conversation") => "多 Agent 对话".into(),
+        ("multi-agent", "run-hover") => "同一 Agent 连续消息 · 悬停时间".into(),
+        ("multi-agent", "reply-offscreen") => "回复 · 原消息不在视野".into(),
+        ("multi-agent", "reply-highlight") => "回复 · 跳转后高亮".into(),
+        ("multi-agent", "reply-edge-cases") => "回复 · 边界情况".into(),
+        ("multi-agent", "relative-times") => "相对时间".into(),
+        ("multi-agent", "time-hover") => "相对时间 · 悬停完整时间".into(),
+        ("multi-agent", "phone") => "手机宽度 · 对话".into(),
+        ("multi-agent", "phone-reply") => "手机宽度 · 回复引用".into(),
+        ("multi-agent", "phone-time-hold") => "手机宽度 · 长按完整时间".into(),
         ("activity", "collapsed") => "收起".into(),
         ("activity", "expanded") => "展开".into(),
         ("activity", "live") => "实时（动效演示）".into(),
@@ -580,6 +591,24 @@ fn raw_catalog() -> Vec<Story> {
             story.height = height;
             items.push(story);
         }
+    }
+    // Design concept for Chats shared by several agents; not wired into the transcript.
+    for (state, width, height) in zork_ui::components::message_row::multi_agent::STATES {
+        let mut story = Story::new(
+            "multi-agent",
+            "多 Agent 消息（设计稿）",
+            state,
+            "crates/zork-ui/src/components/message_row/multi_agent.rs + message_row/identity.rs",
+            "multi-agent",
+        );
+        story.width = width;
+        story.height = height;
+        if let Some(target) = zork_ui::components::message_row::multi_agent::hover_target(state) {
+            story
+                .actions
+                .push(json!({"type":"move","target":{"element_id":target}}));
+        }
+        items.push(story);
     }
     for state in ["long", "loading", "empty", "offline", "error"] {
         let mut story = Story::new(
@@ -1039,6 +1068,20 @@ impl StoryHost {
             "model" => cx
                 .new(|cx| ProfilesView::headless_model_fixture(story.state.starts_with("custom"), cx))
                 .into(),
+            "multi-agent" => zork_ui::components::message_row::multi_agent::create(
+                &story.state,
+                std::rc::Rc::new(|at: &str| {
+                    use zork_client_core::message_time::{format_rfc3339, TimeLocale};
+                    // A fixed clock keeps the concept's labels stable.
+                    let now = chrono::DateTime::parse_from_rfc3339("2026-09-26T14:30:00+08:00")
+                        .expect("fixture clock");
+                    format_rfc3339(at, now, TimeLocale::ZhCn)
+                        .map(|time| (time.label, time.full))
+                        .unwrap_or_else(|| (at.to_owned(), at.to_owned()))
+                }),
+                cx,
+            )
+            .into(),
             "conversation" => cx
                 .new(|cx| {
                     zork_ui::components::message_row::stories::Story::new(

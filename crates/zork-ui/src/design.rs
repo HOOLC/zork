@@ -189,6 +189,58 @@ pub fn device_hue(key: &str) -> u32 {
     let hues = *DEVICE_HUES;
     hues[zork_client_types::device::color_slot(key, hues.len())]
 }
+/// Agent identity tints: a pale disc with deep ink in light, a deep disc with
+/// light ink in dark. They mark which agent wrote a message and never express
+/// status. Three registers keep them apart from the other colour systems:
+/// agents are round tonal discs, devices are solid squircles with the folded
+/// corner, status is a small solid dot, ring or cross with text. The hues sit
+/// in the gaps of the device set (40° 137° 180° 213° 290° 337°) and the status
+/// and persimmon hues (14° 36° 150° 357°): indigo 231°, olive 51°, violet 266°,
+/// moss 108°, plus a neutral graphite. Violet replaced an orchid (318°) once
+/// devices gained raspberry (337°): orchid sat between plum and raspberry.
+/// Each pair is (fill, ink).
+pub static AGENT_TINTS: Themed<[(u32, u32); 5]> = Themed::new(
+    // Ordered so neighbouring slots differ most: collision fallback moves to
+    // the next slot and should still look clearly different.
+    [
+        (0xDFE3FA, 0x33429A),
+        (0xEDE6C4, 0x5A4E0B),
+        (0xECE2F8, 0x603B91),
+        (0xDCEBD5, 0x35602A),
+        (0xE6E3DD, 0x3A3D42),
+    ],
+    [
+        (0x363D68, 0xCBD2FA),
+        (0x4A4526, 0xE6DDA6),
+        (0x4A3960, 0xDECBF6),
+        (0x34472F, 0xC0DDB0),
+        (0x3D4044, 0xDDD9D2),
+    ],
+);
+/// The agent's preferred tint slot, from its stable id (`zork_client_types::agent_tint`,
+/// shared with core and Android).
+pub fn agent_tint_slot(id: &str) -> usize {
+    zork_client_types::agent_tint::preferred_slot(id)
+}
+/// Tint slots for one Chat's agents in first-appearance order. Each agent keeps
+/// its preferred slot unless an earlier agent already holds it, then takes the
+/// next free one, so up to five agents in a Chat never share a tint; beyond
+/// that slots repeat and the name and initial still tell them apart.
+/// Transcripts get these from `message_presentation::present`.
+pub fn agent_tint_slots<'a>(ids: impl IntoIterator<Item = &'a str>) -> Vec<(String, usize)> {
+    zork_client_types::agent_tint::TintSlots::assign(ids)
+        .entries()
+        .to_vec()
+}
+/// (fill, ink) of a tint slot in the current theme.
+pub fn agent_tint(slot: usize) -> (u32, u32) {
+    let tints = *AGENT_TINTS;
+    tints[slot % tints.len()]
+}
+/// Brief wash behind a message after jumping to it from a reply quote. It
+/// locates, it does not express status, so it is neither persimmon nor a
+/// status hue.
+pub static JUMP_WASH: Themed<u32> = Themed::new(0xF5EFE3, 0x34322D);
 pub const BORDER_WIDTH: f32 = 0.5;
 
 pub struct InteractionPalette {
@@ -715,6 +767,73 @@ pub const LEADER_SIDEBAR_WIDTH: f32 = 264.;
 
 /// Unified desktop device navigation; the legacy station shell keeps its rail.
 pub const DEVICE_SIDEBAR_WIDTH: f32 = 240.;
+
+#[cfg(test)]
+mod agent_tint_tests {
+    use super::*;
+
+    fn luminance(rgb: u32) -> f64 {
+        let channel = |shift: u32| {
+            let c = ((rgb >> shift) & 0xFF) as f64 / 255.;
+            if c <= 0.03928 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+    }
+    fn contrast(a: u32, b: u32) -> f64 {
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn tint_set_matches_the_shared_slot_count() {
+        for theme in [Theme::Light, Theme::Dark] {
+            assert_eq!(
+                AGENT_TINTS.get(theme).len(),
+                zork_client_types::agent_tint::AGENT_TINT_SLOTS
+            );
+        }
+    }
+
+    #[test]
+    fn initials_stay_readable_on_every_tint() {
+        for theme in [Theme::Light, Theme::Dark] {
+            for (fill, ink) in AGENT_TINTS.get(theme) {
+                assert!(contrast(*fill, *ink) >= 5.0, "{fill:06X}/{ink:06X}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_chat_never_repeats_a_tint_below_capacity() {
+        let slots = agent_tint_slots(["planner", "reviewer", "builder", "planner", "a", "b"]);
+        let ids: Vec<_> = slots.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, ["planner", "reviewer", "builder", "a", "b"]);
+        let mut used: Vec<_> = slots.iter().map(|(_, slot)| *slot).collect();
+        used.sort();
+        used.dedup();
+        assert_eq!(used.len(), 5);
+        // The first agent always keeps its own preferred tint.
+        assert_eq!(slots[0].1, agent_tint_slot("planner"));
+        // Stable: the same order gives the same answer.
+        assert_eq!(
+            slots,
+            agent_tint_slots(["planner", "reviewer", "builder", "a", "b"])
+        );
+    }
+
+    #[test]
+    fn beyond_capacity_slots_repeat_their_preference() {
+        let ids: Vec<String> = (0..7).map(|i| format!("agent-{i}")).collect();
+        let slots = agent_tint_slots(ids.iter().map(String::as_str));
+        assert_eq!(slots.len(), 7);
+        assert_eq!(slots[5].1, agent_tint_slot("agent-5"));
+        assert_eq!(slots[6].1, agent_tint_slot("agent-6"));
+    }
+}
 
 #[cfg(test)]
 mod device_hue_tests {

@@ -34,6 +34,12 @@ internal object NativeBridge {
     external fun copyableModel(model: String): Boolean
     external fun connectionChoices(catalog: String, subscription: Boolean, provider: String, billing: String): String
     external fun composerState(input: String): String
+    /**
+     * Shared transcript presentation (core `message_presentation`):
+     * {rows, now_ms, utc_offset_minutes, locale, has_older, devices, agent_models} → {ok,data:{rows,multi_device,next_change_ms,tints}}.
+     * Pass the conversation rows as observed; re-run after next_change_ms or when rows change.
+     */
+    external fun messagePresentation(request: String): String
     external fun initialize(context: Context)
     external fun clearData(root: String, confirmed: Boolean, context: Context): String
     external fun call(root: String, request: String): String
