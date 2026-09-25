@@ -221,11 +221,27 @@ private fun fixtureSettings(): MobileSettingsState {
         obj("id" to "openai-compatible","label" to "OpenAI 兼容","billing" to org.json.JSONArray().put(obj("id" to "usage","label" to "API","deviceCode" to false,
             "template" to obj("models" to org.json.JSONArray().put(obj("api" to "openai-completions")))))))
     val failedProfile=obj("profile_id" to "router","name" to "OpenRouter","provider" to "openrouter","billing" to "usage","verified" to false,"verification" to "failed","models" to org.json.JSONArray())
+    // The same OpenCode Go key on both devices: core shows it once, quota from the fresher sample.
+    fun go(id: String, remaining: Int, at: String, models: List<String>) = obj("profile_id" to id,"name" to "OpenCode-Go","provider" to "opencode-go","billing" to "subscription",
+        "verified" to true,"verification" to "verified","account_key" to "opencode-go:k:0123456789abcdef","checkedAt" to at,
+        "models" to org.json.JSONArray(models.map { obj("id" to it) }),
+        "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to remaining))))
+    val goA=go("OpenCode-Go",64,"2026-09-10T01:00:00Z",listOf("glm-5.1","kimi-k2.6"))
+    val goB=go("go-mini2",58,"2026-09-10T01:20:00Z",listOf("glm-5.1","deepseek-flash"))
+    val openCode=obj("id" to "opencode-go","label" to "OpenCode Go")
+    val mini1Profiles=profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") } + goA
     val connections=listOf(
-        obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(profiles.map { JSONObject(it.toString()).put("verification", if (it.optBoolean("verified")) "verified" else "pending") }),"providers" to org.json.JSONArray(providers)),
+        obj("peer" to "mini1","name" to "mini1","state" to "ready","cached" to false,"profiles" to org.json.JSONArray(mini1Profiles),"providers" to org.json.JSONArray(providers + openCode)),
         obj("peer" to "mini2","name" to "mini2","state" to "failed","error" to "连接超时","cached" to true,"loaded_at_ms" to System.currentTimeMillis() - 12 * 60_000,
-            "profiles" to org.json.JSONArray().put(failedProfile),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter"))))
-    return MobileSettingsState(page="device",device=Peer("mini1","B","",machine="工作室的 MacBook Air"),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,
+            "profiles" to org.json.JSONArray().put(failedProfile).put(goB),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter")).put(openCode)))
+    fun source(peer: String, profile: JSONObject) = obj("peer" to peer,"device" to peer,"profile" to profile)
+    fun single(peer: String, profile: JSONObject) = obj("id" to "profile:$peer/${profile.text("profile_id")}","name" to profileName(profile),"provider" to profile.text("provider"),
+        "peer" to peer,"profile" to profile,"models" to (profile.optJSONArray("models")?.length() ?: 0),"sources" to org.json.JSONArray().put(source(peer, profile)))
+    // Core's `accounts` for these devices (see zork-client-core model_connections).
+    val accounts=mini1Profiles.dropLast(1).map { single("mini1", it) } + single("mini2", failedProfile) +
+        obj("id" to "account:opencode-go:k:0123456789abcdef","name" to "OpenCode-Go","provider" to "opencode-go","peer" to "mini2","profile" to goB,"models" to 3,
+            "sources" to org.json.JSONArray().put(source("mini1", goA)).put(source("mini2", goB)))
+    return MobileSettingsState(page="device",device=Peer("mini1","B","",machine="工作室的 MacBook Air"),fromChat=true,online=true,agents=agents,profiles=profiles,profile=profiles[0],providers=providers,connections=connections,accounts=accounts,
         info=obj("name" to "工作室的 MacBook Air","station" to obj("release_version" to "0.1.30"),"update" to obj("supported" to false,"reason" to "此设备由客户端管理，可在设备上开启后台运行。")))
 }
 

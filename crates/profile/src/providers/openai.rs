@@ -109,6 +109,22 @@ impl AuthProvider for OpenAi {
             .context("Missing OpenAI credential")
     }
 
+    /// ChatGPT user within its workspace: a Team workspace id alone is shared.
+    fn account_identity(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        let claims = super::jwt_claims(&nonempty(auth.get("access"))?)?;
+        let scope = claims.get("https://api.openai.com/auth");
+        let user = scope
+            .and_then(|s| nonempty(s.get("chatgpt_user_id")).or_else(|| nonempty(s.get("user_id"))))
+            .or_else(|| nonempty(claims.get("sub")))?;
+        let account = nonempty(auth.get("accountId"))
+            .or_else(|| scope.and_then(|s| nonempty(s.get("chatgpt_account_id"))))
+            .unwrap_or_default();
+        Some(format!("{user}/{account}"))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")
@@ -464,7 +480,7 @@ fn jwt_account_id(token: &str) -> Option<String> {
         })
 }
 
-fn decode_base64(input: &str) -> Option<Vec<u8>> {
+pub(super) fn decode_base64(input: &str) -> Option<Vec<u8>> {
     fn val(byte: u8) -> Option<u8> {
         match byte {
             b'A'..=b'Z' => Some(byte - b'A'),

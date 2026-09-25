@@ -90,6 +90,14 @@ impl AuthProvider for Kimi {
             .context("Missing Kimi For Coding credential")
     }
 
+    fn account_identity(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        let claims = super::jwt_claims(&nonempty(auth.get("access"))?)?;
+        nonempty(claims.get("user_id")).or_else(|| nonempty(claims.get("sub")))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")

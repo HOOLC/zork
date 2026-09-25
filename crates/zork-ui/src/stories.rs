@@ -203,6 +203,7 @@ pub fn catalog() -> Vec<Story> {
                 "narrow",
                 "full",
                 "hover-5h",
+                "merged",
             ][..],
             "crates/zork-ui/src/components/profile_card.rs",
             "profile-card",
@@ -472,7 +473,7 @@ impl Render for PrimitiveStory {
         let component: gpui::AnyElement = match self.story.family.as_str() {
             "profile-card" => {
                 let quota = match state {
-                    "subscription" | "narrow" | "full" | "hover-5h" => Some(Quota {
+                    "subscription" | "narrow" | "full" | "hover-5h" | "merged" => Some(Quota {
                         summary: "5 小时剩余 72%，7 天剩余 38%".into(),
                         windows: vec![
                             QuotaWindow {
@@ -510,7 +511,7 @@ impl Render for PrimitiveStory {
                     key: "story-card".into(),
                     provider: if state == "manual" { "anthropic" } else { "openai" }.into(),
                     name: if state == "manual" { "Claude API" } else { "Codex" }.into(),
-                    device: Some(DeviceIdentity {
+                    devices: std::iter::once(DeviceIdentity {
                         name: if state == "narrow" {
                             "设计工作室的 MacBook Air"
                         } else {
@@ -522,7 +523,12 @@ impl Render for PrimitiveStory {
                         } else {
                             crate::device_name::DeviceStatus::Connected
                         },
-                    }),
+                    })
+                    .chain((state == "merged").then(|| DeviceIdentity {
+                        name: "Studio".into(),
+                        status: crate::device_name::DeviceStatus::Relay,
+                    }))
+                    .collect(),
                     billing: if state == "manual" {
                         "Anthropic · API Key"
                     } else {

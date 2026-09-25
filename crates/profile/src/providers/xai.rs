@@ -97,6 +97,13 @@ impl AuthProvider for Xai {
             .context("Missing xAI access token")
     }
 
+    fn account_identity(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        nonempty(auth.get("email")).map(|email| email.to_lowercase())
+    }
+
     fn decorate_execution_headers(
         &self,
         billing: &str,

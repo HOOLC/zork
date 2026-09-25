@@ -108,6 +108,9 @@ pub struct ProfileView {
     pub provider: String,
     pub billing: String,
     pub auth_configured: bool,
+    /// Secret-free identity of the provider account; equal across devices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_key: Option<String>,
     pub account: Value,
     #[serde(rename = "rateLimits")]
     pub rate_limits: Value,
@@ -443,6 +446,12 @@ pub fn view(profile_id: &str, document: &ProfileDocument) -> ProfileView {
         provider: document.provider.clone(),
         billing: document.billing.clone(),
         auth_configured,
+        account_key: providers::account_key(
+            &document.provider,
+            &document.billing,
+            document.base_url.as_deref(),
+            &document.auth,
+        ),
         account: json!({ "ok": false, "error": "not_probed" }),
         rate_limits: json!({ "ok": false, "error": "not_probed" }),
         checked_at: None,
@@ -514,6 +523,10 @@ mod tests {
         assert_eq!(stored.base_url, before.base_url);
         assert_eq!(stored.headers, before.headers);
         assert!(!serde_json::to_string(&public).unwrap().contains("secret"));
+        assert!(public
+            .account_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("openai:k:")));
         let mut invalid = models;
         invalid[0].default_thinking = "invalid".to_owned();
         assert!(update_models(&paths, "manual.profile", invalid).is_err());

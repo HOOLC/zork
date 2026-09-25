@@ -132,6 +132,11 @@ pub trait AuthProvider: Send + Sync {
     async fn start_device_code(&self, http: &Client) -> Result<DeviceCode>;
     async fn poll_device_code(&self, http: &Client, pending: &DeviceCode)
         -> Result<DeviceCodePoll>;
+    /// The provider's stable id for the signed-in account, read from stored
+    /// credentials without network I/O. `None` when a login does not carry one.
+    fn account_identity(&self, _billing: &str, _auth: &Value) -> Option<String> {
+        None
+    }
 }
 
 static DEEPSEEK: DeepSeek = DeepSeek;
@@ -195,6 +200,62 @@ pub fn catalog() -> Value {
     })
 }
 
+/// A secret-free identity of the account a profile uses, equal on every device
+/// holding the same login or key. A login contributes the provider's account id;
+/// an API key only its salted SHA-256 fingerprint, so the key never leaves this
+/// device. Unknown identities stay `None` and are never merged.
+pub fn account_key(
+    provider_id: &str,
+    billing: &str,
+    base_url: Option<&str>,
+    auth: &Value,
+) -> Option<String> {
+    let provider = get(provider_id).ok()?;
+    if let Some(id) = provider.account_identity(billing, auth) {
+        return Some(format!("{provider_id}:a:{}", fingerprint(provider_id, &id)));
+    }
+    if auth.get("type").and_then(Value::as_str) == Some("oauth") {
+        return None;
+    }
+    let key = nonempty(auth.get("key"))?;
+    // A compatible endpoint is only the same account on the same server.
+    let material = if provider_id == "openai-compatible" {
+        format!(
+            "{}\0{key}",
+            base_url.unwrap_or_default().trim().trim_end_matches('/')
+        )
+    } else {
+        key
+    };
+    Some(format!(
+        "{provider_id}:k:{}",
+        fingerprint(provider_id, &material)
+    ))
+}
+
+fn fingerprint(provider_id: &str, material: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"zork-account-v1\0");
+    hash.update(provider_id.as_bytes());
+    hash.update(b"\0");
+    hash.update(material.as_bytes());
+    hash.finalize()[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Claims of a JWT, read locally without verifying it; only for picking ids.
+pub(crate) fn jwt_claims(token: &str) -> Option<Value> {
+    let payload = token.split('.').nth(1)?;
+    let mut normalized = payload.replace('-', "+").replace('_', "/");
+    while normalized.len() % 4 != 0 {
+        normalized.push('=');
+    }
+    serde_json::from_slice(&openai::decode_base64(&normalized)?).ok()
+}
+
 pub(crate) fn nonempty(value: Option<&Value>) -> Option<String> {
     value
         .and_then(Value::as_str)
@@ -231,6 +292,93 @@ pub(crate) fn has_credential(auth: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn api_key_accounts_share_a_fingerprint_that_hides_the_key() {
+        let auth = json!({"type": "api_key", "key": "sk-secret-value"});
+        let key = account_key("opencode-go", "subscription", None, &auth).unwrap();
+        assert!(key.starts_with("opencode-go:k:") && key.len() == "opencode-go:k:".len() + 16);
+        assert!(!key.contains("secret"));
+        assert_eq!(
+            account_key("opencode-go", "subscription", Some("https://x"), &auth),
+            Some(key.clone())
+        );
+        // The provider salts the fingerprint; another key is another account.
+        assert_ne!(
+            account_key("deepseek", "usage", None, &auth),
+            Some(key.clone())
+        );
+        assert_ne!(
+            account_key(
+                "opencode-go",
+                "subscription",
+                None,
+                &json!({"type":"api_key","key":"other"})
+            ),
+            Some(key)
+        );
+        // Compatible endpoints are distinct accounts per server.
+        let compatible = |url| account_key("openai-compatible", "usage", Some(url), &auth);
+        assert_eq!(
+            compatible("https://a.test/v1/"),
+            compatible("https://a.test/v1")
+        );
+        assert_ne!(
+            compatible("https://a.test/v1"),
+            compatible("https://b.test/v1")
+        );
+    }
+
+    #[test]
+    fn logins_use_the_provider_account_and_unknown_logins_stay_unmerged() {
+        assert_eq!(
+            account_key(
+                "anthropic",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":"a","refresh":"r"})
+            ),
+            None
+        );
+        let claude = |access: &str| {
+            account_key(
+                "anthropic",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":access,"refresh":"r","accountUuid":"uuid-1"}),
+            )
+        };
+        assert!(claude("a").unwrap().starts_with("anthropic:a:"));
+        assert_eq!(claude("a"), claude("rotated"));
+        assert_eq!(
+            account_key(
+                "xai",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":"a","email":"Me@X.ai"})
+            ),
+            account_key(
+                "xai",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":"b","email":"me@x.ai"})
+            )
+        );
+        assert_eq!(
+            account_key(
+                "github-copilot",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":"a","githubUserId":"42"})
+            ),
+            account_key(
+                "github-copilot",
+                "subscription",
+                None,
+                &json!({"type":"oauth","access":"b","githubUserId":"42"})
+            )
+        );
+    }
 
     #[test]
     fn probe_snapshot_returns_auth_only_when_refresh_changed_it() {

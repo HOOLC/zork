@@ -1106,6 +1106,7 @@ impl ProfilesView {
             profile,
             &self.catalog,
             self.quota_failures.contains(&profile.profile_id),
+            &[],
             None,
             None,
             cx.listener(move |v, _, _, cx| v.open_detail(id.clone(), cx)),
@@ -1117,8 +1118,9 @@ impl ProfilesView {
         profile: &ProfileInfo,
         catalog: &[Value],
         quota_failed: bool,
-        device_label: Option<&str>,
-        device_status: Option<&zork_ui::device_name::DeviceStatus>,
+        devices: &[(String, zork_ui::device_name::DeviceStatus)],
+        model_count: Option<usize>,
+        key: Option<String>,
         on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
     ) -> gpui::AnyElement {
         use zork_ui::components::profile_card::{
@@ -1126,11 +1128,12 @@ impl ProfilesView {
         };
 
         let id = profile.profile_id.clone();
-        let row_key = self
-            .row_scope
-            .as_ref()
-            .map(|scope| format!("{scope}-{id}"))
-            .unwrap_or_else(|| id.clone());
+        let row_key = key.unwrap_or_else(|| {
+            self.row_scope
+                .as_ref()
+                .map(|scope| format!("{scope}-{id}"))
+                .unwrap_or_else(|| id.clone())
+        });
         let provider = catalog.iter().find(|p| p["id"] == profile.provider);
         let provider_name = provider
             .and_then(|p| p["label"].as_str())
@@ -1173,32 +1176,39 @@ impl ProfilesView {
                 .collect(),
             balance: quota.balance,
         });
-        let accessible = device_label
-            .zip(device_status)
-            .map(|(device, status)| {
-                format!(
-                    "{} · {}",
-                    profile.display_name(),
-                    zork_ui::device_name::accessible_summary(device, status, None)
-                )
-            })
-            .unwrap_or_else(|| profile.display_name().to_owned());
+        let accessible = if devices.is_empty() {
+            profile.display_name().to_owned()
+        } else {
+            format!(
+                "{} · {}",
+                profile.display_name(),
+                devices
+                    .iter()
+                    .map(|(device, status)| {
+                        zork_ui::device_name::accessible_summary(device.as_str(), status, None)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("、")
+            )
+        };
+        let model_count = model_count.unwrap_or(profile.models.len());
         profile_card::render(
             ProfileCard {
                 key: row_key,
                 provider: profile.provider.clone(),
                 name: profile.display_name().to_owned(),
-                device: device_label
-                    .zip(device_status)
+                devices: devices
+                    .iter()
                     .map(|(name, status)| DeviceIdentity {
-                        name: name.to_owned(),
+                        name: name.clone(),
                         status: status.clone(),
-                    }),
+                    })
+                    .collect(),
                 billing: billing_summary,
-                model_count: if profile.models.is_empty() {
+                model_count: if model_count == 0 {
                     "待配置模型".to_owned()
                 } else {
-                    format!("{} 个模型", profile.models.len())
+                    format!("{model_count} 个模型")
                 },
                 verified,
                 verification: self

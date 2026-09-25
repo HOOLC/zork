@@ -94,6 +94,13 @@ impl AuthProvider for Anthropic {
             .context("Missing Anthropic credential")
     }
 
+    fn account_identity(&self, billing: &str, auth: &Value) -> Option<String> {
+        if billing != "subscription" {
+            return None;
+        }
+        nonempty(auth.get("accountUuid"))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")
@@ -102,6 +109,7 @@ impl AuthProvider for Anthropic {
         let auth = document.get("auth").cloned().unwrap_or(json!({}));
         if billing == "subscription" {
             let refreshed = self.refresh_if_needed(http, auth.clone()).await?;
+            let refreshed = with_account_uuid(http, refreshed).await;
             let snapshot = probe_subscription(http, &refreshed).await?;
             return Ok(super::with_refreshed_auth(snapshot, &auth, refreshed));
         }
@@ -395,8 +403,47 @@ async fn read_token_response(
         map.insert("access".into(), json!(access));
         map.insert("refresh".into(), json!(refresh));
         map.insert("expires".into(), json!(expires));
+        if let Some(uuid) = nonempty(payload.pointer("/account/uuid")) {
+            map.insert("accountUuid".into(), json!(uuid));
+        }
     }
     Ok(next)
+}
+
+/// Logins saved before the account id was kept learn it once from the profile.
+async fn with_account_uuid(http: &Client, mut auth: Value) -> Value {
+    if nonempty(auth.get("accountUuid")).is_some() {
+        return auth;
+    }
+    let Some(bearer) = nonempty(auth.get("access")) else {
+        return auth;
+    };
+    let lookup = async {
+        let response = http
+            .get(format!("{API_BASE}/api/oauth/profile"))
+            .bearer_auth(&bearer)
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .timeout(Duration::from_secs(20))
+            .send()
+            .await
+            .context("Claude profile request")?;
+        anyhow::ensure!(
+            response.status().is_success(),
+            "Claude profile HTTP {}",
+            response.status()
+        );
+        let payload: Value = response.json().await.context("Claude profile response")?;
+        nonempty(payload.pointer("/account/uuid")).context("Claude account uuid missing")
+    };
+    match lookup.await {
+        Ok(uuid) => {
+            if let Some(map) = auth.as_object_mut() {
+                map.insert("accountUuid".into(), json!(uuid));
+            }
+        }
+        Err(error) => tracing::warn!(%error, "Claude account lookup failed"),
+    }
+    auth
 }
 
 async fn probe_usage(http: &Client, auth: &Value) -> Result<QuotaSnapshot> {

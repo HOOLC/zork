@@ -19,8 +19,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 
-/** One connection in the global list, with the device that keeps it. */
-private data class ConnectionUi(val peer: String, val device: String, val profile: JSONObject, val providerLabel: String, val billingLabel: String?)
+/** One device's copy of an account. */
+private data class SourceUi(val peer: String, val device: String, val profile: JSONObject)
+/** One account in the global list: core merges the same provider account saved on
+ * several devices; [profile] is the source whose quota represents it. */
+private data class ConnectionUi(val id: String, val name: String, val profile: JSONObject, val providerLabel: String,
+    val models: Int, val sources: List<SourceUi>)
 
 /** Verification from core's `verification`: verified, failed or pending. */
 @Composable
@@ -45,15 +49,24 @@ internal fun accessLabel(profile: JSONObject) = if (profile.text("billing") == "
 internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>, actions: SettingsActions, modifier: Modifier = Modifier) {
     val devices = state.connections.orEmpty()
     var choosing by rememberSaveable { mutableStateOf(false) }
-    val rows = remember(devices) {
-        devices.flatMap { device ->
-            val providers = device.optJSONArray("providers").objects()
+    var sourcesOf by rememberSaveable { mutableStateOf<String?>(null) }
+    val rows = remember(devices, state.accounts) {
+        val labels = devices.flatMap { it.optJSONArray("providers").objects() }
+            .associate { it.text("id") to it.text("label") }.filterValues { it.isNotBlank() }
+        // Without core's accounts (an older core), each device's profile is its own entry.
+        val accounts = state.accounts ?: devices.flatMap { device ->
             device.optJSONArray("profiles").objects().map { profile ->
-                val provider = providers.find { it.text("id") == profile.text("provider") }
-                val billing = provider?.optJSONArray("billing").objects().find { it.text("id") == profile.text("billing") }
-                ConnectionUi(device.text("peer"), device.text("name"), profile,
-                    provider?.text("label")?.takeIf { it.isNotBlank() } ?: profile.text("provider"), billing?.text("label"))
+                JSONObject().put("id", "profile:${device.text("peer")}/${profile.text("profile_id")}")
+                    .put("name", profileName(profile)).put("provider", profile.text("provider")).put("profile", profile)
+                    .put("models", profile.optJSONArray("models")?.length() ?: 0)
+                    .put("sources", org.json.JSONArray().put(JSONObject().put("peer", device.text("peer")).put("device", device.text("name")).put("profile", profile)))
             }
+        }
+        accounts.map { account ->
+            val profile = account.optJSONObject("profile") ?: JSONObject()
+            ConnectionUi(account.text("id"), account.text("name", profileName(profile)), profile,
+                labels[account.text("provider")] ?: account.text("provider"), account.optInt("models"),
+                account.optJSONArray("sources").objects().map { SourceUi(it.text("peer"), it.text("device"), it.optJSONObject("profile") ?: profile) })
         }
     }
     val groups = remember(rows) { rows.groupBy { it.providerLabel }.toSortedMap(String.CASE_INSENSITIVE_ORDER) }
@@ -91,8 +104,12 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
                         Text(provider, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
                             modifier = Modifier.padding(start = 8.dp, top = 8.dp))
                         SettingsListGroup {
-                            connections.sortedBy { profileName(it.profile).lowercase() }.forEachIndexed { index, connection ->
-                                ConnectionCard(connection) { actions.connection(connection.peer, connection.profile) }
+                            connections.sortedBy { it.name.lowercase() }.forEach { connection ->
+                                ConnectionCard(connection) {
+                                    // One device opens its connection; several list their sources first.
+                                    val only = connection.sources.singleOrNull()
+                                    if (only != null) actions.connection(only.peer, only.profile) else sourcesOf = connection.id
+                                }
                             }
                         }
                     }
@@ -105,6 +122,19 @@ internal fun ModelConnectionsPage(state: MobileSettingsState, peers: List<Peer>,
             if (devices.isEmpty() && state.connections != null && !state.loading) item(key = "no-devices") {
                 Text("先连接一台设备", fontSize = 13.sp, color = ZorkColors.Muted,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 24.dp))
+            }
+        }
+    }
+    ZorkRetained(rows.find { it.id == sourcesOf && it.sources.size > 1 }) { account, open, closed ->
+        SettingsSheet("${account.name} · 选择设备", dismiss = { sourcesOf = null }, open = open, onClosed = closed) {
+            SettingsListGroup {
+                account.sources.forEach { source ->
+                    val verification = source.profile.text("verification", if (source.profile.optBoolean("verified")) "verified" else "pending")
+                    SettingsListRow(source.device, leading = { DeviceMark(source.device, 24.dp) },
+                        subtext = profileName(source.profile).takeIf { it != account.name },
+                        trailing = { if (verification != "verified") VerificationPill(source.profile) },
+                        action = { sourcesOf = null; actions.connection(source.peer, source.profile) })
+                }
             }
         }
     }
@@ -138,14 +168,18 @@ private fun ConnectionCard(connection: ConnectionUi, open: () -> Unit) {
     // One row: name, where it lives, a thin quota bar for subscriptions and the model
     // count. A status pill appears only when verification needs attention.
     val profile = connection.profile
-    val models = profile.optJSONArray("models")?.length() ?: 0
+    val models = connection.models
     val verification = profile.text("verification", if (profile.optBoolean("verified")) "verified" else "pending")
     val remaining = if (profile.text("billing") == "subscription") quotaRemaining(profile) else null
-    val description = "${profileName(profile)}，${accessLabel(profile)}，${connection.device}"
+    val devices = connection.sources.joinToString("、") { it.device }
+    val description = "${connection.name}，${accessLabel(profile)}，$devices"
     ZorkListRow(Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics(mergeDescendants = true) { contentDescription = description }, onClick = open) {
-        Text(profileName(profile), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Text(connection.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false))
-        DeviceMark(connection.device, 16.dp)
+        // Every device that holds this account, in core's order.
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+            connection.sources.forEach { DeviceMark(it.device, 16.dp) }
+        }
         Spacer(Modifier.weight(1f))
         if (verification != "verified") VerificationPill(profile)
         else {
@@ -164,6 +198,6 @@ private fun ConnectionCard(connection: ConnectionUi, open: () -> Unit) {
 /** Count for the settings home row; `null` while nothing was read yet. */
 internal fun connectionCount(state: MobileSettingsState): String {
     val devices = state.connections ?: return "—"
-    val total = devices.sumOf { it.optJSONArray("profiles")?.length() ?: 0 }
+    val total = state.accounts?.size ?: devices.sumOf { it.optJSONArray("profiles")?.length() ?: 0 }
     return if (devices.any { it.text("state") != "ready" } && total == 0) "—" else total.toString()
 }

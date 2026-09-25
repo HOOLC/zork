@@ -159,6 +159,7 @@ pub fn profile_options(profiles: &[ProfileInfo]) -> Vec<ProfileInfo> {
             provider: "auto".into(),
             billing: None,
             verified: false,
+            account_key: None,
             account: Value::Null,
             rate_limits: Value::Null,
             checked_at: None,
