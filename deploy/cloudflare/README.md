@@ -5,12 +5,26 @@ Device-held keys and local Mesh membership authorize native peer requests; the
 account directory establishes same-account phone access; the cloud cannot decrypt end-to-end business traffic. Relay and
 LAN/direct connections work without a Google account.
 
-One shared Durable Object bounds relay connections, upgrade attempts, bytes and
-frames, including pending upgrades and empty frames. These service-wide limits
-protect operating cost; they do not guarantee availability against an attacker
-who consumes the shared budget. Limits and protocol enforcement live in
-[the relay implementation](src/relay.ts). No business RPC or additional bridge
-protocol passes through the Worker: it forwards native iroh relay frames.
+One Durable Object proxies relay WebSockets and bounds connections, upgrade
+attempts, bytes and frames, including pending upgrades and empty frames. Budgets
+are per client so one client cannot lock out everybody else:
+
+| key | concurrent | connects/min | bytes/day | frames/day |
+| --- | --- | --- | --- | --- |
+| client IP (IPv6 by /64) | 32 | 60 | 4 GiB | 8M |
+| verified EndpointId | 4 | 20 | 2 GiB | 4M |
+| whole service | 256 | 600 | 20 GiB | 40M |
+
+The EndpointId budget applies once the relay process has confirmed the client's
+signed challenge; the unverifiable identity header on the upgrade is ignored.
+Rejected upgrades get HTTP 429 with `Retry-After`. A used-up daily budget closes
+only the sockets charged to that key (code 4008); a momentary rate burst closes
+only the sending socket. Connections must complete the relay handshake within
+30 seconds. The global cap is sized to Cloudflare cost (see the comment in
+[the relay implementation](src/relay.ts)); it protects operating cost and does
+not guarantee availability against an attacker using many addresses. No
+business RPC or additional bridge protocol passes through the Worker: it
+forwards native iroh relay frames.
 
 Optional cloud accounts have separate sessions. Access credentials expire;
 refresh credentials rotate with idle and absolute expiry. Retrying a lost refresh

@@ -89,6 +89,61 @@ pub struct Enrollment {
     http_route: crate::network::RelayHttpRoute,
     discovery: tokio::sync::Mutex<Option<crate::lan_discovery::Registration>>,
     local: std::sync::Mutex<Option<crate::local_discovery::Registration>>,
+    relay: Arc<RelayDemand>,
+}
+
+/// The enrollment endpoint holds a relay connection only while something needs
+/// it: open invitations this device issued, or an exchange in progress. The
+/// public relay budgets connections per client, and an idle permanent
+/// enrollment connection would otherwise cost every process one slot.
+/// LAN and local discovery stay available without the relay.
+struct RelayDemand {
+    endpoint: Endpoint,
+    relays: Vec<Arc<iroh::RelayConfig>>,
+    state: tokio::sync::Mutex<RelayState>,
+}
+#[derive(Default)]
+struct RelayState {
+    invites: bool,
+    exchanges: usize,
+    active: bool,
+}
+impl RelayDemand {
+    /// Applies a demand change; returns whether the relay is now in use.
+    async fn update(&self, change: impl FnOnce(&mut RelayState)) -> bool {
+        let mut state = self.state.lock().await;
+        change(&mut state);
+        let wanted = state.invites || state.exchanges > 0;
+        if wanted != state.active && !self.endpoint.is_closed() {
+            for relay in &self.relays {
+                if wanted {
+                    self.endpoint
+                        .insert_relay(relay.url.clone(), relay.clone())
+                        .await;
+                } else {
+                    // Removing the relay retires its connection (vendor/iroh).
+                    self.endpoint.remove_relay(&relay.url).await;
+                }
+            }
+            state.active = wanted;
+            tracing::debug!(active = wanted, "enrollment relay demand changed");
+        }
+        state.active
+    }
+}
+/// Keeps the relay while an exchange runs, including when it is cancelled.
+struct RelayLease(Arc<RelayDemand>);
+impl Drop for RelayLease {
+    fn drop(&mut self) {
+        let demand = self.0.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                demand
+                    .update(|state| state.exchanges = state.exchanges.saturating_sub(1))
+                    .await;
+            });
+        }
+    }
 }
 
 impl Enrollment {
@@ -123,7 +178,7 @@ impl Enrollment {
         if let Some(addr) = &mut options.bind_addr {
             addr.set_port(0);
         }
-        let (builder, http_route) = crate::network::configure_endpoint(
+        let (mut builder, http_route) = crate::network::configure_endpoint(
             Endpoint::builder(presets::N0)
                 .secret_key(key)
                 .ca_tls_config(CaTlsConfig::system())
@@ -131,6 +186,11 @@ impl Enrollment {
             &options,
         )
         .await?;
+        let relays = crate::network::relay_configs(&options)?;
+        if !relays.is_empty() {
+            // Start with an empty relay map; demand inserts the relays.
+            builder = builder.relay_mode(iroh::RelayMode::Custom(iroh::RelayMap::empty()));
+        }
         let endpoint = builder.bind().await?;
         let discovery = if std::env::var_os("ZORK_MESH_LAN_DISCOVERY").is_none_or(|v| v != "0") {
             Some(crate::lan_discovery::install(
@@ -143,6 +203,11 @@ impl Enrollment {
         let local = crate::local_discovery::install(&endpoint).await?;
         Ok(Self {
             offline: config.offline,
+            relay: Arc::new(RelayDemand {
+                endpoint: endpoint.clone(),
+                relays,
+                state: Default::default(),
+            }),
             endpoint,
             http_route,
             discovery: tokio::sync::Mutex::new(discovery),
@@ -168,6 +233,24 @@ impl Enrollment {
         }
         self.endpoint.addr()
     }
+    /// Holds the relay connection while this device has open invitations, so
+    /// a joiner outside the LAN can reach it; releases it when none remain.
+    /// Activation waits briefly for the home relay so the published address
+    /// includes it before an invitation is handed out.
+    pub async fn hold_relay_for_invites(&self, open: bool) {
+        let active = self.relay.update(|state| state.invites = open).await;
+        if open && active && !self.offline {
+            let _ = tokio::time::timeout(Duration::from_secs(5), self.endpoint.online()).await;
+        }
+    }
+    /// Whether the enrollment endpoint currently uses its relays.
+    pub async fn relay_active(&self) -> bool {
+        self.relay.state.lock().await.active
+    }
+    async fn relay_lease(&self) -> RelayLease {
+        self.relay.update(|state| state.exchanges += 1).await;
+        RelayLease(self.relay.clone())
+    }
     pub async fn close(&self) {
         if let Some(discovery) = self.discovery.lock().await.take() {
             discovery.shutdown().await;
@@ -184,6 +267,7 @@ impl Enrollment {
     pub async fn exchange_endpoint(&self, endpoint: EndpointAddr, body: &Value) -> Result<Value> {
         let bytes = serde_json::to_vec(body)?;
         ensure!(bytes.len() <= MAX_BYTES, "enrollment_request_too_large");
+        let _relay = self.relay_lease().await;
         tokio::time::timeout(Duration::from_secs(45), async {
             let connection = self.endpoint.connect(endpoint, ALPN).await?;
             let (mut send, mut receive) = connection.open_bi().await?;
@@ -258,6 +342,167 @@ impl Enrollment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug, Default, Clone)]
+    struct LiveClients(Arc<AtomicUsize>);
+    impl iroh_relay::server::AccessControl for LiveClients {
+        async fn on_connect(
+            &self,
+            _request: &iroh_relay::server::ClientRequest,
+        ) -> iroh_relay::server::Access {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            iroh_relay::server::Access::Allow
+        }
+        fn on_disconnect(
+            &self,
+            _endpoint: iroh::EndpointId,
+            _connection: iroh_relay::server::ConnectionId,
+        ) {
+            self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    async fn until(live: &LiveClients, expected: usize) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        while live.0.load(Ordering::SeqCst) != expected {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected {expected} relay clients, have {}",
+                live.0.load(Ordering::SeqCst)
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn relay_429_backs_off_instead_of_redialing() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let relay_url = format!("http://{}", listener.local_addr().unwrap());
+        let upgrades = Arc::new(AtomicUsize::new(0));
+        let counted = upgrades.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let counted = counted.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !request.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    // Latency probes succeed so the relay is chosen as home;
+                    // only the relay upgrade is refused.
+                    let response: &[u8] = if request.starts_with(b"GET /relay") {
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 30\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    };
+                    let _ = stream.write_all(response).await;
+                });
+            }
+        });
+        let config = MeshConfig {
+            offline: false,
+            bind: Some("127.0.0.1:0".into()),
+            relay_urls: Some(vec![relay_url]),
+            discovery_url: Some("http://127.0.0.1:9/pkarr".into()),
+            quic_discovery_urls: Some(vec![]),
+            ..Default::default()
+        };
+        let root = tempfile::tempdir().unwrap();
+        let enrollment = Enrollment::bind(root.path(), &config).await.unwrap();
+        enrollment.hold_relay_for_invites(true).await;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while upgrades.load(Ordering::SeqCst) == 0 && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(upgrades.load(Ordering::SeqCst), 1, "the relay was dialed");
+        // Upstream backoff would redial within milliseconds, then every <=16s.
+        tokio::time::sleep(Duration::from_secs(8)).await;
+        assert_eq!(
+            upgrades.load(Ordering::SeqCst),
+            1,
+            "a 429 waits at least ~24s before the next upgrade"
+        );
+        enrollment.close().await;
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn enrollment_holds_its_relay_only_while_invites_or_exchanges_need_it() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let live = LiveClients::default();
+        let mut relay_config = iroh_relay::server::RelayConfig::new(
+            "127.0.0.1:0".parse::<std::net::SocketAddr>().unwrap(),
+        );
+        relay_config.access = Arc::new(live.clone());
+        let mut server_config = iroh_relay::server::ServerConfig::default();
+        server_config.relay = Some(relay_config);
+        let relay = iroh_relay::server::Server::spawn(server_config)
+            .await
+            .unwrap();
+        let relay_url = format!("http://{}", relay.http_addr().unwrap());
+        let config = MeshConfig {
+            offline: false,
+            bind: Some("127.0.0.1:0".into()),
+            relay_urls: Some(vec![relay_url]),
+            // Never publish test identities to a real discovery service.
+            discovery_url: Some("http://127.0.0.1:9/pkarr".into()),
+            quic_discovery_urls: Some(vec![]),
+            ..Default::default()
+        };
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let server = Arc::new(Enrollment::bind(a.path(), &config).await.unwrap());
+        let client = Enrollment::bind(b.path(), &config).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(live.0.load(Ordering::SeqCst), 0, "idle endpoints stay off the relay");
+        assert!(!server.relay_active().await);
+
+        server.hold_relay_for_invites(true).await;
+        until(&live, 1).await;
+        assert!(server.relay_active().await);
+        assert!(
+            server.endpoint.addr().relay_urls().next().is_some(),
+            "an invitation address names the relay"
+        );
+        server.hold_relay_for_invites(true).await;
+        until(&live, 1).await;
+        server.hold_relay_for_invites(false).await;
+        until(&live, 0).await;
+        assert!(!server.relay_active().await);
+
+        // An exchange leases the relay and returns it when finished.
+        let endpoint = server.endpoint.addr();
+        let serving = server.clone();
+        let task = tokio::spawn(async move {
+            serving
+                .serve(|_, value| async move { Ok(value) })
+                .await
+        });
+        assert_eq!(
+            client
+                .exchange_endpoint(endpoint, &json!({"lease":true}))
+                .await
+                .unwrap(),
+            json!({"lease":true})
+        );
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while client.relay_active().await {
+            assert!(tokio::time::Instant::now() < deadline, "the exchange lease was not returned");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        until(&live, 0).await;
+        task.abort();
+        server.close().await;
+        client.close().await;
+    }
     #[tokio::test]
     async fn invitation_pins_server_and_uses_real_encrypted_transport() {
         let a = tempfile::tempdir().unwrap();

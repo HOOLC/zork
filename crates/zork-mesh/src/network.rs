@@ -45,6 +45,18 @@ fn relays(urls: &[String], port: Option<u16>) -> Result<RelayMap> {
             .collect::<Result<Vec<_>>>()?,
     ))
 }
+/// Relays this endpoint would use when online: the configured map, or iroh's
+/// default map when none is configured. Empty when offline.
+pub(crate) fn relay_configs(options: &Options) -> Result<Vec<std::sync::Arc<RelayConfig>>> {
+    if options.offline {
+        return Ok(Vec::new());
+    }
+    Ok(if options.relay_urls.is_empty() {
+        iroh::endpoint::default_relay_mode().relay_map().relays()
+    } else {
+        relays(&options.relay_urls, options.relay_quic_port)?.relays()
+    })
+}
 pub(crate) async fn configure_endpoint(
     mut builder: Builder,
     options: &Options,
