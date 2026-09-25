@@ -67,7 +67,7 @@ internal fun NewChatPage(state: NewChatUi, back: () -> Unit, action: (String, St
                 val thinking = data.pickerChoice("thinking")
                 val profile = data.pickerChoice("profile")
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (model.options.isNotEmpty()) ModelCapsule(model, thinking, editable) { picking = true }
+                    if (model.options.isNotEmpty()) ModelCapsule(model, thinking, editable, profile) { picking = true }
                     when {
                         data.optBoolean("busy") -> "正在创建 Chat…"
                         data.optBoolean("uncertain") -> "创建结果尚未确认，重试会继续同一次创建"
