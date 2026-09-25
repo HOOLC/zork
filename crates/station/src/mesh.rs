@@ -732,6 +732,8 @@ async fn membership_request(
                 .register_client(state, serde_json::from_value(body["device"].clone())?)
                 .await
         }
+        // The authenticated caller leaves; it can only announce itself.
+        "member_left" => service.enrollment.member_left(state, origin).await,
         _ => anyhow::bail!("unknown_membership_action"),
     }
 }

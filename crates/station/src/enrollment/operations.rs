@@ -7,9 +7,15 @@ use zork_config::membership::MeshVersion;
 pub(super) struct JoinRecord {
     request: JoinRequest,
     progress: JoinProgress,
-    #[serde(default = "enrollment::now")]
+    /// A record written before this field existed gets one more attempt and
+    /// then finishes; it must not restart its retry window on every load.
+    #[serde(default)]
     started_at: u64,
+    /// The inviting device once resolved, so a cancel can drop the bootstrap trust.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    inviter: Option<String>,
 }
+const JOIN_PATH: &str = "mesh/join-operation.json";
 pub(super) fn load(root: &Path) -> Result<Option<JoinRecord>> {
     match std::fs::read(root.join("mesh/join-operation.json")) {
         Ok(bytes) => {
@@ -46,18 +52,38 @@ impl EnrollmentService {
         }
         let mut job = self.join_job.lock().unwrap();
         let mut record = self.join_state.lock().unwrap();
-        if job.as_ref().is_some_and(|job| !job.is_finished()) {
-            let active = record.as_ref().context("join_operation_missing")?;
-            ensure!(active.request == request, "another_join_is_in_progress");
-            return Ok(active.progress.clone());
+        let unfinished = record.as_ref().filter(|r| !r.progress.finished).cloned();
+        if let Some(previous) = &unfinished {
+            if !previous.request.same_target(&request) {
+                // A different invitation replaces an unfinished join only on an
+                // explicit request, and never while membership is being committed.
+                ensure!(request.replace, "another_join_is_in_progress");
+                ensure!(
+                    previous.progress.phase != "confirming",
+                    "join_confirming_try_again"
+                );
+                if let Some(job) = job.take() {
+                    job.abort();
+                }
+                let mut cancelled = previous.clone();
+                mark_cancelled(&mut cancelled.progress, "已放弃，改用新的邀请");
+                private_json(&self.root.join(JOIN_PATH), &cancelled)?;
+                *record = Some(cancelled);
+                self.drop_bootstrap_trust(previous);
+            } else if job.as_ref().is_some_and(|job| !job.is_finished()) {
+                return Ok(previous.progress.clone());
+            }
         }
-        let next = if let Some(previous) = record.as_ref().filter(|r| !r.progress.finished) {
-            ensure!(previous.request == request, "another_join_is_in_progress");
-            previous.clone()
+        let resumed = unfinished.filter(|previous| previous.request.same_target(&request));
+        let next = if let Some(previous) = resumed {
+            previous
         } else {
+            let mut request = request.clone();
+            request.replace = false;
             JoinRecord {
-                request: request.clone(),
+                request,
                 started_at: enrollment::now(),
+                inviter: None,
                 progress: JoinProgress {
                     id: ulid::Ulid::new().to_string(),
                     phase: "resolving".into(),
@@ -72,13 +98,68 @@ impl EnrollmentService {
         };
         let progress = next.progress.clone();
         let id = progress.id.clone();
-        private_json(&self.root.join("mesh/join-operation.json"), &next)?;
+        let request = next.request.clone();
+        private_json(&self.root.join(JOIN_PATH), &next)?;
         *record = Some(next);
         let service = self.clone();
         *job = Some(zork_notify::Task(tokio::spawn(async move {
             service.run_join(state, request, id).await;
         })));
         Ok(progress)
+    }
+    /// Stop an unfinished join and finish it as cancelled. Refused only while
+    /// the inviting device is committing membership (seconds); retry then.
+    pub async fn cancel_join(&self, state: &AppState, id: Option<&str>) -> Result<JoinProgress> {
+        let (progress, previous) = {
+            let mut guard = self.join_state.lock().unwrap();
+            let record = guard.as_mut().context("join_operation_not_found")?;
+            if let Some(id) = id {
+                ensure!(record.progress.id == id, "join_operation_not_found");
+            }
+            if record.progress.finished {
+                return Ok(record.progress.clone());
+            }
+            ensure!(
+                record.progress.phase != "confirming",
+                "join_confirming_try_again"
+            );
+            // Finished before the task is stopped: any late phase update from
+            // the running attempt is refused by `update_join`.
+            mark_cancelled(&mut record.progress, "已取消接入");
+            private_json(&self.root.join(JOIN_PATH), record)?;
+            (record.progress.clone(), record.clone())
+        };
+        self.stop_join().await;
+        self.drop_bootstrap_trust(&previous);
+        state.db.realtime.notify(crate::realtime::MESH);
+        Ok(progress)
+    }
+    /// A cancelled join may have trusted the inviter for its confirmation step.
+    fn drop_bootstrap_trust(&self, record: &JoinRecord) {
+        let Some(inviter) = record.inviter.clone() else {
+            return;
+        };
+        let member = zork_config::load_config(&self.root)
+            .is_ok_and(|config| config.mesh.peers.iter().any(|peer| peer.origin == inviter));
+        if !member {
+            let node = self.node.clone();
+            tokio::spawn(async move {
+                let _ = node.untrust(&inviter).await;
+            });
+        }
+    }
+    pub(super) fn join_resolved(&self, state: &AppState, id: &str, inviter: &str) -> Result<()> {
+        {
+            let mut guard = self.join_state.lock().unwrap();
+            let record = guard
+                .as_mut()
+                .filter(|record| record.progress.id == id && !record.progress.finished)
+                .context("join_operation_replaced")?;
+            record.inviter = Some(inviter.to_owned());
+            private_json(&self.root.join(JOIN_PATH), record)?;
+        }
+        state.db.realtime.notify(crate::realtime::MESH);
+        Ok(())
     }
     pub(crate) fn resume_join(self: &Arc<Self>, state: AppState) {
         let request = self
@@ -124,10 +205,10 @@ impl EnrollmentService {
         let mut guard = self.join_state.lock().unwrap();
         let record = guard
             .as_mut()
-            .filter(|record| record.progress.id == id)
+            .filter(|record| record.progress.id == id && !record.progress.finished)
             .context("join_operation_replaced")?;
         change(&mut record.progress);
-        private_json(&self.root.join("mesh/join-operation.json"), record)?;
+        private_json(&self.root.join(JOIN_PATH), record)?;
         drop(guard);
         state.db.realtime.notify(crate::realtime::MESH);
         Ok(())
@@ -141,6 +222,7 @@ impl EnrollmentService {
             (record.started_at, record.progress.attempt)
         };
         let mut retry = zork_mesh::retry::DiscoveryBackoff::after_failures(attempts);
+        // No invitation outlives this window; retrying past it cannot succeed.
         let deadline = started_at.saturating_add(enrollment::INVITE_SECONDS);
         loop {
             if self
@@ -173,9 +255,16 @@ impl EnrollmentService {
                     return;
                 }
                 Err(error) => {
-                    let reason = error.to_string();
-                    let terminal = terminal_error(&reason) || enrollment::now() >= deadline;
+                    let mut reason = error.to_string();
+                    let permanent = terminal_error(&reason);
                     let delay = retry.next_delay();
+                    // The next attempt would start after the invitation expired.
+                    let expired =
+                        !permanent && enrollment::now().saturating_add(delay.as_secs()) >= deadline;
+                    if expired {
+                        reason = format!("invite_expired_while_unreachable: {reason}");
+                    }
+                    let terminal = permanent || expired;
                     let _ = self.update_join(&state, &id, |p| {
                         p.finished = terminal;
                         p.phase = if terminal { "failed" } else { "retrying" }.into();
@@ -212,18 +301,37 @@ impl EnrollmentService {
         let before = zork_config::load_config(&self.root)?.mesh;
         let mut detached = before.clone();
         zork_config::membership::detach(&mut detached, &self.origin, expected)?;
+        // Tell the managing device first, while it is still a trusted peer, so
+        // its directory stops listing us. Best effort: leaving never waits on
+        // an offline manager, which can still remove us with `mesh remove`.
+        let service = state.mesh.get().context("mesh_not_ready")?;
+        let manager_notified = match before
+            .group
+            .as_ref()
+            .filter(|group| group.authority != self.origin)
+        {
+            Some(group) => tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                service.membership_call(&group.authority, "member_left", json!({})),
+            )
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|result| result)
+            .inspect_err(
+                |error| tracing::info!(%error, "Mesh manager was not told about this leave"),
+            )
+            .is_ok(),
+            None => false,
+        };
         self.archive_membership(&before)?;
         zork_config::update_config(&self.root, |config| {
             zork_config::membership::detach(&mut config.mesh, &self.origin, expected)?;
             Ok(())
         })?;
-        state
-            .mesh
-            .get()
-            .context("mesh_not_ready")?
-            .refresh(state)
-            .await?;
-        Ok(json!({"left":true,"origin":self.origin,"data_preserved":true}))
+        service.refresh(state).await?;
+        Ok(
+            json!({"left":true,"origin":self.origin,"data_preserved":true,"manager_notified":manager_notified}),
+        )
     }
     pub(super) fn archive_membership(&self, config: &MeshConfig) -> Result<()> {
         if let Some(group) = &config.group {
@@ -234,7 +342,15 @@ impl EnrollmentService {
         Ok(())
     }
 }
-fn terminal_error(error: &str) -> bool {
+fn mark_cancelled(progress: &mut JoinProgress, label: &str) {
+    progress.finished = true;
+    progress.phase = "cancelled".into();
+    progress.label = label.into();
+    progress.retry_in_seconds = None;
+    progress.result = None;
+    progress.error = Some("join_cancelled".into());
+}
+pub(super) fn terminal_error(error: &str) -> bool {
     error.starts_with("invalid_")
         || error.starts_with("unsupported_")
         || error.starts_with("invite_")
@@ -248,5 +364,50 @@ fn terminal_error(error: &str) -> bool {
                 | "cannot_join_this_device_to_itself"
                 | "device_removed_from_mesh"
                 | "client_invite_requires_client"
+                | "mesh_disabled"
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permanent_invitation_errors_stop_retrying() {
+        for reason in [
+            "invite_expired",
+            "invite_expired_or_restart",
+            "invite_expired_or_unknown",
+            "invite_not_found",
+            "invite_already_used",
+            "invite_claimed_by_another_device",
+            "invalid_or_revoked_invite",
+            "mesh_disabled",
+        ] {
+            assert!(terminal_error(reason), "{reason}");
+        }
+        for reason in [
+            "enrollment_connection_timeout",
+            "mesh_not_ready",
+            "bootstrap_bind_timeout",
+        ] {
+            assert!(!terminal_error(reason), "{reason}");
+        }
+    }
+
+    #[test]
+    fn legacy_record_without_start_time_does_not_restart_its_window() {
+        let record: JoinRecord = serde_json::from_value(json!({
+            "request": {"invitation": "zj1_x", "name": null},
+            "progress": {"id": ulid::Ulid::new().to_string(), "phase": "retrying", "label": "", "attempt": 3,
+                "retry_in_seconds": 30, "finished": false, "result": null, "error": null}
+        }))
+        .unwrap();
+        assert_eq!(record.started_at, 0);
+        assert!(record.inviter.is_none());
+        let mut progress = record.progress.clone();
+        mark_cancelled(&mut progress, "已取消接入");
+        assert!(progress.finished && progress.phase == "cancelled");
+        assert_eq!(progress.error.as_deref(), Some("join_cancelled"));
+    }
 }

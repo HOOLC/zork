@@ -115,6 +115,8 @@ explicit data directory.
 ```sh
 zork mesh join '<invitation>' --data /absolute/path/to/node
 zork mesh status --data /absolute/path/to/node
+zork mesh join --cancel --data /absolute/path/to/node
+zork mesh remove '<device name>' --yes --data /absolute/path/to/node
 zork service install --data /absolute/path/to/node
 zork service status --data /absolute/path/to/node
 zork service uninstall --data /absolute/path/to/node
@@ -124,7 +126,14 @@ zork stop --data /absolute/path/to/node
 Removing the service registration does not stop an existing node. Background and
 client-owned lifecycle rules are defined in [device ownership](../design/devices.md#lifecycle).
 Use `zork service --help` for options; do not copy another device's identity or data
-to create a new installation.
+to create a new installation. This includes the `account/` directory: account
+refresh credentials rotate per instance, so a copy makes both instances lose the
+session (`refresh_reused`) and they must sign in again.
+
+`zork mesh invite` enables Mesh first if it was switched off. A join that is
+still retrying can be cancelled, or replaced by another invitation with
+`--replace`. `zork mesh leave` tells the managing device when it is reachable;
+otherwise remove the departed device there with `zork mesh remove`.
 
 ## Build and publish
 

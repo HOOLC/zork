@@ -1,6 +1,19 @@
 //! Framed RPC, subscriptions and byte tunnels on the native control ALPN.
+//!
+//! The ALPN carries the control framing version. Any incompatible framing
+//! change must bump [`CONTROL_VERSION`] (and so the ALPN): peers then fail the
+//! TLS handshake at once instead of timing out on bytes they cannot parse, and
+//! [`VERSION_ALPN`] tells the dialer which side has to upgrade.
 use crate::MAX_FRAME;
-pub(crate) const ALPN: &[u8] = b"zork-control/1";
+/// Control framing version spoken by this build.
+pub const CONTROL_VERSION: u32 = 2;
+pub(crate) const ALPN: &[u8] = b"zork-control/2";
+/// Framing used before the prefaced control streams. The same ALPN name
+/// survived that change, so such peers are refused explicitly, never served.
+pub(crate) const LEGACY_ALPN: &[u8] = b"zork-control/1";
+/// Stable forever: answers which control versions this device speaks.
+pub(crate) const VERSION_ALPN: &[u8] = b"zork-version";
+const LEGACY_CLOSE: u32 = 426;
 const STREAM_PREFACE: &[u8; 4] = b"ZC01";
 use anyhow::{ensure, Context, Result};
 use iroh::{
@@ -464,5 +477,240 @@ impl ControlHandler for DeviceHandler {
                     .await
             }
         })
+    }
+}
+
+/// The peer runs an incompatible Zork build; retrying cannot help.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionMismatch {
+    PeerOlder,
+    PeerNewer,
+}
+impl std::fmt::Display for VersionMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::PeerOlder => "对方设备的 Zork 版本过旧，无法连接（upgrade_required: peer_older）。请升级对方设备后重试",
+            Self::PeerNewer => "对方设备的 Zork 版本较新，无法连接（upgrade_required: peer_newer）。请升级本机 Zork 后重试",
+        })
+    }
+}
+impl std::error::Error for VersionMismatch {}
+
+/// Answers version probes. It never serves requests and never needs trust:
+/// the reply only lists protocol versions.
+#[derive(Debug, Clone)]
+pub(crate) struct VersionService;
+impl iroh::protocol::ProtocolHandler for VersionService {
+    fn accept(
+        &self,
+        connection: Connection,
+    ) -> impl std::future::Future<Output = Result<(), AcceptError>> + Send {
+        async move {
+            let _ = tokio::time::timeout(Duration::from_secs(5), async {
+                let mut send = connection.open_uni().await?;
+                send.write_all(&serde_json::to_vec(
+                    &serde_json::json!({"control":[CONTROL_VERSION]}),
+                )?)
+                .await?;
+                send.finish()?;
+                connection.closed().await;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await;
+            Ok(())
+        }
+    }
+}
+
+/// Refuses dialers that speak the old framing under the old ALPN, promptly
+/// and with a readable reason, instead of letting them hang.
+#[derive(Debug, Clone)]
+pub(crate) struct LegacyRefusal;
+impl iroh::protocol::ProtocolHandler for LegacyRefusal {
+    fn accept(
+        &self,
+        connection: Connection,
+    ) -> impl std::future::Future<Output = Result<(), AcceptError>> + Send {
+        async move {
+            connection.close(
+                LEGACY_CLOSE.into(),
+                "对方设备的 Zork 版本较新，请升级本机 Zork (upgrade_required)".as_bytes(),
+            );
+            Ok(())
+        }
+    }
+}
+
+/// After a failed control dial, find out whether the peer is reachable but
+/// speaks another control version. `None` means "not a version problem".
+pub(crate) async fn probe_version(
+    endpoint: &iroh::Endpoint,
+    address: iroh::EndpointAddr,
+) -> Option<VersionMismatch> {
+    let probe = async {
+        match endpoint.connect(address.clone(), VERSION_ALPN).await {
+            Ok(connection) => {
+                let reply = async {
+                    let mut recv = connection.accept_uni().await?;
+                    let bytes = recv.read_to_end(1024).await?;
+                    Ok::<_, anyhow::Error>(serde_json::from_slice::<Value>(&bytes)?)
+                }
+                .await;
+                connection.close(0u32.into(), b"version known");
+                let versions: Vec<u32> = reply
+                    .ok()?
+                    .get("control")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|v| v as u32))
+                    .collect();
+                if versions.is_empty() || versions.contains(&CONTROL_VERSION) {
+                    None
+                } else if versions.iter().all(|v| *v < CONTROL_VERSION) {
+                    Some(VersionMismatch::PeerOlder)
+                } else {
+                    Some(VersionMismatch::PeerNewer)
+                }
+            }
+            // Builds without the version probe predate it; a successful legacy
+            // handshake identifies them.
+            Err(_) => match endpoint.connect(address, LEGACY_ALPN).await {
+                Ok(connection) => {
+                    connection.close(0u32.into(), b"version known");
+                    Some(VersionMismatch::PeerOlder)
+                }
+                Err(_) => None,
+            },
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(4), probe)
+        .await
+        .ok()
+        .flatten()
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    async fn fixture(alpns: Vec<Vec<u8>>) -> Result<iroh::Endpoint> {
+        Ok(iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .clear_address_lookup()
+            .relay_mode(iroh::RelayMode::Disabled)
+            .clear_ip_transports()
+            .bind_addr("127.0.0.1:0")?
+            .alpns(alpns)
+            .bind()
+            .await?)
+    }
+    async fn client(root: &std::path::Path) -> Result<crate::managed::Runtime> {
+        crate::managed::start_client(
+            root,
+            &zork_config::MeshConfig {
+                enabled: true,
+                offline: true,
+                bind: Some("127.0.0.1:0".into()),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn old_peer_fails_fast_with_an_upgrade_message() -> Result<()> {
+        // An old node: only the legacy control ALPN, no version probe.
+        let old = fixture(vec![LEGACY_ALPN.to_vec()]).await?;
+        let server = old.clone();
+        let accept = tokio::spawn(async move {
+            while let Some(incoming) = server.accept().await {
+                if let Ok(connection) = incoming.await {
+                    tokio::spawn(async move { connection.closed().await });
+                }
+            }
+        });
+        let root = tempfile::tempdir()?;
+        let mut runtime = client(root.path()).await?;
+        let node = runtime.node();
+        let origin = format!("key:{}", old.id().to_z32());
+        node.trust(&origin, "old", None).await?;
+        node.remember_peer_address(&origin, serde_json::to_value(old.addr())?)
+            .await?;
+        let started = std::time::Instant::now();
+        let error = node
+            .exchange(&origin, &serde_json::json!({"v":1}))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<VersionMismatch>(),
+            Some(&VersionMismatch::PeerOlder),
+            "{error:#}"
+        );
+        assert!(error.to_string().contains("版本过旧"));
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no dial timeout"
+        );
+        runtime.shutdown().await?;
+        accept.abort();
+        old.close().await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn newer_peer_is_reported_through_the_version_probe() -> Result<()> {
+        let newer = fixture(vec![VERSION_ALPN.to_vec(), b"zork-control/9".to_vec()]).await?;
+        let server = newer.clone();
+        let accept = tokio::spawn(async move {
+            while let Some(incoming) = server.accept().await {
+                if let Ok(connection) = incoming.await {
+                    tokio::spawn(async move {
+                        if let Ok(mut send) = connection.open_uni().await {
+                            let _ = send.write_all(br#"{"control":[9]}"#).await;
+                            let _ = send.finish();
+                        }
+                        connection.closed().await
+                    });
+                }
+            }
+        });
+        let root = tempfile::tempdir()?;
+        let mut runtime = client(root.path()).await?;
+        let node = runtime.node();
+        let origin = format!("key:{}", newer.id().to_z32());
+        node.trust(&origin, "newer", None).await?;
+        node.remember_peer_address(&origin, serde_json::to_value(newer.addr())?)
+            .await?;
+        let error = node
+            .exchange(&origin, &serde_json::json!({"v":1}))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<VersionMismatch>(),
+            Some(&VersionMismatch::PeerNewer),
+            "{error:#}"
+        );
+        assert!(error.to_string().contains("升级本机"));
+        runtime.shutdown().await?;
+        accept.abort();
+        newer.close().await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn current_node_refuses_legacy_dialers_and_answers_probes() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let mut runtime = client(root.path()).await?;
+        let node = runtime.node();
+        let address = node.address()?;
+        let dialer = fixture(vec![]).await?;
+        // Old client: closed at once with the upgrade reason, not left hanging.
+        let legacy = dialer.connect(address.clone(), LEGACY_ALPN).await?;
+        let reason = tokio::time::timeout(Duration::from_secs(5), legacy.closed()).await?;
+        assert!(format!("{reason}").contains("upgrade_required"), "{reason}");
+        // The probe reports this build's version, so a peer can tell which side is old.
+        assert_eq!(probe_version(&dialer, address).await, None);
+        runtime.shutdown().await?;
+        dialer.close().await;
+        Ok(())
     }
 }
