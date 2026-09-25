@@ -24,14 +24,21 @@ import org.json.JSONObject
 internal data class PickerChoice(val value: String, val options: List<Pair<String, String>>,
     /** Model value → connections (profile id, name) offering it, from core. */
     val connections: Map<String, List<Pair<String, String>>> = emptyMap(),
-    val device: String = "")
+    val device: String = "",
+    /** Model value → maker key from core (absent: unknown maker, generic mark). */
+    val makers: Map<String, String> = emptyMap(),
+    /** Connection profile id → provider, for the connection's own mark. */
+    val providers: Map<String, String> = emptyMap())
 
 internal fun JSONObject?.pickerChoice(field: String): PickerChoice {
     val choice = this?.optJSONObject(field) ?: JSONObject()
     val options = choice.optJSONArray("options").objects()
     return PickerChoice(choice.text("value"), options.map { it.text("value") to it.text("label", it.text("value")) },
         options.associate { o -> o.text("value") to o.optJSONArray("connections").objects().map { it.text("profile") to it.text("name") } },
-        options.firstNotNullOfOrNull { it.text("device").takeIf(String::isNotBlank) }.orEmpty())
+        options.firstNotNullOfOrNull { it.text("device").takeIf(String::isNotBlank) }.orEmpty(),
+        options.mapNotNull { o -> o.text("maker").takeIf(String::isNotBlank)?.let { o.text("value") to it } }.toMap(),
+        options.flatMap { o -> o.optJSONArray("connections").objects() }.filter { it.text("provider").isNotBlank() }
+            .associate { it.text("profile") to it.text("provider") })
 }
 
 /** Thinking values keep each provider's own names; only "off" gets a Chinese word. */
@@ -46,6 +53,8 @@ internal fun ModelCapsule(model: PickerChoice, thinking: PickerChoice, enabled: 
         .semantics { contentDescription = "选择模型" }
         .padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The capsule names a model: its maker's mark, not the connection's.
+        if (model.options.any { it.first == model.value }) MakerMark(model.makers[model.value], 16, if (enabled) ZorkColors.Ink else ZorkColors.Disabled)
         Text(modelLabel, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = if (enabled) ZorkColors.Ink else ZorkColors.Disabled, modifier = Modifier.widthIn(max = 200.dp))
         if (thinking.value.isNotBlank() && thinking.options.size > 1) Text("· ${thinkingLabel(thinking.value)}", fontSize = 13.sp, color = ZorkColors.Subtle, maxLines = 1)
@@ -82,6 +91,8 @@ internal fun ModelPickerSheet(open: Boolean, model: PickerChoice, thinking: Pick
             groups.forEach { (connection, options) ->
             if (connection != null) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // The heading names a connection: its provider's mark.
+                model.providers[connection.first]?.let { Glyph(providerDrawable(it), 14.dp, ZorkColors.Subtle) }
                 Text(connection.second, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ZorkColors.Subtle,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (model.device.isNotBlank()) {
@@ -99,7 +110,10 @@ internal fun ModelPickerSheet(open: Boolean, model: PickerChoice, thinking: Pick
                         if (connection != null && model.connections[value].orEmpty().size > 1 && profile.options.any { it.first == connection.first })
                             choose("profile", connection.first)
                     }
-                    .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // The row names a model: its maker's mark, whichever connection serves it.
+                    MakerMark(model.makers[value], 18)
                     Text(label, fontSize = 15.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     if (selected) Glyph(R.drawable.ic_check, 16.dp, ZorkColors.Ink)

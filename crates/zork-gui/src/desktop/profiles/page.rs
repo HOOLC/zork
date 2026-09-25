@@ -255,6 +255,20 @@ impl ProfilesView {
                 .justify_start()
                 .gap(px(10.))
                 .rounded_full()
+                // The row names a model: its maker's mark, even when a router serves it.
+                .child(
+                    div()
+                        .id(gpui::SharedString::from(format!("model-maker-{id}")))
+                        .flex_shrink_0()
+                        .child(
+                            ui::icon(zork_ui::controls::maker_path(row.maker), 16.)
+                                .text_color(rgb(if row.enabled { p.text } else { p.muted })),
+                        )
+                        .automation(
+                            AutomationRole::Status,
+                            zork_ui::controls::maker_path(row.maker),
+                        ),
+                )
                 .child(
                     div()
                         .min_w_0()
@@ -427,7 +441,15 @@ impl ProfilesView {
                     }))
                     .automation(AutomationRole::Button, "返回模型连接"),
             )
-            .child(provider_icon(detail["provider"].as_str().unwrap_or_default(), 28.))
+            // The page names a connection: its provider's mark.
+            .child({
+                let provider = detail["provider"].as_str().unwrap_or_default();
+                div()
+                    .id("profile-detail-provider-mark")
+                    .flex_shrink_0()
+                    .child(provider_icon(provider, 28.))
+                    .automation(AutomationRole::Status, zork_ui::controls::provider_path(provider))
+            })
             .child(
                 div()
                     .flex_1()

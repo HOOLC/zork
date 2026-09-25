@@ -1,0 +1,3569 @@
+{
+ "svg": [
+  {
+   "path": "crates/zork-ui/assets/app/browser-alerts.svg",
+   "asset": "app/browser-alerts.svg",
+   "category": "app",
+   "name": "browser-alerts",
+   "viewBox": "0 0 128 128",
+   "bytes": 409,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-gpu.svg",
+   "asset": "app/browser-gpu.svg",
+   "category": "app",
+   "name": "browser-gpu",
+   "viewBox": "0 0 128 128",
+   "bytes": 572,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-helper.svg",
+   "asset": "app/browser-helper.svg",
+   "category": "app",
+   "name": "browser-helper",
+   "viewBox": "0 0 128 128",
+   "bytes": 477,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-network.svg",
+   "asset": "app/browser-network.svg",
+   "category": "app",
+   "name": "browser-network",
+   "viewBox": "0 0 128 128",
+   "bytes": 461,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-plugin.svg",
+   "asset": "app/browser-plugin.svg",
+   "category": "app",
+   "name": "browser-plugin",
+   "viewBox": "0 0 128 128",
+   "bytes": 436,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-renderer.svg",
+   "asset": "app/browser-renderer.svg",
+   "category": "app",
+   "name": "browser-renderer",
+   "viewBox": "0 0 128 128",
+   "bytes": 469,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser-storage.svg",
+   "asset": "app/browser-storage.svg",
+   "category": "app",
+   "name": "browser-storage",
+   "viewBox": "0 0 128 128",
+   "bytes": 446,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/browser.svg",
+   "asset": "app/browser.svg",
+   "category": "app",
+   "name": "browser",
+   "viewBox": "0 0 128 128",
+   "bytes": 430,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/icon-design.svg",
+   "asset": "app/icon-design.svg",
+   "category": "app",
+   "name": "icon-design",
+   "viewBox": "0 0 1024 1024",
+   "bytes": 980,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "#D9D0EA",
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/icon-dev.svg",
+   "asset": "app/icon-dev.svg",
+   "category": "app",
+   "name": "icon-dev",
+   "viewBox": "0 0 1024 1024",
+   "bytes": 1020,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/icon.svg",
+   "asset": "app/icon.svg",
+   "category": "app",
+   "name": "icon",
+   "viewBox": "0 0 1024 1024",
+   "bytes": 577,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/service-watch.svg",
+   "asset": "app/service-watch.svg",
+   "category": "app",
+   "name": "service-watch",
+   "viewBox": "0 0 128 128",
+   "bytes": 665,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/station.svg",
+   "asset": "app/station.svg",
+   "category": "app",
+   "name": "station",
+   "viewBox": "0 0 128 128",
+   "bytes": 514,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/app/supervisor.svg",
+   "asset": "app/supervisor.svg",
+   "category": "app",
+   "name": "supervisor",
+   "viewBox": "0 0 128 128",
+   "bytes": 825,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "#E9643B",
+    "#F6F3EA"
+   ],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/lockup.svg",
+   "asset": "brand/lockup.svg",
+   "category": "brand",
+   "name": "lockup",
+   "viewBox": "0 0 184 44",
+   "bytes": 1251,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/mark-micro.svg",
+   "asset": "brand/mark-micro.svg",
+   "category": "brand",
+   "name": "mark-micro",
+   "viewBox": "0 0 16 16",
+   "bytes": 281,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/mark-orange.svg",
+   "asset": "brand/mark-orange.svg",
+   "category": "brand",
+   "name": "mark-orange",
+   "viewBox": "0 0 128 128",
+   "bytes": 482,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#E9643B"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/onboarding.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/mark-reverse.svg",
+   "asset": "brand/mark-reverse.svg",
+   "category": "brand",
+   "name": "mark-reverse",
+   "viewBox": "0 0 128 128",
+   "bytes": 482,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#F6F3EA"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/mark.svg",
+   "asset": "brand/mark.svg",
+   "category": "brand",
+   "name": "mark",
+   "viewBox": "0 0 128 128",
+   "bytes": 485,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/bin/design_pc/workbench.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/brand.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/zork-wordmark-draft.svg",
+   "asset": "brand/zork-wordmark-draft.svg",
+   "category": "brand",
+   "name": "zork-wordmark-draft",
+   "viewBox": "0 0 136 44",
+   "bytes": 726,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/brand/zork-wordmark.svg",
+   "asset": "brand/zork-wordmark.svg",
+   "category": "brand",
+   "name": "zork-wordmark",
+   "viewBox": "0 0 136 44",
+   "bytes": 726,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B"
+   ],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/zork_wordmark.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/brand.rs",
+    "scripts/android/export_design_assets.py"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/download.svg",
+   "asset": "browser/download.svg",
+   "category": "browser",
+   "name": "download",
+   "viewBox": "0 0 24 24",
+   "bytes": 340,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/expand.svg",
+   "asset": "browser/expand.svg",
+   "category": "browser",
+   "name": "expand",
+   "viewBox": "0 0 24 24",
+   "bytes": 411,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/globe.svg",
+   "asset": "browser/globe.svg",
+   "category": "browser",
+   "name": "globe",
+   "viewBox": "0 0 24 24",
+   "bytes": 616,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-gui/src/views/drive/content.rs",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs",
+    "crates/zork-ui/src/conversation_contents/stories.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/go.svg",
+   "asset": "browser/go.svg",
+   "category": "browser",
+   "name": "go",
+   "viewBox": "0 0 24 24",
+   "bytes": 262,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/minimize.svg",
+   "asset": "browser/minimize.svg",
+   "category": "browser",
+   "name": "minimize",
+   "viewBox": "0 0 24 24",
+   "bytes": 3109,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 1
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/more.svg",
+   "asset": "browser/more.svg",
+   "category": "browser",
+   "name": "more",
+   "viewBox": "0 0 24 24",
+   "bytes": 791,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/browser/restore.svg",
+   "asset": "browser/restore.svg",
+   "category": "browser",
+   "name": "restore",
+   "viewBox": "0 0 24 24",
+   "bytes": 405,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/history/agents.svg",
+   "asset": "history/agents.svg",
+   "category": "history",
+   "name": "agents",
+   "viewBox": "0 0 24 24",
+   "bytes": 332,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_agents.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/assign.svg",
+   "asset": "history/assign.svg",
+   "category": "history",
+   "name": "assign",
+   "viewBox": "0 0 24 24",
+   "bytes": 298,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_assign.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/attachment.svg",
+   "asset": "history/attachment.svg",
+   "category": "history",
+   "name": "attachment",
+   "viewBox": "0 0 24 24",
+   "bytes": 306,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_attachment.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs",
+    "crates/zork-ui/src/history_page/mod.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/history/browser.svg",
+   "asset": "history/browser.svg",
+   "category": "history",
+   "name": "browser",
+   "viewBox": "0 0 24 24",
+   "bytes": 298,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_browser.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/clock.svg",
+   "asset": "history/clock.svg",
+   "category": "history",
+   "name": "clock",
+   "viewBox": "0 0 24 24",
+   "bytes": 263,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_clock.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/end.svg",
+   "asset": "history/end.svg",
+   "category": "history",
+   "name": "end",
+   "viewBox": "0 0 24 24",
+   "bytes": 239,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_end.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/file-edit.svg",
+   "asset": "history/file-edit.svg",
+   "category": "history",
+   "name": "file-edit",
+   "viewBox": "0 0 24 24",
+   "bytes": 340,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_file_edit.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/file-read.svg",
+   "asset": "history/file-read.svg",
+   "category": "history",
+   "name": "file-read",
+   "viewBox": "0 0 24 24",
+   "bytes": 290,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_file_read.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/file-write.svg",
+   "asset": "history/file-write.svg",
+   "category": "history",
+   "name": "file-write",
+   "viewBox": "0 0 24 24",
+   "bytes": 284,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_file_write.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/generic-tool.svg",
+   "asset": "history/generic-tool.svg",
+   "category": "history",
+   "name": "generic-tool",
+   "viewBox": "0 0 24 24",
+   "bytes": 282,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_generic_tool.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/help.svg",
+   "asset": "history/help.svg",
+   "category": "history",
+   "name": "help",
+   "viewBox": "0 0 24 24",
+   "bytes": 305,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_help.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/history.svg",
+   "asset": "history/history.svg",
+   "category": "history",
+   "name": "history",
+   "viewBox": "0 0 24 24",
+   "bytes": 285,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_history.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/job.svg",
+   "asset": "history/job.svg",
+   "category": "history",
+   "name": "job",
+   "viewBox": "0 0 24 24",
+   "bytes": 295,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_job.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/notify.svg",
+   "asset": "history/notify.svg",
+   "category": "history",
+   "name": "notify",
+   "viewBox": "0 0 24 24",
+   "bytes": 264,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_notify.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/operations.svg",
+   "asset": "history/operations.svg",
+   "category": "history",
+   "name": "operations",
+   "viewBox": "0 0 24 24",
+   "bytes": 270,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_operations.xml",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/history/receive.svg",
+   "asset": "history/receive.svg",
+   "category": "history",
+   "name": "receive",
+   "viewBox": "0 0 24 24",
+   "bytes": 283,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_receive.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/send.svg",
+   "asset": "history/send.svg",
+   "category": "history",
+   "name": "send",
+   "viewBox": "0 0 24 24",
+   "bytes": 283,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_send.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/stop.svg",
+   "asset": "history/stop.svg",
+   "category": "history",
+   "name": "stop",
+   "viewBox": "0 0 24 24",
+   "bytes": 268,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_stop.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/history/terminal.svg",
+   "asset": "history/terminal.svg",
+   "category": "history",
+   "name": "terminal",
+   "viewBox": "0 0 24 24",
+   "bytes": 241,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/history_terminal.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs",
+    "crates/zork-ui/src/history_page/mod.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/archive-restore.svg",
+   "asset": "icons/archive-restore.svg",
+   "category": "icons",
+   "name": "archive-restore",
+   "viewBox": "0 0 16 16",
+   "bytes": 591,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_archive_restore.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/chat_navigation.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/archive.svg",
+   "asset": "icons/archive.svg",
+   "category": "icons",
+   "name": "archive",
+   "viewBox": "0 0 16 16",
+   "bytes": 562,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_archive.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/chat_navigation.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/arrow-left.svg",
+   "asset": "icons/arrow-left.svg",
+   "category": "icons",
+   "name": "arrow-left",
+   "viewBox": "0 0 24 24",
+   "bytes": 371,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_arrow_left.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/mod.rs",
+    "crates/zork-gui/src/desktop/profiles/page.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 11
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/arrow-right.svg",
+   "asset": "icons/arrow-right.svg",
+   "category": "icons",
+   "name": "arrow-right",
+   "viewBox": "0 0 24 24",
+   "bytes": 394,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_arrow_right.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs",
+    "crates/zork-ui/src/components/activity.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/arrow-up.svg",
+   "asset": "icons/arrow-up.svg",
+   "category": "icons",
+   "name": "arrow-up",
+   "viewBox": "0 0 24 24",
+   "bytes": 370,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_arrow_up.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/tests/ui_contract.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/widgets/composer.rs"
+   ],
+   "use_count": 8
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/attention.svg",
+   "asset": "icons/attention.svg",
+   "category": "icons",
+   "name": "attention",
+   "viewBox": "0 0 24 24",
+   "bytes": 387,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_attention.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-gui/src/views.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 13
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/bars-three.svg",
+   "asset": "icons/bars-three.svg",
+   "category": "icons",
+   "name": "bars-three",
+   "viewBox": "0 0 24 24",
+   "bytes": 359,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/brain.svg",
+   "asset": "icons/brain.svg",
+   "category": "icons",
+   "name": "brain",
+   "viewBox": "0 0 24 24",
+   "bytes": 996,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/cancelled.svg",
+   "asset": "icons/cancelled.svg",
+   "category": "icons",
+   "name": "cancelled",
+   "viewBox": "0 0 24 24",
+   "bytes": 406,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/check.svg",
+   "asset": "icons/check.svg",
+   "category": "icons",
+   "name": "check",
+   "viewBox": "0 0 24 24",
+   "bytes": 360,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_check.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/choice_menu.rs",
+    "crates/zork-ui/src/components/widgets/primitives/feedback.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/checklist.svg",
+   "asset": "icons/checklist.svg",
+   "category": "icons",
+   "name": "checklist",
+   "viewBox": "0 0 24 24",
+   "bytes": 718,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/tooltip.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/chevron-down.svg",
+   "asset": "icons/chevron-down.svg",
+   "category": "icons",
+   "name": "chevron-down",
+   "viewBox": "0 0 24 24",
+   "bytes": 360,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_chevron_down.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/activity.rs",
+    "crates/zork-ui/src/components/choice_menu.rs"
+   ],
+   "use_count": 11
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/clock.svg",
+   "asset": "icons/clock.svg",
+   "category": "icons",
+   "name": "clock",
+   "viewBox": "0 0 24 24",
+   "bytes": 399,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/columns.svg",
+   "asset": "icons/columns.svg",
+   "category": "icons",
+   "name": "columns",
+   "viewBox": "0 0 24 24",
+   "bytes": 3202,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/views.rs",
+    "crates/zork-gui/tests/ui_contract.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/completed.svg",
+   "asset": "icons/completed.svg",
+   "category": "icons",
+   "name": "completed",
+   "viewBox": "0 0 24 24",
+   "bytes": 405,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/copy.svg",
+   "asset": "icons/copy.svg",
+   "category": "icons",
+   "name": "copy",
+   "viewBox": "0 0 24 24",
+   "bytes": 339,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_copy.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/comments/editor.rs",
+    "scripts/android/export_design_assets.py"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/cube.svg",
+   "asset": "icons/cube.svg",
+   "category": "icons",
+   "name": "cube",
+   "viewBox": "0 0 24 24",
+   "bytes": 552,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/download.svg",
+   "asset": "icons/download.svg",
+   "category": "icons",
+   "name": "download",
+   "viewBox": "0 0 24 24",
+   "bytes": 415,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_download.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/edit.svg",
+   "asset": "icons/edit.svg",
+   "category": "icons",
+   "name": "edit",
+   "viewBox": "0 0 24 24",
+   "bytes": 241,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_edit.xml",
+    "crates/zork-gui/src/desktop/profiles/page.rs",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/file.svg",
+   "asset": "icons/file.svg",
+   "category": "icons",
+   "name": "file",
+   "viewBox": "0 0 24 24",
+   "bytes": 608,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_file.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/views/drive/content.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs",
+    "crates/zork-ui/src/components/attachments.rs"
+   ],
+   "use_count": 12
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/filter.svg",
+   "asset": "icons/filter.svg",
+   "category": "icons",
+   "name": "filter",
+   "viewBox": "0 0 24 24",
+   "bytes": 493,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/grouping.svg",
+   "asset": "icons/grouping.svg",
+   "category": "icons",
+   "name": "grouping",
+   "viewBox": "0 0 24 24",
+   "bytes": 457,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 1
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/handoff.svg",
+   "asset": "icons/handoff.svg",
+   "category": "icons",
+   "name": "handoff",
+   "viewBox": "0 0 24 24",
+   "bytes": 441,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/history.svg",
+   "asset": "icons/history.svg",
+   "category": "icons",
+   "name": "history",
+   "viewBox": "0 0 24 24",
+   "bytes": 285,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/browser/panel.rs",
+    "crates/zork-gui/src/views/history.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome/stories.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/home.svg",
+   "asset": "icons/home.svg",
+   "category": "icons",
+   "name": "home",
+   "viewBox": "0 0 24 24",
+   "bytes": 653,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/inbox.svg",
+   "asset": "icons/inbox.svg",
+   "category": "icons",
+   "name": "inbox",
+   "viewBox": "0 0 24 24",
+   "bytes": 445,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/info.svg",
+   "asset": "icons/info.svg",
+   "category": "icons",
+   "name": "info",
+   "viewBox": "0 0 24 24",
+   "bytes": 326,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/disclosure.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/leader.svg",
+   "asset": "icons/leader.svg",
+   "category": "icons",
+   "name": "leader",
+   "viewBox": "0 0 24 24",
+   "bytes": 664,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/loader.svg",
+   "asset": "icons/loader.svg",
+   "category": "icons",
+   "name": "loader",
+   "viewBox": "0 0 24 24",
+   "bytes": 446,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/mention.svg",
+   "asset": "icons/mention.svg",
+   "category": "icons",
+   "name": "mention",
+   "viewBox": "0 0 24 24",
+   "bytes": 512,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/mesh.svg",
+   "asset": "icons/mesh.svg",
+   "category": "icons",
+   "name": "mesh",
+   "viewBox": "0 0 24 24",
+   "bytes": 516,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_mesh.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/message-square.svg",
+   "asset": "icons/message-square.svg",
+   "category": "icons",
+   "name": "message-square",
+   "viewBox": "0 0 24 24",
+   "bytes": 285,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/comments/editor.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/microphone.svg",
+   "asset": "icons/microphone.svg",
+   "category": "icons",
+   "name": "microphone",
+   "viewBox": "0 0 24 24",
+   "bytes": 961,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/minus.svg",
+   "asset": "icons/minus.svg",
+   "category": "icons",
+   "name": "minus",
+   "viewBox": "0 0 24 24",
+   "bytes": 191,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_minus.xml",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs",
+    "crates/zork-ui/src/components/workbench.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/models.svg",
+   "asset": "icons/models.svg",
+   "category": "icons",
+   "name": "models",
+   "viewBox": "0 0 24 24",
+   "bytes": 440,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-gui/src/desktop/mod.rs",
+    "crates/zork-gui/tests/headless_model_settings.rs",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/more-horizontal.svg",
+   "asset": "icons/more-horizontal.svg",
+   "category": "icons",
+   "name": "more-horizontal",
+   "viewBox": "0 0 16 16",
+   "bytes": 207,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-gui/src/desktop/profiles/page.rs",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs",
+    "crates/zork-ui/src/components/disclosure.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/node.svg",
+   "asset": "icons/node.svg",
+   "category": "icons",
+   "name": "node",
+   "viewBox": "0 0 24 24",
+   "bytes": 477,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_node.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/tests/ui_contract.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 12
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/offline.svg",
+   "asset": "icons/offline.svg",
+   "category": "icons",
+   "name": "offline",
+   "viewBox": "0 0 24 24",
+   "bytes": 621,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/views.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/open.svg",
+   "asset": "icons/open.svg",
+   "category": "icons",
+   "name": "open",
+   "viewBox": "0 0 24 24",
+   "bytes": 352,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/panel-left.svg",
+   "asset": "icons/panel-left.svg",
+   "category": "icons",
+   "name": "panel-left",
+   "viewBox": "0 0 24 24",
+   "bytes": 450,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/bin/design_pc/workbench.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/panel-right.svg",
+   "asset": "icons/panel-right.svg",
+   "category": "icons",
+   "name": "panel-right",
+   "viewBox": "0 0 24 24",
+   "bytes": 3271,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/bin/design_pc/workbench.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/paperclip.svg",
+   "asset": "icons/paperclip.svg",
+   "category": "icons",
+   "name": "paperclip",
+   "viewBox": "0 0 24 24",
+   "bytes": 438,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_paperclip.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/views/composer_surface.rs",
+    "crates/zork-gui/tests/ui_contract.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/permission.svg",
+   "asset": "icons/permission.svg",
+   "category": "icons",
+   "name": "permission",
+   "viewBox": "0 0 24 24",
+   "bytes": 681,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-arrow-up.svg",
+   "asset": "icons/phosphor-arrow-up.svg",
+   "category": "icons",
+   "name": "phosphor-arrow-up",
+   "viewBox": "0 0 256 256",
+   "bytes": 258,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-brain.svg",
+   "asset": "icons/phosphor-brain.svg",
+   "category": "icons",
+   "name": "phosphor-brain",
+   "viewBox": "0 0 256 256",
+   "bytes": 847,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-caret-down.svg",
+   "asset": "icons/phosphor-caret-down.svg",
+   "category": "icons",
+   "name": "phosphor-caret-down",
+   "viewBox": "0 0 256 256",
+   "bytes": 215,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/resources.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-cube.svg",
+   "asset": "icons/phosphor-cube.svg",
+   "category": "icons",
+   "name": "phosphor-cube",
+   "viewBox": "0 0 256 256",
+   "bytes": 403,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-folder-simple.svg",
+   "asset": "icons/phosphor-folder-simple.svg",
+   "category": "icons",
+   "name": "phosphor-folder-simple",
+   "viewBox": "0 0 256 256",
+   "bytes": 305,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_folder.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-stop-fill.svg",
+   "asset": "icons/phosphor-stop-fill.svg",
+   "category": "icons",
+   "name": "phosphor-stop-fill",
+   "viewBox": "0 0 256 256",
+   "bytes": 196,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_phosphor_stop_fill.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/widgets/composer.rs",
+    "scripts/android/export_design_assets.py"
+   ],
+   "use_count": 8
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/phosphor-terminal-window.svg",
+   "asset": "icons/phosphor-terminal-window.svg",
+   "category": "icons",
+   "name": "phosphor-terminal-window",
+   "viewBox": "0 0 256 256",
+   "bytes": 376,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/plus.svg",
+   "asset": "icons/plus.svg",
+   "category": "icons",
+   "name": "plus",
+   "viewBox": "0 0 24 24",
+   "bytes": 360,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_plus.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/mod.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs"
+   ],
+   "use_count": 13
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/puzzle.svg",
+   "asset": "icons/puzzle.svg",
+   "category": "icons",
+   "name": "puzzle",
+   "viewBox": "0 0 24 24",
+   "bytes": 531,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/queued.svg",
+   "asset": "icons/queued.svg",
+   "category": "icons",
+   "name": "queued",
+   "viewBox": "0 0 24 24",
+   "bytes": 478,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/reload.svg",
+   "asset": "icons/reload.svg",
+   "category": "icons",
+   "name": "reload",
+   "viewBox": "0 0 24 24",
+   "bytes": 527,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_reload.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/bin/design_pc/workbench.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/widgets/composer/files.rs",
+    "crates/zork-ui/src/resources.rs"
+   ],
+   "use_count": 8
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/result.svg",
+   "asset": "icons/result.svg",
+   "category": "icons",
+   "name": "result",
+   "viewBox": "0 0 24 24",
+   "bytes": 588,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_result.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/review.svg",
+   "asset": "icons/review.svg",
+   "category": "icons",
+   "name": "review",
+   "viewBox": "0 0 24 24",
+   "bytes": 631,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/search.svg",
+   "asset": "icons/search.svg",
+   "category": "icons",
+   "name": "search",
+   "viewBox": "0 0 24 24",
+   "bytes": 399,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_search.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/bin/design_pc/workbench.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/settings-three.svg",
+   "asset": "icons/settings-three.svg",
+   "category": "icons",
+   "name": "settings-three",
+   "viewBox": "0 0 24 24",
+   "bytes": 1279,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_settings_three.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/settings.svg",
+   "asset": "icons/settings.svg",
+   "category": "icons",
+   "name": "settings",
+   "viewBox": "0 0 24 24",
+   "bytes": 470,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_settings.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/chat_navigation.rs",
+    "crates/zork-ui/src/interaction_story.rs"
+   ],
+   "use_count": 8
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/shapes.svg",
+   "asset": "icons/shapes.svg",
+   "category": "icons",
+   "name": "shapes",
+   "viewBox": "0 0 24 24",
+   "bytes": 2250,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/sparkles.svg",
+   "asset": "icons/sparkles.svg",
+   "category": "icons",
+   "name": "sparkles",
+   "viewBox": "0 0 24 24",
+   "bytes": 680,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/stop.svg",
+   "asset": "icons/stop.svg",
+   "category": "icons",
+   "name": "stop",
+   "viewBox": "0 0 24 24",
+   "bytes": 176,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/activity.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/task-chat.svg",
+   "asset": "icons/task-chat.svg",
+   "category": "icons",
+   "name": "task-chat",
+   "viewBox": "0 0 24 24",
+   "bytes": 622,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/task.svg",
+   "asset": "icons/task.svg",
+   "category": "icons",
+   "name": "task",
+   "viewBox": "0 0 24 24",
+   "bytes": 463,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/terminal.svg",
+   "asset": "icons/terminal.svg",
+   "category": "icons",
+   "name": "terminal",
+   "viewBox": "0 0 24 24",
+   "bytes": 525,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/worker.svg",
+   "asset": "icons/worker.svg",
+   "category": "icons",
+   "name": "worker",
+   "viewBox": "0 0 24 24",
+   "bytes": 461,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/working.svg",
+   "asset": "icons/working.svg",
+   "category": "icons",
+   "name": "working",
+   "viewBox": "0 0 24 24",
+   "bytes": 445,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/workspace.svg",
+   "asset": "icons/workspace.svg",
+   "category": "icons",
+   "name": "workspace",
+   "viewBox": "0 0 24 24",
+   "bytes": 479,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/icons/x.svg",
+   "asset": "icons/x.svg",
+   "category": "icons",
+   "name": "x",
+   "viewBox": "0 0 24 24",
+   "bytes": 372,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/ic_x.xml",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/tests/ui_contract.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/attachment_viewer.rs"
+   ],
+   "use_count": 16
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/device-offline.svg",
+   "asset": "illustrations/device-offline.svg",
+   "category": "illustrations",
+   "name": "device-offline",
+   "viewBox": "0 0 24 24",
+   "bytes": 601,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/files-empty.svg",
+   "asset": "illustrations/files-empty.svg",
+   "category": "illustrations",
+   "name": "files-empty",
+   "viewBox": "0 0 24 24",
+   "bytes": 460,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/first-conversation.svg",
+   "asset": "illustrations/first-conversation.svg",
+   "category": "illustrations",
+   "name": "first-conversation",
+   "viewBox": "0 0 24 24",
+   "bytes": 614,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/hero.svg",
+   "asset": "illustrations/hero.svg",
+   "category": "illustrations",
+   "name": "hero",
+   "viewBox": "0 0 24 24",
+   "bytes": 421,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/inbox-clear.svg",
+   "asset": "illustrations/inbox-clear.svg",
+   "category": "illustrations",
+   "name": "inbox-clear",
+   "viewBox": "0 0 24 24",
+   "bytes": 441,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/node-setup.svg",
+   "asset": "illustrations/node-setup.svg",
+   "category": "illustrations",
+   "name": "node-setup",
+   "viewBox": "0 0 24 24",
+   "bytes": 459,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/review-ready.svg",
+   "asset": "illustrations/review-ready.svg",
+   "category": "illustrations",
+   "name": "review-ready",
+   "viewBox": "0 0 24 24",
+   "bytes": 612,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/illustrations/task-accepted.svg",
+   "asset": "illustrations/task-accepted.svg",
+   "category": "illustrations",
+   "name": "task-accepted",
+   "viewBox": "0 0 24 24",
+   "bytes": 379,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 3
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/arrow-left.svg",
+   "asset": "interface/arrow-left.svg",
+   "category": "interface",
+   "name": "arrow-left",
+   "viewBox": "0 0 24 24",
+   "bytes": 361,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/arrow-right.svg",
+   "asset": "interface/arrow-right.svg",
+   "category": "interface",
+   "name": "arrow-right",
+   "viewBox": "0 0 24 24",
+   "bytes": 362,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/arrow-up.svg",
+   "asset": "interface/arrow-up.svg",
+   "category": "interface",
+   "name": "arrow-up",
+   "viewBox": "0 0 24 24",
+   "bytes": 361,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/bars-three.svg",
+   "asset": "interface/bars-three.svg",
+   "category": "interface",
+   "name": "bars-three",
+   "viewBox": "0 0 24 24",
+   "bytes": 254,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/check.svg",
+   "asset": "interface/check.svg",
+   "category": "interface",
+   "name": "check",
+   "viewBox": "0 0 24 24",
+   "bytes": 247,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/chevron-down.svg",
+   "asset": "interface/chevron-down.svg",
+   "category": "interface",
+   "name": "chevron-down",
+   "viewBox": "0 0 24 24",
+   "bytes": 252,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/disclosure.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 10
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/circle-dashed.svg",
+   "asset": "interface/circle-dashed.svg",
+   "category": "interface",
+   "name": "circle-dashed",
+   "viewBox": "0 0 24 24",
+   "bytes": 367,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/circle-x.svg",
+   "asset": "interface/circle-x.svg",
+   "category": "interface",
+   "name": "circle-x",
+   "viewBox": "0 0 24 24",
+   "bytes": 364,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/clock.svg",
+   "asset": "interface/clock.svg",
+   "category": "interface",
+   "name": "clock",
+   "viewBox": "0 0 24 24",
+   "bytes": 362,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/download.svg",
+   "asset": "interface/download.svg",
+   "category": "interface",
+   "name": "download",
+   "viewBox": "0 0 24 24",
+   "bytes": 340,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/file.svg",
+   "asset": "interface/file.svg",
+   "category": "interface",
+   "name": "file",
+   "viewBox": "0 0 24 24",
+   "bytes": 576,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/history_page/mod.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/filter2.svg",
+   "asset": "interface/filter2.svg",
+   "category": "interface",
+   "name": "filter2",
+   "viewBox": "0 0 24 24",
+   "bytes": 394,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/folder1.svg",
+   "asset": "interface/folder1.svg",
+   "category": "interface",
+   "name": "folder1",
+   "viewBox": "0 0 24 24",
+   "bytes": 448,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/history_page/mod.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/folder2.svg",
+   "asset": "interface/folder2.svg",
+   "category": "interface",
+   "name": "folder2",
+   "viewBox": "0 0 24 24",
+   "bytes": 631,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/home.svg",
+   "asset": "interface/home.svg",
+   "category": "interface",
+   "name": "home",
+   "viewBox": "0 0 24 24",
+   "bytes": 621,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/inbox.svg",
+   "asset": "interface/inbox.svg",
+   "category": "interface",
+   "name": "inbox",
+   "viewBox": "0 0 24 24",
+   "bytes": 503,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/layout-column.svg",
+   "asset": "interface/layout-column.svg",
+   "category": "interface",
+   "name": "layout-column",
+   "viewBox": "0 0 24 24",
+   "bytes": 3076,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/list-checks.svg",
+   "asset": "interface/list-checks.svg",
+   "category": "interface",
+   "name": "list-checks",
+   "viewBox": "0 0 24 24",
+   "bytes": 696,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/loader.svg",
+   "asset": "interface/loader.svg",
+   "category": "interface",
+   "name": "loader",
+   "viewBox": "0 0 24 24",
+   "bytes": 409,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/microphone-filled.svg",
+   "asset": "interface/microphone-filled.svg",
+   "category": "interface",
+   "name": "microphone-filled",
+   "viewBox": "0 0 24 24",
+   "bytes": 835,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/panel-left.svg",
+   "asset": "interface/panel-left.svg",
+   "category": "interface",
+   "name": "panel-left",
+   "viewBox": "0 0 24 24",
+   "bytes": 3174,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/panel-right.svg",
+   "asset": "interface/panel-right.svg",
+   "category": "interface",
+   "name": "panel-right",
+   "viewBox": "0 0 24 24",
+   "bytes": 3187,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/paperclip.svg",
+   "asset": "interface/paperclip.svg",
+   "category": "interface",
+   "name": "paperclip",
+   "viewBox": "0 0 24 24",
+   "bytes": 385,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/plus.svg",
+   "asset": "interface/plus.svg",
+   "category": "interface",
+   "name": "plus",
+   "viewBox": "0 0 24 24",
+   "bytes": 241,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-gui/src/desktop/profiles/page.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/puzzle.svg",
+   "asset": "interface/puzzle.svg",
+   "category": "interface",
+   "name": "puzzle",
+   "viewBox": "0 0 24 24",
+   "bytes": 495,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/reload.svg",
+   "asset": "interface/reload.svg",
+   "category": "interface",
+   "name": "reload",
+   "viewBox": "0 0 24 24",
+   "bytes": 495,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/search.svg",
+   "asset": "interface/search.svg",
+   "category": "interface",
+   "name": "search",
+   "viewBox": "0 0 24 24",
+   "bytes": 416,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 7
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/settings-slider-horizontal.svg",
+   "asset": "interface/settings-slider-horizontal.svg",
+   "category": "interface",
+   "name": "settings-slider-horizontal",
+   "viewBox": "0 0 24 24",
+   "bytes": 1023,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 4
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/settings-slider-three.svg",
+   "asset": "interface/settings-slider-three.svg",
+   "category": "interface",
+   "name": "settings-slider-three",
+   "viewBox": "0 0 24 24",
+   "bytes": 1282,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/settings.svg",
+   "asset": "interface/settings.svg",
+   "category": "interface",
+   "name": "settings",
+   "viewBox": "0 0 24 24",
+   "bytes": 1705,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/shapes-plus-x-square-circle.svg",
+   "asset": "interface/shapes-plus-x-square-circle.svg",
+   "category": "interface",
+   "name": "shapes-plus-x-square-circle",
+   "viewBox": "0 0 24 24",
+   "bytes": 2166,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/sparkles.svg",
+   "asset": "interface/sparkles.svg",
+   "category": "interface",
+   "name": "sparkles",
+   "viewBox": "0 0 24 24",
+   "bytes": 602,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/history.rs"
+   ],
+   "use_count": 6
+  },
+  {
+   "path": "crates/zork-ui/assets/interface/x.svg",
+   "asset": "interface/x.svg",
+   "category": "interface",
+   "name": "x",
+   "viewBox": "0 0 24 24",
+   "bytes": 227,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "apps/zork-design-pc/implementation/native/usage-v2.json",
+    "apps/zork-design-pc/mobile/asset-map.json",
+    "crates/zork-gui/src/desktop/profiles/editor.rs",
+    "crates/zork-ui/assets/usage-v2.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/browser_chrome.rs"
+   ],
+   "use_count": 9
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/companion.svg",
+   "asset": "loading/companion.svg",
+   "category": "loading",
+   "name": "companion",
+   "viewBox": "0 0 128 128",
+   "bytes": 979,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/connect.svg",
+   "asset": "loading/connect.svg",
+   "category": "loading",
+   "name": "connect",
+   "viewBox": "0 0 24 24",
+   "bytes": 865,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/dots.svg",
+   "asset": "loading/dots.svg",
+   "category": "loading",
+   "name": "dots",
+   "viewBox": "0 0 24 24",
+   "bytes": 817,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/native-ring.svg",
+   "asset": "loading/native-ring.svg",
+   "category": "loading",
+   "name": "native-ring",
+   "viewBox": "0 0 24 24",
+   "bytes": 302,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/components/loading.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/ring.svg",
+   "asset": "loading/ring.svg",
+   "category": "loading",
+   "name": "ring",
+   "viewBox": "0 0 24 24",
+   "bytes": 614,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/loading/ticks.svg",
+   "asset": "loading/ticks.svg",
+   "category": "loading",
+   "name": "ticks",
+   "viewBox": "0 0 24 24",
+   "bytes": 2118,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [],
+   "use_count": 0
+  },
+  {
+   "path": "crates/zork-ui/assets/motion/icon-to-wordmark.svg",
+   "asset": "motion/icon-to-wordmark.svg",
+   "category": "motion",
+   "name": "icon-to-wordmark",
+   "viewBox": "0 0 400 160",
+   "bytes": 1158880,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "black",
+    "freeze",
+    "white"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/motion/icon.svg",
+   "asset": "motion/icon.svg",
+   "category": "motion",
+   "name": "icon",
+   "viewBox": "0 0 400 160",
+   "bytes": 734,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "freeze"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/motion/linked.svg",
+   "asset": "motion/linked.svg",
+   "category": "motion",
+   "name": "linked",
+   "viewBox": "0 0 440 160",
+   "bytes": 2110,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "freeze"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/motion/wordmark.svg",
+   "asset": "motion/wordmark.svg",
+   "category": "motion",
+   "name": "wordmark",
+   "viewBox": "0 0 400 160",
+   "bytes": 1505,
+   "monochrome_currentColor": false,
+   "hardcoded_colors": [
+    "#24272B",
+    "freeze"
+   ],
+   "uses": [
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs"
+   ],
+   "use_count": 2
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/anthropic.svg",
+   "asset": "providers/anthropic.svg",
+   "category": "providers",
+   "name": "anthropic",
+   "viewBox": "0 0 24 24",
+   "bytes": 368,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_anthropic.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/compatible.svg",
+   "asset": "providers/compatible.svg",
+   "category": "providers",
+   "name": "compatible",
+   "viewBox": "0 0 24 24",
+   "bytes": 215,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_compatible.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/githubcopilot.svg",
+   "asset": "providers/githubcopilot.svg",
+   "category": "providers",
+   "name": "githubcopilot",
+   "viewBox": "0 0 24 24",
+   "bytes": 2019,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_githubcopilot.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/kimi.svg",
+   "asset": "providers/kimi.svg",
+   "category": "providers",
+   "name": "kimi",
+   "viewBox": "0 0 24 24",
+   "bytes": 786,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_kimi.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/openai.svg",
+   "asset": "providers/openai.svg",
+   "category": "providers",
+   "name": "openai",
+   "viewBox": "0 0 24 24",
+   "bytes": 1687,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_openai.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/opencode.svg",
+   "asset": "providers/opencode.svg",
+   "category": "providers",
+   "name": "opencode",
+   "viewBox": "0 0 24 24",
+   "bytes": 235,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_opencode.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/openrouter.svg",
+   "asset": "providers/openrouter.svg",
+   "category": "providers",
+   "name": "openrouter",
+   "viewBox": "0 0 24 24",
+   "bytes": 382,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_openrouter.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  },
+  {
+   "path": "crates/zork-ui/assets/providers/xai.svg",
+   "asset": "providers/xai.svg",
+   "category": "providers",
+   "name": "xai",
+   "viewBox": "0 0 24 24",
+   "bytes": 372,
+   "monochrome_currentColor": true,
+   "hardcoded_colors": [],
+   "uses": [
+    "apps/android/app/src/main/res/drawable/provider_xai.xml",
+    "apps/zork-design-pc/assets/manifest.json",
+    "apps/zork-design-pc/assets/native/inventory.json",
+    "crates/zork-ui/src/assets.rs",
+    "crates/zork-ui/src/controls.rs"
+   ],
+   "use_count": 5
+  }
+ ],
+ "android_vectors": [
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_agents.xml",
+   "name": "history_agents",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_assign.xml",
+   "name": "history_assign",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_attachment.xml",
+   "name": "history_attachment",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt",
+    "apps/android/app/src/main/java/ing/zork/android/SessionHistory.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_browser.xml",
+   "name": "history_browser",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_clock.xml",
+   "name": "history_clock",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_end.xml",
+   "name": "history_end",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_file_edit.xml",
+   "name": "history_file_edit",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_file_read.xml",
+   "name": "history_file_read",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_file_write.xml",
+   "name": "history_file_write",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_generic_tool.xml",
+   "name": "history_generic_tool",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_help.xml",
+   "name": "history_help",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_history.xml",
+   "name": "history_history",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_job.xml",
+   "name": "history_job",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_notify.xml",
+   "name": "history_notify",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_operations.xml",
+   "name": "history_operations",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SessionHistory.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_receive.xml",
+   "name": "history_receive",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_send.xml",
+   "name": "history_send",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_stop.xml",
+   "name": "history_stop",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/history_terminal.xml",
+   "name": "history_terminal",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_archive.xml",
+   "name": "ic_archive",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_archive_restore.xml",
+   "name": "ic_archive_restore",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_arrow_left.xml",
+   "name": "ic_arrow_left",
+   "use_count": 10,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/AccountSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/AdbSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ChatFiles.kt",
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelConnections.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_arrow_right.xml",
+   "name": "ic_arrow_right",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/ChatFiles.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_arrow_up.xml",
+   "name": "ic_arrow_up",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_attention.xml",
+   "name": "ic_attention",
+   "use_count": 6,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt",
+    "apps/android/app/src/main/java/ing/zork/android/HistoryControls.kt",
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelConnections.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_camera.xml",
+   "name": "ic_camera",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_check.xml",
+   "name": "ic_check",
+   "use_count": 5,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/AppearanceSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelConnections.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelPicker.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ZorkControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_chevron_down.xml",
+   "name": "ic_chevron_down",
+   "use_count": 5,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/ComposerPresence.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelPicker.kt",
+    "apps/android/app/src/main/java/ing/zork/android/SessionHistory.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ZorkControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_copy.xml",
+   "name": "ic_copy",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/AdbSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/HistoryDetails.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_download.xml",
+   "name": "ic_download",
+   "use_count": 3,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/ChatFiles.kt",
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_edit.xml",
+   "name": "ic_edit",
+   "use_count": 0,
+   "uses": []
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_file.xml",
+   "name": "ic_file",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_folder.xml",
+   "name": "ic_folder",
+   "use_count": 0,
+   "uses": []
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_image.xml",
+   "name": "ic_image",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_mesh.xml",
+   "name": "ic_mesh",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_minus.xml",
+   "name": "ic_minus",
+   "use_count": 0,
+   "uses": []
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_more.xml",
+   "name": "ic_more",
+   "use_count": 5,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/AccountSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ChatFiles.kt",
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ProfileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_node.xml",
+   "name": "ic_node",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_paperclip.xml",
+   "name": "ic_paperclip",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_phosphor_stop_fill.xml",
+   "name": "ic_phosphor_stop_fill",
+   "use_count": 0,
+   "uses": []
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_plus.xml",
+   "name": "ic_plus",
+   "use_count": 5,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelConnections.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ProfileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_reload.xml",
+   "name": "ic_reload",
+   "use_count": 4,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt",
+    "apps/android/app/src/main/java/ing/zork/android/ProfileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/SessionHistory.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_result.xml",
+   "name": "ic_result",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_search.xml",
+   "name": "ic_search",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/ModelEditor.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_settings.xml",
+   "name": "ic_settings",
+   "use_count": 2,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_settings_three.xml",
+   "name": "ic_settings_three",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/MobileSettings.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_x.xml",
+   "name": "ic_x",
+   "use_count": 8,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/ChatFiles.kt",
+    "apps/android/app/src/main/java/ing/zork/android/DataSettings.kt",
+    "apps/android/app/src/main/java/ing/zork/android/DeviceName.kt",
+    "apps/android/app/src/main/java/ing/zork/android/FileAttachments.kt",
+    "apps/android/app/src/main/java/ing/zork/android/HistoryDetails.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/ic_zork.xml",
+   "name": "ic_zork",
+   "use_count": 5,
+   "uses": [
+    "apps/android/app/src/main/AndroidManifest.xml",
+    "apps/android/app/src/main/java/ing/zork/android/AdbPlatform.kt",
+    "apps/android/app/src/main/java/ing/zork/android/NewChat.kt",
+    "apps/android/app/src/main/java/ing/zork/android/NotificationPlatform.kt",
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_anthropic.xml",
+   "name": "provider_anthropic",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_compatible.xml",
+   "name": "provider_compatible",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_githubcopilot.xml",
+   "name": "provider_githubcopilot",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_kimi.xml",
+   "name": "provider_kimi",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_openai.xml",
+   "name": "provider_openai",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_opencode.xml",
+   "name": "provider_opencode",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_openrouter.xml",
+   "name": "provider_openrouter",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/provider_xai.xml",
+   "name": "provider_xai",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/SettingsControls.kt"
+   ]
+  },
+  {
+   "path": "apps/android/app/src/main/res/drawable/zork_wordmark.xml",
+   "name": "zork_wordmark",
+   "use_count": 1,
+   "uses": [
+    "apps/android/app/src/main/java/ing/zork/android/Workbench.kt"
+   ]
+  }
+ ]
+}

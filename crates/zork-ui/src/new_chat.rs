@@ -326,8 +326,14 @@ impl Render for Page {
                         .flex()
                         .items_center()
                         .gap(px(6.))
-                        .when_some(self.selected_provider(cx), |v, provider| {
-                            v.child(ui::provider_icon(&provider, 16.))
+                        .when_some(self.selected_maker_path(), |v, maker| {
+                            v.child(
+                                div()
+                                    .id("new-chat-options-mark")
+                                    .flex_shrink_0()
+                                    .child(ui::icon(maker, 16.).text_color(rgb(ZORK_UI.palette.text)))
+                                    .automation(AutomationRole::Status, maker),
+                            )
                         })
                         .child(div().text_color(rgb(ZORK_UI.palette.text)).child(model_part))
                         .when_some(thinking_part, |v, thinking| {

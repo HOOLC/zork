@@ -370,6 +370,95 @@ fn vendor_namespace(provider: &str) -> &str {
     }
 }
 
+/// Every model maker with its own mark: the catalog's `provider` values.
+/// Clients draw `makers/<key>.svg` for these and `makers/generic.svg` for `None`.
+pub const MAKERS: [&str; 12] = [
+    "openai",
+    "anthropic",
+    "google",
+    "deepseek",
+    "qwen",
+    "zhipu",
+    "doubao",
+    "moonshot",
+    "minimax",
+    "mistral",
+    "meta",
+    "xai",
+];
+
+fn known_maker(key: &str) -> Option<&'static str> {
+    MAKERS.iter().copied().find(|m| *m == key)
+}
+
+/// Maker of a router namespace (`deepseek/…`, `moonshotai/…`, `x-ai/…`).
+fn namespace_maker(namespace: &str) -> Option<&'static str> {
+    MAKERS
+        .iter()
+        .copied()
+        .find(|m| *m == namespace || vendor_namespace(m) == namespace)
+        .or(match namespace {
+            "z-ai" | "zai" | "thudm" => Some("zhipu"),
+            "bytedance" => Some("doubao"),
+            _ => None,
+        })
+}
+
+/// Maker of a bare model name by its family stem, for versions newer than the catalog.
+fn stem_maker(name: &str) -> Option<&'static str> {
+    const STEMS: [(&str, &str); 23] = [
+        ("gpt-", "openai"),
+        ("chatgpt", "openai"),
+        ("codex", "openai"),
+        ("claude", "anthropic"),
+        ("gemini", "google"),
+        ("gemma", "google"),
+        ("deepseek", "deepseek"),
+        ("qwen", "qwen"),
+        ("qwq", "qwen"),
+        ("glm", "zhipu"),
+        ("doubao", "doubao"),
+        ("seed-", "doubao"),
+        ("kimi", "moonshot"),
+        ("moonshot", "moonshot"),
+        ("minimax", "minimax"),
+        ("mistral", "mistral"),
+        ("magistral", "mistral"),
+        ("ministral", "mistral"),
+        ("codestral", "mistral"),
+        ("devstral", "mistral"),
+        ("pixtral", "mistral"),
+        ("llama", "meta"),
+        ("grok", "xai"),
+    ];
+    STEMS
+        .iter()
+        .find(|(stem, _)| name.starts_with(stem))
+        .map(|(_, maker)| *maker)
+}
+
+/// Who made a model, as a `MAKERS` key, independent of the connection that
+/// serves it: OpenRouter's `deepseek/deepseek-chat` and OpenCode Go's
+/// `deepseek-flash` are both DeepSeek. Catalog recognition decides first,
+/// then a router namespace, then the family stem; a vendor's own connection
+/// (`connection` = `anthropic`, `kimi-coding`, …) vouches for ids it alone
+/// serves. `None` means unknown: draw the generic mark.
+pub fn maker(id: &str, connection: Option<&str>) -> Option<&'static str> {
+    let direct = connection.and_then(catalog_provider);
+    if let Some(entry) = recognize(id, direct) {
+        return known_maker(&entry.provider);
+    }
+    let lower = id.trim().to_ascii_lowercase();
+    let mut segments: Vec<&str> = lower.split('/').collect();
+    let name = segments.pop().unwrap_or_default();
+    segments
+        .iter()
+        .rev()
+        .find_map(|namespace| namespace_maker(namespace))
+        .or_else(|| stem_maker(&normalize(name)))
+        .or_else(|| direct.and_then(known_maker))
+}
+
 /// A connection as the editor sees it (a profile detail: `profile_id`,
 /// `name`, `provider`, `billing`, `models`). Unknown fields are ignored.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -742,6 +831,8 @@ pub struct ModelRow {
     /// No limits yet (`待配置`); cannot be enabled.
     pub unconfigured: bool,
     pub enabled: bool,
+    /// Who made the model (`MAKERS` key); `None` draws the generic mark.
+    pub maker: Option<&'static str>,
 }
 
 pub fn model_row(model: &Value, provider: &str) -> ModelRow {
@@ -770,6 +861,7 @@ pub fn model_row(model: &Value, provider: &str) -> ModelRow {
     };
     ModelRow {
         enabled: model["enabled"].as_bool().unwrap_or(true),
+        maker: maker(&id, Some(provider)),
         id,
         meta,
         preset,
@@ -1611,6 +1703,124 @@ mod tests {
         let row = model_row(&custom, "openai-compatible");
         assert_eq!(row.meta, "32,768 · 不思考");
         assert!(!row.preset && !row.enabled);
+    }
+
+    #[test]
+    fn makers_come_from_the_model_not_the_connection() {
+        for (id, connection, expected) in [
+            // Vendors' own connections.
+            ("gpt-5", Some("openai"), Some("openai")),
+            (
+                "claude-sonnet-4-5-20250929",
+                Some("anthropic"),
+                Some("anthropic"),
+            ),
+            ("deepseek-chat", Some("deepseek"), Some("deepseek")),
+            ("kimi-k2-thinking", Some("kimi-coding"), Some("moonshot")),
+            ("grok-4", Some("xai"), Some("xai")),
+            // A vendor vouches for its own unlisted ids; a router or custom URL does not.
+            ("ft:gpt-4o-mini:acme::abc", Some("openai"), Some("openai")),
+            ("my-private-model", Some("anthropic"), Some("anthropic")),
+            ("my-private-model", Some("openrouter"), None),
+            ("my-private-model", Some("openai-compatible"), None),
+            // OpenRouter: vendor-prefixed ids, recognized or not.
+            (
+                "deepseek/deepseek-chat",
+                Some("openrouter"),
+                Some("deepseek"),
+            ),
+            (
+                "openrouter/deepseek/deepseek-chat-v3.1:free",
+                Some("openrouter"),
+                Some("deepseek"),
+            ),
+            (
+                "anthropic/claude-sonnet-4.5",
+                Some("openrouter"),
+                Some("anthropic"),
+            ),
+            ("moonshotai/kimi-k2", Some("openrouter"), Some("moonshot")),
+            ("z-ai/glm-4.6", Some("openrouter"), Some("zhipu")),
+            ("x-ai/grok-4", Some("openrouter"), Some("xai")),
+            (
+                "meta-llama/llama-4-maverick",
+                Some("openrouter"),
+                Some("meta"),
+            ),
+            (
+                "mistralai/some-future-model",
+                Some("openrouter"),
+                Some("mistral"),
+            ),
+            (
+                "bytedance-seed/seed-1.6",
+                Some("openrouter"),
+                Some("doubao"),
+            ),
+            ("google/gemini-2.5-pro", Some("openrouter"), Some("google")),
+            ("qwen/qwen3-coder", Some("openrouter"), Some("qwen")),
+            ("minimax/minimax-m2", Some("openrouter"), Some("minimax")),
+            ("unknownlab/mystery-1", Some("openrouter"), None),
+            // OpenCode Go serves other makers' models under bare ids.
+            ("deepseek-flash", Some("opencode-go"), Some("deepseek")),
+            ("deepseek-v4-pro", Some("opencode-go"), Some("deepseek")),
+            ("deepseek-v4.1-flash", Some("opencode-go"), Some("deepseek")),
+            ("glm-5.1", Some("opencode-go"), Some("zhipu")),
+            ("kimi-k2.5", Some("opencode-go"), Some("moonshot")),
+            ("qwen3.6-plus", Some("opencode-go"), Some("qwen")),
+            ("minimax-m2.5", Some("opencode-go"), Some("minimax")),
+            ("gpt-5.6-luna", Some("opencode-go"), Some("openai")),
+            ("muse-spark-1.2-contributor", Some("opencode-go"), None),
+            // Other routers and clouds.
+            (
+                "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                Some("bedrock"),
+                Some("anthropic"),
+            ),
+            ("models/gemini-2.5-pro", None, Some("google")),
+            ("doubao-seed-1-6-250615", None, Some("doubao")),
+            ("mistral-large-latest", None, Some("mistral")),
+            ("Qwen3-Coder-Plus", None, Some("qwen")),
+            // Unknown.
+            ("my-private-model", None, None),
+            ("", None, None),
+            ("", Some("openrouter"), None),
+        ] {
+            assert_eq!(maker(id, connection), expected, "{id} via {connection:?}");
+        }
+    }
+
+    #[test]
+    fn every_catalog_maker_has_a_mark() {
+        for entry in entries() {
+            assert!(
+                MAKERS.contains(&entry.provider.as_str()),
+                "{} is made by {}, which has no mark",
+                entry.key,
+                entry.provider
+            );
+            assert_eq!(
+                maker(&entry.canonical_id(), None),
+                Some(entry.provider.as_str()),
+                "{}",
+                entry.key
+            );
+        }
+    }
+
+    #[test]
+    fn rows_name_the_maker() {
+        let row = |id: &str, provider: &str| model_row(&json!({ "id": id }), provider).maker;
+        assert_eq!(row("deepseek-flash", "opencode-go"), Some("deepseek"));
+        assert_eq!(
+            row("deepseek/deepseek-chat", "openrouter"),
+            Some("deepseek")
+        );
+        assert_eq!(row("gpt-5", "openai"), Some("openai"));
+        assert_eq!(row("my-model", "openai-compatible"), None);
+        let wire =
+            serde_json::to_value(model_row(&json!({"id":"glm-5.1"}), "opencode-go")).unwrap();
+        assert_eq!(wire["maker"], "zhipu");
     }
 
     #[test]

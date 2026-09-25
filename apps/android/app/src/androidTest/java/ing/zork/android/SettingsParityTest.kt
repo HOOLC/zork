@@ -271,6 +271,35 @@ class SettingsParityTest {
         }
     }
 
+    /** Models carry their maker's mark, connections their provider's: OpenCode Go serves DeepSeek and GLM. */
+    @Test fun modelPickerMarksFollowTheMakerNotTheConnection() {
+        assertEquals(R.drawable.maker_deepseek, makerDrawable("deepseek"))
+        assertEquals(R.drawable.maker_zhipu, makerDrawable("zhipu"))
+        assertEquals(R.drawable.maker_generic, makerDrawable(null))
+        assertEquals(R.drawable.maker_generic, makerDrawable("someone-new"))
+        assertEquals(R.drawable.provider_opencode, providerDrawable("opencode-go"))
+        ActivityScenario.launch<Nav7PreviewActivity>(Intent(instrumentation.targetContext, Nav7PreviewActivity::class.java)
+            .putExtra("screen", "new-chat").putExtra("width", 0).putExtra("scenario", "picker")).use { scenario ->
+            settle(); await("选择模型")
+            scenario.onActivity {
+                val choice = it.newChatSnapshot.pickerChoice("model")
+                assertEquals("deepseek", choice.makers["deepseek-flash"])
+                assertEquals("zhipu", choice.makers["glm-5.1"])
+                assertNull(choice.makers["muse-spark"])
+                assertEquals("opencode-go", choice.providers["opencode"])
+                assertEquals("openai", choice.providers["personal"])
+            }
+            click("选择模型"); await("OpenCode Go"); reveal("deepseek-flash"); capture("model-picker-makers")
+            scenario.onActivity { it.previewTheme = "dark" }; settle(); capture("model-picker-makers-dark")
+            scenario.onActivity { it.previewTheme = "light" }; settle()
+            click("deepseek-flash"); click("完成"); settle()
+            scenario.onActivity { assertEquals("deepseek-flash", it.newChatSnapshot!!.getJSONObject("model").getString("value")) }
+            capture("model-capsule-maker")
+        }
+        launch("profile").use { settle(); await("fixture-model"); capture("profile-model-makers") }
+        launch("profile-custom").use { settle(); await("qwen3-32b"); capture("profile-custom-model-makers") }
+    }
+
     @Test fun failedRenameKeepsTheDraftForRetry() {
         launch("profile").use { scenario ->
             settle(); await("工作室订阅"); click("更多"); click("重命名"); await("重命名连接"); field("名称", "重试后的名称")

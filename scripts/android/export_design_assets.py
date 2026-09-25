@@ -69,6 +69,9 @@ def main():
         export(ROOT/f"crates/zork-ui/assets/icons/{name}.svg", "ic_"+name.replace("-","_"))
     for source in (ROOT/"crates/zork-ui/assets/providers").glob("*.svg"):
         export(source,"provider_"+source.stem)
+    # Model makers (placeholders until the icon redraw; names are stable).
+    for source in (ROOT/"crates/zork-ui/assets/makers").glob("*.svg"):
+        export(source,"maker_"+source.stem)
 
     # Execution history uses the same semantic paths as the native history reader.
     for source in (ROOT/"crates/zork-ui/assets/history").glob("*.svg"):
