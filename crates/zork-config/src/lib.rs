@@ -68,8 +68,12 @@ pub struct FileConfig {
     pub mesh: MeshConfig,
 }
 
-/// Personal Mesh is opt-in. Product grants remain separate from network trust.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+/// A started Station has Mesh on by default: it listens on its encrypted entry
+/// and can mint invitations, but trusts nobody until a membership exists.
+/// Whether a local node is started at all stays the client's explicit choice;
+/// an operator can still turn Mesh off, and that choice is persisted.
+/// Product grants remain separate from network trust.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct MeshConfig {
     pub channel: Option<channel::Channel>,
@@ -91,6 +95,25 @@ pub struct MeshConfig {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub account_peers: Vec<String>,
     pub workspaces: Vec<MeshWorkspace>,
+}
+impl Default for MeshConfig {
+    fn default() -> Self {
+        Self {
+            channel: None,
+            name: String::new(),
+            group: None,
+            enabled: true,
+            offline: false,
+            bind: None,
+            relay_urls: None,
+            relay_quic_port: None,
+            discovery_url: None,
+            quic_discovery_urls: None,
+            peers: Vec::new(),
+            account_peers: Vec::new(),
+            workspaces: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -666,6 +689,27 @@ mod tests {
             "https://slack.example/api"
         );
         assert!(has_configured_im_connection(&loaded));
+    }
+
+    #[test]
+    fn fresh_station_config_enables_mesh_but_keeps_an_explicit_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let fresh = ensure_layout(dir.path()).unwrap();
+        assert!(
+            fresh.mesh.enabled,
+            "a started Station has Mesh on by default"
+        );
+        assert!(fresh.mesh.group.is_none() && fresh.mesh.peers.is_empty());
+        // Hand-written configuration without the field follows the same default.
+        fs::write(config_path(dir.path()), r#"{"mesh":{"name":"n"}}"#).unwrap();
+        assert!(load_config(dir.path()).unwrap().mesh.enabled);
+        // An operator's explicit choice survives a reload.
+        update_config(dir.path(), |config| {
+            config.mesh.enabled = false;
+            Ok(())
+        })
+        .unwrap();
+        assert!(!ensure_layout(dir.path()).unwrap().mesh.enabled);
     }
 
     #[test]

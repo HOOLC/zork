@@ -65,6 +65,11 @@ pub struct AccountFile {
     pub pending_revocations: Vec<Revocation>,
     /// Binds an in-flight browser login to the operation that still owns it.
     pub login_attempt: Option<String>,
+    /// Why the control plane ended the last session (for example a reused
+    /// refresh credential after an account directory was copied). Cleared by
+    /// the next successful login; clients show "需要重新登录" instead of retrying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_out: Option<String>,
 }
 impl Default for AccountFile {
     fn default() -> Self {
@@ -73,6 +78,7 @@ impl Default for AccountFile {
             current: None,
             pending_revocations: Vec::new(),
             login_attempt: None,
+            signed_out: None,
         }
     }
 }

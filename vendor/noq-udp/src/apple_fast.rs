@@ -56,7 +56,8 @@ fn send_via_sendmsg_x(
             &mut hdrs[i],
             &mut iovs[i],
             &mut ctrls[i],
-            true,
+            // Zork patch: Apple ignores IP_RECVDSTADDR on send (see `UdpSocketState::new`).
+            false,
             state.sendmsg_einval(),
         );
         hdrs[i].msg_datalen = chunk.len();

@@ -181,8 +181,22 @@ class NodeRuntime:
     def after_restore(self):
         return renew_restored_epochs(self.data)
 
+    def mesh_origin(self, seconds=None):
+        """The running Mesh identity, once Mesh is ready.
+
+        A restarted Station answers /v1/node/mesh before its Mesh runtime is up
+        (origin null). That is "not ready yet", not a different identity.
+        """
+        def ready():
+            value = self.request('/v1/node/mesh')
+            if value.get('config', {}).get('enabled') is False:
+                return {'origin': None}
+            return {'origin': value['origin']} if value.get('origin') else None
+        return wait(ready, 'Mesh did not become ready after restart',
+                    self.timeout if seconds is None else seconds)['origin']
+
     def verify_preserved(self, original):
-        if original.get('origin') and self.request('/v1/node/mesh')['origin'] != original['origin']:
+        if original.get('origin') and self.mesh_origin() != original['origin']:
             raise RuntimeError('Deployment changed the existing Mesh identity')
         for anchor in original.get('history_anchors', []):
             page = self.request('/v1/im/sessions/' + anchor['chat_id'] + '/messages?limit=100')

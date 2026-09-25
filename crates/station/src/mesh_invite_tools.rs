@@ -2,10 +2,7 @@
 //! through the same enrollment path as the clients and returns it only in the
 //! `mesh.invite` result. Any Session bound to a Station conversation may mint:
 //! connected IM such as Slack is trusted like the Zork clients.
-use crate::{
-    db::StationDb,
-    state::AppState,
-};
+use crate::{db::StationDb, state::AppState};
 use anyhow::{Context, Result};
 use axum::{
     extract::State,
@@ -102,9 +99,10 @@ fn describe(error: &anyhow::Error) -> (String, String) {
     let code = error.to_string();
     let message = match code.as_str() {
         "mesh_not_ready" => "Mesh is not running on this Station yet. Check `zork mesh status` or the device settings, then retry.",
+        "mesh_disabled" => "Mesh is switched off on this Station, so no invitation was created. Ask the user to turn on device connections (允许设备连接) in this device's settings, or to run `zork mesh invite` in a terminal on this Station, which enables Mesh first.",
         "too_many_active_invites" | "too_many_recent_invites" => "Too many open invitations. Revoke unused ones with mesh.revoke or wait for them to expire.",
         "invite_already_used_remove_device_instead" => "This invitation was already used to join a device. Remove that device from the Mesh instead of revoking the invitation.",
-        "invite_not_found" | "invite_expired_or_restart" => "Invitation not found. It may have expired, or the Station restarted, which invalidates unused invitations.",
+        "invite_not_found" | "invite_expired_or_restart" | "invite_expired_or_unknown" => "Invitation not found. It may have expired or been pruned after expiry.",
         "device_removed_from_mesh" => "This Station was removed from the Mesh and cannot invite devices.",
         _ if code.contains("membership") || code.contains("authority") || code.contains("connect") => "The Mesh managing Station is unreachable. Invitations are issued by it; retry when it is online.",
         _ => "Mesh invitation operation failed.",
@@ -148,7 +146,12 @@ async fn api(state: &AppState, input: Request) -> Result<Value> {
             }) {
                 return Ok(replayed(&entry, now()));
             }
-            let service = state.mesh.get().context("mesh_not_ready")?;
+            // Never hand out an invitation that cannot be redeemed: a Station
+            // with Mesh switched off refuses instead of minting one.
+            let service = state
+                .mesh
+                .get()
+                .ok_or_else(|| anyhow::anyhow!(crate::node::mesh_unavailable(state)))?;
             let created = service.enrollment.create(state).await?;
             let entry = Entry {
                 id: created["id"].as_str().context("mesh_invite_failed")?.into(),
@@ -518,6 +521,16 @@ mod tests {
         assert_eq!(load(dir.path()).unwrap().len(), 1);
         let bytes = std::fs::read_to_string(path(dir.path())).unwrap();
         assert!(!bytes.contains("command") && !bytes.contains("secret"));
+    }
+
+    #[test]
+    fn disabled_mesh_is_a_clear_refusal_not_a_dead_invitation() {
+        let (code, message) = describe(&anyhow::anyhow!("mesh_disabled"));
+        assert_eq!(code, "mesh_disabled");
+        assert!(message.contains("switched off") && message.contains("zork mesh invite"));
+        let (code, message) = describe(&anyhow::anyhow!("invite_expired_or_unknown"));
+        assert_eq!(code, "invite_expired_or_unknown");
+        assert!(!message.contains("restart"));
     }
 
     #[test]

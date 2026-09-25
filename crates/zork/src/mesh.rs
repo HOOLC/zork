@@ -197,6 +197,105 @@ fn invite_json(value: &Value, now: u64) -> Result<Value> {
     }))
 }
 
+/// A Station member or client by exact identity, identity prefix or name.
+fn resolve_member(
+    group: &zork_config::membership::MeshGroup,
+    own_origin: Option<&str>,
+    target: &str,
+) -> Result<zork_config::membership::MeshDevice> {
+    let devices: Vec<_> = group.members.iter().chain(&group.clients).collect();
+    let exact: Vec<_> = devices
+        .iter()
+        .filter(|d| d.origin == target || d.name == target)
+        .collect();
+    let matches = if exact.is_empty() {
+        devices
+            .iter()
+            .filter(|d| {
+                d.name.eq_ignore_ascii_case(target)
+                    || (target.len() >= 8
+                        && d.origin
+                            .trim_start_matches("key:")
+                            .starts_with(target.trim_start_matches("key:")))
+            })
+            .collect()
+    } else {
+        exact
+    };
+    ensure!(
+        !matches.is_empty(),
+        "Mesh 中没有名为 {target} 的设备；用 zork mesh status 查看成员"
+    );
+    ensure!(
+        matches.len() == 1,
+        "有多个设备匹配 {target}，请改用设备身份：{}",
+        matches
+            .iter()
+            .map(|d| d.origin.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let device = (**matches[0]).clone();
+    ensure!(
+        Some(device.origin.as_str()) != own_origin,
+        "不能移除本机；要离开 Mesh 请使用 zork mesh leave"
+    );
+    ensure!(device.origin != group.authority, "不能移除 Mesh 管理设备");
+    Ok(device)
+}
+
+#[cfg(test)]
+mod resolve_member_tests {
+    use super::*;
+    use zork_config::membership::{MeshDevice, MeshGroup};
+
+    fn device(origin: &str, name: &str) -> MeshDevice {
+        MeshDevice {
+            routes: None,
+            origin: origin.into(),
+            name: name.into(),
+            addr: None,
+        }
+    }
+
+    #[test]
+    fn names_identities_and_refusals() {
+        let group = MeshGroup {
+            authority: "key:manager".into(),
+            revision: 3,
+            members: vec![
+                device("key:manager", "studio"),
+                device("key:abcdefgh1234", "jointest"),
+                device("key:zzzzzzzz9999", "bft-jointest"),
+            ],
+            clients: vec![device("key:phone0000000", "Phone")],
+        };
+        let own = Some("key:manager");
+        assert_eq!(
+            resolve_member(&group, own, "jointest").unwrap().origin,
+            "key:abcdefgh1234"
+        );
+        assert_eq!(
+            resolve_member(&group, own, "BFT-JOINTEST").unwrap().origin,
+            "key:zzzzzzzz9999"
+        );
+        assert_eq!(
+            resolve_member(&group, own, "abcdefgh").unwrap().name,
+            "jointest"
+        );
+        assert_eq!(
+            resolve_member(&group, own, "phone").unwrap().origin,
+            "key:phone0000000"
+        );
+        assert!(resolve_member(&group, own, "studio").is_err());
+        assert!(resolve_member(&group, own, "missing").is_err());
+        assert!(
+            resolve_member(&group, own, "abc").is_err(),
+            "short prefixes do not match"
+        );
+    }
+}
+
 #[cfg(test)]
 mod invite_json_tests {
     use super::*;
@@ -219,20 +318,25 @@ mod invite_json_tests {
 pub async fn run(mut argv: Vec<String>) -> Result<()> {
     ensure!(
         !argv.is_empty(),
-        "mesh requires invite, join, switch, leave or status"
+        "mesh requires invite, join, switch, leave, remove, cancel or status"
     );
-    let action = argv.remove(0);
+    let mut action = argv.remove(0);
     let mut explicit = None;
     let mut name = None;
     let mut ticket = None;
+    let mut device = None;
     let mut index = 0;
     let mut json_output = false;
     let mut confirmed = false;
+    let mut replace = false;
+    let mut cancel = false;
     while index < argv.len() {
         let argument = &argv[index];
         match argument.as_str() {
             "--json" => json_output = true,
             "--yes" => confirmed = true,
+            "--replace" => replace = true,
+            "--cancel" => cancel = true,
             "--channel" => {
                 index += 1;
                 let value = argv.get(index).context("missing channel")?;
@@ -256,14 +360,21 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             {
                 ticket = Some(value.to_owned())
             }
+            value if !value.starts_with('-') && action == "remove" && device.is_none() => {
+                device = Some(value.to_owned())
+            }
             _ => anyhow::bail!("unknown mesh option {argument}"),
         }
         index += 1;
     }
+    if action == "join" && cancel {
+        ensure!(ticket.is_none(), "--cancel does not take an invitation");
+        action = "cancel".into();
+    }
     ensure!(
         matches!(
             action.as_str(),
-            "install" | "invite" | "join" | "switch" | "leave" | "status"
+            "install" | "invite" | "join" | "switch" | "leave" | "status" | "remove" | "cancel"
         ),
         "unknown mesh action"
     );
@@ -271,6 +382,46 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     let channel = zork_config::channel::activate_for_data(&root)?;
     if matches!(action.as_str(), "join" | "switch") {
         ensure!(ticket.is_some(), "join requires an invitation");
+    }
+    if action == "cancel" {
+        let station = LocalStation::new(root.clone())?;
+        station.verify().await?;
+        let progress =
+            zork_client_core::mesh_enrollment::cancel(&station.core_client()?, None).await?;
+        if json_output {
+            println!("{}", serde_json::to_value(&progress)?);
+        } else {
+            println!("{}", progress.label);
+        }
+        return Ok(());
+    }
+    if action == "remove" {
+        let target = device.context("remove requires a device name or identity")?;
+        let station = LocalStation::new(root.clone())?;
+        station.verify().await?;
+        let value = station
+            .request(reqwest::Method::GET, "/v1/node/mesh", None)
+            .await?;
+        let config: zork_config::MeshConfig = serde_json::from_value(value["config"].clone())?;
+        let group = config.group.context("当前设备尚未加入 Mesh")?;
+        let member = resolve_member(&group, value["origin"].as_str(), &target)?;
+        ensure!(
+            confirmed,
+            "将把 {}（{}）移出 Mesh，它会立即失去访问权限，需要新的邀请才能重新加入。确认后请加 --yes 重试。",
+            member.name,
+            member.origin
+        );
+        let result = zork_client_core::mesh_enrollment::remove_member(
+            &station.core_client()?,
+            &member.origin,
+        )
+        .await?;
+        if json_output {
+            println!("{result}");
+        } else {
+            println!("已将 {} 移出 Mesh。", member.name);
+        }
+        return Ok(());
     }
     if action == "status" {
         ensure!(
@@ -304,6 +455,9 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             for peer in value["config"]["peers"].as_array().into_iter().flatten() {
                 println!("  {}", peer["name"].as_str().unwrap_or("Device"));
             }
+            if value["config"]["enabled"] == false {
+                println!("  Mesh：未启用（运行 zork mesh invite 或在设备设置中开启）");
+            }
             if let Some(join) = value.get("join").filter(|join| !join.is_null()) {
                 println!(
                     "接入：{}（尝试 {} 次）",
@@ -312,6 +466,9 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                 );
                 if let Some(seconds) = join["retry_in_seconds"].as_u64() {
                     println!("  {seconds} 秒后重试");
+                }
+                if join["finished"] == false {
+                    println!("  取消：zork mesh join --cancel");
                 }
             }
         }
@@ -336,6 +493,9 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
             println!("{value}");
         } else {
             println!("已离开 Mesh，本机身份、文件和历史保留。");
+            if value["manager_notified"] == false {
+                println!("未能通知管理设备；可在管理设备上运行 zork mesh remove <本机名称> 清理成员列表。");
+            }
         }
         return Ok(());
     }
@@ -447,12 +607,19 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     // live in the Station operation; joining never rewrites operator network choices.
     let mut replaced_pid = None;
     if config != previous {
+        if !previous.enabled {
+            eprintln!("本机 Mesh 未启用，正在启用…");
+        }
         let status = station
             .request(reqwest::Method::GET, "/v1/node/status", None)
             .await?;
         let saved = station
             .request(reqwest::Method::PUT, "/v1/node/mesh", Some(json!(config)))
             .await?;
+        ensure!(
+            saved["restart_required"] != true,
+            "Mesh 已在配置中启用，但这个 Station 不受 zork supervisor 管理，无法自动重启。请重启 Station 后重试。"
+        );
         if saved["restarting"] == true {
             replaced_pid = Some(status["pid"].clone());
         }
@@ -497,6 +664,14 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
     .context("Station Mesh did not become ready; check node logs and retry the join command")??;
     match action.as_str() {
         "invite" => {
+            let mesh = station
+                .request(reqwest::Method::GET, "/v1/node/mesh", None)
+                .await?;
+            // Never print an invitation this Station cannot honour.
+            ensure!(
+                mesh["config"]["enabled"] == true && mesh["origin"].is_string(),
+                "本机 Mesh 未启用或尚未就绪，没有生成邀请；请检查 zork mesh status"
+            );
             let value = station
                 .request(reqwest::Method::POST, "/v1/node/mesh/invites", None)
                 .await?;
@@ -519,6 +694,7 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                     invitation: ticket.context("missing invitation")?,
                     name: name.clone(),
                     switch_from,
+                    replace,
                 },
                 |progress| {
                     let message = format!(
@@ -538,7 +714,18 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                     }
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                if error.to_string().contains("another_join_is_in_progress") {
+                    anyhow::anyhow!(
+                        "本机已有一个未完成的接入（使用另一个邀请）。查看进度：zork mesh status；只取消它：zork mesh join --cancel；放弃它并改用这个邀请：加 --replace 重试。"
+                    )
+                } else if error.to_string().contains("join_confirming_try_again") {
+                    anyhow::anyhow!("上一个接入正在确认成员关系，请几秒后重试。")
+                } else {
+                    error
+                }
+            })?;
             if json_output {
                 println!("{value}");
             } else {

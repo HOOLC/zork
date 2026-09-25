@@ -36,6 +36,9 @@ pub struct Status {
     pub authenticated: bool,
     pub revocations_pending: usize,
     pub remote_verified: bool,
+    /// The control plane ended the last session; a new login is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed_out: Option<String>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SessionInfo {
@@ -63,6 +66,36 @@ struct Tokens {
 struct ApiError {
     status: StatusCode,
     code: &'static str,
+}
+/// The control plane ended this session; only a new login restores access.
+#[derive(Debug, thiserror::Error)]
+#[error("{}", signed_out_message(code))]
+pub struct SignedOut {
+    pub code: &'static str,
+}
+/// User-facing text for a session the control plane ended.
+pub fn signed_out_message(code: &str) -> &'static str {
+    if code == "refresh_reused" {
+        "账号登录已失效（登录凭据在另一处被使用，账号目录不能复制到其它实例），需要重新登录"
+    } else {
+        "账号登录已失效，需要重新登录"
+    }
+}
+/// True when the relay answered that this endpoint does not exist (an older
+/// or partial control-plane deployment). Callers back off instead of looping.
+pub fn endpoint_missing(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<ApiError>()
+        .is_some_and(|e| e.status == StatusCode::NOT_FOUND)
+}
+
+pub(crate) struct LocalIdentity {
+    pub subject: Option<String>,
+    pub email: Option<String>,
+    pub authenticated: bool,
+    pub pending_revocations: usize,
+    /// Set when the control plane ended the last session: "需要重新登录".
+    pub signed_out: Option<&'static str>,
 }
 
 impl Account {
@@ -232,11 +265,21 @@ impl Account {
         let tokens = match response {
             Ok(tokens) => tokens,
             Err(error) => {
-                if error.downcast_ref::<ApiError>().is_some_and(|e| {
+                if let Some(api) = error.downcast_ref::<ApiError>().filter(|e| {
                     matches!(e.status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
                 }) {
+                    // A rejected rotation is final for this session (for example
+                    // `refresh_reused` after an account directory was copied to
+                    // another instance). Drop it once and ask for a new login;
+                    // retrying the dead credential cannot succeed.
                     account.current = None;
+                    account.signed_out = Some(api.code.to_owned());
                     storage::write(&self.root, &account)?;
+                    tracing::warn!(
+                        code = api.code,
+                        "relay account session ended; sign in again"
+                    );
+                    return Err(anyhow::Error::new(SignedOut { code: api.code }));
                 }
                 return Err(error);
             }
@@ -270,6 +313,7 @@ impl Account {
             authenticated: session.is_some_and(|s| s.active()),
             revocations_pending: account.pending_revocations.len(),
             remote_verified: false,
+            signed_out: None,
         };
         if verify_remote {
             if let Some(session) = session.filter(|s| s.active()) {
@@ -288,7 +332,7 @@ impl Account {
                             matches!(e.status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
                         }) =>
                     {
-                        self.clear_if_same(session).await?;
+                        self.clear_if_same(session, "session_revoked").await?;
                         status.authenticated = false;
                         status.remote_verified = true;
                     }
@@ -296,23 +340,35 @@ impl Account {
                 }
             }
         }
+        if !status.authenticated {
+            status.signed_out = storage::read(&self.root)?
+                .signed_out
+                .as_deref()
+                .map(|code| signed_out_message(code).to_owned());
+        }
         Ok(status)
     }
-    pub(crate) fn local_identity(&self) -> Result<(Option<String>, Option<String>, bool, usize)> {
+    pub(crate) fn local_identity(&self) -> Result<LocalIdentity> {
         let file = storage::read(&self.root)?;
         let session = self.matching(&file).filter(|s| s.renewable());
-        Ok((
-            session.map(|s| s.subject.clone()),
-            session.and_then(|s| s.email.clone()),
-            session.is_some_and(|s| s.active()),
-            file.pending_revocations.len(),
-        ))
+        Ok(LocalIdentity {
+            subject: session.map(|s| s.subject.clone()),
+            email: session.and_then(|s| s.email.clone()),
+            authenticated: session.is_some_and(|s| s.active()),
+            pending_revocations: file.pending_revocations.len(),
+            signed_out: file
+                .signed_out
+                .as_deref()
+                .filter(|_| file.current.is_none())
+                .map(signed_out_message),
+        })
     }
-    async fn clear_if_same(&self, session: &RelaySession) -> Result<()> {
+    async fn clear_if_same(&self, session: &RelaySession, reason: &str) -> Result<()> {
         let _lock = self.lock().await?;
         let mut account = storage::read(&self.root)?;
         if account.current.as_ref() == Some(session) {
             account.current = None;
+            account.signed_out = Some(reason.to_owned());
             storage::write(&self.root, &account)?;
         }
         Ok(())
@@ -355,6 +411,7 @@ impl Account {
             let _lock = self.lock().await?;
             let mut account = storage::read(&self.root)?;
             account.login_attempt = None;
+            account.signed_out = None;
             if let Some(session) = account.current.take() {
                 ensure!(
                     account.pending_revocations.len() < 64,

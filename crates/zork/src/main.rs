@@ -25,6 +25,9 @@ Usage:
   zork upgrade --version X.Y.Z [--data DIR]
   zork account login|status|logout [--data DIR]
   zork mesh invite|join|switch|leave|status [--data DIR] [--channel test|dev|release] [--yes]
+  zork mesh join TICKET --replace      abandon an unfinished join and use this invitation
+  zork mesh join --cancel              cancel the unfinished join
+  zork mesh remove DEVICE --yes        remove a device (name or identity) from the Mesh
   zork service install|uninstall|status [--data DIR] [--at-login]
   zork stop [--data DIR]
 

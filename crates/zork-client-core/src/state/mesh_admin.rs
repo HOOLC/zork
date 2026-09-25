@@ -226,13 +226,7 @@ impl MeshAdmin {
                         .chain(&g.clients)
                         .any(|m| m.origin == origin)
                 }) {
-                    self.client
-                        .node_request(
-                            http::Method::POST,
-                            "/v1/node/mesh/members/remove".into(),
-                            Some(json!({"origin":origin})),
-                        )
-                        .await?;
+                    crate::mesh_enrollment::remove_member(&self.client, &origin).await?;
                     self.refresh().await
                 } else {
                     config.peers.retain(|p| p.origin != origin);

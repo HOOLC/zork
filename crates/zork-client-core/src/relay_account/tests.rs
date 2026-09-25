@@ -303,3 +303,50 @@ async fn malformed_private_and_remote_values_never_escape_through_error_chains()
     assert!(!format!("{error:#}").contains("sensitive-test-marker"));
     server.abort();
 }
+
+#[tokio::test]
+async fn reused_refresh_token_ends_the_session_once_and_asks_for_login() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = requests.clone();
+    let app = axum::Router::new().fallback(move || {
+        let count = count.clone();
+        async move {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                axum::Json(serde_json::json!({"error":"refresh_reused"})),
+            )
+        }
+    });
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    // Access about to expire: the next use must rotate the refresh credential.
+    save(root.path(), saved(&origin, storage::now() + 30)).await;
+    let account = Account::new(root.path(), &origin).unwrap();
+    let error = account.access(false).await.unwrap_err();
+    assert!(error.downcast_ref::<SignedOut>().is_some());
+    assert!(error.to_string().contains("需要重新登录"));
+    let file = storage::read(root.path()).unwrap();
+    assert!(file.current.is_none());
+    assert_eq!(file.signed_out.as_deref(), Some("refresh_reused"));
+    let identity = account.local_identity().unwrap();
+    assert!(!identity.authenticated);
+    assert!(identity.signed_out.unwrap().contains("账号目录不能复制"));
+    let status = account.status(false).await.unwrap();
+    assert!(status.signed_out.unwrap().contains("需要重新登录"));
+    // The dead credential is gone: no further requests, no retry loop.
+    assert!(account.access(false).await.unwrap().is_none());
+    assert!(account.access(true).await.unwrap().is_none());
+    assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // A later login clears the marker.
+    save(root.path(), saved(&origin, storage::now() + 300)).await;
+    let mut file = storage::read(root.path()).unwrap();
+    file.signed_out = None;
+    storage::write(root.path(), &file).unwrap();
+    assert!(account.local_identity().unwrap().signed_out.is_none());
+    server.abort();
+}
