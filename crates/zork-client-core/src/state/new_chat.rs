@@ -458,6 +458,8 @@ mod tests {
                                 last_message_at: Some("now".into()),
                                 message_count: 1,
                                 creator: None,
+                                agents: vec![],
+                                agent_count: 0,
                             })
                             .into_response()
                         }

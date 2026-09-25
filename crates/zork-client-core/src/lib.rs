@@ -26,6 +26,7 @@ pub mod live;
 pub mod local_scripts;
 pub mod locale;
 pub mod mesh_enrollment;
+pub mod message_presentation;
 pub mod message_time;
 pub mod model_catalog;
 mod model_connections;

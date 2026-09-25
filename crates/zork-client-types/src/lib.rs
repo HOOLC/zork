@@ -1,5 +1,6 @@
 //! Small shared client data formats, without a UI or transport dependency.
 pub mod adb;
+pub mod agent_tint;
 pub mod chat;
 pub mod comments;
 pub mod interaction;

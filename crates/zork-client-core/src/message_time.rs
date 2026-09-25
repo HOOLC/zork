@@ -45,8 +45,10 @@ pub const SKEW_TOLERANCE: Duration = Duration::minutes(5);
 /// - earlier this year: 9月3日 HH:MM / Sep 3 HH:MM
 /// - an earlier year: 2025年12月30日 HH:MM / Dec 30, 2025 HH:MM
 ///
-/// Instants further in the future than the tolerance are shown as absolute
-/// times (HH:MM today, otherwise the dated form) rather than "in N minutes".
+/// Instants further in the future than the tolerance are shown in the dated
+/// form (as in the approved prototype) rather than "in N minutes".
+///
+/// Boundaries are calendar days in `now`'s offset: 2–6 days ago is a weekday.
 pub fn format(at: DateTime<Utc>, now: DateTime<FixedOffset>, locale: TimeLocale) -> MessageTime {
     let local = at.with_timezone(now.offset());
     MessageTime {
@@ -109,11 +111,7 @@ fn label(at: DateTime<FixedOffset>, now: DateTime<FixedOffset>, locale: TimeLoca
         if -elapsed <= SKEW_TOLERANCE {
             return just_now(zh);
         }
-        return if calendar_days(at, now) == 0 {
-            clock(at)
-        } else {
-            dated(at, now, zh)
-        };
+        return dated(at, now, zh);
     }
     if elapsed < Duration::minutes(1) {
         return just_now(zh);

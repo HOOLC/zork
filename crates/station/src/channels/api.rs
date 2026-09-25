@@ -324,12 +324,35 @@ pub(super) async fn route(state: &AppState, target: &str, mut rpc: Rpc) -> Resul
     }
     access(state, target)?;
     rpc.subject.origin = node_access::identity(state);
-    state
-        .mesh
-        .get()
-        .context("node_starting")?
-        .channel_call(target, rpc)
-        .await
+    let mesh = state.mesh.get().context("node_starting")?;
+    let reply = mesh.channel_call(target, rpc.clone()).await?;
+    // A peer from before reply quotes validates arguments against its own
+    // schema and rejects the unknown fields before any effect. The quote is
+    // presentation only, so the same send goes through without it.
+    match without_quote_for_legacy_peer(&rpc, &reply) {
+        Some(legacy) => mesh.channel_call(target, legacy).await,
+        None => Ok(reply),
+    }
+}
+
+/// The request to repeat once, without `quote`/`quote_kind`, when a peer
+/// rejected it only because it predates those fields.
+pub(super) fn without_quote_for_legacy_peer(rpc: &Rpc, reply: &Value) -> Option<Rpc> {
+    let quoted = ["quote", "quote_kind"]
+        .iter()
+        .any(|field| rpc.arguments.get(field).is_some());
+    if !quoted
+        || reply["status"] != "rejected"
+        || reply["error"] != "invalid_channel_arguments"
+        || !zork_agent_station_tools::channels::sends_message(&rpc.tool)
+    {
+        return None;
+    }
+    let mut legacy = rpc.clone();
+    let arguments = legacy.arguments.as_object_mut()?;
+    arguments.remove("quote");
+    arguments.remove("quote_kind");
+    Some(legacy)
 }
 
 pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Result<Value> {
@@ -551,7 +574,8 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
             } else {
                 None
             };
-            let message = state.db.post_chat_content(
+            let quote = super::reply_quote(args)?;
+            let message = state.db.post_chat_content_from_client(
                 (!ordinary).then_some(command.as_str()),
                 &object,
                 chat,
@@ -559,9 +583,11 @@ pub(super) async fn execute(state: &AppState, rpc: Rpc, is_local: bool) -> Resul
                 args["text"].as_str().unwrap_or(""),
                 &files,
                 args["reply_to"].as_str(),
+                quote.as_ref(),
                 &mentions,
                 &[],
                 interaction.as_ref(),
+                None,
             )?;
             state
                 .entries
@@ -679,5 +705,88 @@ impl Drop for SendFiles<'_> {
         if let Err(error) = self.db.clear_send_files(&self.key) {
             tracing::warn!(%error,"Could not clear completed message file transfer");
         }
+    }
+}
+
+#[cfg(test)]
+mod quote_tests {
+    use super::*;
+
+    fn rpc(tool: &str, arguments: Value) -> Rpc {
+        Rpc {
+            subject: crate::node_access::Subject {
+                origin: "key:caller".into(),
+                agent: "builder".into(),
+                session: "session".into(),
+            },
+            invocation_id: "invocation".into(),
+            tool: tool.into(),
+            arguments,
+            prepared_key: "send-key".into(),
+            files: vec![],
+            publication: None,
+            interrupt: false,
+        }
+    }
+
+    #[test]
+    fn tool_arguments_with_quotes_validate_and_parse() {
+        let args = json!({"chat_id":"c","text":"已改好","reply_to":"m1","quote":"对比度只有 3.9:1","quote_kind":"summary"});
+        validate("chat.post_message", &args).unwrap();
+        let quote = super::super::reply_quote(&args).unwrap().unwrap();
+        assert_eq!(quote.text, "对比度只有 3.9:1");
+        assert_eq!(quote.kind, zork_client_types::chat::QuoteKind::Summary);
+        // Schema-valid but inconsistent calls are refused with a clear code.
+        let orphan = json!({"chat_id":"c","text":"t","quote":"原文"});
+        validate("chat.post_message", &orphan).unwrap();
+        assert_eq!(
+            super::super::reply_quote(&orphan).unwrap_err().to_string(),
+            "quote_requires_reply_to"
+        );
+        let kind_only = json!({"chat_id":"c","text":"t","reply_to":"m","quote_kind":"excerpt"});
+        assert_eq!(
+            super::super::reply_quote(&kind_only)
+                .unwrap_err()
+                .to_string(),
+            "quote_kind_requires_quote"
+        );
+        assert_eq!(
+            super::super::error(&super::super::reply_quote(&orphan).unwrap_err()),
+            "quote_requires_reply_to"
+        );
+        assert!(validate(
+            "chat.post_message",
+            &json!({"chat_id":"c","text":"t","reply_to":"m","quote":"x".repeat(121)})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn legacy_peers_receive_the_same_send_without_quote_fields() {
+        let quoted = rpc(
+            "chat.post_message",
+            json!({"chat_id":"c","text":"t","reply_to":"m","quote":"原文","quote_kind":"excerpt"}),
+        );
+        let rejected = json!({"status":"rejected","error":"invalid_channel_arguments"});
+        let legacy = without_quote_for_legacy_peer(&quoted, &rejected).unwrap();
+        assert_eq!(
+            legacy.arguments,
+            json!({"chat_id":"c","text":"t","reply_to":"m"})
+        );
+        assert_eq!(legacy.invocation_id, quoted.invocation_id);
+        assert_eq!(legacy.prepared_key, quoted.prepared_key);
+        // Only that exact rejection of a quoted message call is retried.
+        assert!(without_quote_for_legacy_peer(&quoted, &json!({"status":"committed"})).is_none());
+        assert!(without_quote_for_legacy_peer(
+            &quoted,
+            &json!({"status":"rejected","error":"invalid_reply_reference"})
+        )
+        .is_none());
+        let plain = rpc("chat.post_message", json!({"chat_id":"c","text":"t"}));
+        assert!(without_quote_for_legacy_peer(&plain, &rejected).is_none());
+        // A current peer receives the fields unchanged in the forwarded RPC.
+        let wire: Rpc = serde_json::from_value(serde_json::to_value(&quoted).unwrap()).unwrap();
+        assert_eq!(wire.arguments["quote"], "原文");
+        assert_eq!(wire.arguments["quote_kind"], "excerpt");
     }
 }

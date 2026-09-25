@@ -104,11 +104,20 @@ pub fn stop_confirmed(online: bool, status: Option<crate::api::SessionStatus>) -
 }
 
 /// Present the shared comment/file envelope without exposing wire markup in UI.
+///
+/// A comment batch also gets `comment_batch`
+/// (`zork_client_types::comments::CommentBatchView`: `pairs` of
+/// `{id, session_id, message_id, author, author_agent_id, quote, reply}` and
+/// `extra_text`), the structured form the redesigned bubble renders;
+/// `display_content` stays the legacy plain text.
 pub fn project_payload(value: &mut serde_json::Value) {
     let raw = value["content"].as_str().unwrap_or_default().to_owned();
     let (raw, files) = zork_client_types::files::decode(&raw).unwrap_or((raw, vec![]));
     value["file_views"] = serde_json::json!(crate::file_io::views(&files));
     value["files"] = serde_json::json!(files);
+    if let Some(batch) = crate::comments::decode_batch(&raw) {
+        value["comment_batch"] = serde_json::json!(batch);
+    }
     if let Some((text, comments, attachments)) = crate::comments::decode_document(&raw) {
         value["display_content"] = serde_json::json!(crate::comments::display_text(
             &crate::comments::compose(&text, &comments)
@@ -189,5 +198,70 @@ mod tests {
             data: "private".into(),
         };
         assert_eq!(decode_sse_event(&event).unwrap(), None);
+    }
+
+    #[test]
+    fn station_messages_carry_reply_quotes_and_rows_carry_comment_pairs() {
+        let event = SseEvent {
+            name: "message".into(),
+            data:
+                r#"{"type":"message","role":"assistant","content":"已改","id":"m2","reply_to":"m1",
+                "quote":"对比度只有 3.9:1","quote_kind":"summary","author_agent_id":"builder"}"#
+                    .into(),
+        };
+        let Some(DecodedSseEvent::Transcript(TranscriptMessage::Message { metadata, .. })) =
+            decode_sse_event(&event).unwrap()
+        else {
+            panic!("message event")
+        };
+        let quote = metadata.reply_quote().unwrap();
+        assert_eq!(quote.text, "对比度只有 3.9:1");
+        assert_eq!(quote.kind, zork_client_types::chat::QuoteKind::Summary);
+        // The row JSON the Android observation sends keeps the fields.
+        let row = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(row["quote_kind"], "summary");
+        // Older Stations send no quote.
+        let legacy = SseEvent {
+            name: "message".into(),
+            data:
+                r#"{"type":"message","role":"assistant","content":"x","id":"m3","reply_to":"m1"}"#
+                    .into(),
+        };
+        let Some(DecodedSseEvent::Transcript(TranscriptMessage::Message { metadata, .. })) =
+            decode_sse_event(&legacy).unwrap()
+        else {
+            panic!("message event")
+        };
+        assert_eq!(metadata.reply_quote(), None);
+        assert!(serde_json::to_value(&metadata)
+            .unwrap()
+            .get("quote")
+            .is_none());
+
+        let payload = crate::comments::compose(
+            "补充",
+            &[crate::comments::DraftComment {
+                id: "d".into(),
+                source: crate::comments::CommentSource {
+                    session_id: "chat".into(),
+                    message_id: Some("m1".into()),
+                    quote: "原句".into(),
+                    ..Default::default()
+                },
+                comment: "回复".into(),
+            }],
+        );
+        let mut value = serde_json::json!({"content": payload});
+        project_payload(&mut value);
+        assert_eq!(value["comment_batch"]["pairs"][0]["message_id"], "m1");
+        assert_eq!(value["comment_batch"]["pairs"][0]["reply"], "回复");
+        assert_eq!(value["comment_batch"]["extra_text"], "补充");
+        assert!(value["display_content"]
+            .as_str()
+            .unwrap()
+            .contains("> 原句"));
+        let mut plain = serde_json::json!({"content": "hello"});
+        project_payload(&mut plain);
+        assert!(plain.get("comment_batch").is_none());
     }
 }

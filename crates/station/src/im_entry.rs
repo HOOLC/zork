@@ -251,6 +251,11 @@ impl ImEntryStation {
                 value["author_kind"] = json!(fact.author.kind);
                 value["mentions"] = json!(fact.mentions);
                 value["reply_to"] = json!(fact.reply_to);
+                // Absent (not null) without a quote, like older Stations.
+                if let Some(quote) = fact.reply_quote() {
+                    value["quote"] = json!(quote.text);
+                    value["quote_kind"] = json!(quote.kind);
+                }
                 if let Some(interaction) = fact.interaction {
                     value["interaction"] = interaction;
                 }
@@ -286,6 +291,11 @@ impl ImEntryStation {
                         if let Some((origin, _)) = fact.author.id.split_once('/') {
                             value["device"] = json!(origin);
                         }
+                    }
+                    // The model that wrote this message, when recorded, wins
+                    // over the author's current model.
+                    if let Some(model) = &fact.author_model {
+                        value["model"] = json!(model);
                     }
                 }
             }
@@ -702,6 +712,35 @@ mod tests {
         assert_eq!(projected["model"], "agent-model");
         assert_eq!(projected["device"], "key:local");
         assert_eq!(projected["author_avatar"], "fox");
+        // Messages without a quote look exactly like older Stations' output.
+        assert!(projected.get("quote").is_none() && projected.get("quote_kind").is_none());
+
+        // The `/messages` page and SSE `message` event carry reply quotes.
+        let quoted = db
+            .post_chat_content_from_client(
+                None,
+                "quoted-reply",
+                &chat.chat_id,
+                &author,
+                "改好了",
+                &[],
+                Some(&legacy.message_id),
+                Some(&zork_client_types::chat::MessageQuote {
+                    text: "legacy".into(),
+                    kind: zork_client_types::chat::QuoteKind::Excerpt,
+                }),
+                &[],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
+        let projected = entries.message_json(&db.chat_visible_message(&quoted.message_id).unwrap());
+        assert_eq!(projected["reply_to"], "legacy-reply");
+        // The recorded model of the post, not a later configuration.
+        assert_eq!(projected["model"], "session-model");
+        assert_eq!(projected["quote"], "legacy");
+        assert_eq!(projected["quote_kind"], "excerpt");
     }
 
     #[tokio::test]

@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CommentSource {
     pub session_id: String,
     /// A durable Station message ID. Old stations may not provide one.
@@ -113,6 +114,76 @@ fn attachment_text(file: &TextAttachment) -> String {
     let fence = "`".repeat(3.max(longest + 1));
     format!("附件：{}\n\n{fence}\n{}\n{fence}", file.name, file.content)
 }
+/// One quoted passage of a sent batch and the user's reply to it, flattened
+/// for rendering: a quote line (author + passage, jumping to the source
+/// message) followed by the reply text.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentPair {
+    /// Draft identity, stable within the batch.
+    pub id: String,
+    pub session_id: String,
+    /// Durable Station message the passage came from; `None` in payloads
+    /// from clients that did not record it.
+    pub message_id: Option<String>,
+    /// Source author's display name when the draft was made.
+    pub author: Option<String>,
+    pub author_agent_id: Option<String>,
+    pub quote: String,
+    pub reply: String,
+}
+
+/// A decoded user comment batch: the pairs in order, then optional extra text
+/// (the main composer's text) and legacy inline text attachments.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentBatchView {
+    pub pairs: Vec<CommentPair>,
+    pub extra_text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<TextAttachment>,
+}
+
+/// Structured view of a sent message payload, also when it is wrapped in the
+/// file-reference envelope. `None` for ordinary text. The payload format is
+/// unchanged; `display_text` stays the legacy plain rendering.
+pub fn decode_batch(payload: &str) -> Option<CommentBatchView> {
+    let text = crate::files::decode(payload).map(|(text, _)| text);
+    let (extra_text, comments, attachments) = decode_document(text.as_deref().unwrap_or(payload))?;
+    Some(CommentBatchView {
+        pairs: comments
+            .into_iter()
+            .map(|comment| CommentPair {
+                id: comment.id,
+                session_id: comment.source.session_id,
+                message_id: comment.source.message_id,
+                author: comment.source.author,
+                author_agent_id: comment.source.author_agent_id,
+                quote: comment.source.quote,
+                reply: comment.comment,
+            })
+            .collect(),
+        extra_text,
+        attachments,
+    })
+}
+
+/// The text another message's quote refers to: a batch's replies and extra
+/// text joined by spaces, the body of a file message, or the payload itself.
+pub fn quotable_text(payload: &str) -> String {
+    if let Some(batch) = decode_batch(payload) {
+        return batch
+            .pairs
+            .iter()
+            .map(|pair| pair.reply.trim())
+            .chain(std::iter::once(batch.extra_text.trim()))
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    crate::files::decode(payload)
+        .map(|(text, _)| text)
+        .unwrap_or_else(|| payload.to_owned())
+}
+
 /// Restore an unsent batch without losing a newer draft or its source identities.
 pub fn merge_drafts(newer: &str, restored: &str) -> String {
     let (newer, mut files) = crate::files::decode(newer).unwrap_or((newer.into(), vec![]));
@@ -263,5 +334,80 @@ mod tests {
             display_text("<unrelated>text</unrelated>"),
             "<unrelated>text</unrelated>"
         );
+    }
+
+    #[test]
+    fn batches_decode_into_pairs_and_extra_text() {
+        let payload = compose(
+            "其他都可以",
+            &[comment("a", "建议下移 8 px"), comment("b", "不弹窗")],
+        );
+        let batch = decode_batch(&payload).unwrap();
+        assert_eq!(batch.pairs.len(), 2);
+        assert_eq!(batch.pairs[0].id, "a");
+        assert_eq!(batch.pairs[0].message_id.as_deref(), Some("message-17"));
+        assert_eq!(batch.pairs[0].author.as_deref(), Some("产品 Leader"));
+        assert_eq!(batch.pairs[0].quote, "建议下移 8 px");
+        assert_eq!(batch.pairs[1].reply, "这里调整一下");
+        assert_eq!(batch.extra_text, "其他都可以");
+        assert_eq!(
+            quotable_text(&payload),
+            "这里调整一下 这里调整一下 其他都可以"
+        );
+        // Plain text is not a batch; its quotable text is itself.
+        assert_eq!(decode_batch("hello"), None);
+        assert_eq!(quotable_text("hello"), "hello");
+    }
+
+    #[test]
+    fn batches_inside_the_file_envelope_and_with_attachments_decode() {
+        let files = vec![TextAttachment {
+            id: "f".into(),
+            name: "notes.md".into(),
+            content: "内容".into(),
+        }];
+        let document = compose_document("补充", &[comment("a", "原句")], &files);
+        let batch = decode_batch(&document).unwrap();
+        // Extra text is the composer text, not the legacy attachment rendering.
+        assert_eq!(batch.extra_text, "补充");
+        assert_eq!(batch.attachments, files);
+        let file = crate::files::FileRef {
+            id: "file-1".into(),
+            name: "a.png".into(),
+            byte_len: 3,
+            content_root: "a".repeat(64),
+        };
+        let wrapped = crate::files::compose(&compose("看图", &[comment("a", "原句")]), &[file]);
+        let batch = decode_batch(&wrapped).unwrap();
+        assert_eq!(batch.pairs[0].quote, "原句");
+        assert_eq!(batch.extra_text, "看图");
+        assert_eq!(quotable_text(&wrapped), "这里调整一下 看图");
+    }
+
+    #[test]
+    fn legacy_batches_without_newer_fields_decode() {
+        // An early payload: no message_id, author_agent_id, attachments or body_text.
+        let legacy = format!(
+            "{PREFIX}{}{SUFFIX}",
+            r#"{"comments":[{"id":"c1","source":{"session_id":"s","author":"Planner","quote":"验收标准"},"comment":"保留"}],"text":"继续"}"#
+        );
+        let batch = decode_batch(&legacy).unwrap();
+        assert_eq!(batch.pairs[0].message_id, None);
+        assert_eq!(batch.pairs[0].author_agent_id, None);
+        assert_eq!(batch.pairs[0].quote, "验收标准");
+        assert_eq!(batch.pairs[0].reply, "保留");
+        assert_eq!(batch.extra_text, "继续");
+        // A source missing even session_id still decodes.
+        let sparse = format!(
+            "{PREFIX}{}{SUFFIX}",
+            r#"{"comments":[{"id":"c1","source":{"quote":"q"},"comment":"r"}],"text":""}"#
+        );
+        assert_eq!(decode_batch(&sparse).unwrap().pairs[0].session_id, "");
+        // The legacy plain rendering is unchanged.
+        assert_eq!(display_text(&legacy), "Planner\n> 验收标准\n\n保留\n\n继续");
+        // A damaged envelope is shown as text, never half-decoded.
+        let broken = format!("{PREFIX}{{not json{SUFFIX}");
+        assert_eq!(decode_batch(&broken), None);
+        assert_eq!(quotable_text(&broken), broken);
     }
 }

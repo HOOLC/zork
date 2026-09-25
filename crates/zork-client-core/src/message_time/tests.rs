@@ -93,8 +93,9 @@ fn future_within_skew_reads_just_now() {
 
 #[test]
 fn future_beyond_skew_is_absolute() {
-    assert_eq!(zh(ago(-Duration::minutes(6))), "14:36");
-    assert_eq!(en(ago(-Duration::hours(2))), "16:30");
+    // Dated even on the same day, like the prototype's absolute form.
+    assert_eq!(zh(ago(-Duration::minutes(6))), "9月26日 14:36");
+    assert_eq!(en(ago(-Duration::hours(2))), "Sep 26 16:30");
     assert_eq!(zh(at("2026-09-27T09:00:00+08:00")), "9月27日 09:00");
     assert_eq!(zh(at("2027-01-02T09:00:00+08:00")), "2027年1月2日 09:00");
 }

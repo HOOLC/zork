@@ -100,6 +100,30 @@ mod shutdown_tests {
             .unwrap();
     }
 
+    #[test]
+    fn client_message_requests_accept_optional_reply_quotes() {
+        let request: super::PostLocalImMessage = serde_json::from_value(serde_json::json!({
+            "content": "好", "reply_to": "m1", "quote": "错误提示贴在字段下方", "quote_kind": "excerpt"
+        }))
+        .unwrap();
+        let quote = zork_client_types::chat::validate_quote(
+            request.reply_to.as_deref(),
+            request.quote.as_deref(),
+            request.quote_kind.as_deref(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(quote.text, "错误提示贴在字段下方");
+        // Existing requests are unchanged.
+        let plain: super::PostLocalImMessage =
+            serde_json::from_value(serde_json::json!({"content": "hi"})).unwrap();
+        assert!(plain.quote.is_none() && plain.quote_kind.is_none());
+        assert!(serde_json::from_value::<super::PostLocalImMessage>(
+            serde_json::json!({"content": "hi", "unknown": 1})
+        )
+        .is_err());
+    }
+
     #[tokio::test]
     async fn pending_read_is_cancelled_when_http_stops() {
         exercise(axum::http::Method::GET, true).await;
@@ -710,6 +734,11 @@ struct PostLocalImMessage {
     request_id: Option<String>,
     #[serde(default)]
     reply_to: Option<String>,
+    /// Optional reply quote; same rules as the Agent tools.
+    #[serde(default)]
+    quote: Option<String>,
+    #[serde(default)]
+    quote_kind: Option<String>,
     #[serde(default)]
     mentions: Vec<String>,
 }
@@ -738,12 +767,21 @@ async fn post_local_im_message(
         Some(_) => return fail(StatusCode::BAD_REQUEST, "invalid_request_id"),
         None => ulid::Ulid::new().to_string(),
     };
+    let quote = match zork_client_types::chat::validate_quote(
+        request.reply_to.as_deref(),
+        request.quote.as_deref(),
+        request.quote_kind.as_deref(),
+    ) {
+        Ok(quote) => quote,
+        Err(code) => return fail(StatusCode::BAD_REQUEST, code),
+    };
     match crate::channels::client::post(
         &state,
         &session,
         &request_id,
         &request.content,
         request.reply_to.as_deref(),
+        quote.as_ref(),
         &request.mentions,
         request.client_id.as_deref(),
     )

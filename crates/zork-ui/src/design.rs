@@ -217,33 +217,20 @@ pub static AGENT_TINTS: Themed<[(u32, u32); 5]> = Themed::new(
         (0x3D4044, 0xDDD9D2),
     ],
 );
-/// The agent's preferred tint slot, from its stable id. Seeded apart from the
-/// device hash so an agent and its device do not move in lockstep.
+/// The agent's preferred tint slot, from its stable id (`zork_client_types::agent_tint`,
+/// shared with core and Android).
 pub fn agent_tint_slot(id: &str) -> usize {
-    let hash = id
-        .bytes()
-        .fold(0x6A09E667u32, |hash, byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193));
-    (hash ^ (hash >> 15)) as usize % AGENT_TINTS.get(Theme::Light).len()
+    zork_client_types::agent_tint::preferred_slot(id)
 }
 /// Tint slots for one Chat's agents in first-appearance order. Each agent keeps
 /// its preferred slot unless an earlier agent already holds it, then takes the
 /// next free one, so up to five agents in a Chat never share a tint; beyond
 /// that slots repeat and the name and initial still tell them apart.
+/// Transcripts get these from `message_presentation::present`.
 pub fn agent_tint_slots<'a>(ids: impl IntoIterator<Item = &'a str>) -> Vec<(String, usize)> {
-    let count = AGENT_TINTS.get(Theme::Light).len();
-    let mut out: Vec<(String, usize)> = Vec::new();
-    for id in ids {
-        if out.iter().any(|(known, _)| known == id) {
-            continue;
-        }
-        let preferred = agent_tint_slot(id);
-        let slot = (0..count)
-            .map(|step| (preferred + step) % count)
-            .find(|slot| out.len() >= count || !out.iter().any(|(_, used)| used == slot))
-            .unwrap_or(preferred);
-        out.push((id.to_owned(), slot));
-    }
-    out
+    zork_client_types::agent_tint::TintSlots::assign(ids)
+        .entries()
+        .to_vec()
 }
 /// (fill, ink) of a tint slot in the current theme.
 pub fn agent_tint(slot: usize) -> (u32, u32) {
@@ -799,6 +786,16 @@ mod agent_tint_tests {
     fn contrast(a: u32, b: u32) -> f64 {
         let (a, b) = (luminance(a), luminance(b));
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn tint_set_matches_the_shared_slot_count() {
+        for theme in [Theme::Light, Theme::Dark] {
+            assert_eq!(
+                AGENT_TINTS.get(theme).len(),
+                zork_client_types::agent_tint::AGENT_TINT_SLOTS
+            );
+        }
     }
 
     #[test]

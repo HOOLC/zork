@@ -76,7 +76,8 @@ pub(crate) async fn execute(
         .map(serde_json::from_value)
         .transpose()?
         .unwrap_or_default();
-    let message = state.db.post_chat_content(
+    let quote = crate::channels::reply_quote(&rpc.arguments)?;
+    let message = state.db.post_chat_content_from_client(
         None,
         message_id,
         &channel.channel.chat_id,
@@ -84,9 +85,11 @@ pub(crate) async fn execute(
         rpc.arguments["text"].as_str().unwrap_or(""),
         &[],
         rpc.arguments["reply_to"].as_str(),
+        quote.as_ref(),
         &mentions,
         &[],
         Some(&serde_json::to_value(&content)?),
+        None,
     )?;
     state
         .entries

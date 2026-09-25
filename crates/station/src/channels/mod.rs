@@ -63,6 +63,16 @@ fn field<'a>(args: &'a Value, name: &str) -> Result<&'a str> {
         .filter(|v| !v.is_empty())
         .context("channel_missing_parameter")
 }
+/// The validated reply quote of a message-posting call (see
+/// `zork_client_types::chat::validate_quote` for the rules and error codes).
+pub(crate) fn reply_quote(args: &Value) -> Result<Option<zork_client_types::chat::MessageQuote>> {
+    zork_client_types::chat::validate_quote(
+        args["reply_to"].as_str(),
+        args["quote"].as_str(),
+        args["quote_kind"].as_str(),
+    )
+    .map_err(anyhow::Error::msg)
+}
 fn local(state: &AppState, target: &str) -> bool {
     target == "local" || target == node_access::identity(state)
 }

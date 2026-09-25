@@ -139,6 +139,7 @@ fn append_result(
         },
         &text,
         Some(root),
+        None,
         &[super::super::super::channels::request_actor(&request.owner)],
         &[],
         Some(&serde_json::to_value(MessageContent::linked_result(

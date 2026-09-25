@@ -79,6 +79,7 @@ pub(super) fn row_bytes(line: &TranscriptLine) -> usize {
             &metadata.device,
             &metadata.chat_id,
             &metadata.reply_to,
+            &metadata.quote,
         ]
         .into_iter()
         .flatten()

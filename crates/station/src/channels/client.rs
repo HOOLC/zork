@@ -6,12 +6,14 @@ use zork_client_types::{
     files,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub async fn post(
     state: &AppState,
     session: &crate::db::SessionRow,
     request: &str,
     content: &str,
     reply_to: Option<&str>,
+    quote: Option<&zork_client_types::chat::MessageQuote>,
     mentions: &[String],
     client_id: Option<&str>,
 ) -> Result<VisibleMessageRow> {
@@ -59,6 +61,7 @@ pub async fn post(
             &text,
             &files,
             reply_to,
+            quote,
             mentions,
             &[],
             None,
