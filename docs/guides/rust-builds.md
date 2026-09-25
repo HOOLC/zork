@@ -117,6 +117,21 @@ Android 产物或源码；适合在个人开发机定期运行。通过 `build_e
 随后调用 `cargo clean --target-dir`，不直接删除源码或数据库。
 共享目录需由同一主机专用；本机无法确认其他主机的打开文件。
 
+### 按周整理构建存储
+
+```sh
+python3 scripts/prune-build-storage.py            # 预览
+python3 scripts/prune-build-storage.py --apply    # 执行
+python3 scripts/prune-build-storage.py --install-schedule   # 安装每周 launchd 任务（主 checkout）
+```
+
+删除来源 worktree 已不存在（登记标记，否则按 `isolated/<worktree 名>` 命名推断）或
+`--days`（默认 14）天未写入的隔离 target，共用 `target` 只按天数；`isolated/deployment`
+与带 `.zork-cache-keep` 的目录保留，删除前复查 `CACHEDIR.TAG`、一小时内写入和打开文件。
+同时删除本仓库各 worktree 中被忽略且 7 天未改动的 `artifacts/` 条目（含已跟踪文件的
+条目保留），执行 `git worktree prune`，并运行 `kache gc` 直到本地 kache 存储回到配置
+上限以内；输出每项原因和回收量。只处理 Zork 的 worktree、构建根和 kache 存储。
+
 这是手动软预算，不是文件系统硬配额；近期或在用产物可能使预算无法
 达到。kache 的本地存储预算、共享远端容量与这里的 target 预算互相独立。
 

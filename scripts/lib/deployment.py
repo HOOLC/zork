@@ -17,7 +17,7 @@ import uuid
 
 TOOL_FILES = ('lib/channels.py', 'dev/recovery.py', 'lib/install-macos-client.py', 'lib/deployment.py',
               'lib/deployment_build.py', 'lib/deployment_health.py', 'lib/deployment_macos.py',
-              'lib/build_env.py', 'lib/cua_build.py')
+              'lib/build_env.py', 'lib/cua_build.py', 'lib/deployment_retention.py')
 
 
 def digest(path):

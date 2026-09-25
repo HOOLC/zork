@@ -23,6 +23,7 @@ from channels import CHANNELS, app_name
 from deployment import atomic_json, copy_tree, digest, manifest
 from deployment_macos import AppRuntime, LSREGISTER, validate_app
 from deployment_build import load_packager, source_stamp
+import deployment_retention as retention
 
 
 def load(name, path):
@@ -176,6 +177,14 @@ def main():
             assert release_now['node']['station']['pid'] == baseline['release']['node']['station']['pid']
             passed('real archive installer switches only dev and accepts the exact GUI and helper images',
                    {'candidate': record['id'], 'health': installed['health'], 'release_unchanged': release_now})
+
+            # Store copies (candidate, snapshot, displaced bundle) are never left registered.
+            payloads = [value['app']['payload'] for value in config['channels'].values()]
+            stray = [path for path in retention.LaunchServices().registered()
+                     if path.startswith(str(root) + '/') and not any(path == p or path.startswith(p + '/') for p in payloads)]
+            assert not stray, stray
+            assert (root / 'candidates').is_symlink() and (root / 'transactions').is_symlink()
+            passed('installer keeps store app copies out of LaunchServices', {'registered_store_copies': stray})
 
             dev = runtimes['dev']
             before = dev.capture()

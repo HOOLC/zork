@@ -17,6 +17,7 @@ from deployment import (Transaction, atomic_json, check_links, copy_tree, digest
                         manifest, replace_directory, verify_manifest)
 from deployment_build import build, promote_app, stability
 from deployment_health import NodeRuntime
+import deployment_retention as retention
 
 
 def config(root):
@@ -290,7 +291,8 @@ def install_tools(root, repo):
     binaries = root / 'bin'
     binaries.mkdir(exist_ok=True)
     for name, prefix in {'zork-node': ['node'], 'zork-dev-build': ['build', '--channel', 'dev'], 'zork-test-build': ['build'],
-                         'zork-promote': ['promote'], 'zork-app-build': ['build', '--kind', 'app']}.items():
+                         'zork-promote': ['promote'], 'zork-app-build': ['build', '--kind', 'app'],
+                         'zork-prune': ['prune']}.items():
         wrapper = '#!/usr/bin/env python3\nimport os, sys\n'
         wrapper += f'args = sys.argv[1:]\nbase = {prefix!r}\n'
         if name in ('zork-dev-build', 'zork-test-build', 'zork-app-build', 'zork-promote'):
@@ -350,6 +352,9 @@ def main(argv=None):
     node.add_argument('--thinking', help='Health thinking override for this check')
     recovery = commands.add_parser('recover')
     recovery.add_argument('transaction', type=Path)
+    prune = commands.add_parser('prune', help='Store retention; dry-run unless --apply')
+    prune.add_argument('--apply', action='store_true')
+    prune.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
     health = {name: getattr(args, name) for name in ('profile', 'model', 'thinking')
               if args.command == 'node' and getattr(args, name) is not None}
@@ -357,58 +362,81 @@ def main(argv=None):
         parser.error('Health overrides apply only to start/health')
     root = args.root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    switching = (args.command == 'apply' or (args.command in ('build', 'promote', 'accept-test') and args.switch))
     with exclusive(root / 'deployment.lock'):
-        if args.command == 'install-tools':
-            result = install_tools(root, args.repo.resolve())
-        elif args.command in ('build', 'promote'):
-            repo = (args.repo or Path(config(root)['repo'])).resolve()
-            channel = args.channel if args.command == 'build' else 'release'
-            require_no_pending(root, channel, args.kind)
-            candidate = (build(repo, root / 'candidates', args.kind, args.profile, args.services_config, channel=channel)
-                         if args.command == 'build' else promote(root, args.kind, repo))
-            result = apply_candidate(root, channel, candidate) if args.switch else {'candidate': str(candidate)}
-        elif args.command == 'accept-test':
-            candidate = prepare_dev_candidate(args.candidate, root / 'candidates', args.repo)
-            result = apply_candidate(root, 'dev', candidate) if args.switch else {'candidate': str(candidate)}
-        elif args.command == 'apply':
-            record, _ = load_candidate(args.candidate)
-            require_no_pending(root, args.channel, record['kind'])
-            result = apply_candidate(root, args.channel, args.candidate)
-        elif args.command == 'recover':
-            result = recover(root, args.transaction.resolve())
-        else:
-            settings = dict(channel_config(root, args.channel, args.kind))
-            if health:
-                settings['health'] = dict(settings.get('health', {}), **health)
-            runtime = runtime_for(settings, root, args.channel, args.kind)
-            if args.action in ('start', 'stop', 'health'):
-                require_no_pending(root, args.channel, args.kind)
-            if args.action == 'start':
-                before = runtime.capture()
-                if not before['running']:
-                    runtime.start(before, candidate=True)
-                result = runtime.health()
-            elif args.action == 'stop':
-                runtime.stop()
-                result = {'stopped': True}
-            elif args.action == 'health':
-                result = observe(root, args.channel, args.kind, health)
-            elif args.action == 'logs':
-                result = {'log': str(runtime.log), 'tail': runtime.log.read_text(errors='replace')[-8000:] if runtime.log.exists() else ''}
-            else:
-                result = runtime.capture()
-                path = active_path(root, args.channel, args.kind)
-                result['accepted_build'] = json.loads(path.read_text())['record'] if path.exists() else None
-                if result['running']:
-                    try:
-                        if path.exists():
-                            verify_manifest(Path(settings['payload']), json.loads(path.read_text())['record'])
-                        result['live'] = runtime.health(chat=False, wait_for_ready=False)
-                    except Exception as error:
-                        result['error'] = str(error)
+        if switching:
+            # New app copies must never land where Spotlight registers them.
+            retention.ensure_noindex_layout(root)
+        try:
+            result = run_command(args, root, health, switching)
+        except BaseException:
+            if switching or args.command == 'recover':
+                retention.safe_sweep(root)
+            raise
         if isinstance(result, dict) and 'record' in result:
             result = {key: result[key] for key in ('candidate', 'transaction', 'health')}
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.command == 'prune':
+            print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else retention.render(result))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def run_command(args, root, health, switching):
+    if args.command == 'install-tools':
+        result = install_tools(root, args.repo.resolve())
+    elif args.command in ('build', 'promote'):
+        repo = (args.repo or Path(config(root)['repo'])).resolve()
+        channel = args.channel if args.command == 'build' else 'release'
+        require_no_pending(root, channel, args.kind)
+        candidate = (build(repo, root / 'candidates', args.kind, args.profile, args.services_config, channel=channel)
+                     if args.command == 'build' else promote(root, args.kind, repo))
+        result = apply_candidate(root, channel, candidate) if args.switch else {'candidate': str(candidate)}
+    elif args.command == 'accept-test':
+        candidate = prepare_dev_candidate(args.candidate, root / 'candidates', args.repo)
+        result = apply_candidate(root, 'dev', candidate) if args.switch else {'candidate': str(candidate)}
+    elif args.command == 'apply':
+        record, _ = load_candidate(args.candidate)
+        require_no_pending(root, args.channel, record['kind'])
+        result = apply_candidate(root, args.channel, args.candidate)
+    elif args.command == 'recover':
+        result = recover(root, args.transaction.resolve())
+        retention.safe_sweep(root)
+    elif args.command == 'prune':
+        result = retention.prune(root, do_apply=args.apply)
+    else:
+        settings = dict(channel_config(root, args.channel, args.kind))
+        if health:
+            settings['health'] = dict(settings.get('health', {}), **health)
+        runtime = runtime_for(settings, root, args.channel, args.kind)
+        if args.action in ('start', 'stop', 'health'):
+            require_no_pending(root, args.channel, args.kind)
+        if args.action == 'start':
+            before = runtime.capture()
+            if not before['running']:
+                runtime.start(before, candidate=True)
+            result = runtime.health()
+        elif args.action == 'stop':
+            runtime.stop()
+            result = {'stopped': True}
+        elif args.action == 'health':
+            result = observe(root, args.channel, args.kind, health)
+        elif args.action == 'logs':
+            result = {'log': str(runtime.log), 'tail': runtime.log.read_text(errors='replace')[-8000:] if runtime.log.exists() else ''}
+        else:
+            result = runtime.capture()
+            path = active_path(root, args.channel, args.kind)
+            result['accepted_build'] = json.loads(path.read_text())['record'] if path.exists() else None
+            if result['running']:
+                try:
+                    if path.exists():
+                        verify_manifest(Path(settings['payload']), json.loads(path.read_text())['record'])
+                    result['live'] = runtime.health(chat=False, wait_for_ready=False)
+                except Exception as error:
+                    result['error'] = str(error)
+    if switching and isinstance(result, dict) and 'record' in result:
+        # A new build was accepted: prune superseded store entries automatically.
+        retention.after_accept(root)
+    return result
 
 
 if __name__ == '__main__':

@@ -9,6 +9,7 @@ import shutil
 from channels import CHANNELS, app_name, client_root
 from deployment import atomic_json, digest, exclusive, extract_candidate
 from deployment_macos import validate_app
+import deployment_retention as retention
 
 
 def recovery_module():
@@ -62,6 +63,8 @@ def main():
         atomic_json(settings_path, settings)
         recovery.channel_config(root, args.channel, 'app')
         recovery.require_no_pending(root, args.channel, 'app')
+        # Store copies live below *.noindex so Spotlight never registers them.
+        retention.ensure_noindex_layout(root)
         candidate = root / 'candidates' / record['id']
         candidate.parent.mkdir(parents=True, exist_ok=True)
         if candidate.exists():
@@ -74,10 +77,17 @@ def main():
         if not tools.exists():
             shutil.copytree(Path(__file__).resolve().parents[1], tools)
         recovery.install_tools(root, Path(settings['repo'] or '.'))
-        result = recovery.apply_candidate(root, args.channel, candidate)
+        try:
+            result = recovery.apply_candidate(root, args.channel, candidate)
+        except BaseException:
+            # A rollback moves the failed bundle into the transaction; keep it unregistered.
+            retention.safe_sweep(root)
+            raise
         result['recovery_argv'] = ['python3', str(tools / 'dev/recovery.py'), '--root', str(root),
                                    'recover', result['transaction']]
         atomic_json(stage / 'result.json', result)
+        # Accepted: prune superseded candidates/transactions/tools and unregister store app copies.
+        retention.after_accept(root)
     print(json.dumps({key: result[key] for key in ('candidate', 'transaction', 'health', 'recovery_argv')}, ensure_ascii=False, indent=2))
 
 

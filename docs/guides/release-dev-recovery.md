@@ -161,8 +161,41 @@ python3 /path/to/installed/tools/dev/recovery.py --root "$HOME/Zork" \
 安装回执保存精确恢复命令；原始入口也可以执行相同的 `recover` 子命令。
 恢复前重新校验快照，损坏快照不会覆盖现有数据。恢复后保留 Mesh 身份与原消息
 ID，并为恢复的 Chat 源和同步投影建立新 epoch，使旧客户端游标失效。
-成功和失败快照都需要保留到其回滚、调查用途结束，再由操作者明确清理；不按
-时间或目录大小自动删除。
+未完成、恢复失败或无法读取的事务永远保留；已回滚事务的失败版本数据保留 7 天
+供调查，之后按下面的保留规则清理。
+
+## 存储保留
+
+每次切换验收成功后（`--switch`、`apply`、`accept-test --switch`、Mac 安装器），
+部署入口在同一把部署锁内自动整理 `~/Zork`；目标 Mac 的安装器整理自己的
+`~/Zork`，`update-macos-client.py` 随后整理构建主机的存储。也可显式预览或执行：
+
+```sh
+~/Zork/bin/zork-prune            # 预览；加 --apply 执行
+python3 scripts/lib/deployment_retention.py --root "$HOME/Zork" [--apply]
+python3 scripts/update-macos-client.py --host "$DESTINATION_MAC" --prune [--apply]
+```
+
+- 任何通道、类型、设备的 active / previous / pending 回执引用的候选和事务都保留。
+  每个通道/类型/设备保留当前候选与上一个（回滚用）：上一个取自最近事务 journal
+  的 `previous_active`，设备回执取 `devices/<host>/<channel>-previous.json`，缺失时
+  取同通道同类型中较旧的最新候选。比当前部署更新（尚未部署）的候选、一小时内
+  构建的候选、从未部署过的通道/类型的候选都保留。
+- 每个通道/类型只保留最新的已验收事务（撤销最近一次切换所需的快照和旧包）；
+  未完成、失败或无法读取的事务及其可恢复的候选都保留。
+- 删除超过一小时的 `.build-*` / `.promote-*` / `.accept-*` 暂存、超过六小时的上传暂存、
+  未被 `~/Zork/bin` 包装脚本或回执引用的旧 `tools/recovery-*` 与 `tools/installer-*`
+  （各保留最新一份及已保留候选的安装器），以及 `backups/dev` 中最新三份以外的旧版
+  切换前快照。
+- 任一回执损坏、存在 pending 事务、配置无法读取或存储中没有任何 active 回执时，
+  不删除任何内容。删除只发生在存储目录的直接子项内，且不与配置的数据/程序路径重叠。
+
+存储里的 `.app` 副本不能留在 LaunchServices 中。候选和事务实际位于
+`candidates.noindex` / `transactions.noindex`（原路径保留为符号链接，回执中的旧路径
+仍有效），上传暂存位于 `staging.noindex`，Spotlight 不会登记其中的副本。
+每次整理都先 `lsregister -u` 要删除的副本，再注销存储中剩余的副本（包括从
+`~/Applications` 移入事务的旧包）和 `~/Zork` 下已不存在的登记；配置的安装位置不受影响。
+验证：`lsregister -dump | grep -E '^path: .*/Zork/'` 应无输出。
 
 ## 隔离演练
 
