@@ -11,6 +11,10 @@ pub struct ProfileInfo {
     pub billing: Option<String>,
     #[serde(default)]
     pub verified: bool,
+    /// Secret-free identity of the provider account, equal on every device
+    /// that holds the same login or key. Absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_key: Option<String>,
     #[serde(default)]
     pub account: serde_json::Value,
     #[serde(default, rename = "rateLimits")]

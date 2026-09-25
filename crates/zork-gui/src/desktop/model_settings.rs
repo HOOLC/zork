@@ -9,6 +9,7 @@ use crate::{
 };
 use gpui::{div, prelude::*, px, rgb, Context, Entity, Task, Window};
 use std::{collections::BTreeMap, sync::Arc};
+use zork_client_core::model_connections::{merge_accounts, AccountEntry, AccountSource};
 
 type Source = (
     String,
@@ -24,6 +25,7 @@ struct Device {
     editor: Entity<ProfilesView>,
     _updates: Task<()>,
 }
+#[derive(Clone)]
 struct ConnectionRow {
     device_id: String,
     device_name: String,
@@ -62,10 +64,42 @@ fn append_groups(
             });
     }
 }
+fn sort_rows(rows: &mut [ConnectionRow]) {
+    rows.sort_by(|a, b| {
+        a.profile
+            .display_name()
+            .cmp(b.profile.display_name())
+            .then_with(|| a.device_name.cmp(&b.device_name))
+            .then_with(|| a.device_id.cmp(&b.device_id))
+            .then_with(|| a.profile.profile_id.cmp(&b.profile.profile_id))
+    });
+}
+/// Rows of one provider grouped by account in shared core.
+fn account_entries(rows: &[ConnectionRow]) -> Vec<AccountEntry> {
+    let sources: Vec<_> = rows
+        .iter()
+        .map(|row| AccountSource {
+            profile: &row.profile,
+            quota_failed: row.quota_failed,
+        })
+        .collect();
+    merge_accounts(&sources)
+}
+/// A merged account is named by its identity, which is equal on every source.
+fn account_id(rows: &[ConnectionRow], entry: &AccountEntry) -> String {
+    let row = &rows[entry.sources[0]];
+    format!(
+        "{}|{}",
+        row.profile.provider,
+        row.profile.account_key.as_deref().unwrap_or_default()
+    )
+}
 pub struct ModelSettings {
     devices: Vec<Device>,
     selected: Option<String>,
     onboarding_local: Option<String>,
+    /// The merged account whose device sources are listed.
+    open_account: Option<String>,
 }
 impl ModelSettings {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -73,6 +107,7 @@ impl ModelSettings {
             devices: vec![],
             selected: None,
             onboarding_local: None,
+            open_account: None,
         }
     }
     #[cfg(feature = "headless-bench")]
@@ -174,6 +209,8 @@ impl ModelSettings {
                 .update(cx, |editor, _| editor.set_targets(targets, retarget));
         }
     }
+    /// One card per account: a single device's row opens its connection; an
+    /// account saved on several devices opens the list of its device sources.
     fn render_group(
         &self,
         provider_id: String,
@@ -181,19 +218,13 @@ impl ModelSettings {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let palette = ZORK_UI.palette;
-        rows.sort_by(|a, b| {
-            a.profile
-                .display_name()
-                .cmp(b.profile.display_name())
-                .then_with(|| a.device_name.cmp(&b.device_name))
-                .then_with(|| a.device_id.cmp(&b.device_id))
-                .then_with(|| a.profile.profile_id.cmp(&b.profile.profile_id))
-        });
+        sort_rows(&mut rows);
+        let accounts = account_entries(&rows);
         let provider_label = rows
             .first()
             .map(|row| row.provider_label.clone())
             .unwrap_or_else(|| provider_id.clone());
-        let profile_count = rows.len();
+        let profile_count = accounts.len();
         ui::section()
             .gap_2()
             .child(
@@ -221,34 +252,187 @@ impl ModelSettings {
                         format!("{provider_label} · {profile_count} 个 Profile"),
                     ),
             )
-            .children(rows.into_iter().map(|row| {
-                let Some(device) = self.devices.iter().find(|d| d.id == row.device_id) else {
-                    return gpui::Empty.into_any_element();
-                };
-                let editor = device.editor.clone();
-                let target = editor.clone();
-                let device_id = row.device_id.clone();
-                let profile_id = row.profile.profile_id.clone();
+            .children(accounts.iter().map(|entry| {
+                if entry.sources.len() == 1 {
+                    return self.render_row(&rows[entry.sources[0]], cx);
+                }
+                let key = account_id(&rows, entry);
                 let on_click = cx.listener(move |v, _, _, cx| {
-                    v.selected = Some(device_id.clone());
-                    target.update(cx, |editor, cx| {
-                        editor.open_model(profile_id.clone(), None, cx)
-                    });
+                    v.open_account = Some(key.clone());
                     cx.notify();
                 });
-                let card = editor.read_with(cx, |view, _| {
-                    view.render_profile_row_with_click(
-                        &row.profile,
-                        &row.providers,
-                        row.quota_failed,
-                        Some(&row.device_name),
-                        Some(&row.device_status),
-                        on_click,
-                    )
-                });
-                card
+                self.render_merged(&rows, entry, on_click, cx)
             }))
             .into_any_element()
+    }
+    /// One device's connection; opening it edits that device's copy.
+    fn render_row(&self, row: &ConnectionRow, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let Some(device) = self.devices.iter().find(|d| d.id == row.device_id) else {
+            return gpui::Empty.into_any_element();
+        };
+        let editor = device.editor.clone();
+        let target = editor.clone();
+        let device_id = row.device_id.clone();
+        let profile_id = row.profile.profile_id.clone();
+        let on_click = cx.listener(move |v, _, _, cx| {
+            v.selected = Some(device_id.clone());
+            target.update(cx, |editor, cx| {
+                editor.open_model(profile_id.clone(), None, cx)
+            });
+            cx.notify();
+        });
+        editor.read_with(cx, |view, _| {
+            view.render_profile_row_with_click(
+                &row.profile,
+                &row.providers,
+                row.quota_failed,
+                &[(row.device_name.clone(), row.device_status.clone())],
+                None,
+                None,
+                on_click,
+            )
+        })
+    }
+    /// The account's card: the first device's name, every device, the quota
+    /// of the freshest successful sample and the union of models.
+    fn render_merged(
+        &self,
+        rows: &[ConnectionRow],
+        entry: &AccountEntry,
+        on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut gpui::App) + 'static,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let primary = &rows[entry.primary];
+        let Some(device) = self.devices.iter().find(|d| d.id == primary.device_id) else {
+            return gpui::Empty.into_any_element();
+        };
+        let first = &rows[entry.sources[0]];
+        let mut profile = primary.profile.clone();
+        profile.name = Some(first.profile.display_name().to_owned());
+        // Named by its first source, so it stays put when the quota source changes.
+        let key = format!("account-{}-{}", first.device_id, first.profile.profile_id);
+        let devices: Vec<_> = entry
+            .sources
+            .iter()
+            .map(|&index| {
+                (
+                    rows[index].device_name.clone(),
+                    rows[index].device_status.clone(),
+                )
+            })
+            .collect();
+        device.editor.read_with(cx, |view, _| {
+            view.render_profile_row_with_click(
+                &profile,
+                &primary.providers,
+                primary.quota_failed,
+                &devices,
+                Some(entry.models),
+                Some(key),
+                on_click,
+            )
+        })
+    }
+    /// The device sources of one account, each managed on its own.
+    fn render_account_page(
+        &self,
+        rows: Vec<ConnectionRow>,
+        entry: AccountEntry,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let p = ZORK_UI.palette;
+        let first = &rows[entry.sources[0]];
+        let provider = first.profile.provider.clone();
+        let name = first.profile.display_name().to_owned();
+        let devices = entry
+            .sources
+            .iter()
+            .map(|&index| rows[index].device_name.as_str())
+            .collect::<Vec<_>>()
+            .join("、");
+        let meta = format!("{} · 同一账号保存在 {devices}", first.provider_label);
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(
+                        ui::icon_button("model-account-back", true)
+                            .child(ui::icon("icons/arrow-left.svg", 16.))
+                            .on_click(cx.listener(|v, _, _, cx| {
+                                v.open_account = None;
+                                cx.notify();
+                            }))
+                            .automation(AutomationRole::Button, "返回模型连接"),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .child(zork_ui::controls::provider_icon(&provider, 28.)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .id("model-account-name")
+                                    .truncate()
+                                    .text_size(px(20.))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child(name.clone())
+                                    .automation(AutomationRole::Status, name),
+                            )
+                            .child(
+                                div()
+                                    .id("model-account-meta")
+                                    .truncate()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(p.muted))
+                                    .child(meta.clone())
+                                    .automation(AutomationRole::Status, meta),
+                            ),
+                    ),
+            )
+            .child(
+                ui::section().gap_2().children(
+                    entry
+                        .sources
+                        .iter()
+                        .map(|&index| self.render_row(&rows[index], cx)),
+                ),
+            )
+            .children(self.devices.iter().map(|device| device.editor.clone()))
+            .into_any_element()
+    }
+    /// The device whose sample represents the first merged account.
+    #[cfg(feature = "headless-bench")]
+    pub fn headless_card_source(&self, _cx: &gpui::App) -> Option<String> {
+        let mut groups = Groups::new();
+        for device in &self.devices {
+            let state = device.source.snapshot();
+            append_groups(
+                &mut groups,
+                &device.id,
+                &device.name,
+                &device.status,
+                &state,
+            );
+        }
+        groups.into_values().find_map(|mut rows| {
+            sort_rows(&mut rows);
+            let entry = account_entries(&rows)
+                .into_iter()
+                .find(|entry| entry.sources.len() > 1)?;
+            Some(rows[entry.primary].device_id.clone())
+        })
     }
     #[cfg(feature = "headless-bench")]
     pub fn headless_selection(&self, cx: &gpui::App) -> serde_json::Value {
@@ -333,7 +517,10 @@ impl Render for ModelSettings {
             .iter()
             .find(|device| device.editor.read(cx).has_page())
         {
-            return div().w_full().child(device.editor.clone()).into_any_element();
+            return div()
+                .w_full()
+                .child(device.editor.clone())
+                .into_any_element();
         }
         // These groups are rebuilt from core snapshots for presentation only.
         let mut groups = Groups::new();
@@ -346,6 +533,7 @@ impl Render for ModelSettings {
         }) {
             let state = device.source.snapshot();
             connection_count += state.profiles.len();
+
             let name = zork_ui::device_name::summary(&device.name, &device.status, None);
             if state.loading {
                 notices.push((device.id.clone(), format!("{name} · 正在加载模型…"), false));
@@ -363,6 +551,20 @@ impl Render for ModelSettings {
                 &device.status,
                 &state,
             );
+        }
+        if let Some(open) = self.open_account.clone() {
+            // The account page stays while two or more devices still hold it.
+            let found = groups.values().cloned().find_map(|mut rows| {
+                sort_rows(&mut rows);
+                let entry = account_entries(&rows)
+                    .into_iter()
+                    .find(|entry| entry.sources.len() > 1 && account_id(&rows, entry) == open)?;
+                Some((rows, entry))
+            });
+            match found {
+                Some((rows, entry)) => return self.render_account_page(rows, entry, cx),
+                None => self.open_account = None,
+            }
         }
         let has_notices = !notices.is_empty();
         div()
@@ -482,6 +684,40 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn same_account_rows_merge_and_rows_without_identity_do_not() {
+        let state = |key: Option<&str>| crate::api::ProfileData {
+            profiles: Arc::new(vec![serde_json::from_value(json!({
+                "profile_id": "go", "provider": "opencode-go", "account_key": key, "models": []
+            }))
+            .unwrap()]),
+            ..Default::default()
+        };
+        let mut groups = Groups::new();
+        for id in ["studio", "mba"] {
+            append_groups(
+                &mut groups,
+                id,
+                id,
+                &DeviceStatus::Connected,
+                &state(Some("opencode-go:k:1")),
+            );
+        }
+        append_groups(
+            &mut groups,
+            "mini",
+            "mini",
+            &DeviceStatus::Connected,
+            &state(None),
+        );
+        let mut rows = groups.remove("opencode-go").unwrap();
+        sort_rows(&mut rows);
+        let entries = account_entries(&rows);
+        assert_eq!(entries.len(), 2);
+        let merged = entries.iter().find(|e| e.sources.len() == 2).unwrap();
+        assert_eq!(account_id(&rows, merged), "opencode-go|opencode-go:k:1");
     }
 
     #[test]

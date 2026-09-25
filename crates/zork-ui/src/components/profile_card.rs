@@ -37,7 +37,8 @@ pub struct ProfileCard {
     pub key: String,
     pub provider: String,
     pub name: String,
-    pub device: Option<DeviceIdentity>,
+    /// Where the connection lives; one account saved on several devices lists each.
+    pub devices: Vec<DeviceIdentity>,
     pub billing: String,
     pub model_count: String,
     pub verified: bool,
@@ -86,7 +87,8 @@ pub fn render(
             .child(card.name.clone())
             .automation(AutomationRole::Status, format!("{} · {}", card.name, card.billing)),
     )
-    .when_some(card.device.clone(), |v, device| {
+    .when(card.devices.len() == 1, |v| {
+        let device = card.devices[0].clone();
         v.child(
             div()
                 .flex_shrink_0()
@@ -100,6 +102,26 @@ pub fn render(
                     &device.status,
                     None,
                 )),
+        )
+    })
+    // One account on several devices: "A、B"; each device's status is on its own row.
+    .when(card.devices.len() > 1, |v| {
+        let names = card
+            .devices
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>()
+            .join("、");
+        v.child(
+            div()
+                .id(format!("profile-devices-{}", card.key))
+                .flex_shrink_0()
+                .max_w(px(180.))
+                .truncate()
+                .text_size(px(12.))
+                .text_color(rgb(p.muted))
+                .child(names.clone())
+                .automation(AutomationRole::Status, names),
         )
     })
     .child(div().flex_1())

@@ -211,9 +211,10 @@ fn main() -> anyhow::Result<()> {
             "Connection model count disappeared"
         );
         anyhow::ensure!(
-            !snapshot.elements.iter().any(|e| {
-                e.id == format!("profile-verification-{device}-fixture") && e.visible
-            }),
+            !snapshot
+                .elements
+                .iter()
+                .any(|e| { e.id == format!("profile-verification-{device}-fixture") && e.visible }),
             "A verified connection must not show a status pill"
         );
     }
@@ -413,6 +414,109 @@ fn main() -> anyhow::Result<()> {
     );
     cx.capture_screenshot(window.into())?
         .save(output.join("provider-multiple-profiles.png"))?;
-    println!("PASS model settings: provider → Profile cards, quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal");
+
+    // The same account on both devices is one card naming both devices; the
+    // fresher successful sample (laptop) represents its quota.
+    // Both stations report the same account identity for their copy.
+    let mut merged_sources = vec![];
+    for (index, (id, name, _, status)) in sources.iter().enumerate() {
+        let mut fixture = zork_ui::stories::page_fixture();
+        fixture["profile"]["account_key"] = json!("openai:a:0123456789abcdef");
+        fixture["profile"]["checkedAt"] = json!(if index == 0 {
+            "2026-09-26T00:00:00Z"
+        } else {
+            "2026-09-26T01:00:00Z"
+        });
+        let client = Arc::new(StationClient::fixture(fixture, provider_catalog.clone()));
+        let profiles = Profiles::new(client);
+        profiles.seed(ProfileData {
+            providers: Arc::new(provider_catalog["providers"].as_array().unwrap().clone()),
+            ..Default::default()
+        });
+        merged_sources.push((id.clone(), name.clone(), profiles, status.clone()));
+    }
+    view.update(&mut cx, |v, cx| v.set_sources(merged_sources, cx));
+    draw(&mut cx)?;
+    let snapshot = driver.snapshot(false);
+    let cards: Vec<_> = snapshot
+        .elements
+        .iter()
+        .filter(|e| e.id.starts_with("profile-detail-") && e.visible)
+        .map(|e| e.id.clone())
+        .collect();
+    anyhow::ensure!(
+        cards == ["profile-detail-account-desktop-fixture"],
+        "Same account did not merge into one card: {cards:?}"
+    );
+    anyhow::ensure!(
+        snapshot.elements.iter().any(|e| {
+            e.id == "profile-devices-account-desktop-fixture"
+                && e.visible
+                && e.label == "desktop、laptop"
+        }) && snapshot
+            .elements
+            .iter()
+            .any(|e| e.id == "model-provider-openai" && e.label == "OpenAI · 1 个 Profile"),
+        "Merged card lost its devices or count"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("same-account-merged.png"))?;
+    // The fresher laptop sample stands for the account.
+    anyhow::ensure!(
+        view.read_with(&cx, |v, cx| v.headless_card_source(cx)) == Some("laptop".to_owned()),
+        "The freshest successful sample did not represent the account"
+    );
+    click("profile-detail-account-desktop-fixture", &mut cx)?;
+    cx.update_window(window.into(), |_, w, cx| {
+        driver.dispatch(
+            serde_json::from_value(json!({
+                "type":"move","target":{"element_id":"model-account-name"}
+            }))?,
+            w,
+            cx,
+        )
+    })??;
+    draw(&mut cx)?;
+    let snapshot = driver.snapshot(false);
+    anyhow::ensure!(
+        snapshot
+            .elements
+            .iter()
+            .any(|e| e.id == "model-account-meta" && e.label.contains("desktop、laptop"))
+            && ["desktop", "laptop"].iter().all(|device| {
+                snapshot
+                    .elements
+                    .iter()
+                    .any(|e| e.id == format!("profile-detail-{device}-fixture") && e.visible)
+            }),
+        "Opening the account did not list each device source"
+    );
+    cx.capture_screenshot(window.into())?
+        .save(output.join("same-account-sources.png"))?;
+    click("profile-detail-desktop-fixture", &mut cx)?;
+    let selected = view.read_with(&cx, |v, cx| v.headless_selection(cx));
+    anyhow::ensure!(
+        selected["device"] == "desktop" && selected["editor"]["detail"] == "fixture",
+        "A device source did not open its own connection: {selected}"
+    );
+    click("profile-detail-dialog-close", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "model-account-back" && e.visible),
+        "Leaving a device source did not return to the account"
+    );
+    click("model-account-back", &mut cx)?;
+    anyhow::ensure!(
+        driver
+            .snapshot(false)
+            .elements
+            .iter()
+            .any(|e| e.id == "profile-detail-account-desktop-fixture" && e.visible),
+        "Back from the account did not return to the list"
+    );
+    println!("PASS model settings: provider → Profile cards, quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal, same account merged across devices");
     Ok(())
 }

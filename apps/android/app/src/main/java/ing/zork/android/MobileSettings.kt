@@ -46,6 +46,8 @@ internal data class MobileSettingsState(
     val addConnection: Boolean = false,
     /** Core's per-device model connections; `null` until first read. */
     val connections: List<JSONObject>? = null,
+    /** Core's cross-device accounts: one entry per provider account, with every device source. */
+    val accounts: List<JSONObject>? = null,
     val connectionState: String = "not_connected",
     val command: JSONObject? = null, val updateCheck: JSONObject? = null, val update: JSONObject? = null,
     val profileRefreshing: Set<String> = emptySet(), val profileFailed: Set<String> = emptySet(),

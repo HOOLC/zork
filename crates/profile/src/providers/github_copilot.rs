@@ -110,6 +110,10 @@ impl AuthProvider for GithubCopilot {
             .context("Missing GitHub Copilot credential")
     }
 
+    fn account_identity(&self, _billing: &str, auth: &Value) -> Option<String> {
+        nonempty(auth.get("githubUserId"))
+    }
+
     async fn probe(&self, http: &Client, document: &Value) -> Result<QuotaSnapshot> {
         let billing = document
             .get("billing")
@@ -119,6 +123,18 @@ impl AuthProvider for GithubCopilot {
         let previous = auth.clone();
         if billing == "subscription" || nonempty(auth.get("refresh")).is_some() {
             auth = self.refresh_if_needed(http, auth).await?;
+        }
+        if nonempty(auth.get("githubUserId")).is_none() {
+            if let Some(github) = nonempty(auth.get("refresh")) {
+                if let Some(map) = auth.as_object_mut() {
+                    match github_user(http, &github).await {
+                        Ok(id) => {
+                            map.insert("githubUserId".into(), json!(id));
+                        }
+                        Err(error) => tracing::warn!(%error, "GitHub user lookup failed"),
+                    }
+                }
+            }
         }
         probe_models(http, document, &auth, billing, previous != auth).await
     }
@@ -247,12 +263,41 @@ impl AuthProvider for GithubCopilot {
 
 async fn mint_copilot_auth(http: &Client, github_token: String) -> Result<Value> {
     let (access, expires) = fetch_copilot_token(http, &github_token).await?;
-    Ok(json!({
+    let mut auth = json!({
         "type": "oauth",
         "access": access,
         "refresh": github_token,
         "expires": expires,
-    }))
+    });
+    // The account identity lets devices holding this login show it once.
+    if let Ok(id) = github_user(http, &github_token).await {
+        auth["githubUserId"] = json!(id);
+    }
+    Ok(auth)
+}
+
+/// The GitHub user's stable numeric id (logins can be renamed).
+async fn github_user(http: &Client, github_token: &str) -> Result<String> {
+    let response = http
+        .get("https://api.github.com/user")
+        .header("Authorization", format!("Bearer {github_token}"))
+        .header("User-Agent", USER_AGENT)
+        .header("Accept", "application/vnd.github+json")
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .context("github user")?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "GitHub user HTTP {}",
+        response.status()
+    );
+    let payload: Value = response.json().await.context("github user json")?;
+    payload
+        .get("id")
+        .and_then(Value::as_u64)
+        .map(|id| id.to_string())
+        .context("GitHub user id missing")
 }
 
 async fn refresh_copilot_auth(http: &Client, auth: Value) -> Result<Value> {

@@ -864,12 +864,12 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
     fun showSettings() { showSettingsHome() }
     private fun showSettingsHome() {
         settingsWatch?.cancel()
-        settings = MobileSettingsState(connections = settings?.connections)
+        settings = MobileSettingsState(connections = settings?.connections, accounts = settings?.accounts)
         loadModelConnections(refresh = false)
     }
     private fun showModelConnections() {
         settingsWatch?.cancel()
-        settings = MobileSettingsState(page = "model-connections", connections = settings?.connections)
+        settings = MobileSettingsState(page = "model-connections", connections = settings?.connections, accounts = settings?.accounts)
         loadModelConnections(refresh = true)
     }
     private var connectionsJob: Job? = null
@@ -879,7 +879,8 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         connectionsJob = viewModelScope.launch {
             fun show(result: JSONObject, loading: Boolean) {
                 val current = settings?.takeIf { it.device == null && it.page in listOf("home", "model-connections") } ?: return
-                settings = current.copy(connections = result.optJSONArray("devices").objects(), loading = loading)
+                settings = current.copy(connections = result.optJSONArray("devices").objects(),
+                    accounts = result.optJSONArray("accounts")?.objects(), loading = loading)
             }
             if (refresh) settings = settings?.copy(loading = true, message = null)
             try {
@@ -909,7 +910,7 @@ internal class ClientViewModel(app: Application, private val repo: ClientReposit
         val tree = deviceTrees[peer.id]
         settings = MobileSettingsState(page = "device", device = peer, fromChat = fromChat, fromConnections = fromConnections,
             online = tree?.online ?: false, agents = tree?.leaders.orEmpty(), loading = true, profilesReady = false,
-            connections = settings?.connections)
+            connections = settings?.connections, accounts = settings?.accounts)
         refreshSettings()
         watchSettings(peer.id)
     }

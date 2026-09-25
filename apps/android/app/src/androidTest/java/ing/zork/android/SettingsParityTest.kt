@@ -259,6 +259,14 @@ class SettingsParityTest {
             assertNotNull(find("重试")); assertNull(find("还没有模型连接"))
             assertNull(find("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
             capture("model-connections")
+            // One OpenCode Go key saved on both devices is one card naming both.
+            assertEquals(1, nodes().count { it.contentDescription?.toString() == "OpenCode-Go，订阅，mini1、mini2" })
+            click("OpenCode-Go，订阅，mini1、mini2"); await("OpenCode-Go · 选择设备")
+            capture("model-connections-merged-sources")
+            click("mini2")
+            scenario.onActivity { assertEquals("open-connection:go-mini2", it.lastAction) }
+            await("额度")
+            click("返回"); await("OpenRouter")
             click("工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
             await("额度")

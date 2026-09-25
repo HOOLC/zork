@@ -30,7 +30,7 @@ pub mod mesh_enrollment;
 pub mod message_presentation;
 pub mod message_time;
 pub mod model_catalog;
-mod model_connections;
+pub mod model_connections;
 pub mod model_edit;
 pub mod model_editor;
 pub mod new_chat;
