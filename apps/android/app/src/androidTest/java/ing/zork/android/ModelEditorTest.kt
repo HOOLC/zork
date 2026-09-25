@@ -219,6 +219,60 @@ class ModelEditorTest {
         }
     }
 
+    /** A unit capsule is selected (the state may sit on the node or its clickable parent). */
+    private fun unitOn(label: String): Boolean {
+        var node: android.view.accessibility.AccessibilityNodeInfo? = ui.reveal(label)
+        while (node != null) {
+            if (node.isChecked || node.isSelected || node.stateDescription?.toString() == "已选中") return true
+            if (node.isClickable) return false
+            node = node.parent
+        }
+        return false
+    }
+
+    @Test fun lengthRawCountsNeverTakeTheSelectedUnit() {
+        openAdd().use { scenario ->
+            ui.type("模型 ID", "my-raw-count"); ui.imeDone("模型 ID")
+            ui.reveal("上下文 单位 K")
+            assertTrue(ui.dump(), unitOn("上下文 单位 K"))
+            // Below 10000 the number means the selected unit…
+            ui.type("上下文", "1310")
+            ui.await("1,310,000")
+            assertTrue(unitOn("上下文 单位 K"))
+            // …from 10000 on it is a raw count: 131072 is 131,072 tokens, not 131M.
+            ui.type("上下文", "131072")
+            ui.await("131,072")
+            assertEquals("131072", ui.text("上下文"))
+            assertFalse(unitOn("上下文 单位 K")); assertFalse(unitOn("上下文 单位 M"))
+            ui.capture("25-length-raw-count")
+            // Leaving the field keeps the count.
+            ui.focus("最长输出")
+            assertEquals("131072", ui.text("上下文")); ui.await("131,072")
+            // Choosing a unit afterwards re-expresses the same count.
+            ui.click("上下文 单位 K")
+            assertEquals("131.072", ui.text("上下文")); ui.await("131,072")
+            assertTrue(unitOn("上下文 单位 K"))
+            // 128 with K is 128K.
+            ui.type("上下文", "128")
+            ui.await("128,000")
+            assertTrue(unitOn("上下文 单位 K"))
+            // 1.5, then M: the unit chosen after typing applies; output < context still holds.
+            ui.type("最长输出", "1.5")
+            ui.click("最长输出 单位 M")
+            ui.await("1,500,000")
+            ui.reveal("需小于上下文 128K")
+            ui.click("最长输出 单位 K")
+            ui.await("1,500")
+            ui.awaitGone("需小于上下文 128K")
+            ui.capture("26-length-units")
+            ui.reveal("不思考"); ui.click("不思考")
+            ui.click("保存模型")
+            val input = saved(scenario)
+            assertEquals("128K", input.getString("context"))
+            assertEquals("1.5K", input.getString("output"))
+        }
+    }
+
     @Test fun duplicateIdOffersToEditTheExistingModel() {
         openAdd().use {
             ui.type("模型 ID", "fixture-model")

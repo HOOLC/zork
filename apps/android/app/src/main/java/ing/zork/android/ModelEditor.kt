@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
-import java.math.BigDecimal
 
 /*
  * Adding or editing a connection's model. Every rule — recognition, preset
@@ -859,24 +858,12 @@ private fun AddInput(value: String, change: (String) -> Unit, placeholder: Strin
 
 // ---------------------------------------------------------------- length
 
-/** `128K` → ("128", "K"); a plain count is shown in K (131072 → 131.072 K). */
-internal fun splitTokens(text: String): Pair<String, String> {
-    val t = text.trim().replace(",", "").replace(" ", "")
-    if (t.isEmpty()) return "" to "K"
-    val unit = t.last().uppercaseChar()
-    if (unit == 'K' || unit == 'M') return t.dropLast(1) to unit.toString()
-    val count = t.toLongOrNull() ?: return t to "K"
-    return BigDecimal(count).movePointLeft(3).stripTrailingZeros().toPlainString() to "K"
-}
-
 /** What the number field accepts: digits and the first decimal point. */
 internal fun numberText(input: String): String {
     val chars = input.replace(',', '.').filter { it.isDigit() || it == '.' }
     val dot = chars.indexOf('.')
     return if (dot < 0) chars else chars.substring(0, dot + 1) + chars.substring(dot + 1).replace(".", "")
 }
-
-internal fun joinTokens(number: String, unit: String) = number.trim().let { if (it.isEmpty()) "" else it + unit }
 
 @Composable
 private fun LengthBody(length: JSONObject, enabled: Boolean, contextFocus: FocusRequester, outputFocus: FocusRequester,
@@ -887,28 +874,27 @@ private fun LengthBody(length: JSONObject, enabled: Boolean, contextFocus: Focus
 }
 
 /**
- * A number, a K|M unit and the always-visible quick picks. What the user typed
- * stays on screen while it is what core holds; any other change (a pick, a
- * restore, normalizing on blur) shows core's value instead.
+ * A number, a K|M unit and the always-visible quick picks. Core joins the two
+ * (`set_length_number`) and splits its text back (`number`, `unit`), so the
+ * field always shows what will be saved: a whole number ≥ 10000 is a raw count
+ * whatever unit was selected (131072 never becomes 131,072K) and then neither
+ * unit is selected; the exact count sits in the field.
  */
 @Composable
 private fun TokenInput(field: String, view: JSONObject, enabled: Boolean, focus: FocusRequester,
     step: (String, Array<out Pair<String, Any?>>) -> JSONObject?) {
     val label = view.text("label")
-    val coreText = view.text("text")
-    var draft by remember { mutableStateOf<Pair<String, String>?>(null) }
-    val shown = draft?.takeIf { joinTokens(it.first, it.second) == coreText } ?: splitTokens(coreText)
+    val number = view.text("number")
+    // The unit chosen before anything is typed; core's text has none yet.
+    var emptyUnit by remember { mutableStateOf("K") }
+    val unit = if (number.isEmpty()) emptyUnit else view.text("unit")
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    fun send(number: String, unit: String) {
-        draft = number to unit
-        step("set_length", arrayOf("field" to field, "text" to joinTokens(number, unit)))
-    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, fontSize = 12.sp, color = ZorkColors.Muted)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Digits and one decimal point; a comma from a locale keyboard is a decimal point.
-            OutlinedTextField(shown.first, { send(numberText(it), shown.second) }, enabled = enabled, singleLine = true,
+            OutlinedTextField(number, { step("set_length_number", arrayOf("field" to field, "number" to numberText(it), "unit" to unit)) }, enabled = enabled, singleLine = true,
                 placeholder = { Text(view.text("placeholder").removePrefix("例如 ").dropLast(1).let { "例如 $it" }, fontSize = 14.sp, color = ZorkColors.Subtle) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
@@ -918,23 +904,25 @@ private fun TokenInput(field: String, view: JSONObject, enabled: Boolean, focus:
                 textStyle = LocalTextStyle.current.copy(fontSize = 15.sp),
                 modifier = Modifier.weight(1f).widthIn(min = 96.dp).heightIn(min = 52.dp).focusRequester(focus)
                     .onFocusChanged {
-                        if (focused && !it.isFocused) { draft = null; step("blur_length", arrayOf("field" to field)) }
+                        if (focused && !it.isFocused) step("blur_length", arrayOf("field" to field))
                         focused = it.isFocused
                     }
                     .onPreviewKeyEvent { event ->
                         val up = event.key == Key.DirectionUp
                         if (event.type == KeyEventType.KeyDown && (up || event.key == Key.DirectionDown)) {
-                            draft = null; step("step_length", arrayOf("field" to field, "up" to up)); true
+                            step("step_length", arrayOf("field" to field, "up" to up)); true
                         } else false
                     }
                     .semantics { contentDescription = label })
-            UnitToggle(label, shown.second, enabled) { unit -> send(shown.first, unit) }
+            UnitToggle(label, unit, enabled) { chosen ->
+                if (number.isEmpty()) emptyUnit = chosen
+                else step("length_unit", arrayOf("field" to field, "unit" to chosen))
+            }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             view.optJSONArray("picks").objects().forEach { pick ->
                 TouchChip(pick.text("label"), pick.optBoolean("selected"), enabled && !pick.optBoolean("disabled"),
                     description = "$label ${pick.text("label")}") {
-                    draft = null
                     step("pick_length", arrayOf("field" to field, "value" to pick.optLong("value")))
                 }
             }
@@ -943,14 +931,15 @@ private fun TokenInput(field: String, view: JSONObject, enabled: Boolean, focus:
     }
 }
 
-/** K|M: the selected capsule slides on the move curve. */
+/** K|M: the selected capsule slides on the move curve; a raw count (`unit` empty) selects neither. */
 @Composable
 private fun UnitToggle(label: String, unit: String, enabled: Boolean, choose: (String) -> Unit) {
     val base = if (LocalSectionFill.current) ZorkColors.Canvas else ZorkColors.Prompt
     val thumb = if (LocalSectionFill.current) ZorkColors.Prompt else ZorkColors.Canvas
     val slot = animatedValue(if (unit == "M") 1f else 0f, "unit")
     Box(Modifier.width(96.dp).height(52.dp).background(base, ZorkShapes.Control).padding(4.dp)) {
-        Box(Modifier.width(44.dp).fillMaxHeight().graphicsLayer { translationX = slot * 44.dp.toPx() }
+        val thumbAlpha = animatedValue(if (unit.isEmpty()) 0f else 1f, "unit-thumb")
+        Box(Modifier.width(44.dp).fillMaxHeight().graphicsLayer { translationX = slot * 44.dp.toPx(); alpha = thumbAlpha }
             .background(thumb, ZorkShapes.Control))
         Row(Modifier.fillMaxSize()) {
             listOf("K", "M").forEach { option ->
