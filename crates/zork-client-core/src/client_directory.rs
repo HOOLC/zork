@@ -456,6 +456,6 @@ impl Directory {
 }
 
 fn directory_node(node: &SavedNode) -> Value {
-    json!({"id":node.id,"name":node.name,"machine_name":node.machine_name,"mesh":node.mesh,"group":node.group,
+    json!({"id":node.id,"name":node.name,"machine_name":node.machine_name,"color_key":node.color_key,"mesh":node.mesh,"group":node.group,
         "status":crate::device_status::DeviceStatus::MeshNotStarted})
 }

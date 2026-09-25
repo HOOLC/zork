@@ -154,8 +154,8 @@ private fun fixturePeers() = listOf(
     Peer("mini2","mini2","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
 /** Mesh devices as core names them: short display names, machine names kept. */
 private fun namedPeers() = listOf(
-    Peer("air","A","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus(), machine="zuozijiandeMacBook-Air"),
-    Peer("studio","B","", JSONObject("""{"status":{"state":"relay"}}""").deviceStatus(), machine="zuozijians-Mac-Studio"),
+    Peer("air","A","", JSONObject("""{"status":{"state":"direct"}}""").deviceStatus(), machine="zuozijiandeMacBook-Air", colorKey="seq:0"),
+    Peer("studio","B","", JSONObject("""{"status":{"state":"relay"}}""").deviceStatus(), machine="zuozijians-Mac-Studio", colorKey="seq:1"),
     Peer("mini1","mini1","", JSONObject("""{"status":{"state":"offline"}}""").deviceStatus()))
 private fun fixture(route: String): WorkbenchState {
     if (route == "device-names") return fixture("navigation").let { it.copy(peers=namedPeers(), activePeer=namedPeers()[0]) }

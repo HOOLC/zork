@@ -120,6 +120,7 @@ mod tests {
         store
             .save_node(&crate::store::SavedNode {
                 machine_name: None,
+                color_key: None,
                 id: "node".into(),
                 name: "node".into(),
                 url: String::new(),

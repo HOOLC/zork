@@ -158,7 +158,7 @@ impl RootView {
         store: Arc<crate::desktop::store::ClientStore>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let node = crate::desktop::store::SavedNode { machine_name: None,
+        let node = crate::desktop::store::SavedNode { machine_name: None, color_key: None,
             id: "mini1".into(),
             name: "mini1".into(),
             url: "http://127.0.0.1:9".into(),

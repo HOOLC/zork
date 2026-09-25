@@ -237,7 +237,7 @@ private fun DeviceStrip(peers: List<Peer>, open: (Peer) -> Unit) {
                     .semantics(mergeDescendants = true) { contentDescription = "${deviceNameSummary(peer.spokenName, peer.status)} · 设备设置" }
                     .padding(start = 10.dp, end = 14.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DeviceMark(peer.name, 20.dp)
+                    DeviceMark(peer.name, 20.dp, colorKey = peer.colorKey)
                     Text(peer.name, fontSize = 14.sp, color = ZorkColors.Ink, maxLines = 1)
                     DeviceStatusBadge(peer.status)
                 }

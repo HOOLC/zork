@@ -13,6 +13,7 @@ fn client_mesh() {
         .iter()
         .map(|peer| zork_gui::desktop::store::SavedNode {
             machine_name: None,
+            color_key: None,
             id: peer.origin.clone(),
             name: peer.name.clone(),
             url: String::new(),

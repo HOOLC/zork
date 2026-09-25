@@ -145,7 +145,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 SettingsListGroup {
                     SettingsListRow("模型连接", R.drawable.ic_mesh, value = connectionCount(state), action = { actions.page("model-connections") })
                     peers.forEach { peer ->
-                        SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp) },
+                        SettingsListRow(peer.name, leading = { DeviceMark(peer.name, 24.dp, colorKey = peer.colorKey) },
                             trailing = { if (peer.status.state !in listOf("direct", "connected")) DeviceStatusBadge(peer.status) },
                             action = { actions.device(peer) })
                     }
@@ -167,7 +167,7 @@ internal fun MobileSettings(state: MobileSettingsState, peers: List<Peer>, actio
                 // First glance: who and whether it is reachable. Name, version and checks live in "更多".
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    DeviceMark(device?.name.orEmpty(), 40.dp)
+                    DeviceMark(device?.name.orEmpty(), 40.dp, colorKey = device?.colorKey)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(device?.name.orEmpty(), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

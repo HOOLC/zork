@@ -90,11 +90,37 @@ pub fn monogram(name: &str) -> String {
         .collect()
 }
 
+thread_local! {
+    /// Colour keys of the host's devices by the names surfaces print, for
+    /// places that only carry a device name (message rows, activity, archives).
+    static COLOR_KEYS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        Default::default();
+}
+
+/// The host publishes each device's names with its core colour key, so every
+/// mark of the same device has the same hue.
+pub fn set_color_keys(keys: impl IntoIterator<Item = (String, String)>) {
+    COLOR_KEYS.with(|map| *map.borrow_mut() = keys.into_iter().collect());
+}
+
+/// The colour key for a device known only by name; the name itself when the
+/// host has not published one (stories, devices outside the directory).
+pub fn color_key(name: &str) -> String {
+    COLOR_KEYS
+        .with(|map| map.borrow().get(name).cloned())
+        .unwrap_or_else(|| name.to_owned())
+}
+
 /// The device's identity mark: a stable hue with the brand's folded corner.
 /// It is one path with its top-right corner cut, so it sits on any surface,
 /// including rows whose hover and selection change the fill behind it.
 pub fn mark(name: &str, size: f32) -> impl IntoElement {
-    let hue = crate::design::device_hue(name);
+    mark_keyed(name, &color_key(name), size)
+}
+
+/// A mark whose colour follows an explicit stable key.
+pub fn mark_keyed(name: &str, key: &str, size: f32) -> impl IntoElement {
+    let hue = crate::design::device_hue(key);
     div()
         .relative()
         .flex_shrink_0()
@@ -250,7 +276,11 @@ pub fn label(
         .flex()
         .items_center()
         .gap_2()
-        .child(mark(&name.display, 18.))
+        .child(mark_keyed(
+            &name.display,
+            &name.color.clone().unwrap_or_else(|| color_key(&name.display)),
+            18.,
+        ))
         .child(text)
         .child(badge)
         .automation(

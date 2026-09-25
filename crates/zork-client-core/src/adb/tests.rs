@@ -14,6 +14,7 @@ fn facts() -> Facts {
 fn save_station(store: &ClientStore, id: &str, name: &str) -> Result<()> {
     store.save_node(&SavedNode {
         machine_name: None,
+        color_key: None,
         id: id.into(),
         name: name.into(),
         url: String::new(),

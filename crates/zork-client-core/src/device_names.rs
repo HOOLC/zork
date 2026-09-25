@@ -116,6 +116,7 @@ mod tests {
             }),
             group: Some(authority.into()),
             machine_name: None,
+            color_key: None,
         }
     }
     fn mesh() -> MeshGroup {
@@ -181,6 +182,9 @@ mod tests {
         assert!(store.apply_mesh_names(&group, Some(&authority))?);
         assert!(!store.apply_display_names(&renamed)?);
         assert_eq!(store.nodes()?[1].name, "工作室");
+        // Colour follows join order, not the name: renaming keeps it.
+        let colors: Vec<_> = store.nodes()?.into_iter().map(|n| n.color_key).collect();
+        assert_eq!(colors, [Some("seq:0".to_owned()), Some("seq:1".to_owned())]);
         // A stale membership snapshot never replaces a newer one.
         let mut stale = group.clone();
         stale.revision = 2;

@@ -240,6 +240,7 @@ impl ClientStore {
             for member in &group.members {
                 let node = SavedNode {
                     machine_name: None,
+                    color_key: None,
                     id: member.origin.clone(),
                     name: member.name.clone(),
                     url: String::new(),
@@ -281,6 +282,7 @@ mod tests {
     fn saved(member: &MeshDevice, authority: &str) -> SavedNode {
         SavedNode {
             machine_name: None,
+            color_key: None,
             id: member.origin.clone(),
             name: member.name.clone(),
             url: String::new(),
@@ -309,7 +311,12 @@ mod tests {
         let store = ClientStore::open(root.path())?;
         let removed = store.replace_account_nodes(&[])?;
         assert_eq!(removed, vec![account.id.clone()]);
-        assert_eq!(store.nodes()?, vec![manual]);
+        // Listed devices carry their colour key (the identity outside a Mesh).
+        let listed = SavedNode {
+            color_key: Some(manual.id.clone()),
+            ..manual
+        };
+        assert_eq!(store.nodes()?, vec![listed]);
         assert_eq!(
             store.get::<String>(&account.id, "draft:chat")?.as_deref(),
             Some("preserved")

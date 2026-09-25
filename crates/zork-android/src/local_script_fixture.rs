@@ -15,6 +15,7 @@ pub(super) fn seed(root: &Path, input: &str) -> Result<Value> {
     let store = ClientStore::open(root)?;
     store.save_node(&SavedNode {
         machine_name: None,
+        color_key: None,
         id: "local-script-node".into(),
         name: "Local script fixture".into(),
         url: String::new(),

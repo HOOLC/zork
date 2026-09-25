@@ -580,6 +580,7 @@ impl Directory {
         let addr = address.trim();
         Ok(SavedNode {
             machine_name: None,
+            color_key: None,
             id: origin.clone(),
             name,
             url: String::new(),
@@ -862,6 +863,7 @@ impl Directory {
             } else {
                 let node = SavedNode {
                     machine_name: None,
+                    color_key: None,
                     id: member.origin.clone(),
                     name: member.name.clone(),
                     url: String::new(),
@@ -987,6 +989,7 @@ mod tests {
         .unwrap();
         let node = |id: &str, url: &str, mesh: Option<&str>| SavedNode {
             machine_name: None,
+            color_key: None,
             id: id.into(),
             name: id.into(),
             url: url.into(),
@@ -1101,6 +1104,7 @@ mod tests {
         let directory = Directory::open(root.path()).unwrap();
         let mut node = SavedNode {
             machine_name: None,
+            color_key: None,
             id: "fixture".into(),
             name: "current name".into(),
             url: format!("http://{}", listener.local_addr().unwrap()),

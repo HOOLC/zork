@@ -42,6 +42,8 @@ pub struct Device {
     pub name: String,
     /// Registered machine name, when it differs from the display `name`.
     pub machine: Option<String>,
+    /// Stable colour key from core (join order or identity).
+    pub color: Option<String>,
     pub online: Option<bool>,
     pub status: crate::device_name::DeviceStatus,
     pub direct: bool,
@@ -53,11 +55,13 @@ pub struct Device {
 impl Device {
     pub fn device_name(&self) -> crate::device_name::DeviceName {
         crate::device_name::DeviceName::new(self.name.clone(), self.machine.clone())
+            .with_color(self.color.clone())
     }
     fn same(&self, other: &Self) -> bool {
         self.id == other.id
             && self.name == other.name
             && self.machine == other.machine
+            && self.color == other.color
             && self.status == other.status
             && self.online == other.online
             && self.direct == other.direct
@@ -437,7 +441,14 @@ impl Navigation {
             })
             // One capsule line: the execution device's mark, then the title. The
             // device's reachability lives in the device dock and the details tooltip.
-            .child(crate::device_name::mark(&device.name, 18.))
+            .child(crate::device_name::mark_keyed(
+                &device.name,
+                &device
+                    .color
+                    .clone()
+                    .unwrap_or_else(|| crate::device_name::color_key(&device.name)),
+                18.,
+            ))
             .child(
                 div()
                     .flex_1()

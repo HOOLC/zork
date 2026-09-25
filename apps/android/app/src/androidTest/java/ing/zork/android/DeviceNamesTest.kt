@@ -15,6 +15,19 @@ import java.io.File
  * so a long press shows the machine name each device registered with. */
 @RunWith(AndroidJUnit4::class)
 class DeviceNamesTest {
+    /** Colour follows the core key, not the display name, with the desktop's rule. */
+    @Test fun colourFollowsStableKeyLikeTheDesktop() {
+        assertEquals(listOf(0, 1, 2, 3, 4, 5), (0..5).map { deviceHueSlot("seq:$it", 6) })
+        assertEquals(1, deviceHueSlot("seq:7", 6))
+        assertEquals(1, deviceHueSlot("mini1", 6)) // same vector as `color_slot` in Rust
+        assertNotEquals(deviceHue("seq:0"), deviceHue("seq:1"))
+        assertNotEquals(deviceHue("seq:2"), deviceHue("seq:3"))
+        DeviceColors.publish(listOf(Peer("studio", "工作室", "", machine = "zuozijians-Mac-Studio", colorKey = "seq:1")))
+        assertEquals(deviceHue("seq:1"), deviceHue(DeviceColors.key("工作室")))
+        assertEquals("seq:1", DeviceColors.key("zuozijians-Mac-Studio"))
+        DeviceColors.publish(emptyList())
+    }
+
     @Test fun displayNamesAndMachineNameOnLongPress() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext

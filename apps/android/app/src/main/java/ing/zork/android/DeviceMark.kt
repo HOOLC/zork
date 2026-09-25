@@ -14,16 +14,34 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Same hues and hash as `design::device_hue` on the desktop, so a device keeps
-// its color across clients. Hues mark identity only, never status.
-private val LightHues = longArrayOf(0xFF5E8B6B, 0xFF56759A, 0xFFA27A2B, 0xFF87618F, 0xFF3E8787)
-private val DarkHues = longArrayOf(0xFF6E9D7B, 0xFF6C8BB0, 0xFFB8903E, 0xFF9D78A6, 0xFF52A0A0)
+// Same hues and slot rule as `design::device_hue` / `color_slot` on the desktop,
+// so a device keeps its color across clients. Hues mark identity only, never status.
+private val LightHues = longArrayOf(0xFF56759A, 0xFFA27A2B, 0xFF5E8B6B, 0xFF87618F, 0xFF3E8787, 0xFFA5607A)
+private val DarkHues = longArrayOf(0xFF6C8BB0, 0xFFB8903E, 0xFF6E9D7B, 0xFF9D78A6, 0xFF52A0A0, 0xFFBC7890)
 
-internal fun deviceHue(key: String): Color {
+/** Palette slot for a core colour key: `seq:N` (Mesh join order) takes slot N, so
+ * consecutive devices differ; any other key (identity) hashes with FNV-1a. */
+internal fun deviceHueSlot(key: String, slots: Int): Int {
+    key.removePrefix("seq:").takeIf { key.startsWith("seq:") }?.toULongOrNull()?.let { return (it % slots.toULong()).toInt() }
     var hash = 0x811C9DC5u
     for (byte in key.encodeToByteArray()) hash = (hash xor (byte.toUInt() and 0xFFu)) * 0x01000193u
+    return (hash % slots.toUInt()).toInt()
+}
+
+internal fun deviceHue(key: String): Color {
     val hues = if (ZorkColors.dark) DarkHues else LightHues
-    return Color(hues[(hash % hues.size.toUInt()).toInt()])
+    return Color(hues[deviceHueSlot(key, hues.size)])
+}
+
+/** Colour keys of the directory's devices by the names surfaces print, so a mark
+ * that only knows a device name still takes that device's stable hue. */
+internal object DeviceColors {
+    @Volatile var keys: Map<String, String> = emptyMap()
+    fun publish(peers: List<Peer>) {
+        keys = peers.flatMap { peer -> val key = peer.colorKey ?: peer.id
+            listOfNotNull(peer.name to key, peer.machine?.let { it to key }) }.toMap()
+    }
+    fun key(name: String): String = keys[name] ?: name
 }
 
 /** First letter plus the first digit, if any ("mini1" → "M1"). */
@@ -35,8 +53,8 @@ internal fun deviceMonogram(name: String): String {
 
 /** The device's identity mark: its hue with the brand's folded corner. */
 @Composable
-internal fun DeviceMark(name: String, size: Dp = 18.dp, modifier: Modifier = Modifier) {
-    val hue = deviceHue(name)
+internal fun DeviceMark(name: String, size: Dp = 18.dp, modifier: Modifier = Modifier, colorKey: String? = null) {
+    val hue = deviceHue(colorKey ?: DeviceColors.key(name))
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(size)) {
             val w = this.size.width; val h = this.size.height

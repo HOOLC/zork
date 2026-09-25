@@ -498,6 +498,7 @@ impl Render for DeviceNavigation {
                 id: device.node.id.clone(),
                 name: device.node.name.clone(),
                 machine: device.node.machine_name.clone(),
+                color: device.node.color_key.clone(),
                 online: device.data.online,
                 status: device.data.status.clone(),
                 direct: device.data.route.direct,

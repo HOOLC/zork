@@ -173,6 +173,19 @@ pub struct ResolvedName {
     /// The name the device registered with (`MeshDevice.name`).
     pub machine: String,
     pub station: bool,
+    /// Join sequence in this Mesh; `None` for a desktop companion client.
+    pub seq: Option<u64>,
+}
+impl ResolvedName {
+    /// The stable key a device's colour follows: its join order when it has
+    /// one, so consecutive devices get distinct hues, else its identity.
+    /// Renaming never changes it.
+    pub fn color_key(&self) -> String {
+        match self.seq {
+            Some(seq) => format!("seq:{seq}"),
+            None => self.origin.clone(),
+        }
+    }
 }
 
 /// Default display name for join sequence `seq`: A…Z, then AA, AB, …
@@ -337,6 +350,7 @@ pub fn resolve(group: &MeshGroup, names: Option<&MeshNames>) -> Vec<ResolvedName
                 .unwrap_or_else(|| device.name.clone()),
             machine: device.name.clone(),
             station,
+            seq: names.get(&device.origin).map(|d| d.seq),
         })
         .collect()
 }

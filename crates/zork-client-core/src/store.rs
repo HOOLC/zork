@@ -30,6 +30,10 @@ pub struct SavedNode {
     /// listed node keeps the machine name as its stored name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine_name: Option<String>,
+    /// Stable colour key, set by `nodes()`: the Mesh join order (`seq:N`) or
+    /// the device identity. Never stored and unchanged by renames.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_key: Option<String>,
 }
 impl SavedNode {
     /// Replaces the stored (machine) name, dropping any display projection.
@@ -40,6 +44,7 @@ impl SavedNode {
     /// Both names for presentation: what surfaces show and the name to hint.
     pub fn device_name(&self) -> zork_client_types::device::DeviceName {
         zork_client_types::device::DeviceName::new(self.name.clone(), self.machine_name.clone())
+            .with_color(self.color_key.clone())
     }
 }
 
@@ -271,7 +276,12 @@ impl ClientStore {
             if let Some(name)=name.filter(|name|!crate::device_label::is_id_like(name)){node.name=name;}
             let origin = origin_of(&conn, &node)?;
             // The Mesh display name replaces the machine name everywhere.
-            if let Some(named) = origin.and_then(|origin| directory::display_name(&naming, node.group.as_deref(), &origin)) {
+            let named = origin.as_ref().and_then(|origin| directory::display_name(&naming, node.group.as_deref(), origin));
+            node.color_key = Some(match &named {
+                Some(named) => named.color_key(),
+                None => origin.clone().unwrap_or_else(|| node.id.clone()),
+            });
+            if let Some(named) = named {
                 node.machine_name = Some(named.machine.clone()).filter(|machine| *machine != named.display);
                 node.name = named.display;
             }
@@ -351,6 +361,7 @@ impl ClientStore {
         if let Some(machine) = node.machine_name.take() {
             node.name = machine;
         }
+        node.color_key = None;
         let node = &node;
         let changed = self.0.lock().expect("client database").execute("INSERT INTO nodes(id,value) VALUES (?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value WHERE nodes.value != excluded.value",params![node.id,serde_json::to_string(node)?])?;
         if changed > 0 {

@@ -1293,6 +1293,7 @@ impl Client {
                     .await?;
                 self.store.save_node(&SavedNode {
                     machine_name: None,
+                    color_key: None,
                     id: origin.clone(),
                     name: name.into(),
                     url: String::new(),
@@ -1569,6 +1570,7 @@ mod tests {
             .store
             .save_node(&SavedNode {
                 machine_name: None,
+                color_key: None,
                 id: peer.clone(),
                 name: "test".into(),
                 url: String::new(),

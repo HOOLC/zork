@@ -85,7 +85,10 @@ impl Statistics {
             .flex()
             .items_center()
             .gap(px(6.))
+            // Shrinks before the 用量 toggle: the model, then the name, truncate.
+            .flex_1()
             .min_w_0()
+            .overflow_hidden()
             .text_size(px(12.))
             .line_height(px(18.))
             .text_color(rgb(DIM()))
@@ -93,6 +96,8 @@ impl Statistics {
             .child(
                 div()
                     .max_w(px((width * 0.4).max(80.)))
+                    .min_w(px(24.))
+                    .flex_shrink(1.)
                     .truncate()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(rgb(TEXT()))
@@ -206,8 +211,9 @@ impl Statistics {
                     .flex()
                     .items_center()
                     .gap_2()
+                    .min_w_0()
                     .child(line)
-                    .child(usage_toggle),
+                    .child(div().flex_shrink_0().child(usage_toggle)),
             )
             .children(usage_body)
             .automation(

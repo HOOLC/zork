@@ -98,7 +98,7 @@ private fun NewChatDeviceTabs(peers: List<Peer>, current: Peer, enabled: Boolean
                 .semantics { contentDescription = deviceNameSummary(peer.spokenName, peer.status) }
                 .padding(start = 10.dp, end = 14.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeviceMark(peer.name, 18.dp)
+                DeviceMark(peer.name, 18.dp, colorKey = peer.colorKey)
                 Text(peer.name, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     color = if (selected) ZorkColors.Ink else ZorkColors.Muted, maxLines = 1)
                 DeviceStatusBadge(peer.status)

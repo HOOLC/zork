@@ -336,6 +336,7 @@ mod tests {
     fn save_node(client: &Client, url: String) {
         let saved = crate::store::SavedNode {
             machine_name: None,
+            color_key: None,
             id: "node".into(),
             name: "fixture".into(),
             url: url.clone(),
@@ -449,6 +450,7 @@ mod tests {
         store
             .save_node(&crate::store::SavedNode {
                 machine_name: None,
+                color_key: None,
                 id: "node".into(),
                 name: "fixture".into(),
                 url: String::new(),

@@ -135,6 +135,7 @@ impl DesktopRoot {
             ..Default::default()
         };
         let nodes = snapshot.nodes.as_ref().clone();
+        publish_color_keys(&nodes);
         let local_enabled = snapshot.local_enabled;
         let startup_error = snapshot.error.clone();
         let local = source.local.clone();
@@ -309,6 +310,7 @@ impl DesktopRoot {
         }
         let nodes_changed = self.nodes != *snapshot.nodes;
         self.nodes = snapshot.nodes.as_ref().clone();
+        publish_color_keys(&self.nodes);
         self.local_enabled = snapshot.local_enabled;
         self.mesh_identity = snapshot.mesh_identity.clone();
         self.device_info = snapshot.info.as_ref().clone();
@@ -774,6 +776,16 @@ impl DesktopRoot {
         cx.notify();
     }
 }
+/// Every mark of a device, including ones that only know its name, takes the
+/// hue of its core colour key (join order or identity).
+fn publish_color_keys(nodes: &[crate::desktop::store::SavedNode]) {
+    zork_ui::device_name::set_color_keys(nodes.iter().flat_map(|node| {
+        let key = node.color_key.clone().unwrap_or_else(|| node.id.clone());
+        std::iter::once((node.name.clone(), key.clone()))
+            .chain(node.machine_name.clone().map(|machine| (machine, key)))
+    }));
+}
+
 impl DesktopRoot {
     fn apply_device_name(&mut self, id: &str, name: &str, cx: &mut Context<Self>) {
         self.navigation

@@ -249,6 +249,7 @@ impl Render for MeshSettings {
                         .map(|(peer, named)| zork_ui::network::Peer {
                             id: peer.origin.clone(),
                             name: named.map_or_else(|| peer.name.clone(), |n| n.display.clone()),
+                            color: named.map(|n| n.color_key()),
                             machine: named
                                 .map(|n| n.machine.clone())
                                 .filter(|machine| Some(machine) != named.map(|n| &n.display)),
