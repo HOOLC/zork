@@ -36,8 +36,21 @@ class ComposerPresentationTest {
             }
             return android.graphics.Rect().also { (find(automation.rootInActiveWindow) ?: error("Missing $prefix")).getBoundsInScreen(it) }
         }
+        fun visible(prefix: String): Boolean {
+            automation.clearCache()
+            fun find(n: AccessibilityNodeInfo?): Boolean {
+                if (n == null) return false
+                if (n.isVisibleToUser && (n.text?.toString()?.startsWith(prefix) == true || n.contentDescription?.toString()?.startsWith(prefix) == true)) return true
+                for (i in 0 until n.childCount) if (find(n.getChild(i))) return true
+                return false
+            }
+            return find(automation.rootInActiveWindow)
+        }
+        // Activity is the list's last item: after the latest message, clear of the composer.
         fun assertTailVisible() {
-            assertTrue("Last message overlaps presence", textBounds("消息 19").bottom <= textBounds("产品会话 ·").top)
+            val activity = textBounds("产品会话 ·")
+            assertTrue("Activity is not after the last message", textBounds("消息 19").bottom <= activity.top)
+            assertTrue("Activity hides behind the composer", activity.bottom <= android.graphics.Rect().also { editor().getBoundsInScreen(it) }.top)
         }
         fun height() = android.graphics.Rect().also { editor().getBoundsInScreen(it) }.height()
         fun settle() { Thread.sleep(750); instrumentation.waitForIdleSync() }
@@ -47,6 +60,7 @@ class ComposerPresentationTest {
         }
         ActivityScenario.launch<ComposerPreviewActivity>(Intent(instrumentation.targetContext, ComposerPreviewActivity::class.java)).use { scenario ->
             settle(); capture("idle.png")
+            assertFalse("Idle members shown as activity", visible("产品会话 ·"))
             scenario.onActivity { it.draft = "第一行\n第二行\n第三行" }; settle()
             val three = height()
             scenario.onActivity { it.draft = "第一行\n第二行\n第三行\n第四行\n第五行\n第六行" }; settle()
@@ -62,6 +76,7 @@ class ComposerPresentationTest {
                 it.viewportWidth = 320
             }
             settle(); assertTailVisible(); capture("active-320.png")
+            val activityTop = textBounds("产品会话 ·").top
             // A real finger scroll exits tail following; a programmatic request
             // intentionally does not represent the user's reading intent.
             val editorBounds = android.graphics.Rect().also { editor().getBoundsInScreen(it) }
@@ -73,9 +88,15 @@ class ComposerPresentationTest {
             }
             settle()
             var first = 0; var offset = 0
+            assertTrue("Activity did not scroll with the messages", !visible("产品会话 ·") || textBounds("产品会话 ·").top > activityTop + 100)
+            capture("active-scrolled.png")
             scenario.onActivity { assertTrue("Gesture did not leave the tail", it.scroll.canScrollForward); first = it.scroll.firstVisibleItemIndex; offset = it.scroll.firstVisibleItemScrollOffset; it.active = false }
             Thread.sleep(1900); instrumentation.waitForIdleSync()
-            scenario.onActivity { assertEquals(first, it.scroll.firstVisibleItemIndex); assertEquals(offset, it.scroll.firstVisibleItemScrollOffset); it.fontScale = 1.5f; it.active = true }
+            assertFalse("Activity stayed after the round ended", visible("产品会话 ·"))
+            scenario.onActivity { assertEquals(first, it.scroll.firstVisibleItemIndex); assertEquals(offset, it.scroll.firstVisibleItemScrollOffset); it.active = true }
+            // Appearing while the reader is away from the tail does not move them.
+            settle()
+            scenario.onActivity { assertEquals(first, it.scroll.firstVisibleItemIndex); assertEquals(offset, it.scroll.firstVisibleItemScrollOffset); it.fontScale = 1.5f }
             settle(); capture("large-font.png")
         }
     }
