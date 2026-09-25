@@ -1,6 +1,4 @@
 <!-- Generated from crates/zork-ui/assets/history/job.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-  <path android:pathData="m5 6 4 4-4 4M12 6h7" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M10.0 16.0a5.0 5.0 0 1 0 10.0 0a5.0 5.0 0 1 0 -10.0 0Z" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
-  <path android:pathData="M15 13v3l2 1" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  <path android:pathData="M6 7H18C20.0 7 21 8.0 21 10V18C21 20.0 20.0 21 18 21H6C4.0 21 3 20.0 3 18V10C3 8.0 4.0 7 6 7ZM8 7V5c0-1.5.5-2 2-2h4c1.5 0 2 .5 2 2v2M3 12c5 3 13 3 18 0M12 12v4" android:fillColor="#00000000" android:strokeColor="#24272B" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>

@@ -1,226 +1,359 @@
 [
   {
     "file": "home.svg",
-    "upstreamExport": "HomeIcon",
-    "centralName": "IconHomeRoof",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconHomeRoof",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "HomeIcon",
+      "centralName": "IconHomeRoof",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconHomeRoof",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "list-checks.svg",
-    "upstreamExport": "ListChecksIcon",
-    "centralName": "IconPlanning",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlanning",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ListChecksIcon",
+      "centralName": "IconPlanning",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlanning",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "folder1.svg",
-    "upstreamExport": "Folder1Icon",
-    "centralName": "IconFolder1",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder1",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "Folder1Icon",
+      "centralName": "IconFolder1",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder1",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "arrow-up.svg",
-    "upstreamExport": "ArrowUpIcon",
-    "centralName": "IconArrowUp",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUp",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ArrowUpIcon",
+      "centralName": "IconArrowUp",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUp",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "chevron-down.svg",
-    "upstreamExport": "ChevronDownIcon",
-    "centralName": "IconChevronDownMedium",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownMedium",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ChevronDownIcon",
+      "centralName": "IconChevronDownMedium",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownMedium",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "sparkles.svg",
-    "upstreamExport": "SparklesIcon",
-    "centralName": "IconSparklesTwo",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSparklesTwo",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "SparklesIcon",
+      "centralName": "IconSparklesTwo",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSparklesTwo",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "shapes-plus-x-square-circle.svg",
-    "upstreamExport": "ShapesPlusXSquareCircleIcon",
-    "centralName": "IconShapesPlusXSquareCircle",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconShapesPlusXSquareCircle",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ShapesPlusXSquareCircleIcon",
+      "centralName": "IconShapesPlusXSquareCircle",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconShapesPlusXSquareCircle",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "panel-left.svg",
-    "upstreamExport": "PanelLeftIcon",
-    "centralName": "IconLayoutAlignLeft",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignLeft",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "PanelLeftIcon",
+      "centralName": "IconLayoutAlignLeft",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignLeft",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "plus.svg",
-    "upstreamExport": "PlusIcon",
-    "centralName": "IconPlusLarge",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusLarge",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "PlusIcon",
+      "centralName": "IconPlusLarge",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusLarge",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "search.svg",
-    "upstreamExport": "SearchIcon",
-    "centralName": "IconMagnifyingGlass",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "SearchIcon",
+      "centralName": "IconMagnifyingGlass",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "settings-slider-horizontal.svg",
-    "upstreamExport": "SettingsSliderHorizontalIcon",
-    "centralName": "IconSettingsSliderHor",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderHor",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "SettingsSliderHorizontalIcon",
+      "centralName": "IconSettingsSliderHor",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderHor",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "inbox.svg",
-    "upstreamExport": "InboxIcon",
-    "centralName": "IconBox2",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBox2",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "InboxIcon",
+      "centralName": "IconBox2",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBox2",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "folder2.svg",
-    "upstreamExport": "Folder2Icon",
-    "centralName": "IconFolder2",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder2",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "Folder2Icon",
+      "centralName": "IconFolder2",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFolder2",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "puzzle.svg",
-    "upstreamExport": "PuzzleIcon",
-    "centralName": "IconPuzzle",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "PuzzleIcon",
+      "centralName": "IconPuzzle",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "settings.svg",
-    "upstreamExport": "SettingsIcon",
-    "centralName": "IconSettingsGear2",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "SettingsIcon",
+      "centralName": "IconSettingsGear2",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "arrow-left.svg",
-    "upstreamExport": "ArrowLeftIcon",
-    "centralName": "IconArrowLeft",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowLeft",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ArrowLeftIcon",
+      "centralName": "IconArrowLeft",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowLeft",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "arrow-right.svg",
-    "upstreamExport": "ArrowRightIcon",
-    "centralName": "IconArrowRight",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ArrowRightIcon",
+      "centralName": "IconArrowRight",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "clock.svg",
-    "upstreamExport": "ClockIcon",
-    "centralName": "IconClock",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ClockIcon",
+      "centralName": "IconClock",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "panel-right.svg",
-    "upstreamExport": "PanelRightIcon",
-    "centralName": "IconLayoutAlignRight",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignRight",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "PanelRightIcon",
+      "centralName": "IconLayoutAlignRight",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutAlignRight",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "x.svg",
-    "upstreamExport": "XIcon",
-    "centralName": "IconCrossSmall",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "XIcon",
+      "centralName": "IconCrossSmall",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "reload.svg",
-    "upstreamExport": "ReloadIcon",
-    "centralName": "IconArrowRotateClockwise",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRotateClockwise",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "ReloadIcon",
+      "centralName": "IconArrowRotateClockwise",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRotateClockwise",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "settings-slider-three.svg",
-    "upstreamExport": "SettingsSliderThreeIcon",
-    "centralName": "IconSettingsSliderThree",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderThree",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "SettingsSliderThreeIcon",
+      "centralName": "IconSettingsSliderThree",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsSliderThree",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "microphone-filled.svg",
-    "upstreamExport": "MicrophoneFilledIcon",
-    "centralName": "IconMicrophone",
-    "module": "@central-icons-react/round-filled-radius-2-stroke-2/IconMicrophone",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "MicrophoneFilledIcon",
+      "centralName": "IconMicrophone",
+      "module": "@central-icons-react/round-filled-radius-2-stroke-2/IconMicrophone",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "paperclip.svg",
-    "upstreamExport": "PaperclipIcon",
-    "centralName": "IconPaperclip1",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperclip1",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "PaperclipIcon",
+      "centralName": "IconPaperclip1",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperclip1",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "check.svg",
-    "upstreamExport": "CheckIcon",
-    "centralName": "IconCheckmark1Small",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCheckmark1Small",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "CheckIcon",
+      "centralName": "IconCheckmark1Small",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCheckmark1Small",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "filter2.svg",
-    "upstreamExport": "Filter2Icon",
-    "centralName": "IconFilter2",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFilter2",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "Filter2Icon",
+      "centralName": "IconFilter2",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFilter2",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "layout-column.svg",
-    "upstreamExport": "LayoutColumnIcon",
-    "centralName": "IconLayoutColumn",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutColumn",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "LayoutColumnIcon",
+      "centralName": "IconLayoutColumn",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayoutColumn",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "bars-three.svg",
-    "upstreamExport": "BarsThreeIcon",
-    "centralName": "IconBarsThree2",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBarsThree2",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "BarsThreeIcon",
+      "centralName": "IconBarsThree2",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconBarsThree2",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "circle-dashed.svg",
-    "upstreamExport": "CircleDashedIcon",
-    "centralName": "IconCircleDashed",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleDashed",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "CircleDashedIcon",
+      "centralName": "IconCircleDashed",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleDashed",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "loader.svg",
-    "upstreamExport": "LoaderIcon",
-    "centralName": "IconLoader",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconLoader",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "LoaderIcon",
+      "centralName": "IconLoader",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconLoader",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "file.svg",
-    "upstreamExport": "FileIcon",
-    "centralName": "IconFileBend",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileBend",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "FileIcon",
+      "centralName": "IconFileBend",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileBend",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   },
   {
     "file": "download.svg",
-    "upstreamExport": "DownloadIcon",
-    "centralName": "IconArrowInbox",
-    "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowInbox",
-    "strokeNormalization": "2 → 1.5, shared 1.5 stroke"
+    "originalImport": {
+      "upstreamExport": "DownloadIcon",
+      "centralName": "IconArrowInbox",
+      "module": "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowInbox",
+      "strokeNormalization": "2 \u2192 1.5, shared 1.5 stroke"
+    },
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
+  },
+  {
+    "file": "circle-x.svg",
+    "artwork": "Zork soft-line",
+    "strokeWidth": 1.75
   }
 ]
