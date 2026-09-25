@@ -383,6 +383,49 @@ fn recv_survives_icmp_unreachable_from_prior_send() {
     assert_eq!(meta.addr.port(), sender_addr.port());
 }
 
+/// Zork patch: XNU cannot pin an IPv4 source address on send, so the IPv4 receive
+/// destination must not be reported either; otherwise noq keys paths by a local address
+/// that outgoing packets do not carry. A `src_ip` hint must still be sendable.
+#[test]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn apple_ipv4_path_has_no_local_ip() {
+    let send = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let recv = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+    let dst = SocketAddr::new(
+        Ipv4Addr::LOCALHOST.into(),
+        recv.local_addr().unwrap().port(),
+    );
+    let send_state = UdpSocketState::new((&send).into()).unwrap();
+    let recv_state = UdpSocketState::new((&recv).into()).unwrap();
+    recv.set_nonblocking(false).unwrap();
+    recv.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    send_state
+        .try_send(
+            (&send).into(),
+            &Transmit {
+                destination: dst,
+                ecn: None,
+                contents: b"hello",
+                segment_size: None,
+                src_ip: Some(Ipv4Addr::LOCALHOST.into()),
+            },
+        )
+        .unwrap();
+    let mut buf = [0u8; 16];
+    let mut meta = RecvMeta::default();
+    let n = recv_state
+        .recv(
+            (&recv).into(),
+            &mut [IoSliceMut::new(&mut buf)],
+            slice::from_mut(&mut meta),
+        )
+        .unwrap();
+    assert_eq!(n, 1);
+    assert_eq!(&buf[..meta.len], b"hello");
+    assert_eq!(meta.dst_ip, None);
+}
+
 fn test_send_recv(send: &Socket, recv: &Socket, transmit: Transmit<'_>) {
     let send_state = UdpSocketState::new(send.into()).unwrap();
     let recv_state = UdpSocketState::new(recv.into()).unwrap();

@@ -76,11 +76,29 @@ impl Controller {
 }
 fn update_identity(account: &Account, state: &mut Snapshot) {
     match account.local_identity() {
-        Ok((subject, email, authenticated, pending)) => {
-            state.subject = subject;
-            state.email = email;
-            state.authenticated = authenticated;
-            state.pending_revocations = pending;
+        Ok(identity) => {
+            state.subject = identity.subject;
+            state.email = identity.email;
+            state.authenticated = identity.authenticated;
+            state.pending_revocations = identity.pending_revocations;
+            // The control plane ended the session: say so once, instead of
+            // a silent logout or a retry loop. A new login clears the marker.
+            match identity.signed_out {
+                Some(message) if state.phase == Phase::Idle && state.error.is_none() => {
+                    state.error = Some(message.into());
+                }
+                None if state.error.as_deref().is_some_and(|error| {
+                    [
+                        super::signed_out_message("refresh_reused"),
+                        super::signed_out_message(""),
+                    ]
+                    .contains(&error)
+                }) =>
+                {
+                    state.error = None;
+                }
+                _ => {}
+            }
         }
         Err(_) => {
             state.subject = None;

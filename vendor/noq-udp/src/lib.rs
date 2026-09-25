@@ -118,7 +118,9 @@ pub struct RecvMeta {
     /// The destination IP address which was encoded in this datagram
     ///
     /// Populated on platforms: Windows (except under Wine), Linux, Android
-    /// (API level > 25), FreeBSD, OpenBSD, NetBSD, macOS, and iOS.
+    /// (API level > 25), FreeBSD, OpenBSD, NetBSD, macOS, and iOS. On Apple platforms only
+    /// for IPv6 (Zork patch): the kernel cannot pin an IPv4 source on send, so reporting the
+    /// IPv4 destination would give paths a local address outgoing packets do not use.
     pub dst_ip: Option<IpAddr>,
     /// The interface index of the interface on which the datagram was received
     pub interface_index: Option<u32>,

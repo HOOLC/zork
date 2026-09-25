@@ -30,7 +30,6 @@ pub struct EnrollmentService {
     join_transaction: tokio::sync::Mutex<()>,
     join_state: std::sync::Mutex<Option<operations::JoinRecord>>,
     join_job: std::sync::Mutex<Option<zork_notify::Task<()>>>,
-    pending: std::sync::Mutex<std::collections::HashMap<String, InviteRecord>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -71,59 +70,55 @@ impl EnrollmentService {
             join_transaction: Default::default(),
             join_state: std::sync::Mutex::new(operations::load(root)?),
             join_job: Default::default(),
-            pending: Default::default(),
         })
     }
-    fn path(&self, id: &str) -> Result<PathBuf> {
-        ensure!(
-            id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()),
-            "invalid_invite_id"
-        );
-        Ok(self.root.join("mesh/invites").join(format!("{id}.json")))
+    fn invites(&self) -> InviteStore<'_> {
+        InviteStore { root: &self.root }
     }
     fn load(&self, id: &str) -> Result<InviteRecord> {
-        self.path(id)?;
-        if let Some(record) = self.pending.lock().expect("pending invitations").get(id) {
-            return Ok(record.clone());
-        }
-        Ok(serde_json::from_slice(
-            &std::fs::read(self.path(id)?).context("invite_not_found")?,
-        )?)
+        self.invites().load(id)
     }
     fn save(&self, record: &InviteRecord) -> Result<()> {
-        if record.used_by.is_none() {
-            self.pending
-                .lock()
-                .expect("pending invitations")
-                .insert(record.id.clone(), record.clone());
-            return Ok(());
-        }
-        private_json(&self.path(&record.id)?, record)?;
-        self.pending
-            .lock()
-            .expect("pending invitations")
-            .remove(&record.id);
-        Ok(())
+        self.invites().save(record)
     }
     fn records(&self) -> Result<Vec<InviteRecord>> {
-        let dir = self.root.join("mesh/invites");
-        std::fs::create_dir_all(&dir)?;
-        let mut pending = self.pending.lock().expect("pending invitations");
-        pending.retain(|_, r| r.expires_at.saturating_add(60) > enrollment::now());
-        let mut result: Vec<_> = pending.values().cloned().collect();
-        drop(pending);
-        for entry in std::fs::read_dir(dir)? {
-            let path = entry?.path();
-            if path.extension().is_some_and(|e| e == "json") {
-                result.push(serde_json::from_slice(&std::fs::read(path)?)?);
+        self.invites().records()
+    }
+    fn prune(&self, records: Vec<InviteRecord>) -> Result<Vec<InviteRecord>> {
+        self.invites().prune(records)
+    }
+
+    /// Unused, unexpired invitations this device can still be reached for.
+    fn open_invites(&self) -> Result<Vec<InviteRecord>> {
+        let now = enrollment::now();
+        Ok(self
+            .records()?
+            .into_iter()
+            .filter(|r| !r.revoked && r.used_by.is_none() && r.expires_at > now)
+            .collect())
+    }
+    /// The enrollment endpoint keeps a relay connection only while open
+    /// invitations exist; returns the earliest open expiry.
+    async fn sync_invite_relay(&self) -> Option<u64> {
+        let open = match self.open_invites() {
+            Ok(open) => open,
+            Err(error) => {
+                tracing::warn!(%error, "invite relay state unavailable");
+                return None;
             }
-        }
-        Ok(result)
+        };
+        self.transport.hold_relay_for_invites(!open.is_empty()).await;
+        open.iter().map(|r| r.expires_at).min()
     }
 
     pub async fn create(&self, state: &AppState) -> Result<Value> {
         let service = state.mesh.get().context("mesh_not_ready")?;
-        if let Some(group) = zork_config::load_config(&self.root)?.mesh.group {
+        let mesh = zork_config::load_config(&self.root)?.mesh;
+        // A runtime left over after Mesh was switched off (for example when the
+        // Station could not be restarted) must not mint an invitation that dies
+        // on the next restart.
+        ensure!(mesh.enabled, "mesh_disabled");
+        if let Some(group) = mesh.group {
             ensure!(group.contains(service.origin()), "device_removed_from_mesh");
             if group.authority != service.origin() {
                 return service
@@ -153,9 +148,15 @@ impl EnrollmentService {
             }
             Ok(())
         })?;
-        let records = self.records()?;
+        let records = self.prune(self.records()?)?;
         ensure!(
-            self.pending.lock().expect("pending invitations").len() < 64,
+            records
+                .iter()
+                .filter(
+                    |r| r.used_by.is_none() && r.expires_at.saturating_add(60) > enrollment::now()
+                )
+                .count()
+                < 64,
             "too_many_recent_invites"
         );
         ensure!(
@@ -166,15 +167,17 @@ impl EnrollmentService {
                 < 8,
             "too_many_active_invites"
         );
-        // Keep recent receipts for lost acknowledgements without growing forever.
-        for record in records
-            .iter()
-            .filter(|r| r.expires_at.saturating_add(86400) < enrollment::now())
-        {
-            let _ = std::fs::remove_file(self.path(&record.id)?);
-        }
         let config = zork_config::load_config(&self.root)?.mesh;
-        let short = enrollment::ticket::Ticket::new(self.transport.address().await, &config)?;
+        // Joiners outside the LAN reach this endpoint through the relay.
+        self.transport.hold_relay_for_invites(true).await;
+        let short = match enrollment::ticket::Ticket::new(self.transport.address().await, &config)
+        {
+            Ok(short) => short,
+            Err(error) => {
+                self.sync_invite_relay().await;
+                return Err(error);
+            }
+        };
         let id = short.id();
         let secret = short.secret();
         let expires_at = enrollment::now() + enrollment::INVITE_SECONDS;
@@ -228,8 +231,9 @@ impl EnrollmentService {
             }
         }
         let _guard = self.transaction.lock().await;
+        let records = self.prune(self.records()?)?;
         Ok(
-            json!({"items":self.records()?.into_iter().map(|r|json!({"id":r.id,"expires_at":r.expires_at,"claim_id":r.claim.as_ref().map(|c|zork_mesh::content_root(c.challenge.as_bytes())),"status":if r.revoked {"revoked"}else if r.committed{"joined"}else if r.expires_at<=enrollment::now(){"expired"}else if r.claim.is_some(){"connecting"}else{"waiting"},"device":r.claim.map(|c|c.device),"origin":r.used_by})).collect::<Vec<_>>()}),
+            json!({"items":records.into_iter().map(|r|json!({"id":r.id,"expires_at":r.expires_at,"claim_id":r.claim.as_ref().map(|c|zork_mesh::content_root(c.challenge.as_bytes())),"status":if r.revoked {"revoked"}else if r.committed{"joined"}else if r.expires_at<=enrollment::now(){"expired"}else if r.claim.is_some(){"connecting"}else{"waiting"},"device":r.claim.map(|c|c.device),"origin":r.used_by})).collect::<Vec<_>>()}),
         )
     }
 
@@ -250,6 +254,7 @@ impl EnrollmentService {
         );
         record.revoked = true;
         self.save(&record)?;
+        self.sync_invite_relay().await;
         state.db.realtime.notify(crate::realtime::MESH);
         Ok(json!({"revoked":true}))
     }
@@ -267,7 +272,7 @@ impl EnrollmentService {
         let _guard = self.transaction.lock().await;
         let record = self
             .load(&request.id)
-            .context("invite_expired_or_restart")?;
+            .context("invite_expired_or_unknown")?;
         ensure!(
             !record.revoked
                 && zork_mesh::content_root(request.secret.as_bytes()) == record.secret_hash,
@@ -438,6 +443,7 @@ impl EnrollmentService {
             })?;
             record.committed = true;
             self.save(&record)?;
+            self.sync_invite_relay().await;
         }
         service.refresh(state).await?;
         state
@@ -466,6 +472,7 @@ impl EnrollmentService {
             &self.node,
         )
         .await?;
+        self.join_resolved(state, operation, &invitation.device.origin)?;
         let service = state.mesh.get().context("mesh_not_ready")?;
         let before = zork_config::load_config(&self.root)?.mesh;
         ensure!(
@@ -564,6 +571,30 @@ impl EnrollmentService {
                 .membership_call(&group.authority, "remove_member", json!({"origin":origin}))
                 .await;
         }
+        self.remove_as_authority(state, origin, true).await
+    }
+
+    /// A member announced that it left. It already detached itself, so the
+    /// authority only updates its directory and does not call it back.
+    pub async fn member_left(&self, state: &AppState, origin: &str) -> Result<Value> {
+        self.remove_as_authority(state, origin, false).await
+    }
+
+    async fn remove_as_authority(
+        &self,
+        state: &AppState,
+        origin: &str,
+        notify_removed: bool,
+    ) -> Result<Value> {
+        let service = state.mesh.get().context("mesh_not_ready")?;
+        let group = zork_config::load_config(&self.root)?
+            .mesh
+            .group
+            .context("mesh_membership_missing")?;
+        ensure!(
+            group.authority == service.origin(),
+            "mesh_authority_changed"
+        );
         ensure!(origin != group.authority, "cannot_remove_mesh_authority");
         let _guard = self.transaction.lock().await;
         for mut record in self
@@ -590,10 +621,29 @@ impl EnrollmentService {
         })?;
         // Deliver removal while the authenticated channel still exists; all other
         // members also refresh membership on reconnect or within the polling bound.
-        let _ = service
-            .membership_call(origin, "apply_membership", json!({"group":group}))
-            .await;
+        // An offline device must not hold the manager's removal hostage.
+        if !notify_removed {
+            // The departing device is waiting for this reply on the connection
+            // that the refresh below revokes; answer first, then apply.
+            let (service, state) = (service.clone(), state.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                if let Err(error) = service.refresh(&state).await {
+                    tracing::warn!(%error, "Mesh membership refresh after a leave will retry");
+                }
+                state.db.realtime.notify(crate::realtime::MESH);
+                service.enrollment.broadcast(&state, &group).await;
+            });
+            return Ok(json!({"removed":true}));
+        }
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            service.membership_call(origin, "apply_membership", json!({"group":group})),
+        )
+        .await;
         service.refresh(state).await?;
+        state.db.realtime.notify(crate::realtime::MESH);
+        self.broadcast(state, &group).await;
         Ok(json!({"removed":true,"group":group}))
     }
 
@@ -697,6 +747,73 @@ impl EnrollmentService {
     }
 }
 
+/// Durable invitation records under `<data>/mesh/invites`.
+struct InviteStore<'a> {
+    root: &'a Path,
+}
+impl InviteStore<'_> {
+    fn path(&self, id: &str) -> Result<PathBuf> {
+        ensure!(
+            id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "invalid_invite_id"
+        );
+        Ok(self.root.join("mesh/invites").join(format!("{id}.json")))
+    }
+    fn load(&self, id: &str) -> Result<InviteRecord> {
+        let path = self.path(id)?;
+        let record: InviteRecord =
+            serde_json::from_slice(&std::fs::read(path).context("invite_not_found")?)?;
+        Ok(record)
+    }
+    /// Every invitation, used or not, is persisted (0600, secret stored only as
+    /// its hash) so a Station restart never silently invalidates an invitation
+    /// a device is still redeeming. Unused ones are dropped after expiry.
+    fn save(&self, record: &InviteRecord) -> Result<()> {
+        private_json(&self.path(&record.id)?, record)
+    }
+    fn records(&self) -> Result<Vec<InviteRecord>> {
+        let dir = self.root.join("mesh/invites");
+        std::fs::create_dir_all(&dir)?;
+        let mut result = vec![];
+        for entry in std::fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|e| e == "json") {
+                match std::fs::read(&path)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| Ok(serde_json::from_slice::<InviteRecord>(&bytes)?))
+                {
+                    Ok(record) => result.push(record),
+                    // An interrupted write leaves no `.json`; anything else unreadable is
+                    // not a live invitation and must not block every later invite.
+                    Err(error) => {
+                        tracing::warn!(%error, path = %path.display(), "ignoring unreadable Mesh invitation record")
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+    /// Unused invitations disappear shortly after expiry; used ones stay a day
+    /// as receipts for lost acknowledgements.
+    fn prune(&self, records: Vec<InviteRecord>) -> Result<Vec<InviteRecord>> {
+        let now = enrollment::now();
+        let mut kept = vec![];
+        for record in records {
+            let stale = if record.used_by.is_some() {
+                record.expires_at.saturating_add(86400) < now
+            } else {
+                record.expires_at.saturating_add(60) < now
+            };
+            if stale {
+                let _ = std::fs::remove_file(self.path(&record.id)?);
+            } else {
+                kept.push(record);
+            }
+        }
+        Ok(kept)
+    }
+}
+
 fn enrolled(group: &MeshGroup, origin: &str) -> bool {
     group.contains(origin)
 }
@@ -741,16 +858,26 @@ pub async fn apply_group(state: &AppState, sender: &str, group: MeshGroup) -> Re
 pub fn start(service: Arc<EnrollmentService>, state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let handler = service.clone();
-        if let Err(error) = service
-            .transport
-            .serve(move |endpoint, request| {
-                let state = state.clone();
-                let handler = handler.clone();
-                async move { handler.begin(&state, endpoint, request).await }
-            })
-            .await
-        {
-            tracing::error!(%error,"Enrollment listener stopped");
+        let serve = service.transport.serve(move |endpoint, request| {
+            let state = state.clone();
+            let handler = handler.clone();
+            async move { handler.begin(&state, endpoint, request).await }
+        });
+        // Invitations expire silently; release the relay once the last one has.
+        let expiry = async {
+            loop {
+                let wait = match service.sync_invite_relay().await {
+                    Some(expires_at) => expires_at.saturating_sub(enrollment::now()) + 1,
+                    None => 60,
+                };
+                tokio::time::sleep(std::time::Duration::from_secs(wait.clamp(1, 60))).await;
+            }
+        };
+        tokio::select! {
+            result = serve => if let Err(error) = result {
+                tracing::error!(%error,"Enrollment listener stopped");
+            },
+            () = expiry => {}
         }
     })
 }
@@ -777,4 +904,62 @@ pub(crate) fn private_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     file.sync_all()?;
     std::fs::rename(temp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod invite_store_tests {
+    use super::*;
+
+    fn record(id: char, expires_at: u64, used_by: Option<&str>) -> InviteRecord {
+        InviteRecord {
+            id: id.to_string().repeat(32),
+            secret_hash: zork_mesh::content_root(b"secret"),
+            expires_at,
+            revoked: false,
+            claim: None,
+            used_by: used_by.map(str::to_owned),
+            committed: used_by.is_some(),
+        }
+    }
+
+    #[test]
+    fn unused_invitations_survive_restart_privately_until_expiry() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = enrollment::now();
+        let live = record('a', now + 600, None);
+        InviteStore { root: dir.path() }.save(&live).unwrap();
+        // A new store is what a restarted Station sees.
+        let restarted = InviteStore { root: dir.path() };
+        let loaded = restarted.load(&live.id).unwrap();
+        assert_eq!(loaded.secret_hash, live.secret_hash);
+        let path = restarted.path(&live.id).unwrap();
+        let bytes = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !bytes.contains("\"secret\""),
+            "only the secret hash is stored"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        // Expired unused invitations go; recent receipts of used ones stay.
+        restarted.save(&record('b', now - 120, None)).unwrap();
+        restarted
+            .save(&record('c', now - 120, Some("key:joined")))
+            .unwrap();
+        restarted
+            .save(&record('d', now - 2 * 86400, Some("key:old")))
+            .unwrap();
+        std::fs::write(dir.path().join("mesh/invites/garbage.json"), b"{").unwrap();
+        let kept = restarted.prune(restarted.records().unwrap()).unwrap();
+        let mut ids: Vec<_> = kept.iter().map(|r| r.id.chars().next().unwrap()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!['a', 'c']);
+        assert!(restarted.load(&"b".repeat(32)).is_err());
+        assert!(restarted.load("not-an-id").is_err());
+    }
 }

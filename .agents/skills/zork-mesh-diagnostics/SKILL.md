@@ -11,7 +11,7 @@ description: 排查 zork 的设备接入、Mesh 连接、远程任务投递和�
 - 区分独立 Station、客户端拥有节点和系统服务接管。supervisor 管理 Station，Agent 内嵌；`service uninstall` 撤销看护，不等于停止进程，`zork stop` 才停止节点。客户端切换不迁移执行设备或工作目录。
 - 当前身份持久化与生命周期锁由 iroh 运行时拥有，不读取或迁移 Synch 旧库。分别验证正常退出、重启、附件读取和连接撤权，不以节点 ready 代替业务恢复。
 - ready 后接口仍停顿时采样业务与 Mesh 工作线程，检查后台发现、TLS 平台校验等同步调用是否占满执行器；不靠增加线程数、关闭探测或放宽证书校验掩盖阻塞。
-- 邀请由 Station 管理，重复 join 保留身份、Profile、任务和目录；邀请/管理凭据不进报告。成员管理节点离线不等于已有节点不能执行。relay/discovery 与账号控制面不同，客户端配置覆盖不自动改写运行中的 Station。账号目录只授予经过账号身份与设备签名验证的自动连接；安装成员与账号连接分别管理。原生 iroh 对端身份和本地成员关系是业务访问依据。公网 relay、邀请解析和重试独立于可选账号，账号退出或封禁只撤销账号自动连接，不能撤销独立安装成员。按 [中继控制面指南](../../../deploy/cloudflare/README.md) 分别验证账号会话撤销与匿名原生中继业务，不能用 WebSocket 升级证明业务可用或成员授权。切换部署核对实际中继进程和连接，Worker 发布成功不代表容器已替换。
+- 邀请由 Station 管理并持久保存至过期，重复 join 保留身份、Profile、任务和目录；邀请/管理凭据不进报告。卡住的接入用 `zork mesh status` 看原因，`zork mesh join --cancel` 取消或 `--replace` 换邀请，不删除 `mesh/join-operation.json`；离开后管理节点仍列出的成员用 `zork mesh remove` 清理。连接立即报“版本过旧/较新”是控制协议版本不一致，升级对应一方，不排查网络。成员管理节点离线不等于已有节点不能执行。relay/discovery 与账号控制面不同，客户端配置覆盖不自动改写运行中的 Station。账号目录只授予经过账号身份与设备签名验证的自动连接；安装成员与账号连接分别管理。原生 iroh 对端身份和本地成员关系是业务访问依据。公网 relay、邀请解析和重试独立于可选账号，账号退出或封禁只撤销账号自动连接，不能撤销独立安装成员。按 [中继控制面指南](../../../deploy/cloudflare/README.md) 分别验证账号会话撤销与匿名原生中继业务，不能用 WebSocket 升级证明业务可用或成员授权。切换部署核对实际中继进程和连接，Worker 发布成功不代表容器已替换。
 - 业务操作丢回执时核对原请求与持久回执，未知结果不换 ID 重放；普通消息遵循 [Chat 发送约定](../../../docs/design/chat.md#身份与消息)。停止需确认真实结束。有效 Mesh 成员互信，不以旧 client/collaborate 标志追加授权；成员身份、附件来源与完整内容分别核对；已缓存不代表仍有访问权限。
 - 手机 ADB 按 [调试合同](../../../docs/design/devices.md#android-debugging) 区分系统开关、本机 adbd、Mesh 桥接与各台 Station 的 ADB 授权。多台 Station 独立连接，验证单台重试或撤权不影响其他连接；Station 自动将代理连接到本机 adb server，Agent 直接使用 adb devices -l；serial 只属于该 Station 和当前代次。蜂窝模式的 USB 激活不能被无线调试开关替代。Agent 使用已授权的设备命令。
 

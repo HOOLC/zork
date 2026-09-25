@@ -262,6 +262,8 @@ async fn start_owned(
             crate::control::ALPN,
             crate::control::ControlService::new(handler, connections),
         )
+        .accept(crate::control::LEGACY_ALPN, crate::control::LegacyRefusal)
+        .accept(crate::control::VERSION_ALPN, crate::control::VersionService)
         .spawn();
     configure(root, config, &handle).await?;
     let (stop, stopped) = oneshot::channel();

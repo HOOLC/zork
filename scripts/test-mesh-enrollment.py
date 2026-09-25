@@ -94,7 +94,11 @@ def main():
         invite = admin(a, 'POST', '/v1/node/mesh/invites')
         assert invite['command'].startswith("zork mesh join '") and invite['command'].endswith('--channel release')
         assert str(a.root) not in invite['command'] and 'curl' not in invite['command']
-        assert not (a.root / 'mesh/invites' / (invite['id'] + '.json')).exists(), 'pending invitation leaked to disk'
+        # Unused invitations survive a Station restart: persisted privately, secret only as a hash.
+        pending_record = a.root / 'mesh/invites' / (invite['id'] + '.json')
+        assert pending_record.stat().st_mode & 0o777 == 0o600, oct(pending_record.stat().st_mode)
+        stored = pending_record.read_text()
+        assert 'secret_hash' in stored and invite['invitation'] not in stored and invite['command'] not in stored
         # Pause the invitation owner without losing its one-use capability.
         # Restarting the joining Station must resume the same persisted operation.
         authority_pid = int((a.root / 'run/zork-station.pid').read_text())
@@ -119,6 +123,14 @@ def main():
         assert after[0] == before[0] and after[2] == before[2]
         before = after
         print('PASS: in-flight join resumes the same operation after Station process death', flush=True)
+        survivor = admin(a, 'POST', '/v1/node/mesh/invites')
+        a.restart_station()
+        f.wait(lambda: admin(a, 'GET', '/v1/node/mesh').get('origin') == a.origin, 'authority restarted')
+        listed = next(i for i in admin(a, 'GET', '/v1/node/mesh/invites')['items'] if i['id'] == survivor['id'])
+        assert listed['status'] == 'waiting', listed
+        admin(a, 'DELETE', '/v1/node/mesh/invites/' + survivor['id'])
+        before = pids()
+        print('PASS: an unused invitation survives a restart of the inviting Station', flush=True)
         print('PASS: enabled unpaired Station preserves network settings and identity', flush=True)
         # Simulate a committed intake whose reply never reached the joining node.
         # The transport identity remains durable, while its local membership was not saved.
@@ -236,10 +248,49 @@ def main():
         assert (b.root / 'profiles/fixture.json').exists() and paths[0].read_text().splitlines() == ['one']
         assert len(admin(a, 'GET', '/v1/node/mesh')['config']['group']['members']) == 2
         print('PASS: switch requires explicit confirmation; switch and local leave preserve identity, profiles, files and other members', flush=True)
+        assert json.loads(left.stdout)['manager_notified'] is True, left.stdout
+        f.wait(lambda: all(m['origin'] != b.origin for m in admin(d, 'GET', '/v1/node/mesh')['config']['group']['members']),
+               'manager dropped the departed member')
+        print('PASS: leaving tells the managing device, which stops listing the member', flush=True)
+
+        # A join stuck on an unreachable inviter can be replaced (explicitly) or cancelled.
+        authority_pid = int((a.root / 'run/zork-station.pid').read_text())
+        stuck_invite = admin(a, 'POST', '/v1/node/mesh/invites')
+        other_invite = admin(d, 'POST', '/v1/node/mesh/invites')
+        os.kill(authority_pid, signal.SIGSTOP)
+        try:
+            stuck = admin(b, 'POST', '/v1/node/mesh/join', {'invitation': stuck_invite['invitation']})
+            assert not stuck['finished']
+            status, refused = request(b, 'POST', '/v1/node/mesh/join', {'invitation': other_invite['invitation']})
+            assert status == 409 and refused['error'] == 'another_join_is_in_progress', (status, refused)
+            cli = subprocess.run([str(f.TARGET / 'zork'), 'mesh', 'join', other_invite['invitation'], '--data', str(b.root)],
+                capture_output=True, text=True, timeout=65)
+            assert cli.returncode != 0 and '--replace' in cli.stderr, cli.stderr
+            replaced = admin(b, 'POST', '/v1/node/mesh/join', {'invitation': other_invite['invitation'], 'replace': True})
+            assert replaced['id'] != stuck['id']
+            def done():
+                value = admin(b, 'GET', '/v1/node/mesh/join/' + replaced['id'])
+                return value if value['finished'] else None
+            assert f.wait(done, 'replacement join', 65)['phase'] == 'joined'
+            left = subprocess.run([str(f.TARGET / 'zork'), 'mesh', 'leave', '--data', str(b.root), '--yes', '--json'],
+                capture_output=True, text=True, timeout=65)
+            assert left.returncode == 0, left.stderr
+            cancel_invite = stuck_invite
+            pending = admin(b, 'POST', '/v1/node/mesh/join', {'invitation': cancel_invite['invitation']})
+            assert not pending['finished']
+            cancelled = subprocess.run([str(f.TARGET / 'zork'), 'mesh', 'join', '--cancel', '--data', str(b.root), '--json'],
+                capture_output=True, text=True, timeout=65)
+            assert cancelled.returncode == 0, cancelled.stderr
+            final = admin(b, 'GET', '/v1/node/mesh/join/' + pending['id'])
+            assert final['finished'] and final['phase'] == 'cancelled' and final['error'] == 'join_cancelled', final
+            assert admin(b, 'GET', '/v1/node/mesh')['config']['group'] is None
+        finally:
+            os.kill(authority_pid, signal.SIGCONT)
+        print('PASS: a stuck join is replaced only on explicit confirmation, and can be cancelled', flush=True)
 
         output = Path(os.environ.get('ZORK_TEST_ARTIFACT_DIR', str(f.ROOT / 'artifacts/mesh-enrollment')))
         output.mkdir(parents=True, exist_ok=True)
-        (output / 'result.json').write_text(json.dumps({'root': str(root), 'checks': ['cli_join', 'single_use', 'retry', 'three_nodes', 'no_restart', 'default_worker_grant', 'single_execution', 'revoke', 'supervisor_observe', 'invitation_authority_push']}, indent=2))
+        (output / 'result.json').write_text(json.dumps({'root': str(root), 'checks': ['cli_join', 'single_use', 'retry', 'three_nodes', 'no_restart', 'default_worker_grant', 'single_execution', 'revoke', 'supervisor_observe', 'invitation_authority_push', 'invite_survives_restart', 'leave_notifies_manager', 'join_replace_and_cancel']}, indent=2))
     finally:
         for node in nodes:
             node.stop()

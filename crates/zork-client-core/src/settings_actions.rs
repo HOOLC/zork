@@ -43,6 +43,10 @@ pub enum SettingsAction {
     DiscoverModels {
         profile: String,
     },
+    /// Ids the provider lists right now (read-only), for editor suggestions.
+    AvailableModels {
+        profile: String,
+    },
     RefreshQuota {
         profile: String,
     },
@@ -223,6 +227,9 @@ impl Client {
                 Ok(json!({}))
             }
             SettingsAction::DiscoverModels { profile } => profiles.discover_models(&profile).await,
+            SettingsAction::AvailableModels { profile } => {
+                Ok(json!({"ids": profiles.available_models(&profile).await?}))
+            }
             SettingsAction::RefreshQuota { profile } => {
                 profiles.refresh_quota(profile.clone()).await;
                 anyhow::ensure!(

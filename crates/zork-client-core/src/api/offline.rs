@@ -96,8 +96,17 @@ impl Fixture {
                     models.push(model);
                     added = 1;
                 }
+                // Providers usually list ids without limits: one the catalog
+                // knows and one it does not.
+                for id in ["gpt-5-nano", "vendor-preview-x"] {
+                    if !models.iter().any(|m| m["id"] == id) {
+                        models.push(json!({"id":id,"api":"openai-responses","enabled":false,
+                            "thinking":["off"],"default_thinking":"off","capabilities":{"input":["text"]}}));
+                        added += 1;
+                    }
+                }
                 return Ok(
-                    json!({"profile":d["profiles"][id],"added":added,"configured":added,"truncated":false}),
+                    json!({"profile":d["profiles"][id],"added":added,"configured":added.min(1),"truncated":false}),
                 );
             }
             if action == "models/enabled" && method == http::Method::PUT {

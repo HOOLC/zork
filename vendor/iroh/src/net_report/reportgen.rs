@@ -725,9 +725,11 @@ async fn relay_lookup_ipv4_staggered(
                 .lookup_ipv4_staggered(hostname, DNS_TIMEOUT, DNS_STAGGERING_MS)
                 .await
             {
-                Ok(mut addrs) => addrs
-                    .next()
+                // Zork patch: a fake-IP proxy DNS answer (198.18.0.0/15) only reaches the local
+                // proxy, so it is useless for QUIC address discovery; treat it as no address.
+                Ok(addrs) => addrs
                     .map(|ip| ip.to_canonical())
+                    .find(|ip| !crate::util::is_proxy_fake_ip(*ip))
                     .map(|addr| match addr {
                         IpAddr::V4(ip) => SocketAddrV4::new(ip, port),
                         IpAddr::V6(_) => unreachable!("bad DNS lookup: {:?}", addr),

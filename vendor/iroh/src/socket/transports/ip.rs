@@ -1,10 +1,12 @@
 use std::{
+    collections::HashMap,
     io,
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     num::NonZeroUsize,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
 use ipnet::{Ipv4Net, Ipv6Net};
@@ -14,7 +16,10 @@ use pin_project::pin_project;
 use tracing::{debug, info, trace};
 
 use super::{RecvInfo, Transmit};
-use crate::metrics::{EndpointMetrics, SocketMetrics};
+use crate::{
+    metrics::{EndpointMetrics, SocketMetrics},
+    util::is_proxy_fake_ip,
+};
 
 #[derive(Debug)]
 pub(crate) struct IpTransport {
@@ -22,6 +27,7 @@ pub(crate) struct IpTransport {
     socket: Arc<UdpSocket>,
     local_addr: Watchable<SocketAddr>,
     metrics: Arc<SocketMetrics>,
+    fake_ip_routes: FakeIpRouteGuard,
 }
 
 impl std::fmt::Display for IpTransport {
@@ -185,6 +191,7 @@ impl IpTransport {
             socket: Arc::new(socket),
             local_addr,
             metrics,
+            fake_ip_routes: FakeIpRouteGuard::default(),
         })
     }
 
@@ -254,6 +261,7 @@ impl IpTransport {
         IpNetworkChangeSender {
             socket: self.socket.clone(),
             local_addr: self.local_addr.clone(),
+            fake_ip_routes: self.fake_ip_routes.clone(),
         }
     }
 
@@ -263,6 +271,7 @@ impl IpTransport {
             config: self.config,
             sender,
             metrics: self.metrics.clone(),
+            fake_ip_routes: self.fake_ip_routes.clone(),
         }
     }
 }
@@ -271,6 +280,7 @@ impl IpTransport {
 pub(super) struct IpNetworkChangeSender {
     socket: Arc<UdpSocket>,
     local_addr: Watchable<SocketAddr>,
+    fake_ip_routes: FakeIpRouteGuard,
 }
 
 impl IpNetworkChangeSender {
@@ -285,7 +295,8 @@ impl IpNetworkChangeSender {
     }
 
     pub(super) fn on_network_change(&self, _info: &crate::socket::Report) {
-        // Nothing to do for now
+        // Routes may have changed (e.g. a proxy TUN was switched on or off).
+        self.fake_ip_routes.clear();
     }
 }
 
@@ -296,6 +307,7 @@ pub(super) struct IpSender {
     #[pin]
     sender: UdpSender,
     metrics: Arc<SocketMetrics>,
+    fake_ip_routes: FakeIpRouteGuard,
 }
 
 impl IpSender {
@@ -324,6 +336,12 @@ impl IpSender {
         src: Option<IpAddr>,
         transmit: &Transmit<'_>,
     ) -> Poll<io::Result<()>> {
+        if self.fake_ip_routes.blocks(dst) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::NetworkUnreachable,
+                "direct UDP route leaves through a fake-IP proxy TUN",
+            )));
+        }
         let total_bytes = transmit.contents.len() as u64;
         let res = Pin::new(&mut self.sender).poll_send(
             &noq_udp::Transmit {
@@ -352,6 +370,77 @@ impl IpSender {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+/// Zork patch: refuses direct UDP whose route leaves through a fake-IP proxy TUN.
+///
+/// Proxy clients in TUN "fake-IP" mode (Surge enhanced mode, Clash/mihomo, ...) take the
+/// default route and number their interface from `198.18.0.0/15`. A datagram routed
+/// there is re-sent by the proxy from its own socket and NAT port, so the peer sees a
+/// different 4-tuple than for datagrams sent directly on the LAN. QUIC treats the
+/// proxied copy as another network path: when a proxied Initial wins the race the
+/// server binds the handshake to the proxy's port and discards everything later sent
+/// directly (or the proxy's reply pins our path to the TUN address), and the handshake
+/// never completes. Such destinations are left to the relay instead, which the proxy
+/// can carry correctly over TCP.
+///
+/// The decision uses the kernel's own route: the source address a connected UDP socket
+/// gets for the destination (`connect()` on UDP sends nothing). Results are cached per
+/// destination IP for [`FakeIpRouteGuard::TTL`] and dropped on network changes.
+#[derive(Debug, Clone, Default)]
+struct FakeIpRouteGuard {
+    routes: Arc<Mutex<HashMap<IpAddr, (bool, Instant)>>>,
+}
+
+impl FakeIpRouteGuard {
+    const TTL: Duration = Duration::from_secs(30);
+    const MAX_ENTRIES: usize = 512;
+
+    /// Returns `true` if direct UDP to `dst` must not be sent.
+    fn blocks(&self, dst: SocketAddr) -> bool {
+        let ip = dst.ip().to_canonical();
+        if is_proxy_fake_ip(ip) {
+            return true;
+        }
+        // The fake-IP range is IPv4; loopback and IPv6 never take that route.
+        if !ip.is_ipv4() || ip.is_loopback() || ip.is_unspecified() {
+            return false;
+        }
+        let now = Instant::now();
+        let mut routes = self.routes.lock().expect("poisoned");
+        if let Some(&(blocked, at)) = routes.get(&ip)
+            && now.duration_since(at) < Self::TTL
+        {
+            return blocked;
+        }
+        let source = route_source(SocketAddr::new(ip, dst.port().max(1)));
+        let blocked = routes_through_fake_ip(source);
+        if blocked {
+            debug!(%dst, ?source, "not sending direct UDP through a fake-IP proxy TUN");
+        }
+        if routes.len() >= Self::MAX_ENTRIES {
+            routes.clear();
+        }
+        routes.insert(ip, (blocked, now));
+        blocked
+    }
+
+    fn clear(&self) {
+        self.routes.lock().expect("poisoned").clear();
+    }
+}
+
+/// Whether a destination whose kernel-chosen source is `source` goes through a
+/// fake-IP proxy TUN. An unknown route is not blocked; the real send reports errors.
+fn routes_through_fake_ip(source: Option<IpAddr>) -> bool {
+    source.is_some_and(is_proxy_fake_ip)
+}
+
+/// The IPv4 source address the kernel would pick for `dst`, without sending anything.
+fn route_source(dst: SocketAddr) -> Option<IpAddr> {
+    let socket = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    socket.connect(dst).ok()?;
+    socket.local_addr().ok().map(|addr| addr.ip())
 }
 
 #[derive(Debug, Clone)]
@@ -480,6 +569,34 @@ impl IpTransports {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fake_ip_route_decision() {
+        let tun: IpAddr = "198.18.0.1".parse().unwrap();
+        let lan: IpAddr = "192.168.20.152".parse().unwrap();
+        let tailscale: IpAddr = "100.120.232.91".parse().unwrap();
+        assert!(routes_through_fake_ip(Some(tun)));
+        assert!(!routes_through_fake_ip(Some(lan)));
+        assert!(!routes_through_fake_ip(Some(tailscale)));
+        assert!(!routes_through_fake_ip(None));
+    }
+
+    #[test]
+    fn fake_ip_guard_blocks_fake_destinations_only() {
+        let guard = FakeIpRouteGuard::default();
+        // Fake-IP destinations are refused without consulting the route table.
+        assert!(guard.blocks("198.18.1.203:7842".parse().unwrap()));
+        assert!(guard.blocks("[::ffff:198.18.0.1]:1234".parse().unwrap()));
+        // Loopback and IPv6 never go through the proxy TUN.
+        assert!(!guard.blocks("127.0.0.1:1234".parse().unwrap()));
+        assert!(!guard.blocks("[::1]:1234".parse().unwrap()));
+        // The route source of loopback is loopback, and the probe sends nothing.
+        assert_eq!(
+            route_source("127.0.0.1:9".parse().unwrap()),
+            Some(Ipv4Addr::LOCALHOST.into())
+        );
+        guard.clear();
+    }
 
     #[tokio::test]
     async fn test_bind_sorting() -> n0_error::Result {

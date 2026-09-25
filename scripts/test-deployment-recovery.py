@@ -382,6 +382,25 @@ class RecoveryTests(unittest.TestCase):
             runtime.stop()
         request.assert_called_once_with(self.data)
 
+    def test_preserved_mesh_identity_waits_for_mesh_readiness_after_restart(self):
+        runtime = NodeRuntime(self.data, self.binary, self.root / 'run.log', timeout=5)
+        # Right after restart the Station answers before Mesh is up (origin null).
+        answers = iter([{'config': {'enabled': True}, 'origin': None}] * 3
+                       + [{'config': {'enabled': True}, 'origin': 'key:same'}])
+        with patch.object(runtime, 'request', side_effect=lambda path: next(answers)), \
+                patch('deployment_health.time.sleep'):
+            self.assertEqual(runtime.verify_preserved({'origin': 'key:same'}),
+                             {'history_anchors_checked': 0})
+        # A different identity once ready is still a failure.
+        with patch.object(runtime, 'request', return_value={'config': {'enabled': True}, 'origin': 'key:other'}):
+            with self.assertRaisesRegex(RuntimeError, 'changed the existing Mesh identity'):
+                runtime.verify_preserved({'origin': 'key:same'})
+        # Mesh that never comes back is reported as such, not as a new identity.
+        runtime.timeout = 0.3
+        with patch.object(runtime, 'request', return_value={'config': {'enabled': True}, 'origin': None}):
+            with self.assertRaisesRegex(RuntimeError, 'Mesh did not become ready'):
+                runtime.verify_preserved({'origin': 'key:same'})
+
     def test_gui_shutdown_can_unlink_control_socket_before_supervisor_exits(self):
         runtime = NodeRuntime(self.data, self.binary, self.root / 'run.log')
         with patch('deployment_health.pause_service'), \

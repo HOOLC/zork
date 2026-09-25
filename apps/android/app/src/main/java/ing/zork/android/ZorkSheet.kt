@@ -49,8 +49,11 @@ private val FlingVelocity = 800.dp
 internal fun ZorkSheet(
     open: Boolean, title: String, dismiss: () -> Unit, onClosed: () -> Unit = {},
     canDismiss: Boolean = true,
+    /** Back is offered here first; returning true means an inner layer closed instead of the sheet. */
+    back: (() -> Boolean)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val innerBack by rememberUpdatedState(back)
     val closed by rememberUpdatedState(onClosed)
     val dismissible by rememberUpdatedState(canDismiss)
     val requestDismiss by rememberUpdatedState(dismiss)
@@ -118,7 +121,7 @@ internal fun ZorkSheet(
             }
         }
     }
-    Dialog(onDismissRequest = { if (dismissible) requestDismiss() },
+    Dialog(onDismissRequest = { if (innerBack?.invoke() != true && dismissible) requestDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
             dismissOnClickOutside = false)) {
         // The sheet draws its own scrim and motion; the window adds neither.

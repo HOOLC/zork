@@ -43,17 +43,21 @@ internal object SettingsStyle {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun SettingsSheet(title: String, busy: Boolean = false, error: String? = null, dismiss: () -> Unit,
     footer: (@Composable ColumnScope.() -> Unit)? = null, dismissWhileBusy: Boolean = false,
-    open: Boolean? = null, onClosed: () -> Unit = dismiss, content: @Composable ColumnScope.() -> Unit) {
+    open: Boolean? = null, onClosed: () -> Unit = dismiss,
+    /** The title is an identifier (a model id): monospace, one line. */
+    monoTitle: Boolean = false, back: (() -> Boolean)? = null, content: @Composable ColumnScope.() -> Unit) {
     val scroll=rememberScrollState()
     var localOpen by remember { mutableStateOf(true) }
     val visible = open ?: localOpen
     val close = { if (!busy || dismissWhileBusy) { if (open == null) localOpen = false else dismiss() } }
     LaunchedEffect(error) { if(error!=null) scroll.animateScrollTo(0) }
-    ZorkSheet(visible, title, close, onClosed = onClosed, canDismiss = !busy || dismissWhileBusy) {
+    ZorkSheet(visible, title, close, onClosed = onClosed, canDismiss = !busy || dismissWhileBusy, back = back) {
         Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * .86f).dp)
             .then(if (footer == null) Modifier.verticalScroll(scroll) else Modifier), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(title, fontSize = if (monoTitle) 16.sp else 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                    fontFamily = if (monoTitle) androidx.compose.ui.text.font.FontFamily.Monospace else null,
+                    maxLines = if (monoTitle) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
                 ZorkIconButton("关闭", enabled = visible && (!busy || dismissWhileBusy), onClick = close) { Icon(painterResource(R.drawable.ic_x), null, Modifier.size(18.dp)) }
             }
             if (footer == null) {

@@ -122,6 +122,8 @@ pub async fn run(mut argv: Vec<String>) -> Result<()> {
                         "cached; server unavailable"
                     }
                 );
+            } else if let Some(reason) = &status.signed_out {
+                println!("{reason}. Run: zork account login");
             } else {
                 println!("Not logged in. Run: zork account login");
             }

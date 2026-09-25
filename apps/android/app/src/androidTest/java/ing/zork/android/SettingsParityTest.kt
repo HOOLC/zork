@@ -35,10 +35,13 @@ class SettingsParityTest {
     }
     @Test fun modelDraftSurvivesActivityRecreation() {
         launch("profile").use { scenario ->
-            settle(); click("手动添加"); field("模型 ID","saved-draft-model"); click("调整参数"); field("上下文","256K")
+            settle(); click("手动添加"); field("模型 ID","saved-draft-model")
+            assertTrue(editable("模型 ID")!!.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)); settle()
+            await("它会思考吗？"); field("上下文","256"); click("按档位调节")
             scenario.recreate(); settle(); await("添加模型")
-            assertEquals("saved-draft-model", editable("模型 ID")!!.text.toString())
-            assertEquals("256K", editable("上下文")!!.text.toString())
+            assertEquals("256", revealEditable("上下文").text.toString())
+            assertEquals("saved-draft-model", revealEditable("模型 ID").text.toString())
+            assertNotNull(reveal("删除 medium"))
             capture("model-recreated")
         }
     }
@@ -71,6 +74,14 @@ class SettingsParityTest {
             }
         }
         return null
+    }
+    private fun revealEditable(label: String): AccessibilityNodeInfo {
+        repeat(18) { attempt ->
+            editable(label)?.takeIf { it.isVisibleToUser }?.let { return it }
+            nodes().lastOrNull { it.isScrollable }?.performAction(
+                if (attempt < 8) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); settle()
+        }
+        return editable(label) ?: error("Missing editable $label")
     }
     private fun await(label: String): AccessibilityNodeInfo {
         val deadline = SystemClock.uptimeMillis() + 5000
@@ -150,7 +161,7 @@ class SettingsParityTest {
                 assertFalse(it.lastBody!!.getBoolean("enabled"))
             }
             assertNotNull(reveal("待配置"))
-            click("获取模型"); await("模型已是最新")
+            click("获取模型"); await("获取到 2 个新模型：1 个已按预设填好，1 个待配置")
             scenario.onActivity { assertEquals("discover_models", it.lastAction) }
             click("更多"); click("刷新额度")
             scenario.onActivity { assertEquals("refresh_quota", it.lastAction) }
@@ -166,14 +177,18 @@ class SettingsParityTest {
 
     @Test fun copyingModelSettingsPreservesIdentityAndEnforcesLimits() {
         launch("profile").use { scenario ->
-            settle(); await("工作室订阅"); click("unconfigured-model"); click("调整参数")
-            click("复制已有模型配置：请选择"); click("工作室订阅 · fixture-model")
-            val idField = editable("模型 ID") ?: error(nodes().joinToString("\n") { "${it.className} text=${it.text} description=${it.contentDescription} editable=${it.isEditable} children=${it.childCount}" })
-            assertEquals("unconfigured-model", idField.text.toString())
-            field("最长输出", "1M"); click("保存模型")
+            settle(); await("工作室订阅"); click("编辑 unconfigured-model"); await("它会思考吗？")
+            click("从相似模型填入"); click("fixture-model，工作室订阅，128K · 不思考 · 输出 4,096")
+            await("参数来自 fixture-model")
+            // Editing keeps the id: it is the title, not a field.
+            assertNull(editable("模型 ID")); assertNotNull(find("unconfigured-model"))
+            field("最长输出", "1"); click("最长输出 单位 M"); click("保存")
             scenario.onActivity { assertEquals("Invalid form sent a request: ${it.lastBody}", "", it.lastAction) }
-            field("最长输出", "4K")
-            click("读取图片"); click("保存模型")
+            reveal("需小于上下文 128K")
+            click("最长输出 单位 K"); field("最长输出", "4")
+            // The switch (its label repeats the section summary, so bring the switch itself on screen).
+            reveal("打开后，这个模型可以接收对话里的图片；关闭时给它发图会在发送前提醒"); click("能看图片")
+            assertNotNull(reveal("不能看图片")); click("保存")
             scenario.onActivity {
                 assertEquals("save_model", it.lastAction)
                 val input = it.lastBody!!.getJSONObject("input")
@@ -188,7 +203,7 @@ class SettingsParityTest {
                 assertEquals(4000L, target.getJSONObject("limits").getLong("max_output_tokens"))
                 assertEquals("[\"text\"]", target.getJSONObject("capabilities").getJSONArray("input").toString())
             }
-            await("工作室订阅")
+            await("已保存 unconfigured-model")
         }
     }
 

@@ -80,7 +80,10 @@ pub fn router(app: AppState) -> Router {
             axum::routing::delete(revoke_mesh_invite),
         )
         .route("/v1/node/mesh/join", post(join_mesh))
-        .route("/v1/node/mesh/join/{id}", get(join_mesh_progress))
+        .route(
+            "/v1/node/mesh/join/{id}",
+            get(join_mesh_progress).delete(cancel_mesh_join),
+        )
         .route("/v1/node/mesh/leave", post(leave_mesh))
         .route("/v1/node/mesh/members/remove", post(remove_mesh_member))
         .route("/v1/node/mesh/clients", post(register_mesh_client))
@@ -632,9 +635,18 @@ async fn create_mesh_invite(State(state): State<NodeState>, headers: HeaderMap) 
         );
     }
     let Some(service) = state.app.mesh.get() else {
-        return error(StatusCode::CONFLICT, "mesh_not_ready");
+        return error(StatusCode::CONFLICT, mesh_unavailable(&state.app));
     };
     mesh_result(service.enrollment.create(&state.app).await)
+}
+/// Distinguish "Mesh is switched off" (needs an explicit enable) from a Mesh
+/// that is still starting, so callers never mistake one for the other.
+pub(crate) fn mesh_unavailable(state: &AppState) -> &'static str {
+    if zork_config::load_config(&state.config.data_root).is_ok_and(|config| !config.mesh.enabled) {
+        "mesh_disabled"
+    } else {
+        "mesh_not_ready"
+    }
 }
 async fn mesh_invites(State(state): State<NodeState>, headers: HeaderMap) -> Response {
     if !authorized(&state, &headers) {
@@ -682,6 +694,28 @@ async fn join_mesh(
         service
             .enrollment
             .start_join(state.app.clone(), body)
+            .and_then(|progress| Ok(serde_json::to_value(progress)?)),
+    )
+}
+async fn cancel_mesh_join(
+    State(state): State<NodeState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "Node administrator token required",
+        );
+    }
+    let Some(service) = state.app.mesh.get() else {
+        return error(StatusCode::CONFLICT, "mesh_not_ready");
+    };
+    mesh_result(
+        service
+            .enrollment
+            .cancel_join(&state.app, Some(&id))
+            .await
             .and_then(|progress| Ok(serde_json::to_value(progress)?)),
     )
 }
@@ -838,6 +872,13 @@ async fn save_mesh_config(
     .await;
     if let Err(e) = result {
         return error(StatusCode::BAD_REQUEST, &e.to_string());
+    }
+    // Without a supervisor nobody can apply a transport change; say so rather
+    // than let callers wait for a restart that never comes.
+    let sock = zork_config::zork_sock_path(&root);
+    if restarting && !sock.exists() {
+        return Json(json!({"saved":true,"restarting":false,"restart_required":true}))
+            .into_response();
     }
     // Let the HTTP acknowledgement leave before the supervisor replaces us.
     if restarting {

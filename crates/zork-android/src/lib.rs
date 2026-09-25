@@ -95,11 +95,33 @@ pub fn observation(root: &Path, request: &str) -> String {
     }
 }
 
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn envelope(result: Result<Value>) -> Value {
+    match result {
+        Ok(data) => json!({"ok":true,"data":data}),
+        Err(error) => json!({"ok":false,"error":error.to_string()}),
+    }
+}
+
 /// Pure input projection; it does not open a client, acquire IO locks or request a network.
 pub fn validate_model(input: &str, models: &str) -> Result<Value> {
     let input: zork_client_core::model_edit::ModelInput = serde_json::from_str(input)?;
     let models: Vec<Value> = serde_json::from_str(models)?;
     Ok(serde_json::to_value(input.errors(&models))?)
+}
+
+/// Pure list projection of a connection's models (`op: "model_rows"` without a client).
+pub fn model_rows(request: &str) -> Result<Value> {
+    #[derive(serde::Deserialize)]
+    struct Request {
+        profile: zork_client_core::model_catalog::ConnectionInfo,
+    }
+    let Request { profile } = serde_json::from_str(request)?;
+    Ok(json!(profile
+        .models
+        .iter()
+        .map(|m| zork_client_core::model_catalog::model_row(m, &profile.provider))
+        .collect::<Vec<_>>()))
 }
 
 #[cfg(debug_assertions)]
@@ -488,6 +510,53 @@ mod android {
                 )
             };
             JString::from_str(env, serde_json::to_string(&form).unwrap())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// Shared model editor step (pure; see `zork_client_core::model_editor`).
+    /// Returns `{"ok":true,"data":{state,view,effect,focus}}` or `{"ok":false,"error"}`.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_modelEditor<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = serde_json::from_str(&request.to_string())
+                .map_err(anyhow::Error::from)
+                .and_then(zork_client_core::model_editor::handle);
+            JString::from_str(env, super::envelope(value).to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// Fill sources for the model editor: `{context, state, query}`.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_modelEditorSources<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = serde_json::from_str(&request.to_string())
+                .map_err(anyhow::Error::from)
+                .and_then(zork_client_core::model_editor::handle_sources);
+            JString::from_str(env, super::envelope(value).to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+    }
+
+    /// List rows for a connection's models: `{profile}` → `[ModelRow]` (pure).
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_ing_zork_android_NativeBridge_modelRows<'a>(
+        mut env: EnvUnowned<'a>,
+        _this: JObject<'a>,
+        request: JString<'a>,
+    ) -> JString<'a> {
+        env.with_env(|env| -> Result<_, jni::errors::Error> {
+            let value = super::model_rows(&request.to_string());
+            JString::from_str(env, super::envelope(value).to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
     }

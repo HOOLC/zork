@@ -237,10 +237,23 @@ impl MeshNode {
                 let connection = if let Some(connection) = cached {
                     connection
                 } else {
-                    let connection = active
+                    let connection = match active
                         .endpoint
-                        .connect(address, crate::control::ALPN)
-                        .await?;
+                        .connect(address.clone(), crate::control::ALPN)
+                        .await
+                    {
+                        Ok(connection) => connection,
+                        Err(error) => {
+                            // A reachable peer on another control version refuses
+                            // the ALPN at once; name the side that must upgrade.
+                            if let Some(mismatch) =
+                                crate::control::probe_version(&active.endpoint, address).await
+                            {
+                                return Err(anyhow::Error::new(mismatch));
+                            }
+                            return Err(error.into());
+                        }
+                    };
                     ensure!(self.is_trusted(origin).await?, "mesh_peer_not_paired");
                     active
                         .dialed
@@ -268,6 +281,10 @@ impl MeshNode {
             };
             match tokio::time::timeout(CONTROL_DIAL_TIMEOUT, dial).await {
                 Ok(Ok(stream)) => return Ok(stream),
+                // Retrying or re-resolving cannot fix a version mismatch.
+                Ok(Err(error)) if error.is::<crate::control::VersionMismatch>() => {
+                    return Err(error)
+                }
                 Ok(Err(error)) => last_error = Some(error),
                 Err(error) => last_error = Some(error.into()),
             }

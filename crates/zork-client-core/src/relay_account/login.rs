@@ -158,6 +158,7 @@ impl Account {
                 });
             }
             account.login_attempt = None;
+            account.signed_out = None;
             storage::write(&self.root, &account)?;
         }
         let _ = self.flush_revocations().await;
