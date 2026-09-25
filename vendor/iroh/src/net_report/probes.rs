@@ -6,6 +6,7 @@
 
 use std::{collections::BTreeSet, fmt, sync::Arc};
 
+use iroh_base::RelayUrl;
 use iroh_relay::{RelayConfig, RelayMap};
 use n0_future::time::Duration;
 
@@ -16,6 +17,17 @@ const DEFAULT_INITIAL_RETRANSMIT: Duration = Duration::from_millis(100);
 
 /// The delay before starting HTTPS probes.
 const HTTPS_OFFSET: Duration = Duration::from_millis(200);
+
+/// Zork patch: how long HTTPS probes to fallback relays wait while a primary
+/// relay may still answer (see `NetReportConfig::fallback_relays`).
+///
+/// A report is complete once every primary relay answered, which aborts the
+/// held probes, so the far fallbacks are not contacted at all in the common case.
+/// The hold is outside the probe timeout: when no primary answers, the fallbacks
+/// get the full [`PROBES_TIMEOUT`] (1s + 3s stays under the 5s report timeout).
+///
+/// [`PROBES_TIMEOUT`]: super::defaults::timeouts::PROBES_TIMEOUT
+pub(super) const FALLBACK_HOLD: Duration = Duration::from_secs(1);
 
 /// The protocol used to time an endpoint's latency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display)]
@@ -51,6 +63,8 @@ pub(super) struct ProbeSet {
     proto: Probe,
     /// The data in the set.
     probes: Vec<(Duration, Arc<RelayConfig>)>,
+    /// Zork patch: wait before the probes (and their timeout) start.
+    hold: Duration,
 }
 
 impl ProbeSet {
@@ -58,7 +72,12 @@ impl ProbeSet {
         Self {
             probes: Vec::new(),
             proto,
+            hold: Duration::ZERO,
         }
+    }
+
+    pub(super) fn hold(&self) -> Duration {
+        self.hold
     }
 
     pub(super) fn proto(&self) -> Probe {
@@ -95,11 +114,20 @@ pub(super) struct ProbePlan {
 
 impl ProbePlan {
     /// Creates an initial probe plan
-    pub(super) fn initial(relay_map: &RelayMap, protocols: &BTreeSet<Probe>) -> Self {
+    ///
+    /// HTTPS probes to relays in `held` start after [`FALLBACK_HOLD`].
+    pub(super) fn initial(
+        relay_map: &RelayMap,
+        protocols: &BTreeSet<Probe>,
+        held: &BTreeSet<RelayUrl>,
+    ) -> Self {
         let mut plan = Self::default();
 
         for relay in relay_map.relays::<Vec<_>>() {
             let mut https_probes = ProbeSet::new(Probe::Https);
+            if held.contains(&relay.url) {
+                https_probes.hold = FALLBACK_HOLD;
+            }
 
             for attempt in 0u32..3 {
                 let delay = HTTPS_OFFSET + DEFAULT_INITIAL_RETRANSMIT * attempt;
@@ -118,9 +146,10 @@ impl ProbePlan {
         relay_map: &RelayMap,
         last_report: &Report,
         protocols: &BTreeSet<Probe>,
+        held: &BTreeSet<RelayUrl>,
     ) -> Self {
         if last_report.relay_latency.is_empty() {
-            return Self::initial(relay_map, protocols);
+            return Self::initial(relay_map, protocols, held);
         }
 
         // TODO: is this good?
@@ -145,7 +174,11 @@ impl fmt::Display for ProbePlan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "ProbePlan {{")?;
         for probe_set in self.set.iter() {
-            writeln!(f, r#"    ProbeSet("{}") {{"#, probe_set.proto)?;
+            if probe_set.hold.is_zero() {
+                writeln!(f, r#"    ProbeSet("{}") {{"#, probe_set.proto)?;
+            } else {
+                writeln!(f, r#"    ProbeSet("{}", hold {:?}) {{"#, probe_set.proto, probe_set.hold)?;
+            }
             for (delay, endpoint) in probe_set.probes.iter() {
                 writeln!(f, "        {delay:?} to {endpoint},")?;
             }
@@ -180,6 +213,7 @@ mod tests {
             ProbeSet {
                 proto: Probe::$kind,
                 probes: $delays.iter().map(|delay| (*delay, $endpoint)).collect(),
+                hold: Duration::ZERO,
             }
         };
     }
@@ -193,7 +227,7 @@ mod tests {
         let (_servers, relay_map) = test_utils::relay_map(2).await;
         let relay_1 = &relay_map.relays::<Vec<_>>()[0];
         let relay_2 = &relay_map.relays::<Vec<_>>()[1];
-        let plan = ProbePlan::initial(&relay_map, &default_protocols());
+        let plan = ProbePlan::initial(&relay_map, &default_protocols(), &BTreeSet::new());
 
         let expected_plan: ProbePlan = [
             probeset! {
@@ -233,7 +267,7 @@ mod tests {
         let (_servers, relay_map) = test_utils::relay_map(2).await;
         let relay_1 = &relay_map.relays::<Vec<_>>()[0];
         let relay_2 = &relay_map.relays::<Vec<_>>()[1];
-        let plan = ProbePlan::initial(&relay_map, &BTreeSet::from([Probe::Https]));
+        let plan = ProbePlan::initial(&relay_map, &BTreeSet::from([Probe::Https]), &BTreeSet::new());
 
         let expected_plan: ProbePlan = [
             probeset! {
@@ -262,5 +296,26 @@ mod tests {
         assert_eq!(plan.to_string(), expected_plan.to_string());
         // Just in case there's a bug in the Display impl:
         assert_eq!(plan, expected_plan);
+    }
+
+    #[tokio::test]
+    async fn test_initial_probeplan_holds_fallbacks() {
+        let (_servers, relay_map) = test_utils::relay_map(2).await;
+        let relays = relay_map.relays::<Vec<_>>();
+        let held = BTreeSet::from([relays[1].url.clone()]);
+        let plan = ProbePlan::initial(&relay_map, &default_protocols(), &held);
+
+        let holds: Vec<_> = plan
+            .iter()
+            .map(|set| {
+                let (_, relay) = set.params().next().unwrap();
+                (relay.url.clone(), set.hold())
+            })
+            .collect();
+        assert_eq!(holds.len(), 2);
+        for (url, hold) in holds {
+            let want = if url == relays[1].url { FALLBACK_HOLD } else { Duration::ZERO };
+            assert_eq!(hold, want, "{url}");
+        }
     }
 }

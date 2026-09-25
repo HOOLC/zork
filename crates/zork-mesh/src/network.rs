@@ -206,4 +206,161 @@ mod tests {
         let options = options(format!("http://{closed}"), format!("http://{fallback}"));
         assert_eq!(home_relay(&options).await, format!("http://{fallback}/"));
     }
+
+    /// Answers the relay WebSocket upgrade with HTTP 429 while `refuse` is set,
+    /// like the Worker over budget; everything else (latency probes included) is
+    /// forwarded to `target`.
+    async fn admission_gate(
+        target: SocketAddr,
+        refuse: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> SocketAddr {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut inbound, _)) = listener.accept().await {
+                let refuse = refuse.clone();
+                tokio::spawn(async move {
+                    let mut head = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    while !head.windows(4).any(|w| w == b"\r\n\r\n") && head.len() < 64 * 1024 {
+                        match inbound.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => head.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let upgrade = head.starts_with(b"GET /relay");
+                    if upgrade && refuse.load(std::sync::atomic::Ordering::SeqCst) {
+                        let _ = inbound
+                            .write_all(
+                                b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 30\r\n\
+                                  Content-Length: 0\r\nConnection: close\r\n\r\n",
+                            )
+                            .await;
+                        return;
+                    }
+                    if let Ok(mut outbound) = tokio::net::TcpStream::connect(target).await {
+                        if outbound.write_all(&head).await.is_ok() {
+                            let _ =
+                                tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await;
+                        }
+                    }
+                });
+            }
+        });
+        addr
+    }
+
+    async fn wait_for_home(endpoint: &Endpoint, url: &str, within: Duration) {
+        let found = tokio::time::timeout(within, async {
+            loop {
+                let home = endpoint.home_relay_status().get();
+                if home
+                    .iter()
+                    .any(|s| s.is_connected() && s.url().to_string() == url)
+                {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await;
+        assert!(
+            found.is_ok(),
+            "home relay is not {url}: {:?} {:?}",
+            endpoint.home_relay_status().get(),
+            endpoint.net_report().get()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_relay_refusing_admission_hands_home_to_a_fallback_until_it_admits_again() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let (_primary, primary) = local_relay().await;
+        let (_fallback, fallback) = local_relay().await;
+        let refuse = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let gate = admission_gate(primary, refuse.clone()).await;
+        let options = options(format!("http://{gate}"), format!("http://{fallback}"));
+        let (builder, _route) = configure_endpoint(Endpoint::builder(presets::N0), &options)
+            .await
+            .unwrap();
+        let endpoint = builder.clear_ip_transports().bind().await.unwrap();
+
+        // The primary answers its latency probe but refuses the relay connection.
+        wait_for_home(
+            &endpoint,
+            &format!("http://{fallback}/"),
+            Duration::from_secs(20),
+        )
+        .await;
+
+        // Admitted again: the refused relay's actor redials after its admission
+        // backoff (30s +-20%) and the primary becomes home once more.
+        refuse.store(false, std::sync::atomic::Ordering::SeqCst);
+        wait_for_home(
+            &endpoint,
+            &format!("http://{gate}/"),
+            Duration::from_secs(60),
+        )
+        .await;
+        endpoint.close().await;
+    }
+
+    /// Manual lab: the production endpoint (packaged services config, system CA,
+    /// IP transports) printing every net report. Not run by default.
+    /// `ZORK_NET_LAB_SECS=90 RUST_LOG=iroh::net_report=debug cargo test -p zork-mesh
+    ///  net_report_lab -- --ignored --nocapture`
+    /// `ZORK_NET_LAB_EMBEDDED_ROOTS=1` verifies TLS with the embedded webpki roots
+    /// instead of the platform verifier (which is slow for some chains on macOS).
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn net_report_lab() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let secs: u64 = std::env::var("ZORK_NET_LAB_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(90);
+        let options = super::options(&zork_config::MeshConfig::default()).unwrap();
+        println!("options: {options:?}");
+        let (builder, _route) = configure_endpoint(
+            Endpoint::builder(presets::N0).ca_tls_config(
+                if std::env::var_os("ZORK_NET_LAB_EMBEDDED_ROOTS").is_some() {
+                    iroh::tls::CaTlsConfig::embedded()
+                } else {
+                    iroh::tls::CaTlsConfig::system()
+                },
+            ),
+            &options,
+        )
+        .await
+        .unwrap();
+        let endpoint = builder.bind().await.unwrap();
+        let start = std::time::Instant::now();
+        let mut reports = endpoint.net_report().stream();
+        let mut homes = endpoint.home_relay_status().stream();
+        let deadline = tokio::time::sleep(Duration::from_secs(secs));
+        tokio::pin!(deadline);
+        use futures_util::StreamExt;
+        loop {
+            tokio::select! {
+                _ = &mut deadline => break,
+                Some(report) = reports.next() => {
+                    println!("[{:>6.2}s] REPORT {report:?}", start.elapsed().as_secs_f64());
+                }
+                Some(home) = homes.next() => {
+                    println!("[{:>6.2}s] HOME {home:?}", start.elapsed().as_secs_f64());
+                }
+            }
+        }
+        println!("addrs {:?}", endpoint.addr());
+        endpoint.close().await;
+    }
 }

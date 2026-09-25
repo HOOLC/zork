@@ -32,3 +32,4 @@ rustls.workspace = true
 [dev-dependencies]
 iroh = { version = "=1.0.3", default-features = false, features = ["unstable-net-report"] }
 rcgen = "=0.14.8"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

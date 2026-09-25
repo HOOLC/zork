@@ -54,6 +54,15 @@ export default {
         google_login: authConfigured(env),
       });
     }
+    // iroh's net report checks for a captive portal with plain-HTTP GET
+    // /generate_204 and expects iroh-relay's reply: 204 echoing the challenge.
+    // Anything else counts as a captive portal and forces full reports.
+    if (path === "/generate_204" && request.method === "GET") {
+      const challenge = request.headers.get("x-iroh-challenge");
+      const headers: Record<string, string> = { "cache-control": "no-store" };
+      if (challenge && challenge.length < 64 && /^[A-Za-z0-9._-]+$/.test(challenge)) headers["x-iroh-response"] = "response " + challenge;
+      return new Response(null, { status: 204, headers });
+    }
     if (path === "/install" && request.method === "GET") {
       if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
       return installPage();
