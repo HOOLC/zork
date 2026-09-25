@@ -777,5 +777,20 @@
   "onboarding_models": "选择你的模型连接",
   "onboarding_ready_description": "模型已准备好，开始你的第一段对话。",
   "onboarding_models_description": "接入模型后，就可以开始第一段对话。",
-  "onboarding_add_model": "添加模型连接"
+  "onboarding_add_model": "添加模型连接",
+  "reply_to": "回复",
+  "reply_earlier": "更早的消息",
+  "reply_not_loaded": "尚未加载 · 点击加载",
+  "reply_loading": "正在加载…",
+  "reply_deleted": "原消息已删除",
+  "reply_summary": "大意",
+  "reply_loaded_hint": "已加载，再点引用可以跳转到原消息",
+  "quote_reply": "引用回复",
+  "quote_message": "引用",
+  "draft_reply_placeholder": "回复这段…",
+  "draft_extra_placeholder": "补充说明（可选）",
+  "draft_reply_required": "每段引用都写一句回复，或者移除它",
+  "draft_duplicate": "这段已经在引用里了",
+  "draft_remove": "移除这段引用",
+  "chat_on_device": "在设备 {name} 上"
 }

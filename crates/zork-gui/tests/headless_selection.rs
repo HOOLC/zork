@@ -171,24 +171,18 @@ impl Fixture {
         }))
     }
 
+    /// The passage the "引用回复" pill offers for the current selection.
     fn quote(&mut self) -> Result<String> {
-        if self.element("selection-toolbar").is_ok() {
-            ensure!(
-                self.element("comment-input").is_err(),
-                "selection opened the comment editor directly"
-            );
-            self.element("selection-copy")?;
-            self.action(
-                serde_json::json!({"type":"click","target":{"element_id":"selection-comment"}}),
-            )?;
-        }
-        Ok(self.element("comment-selected-quote")?.label)
+        let pill = self.element("selection-quote-reply")?;
+        Ok(pill
+            .label
+            .split_once('：')
+            .map(|(_, quote)| quote.to_owned())
+            .unwrap_or_default())
     }
 
     fn close_quote(&mut self) -> Result<()> {
-        self.action(
-            serde_json::json!({"type":"click","target":{"element_id":"comment-popover-close"}}),
-        )
+        self.action(serde_json::json!({"type":"key","keystroke":"escape"}))
     }
 }
 
@@ -201,25 +195,29 @@ fn ends(element: &ElementInfo) -> (gpui::Point<gpui::Pixels>, gpui::Point<gpui::
     )
 }
 
-fn selection_toolbar(fixture: &mut Fixture) -> Result<()> {
+fn selection_pill(fixture: &mut Fixture) -> Result<()> {
     let label = "后续段落：中文🐈甲乙终。";
     let (from, to) = ends(&fixture.text(label)?);
     fixture.drag(from, to)?;
-    fixture.element("selection-copy")?;
-    let toolbar = fixture.element("selection-toolbar")?.visible_bounds;
+    let pill = fixture.element("selection-quote-reply")?.visible_bounds;
     ensure!(
-        (toolbar.height - 32.).abs() <= 1.,
-        "toolbar height is {}",
-        toolbar.height
+        (pill.height - 28.).abs() <= 1.,
+        "pill height is {}",
+        pill.height
     );
     ensure!(
-        toolbar.y + toolbar.height <= from.y.as_f32(),
-        "toolbar overlaps the selected line"
+        pill.y + pill.height <= from.y.as_f32(),
+        "pill overlaps the selected line"
+    );
+    ensure!(
+        fixture.quote()? == label,
+        "pill offers {:?}",
+        fixture.quote()?
     );
     fixture
         .cx
         .capture_screenshot(fixture.window)?
-        .save(std::env::temp_dir().join("zork-selection-toolbar-approved.png"))?;
+        .save(std::env::temp_dir().join("zork-selection-quote-reply.png"))?;
     fixture.action(serde_json::json!({"type":"key","keystroke":"cmd-c"}))?;
     let shortcut = fixture
         .cx
@@ -228,33 +226,82 @@ fn selection_toolbar(fixture: &mut Fixture) -> Result<()> {
         shortcut.as_deref() == Some(label),
         "keyboard copy lost selection"
     );
-    ensure!(
-        fixture.element("comment-input").is_err(),
-        "selection opened comment input"
-    );
-    fixture.action(serde_json::json!({"type":"click","target":{"element_id":"selection-copy"}}))?;
-    let copied = fixture
-        .cx
-        .update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
-    ensure!(
-        copied.as_deref() == Some(label),
-        "copy did not preserve selected text: {copied:?}"
-    );
-    ensure!(
-        fixture.element("selection-toolbar").is_err(),
-        "copy left toolbar open"
-    );
-    fixture.drag(from, to)?;
     fixture.action(serde_json::json!({"type":"key","keystroke":"escape"}))?;
     ensure!(
-        fixture.element("selection-toolbar").is_err(),
-        "escape left toolbar open"
+        fixture.element("selection-quote-reply").is_err(),
+        "escape left the pill open"
     );
     fixture.drag(from, to)?;
     fixture.action(serde_json::json!({"type":"click","target":{"x":5.,"y":5.}}))?;
     ensure!(
-        fixture.element("selection-toolbar").is_err(),
-        "outside click left toolbar open"
+        fixture.element("selection-quote-reply").is_err(),
+        "outside click left the pill open"
+    );
+    Ok(())
+}
+
+/// "引用回复" adds a draft in the sent-message shape; the same passage twice is
+/// refused, and sending with an empty per-draft reply is refused.
+fn quote_reply_drafts(fixture: &mut Fixture) -> Result<()> {
+    let label = "后续段落：中文🐈甲乙终。";
+    let (from, to) = ends(&fixture.text(label)?);
+    fixture.drag(from, to)?;
+    fixture.action(
+        serde_json::json!({"type":"click","target":{"element_id":"selection-quote-reply"}}),
+    )?;
+    for _ in 0..3 {
+        fixture.frame()?;
+    }
+    let drafts: Vec<ElementInfo> = fixture
+        .automation
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .filter(|element| element.id.starts_with("comment-quote-"))
+        .collect();
+    ensure!(drafts.len() == 1, "expected one draft quote, got {}", drafts.len());
+    ensure!(
+        drafts[0].label.ends_with(label),
+        "draft quote line reads {:?}",
+        drafts[0].label
+    );
+    fixture.element("composer-comment-queue")?;
+    fixture
+        .cx
+        .capture_screenshot(fixture.window)?
+        .save(std::env::temp_dir().join("zork-quote-reply-draft.png"))?;
+    fixture.drag(from, to)?;
+    fixture.action(
+        serde_json::json!({"type":"click","target":{"element_id":"selection-quote-reply"}}),
+    )?;
+    ensure!(
+        fixture.element("transcript-hint")?.label == "这段已经在引用里了",
+        "duplicate passage was not refused"
+    );
+    let count = fixture
+        .automation
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .filter(|element| element.id.starts_with("comment-quote-"))
+        .count();
+    ensure!(count == 1, "duplicate added a draft ({count})");
+    fixture.action(serde_json::json!({"type":"click","target":{"element_id":"send-button"}}))?;
+    ensure!(
+        fixture.element("transcript-hint")?.label == "每段引用都写一句回复，或者移除它",
+        "sending with an empty reply was not refused"
+    );
+    let remove = fixture
+        .automation
+        .snapshot(false)
+        .elements
+        .into_iter()
+        .find(|element| element.id.starts_with("comment-remove-"))
+        .context("missing draft remove")?;
+    fixture.action(serde_json::json!({"type":"click","target":{"element_id":remove.id}}))?;
+    ensure!(
+        fixture.element("composer-comment-queue").is_err(),
+        "removing the draft left the queue"
     );
     Ok(())
 }
@@ -274,7 +321,7 @@ fn single_clicks(fixture: &mut Fixture) -> Result<()> {
             "x":element.visible_bounds.x+2.,"y":element.center.y
         }}))?;
         ensure!(
-            fixture.element("comment-selected-quote").is_err(),
+            fixture.element("selection-quote-reply").is_err(),
             "a single click selected text in {label}"
         );
     }
@@ -551,14 +598,15 @@ fn main() -> Result<()> {
         output.join("initial-elements.json"),
         serde_json::to_vec_pretty(&fixture.automation.snapshot(true))?,
     )?;
-    let cases: [(&str, fn(&mut Fixture) -> Result<()>); 11] = [
+    let cases: [(&str, fn(&mut Fixture) -> Result<()>); 12] = [
         ("cached-text-resize-edit", cached_text_reflows_and_edits),
         ("markdown-polish", markdown_polish),
         ("markdown-link-hover", markdown_link_hover),
         ("shared-service-link", shared_service_link_opens_panel),
         ("markdown-polish-compact", markdown_polish_compact),
         ("markdown-code-overflow", markdown_code_overflow),
-        ("selection-toolbar", selection_toolbar),
+        ("selection-quote-reply", selection_pill),
+        ("quote-reply-drafts", quote_reply_drafts),
         ("single-click", single_clicks),
         ("literal-user-message", literal_user_message),
         ("same-row-columns", same_row_cells),

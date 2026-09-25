@@ -99,8 +99,8 @@ impl RootView {
     }
     pub(super) fn restore_draft(&mut self, cx: &mut Context<Self>) {
         self.comment_popover = None;
-        self.comment_editor
-            .update(cx, |editor, cx| editor.reset(cx));
+        self.draft_inputs.clear();
+        self.focus_draft = None;
         self.composer_surface.scene = Default::default();
         self.close_conversation_artifact();
         self.transcript_selection.borrow_mut().clear();

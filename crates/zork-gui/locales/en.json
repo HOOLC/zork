@@ -777,5 +777,20 @@
   "onboarding_models": "Connect your model",
   "onboarding_ready_description": "Your model is ready. Start your first conversation.",
   "onboarding_models_description": "Connect a model to start your first conversation.",
-  "onboarding_add_model": "Add model connection"
+  "onboarding_add_model": "Add model connection",
+  "reply_to": "Reply to",
+  "reply_earlier": "an earlier message",
+  "reply_not_loaded": "not loaded · click to load",
+  "reply_loading": "Loading…",
+  "reply_deleted": "original deleted",
+  "reply_summary": "Gist",
+  "reply_loaded_hint": "Loaded. Click the quote again to jump to the original.",
+  "quote_reply": "Quote reply",
+  "quote_message": "Quote",
+  "draft_reply_placeholder": "Reply to this passage…",
+  "draft_extra_placeholder": "Add a note (optional)",
+  "draft_reply_required": "Write a reply for each quote, or remove it",
+  "draft_duplicate": "This passage is already quoted",
+  "draft_remove": "Remove this quote",
+  "chat_on_device": "On device {name}"
 }

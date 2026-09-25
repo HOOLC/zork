@@ -100,6 +100,7 @@ impl TextCache {
         highlights: Highlights,
         fonts: Fonts,
         selection: Option<(SelectionContext, usize)>,
+        dots: Vec<Range<usize>>,
     ) -> AnyElement {
         CachedText {
             owner: self.0.clone(),
@@ -108,6 +109,7 @@ impl TextCache {
             highlights,
             fonts,
             selection,
+            dots,
         }
         .into_any_element()
     }
@@ -120,6 +122,8 @@ struct CachedText {
     highlights: Highlights,
     fonts: Fonts,
     selection: Option<(SelectionContext, usize)>,
+    /// Draft passages underlined with dots (`message::dotted`).
+    dots: Vec<Range<usize>>,
 }
 impl RenderOnce for CachedText {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -166,6 +170,11 @@ impl RenderOnce for CachedText {
         POOL.with(|pool| pool.borrow_mut().touch(&state, fresh));
         let layout = state.borrow().element.as_ref().unwrap().layout().clone();
         let child = RetainedText(state).into_any_element();
+        let child = if self.dots.is_empty() {
+            child
+        } else {
+            super::dotted(child, layout.clone(), self.dots)
+        };
         if let Some((selection, offset)) = self.selection {
             selection.wrap_region(self.id, offset, &self.text, child, layout, Vec::new())
         } else {

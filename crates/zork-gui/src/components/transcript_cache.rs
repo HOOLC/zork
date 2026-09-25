@@ -1,10 +1,20 @@
 use zork_ui::components::message::MessageDocument;
 
+/// A sent comment batch's reply documents (per pair) and extra text.
+pub type CommentDocuments = (
+    Vec<std::rc::Rc<MessageDocument>>,
+    Option<std::rc::Rc<MessageDocument>>,
+);
+
 #[derive(Default)]
 pub struct MessageRenderDocument {
     pub(crate) interaction: std::cell::RefCell<Option<Box<super::interaction::Rendered>>>,
     document: std::cell::OnceCell<MessageDocument>,
     files: std::cell::OnceCell<std::sync::Arc<Vec<zork_client_core::files::FileRef>>>,
+    /// Text selection and passage marks search: the plain text, or for a
+    /// comment batch its quotable text (replies then extra text).
+    selection_text: std::cell::OnceCell<gpui::SharedString>,
+    comments: std::cell::OnceCell<Option<CommentDocuments>>,
 }
 impl std::ops::Deref for MessageRenderDocument {
     type Target = std::cell::OnceCell<MessageDocument>;
@@ -40,6 +50,41 @@ impl MessageRenderDocument {
     pub fn document(&self, role: &crate::api::Role, content: &str) -> &MessageDocument {
         self.document
             .get_or_init(|| message_document(role, content))
+    }
+    /// The text quotes are taken from and passages are marked in.
+    pub fn selection_text(&self, role: &crate::api::Role, content: &str) -> gpui::SharedString {
+        self.selection_text
+            .get_or_init(|| {
+                if *role == crate::api::Role::User
+                    && zork_client_core::comments::decode_batch(content).is_some()
+                {
+                    zork_client_core::comments::quotable_text(content).into()
+                } else {
+                    self.document(role, content).shared_plain_text()
+                }
+            })
+            .clone()
+    }
+    /// Reply documents of a sent comment batch, `None` for other messages.
+    pub fn comment_documents(&self, role: &crate::api::Role, content: &str) -> Option<&CommentDocuments> {
+        self.comments
+            .get_or_init(|| {
+                if *role != crate::api::Role::User {
+                    return None;
+                }
+                zork_client_core::comments::decode_batch(content).map(|batch| {
+                    (
+                        batch
+                            .pairs
+                            .iter()
+                            .map(|pair| std::rc::Rc::new(MessageDocument::plain(pair.reply.trim())))
+                            .collect(),
+                        (!batch.extra_text.trim().is_empty())
+                            .then(|| std::rc::Rc::new(MessageDocument::plain(batch.extra_text.trim()))),
+                    )
+                })
+            })
+            .as_ref()
     }
 }
 

@@ -44,6 +44,125 @@ fn LINK() -> u32 {
     crate::design::ZORK_UI.palette.accent
 }
 
+/// Rendering context threaded through the block renderer.
+#[derive(Clone, Copy, Default)]
+struct Ctx<'a> {
+    selection: Option<&'a SelectionContext>,
+    marks: Option<&'a TextMarks>,
+}
+
+/// How a passage is marked in place.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MarkKind {
+    /// The warm jump wash at this opacity (fading out after a jump).
+    Wash(f32),
+    /// A quiet dotted underline: the passage is quoted in the current draft.
+    Draft,
+}
+
+/// Passages to mark, as byte ranges of the message's plain text (the same text
+/// the selection context uses).
+#[derive(Clone, Default)]
+pub struct TextMarks {
+    text: SharedString,
+    marks: std::rc::Rc<Vec<(std::ops::Range<usize>, MarkKind)>>,
+    cursor: std::rc::Rc<std::cell::Cell<usize>>,
+}
+impl TextMarks {
+    pub fn new(
+        text: impl Into<SharedString>,
+        marks: Vec<(std::ops::Range<usize>, MarkKind)>,
+    ) -> Self {
+        Self {
+            text: text.into(),
+            marks: std::rc::Rc::new(marks),
+            cursor: Default::default(),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.marks.is_empty()
+    }
+    /// Offset of an inline run in the message text, searched forward in
+    /// render order (the selection context's rule).
+    fn offset(&self, text: &str) -> usize {
+        let cursor = self.cursor.get();
+        let offset = self
+            .text
+            .get(cursor..)
+            .and_then(|tail| tail.find(text))
+            .map(|i| cursor + i)
+            .unwrap_or(cursor);
+        self.cursor.set((offset + text.len()).min(self.text.len()));
+        offset
+    }
+    /// Marks inside the run at `offset..offset + len`, in run coordinates.
+    fn in_region(&self, offset: usize, len: usize) -> Vec<(std::ops::Range<usize>, MarkKind)> {
+        self.marks
+            .iter()
+            .filter_map(|(range, kind)| {
+                let start = range.start.max(offset);
+                let end = range.end.min(offset + len);
+                (start < end).then(|| (start - offset..end - offset, *kind))
+            })
+            .collect()
+    }
+}
+
+/// Paints a dotted underline under `ranges` of a shaped text. GPUI underlines
+/// are solid or wavy only; the draft mark is quieter than a link underline.
+pub(super) fn dotted(
+    child: AnyElement,
+    layout: gpui::TextLayout,
+    ranges: Vec<std::ops::Range<usize>>,
+) -> AnyElement {
+    div()
+        .relative()
+        .child(child)
+        .child(
+            gpui::canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    let color = rgb(crate::design::ZORK_UI.palette.subtle);
+                    let line = layout.line_height();
+                    let text = layout.bounds();
+                    let mut segment = |left: gpui::Pixels, right: gpui::Pixels, top: gpui::Pixels| {
+                        let y = top + line - px(3.);
+                        let mut x = left;
+                        while x + px(1.5) <= right {
+                            window.paint_quad(gpui::fill(
+                                gpui::Bounds::new(gpui::point(x, y), gpui::size(px(1.5), px(1.5))),
+                                color,
+                            ));
+                            x += px(3.5);
+                        }
+                    };
+                    for range in &ranges {
+                        let (Some(a), Some(b)) = (
+                            layout.position_for_index(range.start),
+                            layout.position_for_index(range.end),
+                        ) else {
+                            continue;
+                        };
+                        if a.y == b.y {
+                            segment(a.x, b.x, a.y);
+                            continue;
+                        }
+                        segment(a.x, text.right(), a.y);
+                        let mut y = a.y + line;
+                        while y < b.y {
+                            segment(text.left(), text.right(), y);
+                            y += line;
+                        }
+                        segment(text.left(), b.x, b.y);
+                    }
+                },
+            )
+            .absolute()
+            .inset_0(),
+        )
+        .into_any_element()
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InlineStyle {
     pub strong: bool,
@@ -663,7 +782,23 @@ pub fn render_markdown(id: &str, source: &str) -> AnyElement {
 }
 
 pub fn render_document(id: &str, document: &MessageDocument) -> AnyElement {
-    render_blocks(id, document.blocks(), None, &mut document.code_cache.iter())
+    render_blocks(id, document.blocks(), Ctx::default(), &mut document.code_cache.iter())
+}
+
+/// Renders a document with optional selection and in-place marks (the jump
+/// wash and draft underlines).
+pub fn render_document_marked(
+    id: &str,
+    document: &MessageDocument,
+    selection: Option<&SelectionContext>,
+    marks: Option<&TextMarks>,
+) -> AnyElement {
+    render_blocks(
+        id,
+        document.blocks(),
+        Ctx { selection, marks },
+        &mut document.code_cache.iter(),
+    )
 }
 
 pub fn render_selectable_document(
@@ -674,7 +809,10 @@ pub fn render_selectable_document(
     render_blocks(
         id,
         document.blocks(),
-        Some(selection),
+        Ctx {
+            selection: Some(selection),
+            marks: None,
+        },
         &mut document.code_cache.iter(),
     )
 }
@@ -682,13 +820,13 @@ pub fn render_selectable_document(
 fn render_blocks<'a>(
     id: &str,
     blocks: &[MessageBlock],
-    selection: Option<&SelectionContext>,
+    ctx: Ctx<'_>,
     code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
 ) -> AnyElement {
     let children = blocks
         .iter()
         .enumerate()
-        .map(|(index, block)| render_block(&format!("{id}-{index}"), block, selection, code_cache))
+        .map(|(index, block)| render_block(&format!("{id}-{index}"), block, ctx, code_cache))
         .collect::<Vec<_>>();
     div()
         .w_full()
@@ -702,7 +840,7 @@ fn render_blocks<'a>(
 fn render_block<'a>(
     id: &str,
     block: &MessageBlock,
-    selection: Option<&SelectionContext>,
+    ctx: Ctx<'_>,
     code_cache: &mut impl Iterator<Item = &'a std::cell::OnceCell<std::rc::Rc<code::Presentation>>>,
 ) -> AnyElement {
     match block {
@@ -710,7 +848,7 @@ fn render_block<'a>(
             .w_full()
             .min_w_0()
             .whitespace_normal()
-            .child(render_inline(id, content, selection))
+            .child(render_inline(id, content, ctx))
             .into_any_element(),
         MessageBlock::Heading { level, content } => {
             let (size, weight) = match level {
@@ -725,7 +863,7 @@ fn render_block<'a>(
                 .text_size(px(size))
                 .line_height(px(size + 8.0))
                 .font_weight(weight)
-                .child(render_inline(id, content, selection))
+                .child(render_inline(id, content, ctx))
                 .into_any_element()
         }
         MessageBlock::CodeBlock { language, code } => render_code(
@@ -735,7 +873,7 @@ fn render_block<'a>(
                 .next()
                 .expect("code cache follows block order")
                 .get_or_init(|| code::prepare(language.as_deref(), code)),
-            selection,
+            ctx.selection,
         ),
         MessageBlock::List { ordered, items } => {
             let rows = items
@@ -773,7 +911,7 @@ fn render_block<'a>(
                         .child(div().flex_1().min_w_0().child(render_blocks(
                             &format!("{id}-item-{index}"),
                             &item.blocks,
-                            selection,
+                            ctx,
                             code_cache,
                         )))
                 })
@@ -795,7 +933,7 @@ fn render_block<'a>(
             .child(render_blocks(
                 &format!("{id}-quote"),
                 children,
-                selection,
+                ctx,
                 code_cache,
             ))
             .into_any_element(),
@@ -826,7 +964,7 @@ fn render_block<'a>(
                                 .child(render_inline(
                                     &format!("{id}-row-{row_index}-cell-{cell_index}"),
                                     content,
-                                    selection,
+                                    ctx,
                                 ))
                         })
                         .collect::<Vec<_>>();
@@ -851,11 +989,8 @@ fn render_block<'a>(
     }
 }
 
-fn render_inline(
-    id: &str,
-    content: &InlineContent,
-    selection: Option<&SelectionContext>,
-) -> AnyElement {
+fn render_inline(id: &str, content: &InlineContent, ctx: Ctx<'_>) -> AnyElement {
+    let selection = ctx.selection;
     let text = content.text();
     let mut highlights = Vec::new();
     let mut code_ranges = Vec::new();
@@ -903,6 +1038,33 @@ fn render_inline(
     }
 
     let selection_offset = selection.map(|selection| selection.offset(&text));
+    let mut dots = Vec::new();
+    if let Some(marks) = ctx.marks {
+        let offset = marks.offset(&text);
+        for (range, kind) in marks.in_region(offset, text.len()) {
+            match kind {
+                MarkKind::Wash(alpha) => {
+                    let alpha = (alpha.clamp(0., 1.) * 255.).round() as u32;
+                    if alpha > 0 {
+                        highlights = merge_selection_highlight(
+                            highlights,
+                            (
+                                range,
+                                HighlightStyle {
+                                    background_color: Some(
+                                        gpui::rgba((*crate::design::JUMP_WASH << 8) | alpha)
+                                            .into(),
+                                    ),
+                                    ..Default::default()
+                                },
+                            ),
+                        );
+                    }
+                }
+                MarkKind::Draft => dots.push(range),
+            }
+        }
+    }
     if let Some((selection, offset)) = selection.zip(selection_offset) {
         if let Some(highlight) = selection.highlight(offset, text.len()) {
             highlights = merge_selection_highlight(highlights, highlight);
@@ -917,11 +1079,18 @@ fn render_inline(
             selection
                 .zip(selection_offset)
                 .map(|(selection, offset)| (selection.clone(), offset)),
+            dots,
         );
     }
     let styled = StyledText::new(text.clone())
         .with_highlights(highlights)
         .with_font_family_overrides(code_ranges);
+    if !dots.is_empty() {
+        let layout = styled.layout().clone();
+        let element = linked_text(format!("{id}-links"), styled, link_ranges, link_urls, true)
+            .into_any_element();
+        return dotted(element, layout, dots);
+    }
     if let Some((selection, offset)) = selection.zip(selection_offset) {
         selection.wrap_linked(
             format!("{id}-selection"),
@@ -1060,6 +1229,7 @@ fn render_code_ready(
         selection
             .zip(offset)
             .map(|(selection, offset)| (selection.clone(), offset)),
+        Vec::new(),
     );
     div()
         .w_full()

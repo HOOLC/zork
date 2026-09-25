@@ -240,7 +240,8 @@ pub fn agent_tint(slot: usize) -> (u32, u32) {
 /// Brief wash behind a message after jumping to it from a reply quote. It
 /// locates, it does not express status, so it is neither persimmon nor a
 /// status hue.
-pub static JUMP_WASH: Themed<u32> = Themed::new(0xF5EFE3, 0x34322D);
+/// Matches the approved prototype's `--wash`; it fades after about 1.6 s.
+pub static JUMP_WASH: Themed<u32> = Themed::new(0xF8EEDC, 0x3A3224);
 pub const BORDER_WIDTH: f32 = 0.5;
 
 pub struct InteractionPalette {
