@@ -255,30 +255,35 @@ class SettingsParityTest {
         launch("home").use { scenario ->
             settle(); await("Mesh"); assertNull(find("工具连接"))
             click("模型连接"); await("OpenAI"); await("Anthropic")
+            fun top() = repeat(6) { nodes().lastOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); settle() }
             // mini2 failed: its cached connection and the reason stay visible, never "none".
-            assertNotNull(await("OpenRouter"))
             assertNotNull(nodes().firstOrNull { (it.text ?: it.contentDescription)?.toString()?.startsWith("mini2 读不到，显示缓存") == true })
             assertNotNull(find("重试")); assertNull(find("还没有模型连接"))
-            assertNull(find("已验证")); assertNotNull(await("待验证")); assertNotNull(await("验证失败"))
+            assertNull(find("已验证")); assertNotNull(await("待验证"))
+            // Two lines: the account title, then access (when the title lacks it), devices, quota and models.
+            assertNotNull(await("ChatGPT 订阅")); assertNotNull(await("2 个模型"))
             capture("model-connections")
+            assertNotNull(reveal("OpenRouter")); assertNotNull(reveal("验证失败"))
             // One OpenCode Go key saved on both devices is one card naming both.
             // Titled by the account (access plus key tail); the generated "OpenCode-Go" never shows.
             val merged = "OpenCode Go 订阅 · ···a1b2，订阅，mini1、mini2"
+            reveal(merged)
             assertEquals(1, nodes().count { it.contentDescription?.toString() == merged })
             assertNull(nodes().firstOrNull { it.isVisibleToUser && (it.text ?: it.contentDescription)?.toString()?.contains("OpenCode-Go") == true })
             assertNotNull(await("1 个账号"))
             assertEquals(1, nodes().count { it.contentDescription?.toString() == "OpenRouter · ···r0ut，API Key，mini2" })
+            capture("model-connections-bottom")
             click(merged); await("OpenCode Go 订阅 · ···a1b2 · 选择设备")
             capture("model-connections-merged-sources")
             click("mini2")
             scenario.onActivity { assertEquals("open-connection:go-mini2", it.lastAction) }
             await("额度")
-            click("返回"); await("OpenRouter")
+            click("返回"); await("模型连接"); top()
             // A name the user set follows the account, muted.
             click("studio@example.test · 工作室订阅，订阅，mini1")
             scenario.onActivity { assertEquals("open-connection:studio", it.lastAction) }
             await("额度")
-            click("返回"); await("OpenRouter")
+            click("返回"); await("模型连接")
             click("添加连接"); await("添加到哪台设备？"); click("mini1")
             scenario.onActivity { assertEquals("add-connection:mini1", it.lastAction) }
         }

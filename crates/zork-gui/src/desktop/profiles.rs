@@ -1209,6 +1209,7 @@ impl ProfilesView {
                 provider: profile.provider.clone(),
                 name: title.title,
                 custom_name: title.name,
+                access: title.access,
                 devices: devices
                     .iter()
                     .map(|(name, status)| DeviceIdentity {

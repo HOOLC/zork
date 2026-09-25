@@ -85,6 +85,8 @@ pub struct ConnectionTitle {
     /// A name the user set explicitly, shown secondary and muted. Generated
     /// names (equal to the provider, access or id defaults) are never shown.
     pub name: Option<String>,
+    /// The access wording for the row's meta line, unless the title already says it.
+    pub access: Option<String>,
 }
 
 /// Prefix of an API key's label; the rest is its last four characters.
@@ -128,6 +130,7 @@ pub fn connection_title(profile: &ProfileInfo, providers: &[Value]) -> Connectio
         Some(label) => label.to_owned(),
         None => access.clone(),
     };
+    let meta_access = (!title.contains(access.as_str())).then(|| access.clone());
     // Every name a client or an older version generated for this connection.
     let mut defaults = vec![
         profile.profile_id.clone(),
@@ -153,7 +156,11 @@ pub fn connection_title(profile: &ProfileInfo, providers: &[Value]) -> Connectio
         .map(str::trim)
         .filter(|name| !name.is_empty() && !defaults.contains(&name_key(name)))
         .map(str::to_owned);
-    ConnectionTitle { title, name }
+    ConnectionTitle {
+        title,
+        name,
+        access: meta_access,
+    }
 }
 
 /// The title of one account saved on several devices: the first source that
@@ -178,7 +185,16 @@ pub fn account_title<'a>(
         .map(|(_, t)| t.title.clone())
         .unwrap_or_else(|| "模型连接".to_owned());
     let name = titles.iter().find_map(|(_, t)| t.name.clone());
-    ConnectionTitle { title, name }
+    let access = titles
+        .iter()
+        .find(|(known, _)| *known)
+        .or(titles.first())
+        .and_then(|(_, t)| t.access.clone());
+    ConnectionTitle {
+        title,
+        name,
+        access,
+    }
 }
 
 /// `opencode-go-2` came from `opencode-go`: clients number repeated ids.
@@ -207,6 +223,7 @@ pub(crate) fn present_titles(profiles: &mut [Value], providers: &[Value]) {
         let title = connection_title(&parsed, providers);
         profile["title"] = json!(title.title);
         profile["custom_name"] = json!(title.name);
+        profile["access"] = json!(title.access);
     }
 }
 
@@ -280,6 +297,7 @@ fn accounts(devices: &[Value]) -> Value {
                     "name": title.title,
                     "title": title.title,
                     "custom_name": title.name,
+                    "access": title.access,
                     "peer": device["peer"],
                     "profile": profile,
                     "models": entry.models,
@@ -588,7 +606,8 @@ mod tests {
             connection_title(&login, &providers),
             ConnectionTitle {
                 title: "me@example.test".into(),
-                name: None
+                name: None,
+                access: Some("Claude 订阅 (Pro/Max)".into()),
             }
         );
         let key = titled(
@@ -602,6 +621,8 @@ mod tests {
             connection_title(&key, &providers).title,
             "OpenCode Go 订阅 · ···a1b2"
         );
+        // The title already says the access, so the meta line does not repeat it.
+        assert_eq!(connection_title(&key, &providers).access, None);
     }
 
     #[test]

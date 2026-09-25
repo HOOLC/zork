@@ -219,7 +219,7 @@ private fun fixtureSettings(): MobileSettingsState {
         "models" to org.json.JSONArray().put(obj("id" to "qwen3-32b","api" to "openai-completions","enabled" to true,"thinking" to org.json.JSONArray().put("off").put("high"),"default_thinking" to "high",
             "limits" to obj("context_window_tokens" to 128000,"max_output_tokens" to 16000),"capabilities" to obj("input" to org.json.JSONArray().put("text")))))
     val profiles=listOf(obj("profile_id" to "studio","name" to "工作室订阅","provider" to "openai","billing" to "subscription","verified" to true,"models" to models,
-        "account_label" to "studio@example.test","title" to "studio@example.test","custom_name" to "工作室订阅",
+        "account_label" to "studio@example.test","title" to "studio@example.test","custom_name" to "工作室订阅","access" to "ChatGPT 订阅",
         "quota" to obj("failed" to false,"windows" to org.json.JSONArray().put(obj("name" to "","minutes" to 300,"remaining" to 72,"resets_at" to 1789002000)),"balance" to org.json.JSONArray().put(0).put("USD")),"checkedAt" to "2026-09-10T01:00:00Z"),
         obj("profile_id" to "research","provider" to "anthropic","billing" to "usage","verified" to false,"models" to org.json.JSONArray(),
             "account_label" to "···k9x2","title" to "API · ···k9x2","custom_name" to null), lab)
@@ -244,7 +244,7 @@ private fun fixtureSettings(): MobileSettingsState {
             "profiles" to org.json.JSONArray().put(failedProfile).put(goB),"providers" to org.json.JSONArray().put(obj("id" to "openrouter","label" to "OpenRouter")).put(openCode)))
     fun source(peer: String, profile: JSONObject) = obj("peer" to peer,"device" to peer,"profile" to profile)
     fun single(peer: String, profile: JSONObject) = obj("id" to "profile:$peer/${profile.text("profile_id")}","name" to connectionTitle(profile),
-        "title" to connectionTitle(profile),"custom_name" to customName(profile),"provider" to profile.text("provider"),
+        "title" to connectionTitle(profile),"custom_name" to customName(profile),"access" to profile.opt("access"),"provider" to profile.text("provider"),
         "peer" to peer,"profile" to profile,"models" to (profile.optJSONArray("models")?.length() ?: 0),"sources" to org.json.JSONArray().put(source(peer, profile)))
     // Core's `accounts` for these devices (see zork-client-core model_connections).
     val accounts=mini1Profiles.dropLast(1).map { single("mini1", it) } + single("mini2", failedProfile) +

@@ -425,6 +425,32 @@ fn main() -> anyhow::Result<()> {
         }),
         "A custom Profile name is not shown after the account"
     );
+    // Two lines at 600pt: the account has its own line and nothing spills past the card.
+    let element = |id: &str| {
+        snapshot
+            .elements
+            .iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Missing {id}"))
+    };
+    for key in ["desktop-fixture", "desktop-team"] {
+        let card = element(&format!("profile-detail-{key}"))?;
+        let name = element(&format!("profile-name-{key}"))?;
+        let count = element(&format!("profile-model-count-{key}"))?;
+        let right = card.bounds.x + card.bounds.width;
+        anyhow::ensure!(
+            name.bounds.y + name.bounds.height <= count.bounds.y + 1.
+                && name.bounds.width >= 120.
+                && count.visible
+                && count.bounds.x + count.bounds.width <= right
+                && name.bounds.x + name.bounds.width <= right
+                && card.bounds.x + card.bounds.width <= 600.,
+            "{key}: title or facts do not fit their two lines: {:?} {:?} {:?}",
+            name.bounds,
+            count.bounds,
+            card.bounds
+        );
+    }
     anyhow::ensure!(
         !snapshot
             .elements
@@ -559,6 +585,13 @@ fn main() -> anyhow::Result<()> {
             .any(|e| e.id == "profile-detail-account-desktop-fixture" && e.visible),
         "Back from the account did not return to the list"
     );
+    cx.update_window(window.into(), |_, w, cx| {
+        w.resize(size(px(900.), px(760.)));
+        w.bounds_changed(cx);
+    })?;
+    draw(&mut cx)?;
+    cx.capture_screenshot(window.into())?
+        .save(output.join("same-account-merged-900.png"))?;
     println!("PASS model settings: provider → account cards (account title, custom name muted, generated name hidden), quota/status, no model list or grouping switch, dialogs, multiple devices and profiles, source removal, same account merged across devices");
     Ok(())
 }
