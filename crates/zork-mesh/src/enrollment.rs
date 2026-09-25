@@ -70,6 +70,7 @@ impl Invitation {
             relay_quic_port: invite.relay_quic_port,
             discovery_url: invite.discovery_url.clone(),
             quic_discovery_urls: invite.quic_discovery_urls.clone(),
+            ..Default::default()
         }
         .validate()?;
         ensure!(
@@ -499,6 +500,58 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         until(&live, 0).await;
+        task.abort();
+        server.close().await;
+        client.close().await;
+    }
+    /// Enrollment exchange through an external relay, e.g. the Worker's native
+    /// relay under `wrangler dev` (deploy/cloudflare/README.md). The invitation
+    /// address carries only the relay URL, so the exchange starts over the relay.
+    #[tokio::test]
+    #[ignore = "needs ZORK_RELAY_INTEROP_URL"]
+    async fn enrollment_exchange_through_external_relay() {
+        let Ok(relay_url) = std::env::var("ZORK_RELAY_INTEROP_URL") else {
+            return;
+        };
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let config = MeshConfig {
+            offline: false,
+            bind: Some("127.0.0.1:0".into()),
+            relay_urls: Some(vec![relay_url]),
+            discovery_url: Some("http://127.0.0.1:9/pkarr".into()),
+            quic_discovery_urls: Some(vec![]),
+            ..Default::default()
+        };
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let server = Arc::new(Enrollment::bind(a.path(), &config).await.unwrap());
+        let client = Enrollment::bind(b.path(), &config).await.unwrap();
+        server.hold_relay_for_invites(true).await;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let relay = loop {
+            if let Some(url) = server.endpoint.addr().relay_urls().next().cloned() {
+                if server.relay_active().await {
+                    break url;
+                }
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "enrollment relay did not come online"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+        let serving = server.clone();
+        let task =
+            tokio::spawn(async move { serving.serve(|_, value| async move { Ok(value) }).await });
+        let invitation = EndpointAddr::new(server.endpoint.id()).with_relay_url(relay);
+        let reply = tokio::time::timeout(
+            Duration::from_secs(30),
+            client.exchange_endpoint(invitation, &json!({"join": "via relay"})),
+        )
+        .await
+        .expect("exchange timed out")
+        .unwrap();
+        assert_eq!(reply, json!({"join": "via relay"}));
         task.abort();
         server.close().await;
         client.close().await;

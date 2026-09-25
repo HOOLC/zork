@@ -1,4 +1,4 @@
-// Actual zork CLI + Station, native enrollment and official relay without Google.
+// Actual zork CLI + Station, native enrollment and the Worker's native relay without Google.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,7 +18,6 @@ await fs.mkdir(report, { recursive: true });
 const root = await fs.mkdtemp(path.join(report, "fixture-"));
 await fs.chmod(root, 0o700);
 const processes: Array<ReturnType<typeof spawn>> = [];
-const container = "zork-account-" + ulid().toLowerCase();
 let h: Awaited<ReturnType<typeof harness>> | undefined;
 let success = false;
 const checks: string[] = [];
@@ -42,11 +41,8 @@ function pass(label: string) {
   console.log("PASS: " + label);
 }
 try {
-  const relayPort = await port(),
-    workerPort = await port();
-  await exec("docker", ["run", "--rm", "-d", "--platform", "linux/amd64", "--name", container, "-p", `127.0.0.1:${relayPort}:8080`, "zork-relay-account-lifecycle:local"]);
+  const workerPort = await port();
   h = await harness({
-    relay: `http://127.0.0.1:${relayPort}`,
     origin: `http://127.0.0.1:${workerPort}`,
     port: workerPort,
     noGoogle: true,
@@ -106,9 +102,9 @@ try {
     }
   }, "local Station readiness without Google login");
   pass("local Station is ready without an account or Google configuration");
-  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
   const budget = budgets.get(budgets.idFromName("primary"));
-  await until(async () => Number((await budget.statistics())?.bytes) > 128, "native iroh relay handshakes without credentials");
+  await until(async () => (await budget.authenticated()) > 0, "native iroh relay handshakes without credentials");
   pass("Station data and invitation endpoints complete native iroh relay handshakes anonymously");
   assert.equal(station.pid, pid);
   assert.equal(station.exitCode, null);
@@ -125,7 +121,6 @@ try {
     }
   }
   await h?.close();
-  await exec("docker", ["rm", "-f", container]).catch(() => {});
   const hashes = Object.fromEntries(
     await Promise.all(
       [binary, stationBinary].map(async (file) => [
@@ -144,7 +139,7 @@ try {
         checks,
         binaries: hashes,
         google: "not configured; no credentials issued",
-        relay: "official iroh-relay 1.1.0 Docker image",
+        relay: "native RelayHub Durable Object (iroh-relay-v2 protocol) in Miniflare",
         fixture: success ? "removed" : root,
       },
       null,

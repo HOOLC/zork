@@ -3,6 +3,7 @@ import test from "node:test";
 import { ulid } from "ulid";
 import { randomSecret, type Tokens } from "../src/auth.ts";
 import { harness } from "./harness.ts";
+import { connect, identity, nothingPending } from "./relay-client.ts";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,37 +12,27 @@ function auth(token: string) {
   return { authorization: "Bearer " + token, "content-type": "application/json" };
 }
 
-test("only an operator can retire the relay process during a cutover", async () => {
+test("only an operator can restart the relay", async () => {
   const h = await harness();
   try {
-    const relays: any = await h.mf.getDurableObjectNamespace("RELAY");
-    const relay = relays.get(relays.idFromName("primary"));
+    const client = await connect(h);
     const session = await h.login();
     for (const token of ["invalid", session.access_token]) {
       assert.equal((await h.fetch("/v1/admin/relay/restart", { method: "POST", headers: auth(token) })).status, 401);
     }
-    assert.equal(await relay.destroyCount(), 0);
+    assert.ok(await nothingPending(client), "refused restarts leave relay connections alone");
     assert.equal((await h.fetch("/v1/admin/relay/restart", { method: "POST", headers: auth(h.adminToken) })).status, 200);
-    assert.equal(await relay.destroyCount(), 1);
+    assert.equal(await client.closed, 1012);
   } finally {
     await h.close();
   }
 });
 
-test("logout does not cancel a pending native relay upgrade", { timeout: 10000 }, async () => {
+test("logout does not end a native relay connection", { timeout: 10000 }, async () => {
   const h = await harness();
   try {
     const session = await h.login();
-    const relays: any = await h.mf.getDurableObjectNamespace("RELAY");
-    await relays.get(relays.idFromName("primary")).delay(2000);
-    const pending = h.fetch("/relay", {
-      headers: {
-        ...auth(session.access_token),
-        upgrade: "websocket",
-        "sec-websocket-protocol": "iroh-relay",
-      },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    const client = await connect(h, identity(), { headers: auth(session.access_token) });
     assert.equal(
       (
         await h.fetch("/v1/auth/logout", {
@@ -52,10 +43,8 @@ test("logout does not cancel a pending native relay upgrade", { timeout: 10000 }
       ).status,
       200,
     );
-    const response = await pending;
-    assert.equal(response.status, 101);
-    response.webSocket!.accept();
-    response.webSocket!.close();
+    assert.ok(await nothingPending(client));
+    client.close();
   } finally {
     await h.close();
   }
@@ -70,14 +59,14 @@ test("empty-frame flooding is limited even when it consumes no payload bytes", {
         headers: {
           ...auth(token),
           upgrade: "websocket",
-          "sec-websocket-protocol": "iroh-relay",
+          "sec-websocket-protocol": "iroh-relay-v2",
         },
       });
     const response = await upgrade(session.access_token);
     assert.equal(response.status, 101);
     const socket = response.webSocket!;
     socket.accept();
-    const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+    const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
     await budgets.get(budgets.idFromName("primary")).exhaustBudget("frames");
     const closed = new Promise<number>((resolve) => socket.addEventListener("close", (event) => resolve(event.code), { once: true }));
     socket.send(new Uint8Array(0));
@@ -217,28 +206,17 @@ test("cloud logout, expired credentials and account blocking do not govern Mesh 
   const h = await harness();
   try {
     const session = await h.login();
-    const response = await h.fetch("/relay?token=ignored", {
-      headers: { ...auth(session.access_token), cookie: "private=ignored", upgrade: "websocket", "sec-websocket-protocol": "iroh-relay" },
-    });
-    assert.equal(response.status, 101);
-    const socket = response.webSocket!;
-    socket.accept();
-    const echo = async () => {
-      const message = new Promise<unknown>((resolve) => socket.addEventListener("message", (e) => resolve(e.data), { once: true }));
-      socket.send(new Uint8Array([1, 2, 3]));
-      assert.deepEqual(new Uint8Array((await message) as ArrayBuffer), new Uint8Array([1, 2, 3]));
-    };
+    const client = await connect(h, identity(), { path: "/relay?token=ignored", headers: { ...auth(session.access_token), cookie: "private=ignored" } });
     assert.equal((await h.fetch("/v1/auth/logout", { method: "POST", headers: auth(session.refresh_token), body: '{"all":true}' })).status, 200);
     assert.equal((await h.fetch("/v1/auth/session", { headers: auth(session.access_token) })).status, 401);
-    await echo();
+    assert.ok(await nothingPending(client));
     assert.equal((await h.fetch("/v1/admin/accounts/" + session.subject, { method: "POST", headers: auth(h.adminToken), body: '{"blocked":true}' })).status, 200);
-    await echo();
+    assert.ok(await nothingPending(client));
     const expired = await h.fetch("/__test/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sub: session.subject, sid: session.session_id, seconds: -1 }) });
-    const reconnect = await h.fetch("/relay", { headers: { ...auth(((await expired.json()) as any).token), upgrade: "websocket", "sec-websocket-protocol": "iroh-relay" } });
-    assert.equal(reconnect.status, 101);
-    reconnect.webSocket!.accept();
-    reconnect.webSocket!.close();
-    socket.close();
+    const reconnect = await connect(h, identity(), { headers: auth(((await expired.json()) as any).token) });
+    assert.ok(await nothingPending(reconnect));
+    reconnect.close();
+    client.close();
   } finally {
     await h.close();
   }
@@ -252,7 +230,7 @@ test("relay budgets span anonymous and account sessions; account idle expiry sti
       second = await h.login();
     const upgrade = (token: string) =>
       h.fetch("/relay", {
-        headers: { ...auth(token), upgrade: "websocket", "sec-websocket-protocol": "iroh-relay" },
+        headers: { ...auth(token), upgrade: "websocket", "sec-websocket-protocol": "iroh-relay-v2" },
       });
     // All local test clients share one IP budget.
     for (let i = 0; i < 32; i++) {
@@ -263,7 +241,7 @@ test("relay budgets span anonymous and account sessions; account idle expiry sti
     }
     assert.equal((await upgrade(second.access_token)).status, 429);
     const accounts: any = await h.mf.getDurableObjectNamespace("ACCOUNTS");
-    const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+    const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
     await budgets.get(budgets.idFromName("primary")).exhaustBudget();
     const close = new Promise<number>((resolve) =>
       (sockets[0] as any).addEventListener("close", (event: any) => resolve(event.code), {

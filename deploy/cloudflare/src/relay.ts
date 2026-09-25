@@ -1,40 +1,51 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
 import { limited, nowSeconds, reply } from "./auth";
+import { CLIENT_AUTH_HEADER, PROTOCOL_NAMES, STATUS, encodeChallenge, encodeConfirm, encodeDeny, encodeEndpointGone, encodePong, encodeRestarting, encodeStatus, headerClaim, hex, negotiate, parseClientFrame, relayDatagram, unhex, verifyClientAuth, type ProtocolVersion } from "./relay-protocol";
 
-// Relay admission is a cost bound, never a Mesh membership authority.
+// The public relay: one Durable Object that speaks the iroh relay protocol
+// (iroh-relay 1.1, see relay-protocol.ts) directly over hibernatable WebSockets.
+// No container and no upstream socket: between messages the object can be
+// evicted from memory while Cloudflare keeps the client sockets open, so it is
+// billed per message rather than per second of wall time.
 //
+// Everything a message needs survives eviction:
+//   - socket tags (fixed at accept): the client IP budget key, and the EndpointId
+//     the client named in its (unverifiable) auth header, or "anon";
+//   - socket attachments: protocol version, pending challenge, the verified
+//     EndpointId, connection order (newest connection of an EndpointId is the
+//     active one) and the peers it has sent to (for EndpointGone);
+//   - SQLite storage: budget counters, written sparingly (see Budgets below).
+// In-memory maps are caches rebuilt from those on demand.
+//
+// Relay admission is a cost bound, never a Mesh membership authority.
 // Budgets are kept per client key so one noisy client (or a household of
 // devices behind one NAT) cannot lock everybody else out:
 //   - "ip:<addr>"   every upgrade, keyed by CF-Connecting-IP (IPv6 by /64 so a
 //                   host cannot rotate through its own prefix);
-//   - "ep:<hex>"    the iroh EndpointId, known only once the relay process has
-//                   verified the client's signed challenge (see RelayBudget);
+//   - "ep:<hex>"    the iroh EndpointId, applied once the client has signed our
+//                   challenge. The EndpointId in `x-iroh-relay-client-auth-v1`
+//                   signs TLS keying material of the client<->Cloudflare session
+//                   and cannot be verified here; EndpointIds are public, so it is
+//                   never used for admission, only as a routing tag that must
+//                   match the proven key;
 //   - "global"      a service-wide safety cap sized to operating cost.
-// The unauthenticated `x-iroh-relay-client-auth-v1` upgrade header also names
-// an EndpointId, but it cannot be verified here (it signs TLS keying material of
-// the client<->Cloudflare session) and EndpointIds are public (signed
-// discovery), so keying admission on it would let anyone lock a victim out.
-//
-// A normal Zork process holds 1-3 relay connections (device endpoint, an
-// enrollment endpoint while invites are open, short-lived client endpoints), so
-// a single endpoint needs 1 and briefly 2 while reconnecting.
 //
 // Global cap, justified against Cloudflare pricing (Workers Paid, 2026):
-//   - frames: every WebSocket message through this Durable Object is billed as a
-//     request at 20:1. 40M frames/day = 2M billed requests/day ≈ 60M/month ≈ $9
-//     at $0.15/M. That is the dominant variable cost, so it is the tightest cap.
-//   - bytes: 20 GiB/day ≈ 600 GiB/month stays inside the container's included
-//     1 TB egress (beyond it $0.025/GB, i.e. at most ~$15/month more).
-//   - connections: all sockets are proxied by this single object (128 MB,
-//     one thread) and one "lite" relay container (1/16 vCPU, 256 MiB). 256
-//     concurrent sockets ≈ 80-120 online Zork processes keeps both far from
-//     memory limits; duration cost of one always-on object and container is
-//     ~$5/month regardless of the socket count.
-//   - storage: SQLite rows written are billed ($1/M beyond 50M/month), so byte
-//     and frame counters are held in memory and flushed at most every
-//     FLUSH_SECONDS; connects and quota exhaustion are written immediately.
-//     A restart can forget at most a few seconds of traffic accounting.
+//   - frames: every inbound WebSocket message to a Durable Object is billed as a
+//     request at 20:1 (outbound messages are free). 40M frames/day = 2M billed
+//     requests/day ≈ 60M/month ≈ $9 at $0.15/M. That is the dominant variable
+//     cost, so it is the tightest cap. An idle iroh client pings every 15 s
+//     (~5.8k frames/day), so the cap also bounds how many idle clients we pay for.
+//   - bytes: Workers do not bill egress; the byte cap bounds abuse volume.
+//   - connections: one object handles every socket on one thread; 512 sockets
+//     ≈ 150-250 online Zork processes keeps per-message CPU far from the limit.
+//   - duration: with hibernation ≈ 0 when idle; while messages arrive more than
+//     every ~10 s the object stays resident, at most one 128 MB object
+//     (≈ 324k GB-s/month, inside the Workers Paid included 400k GB-s).
+//   - storage: SQLite rows written are billed ($1/M beyond 50M/month), so
+//     counters live in memory and are written only when they moved by a
+//     meaningful amount (FLUSH_BYTES/FLUSH_FRAMES) or at the periodic sweep.
 export type Budget = {
   connections: number;
   connectsPerMinute: number;
@@ -49,7 +60,7 @@ const MiB = 1024 * 1024,
   GiB = 1024 * MiB;
 export const LIMITS = {
   global: {
-    connections: 256,
+    connections: 512,
     connectsPerMinute: 600,
     bytesPerSecond: 32 * MiB,
     burstBytes: 64 * MiB,
@@ -70,8 +81,8 @@ export const LIMITS = {
     burstFrames: 8192,
     framesPerDay: 8_000_000,
   },
-  // One device identity: its connection plus reconnect overlap (the relay keeps
-  // a displaced connection open as inactive until it closes).
+  // One device identity: its connection plus reconnect overlap (a displaced
+  // connection stays open as inactive until it closes, as in iroh-relay).
   endpoint: {
     connections: 4,
     connectsPerMinute: 20,
@@ -82,42 +93,72 @@ export const LIMITS = {
     burstFrames: 8192,
     framesPerDay: 4_000_000,
   },
+  // A relay datagram frame is at most 1 + 32 + 3 + 64 KiB; anything larger is
+  // refused before parsing.
   frameBytes: 128 * 1024,
-  // A connection must finish the relay's signed challenge in this time, so an
+  // A connection must finish the signed challenge in this time, so an
   // unauthenticated socket cannot sit on IP capacity without an identity.
   authSeconds: 30,
 } satisfies Record<"global" | "ip" | "endpoint", Budget> & Record<string, unknown>;
-const FLUSH_SECONDS = 10;
+
+// Counters that moved by at least this much since their last write are
+// persisted within FLUSH_SOON_SECONDS (before the object can hibernate, which
+// needs ~10 s without events); smaller movements wait for the periodic sweep.
+// An eviction therefore forgets less than this per key.
+const FLUSH_BYTES = 1 * MiB;
+const FLUSH_FRAMES = 1000;
+const FLUSH_SECONDS = 30;
+const FLUSH_SOON_SECONDS = 5;
+// Periodic sweep while any socket is open: dead-socket cleanup and a full
+// counter flush. iroh clients ping every 15 s (after their last received
+// message), so a socket silent for STALE_SECONDS is gone.
+const SWEEP_SECONDS = 300;
+const STALE_SECONDS = 300;
 // Retry-After for concurrency rejections: long enough to stop a reconnect
 // storm, short enough that a reconnecting device recovers quickly.
 const BUSY_RETRY_SECONDS = 30;
+// iroh-relay's per-endpoint sent_to set, bounded to fit a socket attachment.
+const SENT_TO_LIMIT = 20;
 const GLOBAL = "global";
+const ANON = "anon";
+const OPEN = 1;
 
 type Quota = {
   minute: number;
   connects: number;
   day: number;
   bytes: number;
+  frames: number;
   at: number;
   balance: number;
-  frameBalance?: number;
-  frames?: number;
+  frameBalance: number;
+  // Totals at the last write, to decide whether a write is worth it.
+  savedBytes: number;
+  savedFrames: number;
 };
-type Connection = { keys: string[]; close: (code: number, reason: string) => void };
 type Denial = { key: string; retryAfter: number };
 
-// iroh-relay handshake frames (QUIC varint tag, single byte for these tags).
-const CLIENT_AUTH = 1,
-  SERVER_CONFIRMS_AUTH = 2;
+/** Per-socket state; survives hibernation (serializeAttachment, ≤ 2 KiB). */
+export type Attachment = {
+  ip: string;
+  version: ProtocolVersion;
+  since: number;
+  /** Pending challenge (hex) until the client authenticated. */
+  challenge?: string;
+  /** Verified EndpointId (hex). */
+  ep?: string;
+  /** Authentication order; the highest of an EndpointId is its active connection. */
+  seq?: number;
+  /** RateLimited status already sent on this connection. */
+  limited?: boolean;
+  /** EndpointIds this connection delivered datagrams to (hex). */
+  sentTo?: string[];
+};
 
 export function budgetFor(key: string): Budget {
   return key === GLOBAL ? LIMITS.global : key.startsWith("ep:") ? LIMITS.endpoint : LIMITS.ip;
 }
-function storageKey(key: string) {
-  // The pre-per-client deployment stored its single budget as "quota"; keep it
-  // as the global key so an upgrade does not reset the day's consumption.
-  return key === GLOBAL ? "quota" : "quota:" + key;
-}
+const storageKey = (key: string) => "quota:" + key;
 
 /** Client IP budget key; IPv6 addresses share their /64. */
 export function ipKey(request: Request): string {
@@ -128,7 +169,14 @@ export function ipKey(request: Request): string {
     const left = head ? head.split(":") : [];
     const right = raw.includes("::") && tail ? tail.split(":") : [];
     const groups = raw.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
-    return "ip:" + groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+    return (
+      "ip:" +
+      groups
+        .slice(0, 4)
+        .map((g) => g.replace(/^0+(?=.)/, ""))
+        .join(":") +
+      "::/64"
+    );
   }
   // Without Cloudflare's client address (local tests), all clients share one key.
   return "ip:unknown";
@@ -138,12 +186,21 @@ function secondsUntilTomorrow(now: number) {
   return 86400 - (now % 86400);
 }
 
-export class RelayBudget extends DurableObject<Env> {
-  private connections = new Set<Connection>();
-  private live = new Map<string, Set<Connection>>();
-  private quotas = new Map<string, Quota>();
-  private dirty = new Set<string>();
+export class RelayHub extends DurableObject<Env> {
+  // ---- caches (rebuilt after eviction) ----
+  protected quotas = new Map<string, Quota>();
+  protected dirty = new Set<string>();
   private flushAt = 0;
+  private alarmAt: number | null | undefined; // undefined: unknown after eviction
+  private attachments = new WeakMap<WebSocket, Attachment>();
+  private active = new Map<string, WebSocket>();
+  private lastSeen = new WeakMap<WebSocket, number>();
+  private verifying = new WeakSet<WebSocket>();
+  private departed = new WeakSet<WebSocket>();
+  private counter = 0;
+  private sweptDay = -1;
+
+  // ---- budgets ----
 
   protected quota(key: string, now = nowSeconds()): Quota {
     const limits = budgetFor(key);
@@ -156,10 +213,12 @@ export class RelayBudget extends DurableObject<Env> {
         connects: 0,
         day,
         bytes: 0,
+        frames: 0,
         at: now,
         balance: limits.burstBytes,
         frameBalance: limits.burstFrames,
-        frames: 0,
+        savedBytes: 0,
+        savedFrames: 0,
       };
       this.quotas.set(key, q);
     }
@@ -169,251 +228,383 @@ export class RelayBudget extends DurableObject<Env> {
     }
     if (q.day !== day) {
       q.day = day;
-      q.bytes = 0;
-      q.frames = 0;
+      q.bytes = q.frames = q.savedBytes = q.savedFrames = 0;
     }
-    q.frames ??= 0;
     const elapsed = Math.max(0, now - q.at);
-    q.frameBalance = Math.min(limits.burstFrames, (q.frameBalance ?? limits.burstFrames) + elapsed * limits.framesPerSecond);
+    q.frameBalance = Math.min(limits.burstFrames, q.frameBalance + elapsed * limits.framesPerSecond);
     q.balance = Math.min(limits.burstBytes, q.balance + elapsed * limits.bytesPerSecond);
     q.at = now;
     return q;
   }
 
   protected store(key: string, q: Quota) {
+    q.savedBytes = q.bytes;
+    q.savedFrames = q.frames;
     this.quotas.set(key, q);
     this.dirty.delete(key);
     this.ctx.storage.kv.put(storageKey(key), q);
   }
 
+  private significant(key: string) {
+    const q = this.quotas.get(key);
+    return !!q && (q.bytes - q.savedBytes >= FLUSH_BYTES || q.frames - q.savedFrames >= FLUSH_FRAMES);
+  }
+
+  /** Writes dirty counters: significant ones, or all of them. */
+  private flush(now: number, all: boolean) {
+    for (const key of [...this.dirty]) {
+      const q = this.quotas.get(key);
+      if (!q) this.dirty.delete(key);
+      else if (all || this.significant(key)) this.store(key, q);
+    }
+    this.flushAt = now + FLUSH_SECONDS;
+  }
+
   /** Charges a connect to every key, all or nothing. */
-  private admit(keys: string[]): Denial | null {
-    const now = nowSeconds();
+  private admit(keys: string[], now: number, live: (key: string) => number): Denial | null {
     const quotas = keys.map((key) => [key, this.quota(key, now)] as const);
     for (const [key, q] of quotas) {
       const limits = budgetFor(key);
-      if ((this.live.get(key)?.size ?? 0) >= limits.connections) return { key, retryAfter: BUSY_RETRY_SECONDS };
+      if (live(key) >= limits.connections) return { key, retryAfter: BUSY_RETRY_SECONDS };
       if (q.connects >= limits.connectsPerMinute) return { key, retryAfter: 60 - (now % 60) };
-      if (q.bytes >= limits.bytesPerDay || (q.frames ?? 0) >= limits.framesPerDay) return { key, retryAfter: secondsUntilTomorrow(now) };
+      if (q.bytes >= limits.bytesPerDay || q.frames >= limits.framesPerDay) return { key, retryAfter: secondsUntilTomorrow(now) };
     }
     for (const [key, q] of quotas) {
       q.connects++;
-      this.store(key, q);
+      this.dirty.add(key);
     }
     return null;
   }
 
   /**
-   * Charges one frame to every key, all or nothing. Returns the key whose
-   * budget refused it: `daily` when its day is used up, otherwise its
-   * per-second rate bucket is momentarily empty.
+   * Charges one inbound message to every key, all or nothing. Returns the key
+   * that refused it: `daily` when its day is used up, otherwise its per-second
+   * rate bucket is momentarily empty.
    */
-  private charge(keys: string[], amount: number): { key: string; daily: boolean } | null {
-    const now = nowSeconds();
+  private charge(keys: string[], amount: number, now: number): { key: string; daily: boolean } | null {
     const quotas = keys.map((key) => [key, this.quota(key, now)] as const);
     for (const [key, q] of quotas) {
       const limits = budgetFor(key);
       // Tiny/empty frames consume CPU and billable events too.
-      if (q.bytes + amount > limits.bytesPerDay || (q.frames ?? 0) >= limits.framesPerDay) {
+      if (q.bytes + amount > limits.bytesPerDay || q.frames >= limits.framesPerDay) {
         // Mark the day used up so reconnects are refused at admission too.
         q.bytes = Math.max(q.bytes, limits.bytesPerDay);
         this.store(key, q);
         return { key, daily: true };
       }
-      if (amount > q.balance || (q.frameBalance ?? 0) < 1) return { key, daily: false };
+      if (amount > q.balance || q.frameBalance < 1) return { key, daily: false };
     }
     for (const [key, q] of quotas) {
-      q.frameBalance = (q.frameBalance ?? 0) - 1;
-      q.frames = (q.frames ?? 0) + 1;
+      q.frameBalance -= 1;
+      q.frames += 1;
       q.bytes += amount;
       q.balance -= amount;
       this.dirty.add(key);
     }
-    if (now >= this.flushAt) this.flush(now);
-    else void this.scheduleFlush();
     return null;
   }
 
-  private flush(now = nowSeconds()) {
+  /** After charging: persist significant movement now or before hibernation can drop it. */
+  private async settle(now: number) {
+    if (now >= this.flushAt) this.flush(now, false);
     for (const key of this.dirty) {
-      const q = this.quotas.get(key);
-      if (q) this.ctx.storage.kv.put(storageKey(key), q);
-    }
-    this.dirty.clear();
-    this.flushAt = now + FLUSH_SECONDS;
-    // Forget idle clients from memory; their persisted quota stays until the
-    // daily sweep so a reconnect in the same day still sees its consumption.
-    const minute = Math.floor(now / 60);
-    for (const [key, q] of this.quotas) {
-      if (key !== GLOBAL && !this.live.get(key)?.size && q.minute < minute) this.quotas.delete(key);
+      if (this.significant(key)) {
+        await this.ensureAlarm(now + FLUSH_SOON_SECONDS);
+        break;
+      }
     }
   }
 
-  private scheduled = false;
-  private async scheduleFlush() {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + FLUSH_SECONDS * 1000);
+  // ---- sockets ----
+
+  protected attachment(ws: WebSocket): Attachment | null {
+    let att = this.attachments.get(ws);
+    if (!att) {
+      att = (ws.deserializeAttachment() as Attachment | null) ?? undefined;
+      if (att) this.attachments.set(ws, att);
+    }
+    return att ?? null;
+  }
+  private save(ws: WebSocket, att: Attachment) {
+    this.attachments.set(ws, att);
+    ws.serializeAttachment(att);
+  }
+  private open(tag?: string): WebSocket[] {
+    // getWebSockets(undefined) is not getWebSockets(): pass no argument for "all".
+    return (tag === undefined ? this.ctx.getWebSockets() : this.ctx.getWebSockets(tag)).filter((ws) => ws.readyState === OPEN);
+  }
+  /** Authenticated open connections of an EndpointId, active (newest) last. */
+  protected connections(ep: string): Array<[WebSocket, Attachment]> {
+    const found: Array<[WebSocket, Attachment]> = [];
+    for (const ws of [...this.open("ep:" + ep), ...this.open(ANON)]) {
+      const att = this.attachment(ws);
+      if (att?.ep === ep && !this.departed.has(ws)) found.push([ws, att]);
+    }
+    return found.sort((a, b) => a[1].seq! - b[1].seq!);
+  }
+  private activeFor(ep: string): WebSocket | undefined {
+    const cached = this.active.get(ep);
+    if (cached && cached.readyState === OPEN && !this.departed.has(cached)) return cached;
+    const newest = this.connections(ep).at(-1)?.[0];
+    if (newest) this.active.set(ep, newest);
+    else this.active.delete(ep);
+    return newest;
+  }
+  private send(ws: WebSocket, frame: Uint8Array | null) {
+    if (!frame) return true;
+    try {
+      ws.send(frame);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  private closeSocket(ws: WebSocket, code: number, reason: string) {
+    try {
+      ws.close(code, reason);
+    } catch {
+      /* already closed */
+    }
+    this.gone(ws);
+  }
+  private nextSeq() {
+    // Monotonic across evictions: wall clock milliseconds plus a tie breaker.
+    return Date.now() * 1000 + (this.counter++ % 1000);
   }
 
-  async alarm() {
-    this.scheduled = false;
-    const now = nowSeconds();
-    this.flush(now);
-    // Daily sweep of persisted quotas for clients not seen today.
-    const today = Math.floor(now / 86400);
-    for (const [key, q] of this.ctx.storage.kv.list<Quota>({ prefix: "quota:" })) {
-      if (q.day < today && !this.quotas.has(key.slice("quota:".length))) this.ctx.storage.kv.delete(key);
+  private async ensureAlarm(at: number) {
+    if (this.alarmAt === undefined) {
+      const current = await this.ctx.storage.getAlarm();
+      this.alarmAt = current === null ? null : Math.floor(current / 1000);
     }
-    if (this.dirty.size) await this.scheduleFlush();
-  }
-
-  private track(connection: Connection, key: string) {
-    connection.keys.push(key);
-    let set = this.live.get(key);
-    if (!set) this.live.set(key, (set = new Set()));
-    set.add(connection);
-  }
-  private untrack(connection: Connection) {
-    this.connections.delete(connection);
-    for (const key of connection.keys) {
-      const set = this.live.get(key);
-      set?.delete(connection);
-      if (set && !set.size) this.live.delete(key);
+    if (this.alarmAt === null || this.alarmAt > at) {
+      await this.ctx.storage.setAlarm(at * 1000);
+      this.alarmAt = at;
     }
-  }
-  /** Closes only the connections charged to an exhausted key. */
-  private exhausted(key: string) {
-    const victims = key === GLOBAL ? [...this.connections] : [...(this.live.get(key) ?? [])];
-    for (const c of victims) c.close(4008, "relay_quota");
   }
 
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return reply({ error: "websocket_required" }, 426);
+    const version = negotiate(request.headers.get("sec-websocket-protocol"));
+    if (!version) return reply({ error: "unsupported_relay_protocol", supported: "iroh-relay-v2, iroh-relay-v1" }, 400);
+    const now = nowSeconds();
+    this.sweepHandshakes(now);
     const ip = ipKey(request);
-    const denial = this.admit([GLOBAL, ip]);
+    const denial = this.admit([GLOBAL, ip], now, (key) => (key === GLOBAL ? this.open() : this.open(key)).length);
     if (denial) return limited(denial.retryAfter);
-    let server: WebSocket | undefined, upstream: WebSocket | undefined;
-    let dialTimer: ReturnType<typeof setTimeout> | undefined;
-    let authTimer: ReturnType<typeof setTimeout> | undefined;
-    let dialAbort: AbortController | undefined;
-    let closed = false;
-    const connection: Connection = {
-      keys: [],
-      close: (code, reason) => {
-        if (closed) return;
-        closed = true;
-        if (dialTimer !== undefined) clearTimeout(dialTimer);
-        if (authTimer !== undefined) clearTimeout(authTimer);
-        dialAbort?.abort();
-        for (const socket of [server, upstream]) {
-          try {
-            socket?.close(code, reason);
-          } catch {
-            /* already closed */
-          }
-        }
-        this.untrack(connection);
-      },
-    };
-    // Reserve before awaiting the container, including in-flight upgrades in
-    // the budgets. Cloud account state does not govern transport.
-    this.connections.add(connection);
-    this.track(connection, GLOBAL);
-    this.track(connection, ip);
-    try {
-      const headers = new Headers({ upgrade: "websocket" });
-      const protocol = request.headers.get("sec-websocket-protocol");
-      if (protocol) headers.set("sec-websocket-protocol", protocol);
-      // Fixed routing and a fresh URL prevent credentials/cookies/query values
-      // reaching the relay process, its logs, or an arbitrary backend.
-      const dial = new AbortController();
-      dialAbort = dial;
-      dialTimer = setTimeout(() => dial.abort(), 15_000);
-      const response = await this.env.RELAY.getByName("primary").fetch(new Request("http://relay/relay", { headers, signal: dial.signal }));
-      clearTimeout(dialTimer);
-      dialTimer = undefined;
-      dialAbort = undefined;
-      upstream = response.webSocket ?? undefined;
-      if (!upstream || response.status !== 101) {
-        connection.close(1011, "relay_unavailable");
-        return reply({ error: "relay_unavailable" }, 502);
-      }
-      upstream.binaryType = "arraybuffer";
-      upstream.accept();
-      if (closed) {
-        upstream.close(1011, "relay_unavailable");
-        connection.close(1011, "relay_unavailable");
-        return reply({ error: "relay_unavailable" }, 502);
-      }
-      const pair = new WebSocketPair();
-      server = pair[1];
-      server.binaryType = "arraybuffer";
-      server.accept();
-      // The relay process verifies the client's signature over its challenge;
-      // its ServerConfirmsAuth after a ClientAuth frame names a proven
-      // EndpointId. Only then is the endpoint budget applied.
-      let claimed: string | undefined;
-      let authenticated = false;
-      authTimer = setTimeout(() => connection.close(4001, "relay_auth_timeout"), LIMITS.authSeconds * 1000);
-      const observe = (fromClient: boolean, frame: Uint8Array) => {
-        if (authenticated || frame.length === 0) return true;
-        if (fromClient && frame[0] === CLIENT_AUTH && frame.length >= 33) {
-          claimed ??= "ep:" + Array.from(frame.subarray(1, 33), (b) => b.toString(16).padStart(2, "0")).join("");
-        } else if (!fromClient && frame[0] === SERVER_CONFIRMS_AUTH && claimed) {
-          authenticated = true;
-          clearTimeout(authTimer);
-          authTimer = undefined;
-          const denial = this.admit([claimed]);
-          if (denial) {
-            connection.close(4008, "relay_quota");
-            return false;
-          }
-          this.track(connection, claimed);
-        }
-        return true;
-      };
-      const forward = (from: WebSocket, to: WebSocket, fromClient: boolean) => {
-        from.addEventListener("message", (event) => {
-          if (closed) return;
-          if (!(event.data instanceof ArrayBuffer) || event.data.byteLength > LIMITS.frameBytes) {
-            connection.close(1009, "invalid_frame");
-            return;
-          }
-          const refused = this.charge(connection.keys, event.data.byteLength);
-          if (refused?.daily) {
-            // Closing every socket of the exhausted key prevents reconnecting
-            // to bypass its budget; the persisted quota also gates reconnects.
-            this.exhausted(refused.key);
-            return;
-          }
-          if (refused) {
-            // A burst over a rate bucket closes only the sending connection.
-            connection.close(4008, "relay_quota");
-            return;
-          }
-          // Confirmation is forwarded only after the endpoint was admitted.
-          if (!observe(fromClient, new Uint8Array(event.data))) return;
-          try {
-            to.send(event.data);
-          } catch {
-            connection.close(1011, "relay_send_failed");
-          }
-        });
-        from.addEventListener("close", () => connection.close(1000, "relay_closed"));
-        from.addEventListener("error", () => connection.close(1011, "relay_error"));
-      };
-      forward(server, upstream, true);
-      forward(upstream, server, false);
-      const selected = response.headers.get("sec-websocket-protocol");
-      return new Response(null, {
-        status: 101,
-        webSocket: pair[0],
-        headers: selected ? { "sec-websocket-protocol": selected } : undefined,
-      });
-    } catch {
-      connection.close(1011, "relay_unavailable");
-      return reply({ error: "relay_unavailable" }, 502);
+    const claim = headerClaim(request.headers.get(CLIENT_AUTH_HEADER));
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    this.ctx.acceptWebSocket(server, [ip, claim ? "ep:" + hex(claim) : ANON]);
+    const challenge = crypto.getRandomValues(new Uint8Array(16));
+    this.save(server, { ip, version, since: now, challenge: hex(challenge) });
+    this.lastSeen.set(server, now);
+    // The header's key-material signature cannot be checked behind Cloudflare,
+    // so every client proves its key with the challenge (iroh-relay's fallback).
+    server.send(encodeChallenge(challenge));
+    await this.ensureAlarm(now + LIMITS.authSeconds + 1);
+    await this.settle(now);
+    return new Response(null, { status: 101, webSocket: client, headers: { "sec-websocket-protocol": PROTOCOL_NAMES[version] } });
+  }
+
+  async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string) {
+    const now = nowSeconds();
+    this.lastSeen.set(ws, now);
+    const att = this.attachment(ws);
+    if (!att || this.departed.has(ws)) return this.closeSocket(ws, 1011, "relay_state_lost");
+    if (typeof message === "string" || message.byteLength > LIMITS.frameBytes) return this.closeSocket(ws, 1009, "invalid_frame");
+    const frame = new Uint8Array(message);
+    const refused = this.charge(att.ep ? [GLOBAL, att.ip, "ep:" + att.ep] : [GLOBAL, att.ip], frame.byteLength, now);
+    if (refused?.daily) {
+      // Closing every socket of the exhausted key prevents reconnecting to
+      // bypass its budget; the persisted quota also gates reconnects.
+      this.exhausted(refused.key);
+      return;
     }
+    try {
+      if (!att.ep) {
+        if (refused) return this.closeSocket(ws, 4008, "relay_quota");
+        return await this.authenticate(ws, att, frame, now);
+      }
+      if (refused) {
+        // Over a rate bucket: drop the message like a congested path would and
+        // tell the client once (iroh-relay throttles reads instead).
+        if (!att.limited) {
+          att.limited = true;
+          this.save(ws, att);
+          this.send(ws, encodeStatus(att.version, STATUS.RateLimited));
+        }
+        return;
+      }
+      const parsed = parseClientFrame(frame);
+      switch (parsed.kind) {
+        case "datagram":
+          return this.forward(ws, att, frame, hex(parsed.destination));
+        case "ping":
+          this.send(ws, encodePong(parsed.data));
+          return;
+        case "pong":
+          // This relay does not ping: clients ping every 15 s, and server pings
+          // would wake a hibernated object for nothing.
+          return;
+        default:
+          // iroh-relay ends the connection on any frame it cannot handle.
+          return this.closeSocket(ws, 1002, "protocol_error");
+      }
+    } finally {
+      await this.settle(now);
+    }
+  }
+
+  private async authenticate(ws: WebSocket, att: Attachment, frame: Uint8Array, now: number) {
+    const parsed = parseClientFrame(frame);
+    if (parsed.kind !== "auth" || !att.challenge || this.verifying.has(ws)) return this.closeSocket(ws, 1002, "handshake_expected");
+    this.verifying.add(ws);
+    const valid = await verifyClientAuth(parsed.publicKey, parsed.signature, unhex(att.challenge));
+    this.verifying.delete(ws);
+    if (ws.readyState !== OPEN || this.departed.has(ws)) return;
+    const ep = hex(parsed.publicKey);
+    const tags = this.ctx.getTags(ws);
+    const tagged = tags.includes("ep:" + ep) || tags.includes(ANON);
+    if (!valid || !tagged) {
+      this.send(ws, encodeDeny(valid ? "client auth header names a different endpoint" : "signature invalid"));
+      return this.closeSocket(ws, 1008, "relay_auth_denied");
+    }
+    const previous = this.connections(ep).filter(([other]) => other !== ws);
+    const denial = this.admit(["ep:" + ep], now, () => previous.length);
+    if (denial) {
+      this.send(ws, encodeDeny("relay quota"));
+      return this.closeSocket(ws, 4008, "relay_quota");
+    }
+    delete att.challenge;
+    att.ep = ep;
+    att.seq = this.nextSeq();
+    this.save(ws, att);
+    // Newest wins, as in iroh-relay: the displaced connection stays open but no
+    // longer receives datagrams, and is told so.
+    const displaced = previous.at(-1);
+    if (displaced) this.send(displaced[0], encodeStatus(displaced[1].version, STATUS.SameEndpointIdConnected));
+    this.active.set(ep, ws);
+    this.send(ws, encodeConfirm());
+  }
+
+  private forward(ws: WebSocket, att: Attachment, frame: Uint8Array, destination: string) {
+    const target = this.activeFor(destination);
+    // Like iroh-relay: a datagram for an endpoint that is not connected is dropped.
+    if (!target) return;
+    if (!this.send(target, relayDatagram(frame, unhex(att.ep!)))) {
+      this.closeSocket(target, 1011, "relay_send_failed");
+      return;
+    }
+    if (!att.sentTo?.includes(destination)) {
+      att.sentTo = [...(att.sentTo ?? []), destination].slice(-SENT_TO_LIMIT);
+      this.save(ws, att);
+    }
+  }
+
+  /** A connection ended: promote the next connection or tell peers it is gone. */
+  private gone(ws: WebSocket) {
+    if (this.departed.has(ws)) return;
+    this.departed.add(ws);
+    const att = this.attachment(ws);
+    if (!att?.ep) return;
+    const ep = att.ep;
+    if (this.active.get(ep) === ws) this.active.delete(ep);
+    const remaining = this.connections(ep);
+    const next = remaining.at(-1);
+    if (next) {
+      const [nextWs, nextAtt] = next;
+      const wasActive = att.seq! > nextAtt.seq!;
+      const merged = [...new Set([...(nextAtt.sentTo ?? []), ...(att.sentTo ?? [])])].slice(-SENT_TO_LIMIT);
+      if (merged.length !== (nextAtt.sentTo?.length ?? 0)) {
+        nextAtt.sentTo = merged;
+        this.save(nextWs, nextAtt);
+      }
+      if (wasActive) {
+        this.active.set(ep, nextWs);
+        this.send(nextWs, encodeStatus(nextAtt.version, STATUS.Healthy));
+      }
+      return;
+    }
+    const key = unhex(ep);
+    for (const peer of att.sentTo ?? []) {
+      const target = this.activeFor(peer);
+      if (target) this.send(target, encodeEndpointGone(key));
+    }
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string) {
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code, reason);
+    } catch {
+      /* already closed */
+    }
+    this.gone(ws);
+  }
+
+  async webSocketError(ws: WebSocket) {
+    this.closeSocket(ws, 1011, "relay_error");
+  }
+
+  /** Closes only the connections charged to an exhausted key. */
+  private exhausted(key: string) {
+    const victims = key === GLOBAL ? this.open() : key.startsWith("ep:") ? this.connections(key.slice(3)).map(([ws]) => ws) : this.open(key);
+    for (const ws of victims) this.closeSocket(ws, 4008, "relay_quota");
+  }
+
+  private sweepHandshakes(now: number) {
+    for (const ws of this.open()) {
+      const att = this.attachment(ws);
+      if (att && !att.ep && now - att.since > LIMITS.authSeconds) this.closeSocket(ws, 4001, "relay_auth_timeout");
+    }
+  }
+
+  private sweepStale(now: number) {
+    for (const ws of this.open()) {
+      const seen = this.lastSeen.get(ws);
+      // After an eviction nothing is known: start counting now.
+      if (seen === undefined) this.lastSeen.set(ws, now);
+      else if (now - seen > STALE_SECONDS) this.closeSocket(ws, 4000, "relay_idle_timeout");
+    }
+  }
+
+  async alarm() {
+    this.alarmAt = null;
+    const now = nowSeconds();
+    this.flush(now, true);
+    this.sweepHandshakes(now);
+    this.sweepStale(now);
+    // Once a day, drop persisted counters of clients not seen today.
+    const today = Math.floor(now / 86400);
+    if (this.sweptDay !== today) {
+      this.sweptDay = today;
+      for (const [key, q] of this.ctx.storage.kv.list<Quota>({ prefix: "quota:" })) {
+        if (q.day < today && !this.quotas.has(key.slice("quota:".length))) this.ctx.storage.kv.delete(key);
+      }
+    }
+    for (const [key, q] of this.quotas) {
+      if (key !== GLOBAL && !this.dirty.has(key) && q.minute < Math.floor(now / 60) - 1) this.quotas.delete(key);
+    }
+    const sockets = this.open();
+    let next = sockets.length ? now + SWEEP_SECONDS : Infinity;
+    for (const ws of sockets) {
+      const att = this.attachment(ws);
+      if (att && !att.ep) next = Math.min(next, att.since + LIMITS.authSeconds + 1);
+    }
+    if (Number.isFinite(next)) await this.ensureAlarm(Math.max(next, now + 1));
+  }
+
+  /**
+   * Operator restart: tells every client the relay is restarting (iroh-relay's
+   * Restarting frame, advisory) and closes all connections.
+   */
+  restart(): number {
+    const sockets = this.open();
+    for (const ws of sockets) {
+      this.send(ws, encodeRestarting(Math.floor(Math.random() * 5000), 15000));
+      this.closeSocket(ws, 1012, "relay_restart");
+    }
+    this.flush(nowSeconds(), true);
+    return sockets.length;
   }
 }

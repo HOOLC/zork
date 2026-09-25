@@ -33,7 +33,8 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn("private-test-value", json.dumps(public))
             self.assertNotIn("must-not-be-copied", json.dumps(public))
             self.assertEqual(private["GOOGLE_CLIENT_SECRET"], "private-test-value")
-            self.assertIn({"name": "RELAY_BUDGET", "class_name": "RelayBudget"}, public["durable_objects"]["bindings"])
+            self.assertIn({"name": "RELAY_HUB", "class_name": "RelayHub"}, public["durable_objects"]["bindings"])
+            self.assertNotIn("containers", public)
             self.assertTrue(any("Cloudflare API token" in item for item in missing))
             google.chmod(0o644)
             with self.assertRaisesRegex(ValueError, "mode 600"):

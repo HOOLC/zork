@@ -43,6 +43,7 @@ pub fn validate(config: &MeshConfig) -> Result<()> {
         relay_quic_port: config.relay_quic_port,
         discovery_url: config.discovery_url.clone(),
         quic_discovery_urls: config.quic_discovery_urls.clone(),
+        ..Default::default()
     }
     .validate()?;
     ensure!(

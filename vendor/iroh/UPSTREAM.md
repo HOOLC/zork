@@ -7,3 +7,5 @@ Local changes permit separate QUIC address-discovery servers and their DNS resol
 Relay configuration changes also retire actors holding an obsolete bearer credential, so logout and token replacement reconnect with current access. This patch was received from the relay-account-lifecycle task; it leaves direct transports and other relay actors intact.
 
 Explicitly withdrawn configured origins remain unavailable until reinserted. Stale peer discovery must not recreate their relay actors without credentials after logout; unrelated peer relays retain their upstream behavior.
+
+Net reports can mark relays as fallbacks: they become the home relay only while no other configured relay answers (see ZORK-PATCH.md, "Fallback relays").

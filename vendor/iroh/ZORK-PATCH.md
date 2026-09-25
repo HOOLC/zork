@@ -5,10 +5,19 @@ This is the crates.io source of iroh 1.0.3, upstream commit
 The original licenses, manifest, source and tests are retained.
 
 The local patch makes a relay-map update retire an active relay actor when its
-bearer credential changes or its configured relay is removed. The replacement
-actor reads the current config. Upstream only schedules address discovery on
-these updates, so the existing actor's ClientBuilder otherwise keeps using the
-old credential, including after logout and a subsequent login.
+bearer credential changes, when a relay that carried a credential is removed,
+or when the map becomes empty. The replacement actor reads the current config.
+Upstream only schedules address discovery on these updates, so the existing
+actor's ClientBuilder otherwise keeps using the old credential, including after
+logout and a subsequent login. A removed credential-bearing origin is withdrawn:
+peers' discovery records cannot recreate it as an anonymous relay.
+
+A relay without a credential that is removed while other relays remain keeps
+upstream behaviour: it stays home until the next net report picks a remaining
+relay, then closes once idle. Retiring it at once dropped datagrams from peers
+still addressing it (upstream `endpoint_relay_map_change`). An emptied map
+(enrollment giving up its relay) has no successor, so the connection closes
+immediately.
 
 Only relay admission lifecycle changes. Discovery, direct transports, relay
 selection, DNS and hole-punching policy remain upstream behavior. Native
@@ -43,3 +52,17 @@ of the minute or UTC day for rate and volume budgets). iroh-relay 1.1 and
 tokio-websockets discard response headers on a failed upgrade, so the header
 value itself is not read; the status code is recognised from the dial error.
 A connection that was established (received a pong) resets this backoff.
+
+# Fallback relays
+
+`NetReportConfig::fallback_relays` names relays of the relay map that become the
+home relay only while no other (primary) relay answered a latency probe in the
+current report (`net_report.rs`, `add_report_history_and_set_preferred_relay`).
+Zork ships relay.zork.ing plus n0's public relays as fallbacks. Upstream picks the
+lowest-latency relay, so a device closer to an n0 region (for example in mainland
+China, where Cloudflare's anycast often answers from far away) would make n0 its
+home relay permanently. With the patch the fallbacks are probed as usual but are
+skipped while a primary answers; when the previous home is a fallback and a
+primary answers again, the hysteresis is skipped and the primary is taken back in
+the next report. Relay selection among primaries, probing and dialing peers'
+relays are unchanged. Covered by `net_report::tests::test_fallback_relays_only_when_no_primary_answers` and `zork-mesh` `network::tests`.
