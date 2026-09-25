@@ -1,4 +1,4 @@
 <!-- Generated from crates/zork-ui/assets/makers/anthropic.svg; do not redraw. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-  <path android:pathData="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z" android:fillColor="#24272B" android:fillType="evenOdd" />
+  <path android:pathData="M13.37 5.82H16.072L21 18.18H18.298L13.37 5.82ZM7.927 5.82H10.752L15.679 18.18H12.924L11.917 15.584H6.763L5.755 18.179H3L7.928 5.821L7.927 5.82ZM11.026 13.289 9.34 8.945 7.654 13.29H11.025L11.026 13.289Z" android:fillColor="#24272B" android:fillType="evenOdd" android:strokeColor="#00000000" android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
