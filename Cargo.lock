@@ -12597,6 +12597,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "ulid",
  "url",
  "zork-config",

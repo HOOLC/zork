@@ -6,7 +6,7 @@ pub(crate) use imp::Options;
 mod imp {
     use std::collections::BTreeSet;
 
-    use crate::net_report::{NetReportConfig, QuicConfig, probes::Probe};
+    use crate::net_report::{NetReportConfig, QuicConfig, RelayAdmission, probes::Probe};
 
     /// Options for running probes
     ///
@@ -24,6 +24,8 @@ mod imp {
         /// User-facing configuration.
         pub(crate) user_config: NetReportConfig,
         pub(crate) proxy_url: Option<url::Url>,
+        /// Relays refusing admission, shared with the relay actors.
+        pub(crate) relay_admission: RelayAdmission,
     }
 
     impl Options {
@@ -33,7 +35,14 @@ mod imp {
                 tls_config,
                 user_config: NetReportConfig::default(),
                 proxy_url: None,
+                relay_admission: RelayAdmission::default(),
             }
+        }
+
+        /// Share the relay actors' admission state.
+        pub(crate) fn relay_admission(mut self, admission: RelayAdmission) -> Self {
+            self.relay_admission = admission;
+            self
         }
         pub(crate) fn proxy_url(mut self, proxy_url: Option<url::Url>) -> Self {
             self.proxy_url = proxy_url;
@@ -75,7 +84,7 @@ mod imp {
 mod imp {
     use std::collections::BTreeSet;
 
-    use crate::net_report::{NetReportConfig, Probe};
+    use crate::net_report::{NetReportConfig, Probe, RelayAdmission};
 
     /// Options for running probes (in browsers).
     ///
@@ -85,17 +94,26 @@ mod imp {
     pub(crate) struct Options {
         /// User-facing configuration.
         pub(crate) user_config: NetReportConfig,
+        /// Relays refusing admission, shared with the relay actors.
+        pub(crate) relay_admission: RelayAdmission,
     }
 
     impl Default for Options {
         fn default() -> Self {
             Self {
                 user_config: NetReportConfig::default(),
+                relay_admission: RelayAdmission::default(),
             }
         }
     }
 
     impl Options {
+        /// Share the relay actors' admission state.
+        pub(crate) fn relay_admission(mut self, admission: RelayAdmission) -> Self {
+            self.relay_admission = admission;
+            self
+        }
+
         /// Set the net report configuration.
         pub(crate) fn net_report_config(mut self, config: NetReportConfig) -> Self {
             self.user_config = config;

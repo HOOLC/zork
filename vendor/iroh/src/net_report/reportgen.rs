@@ -122,6 +122,7 @@ impl Client {
         last_report: Option<Report>,
         relay_map: RelayMap,
         protocols: BTreeSet<Probe>,
+        held: BTreeSet<RelayUrl>,
         captive_portal_check: bool,
         if_state: IfStateDetails,
         shutdown_token: CancellationToken,
@@ -134,6 +135,7 @@ impl Client {
             last_report,
             relay_map,
             protocols,
+            held,
             captive_portal_check,
             #[cfg(not(wasm_browser))]
             socket_state,
@@ -172,6 +174,8 @@ struct Actor {
     /// Protocols we should attempt to create probes for, if we have the correct
     /// configuration for that protocol.
     protocols: BTreeSet<Probe>,
+    /// Relays whose HTTPS probes wait for [`super::probes::FALLBACK_HOLD`].
+    held: BTreeSet<RelayUrl>,
 
     /// Whether to check for captive portals.
     captive_portal_check: bool,
@@ -374,9 +378,9 @@ impl Actor {
         trace!(?if_state, "local interface details");
         let plan = match self.last_report {
             Some(ref report) => {
-                ProbePlan::with_last_report(&self.relay_map, report, &self.protocols)
+                ProbePlan::with_last_report(&self.relay_map, report, &self.protocols, &self.held)
             }
-            None => ProbePlan::initial(&self.relay_map, &self.protocols),
+            None => ProbePlan::initial(&self.relay_map, &self.protocols, &self.held),
         };
         trace!(%plan, "probe plan");
 
@@ -385,20 +389,27 @@ impl Actor {
         for probe_set in plan.iter() {
             let set_token = token.child_token();
             let proto = probe_set.proto();
+            let hold = probe_set.hold();
             for (delay, relay) in probe_set.params() {
                 let probe_token = set_token.child_token();
 
-                let fut = probe_token.run_until_cancelled_owned(time::timeout(
-                    PROBES_TIMEOUT,
-                    proto.run(
-                        *delay,
-                        relay.clone(),
-                        #[cfg(not(wasm_browser))]
-                        self.socket_state.clone(),
-                        #[cfg(not(wasm_browser))]
-                        self.tls_config.clone(),
-                    ),
-                ));
+                let probe = proto.run(
+                    *delay,
+                    relay.clone(),
+                    #[cfg(not(wasm_browser))]
+                    self.socket_state.clone(),
+                    #[cfg(not(wasm_browser))]
+                    self.tls_config.clone(),
+                );
+                // Zork patch: held (fallback) probes start only if the report is
+                // still incomplete after the hold; see `probes::FALLBACK_HOLD`.
+                // The timeout's deadline is fixed when it is created, so after it.
+                let fut = probe_token.run_until_cancelled_owned(async move {
+                    if !hold.is_zero() {
+                        time::sleep(hold).await;
+                    }
+                    time::timeout(PROBES_TIMEOUT, probe).await
+                });
                 probes.spawn(
                     async move {
                         let res = fut.await;

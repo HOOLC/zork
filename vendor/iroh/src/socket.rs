@@ -725,6 +725,8 @@ enum UpdateReason {
     LinkChangeMajor,
     LinkChangeMinor,
     RelayMapChange,
+    /// Zork patch: a relay started or stopped refusing admission.
+    RelayAdmission,
 }
 
 impl UpdateReason {
@@ -921,6 +923,7 @@ impl EndpointInner {
             .unwrap_or_else(RelayMap::empty);
 
         let ipv6_reported = Arc::new(AtomicBool::new(false));
+        let relay_admission = net_report::RelayAdmission::default();
 
         let relay_actor_config = RelayActorConfig {
             my_relay: HomeRelayWatch::default(),
@@ -932,6 +935,7 @@ impl EndpointInner {
             tls_config: tls_config.clone(),
             metrics: metrics.socket.clone(),
             relay_map: relay_map.clone(),
+            admission: relay_admission.clone(),
         };
 
         let shutdown_state = ShutdownState::default();
@@ -1054,10 +1058,13 @@ impl EndpointInner {
                 .proxy_url(proxy_url)
                 .quic_config(qad_config)
                 .net_report_config(net_report_config)
+                .relay_admission(relay_admission.clone())
         };
 
         #[cfg(wasm_browser)]
-        let net_report_config = net_report::Options::default().net_report_config(net_report_config);
+        let net_report_config = net_report::Options::default()
+            .net_report_config(net_report_config)
+            .relay_admission(relay_admission.clone());
 
         let net_reporter = net_report::Client::new(
             #[cfg(not(wasm_browser))]
@@ -1091,6 +1098,7 @@ impl EndpointInner {
             transports_network_change,
             direct_addr_done_rx,
             call_notify_quic_network_change: None,
+            relay_admission,
         };
         // Initialize addresses
         #[cfg(not(wasm_browser))]
@@ -1480,6 +1488,9 @@ struct Actor {
     /// until the gateway appears. Once it does, we notify immediately.
     /// After 5s total we notify anyway even without a gateway.
     call_notify_quic_network_change: Option<PendingNetworkChangeNotify>,
+    /// Zork patch: relays refusing admission; a change re-runs the net report so
+    /// the home relay moves off (or back to) such a relay.
+    relay_admission: net_report::RelayAdmission,
 }
 
 impl Actor {
@@ -1501,6 +1512,7 @@ impl Actor {
         let mut portmap_watcher_closed = false;
 
         let mut net_report_watcher = self.sock.net_report.watch();
+        let mut admission_watcher = self.relay_admission.watch();
 
         // ensure we are doing an initial publish of our addresses
         self.sock.publish_my_addr();
@@ -1533,6 +1545,12 @@ impl Actor {
                     trace!(?msg, "tick: msg");
                     self.sock.metrics.socket.actor_tick_msg.inc();
                     self.handle_actor_message(msg).await;
+                }
+                refused = admission_watcher.updated() => {
+                    if let Ok(refused) = refused {
+                        debug!(?refused, "relay admission changed");
+                        self.re_stun(UpdateReason::RelayAdmission);
+                    }
                 }
                 tick = self.periodic_re_stun_timer.tick() => {
                     trace!("tick: re_stun {:?}", tick);

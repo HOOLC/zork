@@ -66,3 +66,52 @@ skipped while a primary answers; when the previous home is a fallback and a
 primary answers again, the hysteresis is skipped and the primary is taken back in
 the next report. Relay selection among primaries, probing and dialing peers'
 relays are unchanged. Covered by `net_report::tests::test_fallback_relays_only_when_no_primary_answers` and `zork-mesh` `network::tests`.
+
+# Net reports without QAD (fake-IP proxies)
+
+Behind a fake-IP TUN proxy QAD cannot run (the QAD servers only resolve to fake IPs, see
+above), so HTTPS latency probes are the only measurement. Upstream considers such a
+report complete only once every relay of the map answered. With Zork's map (relay.zork.ing
+plus four n0 fallbacks) the far fallbacks decided: on macOS each TLS handshake to an n0
+relay spends 0.5-2 s in the synchronous system certificate verifier (SecTrust, Let's
+Encrypt "Root YE" chain; relay.zork.ing's chain takes ~10 ms), serialised and on tokio
+worker threads. use1/euc1 never answered within the 3 s probe timeout, so every report
+ran into the 5 s reportgen timeout (`reportgen timed out`), the first report often carried
+no latency at all and the home relay was only chosen by the second report ~25 s later.
+
+- `net_report.rs` `have_enough_reports`: when fallback relays are configured, a report is
+  complete once every admitted primary relay (not a fallback, not refusing admission)
+  answered. Fallbacks only matter while no primary answers (see "Fallback relays").
+- `net_report/probes.rs` `FALLBACK_HOLD`, `reportgen.rs`: while an admitted primary exists,
+  HTTPS probes to fallbacks wait 1 s before starting (outside their 3 s timeout, so they
+  still get the full timeout when no primary answers). The complete report aborts them, so
+  in the common case the fallbacks are not contacted at all. Without an admitted primary
+  nothing is held.
+
+Without fallback relays both are inactive and reports behave as upstream; on networks
+where QAD works the QAD results complete the report as before. Covered by
+`net_report::tests::test_report_does_not_wait_for_fallbacks`,
+`test_report_is_complete_once_admitted_primaries_answered` and
+`probes::tests::test_initial_probeplan_holds_fallbacks`; `zork-mesh`
+`network::tests::net_report_lab` (ignored) prints reports of the production endpoint.
+
+# Relay admission and home selection
+
+relay.zork.ing refuses relay connections over budget with HTTP 429 (see "Relay admission
+backoff") while its `/ping` latency probe keeps answering, so it stayed "alive" and home.
+`net_report::RelayAdmission` (shared by the relay actors, net_report and the socket actor)
+records relays whose last dial was refused:
+
+- The active relay actor marks its relay refused on a 429, and clears the mark once a
+  connection is established or the actor exits. While refused it does not exit for
+  inactivity when it is not home, so it keeps redialing with the admission backoff.
+- `add_report_history_and_set_preferred_relay` treats a refused relay as not alive: it is
+  skipped (and a refused primary no longer suppresses the fallbacks) unless every answering
+  relay refuses.
+- A change of the set re-runs the net report as a full report (socket actor,
+  `UpdateReason::RelayAdmission`), so home moves to a fallback right after the 429 and back
+  to the primary right after it admits the endpoint again.
+
+Covered by `net_report::tests::test_relay_refusing_admission_is_not_alive_for_home` and
+`zork-mesh` `network::tests::a_relay_refusing_admission_hands_home_to_a_fallback_until_it_admits_again`
+(a local relay front answering the upgrade with 429).

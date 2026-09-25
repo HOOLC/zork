@@ -150,6 +150,43 @@ impl Default for NetReportConfig {
 const FULL_REPORT_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const ENOUGH_ENDPOINTS: usize = 3;
 
+/// Zork patch: relays that currently refuse this endpoint's relay connection
+/// (HTTP 429 on the WebSocket upgrade).
+///
+/// The active relay actors write it; home relay selection reads it. A relay
+/// stays refused until one of its connections is admitted again (or its actor
+/// stops). Clones share state.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RelayAdmission {
+    lock: Arc<std::sync::Mutex<()>>,
+    refused: Watchable<BTreeSet<RelayUrl>>,
+}
+
+impl RelayAdmission {
+    /// Marks `url` as refusing (or admitting) this endpoint.
+    pub(crate) fn set_refused(&self, url: &RelayUrl, refused: bool) {
+        let _guard = self.lock.lock().expect("poisoned");
+        let mut set = self.refused.get();
+        let changed = if refused {
+            set.insert(url.clone())
+        } else {
+            set.remove(url)
+        };
+        if changed {
+            let _ = self.refused.set(set);
+        }
+    }
+
+    /// The relays currently refusing admission.
+    pub(crate) fn refused(&self) -> BTreeSet<RelayUrl> {
+        self.refused.get()
+    }
+
+    pub(crate) fn watch(&self) -> n0_watcher::Direct<BTreeSet<RelayUrl>> {
+        self.refused.watch()
+    }
+}
+
 /// Client to run net_reports.
 #[derive(Debug)]
 pub(crate) struct Client {
@@ -166,6 +203,9 @@ pub(crate) struct Client {
     captive_portal_check: bool,
     /// Relays chosen as home only when no primary relay answered.
     fallback_relays: BTreeSet<RelayUrl>,
+    /// Relays refusing admission, and the set the previous report saw.
+    admission: RelayAdmission,
+    refused_at_last_report: BTreeSet<RelayUrl>,
     /// A collection of previously generated reports.
     ///
     /// Sometimes it is useful to look at past reports to decide what to do.
@@ -310,6 +350,28 @@ impl Client {
             tls_config: opts.tls_config,
             captive_portal_check: opts.user_config.captive_portal_check,
             fallback_relays: opts.user_config.fallback_relays.iter().cloned().collect(),
+            admission: opts.relay_admission,
+            refused_at_last_report: BTreeSet::new(),
+        }
+    }
+
+    /// Relays of the map that may become home without being a fallback and
+    /// that are not refusing admission.
+    fn admitted_primaries(&self, refused: &BTreeSet<RelayUrl>) -> Vec<RelayUrl> {
+        self.relay_map
+            .urls::<Vec<_>>()
+            .into_iter()
+            .filter(|url| !self.fallback_relays.contains(url) && !refused.contains(url))
+            .collect()
+    }
+
+    /// Fallback relays whose HTTPS probes wait for [`probes::FALLBACK_HOLD`]:
+    /// all of them while an admitted primary relay exists, none otherwise.
+    fn held_fallbacks(&self, refused: &BTreeSet<RelayUrl>) -> BTreeSet<RelayUrl> {
+        if self.admitted_primaries(refused).is_empty() {
+            BTreeSet::new()
+        } else {
+            self.fallback_relays.clone()
         }
     }
 
@@ -347,6 +409,15 @@ impl Client {
         {
             do_full = true;
         }
+        // Zork patch: a relay started or stopped refusing admission. Probe every
+        // relay so home selection sees current latencies (an incremental report
+        // after a complete one probes nothing and would keep the home relay).
+        let refused = self.admission.refused();
+        if refused != self.refused_at_last_report {
+            debug!(?refused, "relay admission changed");
+            do_full = true;
+        }
+        let held = self.held_fallbacks(&refused);
         if do_full {
             self.reports.last = None; // causes ProbePlan::new below to do a full (initial) plan
             self.reports.next_full = false;
@@ -372,6 +443,7 @@ impl Client {
             self.reports.last.clone(),
             self.relay_map.clone(),
             self.probes.clone(),
+            held,
             self.captive_portal_check,
             if_state.clone(),
             shutdown_token.child_token(),
@@ -396,7 +468,7 @@ impl Client {
             report.update(&r);
         }
 
-        if self.have_enough_reports(&if_state, do_full, num_relays, &report) {
+        if self.have_enough_reports(&if_state, do_full, num_relays, &refused, &report) {
             // check if we already have enough probes immediately after QAD returns
             trace!("have enough probe reports, aborting further probes");
             // shuts down the probes
@@ -439,7 +511,7 @@ impl Client {
                             ProbeFinished::Regular(probe) => match probe {
                                 Ok(probe) => {
                                     report.update(&probe);
-                                    if self.have_enough_reports(&if_state, do_full, num_relays, &report) {
+                                    if self.have_enough_reports(&if_state, do_full, num_relays, &refused, &report) {
                                         trace!("have enough probe reports, aborting further probes");
                                         // shuts down the probes
                                         drop(actor);
@@ -697,8 +769,25 @@ impl Client {
         state: &IfStateDetails,
         do_full: bool,
         num_relays: usize,
+        refused: &BTreeSet<RelayUrl>,
         report: &Report,
     ) -> bool {
+        // Zork patch: fallback relays only matter while no primary relay answers,
+        // so a report in which every admitted primary answered is complete without
+        // waiting for the (often far) fallbacks. Behind a fake-IP proxy QAD cannot
+        // run and HTTPS probes are the only measurement; waiting for all relays
+        // made every such report run into the reportgen timeout.
+        if !self.fallback_relays.is_empty() {
+            let primaries = self.admitted_primaries(refused);
+            if !primaries.is_empty()
+                && primaries.iter().all(|primary| {
+                    report.relay_latency.iter().any(|(_, url, _)| url == primary)
+                })
+            {
+                return true;
+            }
+        }
+
         #[cfg_attr(wasm_browser, allow(unused_mut))]
         let mut num_ipv4 = 0;
         #[cfg_attr(wasm_browser, allow(unused_mut))]
@@ -831,12 +920,21 @@ impl Client {
         // Fallback relays compete only while no primary relay answered in this
         // report. Skipping them also lifts the hysteresis below when the previous
         // home was a fallback, so the primary is taken back as soon as it answers.
-        let primary_alive = r.relay_latency.iter().any(|(_, url, _)| {
-            self.relay_map.get(url).is_some() && !self.fallback_relays.contains(url)
-        });
+        //
+        // A relay refusing admission (HTTP 429 on the relay connection) still
+        // answers latency probes but cannot serve as home, so it is not alive
+        // either, unless every answering relay refuses.
+        let refused = self.admission.refused();
+        let admitted = |url: &RelayUrl| self.relay_map.get(url).is_some() && !refused.contains(url);
+        let skip_refused = r.relay_latency.iter().any(|(_, url, _)| admitted(url));
+        let primary_alive = r
+            .relay_latency
+            .iter()
+            .any(|(_, url, _)| admitted(url) && !self.fallback_relays.contains(url));
         {
             for (_, url, duration) in r.relay_latency.iter() {
                 if self.relay_map.get(url).is_none() { continue; }
+                if skip_refused && refused.contains(url) { continue; }
                 if primary_alive && self.fallback_relays.contains(url) { continue; }
                 if Some(url) == prev_relay.as_ref() {
                     old_relay_cur_latency = duration;
@@ -861,6 +959,7 @@ impl Client {
             }
         }
 
+        self.refused_at_last_report = refused;
         self.reports.prev.insert(now, r.clone());
         self.reports.last = Some(r.clone());
     }
@@ -1359,6 +1458,142 @@ mod tests {
         let mut client = new_client(Vec::new());
         assert_eq!(step(&mut client, &[(1, 300), (2, 40)]), Some(relay_url(2)));
 
+        Ok(())
+    }
+
+    fn zork_relay_url(i: u16) -> RelayUrl {
+        format!("http://{i}.com").parse().unwrap()
+    }
+
+    fn zork_report(latencies: &[(u16, u64)]) -> Report {
+        let mut report = Report::default();
+        for (id, ms) in latencies {
+            report.relay_latency.update_relay(
+                zork_relay_url(*id),
+                Duration::from_millis(*ms),
+                Probe::Https,
+            );
+        }
+        report
+    }
+
+    /// Relay 1 is primary; `fallbacks` of relays 2 and 3 are fallbacks.
+    fn zork_client(fallbacks: &[u16]) -> Client {
+        let tls_config = CaTlsConfig::insecure_skip_verify()
+            .client_config(default_provider())
+            .expect("infallible");
+        let mut opts = Options::new(tls_config);
+        opts.user_config.fallback_relays = fallbacks.iter().map(|i| zork_relay_url(*i)).collect();
+        let relay_map: RelayMap = (1..=3).map(zork_relay_url).collect();
+        Client::new(DnsResolver::new(), relay_map, opts, Default::default())
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_relay_refusing_admission_is_not_alive_for_home() {
+        fn step(client: &mut Client, latencies: &[(u16, u64)]) -> Option<RelayUrl> {
+            let mut r = zork_report(latencies);
+            client.add_report_history_and_set_preferred_relay(&mut r);
+            r.preferred_relay
+        }
+        let mut client = zork_client(&[2, 3]);
+        let admission = client.admission.clone();
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300)]), Some(zork_relay_url(1)));
+
+        // The primary answers its latency probe but refuses the relay connection:
+        // the fallback becomes home.
+        admission.set_refused(&zork_relay_url(1), true);
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300), (3, 500)]), Some(zork_relay_url(2)));
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300), (3, 500)]), Some(zork_relay_url(2)));
+
+        // Admitted again: the primary is taken back at once.
+        admission.set_refused(&zork_relay_url(1), false);
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300), (3, 500)]), Some(zork_relay_url(1)));
+
+        // If every answering relay refuses, the best one is still chosen.
+        admission.set_refused(&zork_relay_url(1), true);
+        admission.set_refused(&zork_relay_url(2), true);
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300)]), Some(zork_relay_url(1)));
+
+        // Without fallbacks a refusing relay is skipped in favour of a slower one.
+        let mut client = zork_client(&[]);
+        client.admission.set_refused(&zork_relay_url(1), true);
+        assert_eq!(step(&mut client, &[(1, 100), (2, 300)]), Some(zork_relay_url(2)));
+    }
+
+    #[tokio::test]
+    async fn test_report_is_complete_once_admitted_primaries_answered() {
+        let if_state = IfStateDetails { have_v4: true, have_v6: false };
+        let refused = BTreeSet::new();
+        let primary_only = zork_report(&[(1, 100)]);
+
+        let client = zork_client(&[2, 3]);
+        for do_full in [true, false] {
+            assert!(client.have_enough_reports(&if_state, do_full, 3, &refused, &primary_only));
+            assert!(!client.have_enough_reports(&if_state, do_full, 3, &refused, &zork_report(&[(2, 50)])));
+        }
+        assert_eq!(client.held_fallbacks(&refused), BTreeSet::from([zork_relay_url(2), zork_relay_url(3)]));
+
+        // A refusing primary does not complete the report, and fallbacks are
+        // probed without delay because they are needed.
+        let refused = BTreeSet::from([zork_relay_url(1)]);
+        assert!(!client.have_enough_reports(&if_state, true, 3, &refused, &primary_only));
+        assert!(client.held_fallbacks(&refused).is_empty());
+
+        // Without fallbacks every relay must answer (upstream behaviour).
+        let client = zork_client(&[]);
+        let refused = BTreeSet::new();
+        assert!(!client.have_enough_reports(&if_state, true, 3, &refused, &primary_only));
+        assert!(client.held_fallbacks(&refused).is_empty());
+    }
+
+    /// Behind a fake-IP proxy no QAD probe runs, so HTTPS probes decide. A
+    /// fallback that never answers must not hold the report back once the primary
+    /// answered (it used to run into the 5s reportgen timeout).
+    #[tokio::test(flavor = "multi_thread")]
+    #[traced_test]
+    async fn test_report_does_not_wait_for_fallbacks() -> Result {
+        let (server, primary) = test_utils::relay().await;
+        // Accepts TCP but never answers: a probe to it can only time out.
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.anyerr()?;
+        let silent_url: RelayUrl = format!("http://{}", silent.local_addr().anyerr()?)
+            .parse()
+            .anyerr()?;
+        let _silent = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((stream, _)) = silent.accept().await {
+                held.push(stream);
+            }
+        });
+        let relay_map = RelayMap::from_iter([
+            primary.clone(),
+            iroh_relay::RelayConfig::from(silent_url.clone()),
+        ]);
+        let tls_config = CaTlsConfig::insecure_skip_verify()
+            .client_config(default_provider())
+            .expect("infallible");
+        let mut opts = Options::new(tls_config);
+        opts.user_config.fallback_relays = vec![silent_url.clone()];
+        opts.user_config.captive_portal_check = false;
+        let mut client = Client::new(DnsResolver::new(), relay_map, opts, Default::default());
+
+        let start = Instant::now();
+        let report = client
+            .get_report(IfStateDetails::fake(), true, CancellationToken::new())
+            .await;
+        let took = start.elapsed();
+        assert_eq!(report.preferred_relay, Some(primary.url.clone()));
+        assert!(took < Duration::from_secs(1), "report took {took:?}");
+        assert!(
+            report.relay_latency.iter().all(|(_, url, _)| url != &silent_url),
+            "held fallback was probed: {report:?}"
+        );
+
+        drop(client);
+        server.shutdown().await?;
         Ok(())
     }
 }

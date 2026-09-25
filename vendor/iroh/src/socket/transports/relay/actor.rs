@@ -59,7 +59,11 @@ use url::Url;
 
 #[cfg(not(wasm_browser))]
 use crate::dns::DnsResolver;
-use crate::{endpoint::RelayStatus, net_report::Report, socket::Metrics as SocketMetrics};
+use crate::{
+    endpoint::RelayStatus,
+    net_report::{RelayAdmission, Report},
+    socket::Metrics as SocketMetrics,
+};
 
 /// How long a non-home relay connection needs to be idle (last written to) before we close it.
 const RELAY_INACTIVE_CLEANUP_TIME: Duration = Duration::from_secs(60);
@@ -152,6 +156,15 @@ struct ActiveRelayActor {
     stop_token: CancellationToken,
     metrics: Arc<SocketMetrics>,
     my_relay: HomeRelayWatch,
+    /// Zork patch: records whether this relay currently refuses admission.
+    admission: RelayAdmission,
+    /// Whether the last dial was refused with HTTP 429 while the relay is one
+    /// of ours (in the relay map). The actor then keeps retrying (with the
+    /// admission backoff) even when idle and not home, so the relay can be
+    /// taken back as home once it admits this endpoint again.
+    admission_refused: bool,
+    /// The endpoint's relay map (shared, live).
+    relay_map: RelayMap,
 }
 
 #[derive(Debug)]
@@ -196,6 +209,8 @@ struct ActiveRelayActorOptions {
     stop_token: CancellationToken,
     metrics: Arc<SocketMetrics>,
     my_relay: HomeRelayWatch,
+    admission: RelayAdmission,
+    relay_map: RelayMap,
 }
 
 /// Configuration needed to create a connection to a relay server.
@@ -296,6 +311,8 @@ impl ActiveRelayActor {
             stop_token,
             metrics,
             my_relay,
+            admission,
+            relay_map,
         } = opts;
         let relay_client_builder = Self::create_relay_builder(url.clone(), connection_opts);
         ActiveRelayActor {
@@ -310,6 +327,9 @@ impl ActiveRelayActor {
             stop_token,
             metrics,
             my_relay,
+            admission,
+            admission_refused: false,
+            relay_map,
         }
     }
 
@@ -363,7 +383,10 @@ impl ActiveRelayActor {
                 // Zork patch: HTTP 429 means the relay refused admission for
                 // this client. The 16s exponential cap would keep hammering a
                 // budget whose Retry-After is 30s or longer, so back off from
-                // 30s doubling to 5 minutes, with jitter.
+                // 30s doubling to 5 minutes, with jitter. Meanwhile the relay
+                // does not count as alive for home selection.
+                // Only relays of our map are home candidates.
+                self.set_admission_refused(self.relay_map.get(&self.url).is_some());
                 let delay = rate_limited_delay(throttled);
                 throttled = throttled.saturating_add(1);
                 warn!(?delay, "relay admission rate limited, backing off");
@@ -389,7 +412,21 @@ impl ActiveRelayActor {
                 throttled = 0;
             }
         }
+        // Nobody retries this relay any more; stop excluding it.
+        self.set_admission_refused(false);
         debug!("exiting");
+    }
+
+    /// A refused relay of ours stays dialed until it admits this endpoint.
+    fn keep_retrying(&self) -> bool {
+        self.admission_refused && self.relay_map.get(&self.url).is_some()
+    }
+
+    fn set_admission_refused(&mut self, refused: bool) {
+        if self.admission_refused != refused {
+            self.admission_refused = refused;
+            self.admission.set_refused(&self.url, refused);
+        }
     }
 
     fn build_backoff() -> impl Backoff {
@@ -415,6 +452,7 @@ impl ActiveRelayActor {
         };
         self.my_relay
             .set_status(&self.url, RelayConnectionState::Connected);
+        self.set_admission_refused(false);
         self.run_connected(client)
             .instrument(info_span!("connected"))
             .await
@@ -515,7 +553,7 @@ impl ActiveRelayActor {
                         }
                     }
                 }
-                _ = &mut self.inactive_timeout, if !self.is_home_relay => {
+                _ = &mut self.inactive_timeout, if !self.is_home_relay && !self.keep_retrying() => {
                     debug!(?RELAY_INACTIVE_CLEANUP_TIME, "Inactive, exiting.");
                     break None;
                 }
@@ -928,6 +966,8 @@ pub(crate) struct Config {
     /// Per-relay configuration. Consulted when starting a connection to
     /// look up the auth token and any future per-relay options.
     pub relay_map: RelayMap,
+    /// Zork patch: relays refusing admission, shared with net_report.
+    pub admission: RelayAdmission,
 }
 
 /// Connection state of the home relay.
@@ -1396,6 +1436,8 @@ impl RelayActor {
             stop_token: stop_token.clone(),
             metrics: self.config.metrics.clone(),
             my_relay: self.config.my_relay.clone(),
+            admission: self.config.admission.clone(),
+            relay_map: self.config.relay_map.clone(),
         };
         let actor = ActiveRelayActor::new(opts);
         self.active_relay_tasks.spawn(
@@ -1606,6 +1648,8 @@ mod tests {
             stop_token,
             metrics: Default::default(),
             my_relay: Default::default(),
+            admission: Default::default(),
+            relay_map: iroh_relay::RelayMap::empty(),
         };
         let task = tokio::spawn(ActiveRelayActor::new(opts).run().instrument(span));
         AbortOnDropHandle::new(task)
