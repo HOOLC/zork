@@ -56,10 +56,10 @@ pub struct ChatAvatar {
     pub more: u64,
 }
 
-/// The device a Chat lives on. A chat-list row stays one line: a remote
-/// Chat shows the muted display name and " · " before its time ("A · 刚刚",
-/// tooltip "在设备 A 上"); a `local` Chat (this client's own Station) shows
-/// only the time. `color_key` stays available for device marks elsewhere.
+/// The device a Chat lives on. A chat-list row has two lines (title, then a
+/// muted meta line): a remote Chat's meta line shows the display name and
+/// " · " before its time ("A · 刚刚", tooltip "在设备 A 上"); a `local` Chat
+/// (this client's own Station) shows only the time. `color_key` stays available for device marks elsewhere.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatDevice {
     /// Directory id of the device (the navigation `peer`).

@@ -28,7 +28,7 @@ Chat 是授权 Mesh 内的公开协作频道；Session 是内部模型和工具�
 
 Station 在接受本机 Agent 的发言时，把它当时运行的模型（Session 或 Agent 定义的模型）记入消息的 `author_model`，随源记录、`chat_message_facts` 与索引重建保留；消息读取和 SSE 的 `model` 优先使用这个记录，所以历史消息保留写下它的模型。用户、系统作者和远端 Agent 不记录（远端模型只在它自己的 Station），旧消息没有该字段；客户端这时可以用 Chat 的 Agent 列表或参与者的当前模型，都没有时头像显示首字母。
 
-Chat 摘要（同步资源 `chat_summary`）增加 `agents`（按首次出现顺序的前 4 个 Agent 作者：id、名称、在本 Chat 最近一条消息的模型）与 `agent_count`；没有 Agent 作者的 Chat 摘要保持原样，旧节点没有这两个字段。core 据此给每个导航行 `avatar`（最多 3 个 `{agent_id, maker, tint, initial}` 与剩余数 `more`），合并后的 Chat 列表行另带 `device`（`id`、显示名称、机器名、色相键 `color_key`、`local`）：远端 Chat 在时间前显示设备名，本机 Station 的 Chat 只显示时间。
+Chat 摘要（同步资源 `chat_summary`）增加 `agents`（按首次出现顺序的前 4 个 Agent 作者：id、名称、在本 Chat 最近一条消息的模型）与 `agent_count`；没有 Agent 作者的 Chat 摘要保持原样，旧节点没有这两个字段。core 据此给每个导航行 `avatar`（最多 3 个 `{agent_id, maker, tint, initial}` 与剩余数 `more`），合并后的 Chat 列表行另带 `device`（`id`、显示名称、机器名、色相键 `color_key`、`local`）：行的第二行元信息中，远端 Chat 在时间前写设备名（「A · 刚刚」），本机 Station 的 Chat 只写时间。
 
 <a id="transcript-presentation"></a>
 
