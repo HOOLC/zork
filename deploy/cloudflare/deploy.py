@@ -85,26 +85,13 @@ def configuration(args):
     return config, values, missing
 
 @contextmanager
-def docker_environment(token_file=None):
+def wrangler_environment(token_file=None):
     env = os.environ.copy()
     if token_file and token_file.exists():
         if token_file.is_symlink() or token_file.stat().st_mode & 0o077:
             raise ValueError("Cloudflare token file must have mode 600")
         env["CLOUDFLARE_API_TOKEN"] = token_file.read_text().strip()
-    host = env.get("DOCKER_HOST") or subprocess.check_output(
-        ["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], text=True).strip()
-    original_dir = Path(env.get("DOCKER_CONFIG", str(Path.home() / ".docker")))
-    original_file = original_dir / "config.json"
-    original = json.loads(original_file.read_text()) if original_file.exists() else {}
-    with tempfile.TemporaryDirectory(prefix="zork-network-docker-") as directory:
-        # Suppress macOS keychain discovery without modifying global Docker state.
-        write_private(Path(directory) / "config.json", {
-            "auths": {"https://index.docker.io/v1/": {}}, "credsStore": "",
-            "cliPluginsExtraDirs": [str(original_dir / "cli-plugins"), *original.get("cliPluginsExtraDirs", [])],
-        })
-        env.update(DOCKER_CONFIG=directory, DOCKER_HOST=host)
-        env.pop("DOCKER_CONTEXT", None)
-        yield env
+    yield env
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -114,27 +101,19 @@ def prepare(args, config, missing):
     if output.exists():
         raise ValueError("Choose a new output directory; an existing candidate is immutable")
     output.mkdir(parents=True)
-    for name in ("Dockerfile", "relay-entrypoint.sh", "README.md"):
-        shutil.copy2(ROOT / name, output / name)
+    shutil.copy2(ROOT / "README.md", output / "README.md")
     build_config = dict(config)
     build_config["main"] = str(ROOT / "src/index.ts")
-    build_config["containers"] = [{**c, "image": str(ROOT / "Dockerfile")} for c in config["containers"]]
     # Public inputs only. Neither Google secret nor signing/admin/CF credentials
     # are part of the candidate, its config, or the build command's arguments.
     private_build_config = ROOT / ".wrangler/relay-candidate.json"
     private_build_config.parent.mkdir(exist_ok=True)
     private_build_config.write_text(json.dumps(build_config))
     try:
-        with docker_environment() as env:
+        with wrangler_environment() as env:
             with (output / "build.log").open("w") as log:
                 subprocess.run(["pnpm", "exec", "wrangler", "deploy", "--dry-run", "--config", str(private_build_config),
                                 "--outdir", str(output / "worker")], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-                subprocess.run(["docker", "build", "--platform", "linux/amd64", "-t", args.image, "."],
-                               cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-            image_id = subprocess.check_output(["docker", "image", "inspect", "--format", "{{.Id}}", args.image], env=env, text=True).strip()
-            image_tag = "zork-network-relay:" + image_id.split(":", 1)[1]
-            subprocess.run(["docker", "tag", args.image, image_tag], env=env, check=True)
-            subprocess.run(["docker", "save", "--output", str(output / "relay-image.tar"), image_tag], env=env, check=True)
         worker = output / "worker/index.js"
         if not worker.exists() or "/__test/" in worker.read_text():
             raise ValueError("Production bundle is missing or contains fixture routes")
@@ -142,8 +121,6 @@ def prepare(args, config, missing):
         deployed.pop("$schema", None)
         deployed["main"] = "worker/index.js"
         deployed["no_bundle"] = True
-        registry_image = "registry.cloudflare.com/" + config.get("account_id", "ACCOUNT_ID_REQUIRED") + "/" + image_tag
-        deployed["containers"] = [{**c, "image": registry_image} for c in config["containers"]]
         (output / "wrangler.json").write_text(json.dumps(deployed, indent=2) + "\n")
         repository = ROOT.parents[1]
         tracked = subprocess.check_output(["git", "diff", "--name-only", "-z", "HEAD"], cwd=repository).decode().split("\0")
@@ -152,12 +129,11 @@ def prepare(args, config, missing):
                    for name in sorted(set(tracked + untracked)) if name}
         manifest = {"source_base": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                     "source_changes": changes,
-                    "image": image_tag, "image_id": image_id, "deployed": False,
+                    "deployed": False,
                     "configuration_gaps": missing,
                     "files": {str(p.relative_to(output)): digest(p) for p in sorted(output.rglob("*")) if p.is_file() and p.name != "build.log"}}
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         print("Prepared candidate:", output)
-        print("Container image:", image_id)
     finally:
         private_build_config.unlink(missing_ok=True)
 
@@ -183,14 +159,8 @@ def deploy(args, values, missing):
         if not isinstance(keys.get(name), str) or len(keys[name]) < 43:
             raise ValueError("Invalid private session key material")
         values[name] = keys[name]
-    with docker_environment(args.token_file) as env:
-        subprocess.run(["docker", "load", "--input", str(candidate / "relay-image.tar")], env=env, check=True, stdout=subprocess.DEVNULL)
-        actual = subprocess.check_output(["docker", "image", "inspect", "--format", "{{.Id}}", manifest["image"]], env=env, text=True).strip()
-        if actual != manifest["image_id"]:
-            raise ValueError("Loaded container does not match candidate")
+    with wrangler_environment(args.token_file) as env:
         command = ["pnpm", "exec", "wrangler"]
-        subprocess.run(command + ["containers", "push", manifest["image"], "--config", str(candidate / "wrangler.json")],
-                       cwd=ROOT, env=env, check=True)
         # Snapshot metadata for an operator-directed rollback. Do not log secrets.
         previous = subprocess.run(command + ["deployments", "list", "--config", str(candidate / "wrangler.json"), "--json"],
                                   cwd=ROOT, env=env, capture_output=True, text=True)
@@ -200,7 +170,7 @@ def deploy(args, values, missing):
             write_private(secret_file, values)
             subprocess.run(command + ["secret", "bulk", str(secret_file), "--config", str(candidate / "wrangler.json")],
                            cwd=ROOT, env=env, check=True)
-        subprocess.run(command + ["deploy", "--config", str(candidate / "wrangler.json"), "--containers-rollout", "immediate"],
+        subprocess.run(command + ["deploy", "--config", str(candidate / "wrangler.json")],
                        cwd=ROOT, env=env, check=True)
     if args.restart_relay:
         # Credentials enter curl over stdin, never in its command line or logs.
@@ -222,8 +192,8 @@ def deploy(args, values, missing):
             if attempt < 5:
                 time.sleep(2)
         if not confirmed:
-            raise ValueError("Worker deployed, but relay cutover is not confirmed; retry the admin restart before acceptance")
-        print("Old relay process retired. New connections will start the deployed image.")
+            raise ValueError("Worker deployed, but the relay restart is not confirmed; retry the admin restart")
+        print("Relay connections were told to reconnect.")
     print("Worker deployed. Native relay acceptance is required; verify Google login separately if configured.")
 
 def main():
@@ -234,8 +204,7 @@ def main():
     parser.add_argument("--token-file", type=Path, default=PRIVATE / "cloudflare-api-token")
     parser.add_argument("--session-keys", type=Path, default=PRIVATE / "session-keys.json")
     parser.add_argument("--output", type=Path, default=ROOT.parents[1] / "artifacts/cloudflare-candidate")
-    parser.add_argument("--image", default="zork-relay-account-lifecycle:candidate")
-    parser.add_argument("--restart-relay", action="store_true", help="Retire the old relay process and its sockets after deployment (required for stateless-admission cutover)")
+    parser.add_argument("--restart-relay", action="store_true", help="After deployment, send Restarting to every relay connection and close it")
     args = parser.parse_args()
     try:
         config, values, missing = configuration(args)

@@ -1,6 +1,5 @@
 // Only the test bundler imports this entry. Production exports no fixture routes.
-import { DurableObject } from "cloudflare:workers";
-import worker, { Account as ProductionAccount, RelayBudget as ProductionRelayBudget, DiscoveryRecord, LoginAttempt, LoginLimiter } from "../src/index";
+import worker, { Account as ProductionAccount, RelayHub as ProductionRelayHub, DiscoveryRecord, LoginAttempt, LoginLimiter } from "../src/index";
 import { signToken, nowSeconds, reply, readJson } from "../src/auth";
 import { budgetFor } from "../src/relay";
 import type { Env } from "../src/env";
@@ -27,7 +26,7 @@ export class Account extends ProductionAccount {
   }
 }
 
-export class RelayBudget extends ProductionRelayBudget {
+export class RelayHub extends ProductionRelayHub {
   exhaustBudget(kind: "bytes" | "frames" = "bytes", key = "global") {
     const now = nowSeconds();
     const limits = budgetFor(key);
@@ -40,56 +39,47 @@ export class RelayBudget extends ProductionRelayBudget {
       frames: kind === "frames" ? limits.framesPerDay : 0,
       balance: 0,
       frameBalance: 0,
+      savedBytes: 0,
+      savedFrames: 0,
     });
+  }
+  /** Empties a rate bucket without touching the daily totals. */
+  drainRate(key: string) {
+    // Negative by one second of refill: refused for at least the next second.
+    const q = this.quota(key);
+    q.frameBalance = -budgetFor(key).framesPerSecond;
+  }
+  /** Makes pending handshakes look older (their start time lives in the attachment). */
+  ageHandshakes(seconds: number) {
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as any;
+      if (att && !att.ep) {
+        att.since -= seconds;
+        ws.serializeAttachment(att);
+      }
+    }
+    this.forgetMemory();
   }
   statistics(key = "global") {
     return this.quota(key);
   }
-}
-
-export class Relay extends DurableObject<{ TEST_RELAY?: Fetcher }> {
-  private delayMs = 0;
-  private destroyed = 0;
-  destroy() {
-    this.destroyed++;
+  persisted(key = "global") {
+    return this.ctx.storage.kv.get("quota:" + key) ?? null;
   }
-  destroyCount() {
-    return this.destroyed;
+  endpoints(ep: string) {
+    return this.connections(ep).map(([, att]) => ({ seq: att.seq, sentTo: att.sentTo ?? [] }));
   }
-  delay(milliseconds: number) {
-    this.delayMs = milliseconds;
+  /** What hibernation does: drop every in-memory cache; sockets, tags, attachments and storage remain. */
+  forgetMemory() {
+    const fresh = new ProductionRelayHub(this.ctx, this.env) as any;
+    for (const key of Object.keys(fresh)) (this as any)[key] = fresh[key];
   }
-  private handshake = false;
-  /** Emulates the iroh-relay challenge: ClientAuth (tag 1) is confirmed (tag 2) unless its key starts with 0xff. */
-  useHandshake(enabled: boolean) {
-    this.handshake = enabled;
+  debugSockets(tag?: string) {
+    const list = tag === undefined ? this.ctx.getWebSockets() : this.ctx.getWebSockets(tag);
+    return list.map((ws) => ({ state: ws.readyState, tags: this.ctx.getTags(ws) }));
   }
-  async fetch(request: Request): Promise<Response> {
-    if (this.delayMs) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
-    if (request.headers.has("authorization") || request.headers.has("cookie") || new URL(request.url).search) {
-      return new Response("credential leak", { status: 500 });
-    }
-    if (this.env.TEST_RELAY) {
-      return this.env.TEST_RELAY.fetch(request);
-    }
-    const pair = new WebSocketPair();
-    pair[1].binaryType = "arraybuffer";
-    pair[1].accept();
-    const handshake = this.handshake;
-    if (handshake) pair[1].send(new Uint8Array([0, ...new Uint8Array(16)]));
-    pair[1].addEventListener("message", (event) => {
-      const frame = new Uint8Array(event.data as ArrayBuffer);
-      if (handshake && frame[0] === 1) pair[1].send(new Uint8Array(frame[1] === 0xff ? [3] : [2]));
-      else pair[1].send(event.data);
-    });
-    pair[1].addEventListener("close", () => pair[1].close(1000, "closed"));
-    return new Response(null, {
-      status: 101,
-      webSocket: pair[0],
-      headers: {
-        "sec-websocket-protocol": request.headers.get("sec-websocket-protocol") ?? "iroh-relay",
-      },
-    });
+  sweep() {
+    return this.alarm();
   }
 }
 

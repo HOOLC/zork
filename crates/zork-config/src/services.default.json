@@ -1,5 +1,11 @@
 {
   "relay_urls": ["https://relay.zork.ing"],
+  "fallback_relay_urls": [
+    "https://aps1-1.relay.n0.iroh.link",
+    "https://usw1-1.relay.n0.iroh.link",
+    "https://use1-1.relay.n0.iroh.link",
+    "https://euc1-1.relay.n0.iroh.link"
+  ],
   "discovery_url": "https://relay.zork.ing/pkarr",
   "quic_discovery_urls": [
     "https://aps1-1.relay.n0.iroh.link",

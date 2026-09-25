@@ -1,4 +1,4 @@
-// Real desktop widgets, Rust account controller, owned Station and official relay.
+// Real desktop widgets, Rust account controller, owned Station and the Worker's native relay.
 // Only Google is replaced by the same signed fixture as the Worker unit tests.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -18,7 +18,6 @@ await fs.chmod(root, 0o700);
 const ui = path.join(root, "ui");
 await fs.mkdir(ui, { recursive: true });
 const processes: ReturnType<typeof spawn>[] = [];
-const container = "zork-account-product-" + ulid().toLowerCase();
 let h: Awaited<ReturnType<typeof harness>> | undefined;
 const checks: string[] = [];
 async function port() {
@@ -48,10 +47,8 @@ function pass(label: string) {
   console.log("PASS: " + label);
 }
 try {
-  const relayPort = await port(),
-    workerPort = await port();
-  await exec("docker", ["run", "--rm", "-d", "--platform", "linux/amd64", "--name", container, "-p", `127.0.0.1:${relayPort}:8080`, "zork-relay-account-lifecycle:local"]);
-  h = await harness({ relay: `http://127.0.0.1:${relayPort}`, origin: `http://127.0.0.1:${workerPort}`, port: workerPort });
+  const workerPort = await port();
+  h = await harness({ origin: `http://127.0.0.1:${workerPort}`, port: workerPort });
   const services = path.join(root, "services.json");
   await fs.writeFile(services, JSON.stringify({ relay_urls: [h.origin], discovery_url: h.origin + "/pkarr" }));
   const env = { ...process.env, ZORK_CLIENT_DATA: root, ZORK_SERVICES_CONFIG: services, ZORK_GUI_PREFERENCES_PATH: path.join(root, "preferences.json"), ZORK_GUI_LOCALE: "zh-CN", ZORK_ACCOUNT_UI_OUTPUT: ui, ZORK_MESH_LOCAL_DISCOVERY: "0", ZORK_MESH_LAN_DISCOVERY: "0", RUST_LOG: "error" };
@@ -85,10 +82,10 @@ try {
   const nodeLog = await fs.open(path.join(output, "station.log"), "w", 0o600);
   const station = spawn(path.resolve(binDir, "zork-station"), ["--data", nodeRoot], { env, stdio: ["ignore", nodeLog.fd, nodeLog.fd] });
   processes.push(station);
-  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_BUDGET");
+  const budgets: any = await h.mf.getDurableObjectNamespace("RELAY_HUB");
   const budget = budgets.get(budgets.idFromName("primary"));
   await until(async () => Number((await budget.statistics())?.bytes) > 128, "owned Station native relay traffic");
-  pass("owned Station completes official-relay handshakes independently of the desktop account");
+  pass("owned Station completes native relay handshakes independently of the desktop account");
   const oldAccess = account.token;
   await exec(path.resolve(binDir, "zork"), ["account", "refresh", "--data", nodeRoot, "--json"], { env, timeout: 20000 });
   account = JSON.parse(await fs.readFile(path.join(root, "account/relay.json"), "utf8")).current;
@@ -109,5 +106,4 @@ try {
 } finally {
   for (const child of processes) if (child.exitCode === null) child.kill("SIGTERM");
   await h?.close();
-  await exec("docker", ["rm", "-f", container]).catch(() => {});
 }

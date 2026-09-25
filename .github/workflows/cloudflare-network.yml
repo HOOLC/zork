@@ -33,5 +33,5 @@ jobs:
           cache-dependency-path: deploy/cloudflare/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      - name: Check Worker bundle without rebuilding the relay image
-        run: pnpm exec wrangler deploy --dry-run --containers-rollout none
+      - name: Check Worker bundle and migrations (dry run, nothing is deployed)
+        run: pnpm exec wrangler deploy --dry-run

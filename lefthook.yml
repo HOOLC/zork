@@ -91,10 +91,4 @@ pre-push:
         pnpm --dir deploy/cloudflare install --frozen-lockfile &&
         pnpm --dir deploy/cloudflare types && pnpm --dir deploy/cloudflare check &&
         pnpm --dir deploy/cloudflare test &&
-        pnpm --dir deploy/cloudflare exec wrangler deploy --dry-run --containers-rollout none
-    cloudflare-container:
-      glob:
-        - "deploy/cloudflare/Dockerfile"
-        - "deploy/cloudflare/relay-entrypoint.sh"
-        - "deploy/cloudflare/wrangler.jsonc"
-      run: pnpm --dir deploy/cloudflare install --frozen-lockfile && pnpm --dir deploy/cloudflare exec wrangler deploy --dry-run
+        pnpm --dir deploy/cloudflare exec wrangler deploy --dry-run

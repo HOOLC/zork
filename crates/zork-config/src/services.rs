@@ -17,6 +17,10 @@ fn bundled_services(executable: &Path) -> Option<PathBuf> {
 #[serde(default, deny_unknown_fields)]
 pub struct ServicesConfig {
     pub relay_urls: Option<Vec<String>>,
+    /// Public relays used only while none of `relay_urls` answers (see
+    /// `fallback_relay_urls_for`). They belong to the relay set they were shipped
+    /// with: a file that replaces `relay_urls` without naming fallbacks has none.
+    pub fallback_relay_urls: Option<Vec<String>>,
     pub relay_quic_port: Option<u16>,
     pub discovery_url: Option<String>,
     pub quic_discovery_urls: Option<Vec<String>>,
@@ -61,6 +65,9 @@ impl ServicesConfig {
             // Validate each source as well as the effective result; typos in a
             // packaged file must not disappear behind an override.
             serde_json::from_value::<Self>(value.clone())?;
+            if fields.contains_key("relay_urls") && !fields.contains_key("fallback_relay_urls") {
+                merged["fallback_relay_urls"] = serde_json::Value::Null;
+            }
             for (key, value) in fields {
                 merged[key] = value.clone();
             }
@@ -106,11 +113,36 @@ impl ServicesConfig {
         Ok(())
     }
 
+    /// Fallback relays for a Mesh configuration: only while it uses this
+    /// installation's relays (an invitation copies them), never alongside a custom
+    /// or test relay. Duplicates of the primary relays are dropped.
+    pub fn fallback_relay_urls_for(&self, mesh: &crate::MeshConfig) -> Vec<String> {
+        let primary = mesh.relay_urls.as_ref().or(self.relay_urls.as_ref());
+        if mesh.offline || primary != self.relay_urls.as_ref() {
+            return Vec::new();
+        }
+        self.fallback_relay_urls
+            .iter()
+            .flatten()
+            .filter(|url| !primary.is_some_and(|relays| relays.contains(url)))
+            .cloned()
+            .collect()
+    }
+
     pub fn validate(&self) -> Result<()> {
         if let Some(relays) = &self.relay_urls {
             ensure!(
                 !relays.is_empty() && relays.len() <= 8,
                 "relay_urls must contain 1–8 URLs; use mesh.offline for offline mode"
+            );
+            for relay in relays {
+                validate_endpoint(relay)?;
+            }
+        }
+        if let Some(relays) = &self.fallback_relay_urls {
+            ensure!(
+                relays.len() <= 8,
+                "fallback_relay_urls supports at most 8 relays"
             );
             for relay in relays {
                 validate_endpoint(relay)?;
@@ -243,6 +275,61 @@ mod tests {
             mesh, expected,
             "invalid settings partially changed the node"
         );
+    }
+
+    #[test]
+    fn fallback_relays_follow_the_installed_relay_set() {
+        let defaults = ServicesConfig::packaged_defaults();
+        let fallbacks = defaults.fallback_relay_urls.clone().unwrap();
+        assert!(!fallbacks.is_empty());
+        assert!(fallbacks
+            .iter()
+            .all(|url| url.ends_with(".relay.n0.iroh.link")));
+        let mut mesh = crate::MeshConfig::default();
+        assert_eq!(
+            defaults.fallback_relay_urls_for(&mesh),
+            fallbacks,
+            "installed relays"
+        );
+        mesh.relay_urls = defaults.relay_urls.clone();
+        assert_eq!(
+            defaults.fallback_relay_urls_for(&mesh),
+            fallbacks,
+            "copied from an invitation"
+        );
+        mesh.relay_urls = Some(vec!["http://127.0.0.1:3340".into()]);
+        assert!(
+            defaults.fallback_relay_urls_for(&mesh).is_empty(),
+            "custom relay"
+        );
+        mesh.relay_urls = None;
+        mesh.offline = true;
+        assert!(
+            defaults.fallback_relay_urls_for(&mesh).is_empty(),
+            "offline"
+        );
+
+        let root = tempfile::tempdir().unwrap();
+        let user = root.path().join("services.json");
+        std::fs::write(&user, r#"{"relay_urls":["http://127.0.0.1:3340"]}"#).unwrap();
+        let local = ServicesConfig::load(None, Some(&user)).unwrap();
+        assert_eq!(
+            local.fallback_relay_urls, None,
+            "replacing the relays drops the shipped fallbacks"
+        );
+        std::fs::write(&user, r#"{"discovery_url":"http://127.0.0.1:3340/pkarr"}"#).unwrap();
+        assert_eq!(
+            ServicesConfig::load(None, Some(&user))
+                .unwrap()
+                .fallback_relay_urls,
+            Some(fallbacks)
+        );
+        std::fs::write(
+            &user,
+            r#"{"fallback_relay_urls":["http://remote.example"]}"#,
+        )
+        .unwrap();
+        assert!(ServicesConfig::load(None, Some(&user)).is_err());
     }
 
     #[test]

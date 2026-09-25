@@ -14,21 +14,9 @@
     "PUBLIC_ORIGIN": "https://relay.zork.ing",
     "GOOGLE_CLIENT_ID": "",
   },
-  "containers": [
-    {
-      "class_name": "Relay",
-      "image": "./Dockerfile",
-      "max_instances": 1,
-      "instance_type": "lite",
-    },
-  ],
   "durable_objects": {
     "bindings": [
-      { "name": "RELAY_BUDGET", "class_name": "RelayBudget" },
-      {
-        "name": "RELAY",
-        "class_name": "Relay",
-      },
+      { "name": "RELAY_HUB", "class_name": "RelayHub" },
       {
         "name": "RECORDS",
         "class_name": "DiscoveryRecord",
@@ -57,5 +45,13 @@
       "new_sqlite_classes": ["Account", "LoginAttempt", "LoginLimiter"],
     },
     { "tag": "v3-public-relay", "new_sqlite_classes": ["RelayBudget"] },
+    // The relay protocol now runs natively in RelayHub (hibernatable WebSockets).
+    // Deleting the container-backed Relay and the RelayBudget proxy drops their
+    // storage (relay budget counters only) and closes their sockets once.
+    {
+      "tag": "v4-native-relay",
+      "deleted_classes": ["Relay", "RelayBudget"],
+      "new_sqlite_classes": ["RelayHub"],
+    },
   ],
 }

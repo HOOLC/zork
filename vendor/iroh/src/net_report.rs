@@ -92,6 +92,10 @@ pub struct NetReportConfig {
     /// DNS used only for UDP address discovery; HTTPS keeps the endpoint resolver.
     #[cfg(not(wasm_browser))]
     pub quic_dns_resolver: Option<DnsResolver>,
+    /// Relays of the relay map that become the home relay only while none of the
+    /// other (primary) relays answered a latency probe. Zork lists public fallback
+    /// relays after its own relay; latency alone would pick whichever is closer.
+    pub fallback_relays: Vec<RelayUrl>,
     /// Run HTTPS latency probes against relay servers.
     ///
     /// HTTPS latency probes perform an empty HTTPS GET request to each configured
@@ -123,6 +127,7 @@ impl NetReportConfig {
             quic_discovery_servers: Vec::new(),
             #[cfg(not(wasm_browser))]
             quic_dns_resolver: None,
+            fallback_relays: Vec::new(),
             https_probes: false,
             captive_portal_check: false,
         }
@@ -135,6 +140,7 @@ impl Default for NetReportConfig {
             quic_discovery_servers: Vec::new(),
             #[cfg(not(wasm_browser))]
             quic_dns_resolver: None,
+            fallback_relays: Vec::new(),
             https_probes: true,
             captive_portal_check: true,
         }
@@ -158,6 +164,8 @@ pub(crate) struct Client {
     tls_config: rustls::ClientConfig,
     /// Whether to check for captive portals.
     captive_portal_check: bool,
+    /// Relays chosen as home only when no primary relay answered.
+    fallback_relays: BTreeSet<RelayUrl>,
     /// A collection of previously generated reports.
     ///
     /// Sometimes it is useful to look at past reports to decide what to do.
@@ -301,6 +309,7 @@ impl Client {
             #[cfg(not(wasm_browser))]
             tls_config: opts.tls_config,
             captive_portal_check: opts.user_config.captive_portal_check,
+            fallback_relays: opts.user_config.fallback_relays.iter().cloned().collect(),
         }
     }
 
@@ -819,9 +828,16 @@ impl Client {
         // current report has the best latency over the past MAX_AGE.
         let mut best_any = Duration::default();
         let mut old_relay_cur_latency = Duration::default();
+        // Fallback relays compete only while no primary relay answered in this
+        // report. Skipping them also lifts the hysteresis below when the previous
+        // home was a fallback, so the primary is taken back as soon as it answers.
+        let primary_alive = r.relay_latency.iter().any(|(_, url, _)| {
+            self.relay_map.get(url).is_some() && !self.fallback_relays.contains(url)
+        });
         {
             for (_, url, duration) in r.relay_latency.iter() {
                 if self.relay_map.get(url).is_none() { continue; }
+                if primary_alive && self.fallback_relays.contains(url) { continue; }
                 if Some(url) == prev_relay.as_ref() {
                     old_relay_cur_latency = duration;
                 }

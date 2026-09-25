@@ -10,7 +10,6 @@
     "deploy": "python3 deploy.py"
   },
   "dependencies": {
-    "@cloudflare/containers": "0.3.7",
     "dns-packet": "5.6.1",
     "jose": "6.2.12",
     "ulid": "3.0.2"

@@ -1,18 +1,12 @@
 import { installPage } from "./install";
-import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
 import { decodeKey, MAX_AGE_MS, readPayload, verifyPayload } from "./pkarr";
 import { authConfigured, bearerToken, denied, digest, readJson, reply, validId, validSecret, verifyToken } from "./auth";
 import { devicePage, googleStart, consumeLoginRate } from "./login";
 import type { Env } from "./env";
-export { RelayBudget } from "./relay";
+export { RelayHub } from "./relay";
 export { Account } from "./account";
 export { LoginAttempt, LoginLimiter } from "./login";
-
-export class Relay extends Container<Env> {
-  defaultPort = 8080;
-  sleepAfter = "10m";
-}
 
 type RecordValue = { payload: Uint8Array; timestamp: string; expires: number };
 
@@ -56,7 +50,7 @@ export default {
     if ((path === "/healthz" || path === "/ping") && request.method === "GET") {
       return Response.json({
         service: "zork-network",
-        relay: "iroh-relay-1.1.0",
+        relay: "iroh-relay-v2 (native, iroh-relay 1.1 compatible)",
         google_login: authConfigured(env),
       });
     }
@@ -67,7 +61,7 @@ export default {
     if (path === "/relay") {
       if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
       if (request.method !== "GET") return reply({ error: "method_not_allowed" }, 405);
-      return env.RELAY_BUDGET.getByName("primary").fetch(request);
+      return env.RELAY_HUB.getByName("primary").fetch(request);
     }
     if (path.startsWith("/v1/")) {
       if (url.origin !== env.PUBLIC_ORIGIN) return reply({ error: "invalid_origin" }, 421);
@@ -138,10 +132,10 @@ export default {
       if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 43 || !supplied || (await digest(supplied)) !== (await digest(env.ADMIN_TOKEN))) return denied();
       try {
         if (restartRelay) {
-          // Cutovers from stateless admission must also retire the old process
-          // and its untracked sockets; a started rollout is not that guarantee.
-          await env.RELAY.getByName("primary").destroy();
-          return reply({ restarted: true });
+          // Sends iroh's advisory Restarting frame and closes every relay
+          // connection; clients reconnect with their usual backoff.
+          const connections = await env.RELAY_HUB.getByName("primary").restart();
+          return reply({ restarted: true, connections });
         }
         const body = await readJson(request);
         if (typeof body.blocked !== "boolean") return reply({ error: "invalid_request" }, 400);

@@ -6,7 +6,6 @@ import { digest, randomSecret, type Tokens } from "../src/auth.ts";
 
 export async function harness(
   options: {
-    relay?: string;
     origin?: string;
     persist?: string;
     port?: number;
@@ -54,8 +53,7 @@ export async function harness(
         AUTH_SIGNING_KEY: signingKey,
         ADMIN_TOKEN: adminToken,
       },
-      serviceBindings: options.relay ? { TEST_RELAY: { external: { address: new URL(options.relay).host, http: {} } } } : {},
-      durableObjects: Object.fromEntries(["Account", "LoginAttempt", "LoginLimiter", "Relay", "DiscoveryRecord", "RelayBudget"].map((className, i) => [["ACCOUNTS", "LOGINS", "LOGIN_LIMITS", "RELAY", "RECORDS", "RELAY_BUDGET"][i], { className, useSQLite: true }])),
+      durableObjects: Object.fromEntries(["Account", "LoginAttempt", "LoginLimiter", "DiscoveryRecord", "RelayHub"].map((className, i) => [["ACCOUNTS", "LOGINS", "LOGIN_LIMITS", "RECORDS", "RELAY_HUB"][i], { className, useSQLite: true }])),
       outboundService: async (request) => {
         const url = new URL(request.url);
         if (url.href === "https://www.googleapis.com/oauth2/v3/certs") {
@@ -79,11 +77,6 @@ export async function harness(
             .setAudience(code.invalid === "aud" ? "wrong" : "test-google-client")
             .sign(privateKey);
           return MFResponse.json({ id_token: idToken });
-        }
-        if (options.relay && url.origin === options.relay) {
-          // Workerd networking to the real local relay uses a separate service
-          // binding in the native harness; JS fetch does not proxy WebSockets.
-          throw new Error("native relay requires network binding");
         }
         throw new Error("unexpected outbound request: " + url.origin + url.pathname);
       },
