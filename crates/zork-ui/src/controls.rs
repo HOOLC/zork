@@ -567,6 +567,38 @@ pub fn provider_icon(provider: &str, size: f32) -> gpui::Div {
         .child(svg().path(path).size(px(size)).text_color(rgb(ZORK_UI.palette.text)))
 }
 
+/// Mark of a model maker (`zork_client_core::model_catalog::MAKERS` key).
+/// Anything that names a model draws this; anything that names a connection
+/// draws `provider_icon`. Unknown makers get the generic mark.
+pub fn maker_path(maker: Option<&str>) -> &'static str {
+    match maker.unwrap_or_default() {
+        "openai" => "makers/openai.svg",
+        "anthropic" => "makers/anthropic.svg",
+        "google" => "makers/google.svg",
+        "deepseek" => "makers/deepseek.svg",
+        "qwen" => "makers/qwen.svg",
+        "zhipu" => "makers/zhipu.svg",
+        "doubao" => "makers/doubao.svg",
+        "moonshot" => "makers/moonshot.svg",
+        "minimax" => "makers/minimax.svg",
+        "mistral" => "makers/mistral.svg",
+        "meta" => "makers/meta.svg",
+        "xai" => "makers/xai.svg",
+        _ => "makers/generic.svg",
+    }
+}
+pub fn maker_icon(maker: Option<&str>, size: f32) -> gpui::Div {
+    gpui::div()
+        .size(px(size))
+        .flex_shrink_0()
+        .child(
+            svg()
+                .path(maker_path(maker))
+                .size(px(size))
+                .text_color(rgb(ZORK_UI.palette.text)),
+        )
+}
+
 /// Controlled switch with the same compact geometry in native and Web renderers.
 pub fn switch<V: 'static>(
     id: impl Into<gpui::SharedString>,
