@@ -56,4 +56,4 @@ home relay permanently. With the patch the fallbacks are probed as usual but are
 skipped while a primary answers; when the previous home is a fallback and a
 primary answers again, the hysteresis is skipped and the primary is taken back in
 the next report. Relay selection among primaries, probing and dialing peers'
-relays are unchanged. Exercised by `zork-mesh` `network::tests`.
+relays are unchanged. Covered by `net_report::tests::test_fallback_relays_only_when_no_primary_answers` and `zork-mesh` `network::tests`.

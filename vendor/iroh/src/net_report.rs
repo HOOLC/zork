@@ -1277,7 +1277,8 @@ mod tests {
             .expect("infallible");
         for mut tt in tests {
             println!("test: {}", tt.name);
-            let relay_map = RelayMap::empty();
+            // Zork drops latencies of relays outside the map, so list the test relays.
+            let relay_map: RelayMap = (1..=3).map(relay_url).collect();
             let opts = Options::new(tls_config.clone());
             let mut client = Client::new(resolver.clone(), relay_map, opts, Default::default());
             for s in &mut tt.steps {
@@ -1293,6 +1294,70 @@ mod tests {
             let want = &tt.want_relay;
             assert_eq!(got, want, "preferred_relay");
         }
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn test_fallback_relays_only_when_no_primary_answers() -> Result {
+        fn relay_url(i: u16) -> RelayUrl {
+            format!("http://{i}.com").parse().unwrap()
+        }
+        fn report(latencies: &[(u16, u64)]) -> Report {
+            let mut report = Report::default();
+            for (id, ms) in latencies {
+                report.relay_latency.update_relay(
+                    relay_url(*id),
+                    Duration::from_millis(*ms),
+                    Probe::QadIpv4,
+                );
+            }
+            report
+        }
+        fn step(client: &mut Client, latencies: &[(u16, u64)]) -> Option<RelayUrl> {
+            let mut r = report(latencies);
+            client.add_report_history_and_set_preferred_relay(&mut r);
+            r.preferred_relay
+        }
+
+        let tls_config = CaTlsConfig::insecure_skip_verify()
+            .client_config(default_provider())
+            .expect("infallible");
+        // Relay 1 is primary; relays 2 and 3 are listed as fallbacks.
+        let new_client = |fallbacks: Vec<RelayUrl>| {
+            let mut opts = Options::new(tls_config.clone());
+            opts.user_config.fallback_relays = fallbacks;
+            let relay_map: RelayMap = (1..=3).map(relay_url).collect();
+            Client::new(DnsResolver::new(), relay_map, opts, Default::default())
+        };
+        let fallbacks = || vec![relay_url(2), relay_url(3)];
+
+        // A faster fallback does not win while the primary answers.
+        let mut client = new_client(fallbacks());
+        assert_eq!(step(&mut client, &[(1, 300), (2, 40)]), Some(relay_url(1)));
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(1, 300), (2, 10)]), Some(relay_url(1)));
+
+        // Primary silent: the fallback with the best recent latency takes over
+        // (relay 2 measured 10ms in the previous report).
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(step(&mut client, &[(2, 60), (3, 50)]), Some(relay_url(2)));
+
+        // Primary answers again, even much slower: taken back in the same
+        // report instead of the hysteresis keeping the fallback.
+        tokio::time::advance(Duration::from_secs(30)).await;
+        assert_eq!(
+            step(&mut client, &[(1, 900), (2, 60), (3, 50)]),
+            Some(relay_url(1))
+        );
+
+        // Only fallbacks answer from the first report.
+        let mut client = new_client(fallbacks());
+        assert_eq!(step(&mut client, &[(2, 80), (3, 90)]), Some(relay_url(2)));
+
+        // Without fallbacks, latency alone decides (upstream behaviour).
+        let mut client = new_client(Vec::new());
+        assert_eq!(step(&mut client, &[(1, 300), (2, 40)]), Some(relay_url(2)));
 
         Ok(())
     }
