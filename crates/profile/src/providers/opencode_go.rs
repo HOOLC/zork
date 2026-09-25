@@ -70,7 +70,7 @@ impl AuthProvider for OpenCodeGo {
             .trim_end_matches('/');
         let response = http
             .get(format!("{base_url}/models"))
-            .bearer_auth(bearer)
+            .bearer_auth(&bearer)
             .timeout(Duration::from_secs(20))
             .send()
             .await
@@ -81,14 +81,31 @@ impl AuthProvider for OpenCodeGo {
                 response.status().as_u16()
             );
         }
+        let usage = async {
+            let response = http
+                .get(format!("{base_url}/usage"))
+                .bearer_auth(&bearer)
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .context("OpenCode Go usage request")?;
+            anyhow::ensure!(
+                response.status().is_success(),
+                "OpenCode Go usage HTTP {}",
+                response.status()
+            );
+            let payload: Value = response.json().await.context("OpenCode Go usage response")?;
+            subscription_limits(&payload).context("OpenCode Go usage has no windows")
+        }
+        .await;
         Ok(QuotaSnapshot {
             account: json!({
                 "ok": true,
                 "account": { "type": "opencode-go", "planType": "Go" }
             }),
-            rate_limits: json!({
-                "ok": false,
-                "error": "not_reported_by_provider"
+            rate_limits: usage.unwrap_or_else(|error| {
+                tracing::warn!(%error, "OpenCode Go usage query failed");
+                json!({"ok":false,"error":"usage_query_failed"})
             }),
             auth: None,
         })
@@ -116,5 +133,76 @@ impl AuthProvider for OpenCodeGo {
         _pending: &DeviceCode,
     ) -> Result<DeviceCodePoll> {
         anyhow::bail!("OpenCode Go does not use device-code login")
+    }
+}
+
+/// Go meters a rolling 5-hour, a weekly and a monthly window, each as a
+/// percentage used with its reset time. Rolling and weekly map to the
+/// primary/secondary windows; monthly is an additional unnamed limit, so
+/// clients label it by its duration like the others.
+fn subscription_limits(payload: &Value) -> Option<Value> {
+    fn window(value: &Value, minutes: u64) -> Value {
+        let Some(used) = value["percent"].as_f64() else {
+            return Value::Null;
+        };
+        let reset = value["resetsAt"]
+            .as_str()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|v| v.timestamp());
+        json!({"usedPercent":used,"windowDurationMins":minutes,"resetsAt":reset})
+    }
+    let usage = &payload["usage"];
+    let primary = window(&usage["rolling"], 300);
+    let secondary = window(&usage["weekly"], 10080);
+    let monthly = window(&usage["monthly"], 43200);
+    if primary.is_null() && secondary.is_null() && monthly.is_null() {
+        return None;
+    }
+    let mut additional = serde_json::Map::new();
+    if !monthly.is_null() {
+        additional.insert(
+            "opencode_go_monthly".into(),
+            json!({"limitId":"opencode_go_monthly","limitName":"","secondary":monthly}),
+        );
+    }
+    Some(json!({
+        "ok": true,
+        "rateLimits": {
+            "limitId": "opencode_go_subscription",
+            "limitName": "OpenCode Go",
+            "primary": primary,
+            "secondary": secondary,
+            "planType": "subscription"
+        },
+        "rateLimitsByLimitId": additional
+    }))
+}
+
+#[cfg(test)]
+mod quota_tests {
+    use super::*;
+
+    #[test]
+    fn maps_rolling_weekly_and_monthly_windows() {
+        let value = subscription_limits(&json!({"usage":{
+            "rolling":{"status":"ok","percent":0,"resetsAt":"2026-09-25T23:22:52.780Z"},
+            "weekly":{"status":"ok","percent":67,"resetsAt":"2026-09-28T00:00:00.000Z"},
+            "monthly":{"status":"ok","percent":84,"resetsAt":"2026-10-02T21:13:01.000Z"}
+        }}))
+        .unwrap();
+        assert_eq!(value["rateLimits"]["primary"]["usedPercent"], 0.);
+        assert_eq!(value["rateLimits"]["primary"]["windowDurationMins"], 300);
+        assert_eq!(value["rateLimits"]["secondary"]["usedPercent"], 67.);
+        assert_eq!(value["rateLimits"]["secondary"]["resetsAt"], 1790553600i64);
+        assert_eq!(
+            value["rateLimitsByLimitId"]["opencode_go_monthly"]["secondary"]["usedPercent"],
+            84.
+        );
+    }
+
+    #[test]
+    fn missing_windows_are_not_a_quota() {
+        assert!(subscription_limits(&json!({"usage":{}})).is_none());
+        assert!(subscription_limits(&json!({"error":"nope"})).is_none());
     }
 }
